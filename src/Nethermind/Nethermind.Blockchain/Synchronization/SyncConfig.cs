@@ -83,6 +83,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         public ulong FastHeadersMemoryBudget { get; set; } = (ulong)128.MB();
         public bool EnableSnapSyncStorageRangeSplit { get; set; } = false;
+        public long ForwardSyncDownloadBufferMemoryBudget { get; set; } = 200.MiB();
+        public long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; } = 200.MiB();
 
         public override string ToString()
         {

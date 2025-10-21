@@ -20,7 +20,9 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.Internal;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
@@ -34,11 +36,13 @@ using Nethermind.Sockets;
 
 namespace Nethermind.Runner.JsonRpc;
 
-public class Startup
+public class Startup : IStartup
 {
     private static ReadOnlySpan<byte> _jsonOpeningBracket => [(byte)'['];
     private static ReadOnlySpan<byte> _jsonComma => [(byte)','];
     private static ReadOnlySpan<byte> _jsonClosingBracket => [(byte)']'];
+
+    IServiceProvider IStartup.ConfigureServices(IServiceCollection services) => Build(services);
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -74,7 +78,21 @@ public class Startup
 
     private static ServiceProvider Build(IServiceCollection services) => services.BuildServiceProvider();
 
-    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer)
+
+    public void Configure(IApplicationBuilder app)
+    {
+        IServiceProvider services = app.ApplicationServices;
+        Configure(
+            app,
+            services.GetRequiredService<IWebHostEnvironment>(),
+            services.GetRequiredService<IJsonRpcProcessor>(),
+            services.GetRequiredService<IJsonRpcService>(),
+            services.GetRequiredService<IJsonRpcLocalStats>(),
+            services.GetRequiredService<IJsonSerializer>(),
+            services.GetRequiredService<ApplicationLifetime>());
+    }
+
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
     {
         if (env.IsDevelopment())
         {
@@ -135,10 +153,15 @@ public class Startup
                 {
                     if (logger.IsError) logger.Error("Unable to initialize health checks. Check if you have Nethermind.HealthChecks.dll in your plugins folder.", e);
                 }
+
+                IServiceProvider services = app.ApplicationServices;
+                endpoints.MapDataFeeds(lifetime);
             }
         });
 
-        app.Run(async ctx =>
+        app.MapWhen(
+            (ctx) => ctx.Request.ContentType?.Contains("application/json") ?? false,
+            builder => builder.Run(async ctx =>
         {
             var method = ctx.Request.Method;
             if (method is not "POST" and not "GET")
@@ -168,7 +191,8 @@ public class Startup
                 }
             }
 
-            if (method == "GET")
+            if (method == "GET" && ctx.Request.Headers.Accept.Count > 0 &&
+                !ctx.Request.Headers.Accept[0].Contains("text/html", StringComparison.Ordinal))
             {
                 await ctx.Response.WriteAsync("Nethermind JSON RPC");
             }
@@ -283,7 +307,7 @@ public class Startup
                 }
                 finally
                 {
-                    Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
+                    Interlocked.Add(ref Nethermind.JsonRpc.Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
                 }
             }
             Task SerializeTimeoutException(CountingWriter resultStream)
@@ -299,7 +323,17 @@ public class Startup
                 await jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, response);
                 await ctx.Response.CompleteAsync();
             }
-        });
+        }));
+
+        if (healthChecksConfig.Enabled)
+        {
+            string executableDir = Path.GetDirectoryName(Environment.ProcessPath) ?? Directory.GetCurrentDirectory();
+            string wwwrootPath = Path.Combine(executableDir, "wwwroot");
+            PhysicalFileProvider fileProvider = new(wwwrootPath);
+
+            app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
+            app.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
+        }
     }
 
     /// <summary>
@@ -309,7 +343,7 @@ public class Startup
     private static bool IsLocalhost(IPAddress remoteIp)
         => IPAddress.IsLoopback(remoteIp) || remoteIp.Equals(IPAddress.IPv6Loopback);
 
-    private static int GetStatusCode(JsonRpcResult result)
+    private static int GetStatusCode(in JsonRpcResult result)
     {
         if (result.IsCollection)
         {

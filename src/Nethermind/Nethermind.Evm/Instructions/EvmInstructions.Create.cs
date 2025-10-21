@@ -8,7 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Int256;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 using static Nethermind.Evm.VirtualMachine;
 
@@ -19,6 +19,7 @@ namespace Nethermind.Evm;
 /// </summary>
 internal static partial class EvmInstructions
 {
+    private static readonly ReadOnlyMemory<byte> _emptyMemory = default;
     /// <summary>
     /// Interface for CREATE opcode types.
     /// Implementations must specify the <see cref="ExecutionType"/> to distinguish between CREATE and CREATE2.
@@ -59,20 +60,20 @@ internal static partial class EvmInstructions
     /// and delegates execution to a new call frame for the contract's initialization code.
     /// </summary>
     /// <typeparam name="TOpCreate">The type of create operation (either <see cref="OpCreate"/> or <see cref="OpCreate2"/>).</typeparam>
-    /// <typeparam name="TTracingInstructions">Tracing instructions type used for instrumentation if active.</typeparam>
+    /// <typeparam name="TTracingInst">Tracing instructions type used for instrumentation if active.</typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">Reference to the EVM stack.</param>
     /// <param name="gasAvailable">Reference to the gas counter available for execution.</param>
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or the type of exception encountered.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCreate<TOpCreate, TTracingInstructions>(
+    public static EvmExceptionType InstructionCreate<TOpCreate, TTracingInst>(
         VirtualMachine vm,
         ref EvmStack stack,
         ref long gasAvailable,
         ref int programCounter)
         where TOpCreate : struct, IOpCreate
-        where TTracingInstructions : struct, IFlag
+        where TTracingInst : struct, IFlag
     {
         // Increment metrics counter for contract creation operations.
         Metrics.IncrementCreates();
@@ -118,17 +119,17 @@ internal static partial class EvmInstructions
         // Calculate the gas cost for the creation, including fixed cost and per-word cost for init code.
         // Also include an extra cost for CREATE2 if applicable.
         long gasCost = GasCostOf.Create +
-                       (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
+                       (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
                        (typeof(TOpCreate) == typeof(OpCreate2)
-                           ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in initCodeLength, out outOfGas)
+                           ? GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas)
                            : 0);
 
         // Check gas sufficiency: if outOfGas flag was set during gas division or if gas update fails.
-        if (outOfGas || !UpdateGas(gasCost, ref gasAvailable))
+        if (outOfGas || !EvmCalculations.UpdateGas(gasCost, ref gasAvailable))
             goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
-        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in memoryPositionOfInitCode, in initCodeLength))
+        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in memoryPositionOfInitCode, in initCodeLength))
             goto OutOfGas;
 
         // Verify call depth does not exceed the maximum allowed. If exceeded, return early with empty data.
@@ -136,7 +137,7 @@ internal static partial class EvmInstructions
         if (env.CallDepth >= MaxCallDepth)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
             goto None;
         }
 
@@ -148,7 +149,7 @@ internal static partial class EvmInstructions
         if (value > balance)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
             goto None;
         }
 
@@ -158,18 +159,18 @@ internal static partial class EvmInstructions
         if (accountNonce >= maxNonce)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
             goto None;
         }
 
         // End tracing if enabled, prior to switching to the new call frame.
-        if (TTracingInstructions.IsActive)
+        if (TTracingInst.IsActive)
             vm.EndInstructionTrace(gasAvailable);
 
         // Calculate gas available for the contract creation call.
         // Use the 63/64 gas rule if specified in the current EVM specification.
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-        if (!UpdateGas(callGas, ref gasAvailable))
+        if (!EvmCalculations.UpdateGas(callGas, ref gasAvailable))
             goto OutOfGas;
 
         // Compute the contract address:
@@ -190,8 +191,8 @@ internal static partial class EvmInstructions
         if (spec.IsEofEnabled && initCode.Span.StartsWith(EofValidator.MAGIC))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
-            UpdateGasUp(callGas, ref gasAvailable);
+            stack.PushZero<TTracingInst>();
+            EvmCalculations.UpdateGasUp(callGas, ref gasAvailable);
             goto None;
         }
 
@@ -199,7 +200,7 @@ internal static partial class EvmInstructions
         state.IncrementNonce(env.ExecutingAccount);
 
         // Analyze and compile the initialization code.
-        CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, out _);
+        CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo? codeInfo, out _);
 
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();
@@ -210,7 +211,7 @@ internal static partial class EvmInstructions
         if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
             goto None;
         }
 
@@ -225,31 +226,27 @@ internal static partial class EvmInstructions
 
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.
-        ExecutionEnvironment callEnv = new
-        (
-            txExecutionContext: in env.TxExecutionContext,
-            callDepth: env.CallDepth + 1,
-            caller: env.ExecutingAccount,
+        ExecutionEnvironment callEnv = new(
+            codeInfo: codeInfo,
             executingAccount: contractAddress,
+            caller: env.ExecutingAccount,
             codeSource: null,
-            codeInfo: codeinfo,
-            inputData: default,
-            transferValue: value,
-            value: value
-        );
+            callDepth: env.CallDepth + 1,
+            transferValue: in value,
+            value: in value,
+            inputData: in _emptyMemory);
 
         // Rent a new frame to run the initialization code in the new execution environment.
         vm.ReturnData = EvmState.RentFrame(
-            callGas,
+            gasAvailable: callGas,
             outputDestination: 0,
             outputLength: 0,
-            TOpCreate.ExecutionType,
+            executionType: TOpCreate.ExecutionType,
             isStatic: vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: accountExists,
-            in snapshot,
             env: in callEnv,
-            in vm.EvmState.AccessTracker
-        );
+            stateForAccessLists: in vm.EvmState.AccessTracker,
+            snapshot: in snapshot);
     None:
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

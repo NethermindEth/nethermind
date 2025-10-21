@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -28,7 +29,8 @@ namespace Nethermind.Consensus.Producers
         ISpecProvider? specProvider,
         ITransactionComparerProvider? transactionComparerProvider,
         ILogManager? logManager,
-        ITxFilterPipeline? txFilterPipeline)
+        ITxFilterPipeline? txFilterPipeline,
+        IBlocksConfig blocksConfig)
         : ITxSource
     {
         private readonly ITxPool _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
@@ -40,7 +42,7 @@ namespace Nethermind.Consensus.Producers
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             long blockNumber = parent.Number + 1;
-            IReleaseSpec spec = _specProvider.GetSpec(parent);
+            IReleaseSpec spec = NextBlockSpecHelper.GetSpec(_specProvider, parent, payloadAttributes, blocksConfig);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
             IDictionary<AddressAsKey, Transaction[]> pendingTransactions = filterSource ?
                 _transactionPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee) :
@@ -49,7 +51,7 @@ namespace Nethermind.Consensus.Producers
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
-            Func<Transaction, bool> filter = (tx) => _txFilterPipeline.Execute(tx, parent);
+            Func<Transaction, bool> filter = (tx) => _txFilterPipeline.Execute(tx, parent, spec);
 
             IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, filter, gasLimit);
             IEnumerable<(Transaction tx, long blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, filter, (int)spec.MaxBlobCount);
@@ -103,13 +105,17 @@ namespace Nethermind.Consensus.Producers
             {
                 if (TryGetFullBlobTx(blobTx, out fullBlobTx))
                 {
+                    ProofVersion? proofVersion = (fullBlobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version;
+                    if (spec.BlobProofVersion != proofVersion)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.BlobProofVersion} is wanted, but tx's proof version is {proofVersion}.");
+                        return false;
+                    }
+
                     return true;
                 }
-                else if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
-                }
 
+                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
                 return false;
             }
         }

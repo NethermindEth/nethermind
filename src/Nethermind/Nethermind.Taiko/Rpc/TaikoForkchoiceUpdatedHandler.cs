@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -17,11 +18,11 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.Peers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Taiko.Rpc;
 
-internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
+internal class TaikoForkchoiceUpdatedHandler(
+    IBlockTree blockTree,
     IManualBlockFinalizationManager manualBlockFinalizationManager,
     IPoSSwitcher poSSwitcher,
     IPayloadPreparationService payloadPreparationService,
@@ -33,24 +34,26 @@ internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
     IPeerRefresher peerRefresher,
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
-    ILogManager logManager,
-    bool simulateBlockProduction = false) : ForkchoiceUpdatedHandler(blockTree,
-          manualBlockFinalizationManager,
-          poSSwitcher,
-          payloadPreparationService,
-          processingQueue,
-          blockCacheService,
-          invalidChainTracker,
-          mergeSyncController,
-          beaconPivot,
-          peerRefresher,
-          specProvider,
-          syncPeerPool,
-          logManager,
-          simulateBlockProduction)
+    IMergeConfig mergeConfig,
+    ILogManager logManager
+) : ForkchoiceUpdatedHandler(
+    blockTree,
+    manualBlockFinalizationManager,
+    poSSwitcher,
+    payloadPreparationService,
+    processingQueue,
+    blockCacheService,
+    invalidChainTracker,
+    mergeSyncController,
+    beaconPivot,
+    peerRefresher,
+    specProvider,
+    syncPeerPool,
+    mergeConfig,
+    logManager)
 {
     protected override bool IsOnMainChainBehindHead(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
-       [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
+        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
         errorResult = null;
         return true;

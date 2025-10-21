@@ -4,9 +4,11 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -36,7 +38,7 @@ public class DiscoveryManager : IDiscoveryManager
     public DiscoveryManager(
         INodeLifecycleManagerFactory? nodeLifecycleManagerFactory,
         INodeTable? nodeTable,
-        INetworkStorage? discoveryStorage,
+        [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage? discoveryStorage,
         IDiscoveryConfig? discoveryConfig,
         INetworkConfig? networkConfig,
         ILogManager? logManager)
@@ -64,7 +66,7 @@ public class DiscoveryManager : IDiscoveryManager
             manager.OnStateChanged += ManagerOnOnStateChanged;
             if (!isPersisted)
             {
-                _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation(DateTime.UtcNow)) });
+                _discoveryStorage.UpdateNode(new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation(DateTime.UtcNow)));
             }
 
             return manager;

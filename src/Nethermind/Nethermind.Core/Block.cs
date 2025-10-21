@@ -122,8 +122,9 @@ public class Block
 
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
+
     [JsonIgnore]
-    internal volatile int TransactionProcessed;
+    public int? EncodedSize { get; set; }
 
     public override string ToString() => ToString(Format.Short);
 

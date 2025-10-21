@@ -121,8 +121,8 @@ public struct EvmPooledMemory : IEvmMemory
             return;
         }
 
-        UInt256 length = (UInt256)value.Length;
-        CheckMemoryAccessViolation(in location, in length, out ulong newLength);
+        ulong length = (ulong)value.Length;
+        CheckMemoryAccessViolation(in location, length, out ulong newLength);
         UpdateSize(newLength);
 
         Array.Copy(value, 0, _memory!, (long)location, value.Length);
@@ -132,16 +132,29 @@ public struct EvmPooledMemory : IEvmMemory
     {
         if (value.Length == 0)
         {
+            // Nothing to do
             return;
         }
 
-        UInt256 length = (UInt256)value.Length;
-        CheckMemoryAccessViolation(in location, in length, out ulong newLength);
+        ulong length = (ulong)value.Length;
+        CheckMemoryAccessViolation(in location, length, out ulong newLength);
         UpdateSize(newLength);
 
-        int intLocation = (int)location;
+        if (location.u0 > int.MaxValue)
+        {
+            ThrowOutOfGas();
+        }
+
+        int intLocation = (int)location.u0;
         value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
-        _memory.AsSpan(intLocation + value.Span.Length, value.PaddingLength).Clear();
+        if (value.PaddingLength > 0)
+        {
+            ClearPadding(_memory, intLocation + value.Span.Length, value.PaddingLength);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ClearPadding(byte[] memory, int offset, int length)
+            => memory.AsSpan(offset, length).Clear();
     }
 
     public Span<byte> LoadSpan(scoped in UInt256 location)
@@ -199,6 +212,10 @@ public struct EvmPooledMemory : IEvmMemory
             return default;
         }
 
+        if (location >= Size)
+        {
+            return default;
+        }
         UInt256 largeSize = location + length;
         if (largeSize > _memory.Length)
         {
@@ -232,9 +249,9 @@ public struct EvmPooledMemory : IEvmMemory
 
         if (newSize > Size)
         {
-            long newActiveWords = Div32Ceiling(newSize, out outOfGas);
+            long newActiveWords = EvmCalculations.Div32Ceiling(newSize, out outOfGas);
             if (outOfGas) return 0;
-            long activeWords = Div32Ceiling(Size, out outOfGas);
+            long activeWords = EvmCalculations.Div32Ceiling(Size, out outOfGas);
             if (outOfGas) return 0;
 
             // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
@@ -266,13 +283,10 @@ public struct EvmPooledMemory : IEvmMemory
 
         return result;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowOutOfGas()
-        {
-            throw new OutOfGasException();
-        }
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowOutOfGas() => throw new OutOfGasException();
 
     public TraceMemory GetTrace()
     {
@@ -291,44 +305,6 @@ public struct EvmPooledMemory : IEvmMemory
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long Div32Ceiling(in UInt256 length, out bool outOfGas)
-    {
-        if (length.IsLargerThanULong())
-        {
-            outOfGas = true;
-            return 0;
-        }
-
-        ulong result = length.u0;
-        ulong rem = result & 31;
-        result >>= 5;
-        if (rem > 0)
-        {
-            result++;
-        }
-
-        if (result > uint.MaxValue)
-        {
-            outOfGas = true;
-            return 0;
-        }
-
-        outOfGas = false;
-        return (long)result;
-    }
-
-    public static long Div32Ceiling(in UInt256 length)
-    {
-        long result = Div32Ceiling(in length, out bool outOfGas);
-        if (outOfGas)
-        {
-            ThrowOutOfGasException();
-        }
-
-        return result;
-    }
-
     private void UpdateSize(in UInt256 location, in UInt256 length, bool rentIfNeeded = true)
     {
         UpdateSize((ulong)(location + length), rentIfNeeded);
@@ -336,6 +312,7 @@ public struct EvmPooledMemory : IEvmMemory
 
     private void UpdateSize(ulong length, bool rentIfNeeded = true)
     {
+        const int MinRentSize = 1_024;
         Length = length;
 
         if (Length > Size)
@@ -348,7 +325,7 @@ public struct EvmPooledMemory : IEvmMemory
         {
             if (_memory is null)
             {
-                _memory = ArrayPool<byte>.Shared.Rent((int)Size);
+                _memory = ArrayPool<byte>.Shared.Rent((int)Math.Max(Size, MinRentSize));
                 Array.Clear(_memory, 0, (int)Size);
             }
             else
@@ -376,16 +353,14 @@ public struct EvmPooledMemory : IEvmMemory
         }
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowArgumentOutOfRangeException()
     {
         Metrics.EvmExceptions++;
         throw new ArgumentOutOfRangeException("Word size must be 32 bytes");
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowOutOfGasException()
     {
         Metrics.EvmExceptions++;
@@ -393,7 +368,7 @@ public struct EvmPooledMemory : IEvmMemory
     }
 }
 
-internal static class UInt256Extensions
+public static class UInt256Extensions
 {
     public static bool IsLargerThanULong(in this UInt256 value) => (value.u1 | value.u2 | value.u3) != 0;
     public static bool IsLargerThanLong(in this UInt256 value) => value.IsLargerThanULong() || value.u0 > long.MaxValue;

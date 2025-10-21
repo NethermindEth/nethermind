@@ -1,0 +1,7 @@
+{
+  "configProperties": {
+    "System.Net.Http.EnableActivityPropagation": false,
+    "System.Diagnostics.Tracing.EventSource.IsSupported": false,
+    "System.Diagnostics.Metrics.Meter.IsSupported": false
+  }
+}

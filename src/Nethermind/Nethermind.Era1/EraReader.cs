@@ -86,18 +86,17 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
                 EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
                 EntryReadResult err = result.Value;
 
-                if (!BlockValidator.ValidateBodyAgainstHeader(err.Block.Header, err.Block.Body))
+                if (!blockValidator.ValidateBodyAgainstHeader(err.Block.Header, err.Block.Body, out string? error))
                 {
-                    throw new EraVerificationException($"Mismatched block body againts header. Block number {blockNumber}.");
+                    throw new EraVerificationException($"Mismatched block body againts header: {error}. Block number {blockNumber}.");
                 }
 
-                if (!blockValidator.ValidateOrphanedBlock(err.Block, out string? error))
+                if (!blockValidator.ValidateOrphanedBlock(err.Block, out error))
                 {
                     throw new EraVerificationException($"Invalid block {error}");
                 }
 
-                Hash256 receiptRoot = new ReceiptTrie<TxReceipt>(specProvider.GetReceiptSpec(err.Block.Number),
-                    err.Receipts, _receiptDecoder).RootHash;
+                Hash256 receiptRoot = ReceiptTrie.CalculateRoot(specProvider.GetReceiptSpec(err.Block.Number), err.Receipts, _receiptDecoder);
                 if (err.Block.Header.ReceiptsRoot != receiptRoot)
                 {
                     throw new EraVerificationException($"Mismatched receipt root. Block number {blockNumber}.");

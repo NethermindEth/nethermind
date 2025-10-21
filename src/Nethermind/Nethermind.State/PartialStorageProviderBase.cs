@@ -7,8 +7,8 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
-using Nethermind.State.Tracing;
 
 namespace Nethermind.State
 {
@@ -163,10 +163,12 @@ namespace Nethermind.State
             {
                 After = after ?? StorageTree.ZeroBytes;
                 Before = StorageTree.ZeroBytes;
+                IsInitialValue = true;
             }
 
             public byte[] Before;
             public byte[] After;
+            public bool IsInitialValue;
         }
 
         /// <summary>
@@ -256,7 +258,7 @@ namespace Nethermind.State
         {
             StackList<int> stack = SetupRegistry(cell);
             stack.Push(_changes.Count);
-            _changes.Add(new Change(ChangeType.Update, cell, value));
+            _changes.Add(new Change(in cell, value, ChangeType.Update));
         }
 
         /// <summary>
@@ -294,18 +296,11 @@ namespace Nethermind.State
         /// <summary>
         /// Used for tracking each change to storage
         /// </summary>
-        protected readonly struct Change
+        protected readonly struct Change(in StorageCell storageCell, byte[] value, ChangeType changeType)
         {
-            public Change(ChangeType changeType, StorageCell storageCell, byte[] value)
-            {
-                StorageCell = storageCell;
-                Value = value;
-                ChangeType = changeType;
-            }
-
-            public readonly ChangeType ChangeType;
-            public readonly StorageCell StorageCell;
-            public readonly byte[] Value;
+            public readonly StorageCell StorageCell = storageCell;
+            public readonly byte[] Value = value;
+            public readonly ChangeType ChangeType = changeType;
 
             public bool IsNull => ChangeType == ChangeType.Null;
         }

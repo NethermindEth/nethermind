@@ -5,6 +5,7 @@ using System;
 using NonBlocking;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -63,6 +64,9 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
+            => Insert(block, txReceipts, null, ensureCanonical, writeFlags, lastBlockNumber);
+
+        public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
         {
             _receipts[block.Hash] = txReceipts;
             if (ensureCanonical)
@@ -72,18 +76,25 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         public bool HasBlock(long blockNumber, Hash256 hash)
-        {
-            return _receipts.ContainsKey(hash);
-        }
+            => _receipts.ContainsKey(hash);
 
         public void EnsureCanonical(Block block)
         {
             TxReceipt[] txReceipts = Get(block);
             for (int i = 0; i < txReceipts.Length; i++)
             {
-                var txReceipt = txReceipts[i];
+                TxReceipt txReceipt = txReceipts[i];
                 txReceipt.BlockHash = block.Hash;
                 _transactions[txReceipt.TxHash] = txReceipt;
+            }
+        }
+
+        public void RemoveReceipts(Block block)
+        {
+            _receipts.TryRemove(block.Hash, out _);
+            foreach (Transaction tx in block.Transactions)
+            {
+                _transactions.TryRemove(tx.Hash, out _);
             }
         }
 

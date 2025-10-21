@@ -17,10 +17,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Utils;
+using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -35,13 +37,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public static readonly ulong SoftOutgoingMessageSizeLimit = (ulong)2.MB();
         public Node Node => Session?.Node;
         public string ClientId => Node?.ClientId;
-        public UInt256 TotalDifficulty { get; set; }
+        public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
         public PublicKey Id => Node.Id;
         string ITxPoolPeer.Enode => Node?.ToString();
 
         public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
-        protected BackgroundTaskSchedulerWrapper BackgroundTaskScheduler { get; }
 
         public long HeadNumber { get; set; }
         public Hash256 HeadHash { get; set; }
@@ -65,10 +66,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             INodeStatsManager statsManager,
             ISyncServer syncServer,
             IBackgroundTaskScheduler backgroundTaskScheduler,
-            ILogManager logManager) : base(session, statsManager, serializer, logManager)
+            ILogManager logManager) : base(session, statsManager, serializer, backgroundTaskScheduler, logManager)
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-            BackgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(BackgroundTaskScheduler)));
             _timestamper = Timestamper.Default;
             _txDecoder = TxDecoder.Instance;
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
@@ -319,10 +319,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected async Task<BlockBodiesMessage> Handle(GetBlockBodiesMessage request, CancellationToken cancellationToken)
         {
             using GetBlockBodiesMessage message = request;
-            if (Logger.IsTrace)
-            {
-                Logger.Trace($"Received bodies request of length {message.BlockHashes.Count} from {Session.Node:c}:");
-            }
+            if (Logger.IsTrace) Logger.Trace($"Received bodies request of length {message.BlockHashes.Count} from {Session.Node:c}:");
 
             long startTime = Stopwatch.GetTimestamp();
 
@@ -366,11 +363,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected async Task<ReceiptsMessage> Handle(GetReceiptsMessage msg, CancellationToken cancellationToken)
         {
             using var message = msg;
-            if (message.Hashes.Count > 512)
-            {
-                throw new EthSyncException("Incoming receipts request for more than 512 blocks");
-            }
-
             long startTime = Stopwatch.GetTimestamp();
             ReceiptsMessage resp = await FulfillReceiptsRequest(message, cancellationToken);
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");

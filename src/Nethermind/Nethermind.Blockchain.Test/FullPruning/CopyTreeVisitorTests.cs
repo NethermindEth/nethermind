@@ -12,10 +12,10 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -84,7 +84,14 @@ public class CopyTreeVisitorTests
     {
         LimboLogs logManager = LimboLogs.Instance;
         PatriciaTree trie = Build.A.Trie(new NodeStorage(trieDb, _keyScheme)).WithAccountsByIndex(0, 100).TestObject;
-        IStateReader stateReader = new StateReader(new TrieStore(trieDb, logManager), new MemDb(), logManager);
+
+        // Create a custom DbProvider that uses the trieDb from the test
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.StateDb.Returns(trieDb);
+        dbProvider.CodeDb.Returns(new MemDb());
+
+        // Use TestWorldStateFactory.CreateForTest() with the custom DbProvider
+        (IWorldState worldState, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, logManager);
 
         if (_keyScheme == INodeStorage.KeyScheme.Hash)
         {

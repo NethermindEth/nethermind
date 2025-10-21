@@ -88,6 +88,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected virtual long TotalBlocks => _blockTree.SyncPivot.BlockNumber;
 
         public override bool IsFinished => AllHeadersDownloaded;
+        public override string FeedName => nameof(HeadersSyncFeed);
         private bool AnyHeaderDownloaded => LowestInsertedBlockHeader is not null;
 
         private long HeadersInQueue
@@ -366,6 +367,11 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
 
                 return Task.FromResult(batch);
+            }
+            catch (Exception ex)
+            {
+                // Explicitly wrap exception in Task
+                return Task.FromException<HeadersSyncBatch?>(ex);
             }
             finally
             {
@@ -787,7 +793,14 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (_dependencies.ContainsKey(header.Number))
                     {
                         EnqueueBatch(batch, true);
-                        throw new InvalidOperationException($"Only one header dependency expected ({batch})");
+
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - Only one header dependency expected");
+                        _syncPeerPool.ReportBreachOfProtocol(
+                            batch.ResponseSourcePeer,
+                            DisconnectReason.MultipleHeaderDependencies,
+                            "headers - only one header dependency expected");
+
+                        return false;
                     }
                     long lastNumber = -1;
                     for (int j = 0; j < batch.Response.Count; j++)

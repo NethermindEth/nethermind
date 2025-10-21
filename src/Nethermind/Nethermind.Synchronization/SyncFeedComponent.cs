@@ -12,10 +12,11 @@ namespace Nethermind.Synchronization;
 /// <summary>
 /// Container to make it simpler to get a bunch of components within a same named scoped.
 /// </summary>
-public class SyncFeedComponent<TBatch>(ISyncFeed<TBatch> feed, SyncDispatcher<TBatch> dispatcher, Lazy<ISyncDownloader<TBatch>> blockDownloader, ILifetimeScope lifetimeScope) : IDisposable, IAsyncDisposable
+public class SyncFeedComponent<TBatch>(ISyncFeed<TBatch> feed, SyncDispatcher<TBatch> dispatcher, ISyncDownloader<TBatch> downloader, Lazy<BlockDownloader> blockDownloader, ILifetimeScope lifetimeScope) : IDisposable, IAsyncDisposable
 {
     public ISyncFeed<TBatch> Feed => feed;
     public SyncDispatcher<TBatch> Dispatcher => dispatcher;
+    public ISyncDownloader<TBatch> Downloader => downloader;
     public BlockDownloader BlockDownloader => (BlockDownloader)blockDownloader.Value;
 
     public void Dispose()

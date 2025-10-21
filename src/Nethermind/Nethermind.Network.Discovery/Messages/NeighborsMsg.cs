@@ -9,21 +9,21 @@ namespace Nethermind.Network.Discovery.Messages;
 
 public class NeighborsMsg : DiscoveryMsg
 {
-    public Node[] Nodes { get; init; }
+    public ArraySegment<Node> Nodes { get; init; }
 
-    public NeighborsMsg(IPEndPoint farAddress, long expirationTime, Node[] nodes) : base(farAddress, expirationTime)
+    public NeighborsMsg(IPEndPoint farAddress, long expirationTime, ArraySegment<Node> nodes) : base(farAddress, expirationTime)
     {
-        Nodes = nodes ?? throw new ArgumentNullException(nameof(nodes));
+        Nodes = nodes;
     }
 
-    public NeighborsMsg(PublicKey farPublicKey, long expirationTime, Node[] nodes) : base(farPublicKey, expirationTime)
+    public NeighborsMsg(PublicKey farPublicKey, long expirationTime, ArraySegment<Node> nodes) : base(farPublicKey, expirationTime)
     {
-        Nodes = nodes ?? throw new ArgumentNullException(nameof(nodes));
+        Nodes = nodes;
     }
 
     public override string ToString()
     {
-        return base.ToString() + $", Nodes: {(Nodes.Length != 0 ? string.Join(",", Nodes.Select(static x => x.ToString())) : "empty")}";
+        return base.ToString() + $", Nodes: {(Nodes.Count != 0 ? string.Join(",", Nodes.Select(static x => x.ToString())) : "empty")}";
     }
 
     public override MsgType MsgType => MsgType.Neighbors;

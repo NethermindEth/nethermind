@@ -10,16 +10,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
 {
     public class ServiceTxFilter : ITxFilter
     {
-        private readonly ISpecProvider _specProvider;
-
-        public ServiceTxFilter(ISpecProvider specProvider)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
         {
-            _specProvider = specProvider;
-        }
-
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
-        {
-            if (tx.IsZeroGasPrice(parentHeader, _specProvider))
+            if (tx.IsZeroGasPrice(currentSpec))
             {
                 tx.IsServiceTransaction = true;
             }

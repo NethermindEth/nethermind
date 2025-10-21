@@ -112,7 +112,7 @@ namespace Nethermind.Db
                 byte[] decompressed = new byte[bytes.Length - PreambleLength + EmptyCodeHashStorageRoot.Length];
                 Span<byte> span = decompressed.AsSpan();
 
-                bytes.Slice(PreambleLength).CopyTo(span);
+                bytes.AsSpan(PreambleLength).CopyTo(span);
                 EmptyCodeHashStorageRoot.CopyTo(span[^EmptyCodeHashStorageRoot.Length..]);
 
                 return decompressed;
@@ -128,7 +128,7 @@ namespace Nethermind.Db
                 .Select(static kvp => new KeyValuePair<byte[], byte[]>(kvp.Key, Decompress(kvp.Value)));
 
             public IEnumerable<byte[]> GetAllKeys(bool ordered = false) =>
-                _wrapped.GetAllKeys(ordered).Select(Decompress);
+                _wrapped.GetAllKeys(ordered);
 
             public IEnumerable<byte[]> GetAllValues(bool ordered = false) =>
                 _wrapped.GetAllValues(ordered).Select(Decompress);

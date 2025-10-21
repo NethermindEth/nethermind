@@ -16,7 +16,7 @@ from urllib.request import urlopen
 from zipfile import ZipFile
 
 SUPERCHAIN_REPOSITORY = "https://github.com/ethereum-optimism/superchain-registry/archive/refs/heads/main.zip"
-IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet"]
+IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet", "rehearsal-0-bn-0", "rehearsal-0-bn-1", "celo", "radius_testnet", "silent-data-mainnet"]
 IGNORED_L1S = ["sepolia-dev-0"]
 
 
@@ -80,6 +80,10 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "mainnet": 1606824023,
             "sepolia": 1655733600,
         },
+        "L1ChainId": {
+            "mainnet": 1,
+            "sepolia": 11155111,
+        },
         "DepositContractAddress": {
             "mainnet": "0x00000000219ab540356cbb839cbe05303d7705fa",
             "sepolia": "0x7f02c3e3c98b133055b8b348b2ac625669ed295d",
@@ -103,6 +107,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
                     "regolithTimestamp": "0x0",
                     "bedrockBlockNumber": hex(lookup(config, ["genesis", "l2", "number"])),
                     "canyonTimestamp": fmap(hex, (lookup(config, ["hardforks", "canyon_time"]))),
+                    "deltaTimestamp": fmap(hex, (lookup(config, ["hardforks", "delta_time"]))),
                     "ecotoneTimestamp": fmap(hex, (lookup(config, ["hardforks", "ecotone_time"]))),
                     "fjordTimestamp": fmap(hex, (lookup(config, ["hardforks", "fjord_time"]))),
                     "graniteTimestamp": fmap(hex, (lookup(config, ["hardforks", "granite_time"]))),
@@ -117,10 +122,22 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             },
             "OptimismCL": merge_all(
                 {
+                    "GenesisSystemConfig": {
+                        "BatcherAddr": lookup(config, ["genesis", "system_config", "batcherAddress"]),
+                        "Overhead": lookup(config, ["genesis", "system_config", "overhead"]),
+                        "Scalar": lookup(config, ["genesis", "system_config", "scalar"]),
+                        "GasLimit": lookup(config, ["genesis", "system_config", "gasLimit"]),
+                        "EIP1559Params": "0x0000000000000000",
+                        "OperatorFeeParams": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    },
                     "L1BeaconGenesisSlotTime": lookup(constants, ["L1BeaconGenesisSlotTime", l1]),
+                    "L1ChainId": lookup(constants, ["L1ChainId", l1]),
+                    "L1GenesisNumber": lookup(config, ["genesis", "l1", "number"]),
+                    "L1GenesisHash": lookup(config, ["genesis", "l1", "hash"]),
                     "BatcherInboxAddress": lookup(config, ["batch_inbox_addr"]),
                     "L2BlockTime": lookup(config, ["block_time"]),
                     "SeqWindowSize": lookup(config, ["seq_window_size"]),
+                    "ChannelTimeoutBedrock": 300,
                     "MaxSequencerDrift": lookup(config, ["max_sequencer_drift"]),
                     "SystemTransactionSender": "0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001",
                     "SystemTransactionTo": "0x4200000000000000000000000000000000000015",
@@ -175,6 +192,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "eip2028Transition": "0x0",
             "eip2200Transition": "0x0",
             "eip2565Transition": "0x0",
+            "eip2718Transition": "0x0",
             "eip2929Transition": "0x0",
             "eip2930Transition": "0x0",
             "eip1559Transition": hex(lookup(config, ["genesis", "l2", "number"])),
@@ -198,13 +216,12 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "opGraniteTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "granite_time"]))),
             "opHoloceneTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "holocene_time"]))),
             "opIsthmusTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
+            "eip7702TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
             "eip2537TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
             "eip2935TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
-            "eip6110TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
-            "eip7002TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
-            "eip7251TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
-            "eip7702TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
             "eip7623TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
+            "eip6110TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
+            "eip7685TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
             "depositContractAddress": lookup(constants, ["DepositContractAddress", l1]),
             "terminalTotalDifficulty": "0x0",
         }),
@@ -216,7 +233,6 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
                         "mixHash": lookup(genesis, ["mixHash"]),
                     }
                 },
-                "number": lookup(genesis, ["number"]),
                 "difficulty": lookup(genesis, ["difficulty"]),
                 "author": one_of(lookup(genesis, ["author"]), lookup(genesis, ["coinbase"])),
                 "timestamp": lookup(genesis, ["timestamp"]),
@@ -289,7 +305,7 @@ def to_nethermind_runner(chain_name, l1, chain):
         "Sync": {"FastSync": True, "SnapSync": True, "FastSyncCatchUpHeightDelta": "10000000000"},
         "Discovery": {"DiscoveryVersion": "V5"},
         "JsonRpc": {"Enabled": True, "Port": 8545, "EnginePort": 8551},
-        "Pruning": {"PruningBoundary": 192},
+        "Pruning": {"PruningBoundary": 256},
         "Blocks": {"SecondsPerSlot": lookup(chain, ["block_time"])},
         "Merge": {"Enabled": True},
         "Optimism": {"SequencerUrl": lookup(chain, ["sequencer_rpc"])},
@@ -327,10 +343,10 @@ def main(tmp_dir, output_dir):
     for chain in chainList["chains"]:
         [l1, chainName] = chain["identifier"].split("/")
         if chainName in IGNORED_CHAINS or l1 in IGNORED_L1S:
-            logging.info(f"Ignoring `{l1}-{chainName}`")
+            logging.info(f"Ignoring `{chainName}-{l1}`")
             continue
 
-        logging.debug(f"Processing `{l1}-{chainName}`")
+        logging.debug(f"Processing `{chainName}-{l1}`")
         superchain_path = path.join(tmp_dir, "superchain-registry-main", "superchain", "configs", l1, "superchain.toml")
         config_path = path.join(tmp_dir, "superchain-registry-main", "superchain", "configs", l1, f"{chainName}.toml")
         genesis_path = path.join(

@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -22,21 +21,19 @@ namespace Nethermind.Api
 {
     public interface IBasicApi
     {
-        DisposableStack DisposeStack { get; }
+        IDisposableStack DisposeStack { get; }
 
-        IAbiEncoder AbiEncoder { get; }
         [SkipServiceCollection]
         ChainSpec ChainSpec { get; }
 
         [SkipServiceCollection]
         IConfigProvider ConfigProvider { get; }
         ICryptoRandom CryptoRandom { get; }
-        IDbProvider? DbProvider { get; set; }
-        IDbFactory? DbFactory { get; set; }
-        IEthereumEcdsa? EthereumEcdsa { get; set; }
+        IDbProvider DbProvider { get; }
+        IEthereumEcdsa EthereumEcdsa { get; }
         [SkipServiceCollection]
         IJsonSerializer EthereumJsonSerializer { get; }
-        IFileSystem FileSystem { get; set; }
+        IFileSystem FileSystem { get; }
         IKeyStore? KeyStore { get; set; }
         [SkipServiceCollection]
         ILogManager LogManager { get; }

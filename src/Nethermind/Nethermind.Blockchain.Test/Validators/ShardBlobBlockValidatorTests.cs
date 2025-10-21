@@ -23,13 +23,17 @@ public class ShardBlobBlockValidatorTests
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, spec));
         HeaderValidator headerValidator = new(Substitute.For<IBlockTree>(), Always.Valid, specProvider, TestLogManager.Instance);
         BlockValidator blockValidator = new(Always.Valid, headerValidator, Always.Valid, specProvider, TestLogManager.Instance);
-        return blockValidator.ValidateSuggestedBlock(Build.A.Block
-            .WithBlobGasUsed(blobGasUsed)
-            .WithExcessBlobGas(excessBlobGas)
-            .WithWithdrawalsRoot(TestItem.KeccakA)
-            .WithWithdrawals(TestItem.WithdrawalA_1Eth)
-            .WithParent(Build.A.BlockHeader.TestObject)
-            .TestObject);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        return blockValidator.ValidateSuggestedBlock(
+            Build.A.Block
+                .WithBlobGasUsed(blobGasUsed)
+                .WithExcessBlobGas(excessBlobGas)
+                .WithWithdrawalsRoot(TestItem.KeccakA)
+                .WithWithdrawals(TestItem.WithdrawalA_1Eth)
+                .WithParent(parent)
+                .TestObject,
+            parent,
+            out _);
     }
 
     [TestCaseSource(nameof(BlobsPerBlockCountTestCases))]
@@ -37,8 +41,10 @@ public class ShardBlobBlockValidatorTests
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, spec));
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, TestLogManager.Instance);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
         return blockValidator.ValidateSuggestedBlock(
             Build.A.Block
+                .WithParent(parent)
                 .WithWithdrawalsRoot(TestItem.KeccakA)
                 .WithWithdrawals(TestItem.WithdrawalA_1Eth)
                 .WithBlobGasUsed(blobGasUsed)
@@ -48,7 +54,9 @@ public class ShardBlobBlockValidatorTests
                         .WithType(TxType.Blob)
                         .WithMaxFeePerBlobGas(ulong.MaxValue)
                         .WithBlobVersionedHashes(1).TestObject).ToArray())
-                .TestObject);
+                .TestObject,
+            parent,
+            out _);
     }
 
     private static IEnumerable<TestCaseData> BlobsPerBlockCountTestCases()

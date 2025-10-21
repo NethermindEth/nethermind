@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using NUnit.Framework;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Specs;
 
 namespace Nethermind.Evm.Test;
@@ -27,13 +27,13 @@ public class Eip2537Tests : VirtualMachineTestsBase
     public void Test_g1_add_before_prague()
     {
         _timestampAdjustment = -12;
-        Assert.That(G1AddPrecompile.Address.IsPrecompile(Spec), Is.False);
+        Assert.That(Spec.IsPrecompile(G1AddPrecompile.Address), Is.False);
     }
 
     [Test]
     public void Test_g1_add_after_prague()
     {
-        Assert.That(G1AddPrecompile.Address.IsPrecompile(Spec), Is.True);
+        Assert.That(Spec.IsPrecompile(G1AddPrecompile.Address), Is.True);
 
         byte[] code = Prepare.EvmCode
             .CallWithInput(G1AddPrecompile.Address, 1000L, new byte[256])
@@ -55,13 +55,13 @@ public class Eip2537Tests : VirtualMachineTestsBase
     public void Test_g2_add_before_prague()
     {
         _timestampAdjustment = -12;
-        Assert.That(G2AddPrecompile.Address.IsPrecompile(Spec), Is.False);
+        Assert.That(Spec.IsPrecompile(G2AddPrecompile.Address), Is.False);
     }
 
     [Test]
     public void Test_g2_add_after_prague()
     {
-        Assert.That(G2AddPrecompile.Address.IsPrecompile(Spec), Is.True);
+        Assert.That(Spec.IsPrecompile(G2AddPrecompile.Address), Is.True);
 
         byte[] code = Prepare.EvmCode
             .CallWithInput(G2AddPrecompile.Address, 1000L, new byte[512])
@@ -83,13 +83,13 @@ public class Eip2537Tests : VirtualMachineTestsBase
     public void Test_g1_msm_before_prague()
     {
         _timestampAdjustment = -12;
-        Assert.That(G1MSMPrecompile.Address.IsPrecompile(Spec), Is.False);
+        Assert.That(Spec.IsPrecompile(G1MSMPrecompile.Address), Is.False);
     }
 
     [Test]
     public void Test_g1_msm_after_prague()
     {
-        Assert.That(G1MSMPrecompile.Address.IsPrecompile(Spec), Is.True);
+        Assert.That(Spec.IsPrecompile(G1MSMPrecompile.Address), Is.True);
 
         byte[] code = Prepare.EvmCode
             .CallWithInput(G1MSMPrecompile.Address, 100000L, new byte[160])
@@ -111,13 +111,13 @@ public class Eip2537Tests : VirtualMachineTestsBase
     public void Test_g2_msm_before_prague()
     {
         _timestampAdjustment = -12;
-        Assert.That(G2MSMPrecompile.Address.IsPrecompile(Spec), Is.False);
+        Assert.That(Spec.IsPrecompile(G2MSMPrecompile.Address), Is.False);
     }
 
     [Test]
     public void Test_g2_msm_after_prague()
     {
-        Assert.That(G2MSMPrecompile.Address.IsPrecompile(Spec), Is.True);
+        Assert.That(Spec.IsPrecompile(G2MSMPrecompile.Address), Is.True);
 
         byte[] code = Prepare.EvmCode
             .CallWithInput(G2MSMPrecompile.Address, 100000L, new byte[288])
@@ -139,13 +139,13 @@ public class Eip2537Tests : VirtualMachineTestsBase
     public void Test_pairing_before_prague()
     {
         _timestampAdjustment = -12;
-        Assert.That(PairingCheckPrecompile.Address.IsPrecompile(Spec), Is.False);
+        Assert.That(Spec.IsPrecompile(PairingCheckPrecompile.Address), Is.False);
     }
 
     [Test]
     public void Test_pairing_check_after_prague()
     {
-        Assert.That(PairingCheckPrecompile.Address.IsPrecompile(Spec), Is.True);
+        Assert.That(Spec.IsPrecompile(PairingCheckPrecompile.Address), Is.True);
 
         byte[] code = Prepare.EvmCode
             .CallWithInput(PairingCheckPrecompile.Address, 100000L, new byte[384])
@@ -167,13 +167,13 @@ public class Eip2537Tests : VirtualMachineTestsBase
     public void Test_map_fp_to_g1_before_prague()
     {
         _timestampAdjustment = -12;
-        Assert.That(MapFpToG1Precompile.Address.IsPrecompile(Spec), Is.False);
+        Assert.That(Spec.IsPrecompile(MapFpToG1Precompile.Address), Is.False);
     }
 
     [Test]
     public void Test_map_fp_to_g1_after_prague()
     {
-        Assert.That(MapFpToG1Precompile.Address.IsPrecompile(Spec), Is.True);
+        Assert.That(Spec.IsPrecompile(MapFpToG1Precompile.Address), Is.True);
 
         byte[] code = Prepare.EvmCode
             .CallWithInput(MapFpToG1Precompile.Address, 10000L, new byte[64])
@@ -195,13 +195,13 @@ public class Eip2537Tests : VirtualMachineTestsBase
     public void Test_map_fp2_to_g2_before_prague()
     {
         _timestampAdjustment = -12;
-        Assert.That(MapFp2ToG2Precompile.Address.IsPrecompile(Spec), Is.False);
+        Assert.That(Spec.IsPrecompile(MapFp2ToG2Precompile.Address), Is.False);
     }
 
     [Test]
     public void Test_map_fp2_to_g2_after_prague()
     {
-        Assert.That(MapFp2ToG2Precompile.Address.IsPrecompile(Spec), Is.True);
+        Assert.That(Spec.IsPrecompile(MapFp2ToG2Precompile.Address), Is.True);
 
         byte[] code = Prepare.EvmCode
             .CallWithInput(MapFp2ToG2Precompile.Address, 100000L, new byte[128])

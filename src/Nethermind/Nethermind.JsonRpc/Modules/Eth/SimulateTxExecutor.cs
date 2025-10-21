@@ -31,6 +31,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         {
             TraceTransfers = call.TraceTransfers,
             Validation = call.Validation,
+            ReturnFullTransactionObjects = call.ReturnFullTransactionObjects,
             BlockStateCalls = call.BlockStateCalls?.Select(blockStateCall =>
             {
                 if (blockStateCall.BlockOverrides?.GasLimit is not null)
@@ -53,6 +54,9 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                         _gasCapBudget = Math.Max(0, _gasCapBudget);
 
                         Transaction tx = callTransactionModel.ToTransaction();
+
+                        // The RPC set SystemUser as default, but we want to set it to zero to follow hive test.
+                        if (tx.SenderAddress == Address.SystemUser) tx.SenderAddress = Address.Zero;
                         tx.ChainId = _blockchainBridge.GetChainId();
 
                         TransactionWithSourceDetails? result = new()
@@ -74,7 +78,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
     private static TransactionForRpc UpdateTxType(TransactionForRpc rpcTransaction)
     {
         // TODO: This is a bit messy since we're changing the transaction type
-        if (rpcTransaction is LegacyTransactionForRpc legacy)
+        if (rpcTransaction is LegacyTransactionForRpc legacy && rpcTransaction is not EIP1559TransactionForRpc)
         {
             rpcTransaction = new EIP1559TransactionForRpc
             {
@@ -116,7 +120,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         BlockHeader header = searchResult.Value.Object;
 
         if (!_blockchainBridge.HasStateForBlock(header!))
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"No state available for block {header.Hash}",
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
                 ErrorCodes.ResourceUnavailable);
 
         if (call.BlockStateCalls?.Count > _blocksLimit)
@@ -196,7 +200,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         Dictionary<Address, AccountOverride>? stateOverride,
         CancellationToken token)
     {
-        SimulateOutput<TTrace> results = _blockchainBridge.Simulate(header, tx, simulateBlockTracerFactory, token);
+        SimulateOutput<TTrace> results = _blockchainBridge.Simulate(header, tx, simulateBlockTracerFactory, _rpcConfig.GasCap!.Value, token);
 
         foreach (SimulateBlockResult<TTrace> item in results.Items)
         {
@@ -204,7 +208,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
             {
                 foreach (SimulateCallResult? call in result.Calls)
                 {
-                    if (call is { Error: not null } simulateResult && simulateResult.Error.Message != "")
+                    if (call is { Error: not null } simulateResult && !string.IsNullOrEmpty(simulateResult.Error.Message))
                     {
                         simulateResult.Error.Code = ErrorCodes.ExecutionError;
                     }
@@ -216,10 +220,10 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         {
             results.ErrorCode = results.Error switch
             {
-                var x when x.Contains("invalid transaction") => ErrorCodes.InvalidTransaction,
-                var x when x.Contains("InsufficientBalanceException") => ErrorCodes.InvalidTransaction,
-                var x when x.Contains("InvalidBlockException") => ErrorCodes.InvalidParams,
-                var x when x.Contains("below intrinsic gas") => ErrorCodes.InsufficientIntrinsicGas,
+                var e when e.Contains("invalid transaction", StringComparison.OrdinalIgnoreCase) => ErrorCodes.InvalidTransaction,
+                var e when e.Contains("InsufficientBalanceException", StringComparison.OrdinalIgnoreCase) => ErrorCodes.InvalidTransaction,
+                var e when e.Contains("InvalidBlockException", StringComparison.OrdinalIgnoreCase) => ErrorCodes.InvalidParams,
+                var e when e.Contains("below intrinsic gas", StringComparison.OrdinalIgnoreCase) => ErrorCodes.InsufficientIntrinsicGas,
                 _ => results.ErrorCode
             };
         }
@@ -227,7 +231,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         return results.Error is null
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success([.. results.Items])
             : results.ErrorCode is not null
-                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error!, results.ErrorCode!.Value, [.. results.Items])
-                : ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error, [.. results.Items]);
+                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error!, results.ErrorCode!.Value)
+                : ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error);
     }
 }

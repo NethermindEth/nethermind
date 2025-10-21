@@ -1,7 +1,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.TxPool.Collections;
 
 namespace Nethermind.TxPool.Filters
@@ -11,7 +10,6 @@ namespace Nethermind.TxPool.Filters
         TxDistinctSortedPool standardPool,
         TxDistinctSortedPool blobPool,
         IReadOnlyStateProvider worldState,
-        ICodeInfoRepository codeInfoRepository,
         DelegationCache pendingDelegations) : IIncomingTxFilter
     {
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
@@ -23,10 +21,10 @@ namespace Nethermind.TxPool.Filters
             if (tx.HasAuthorizationList && AuthorityHasPendingTx(tx.AuthorizationList))
                 return AcceptTxResult.DelegatorHasPendingTx;
 
-            if ((!state.SenderAccount.HasCode || !codeInfoRepository.TryGetDelegation(worldState, state.SenderAccount.CodeHash, spec, out _))
+            if ((!state.SenderAccount.HasCode || !worldState.IsDelegatedCode(state.SenderAccount.CodeHash))
                 && !pendingDelegations.HasPending(tx.SenderAddress!))
                 return AcceptTxResult.Accepted;
-            //If the account is delegated or has pending delegation we only accept the next transaction nonce 
+            //If the account is delegated or has pending delegation we only accept the next transaction nonce
             if (state.SenderAccount.Nonce != tx.Nonce)
             {
                 return AcceptTxResult.NotCurrentNonceForDelegation;

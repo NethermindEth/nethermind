@@ -3,19 +3,21 @@
 
 using System.IO;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Config;
+using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 
 namespace Nethermind.AuRa.Test.Contract
 {
     public class TestContractBlockchain : TestBlockchain
     {
-        public ChainSpec ChainSpec { get; set; }
+        public ChainSpec? ChainSpecOverride { get; set; }
 
         protected TestContractBlockchain()
         {
@@ -35,17 +37,22 @@ namespace Nethermind.AuRa.Test.Contract
             }
 
             (ChainSpec ChainSpec, ISpecProvider SpecProvider) provider = GetSpecProvider();
-            TTest test = new() { ChainSpec = provider.ChainSpec };
+            TTest test = new() { ChainSpecOverride = provider.ChainSpec };
             return (TTest)await test.Build(builder =>
                 builder.AddSingleton<ISpecProvider>(provider.SpecProvider));
         }
 
-        protected override Block GetGenesisBlock(IWorldState worldState) =>
-            new GenesisLoader(
-                    ChainSpec,
-                    SpecProvider,
-                    worldState,
-                    TxProcessor)
-                .Load();
+        protected override ChainSpec CreateChainSpec()
+        {
+            return ChainSpecOverride ?? base.CreateChainSpec();
+        }
+
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
+        {
+            return base.ConfigureContainer(builder, configProvider)
+                .AddScoped<IGenesisBuilder, GenesisBuilder>()
+                .AddScoped<IGenesisPostProcessor, AuraGenesisPostProcessor>()
+                ; // AuRa uses full genesis builder
+        }
     }
 }

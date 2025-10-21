@@ -62,13 +62,13 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Sign all the things!
-            Hash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
+            ValueHash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
             Signature signature;
             if (_signer is IHeaderSigner headerSigner)
             {
                 BlockHeader clone = header.Clone();
                 clone.ExtraData = SnapshotManager.SliceExtraSealFromExtraData(clone.ExtraData);
-                clone.Hash = headerHash;
+                clone.Hash = new Hash256(headerHash);
                 signature = headerSigner.Sign(clone);
             }
             else

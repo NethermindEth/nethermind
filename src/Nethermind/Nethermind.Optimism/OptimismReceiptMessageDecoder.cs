@@ -14,8 +14,9 @@ namespace Nethermind.Optimism;
 public class OptimismReceiptTrieDecoder() : OptimismReceiptMessageDecoder(true);
 
 [Rlp.Decoder]
-public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlpStreamDecoder<TxReceipt>
+public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool skipStateAndStatus = false) : IRlpStreamDecoder<TxReceipt>
 {
+    private readonly bool _skipStateAndStatus = skipStateAndStatus;
     public OptimismTxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         OptimismTxReceipt txReceipt = new();
@@ -36,7 +37,6 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
         else if (firstItem.Length is >= 1 and <= 4)
         {
             txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
-            txReceipt.SkipStateAndStatusInRlp = true;
         }
         else
         {
@@ -49,6 +49,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
         int logEntriesCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
         int numberOfReceipts = rlpStream.PeekNumberOfItemsRemaining(logEntriesCheck);
+        rlpStream.GuardLimit(numberOfReceipts);
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {
@@ -88,7 +89,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
 
         bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
-        if (!item.SkipStateAndStatusInRlp)
+        if (!_skipStateAndStatus)
         {
             contentLength += isEip658Receipts
                 ? Rlp.LengthOf(item.StatusCode)
@@ -127,8 +128,8 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
     /// </summary>
     public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
     {
-        (int Total, _) = GetContentLength(item, rlpBehaviors);
-        int receiptPayloadLength = Rlp.LengthOfSequence(Total);
+        (int total, _) = GetContentLength(item, rlpBehaviors);
+        int receiptPayloadLength = Rlp.LengthOfSequence(total);
 
         bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
         int result = item.TxType != TxType.Legacy
@@ -161,7 +162,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
         }
 
         rlpStream.StartSequence(totalContentLength);
-        if (!item.SkipStateAndStatusInRlp)
+        if (!_skipStateAndStatus)
         {
             rlpStream.Encode(item.StatusCode);
         }

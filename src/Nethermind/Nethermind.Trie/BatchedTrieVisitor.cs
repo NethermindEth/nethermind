@@ -306,7 +306,7 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 (TrieNode? cur, TNodeContext _, SmallTrieVisitContext ctx) = currentBatch[i];
 
-                cur.ResolveKey(_resolver, ref emptyPath, false);
+                cur.ResolveKey(_resolver, ref emptyPath);
 
                 if (cur.FullRlp.IsNotNull) continue;
                 if (cur.Keccak is null)
@@ -367,10 +367,10 @@ public class BatchedTrieVisitor<TNodeContext>
 
         return;
 
-        static void ThrowUnableToResolve(in SmallTrieVisitContext ctx)
+        void ThrowUnableToResolve(in SmallTrieVisitContext ctx)
         {
             throw new TrieException(
-                $"Unable to resolve node without Keccak. ctx: {ctx.Level}, {ctx.ExpectAccounts}, {ctx.IsStorage}");
+                $"Unable to resolve node without Keccak. ctx: {ctx.Level}, {_visitor.ExpectAccounts}, {ctx.IsStorage}");
         }
     }
 
@@ -395,7 +395,7 @@ public class BatchedTrieVisitor<TNodeContext>
                         TrieNode child = node.GetChild(nodeResolver, ref emptyPath, i);
                         if (child is not null)
                         {
-                            child.ResolveKey(nodeResolver, ref emptyPath, false);
+                            child.ResolveKey(nodeResolver, ref emptyPath);
                             TNodeContext childContext = nodeContext.Add((byte)i);
 
                             if (_visitor.ShouldVisit(childContext, child.Keccak!))
@@ -417,7 +417,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 {
                     _visitor.VisitExtension(nodeContext, node);
                     TrieNode child = node.GetChild(nodeResolver, ref emptyPath, 0) ?? throw new InvalidDataException($"Child of an extension {node.Key} should not be null.");
-                    child.ResolveKey(nodeResolver, ref emptyPath, false);
+                    child.ResolveKey(nodeResolver, ref emptyPath);
                     TNodeContext childContext = nodeContext.Add(node.Key!);
                     if (_visitor.ShouldVisit(childContext, child.Keccak!))
                     {
@@ -434,11 +434,11 @@ public class BatchedTrieVisitor<TNodeContext>
                 {
                     _visitor.VisitLeaf(nodeContext, node);
 
-                    if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
+                    if (!trieVisitContext.IsStorage && _visitor.ExpectAccounts) // can combine these conditions
                     {
                         TNodeContext childContext = nodeContext.Add(node.Key!);
 
-                        Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.AsSpan());
+                        Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.Span);
                         if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
                         {
                             throw new InvalidDataException("Non storage leaf should be an account");

@@ -25,7 +25,7 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
             string json = File.ReadAllText(path);
             foreach (TestCase test in serializer.Deserialize<TestCase[]>(json))
             {
-                yield return new TestCaseData(test) { TestName = test.Name };
+                yield return new TestCaseData(test) { TestName = EnsureSafeName(test.Name) };
             }
         }
     }
@@ -42,11 +42,7 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
         using (Assert.EnterMultipleScope())
         {
             Assert.That(success, Is.EqualTo(testCase.ExpectedError is null));
-
-            if (testCase.Expected is not null)
-            {
-                Assert.That(output, Is.EquivalentTo(testCase.Expected));
-            }
+            Assert.That(output, Is.EquivalentTo(testCase.Expected ?? []));
 
             if (testCase.Gas is not null)
             {
@@ -54,4 +50,11 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
             }
         }
     }
+
+    private static string EnsureSafeName(string name) =>
+        name.Replace('(', '[')
+            .Replace(')', ']')
+            .Replace("!=", "_not_eq_")
+            .Replace("=", "_eq_")
+            .Replace(" ", string.Empty);
 }

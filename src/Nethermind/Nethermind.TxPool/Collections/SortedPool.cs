@@ -24,7 +24,7 @@ namespace Nethermind.TxPool.Collections
         where TKey : notnull
         where TGroupKey : notnull
     {
-        protected McsPriorityLock Lock { get; } = new();
+        protected McsLock Lock { get; } = new();
 
         private readonly int _capacity;
         private readonly ILogger _logger;

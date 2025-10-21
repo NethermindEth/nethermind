@@ -3,8 +3,9 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using Nethermind.Core.Specs;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm;
@@ -34,7 +35,7 @@ internal static partial class EvmInstructions
     /// <typeparam name="TOpCodeCopy">
     /// A struct implementing <see cref="IOpCodeCopy"/> that defines the code source to copy from.
     /// </typeparam>
-    /// <typeparam name="TTracingInstructions">
+    /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> that indicates whether tracing is active.
     /// </typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
@@ -45,13 +46,13 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code if an error occurs.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCodeCopy<TOpCodeCopy, TTracingInstructions>(
+    public static EvmExceptionType InstructionCodeCopy<TOpCodeCopy, TTracingInst>(
         VirtualMachine vm,
         ref EvmStack stack,
         ref long gasAvailable,
         ref int programCounter)
         where TOpCodeCopy : struct, IOpCodeCopy
-        where TTracingInstructions : struct, IFlag
+        where TTracingInst : struct, IFlag
     {
         // Pop destination offset, source offset, and copy length.
         if (!stack.PopUInt256(out UInt256 a) ||
@@ -61,14 +62,14 @@ internal static partial class EvmInstructions
 
         // Deduct gas for the operation plus the cost for memory expansion.
         // Gas cost is calculated as a fixed "VeryLow" cost plus a per-32-bytes cost.
-        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result, out bool outOfGas);
+        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
 
         // Only perform the copy if length (result) is non-zero.
         if (!result.IsZero)
         {
             // Check and update memory expansion cost.
-            if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result))
+            if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result))
                 goto OutOfGas;
 
             // Obtain the code slice with zero-padding if needed.
@@ -77,7 +78,7 @@ internal static partial class EvmInstructions
             vm.EvmState.Memory.Save(in a, in slice);
 
             // If tracing is enabled, report the memory change.
-            if (TTracingInstructions.IsActive)
+            if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
             }
@@ -106,7 +107,7 @@ internal static partial class EvmInstructions
     public struct OpCodeCopy : IOpCodeCopy
     {
         public static ReadOnlySpan<byte> GetCode(VirtualMachine vm)
-            => vm.EvmState.Env.CodeInfo.MachineCode.Span;
+            => vm.EvmState.Env.CodeInfo.CodeSpan;
     }
 
     /// <summary>
@@ -114,7 +115,7 @@ internal static partial class EvmInstructions
     /// Pops an address and three parameters (destination offset, source offset, and length) from the stack.
     /// Validates account access and memory expansion, then copies the external code into memory.
     /// </summary>
-    /// <typeparam name="TTracingInstructions">
+    /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> that indicates whether tracing is active.
     /// </typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
@@ -125,12 +126,12 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code on failure.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeCopy<TTracingInstructions>(
+    public static EvmExceptionType InstructionExtCodeCopy<TTracingInst>(
         VirtualMachine vm,
         ref EvmStack stack,
         ref long gasAvailable,
         ref int programCounter)
-        where TTracingInstructions : struct, IFlag
+        where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Retrieve the target account address.
@@ -143,23 +144,31 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
-        gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result, out bool outOfGas);
+        gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
 
         // Charge gas for account access (considering hot/cold storage costs).
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address))
+        if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address))
             goto OutOfGas;
 
         if (!result.IsZero)
         {
             // Update memory cost if the destination region requires expansion.
-            if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result))
+            if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result))
                 goto OutOfGas;
 
+            ICodeInfo codeInfo = vm.CodeInfoRepository
+                .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+
             // Get the external code from the repository.
-            ReadOnlySpan<byte> externalCode = vm.CodeInfoRepository
-                .GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _)
-                .MachineCode.Span;
+            ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
+            // If contract is large, charge for access
+            if (spec.IsEip7907Enabled)
+            {
+                uint excessContractSize = (uint)Math.Max(0, externalCode.Length - CodeSizeConstants.MaxCodeSizeEip170);
+                if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, address, in vm.EvmState.AccessTracker, ref gasAvailable))
+                    goto OutOfGas;
+            }
 
             // If EOF is enabled and the code is an EOF contract, use a predefined magic value.
             if (spec.IsEofEnabled && EofValidator.IsEof(externalCode, out _))
@@ -173,7 +182,7 @@ internal static partial class EvmInstructions
             vm.EvmState.Memory.Save(in a, in slice);
 
             // Report memory changes if tracing is enabled.
-            if (TTracingInstructions.IsActive)
+            if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
             }
@@ -192,7 +201,7 @@ internal static partial class EvmInstructions
     /// Pops an account address from the stack, validates access, and pushes the code size onto the stack.
     /// Additionally, applies peephole optimizations for common contract checks.
     /// </summary>
-    /// <typeparam name="TTracingInstructions">
+    /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> indicating if instruction tracing is active.
     /// </typeparam>
     /// <param name="vm">The virtual machine instance.</param>
@@ -203,12 +212,12 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code if an error occurs.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeSize<TTracingInstructions>(
+    public static EvmExceptionType InstructionExtCodeSize<TTracingInst>(
         VirtualMachine vm,
         ref EvmStack stack,
         ref long gasAvailable,
         ref int programCounter)
-        where TTracingInstructions : struct, IFlag
+        where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct the gas cost for external code access.
@@ -219,12 +228,12 @@ internal static partial class EvmInstructions
         if (address is null) goto StackUnderflow;
 
         // Charge gas for accessing the account's state.
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address))
+        if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address))
             goto OutOfGas;
 
         // Attempt a peephole optimization when tracing is not active and code is available.
-        ReadOnlySpan<byte> codeSection = vm.EvmState.Env.CodeInfo.MachineCode.Span;
-        if (!TTracingInstructions.IsActive && programCounter < codeSection.Length)
+        ReadOnlySpan<byte> codeSection = vm.EvmState.Env.CodeInfo.CodeSpan;
+        if (!TTracingInst.IsActive && programCounter < codeSection.Length)
         {
             bool optimizeAccess = false;
             // Peek at the next instruction to detect patterns.
@@ -248,6 +257,7 @@ internal static partial class EvmInstructions
             {
                 // Peephole optimization for EXTCODESIZE when checking for contract existence.
                 // This reduces storage access by using the preloaded CodeHash.
+                vm.OpCodeCount++;
                 programCounter++;
                 // Deduct very-low gas cost for the next operation (ISZERO, GT, or EQ).
                 gasAvailable -= GasCostOf.VeryLow;
@@ -263,11 +273,11 @@ internal static partial class EvmInstructions
                 // Push 1 if the condition is met (indicating contract presence or absence), else push 0.
                 if (!isCodeLengthNotZero)
                 {
-                    stack.PushOne();
+                    stack.PushOne<TTracingInst>();
                 }
                 else
                 {
-                    stack.PushZero();
+                    stack.PushZero<TTracingInst>();
                 }
                 return EvmExceptionType.None;
             }
@@ -275,17 +285,17 @@ internal static partial class EvmInstructions
 
         // No optimization applied: load the account's code from storage.
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
-            .GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _)
-            .MachineCode.Span;
+            .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
+            .CodeSpan;
         // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
         if (spec.IsEofEnabled && EofValidator.IsEof(accountCode, out _))
         {
-            stack.PushUInt32(2);
+            stack.PushUInt32<TTracingInst>(2);
         }
         else
         {
             // Otherwise, push the actual code length.
-            stack.PushUInt32((uint)accountCode.Length);
+            stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
         }
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

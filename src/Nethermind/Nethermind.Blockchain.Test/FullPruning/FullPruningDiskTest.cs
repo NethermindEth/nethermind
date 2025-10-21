@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
+using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -19,7 +20,7 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
-using Nethermind.Db.Rocks.Config;
+using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -68,23 +69,26 @@ public class FullPruningDiskTest
                 StateReader,
                 ProcessExitSource,
                 DriveInfo,
-                Container.Resolve<IPruningTrieStore>(),
+                Container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore,
                 _chainEstimations,
                 LogManager);
             return chain;
         }
 
-        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
-        {
-            IDbProvider dbProvider = new DbProvider();
-            RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
-            StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
-            standardDbInitializer.InitStandardDbs(true);
-
-            return base.ConfigureContainer(builder, configProvider)
-                .AddSingleton<IDbProvider>(dbProvider)
-                .ConfigureTrieStoreExposedWorldStateManager();
-        }
+        protected override ContainerBuilder
+            ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
+            // Reenable rocksdb
+            base.ConfigureContainer(builder, configProvider)
+                .AddSingleton<IDbFactory, RocksDbFactory>()
+                .Intercept<IInitConfig>((initConfig) =>
+                {
+                    initConfig.BaseDbPath = TempDirectory.Path;
+                })
+                .Intercept<IPruningConfig>((pruningConfig) =>
+                {
+                    // Make test faster otherwise it may potentially buffer 128 block.
+                    pruningConfig.MaxBufferedCommitCount = 1;
+                });
 
         public override void Dispose()
         {

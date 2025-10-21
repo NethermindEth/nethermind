@@ -20,9 +20,11 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -54,27 +56,30 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public async Task Can_request_and_handle_receipts()
         {
+            const int count = NethermindSyncLimits.MaxReceiptFetch;
             TxReceipt[][]? receipts = Enumerable.Repeat(
                 Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 100).ToArray(),
-                1000).ToArray(); // TxReceipt[1000][100]
+                count).ToArray(); // TxReceipt[1000][100]
 
             using ReceiptsMessage receiptsMsg = new(receipts.ToPooledList());
             Packet receiptsPacket =
                 new("eth", Eth63MessageCode.Receipts, _ctx._receiptMessageSerializer.Serialize(receiptsMsg));
 
             Task<IOwnedReadOnlyList<TxReceipt[]>> task = _ctx.ProtocolHandler.GetReceipts(
-                Enumerable.Repeat(Keccak.Zero, 1000).ToArray(),
+                Enumerable.Repeat(Keccak.Zero, count).ToArray(),
                 CancellationToken.None);
 
             _ctx.ProtocolHandler.HandleMessage(receiptsPacket);
 
             using var result = await task;
-            result.Should().HaveCount(1000);
+            result.Should().HaveCount(count);
         }
 
         [Test]
         public async Task Limit_receipt_request()
         {
+            const int count = NethermindSyncLimits.MaxReceiptFetch;
+
             TxReceipt[] oneBlockReceipt = Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 100).ToArray();
             Packet smallReceiptsPacket =
                 new("eth", Eth63MessageCode.Receipts, _ctx._receiptMessageSerializer.Serialize(
@@ -82,7 +87,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 ));
             Packet largeReceiptsPacket =
                 new("eth", Eth63MessageCode.Receipts, _ctx._receiptMessageSerializer.Serialize(
-                    new(RepeatPooled(oneBlockReceipt, 1000))
+                    new(RepeatPooled(oneBlockReceipt, count))
                 ));
 
             GetReceiptsMessage? receiptsMessage = null;
@@ -92,7 +97,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 .Do(info => receiptsMessage = (GetReceiptsMessage)info[0]);
 
             Task<IOwnedReadOnlyList<TxReceipt[]>> receiptsTask = _ctx.ProtocolHandler
-                .GetReceipts(RepeatPooled(Keccak.Zero, 1000), CancellationToken.None)
+                .GetReceipts(RepeatPooled(Keccak.Zero, count), CancellationToken.None)
                 .AddResultTo(_disposables);
 
             _ctx.ProtocolHandler.HandleMessage(smallReceiptsPacket);
@@ -101,7 +106,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             Assert.That(receiptsMessage?.Hashes?.Count, Is.EqualTo(8));
 
             receiptsTask = _ctx.ProtocolHandler
-                .GetReceipts(RepeatPooled(Keccak.Zero, 1000), CancellationToken.None)
+                .GetReceipts(RepeatPooled(Keccak.Zero, count), CancellationToken.None)
                 .AddResultTo(_disposables);
 
             _ctx.ProtocolHandler.HandleMessage(largeReceiptsPacket);
@@ -111,7 +116,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             // Back to 10
             receiptsTask = _ctx.ProtocolHandler
-                .GetReceipts(RepeatPooled(Keccak.Zero, 1000), CancellationToken.None)
+                .GetReceipts(RepeatPooled(Keccak.Zero, count), CancellationToken.None)
                 .AddResultTo(_disposables);
 
             _ctx.ProtocolHandler.HandleMessage(smallReceiptsPacket);
@@ -127,12 +132,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Will_not_serve_receipts_requests_above_512()
         {
-            using GetReceiptsMessage getReceiptsMessage = new(
-                RepeatPooled(Keccak.Zero, 513));
+            using GetReceiptsMessage getReceiptsMessage = new(RepeatPooled(Keccak.Zero, NethermindSyncLimits.MaxReceiptFetch + 1));
             Packet getReceiptsPacket =
                 new("eth", Eth63MessageCode.GetReceipts, _ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
-            _ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
+            Assert.Throws<RlpLimitException>(() => _ctx.ProtocolHandler.HandleMessage(getReceiptsPacket));
             _ctx.Session.Received().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
 
@@ -153,7 +157,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
         private class Context
         {
-            readonly MessageSerializationService _serializationService = new();
+            private readonly MessageSerializationService _serializationService;
             private readonly StatusMessageSerializer _statusMessageSerializer = new();
             public readonly ReceiptsMessageSerializer _receiptMessageSerializer = new(MainnetSpecProvider.Instance);
             public readonly GetReceiptsMessageSerializer _getReceiptMessageSerializer = new();
@@ -201,9 +205,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 Session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 1000, true));
                 NetworkDiagTracer.IsEnabled = true;
 
-                _serializationService.Register(_statusMessageSerializer);
-                _serializationService.Register(_receiptMessageSerializer);
-                _serializationService.Register(_getReceiptMessageSerializer);
+                _serializationService = new MessageSerializationService(
+                    SerializerInfo.Create(_statusMessageSerializer),
+                    SerializerInfo.Create(_receiptMessageSerializer),
+                    SerializerInfo.Create(_getReceiptMessageSerializer)
+                );
             }
         }
     }

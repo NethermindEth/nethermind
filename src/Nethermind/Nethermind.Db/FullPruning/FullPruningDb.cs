@@ -31,6 +31,7 @@ namespace Nethermind.Db.FullPruning
         // current pruning context, secondary DB that the state will be written to, as well as state trie will be copied to
         // this will be null if no full pruning is in progress
         private PruningContext? _pruningContext;
+        private Lock _startLock = new Lock();
 
         public FullPruningDb(DbSettings settings, IDbFactory dbFactory, Action? updateDuplicateWriteMetrics = null)
         {
@@ -174,6 +175,16 @@ namespace Nethermind.Db.FullPruning
                 return clonedDbSettings;
             }
 
+            // CreateDb itself is slow, so there could be a situation where multiple start pruning attempt was
+            // created while waiting for this lock.
+            using Lock.Scope _ = _startLock.EnterScope();
+
+            if (!CanStartPruning)
+            {
+                context = null;
+                return false;
+            }
+
             // create new pruning context with new sub DB and try setting it as current
             // returns true when new pruning is started
             // returns false only on multithreaded access, returns started pruning context then
@@ -186,6 +197,7 @@ namespace Nethermind.Db.FullPruning
                 return true;
             }
 
+            newContext.Dispose();
             return false;
         }
 

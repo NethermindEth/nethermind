@@ -67,6 +67,66 @@ public class SnapProviderTests
     }
 
     [Test]
+    public void AddStorageRange_ResponseReversedOrderedListOfAccounts_ReturnsInvalidOrder()
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+
+        using AccountsAndProofs accountsAndProofs = new();
+
+        StorageRange storage = new StorageRange()
+        {
+            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, Account.TotallyEmpty) }.ToPooledList(),
+        };
+        List<PathWithStorageSlot> slots =
+        [
+            new(new ValueHash256("0000000000000000000000000000000000000000000000000000000000000004"), []),
+            new(new ValueHash256("0000000000000000000000000000000000000000000000000000000000000003"), []),
+            new(new ValueHash256("0000000000000000000000000000000000000000000000000000000000000002"), []),
+            new(new ValueHash256("0000000000000000000000000000000000000000000000000000000000000001"), []),
+        ];
+
+        snapProvider.AddStorageRangeForAccount(
+            storage,
+            0,
+            slots,
+            null).Should().Be(AddRangeResult.InvalidOrder);
+
+        progressTracker.IsSnapGetRangesFinished().Should().BeFalse();
+    }
+
+    [Test]
+    public void AddStorageRange_EmptySlotsList_ReturnsEmptySlots()
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+
+        StorageRange storage = new StorageRange()
+        {
+            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, Account.TotallyEmpty) }.ToPooledList(),
+        };
+
+        // Test with empty slots list
+        List<PathWithStorageSlot> emptySlots = [];
+
+        snapProvider.AddStorageRangeForAccount(
+            storage,
+            0,
+            emptySlots,
+            null).Should().Be(AddRangeResult.EmptySlots);
+
+        progressTracker.IsSnapGetRangesFinished().Should().BeFalse();
+    }
+
+    [Test]
     public void AddAccountRange_SetStartRange_ToAfterLastPath()
     {
         (Hash256, Account)[] entries =
@@ -167,7 +227,7 @@ public class SnapProviderTests
         List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
         List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();
 
-        StateTree stree = new StateTree(new TrieStore(new TestMemDb(), LimboLogs.Instance), LimboLogs.Instance);
+        StateTree stree = new StateTree(new TestRawTrieStore(new TestMemDb()), LimboLogs.Instance);
         SnapProviderHelper.AddAccountRange(
                 stree,
                 0,
@@ -190,16 +250,19 @@ public class SnapProviderTests
     private static (SnapServer, Hash256) BuildSnapServerFromEntries((Hash256, Account)[] entries)
     {
         TestMemDb stateDb = new TestMemDb();
-        TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+        TestRawTrieStore trieStore = new TestRawTrieStore(stateDb);
         StateTree st = new StateTree(trieStore, LimboLogs.Instance);
-        foreach (var entry in entries)
         {
-            st.Set(entry.Item1, entry.Item2);
+            using var _ = trieStore.BeginBlockCommit(0);
+            foreach (var entry in entries)
+            {
+                st.Set(entry.Item1, entry.Item2);
+            }
+            st.Commit();
         }
-        st.Commit();
 
         IStateReader stateRootTracker = Substitute.For<IStateReader>();
-        stateRootTracker.HasStateForRoot(st.RootHash).Returns(true);
+        stateRootTracker.HasStateForBlock(Build.A.BlockHeader.WithStateRoot(st.RootHash).TestObject).Returns(true);
         var ss = new SnapServer(trieStore.AsReadOnly(), new TestMemDb(), stateRootTracker, LimboLogs.Instance);
         return (ss, st.RootHash);
     }

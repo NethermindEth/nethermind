@@ -48,14 +48,13 @@ public class SyncDispatcherTests
             await _peerSemaphore.WaitAsync(cancellationToken);
             ISyncPeer syncPeer = new MockSyncPeer("Nethermind", UInt256.One);
             SyncPeerAllocation allocation = new(new PeerInfo(syncPeer), contexts, _lock);
-            allocation.AllocateBestPeer([], Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
             return allocation;
         }
 
         private class MockSyncPeer(string clientId, UInt256 totalDifficulty) : BaseSyncPeerMock
         {
             public override string ClientId => clientId;
-            public override UInt256 TotalDifficulty => totalDifficulty;
+            public override UInt256? TotalDifficulty => totalDifficulty;
         }
 
         public void Free(SyncPeerAllocation syncPeerAllocation)
@@ -123,7 +122,6 @@ public class SyncDispatcherTests
         }
 
         public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock = static delegate { };
-        public event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed = static delegate { };
 
         public ValueTask DisposeAsync()
         {
@@ -227,6 +225,7 @@ public class SyncDispatcherTests
         }
 
         public override bool IsFinished => false;
+        public override string FeedName => nameof(TestSyncFeed);
 
         private int _pendingRequests;
 
@@ -292,7 +291,7 @@ public class SyncDispatcherTests
     public async Task When_ConcurrentHandleResponseIsRunning_Then_BlockDispose()
     {
         using CancellationTokenSource cts = new();
-        cts.CancelAfter(TimeSpan.FromSeconds(10));
+        cts.CancelAfter(TimeSpan.FromSeconds(15));
 
         TestSyncFeed syncFeed = new(isMultiFeed: true);
         syncFeed.LockResponse();
@@ -316,7 +315,7 @@ public class SyncDispatcherTests
         {
             await dispatcher.DisposeAsync();
         });
-        await Task.Delay(100, cts.Token);
+        await Task.Delay(200, cts.Token);
 
         disposeTask.IsCompletedSuccessfully.Should().BeFalse();
 

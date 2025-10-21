@@ -5,6 +5,7 @@ using System.Net;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -108,6 +109,20 @@ public class DiscoveryMessageSerializerTests
     }
 
     [Test]
+    public void Enr_request_contains_hash()
+    {
+        EnrRequestMsg msg = new(TestItem.PublicKeyA, long.MaxValue);
+        IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
+        EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(serialized);
+        serialized.SafeRelease();
+
+        Assert.That(deserialized.Hash, Is.Not.Null);
+        Hash256 hash = new(deserialized.Hash!.Value.Span);
+
+        Assert.That(hash, Is.EqualTo(new Hash256("0x64c2e38e89cdfca030166b7a271c301dd77cf043172966ab112d97fc3430fa16")));
+    }
+
+    [Test]
     public void Enr_response_there_and_back()
     {
         NodeRecord nodeRecord = new();
@@ -189,7 +204,7 @@ public class DiscoveryMessageSerializerTests
         Assert.That(deserializedMessage.FarPublicKey, Is.EqualTo(message.FarPublicKey));
         Assert.That(deserializedMessage.ExpirationTime, Is.EqualTo(message.ExpirationTime));
 
-        for (int i = 0; i < message.Nodes.Length; i++)
+        for (int i = 0; i < message.Nodes.Count; i++)
         {
             Assert.That(deserializedMessage.Nodes[i].Host, Is.EqualTo(message.Nodes[i].Host));
             Assert.That(deserializedMessage.Nodes[i].Port, Is.EqualTo(message.Nodes[i].Port));

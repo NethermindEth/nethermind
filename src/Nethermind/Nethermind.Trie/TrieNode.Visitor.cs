@@ -62,7 +62,7 @@ namespace Nethermind.Trie
             long actualSubtreeSize = 1; // one for itself
             subtreeSizeHint -= 1; // Consider self
 
-            node.ResolveKey(nodeResolver, ref path, path.Length == 0);
+            node.ResolveKey(nodeResolver, ref path);
 
             switch (node.NodeType)
             {
@@ -98,7 +98,7 @@ namespace Nethermind.Trie
                         AddVisited();
                         TrieNode child = node.GetChild(nodeResolver, ref path, 0) ?? throw new InvalidDataException($"Child of an extension {node.Key} should not be null.");
                         int previousPathLength = node.AppendChildPath(ref path, 0);
-                        child.ResolveKey(nodeResolver, ref path, false);
+                        child.ResolveKey(nodeResolver, ref path);
                         TNodeContext childContext = nodeContext.Add(node.Key!);
                         if (visitor.ShouldVisit(childContext, child.Keccak!))
                         {
@@ -119,7 +119,7 @@ namespace Nethermind.Trie
 
                         if (!isStorage && visitor.ExpectAccounts)
                         {
-                            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.AsSpan());
+                            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.Span);
                             if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
                             {
                                 throw new InvalidDataException("Non storage leaf should be an account");
@@ -167,7 +167,7 @@ namespace Nethermind.Trie
                 TrieNode? childNode = node.GetChild(trieNodeResolver, ref path, i);
                 if (childNode is null) continue;
                 int previousPathLength = node.AppendChildPath(ref path, i);
-                childNode.ResolveKey(trieNodeResolver, ref path, false);
+                childNode.ResolveKey(trieNodeResolver, ref path);
                 TNodeContext childContext = nodeContext.Add((byte)i);
                 if (visitor.ShouldVisit(childContext, childNode.Keccak!))
                 {
@@ -200,7 +200,7 @@ namespace Nethermind.Trie
                 if (output[i] is null) continue;
                 TrieNode child = output[i];
                 path.SetLast(i);
-                child.ResolveKey(nodeResolver, ref path, false);
+                child.ResolveKey(nodeResolver, ref path);
                 TNodeContext childContext = nodeContext.Add((byte)i);
                 if (visitor.ShouldVisit(childContext, child.Keccak!))
                 {
@@ -234,7 +234,7 @@ namespace Nethermind.Trie
                 handledChild++;
                 TrieNode child = output[i];
                 path.SetLast(i);
-                child.ResolveKey(trieNodeResolver, ref path, false);
+                child.ResolveKey(trieNodeResolver, ref path);
                 TNodeContext childContext = nodeContext.Add((byte)i);
                 if (visitor.ShouldVisit(childContext, child.Keccak!))
                 {

@@ -25,13 +25,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.ref }}
 
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -105,8 +105,8 @@ jobs:
           REPO_NAME: ${{ env.REPO_NAME }}
           REF: ${{ github.ref }}
         run: |
-          chmod +x scripts/wait-for-workflow-completed.sh
-          ./scripts/wait-for-workflow-completed.sh
+          chmod +x scripts/wait-for-workflow.sh
+          ./scripts/wait-for-workflow.sh
         working-directory: ${{ github.workspace }}
 
   generate_hive_consensus_tests:
@@ -117,12 +117,12 @@ jobs:
     needs: [create_docker_image]
     steps:
       - name: Check out Nethermind repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: nethermind
           submodules: "recursive"
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           global-json-file: nethermind/global.json
       - name: Generate Hive Json For Matrix
@@ -146,7 +146,7 @@ jobs:
           echo "PARALLELISM=${{ github.event.inputs.parallelism || '8' }}" >> $GITHUB_ENV
 
       - name: Check out Nethermind repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: nethermind
 
@@ -156,12 +156,12 @@ jobs:
           sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
 
       - name: Set up Go environment
-        uses: actions/setup-go@v3.0.0
+        uses: actions/setup-go@v6
         with:
           go-version: '>=1.17.0'
 
       - name: Check out Hive repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ethereum/hive
           ref: master

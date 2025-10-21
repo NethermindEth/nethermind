@@ -36,7 +36,7 @@ namespace Nethermind.AuRa.Test.Transactions
             {
                 MinGasPrice = UInt256.One
             };
-            IMinGasPriceTxFilter minGasPriceFilter = new MinGasPriceTxFilter(blocksConfig, Substitute.For<ISpecProvider>());
+            IMinGasPriceTxFilter minGasPriceFilter = new MinGasPriceTxFilter(blocksConfig);
             IDictionaryContractDataStore<TxPriorityContract.Destination> dictionaryContractDataStore = Substitute.For<IDictionaryContractDataStore<TxPriorityContract.Destination>>();
             dictionaryContractDataStore.TryGetValue(
                     Arg.Any<BlockHeader>(),
@@ -51,7 +51,7 @@ namespace Nethermind.AuRa.Test.Transactions
             MinGasPriceContractTxFilter txFilter = new(minGasPriceFilter, dictionaryContractDataStore);
             Transaction tx = Build.A.Transaction.WithTo(address).WithGasPrice(gasLimit).WithData(null).TestObject;
 
-            return txFilter.IsAllowed(tx, Build.A.BlockHeader.TestObject);
+            return txFilter.IsAllowed(tx, Build.A.BlockHeader.TestObject, Substitute.For<IReleaseSpec>());
         }
     }
 }

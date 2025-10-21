@@ -1,31 +1,28 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Flashbots.Data;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Evm.State;
+using Nethermind.Flashbots.Data;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.State;
-using Nethermind.Core.Crypto;
+using Nethermind.State.OverridableEnv;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Flashbots.Handlers;
 
@@ -43,14 +40,13 @@ public class ValidateSubmissionHandler
     private readonly IFlashbotsConfig _flashbotsConfig;
     private readonly ISpecProvider _specProvider;
     private readonly IEthereumEcdsa _ethereumEcdsa;
-    private readonly IReadOnlyTxProcessingScope _processingScope;
-    private readonly BlockProcessor _blockProcessor;
+    private readonly IOverridableEnv<ProcessingEnv> _blockProcessorEnv;
 
     public ValidateSubmissionHandler(
         IHeaderValidator headerValidator,
         IBlockTree blockTree,
         IBlockValidator blockValidator,
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
+        IOverridableEnv<ProcessingEnv> blockProcessorEnv,
         ILogManager logManager,
         ISpecProvider specProvider,
         IFlashbotsConfig flashbotsConfig,
@@ -63,26 +59,7 @@ public class ValidateSubmissionHandler
         _headerValidator = headerValidator;
         _logger = logManager!.GetClassLogger();
         _specProvider = specProvider;
-
-        _processingScope = readOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
-        var worldState = _processingScope.WorldState;
-        ITransactionProcessor transactionProcessor = _processingScope.TransactionProcessor;
-        IBlockCachePreWarmer preWarmer = new BlockCachePreWarmer(readOnlyTxProcessingEnvFactory, worldState, _specProvider, 0, logManager);
-        _blockProcessor = new BlockProcessor(
-            _specProvider,
-            _blockValidator,
-            new Consensus.Rewards.RewardCalculator(_specProvider),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
-            worldState,
-            NullReceiptStorage.Instance,
-            transactionProcessor,
-            new BeaconBlockRootHandler(transactionProcessor, worldState),
-            new BlockhashStore(_specProvider, worldState),
-            logManager: logManager,
-            withdrawalProcessor: new WithdrawalProcessor(worldState, logManager!),
-            receiptsRootCalculator: new ReceiptsRootCalculator(),
-            preWarmer: preWarmer
-        );
+        _blockProcessorEnv = blockProcessorEnv;
     }
 
     public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
@@ -111,13 +88,15 @@ public class ValidateSubmissionHandler
             return FlashbotsResult.Invalid($"Block {payload} could not be parsed as a block: {decodingResult.Error}");
         }
 
-        if (!ValidateBlock(block, request.Message, request.RegisteredGasLimit, out string? error))
+        IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
+
+        if (!ValidateBlock(block, request.Message, request.RegisteredGasLimit, releaseSpec, out string? error))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid block. Result of {payloadStr}. Error: {error}");
             return FlashbotsResult.Invalid(error ?? "Block validation failed");
         }
 
-        if (!ValidateBlobsBundle(block.Transactions, blobsBundle, out string? blobsError))
+        if (!ValidateBlobsBundle(block.Transactions, blobsBundle, releaseSpec, out string? blobsError))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid blobs bundle. Result of {payloadStr}. Error: {blobsError}");
             return FlashbotsResult.Invalid(blobsError ?? "Blobs bundle validation failed");
@@ -126,7 +105,7 @@ public class ValidateSubmissionHandler
         return FlashbotsResult.Valid();
     }
 
-    private bool ValidateBlock(Block block, BidTrace message, long registeredGasLimit, out string? error)
+    private bool ValidateBlock(Block block, BidTrace message, long registeredGasLimit, IReleaseSpec releaseSpec, out string? error)
     {
         error = null;
 
@@ -157,7 +136,7 @@ public class ValidateSubmissionHandler
         Address feeRecipient = message.ProposerFeeRecipient;
         UInt256 expectedProfit = message.Value;
 
-        if (!ValidatePayload(block, feeRecipient, expectedProfit, registeredGasLimit, _flashbotsConfig.UseBalanceDiffProfit, _flashbotsConfig.ExcludeWithdrawals, out error))
+        if (!ValidatePayload(block, feeRecipient, expectedProfit, registeredGasLimit, _flashbotsConfig.UseBalanceDiffProfit, _flashbotsConfig.ExcludeWithdrawals, releaseSpec, out error))
         {
             return false;
         }
@@ -167,43 +146,53 @@ public class ValidateSubmissionHandler
         return true;
     }
 
-    private bool ValidateBlobsBundle(Transaction[] transactions, BlobsBundleV1 blobsBundle, out string? error)
+    private bool ValidateBlobsBundle(Transaction[] transactions, BlobsBundleV1 blobsBundle, IReleaseSpec releaseSpec, out string? error)
     {
-        // get sum of length of blobs of each transaction
-        int totalBlobsLength = transactions.Sum(t => t.BlobVersionedHashes is not null ? t.BlobVersionedHashes.Length : 0);
+        ShardBlobNetworkWrapper blobs = new(blobsBundle.Blobs, blobsBundle.Commitments, blobsBundle.Proofs, releaseSpec.BlobProofVersion);
 
-        if (totalBlobsLength != blobsBundle.Blobs.Length)
+        IBlobProofsVerifier verifier = IBlobProofsManager.For(releaseSpec.BlobProofVersion);
+
+        using ArrayPoolList<byte[]> hashes = new(blobs.Blobs.Length);
+
+        foreach (Transaction tx in transactions)
         {
-            error = $"Total blobs length mismatch. Expected {totalBlobsLength} but got {blobsBundle.Blobs.Length}";
+            if (tx.BlobVersionedHashes is not null)
+            {
+                foreach (byte[]? blobHash in tx.BlobVersionedHashes)
+                {
+                    if (blobHash is not null)
+                    {
+                        hashes.Add(blobHash);
+                    }
+                }
+            }
+        }
+
+        if (!verifier.ValidateHashes(blobs, hashes.AsSpan()))
+        {
+            error = "Invalid blob hashes";
             return false;
         }
 
-        if (totalBlobsLength != blobsBundle.Commitments.Length)
+        if (!verifier.ValidateLengths(blobs))
         {
-            error = $"Total commitments length mismatch. Expected {totalBlobsLength} but got {blobsBundle.Commitments.Length}";
+            error = "Invalid blob lengths";
             return false;
         }
 
-        if (totalBlobsLength != blobsBundle.Proofs.Length)
+        if (!verifier.ValidateProofs(blobs))
         {
-            error = $"Total proofs length mismatch. Expected {totalBlobsLength} but got {blobsBundle.Proofs.Length}";
+            error = "Invalid blob proofs";
             return false;
         }
 
-        if (!KzgPolynomialCommitments.AreProofsValid(blobsBundle.Blobs, blobsBundle.Commitments, blobsBundle.Proofs))
-        {
-            error = "Invalid KZG proofs";
-            return false;
-        }
+        _logger.Info($"Validated blobs bundle with {blobsBundle.Blobs.Length} blobs, commitments: {blobsBundle.Commitments.Length}, proofs: {blobsBundle.Proofs.Length}");
 
         error = null;
-
-        _logger.Info($"Validated blobs bundle with {totalBlobsLength} blobs, commitments: {blobsBundle.Commitments.Length}, proofs: {blobsBundle.Proofs.Length}");
-
         return true;
     }
 
-    private bool ValidatePayload(Block block, Address feeRecipient, UInt256 expectedProfit, long registerGasLimit, bool useBalanceDiffProfit, bool excludeWithdrawals, out string? error)
+    private bool ValidatePayload(Block block, Address feeRecipient, UInt256 expectedProfit, long registerGasLimit, bool useBalanceDiffProfit, bool excludeWithdrawals, IReleaseSpec releaseSpec, out string? error)
     {
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
 
@@ -213,21 +202,18 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (!ValidateBlockMetadata(block, registerGasLimit, parentHeader, out error))
+        if (!ValidateBlockMetadata(block, registerGasLimit, parentHeader, releaseSpec, out error))
         {
             return false;
         }
 
-        using var scope = _processingScope;
-        IWorldState worldState = _processingScope.WorldState;
-        Hash256 stateRoot = parentHeader.StateRoot!;
-        worldState.StateRoot = stateRoot;
-        IReleaseSpec spec = _specProvider.GetSpec(parentHeader);
+        using var scope = _blockProcessorEnv.BuildAndOverride(parentHeader);
+        IWorldState worldState = scope.Component.WorldState;
+        IBlockProcessor blockProcessor = scope.Component.BlockProcessor;
 
-        RecoverSenderAddress(block, spec);
-        UInt256 feeRecipientBalanceBefore = worldState.HasStateForRoot(stateRoot) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
+        RecoverSenderAddress(block, releaseSpec);
+        UInt256 feeRecipientBalanceBefore = worldState.HasStateForBlock(parentHeader) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
 
-        List<Block> suggestedBlocks = [block];
         BlockReceiptsTracer blockReceiptsTracer = new();
 
         try
@@ -236,7 +222,8 @@ public class ValidateSubmissionHandler
             {
                 ValidateSubmissionProcessingOptions |= ProcessingOptions.NoValidation;
             }
-            _ = _blockProcessor.Process(stateRoot, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
+
+            _ = blockProcessor.ProcessOne(block, ValidateSubmissionProcessingOptions, blockReceiptsTracer, releaseSpec, CancellationToken.None);
         }
         catch (Exception e)
         {
@@ -259,7 +246,7 @@ public class ValidateSubmissionHandler
             }
         }
 
-        if (!_blockValidator.ValidateSuggestedBlock(block, out error))
+        if (!_blockValidator.ValidateSuggestedBlock(block, parentHeader, out error))
         {
             return false;
         }
@@ -286,11 +273,10 @@ public class ValidateSubmissionHandler
         }
     }
 
-    private bool ValidateBlockMetadata(Block block, long registerGasLimit, BlockHeader parentHeader, out string? error)
+    private bool ValidateBlockMetadata(Block block, long registerGasLimit, BlockHeader parentHeader, IReleaseSpec releaseSpec, out string? error)
     {
-        if (!_headerValidator.Validate(block.Header))
+        if (!_headerValidator.Validate(block.Header, parentHeader, false, out error))
         {
-            error = $"Invalid block header hash {block.Header.Hash}";
             return false;
         }
 
@@ -306,7 +292,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        long calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit);
+        long calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit, releaseSpec);
 
         if (calculatedGasLimit != block.Header.GasLimit)
         {
@@ -317,23 +303,23 @@ public class ValidateSubmissionHandler
         return true;
     }
 
-    private long GetGasLimit(BlockHeader parentHeader, long desiredGasLimit)
+    private long GetGasLimit(BlockHeader parentHeader, long desiredGasLimit, IReleaseSpec releaseSpec)
     {
         long parentGasLimit = parentHeader.GasLimit;
         long gasLimit = parentGasLimit;
 
         long? targetGasLimit = desiredGasLimit;
         long newBlockNumber = parentHeader.Number + 1;
-        IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber, parentHeader.Timestamp);
+
         if (targetGasLimit is not null)
         {
-            long maxGasLimitDifference = Math.Max(0, parentGasLimit / spec.GasLimitBoundDivisor - 1);
+            long maxGasLimitDifference = Math.Max(0, parentGasLimit / releaseSpec.GasLimitBoundDivisor - 1);
             gasLimit = targetGasLimit.Value > parentGasLimit
                 ? parentGasLimit + Math.Min(targetGasLimit.Value - parentGasLimit, maxGasLimitDifference)
                 : parentGasLimit - Math.Min(parentGasLimit - targetGasLimit.Value, maxGasLimitDifference);
         }
 
-        gasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, gasLimit, newBlockNumber);
+        gasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(releaseSpec, gasLimit, newBlockNumber);
         return gasLimit;
     }
 
@@ -370,7 +356,7 @@ public class ValidateSubmissionHandler
 
         if (lastReceipt.StatusCode != StatusCode.Success)
         {
-            error = $"Proposer payment failed ";
+            error = $"Proposer payment failed";
             return false;
         }
 
@@ -386,7 +372,7 @@ public class ValidateSubmissionHandler
 
         if (paymentTx.To != feeRecipient)
         {
-            error = $"Proposer payment transaction recipient is not the proposer,received {paymentTx.To} expected {feeRecipient}";
+            error = $"Proposer payment transaction recipient is not the proposer, received {paymentTx.To} expected {feeRecipient}";
             return false;
         }
 
@@ -396,7 +382,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (paymentTx.Data != null && paymentTx.Data.Value.Length != 0)
+        if (paymentTx.Data.Length != 0)
         {
             error = "Proposer payment transaction data is not empty";
             return false;
@@ -418,4 +404,6 @@ public class ValidateSubmissionHandler
         error = null;
         return true;
     }
+
+    public record ProcessingEnv(IBlockProcessor BlockProcessor, IWorldState WorldState);
 }

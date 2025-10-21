@@ -161,13 +161,13 @@ jobs:
       base_tag: ${{ steps.set-base-tag.outputs.base_tag }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.ref }}
 
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -250,8 +250,8 @@ jobs:
           REPO_NAME: ${{ env.REPO_NAME }}
           REF: ${{ inputs.nethermind_repo_ref || github.ref }}
         run: |
-          chmod +x scripts/wait-for-workflow-completed.sh
-          ./scripts/wait-for-workflow-completed.sh
+          chmod +x scripts/wait-for-workflow.sh
+          ./scripts/wait-for-workflow.sh
         working-directory: ${{ github.workspace }}
 
   trigger_node_and_vm_creation:
@@ -259,13 +259,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.ref }}
 
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -325,8 +325,8 @@ jobs:
           NAME_FILTER: ${{ env.BASE_TAG }}
           REF: "main"
         run: |
-          chmod +x scripts/wait-for-workflow-completed.sh
-          ./scripts/wait-for-workflow-completed.sh | tee script-output.txt
+          chmod +x scripts/wait-for-workflow.sh
+          ./scripts/wait-for-workflow.sh | tee script-output.txt
           run_id=$(grep -oP 'Run ID: \K\d+' script-output.txt)
           echo "Run ID extracted is: $run_id"
           echo "RUN_ID=$run_id" >> $GITHUB_ENV

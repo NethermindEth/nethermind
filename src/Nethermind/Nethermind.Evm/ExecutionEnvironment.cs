@@ -8,74 +8,54 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
-    public readonly struct ExecutionEnvironment
+    public readonly struct ExecutionEnvironment(
+        ICodeInfo codeInfo,
+        Address executingAccount,
+        Address caller,
+        Address? codeSource,
+        int callDepth,
+        in UInt256 transferValue,
+        in UInt256 value,
+        in ReadOnlyMemory<byte> inputData)
     {
-        public ExecutionEnvironment
-        (
-            ICodeInfo codeInfo,
-            Address executingAccount,
-            Address caller,
-            Address? codeSource,
-            ReadOnlyMemory<byte> inputData,
-            in TxExecutionContext txExecutionContext,
-            UInt256 transferValue,
-            UInt256 value,
-            int callDepth = 0)
-        {
-            CodeInfo = codeInfo;
-            ExecutingAccount = executingAccount;
-            Caller = caller;
-            CodeSource = codeSource;
-            InputData = inputData;
-            TxExecutionContext = txExecutionContext;
-            TransferValue = transferValue;
-            Value = value;
-            CallDepth = callDepth;
-        }
-
         /// <summary>
         /// Parsed bytecode for the current call.
         /// </summary>
-        public readonly ICodeInfo CodeInfo;
+        public readonly ICodeInfo CodeInfo = codeInfo;
 
         /// <summary>
         /// Currently executing account (in DELEGATECALL this will be equal to caller).
         /// </summary>
-        public readonly Address ExecutingAccount;
+        public readonly Address ExecutingAccount = executingAccount;
 
         /// <summary>
         /// Caller
         /// </summary>
-        public readonly Address Caller;
+        public readonly Address Caller = caller;
 
         /// <summary>
         /// Bytecode source (account address).
         /// </summary>
-        public readonly Address? CodeSource;
+        public readonly Address? CodeSource = codeSource;
 
-        /// <summary>
-        /// Parameters / arguments of the current call.
-        /// </summary>
-        public readonly ReadOnlyMemory<byte> InputData;
-
-        /// <summary>
-        /// Transaction originator
-        /// </summary>
-        public readonly TxExecutionContext TxExecutionContext;
+        /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
+        public readonly int CallDepth = callDepth;
 
         /// <summary>
         /// ETH value transferred in this call.
         /// </summary>
-        public readonly UInt256 TransferValue;
+        public readonly UInt256 TransferValue = transferValue;
 
         /// <summary>
         /// Value information passed (it is different from transfer value in DELEGATECALL.
         /// DELEGATECALL behaves like a library call and it uses the value information from the caller even
         /// as no transfer happens.
         /// </summary>
-        public readonly UInt256 Value;
+        public readonly UInt256 Value = value;
 
-        /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
-        public readonly int CallDepth;
+        /// <summary>
+        /// Parameters / arguments of the current call.
+        /// </summary>
+        public readonly ReadOnlyMemory<byte> InputData = inputData;
     }
 }

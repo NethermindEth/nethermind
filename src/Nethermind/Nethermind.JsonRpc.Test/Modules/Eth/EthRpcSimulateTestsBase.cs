@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
@@ -19,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
+using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -79,12 +83,12 @@ public class EthRpcSimulateTestsBase
     public static byte[] GetTxData(TestRpcBlockchain chain, PrivateKey account, string name = "recover")
     {
         // Step 1: Hash the message
-        Hash256 messageHash = Keccak.Compute("Hello, world!");
+        ValueHash256 messageHash = ValueKeccak.Compute("Hello, world!");
         // Step 2: Sign the hash
-        Signature signature = chain.EthereumEcdsa.Sign(account, messageHash);
+        Signature signature = chain.EthereumEcdsa.Sign(account, in messageHash);
 
         //Check real address
-        return GenerateTransactionDataForEcRecover(messageHash, signature, name);
+        return GenerateTransactionDataForEcRecover(new Hash256(messageHash), signature, name);
     }
 
     public static async Task<Address> DeployEcRecoverContract(TestRpcBlockchain chain, PrivateKey privateKey, string contractBytecode)
@@ -107,10 +111,38 @@ public class EthRpcSimulateTestsBase
             chain.EthereumEcdsa);
 
         (Hash256 hash, AcceptTxResult? code) = await txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
-
         code?.Should().Be(AcceptTxResult.Accepted);
+
         Transaction[] txs = chain.TxPool.GetPendingTransactions();
-        await chain.AddBlock(txs);
+        HashSet<Hash256> expectedHashes = txs.Select((tx) => tx.Hash!).ToHashSet();
+
+        var blockProducer = chain.BlockProducer;
+        var blockTree = chain.BlockTree;
+
+        Block? block;
+        int iteration = 0;
+        while (true)
+        {
+            block = await blockProducer.BuildBlock(parentHeader: blockTree.GetProducedBlockParent(null));
+
+            if (block is not null)
+            {
+                HashSet<Hash256> blockTxs = block.Transactions.Select((tx) => tx.Hash!).ToHashSet();
+                if (expectedHashes.All((tx) => blockTxs.Contains(tx)) && expectedHashes.Count == blockTxs.Count) break;
+            }
+
+            await Task.Yield();
+            if (iteration > 0)
+            {
+                await Task.Delay(100);
+            }
+            else if (iteration > 3)
+            {
+                Assert.Fail("Did not produce expected block");
+            }
+            iteration++;
+        }
+        blockTree.SuggestBlock(block!).Should().Be(AddBlockResult.Added);
 
         TxReceipt? createContractTxReceipt = null;
         while (createContractTxReceipt is null)

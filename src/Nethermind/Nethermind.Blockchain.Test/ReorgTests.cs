@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -7,21 +7,26 @@ using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -33,15 +38,37 @@ public class ReorgTests
     private BlockchainProcessor _blockchainProcessor = null!;
 #pragma warning restore NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private BlockTree _blockTree = null!;
+    private BlockHeader _genesis = null!;
 
     [OneTimeSetUp]
     public void Setup()
     {
-        IDbProvider memDbProvider = TestMemDbProvider.Init();
-        TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
-        WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-        StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
+        IDbProvider memDbProvider = TestMemDbProvider.Init();
+        (IWorldState stateProvider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(memDbProvider, LimboLogs.Instance);
+
+        IReleaseSpec finalSpec = specProvider.GetFinalSpec();
+
+        using (var _ = stateProvider.BeginScope(IWorldState.PreGenesis))
+        {
+            if (finalSpec.WithdrawalsEnabled)
+            {
+                stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+                stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, specProvider.GenesisSpec);
+            }
+
+            if (finalSpec.ConsolidationRequestsEnabled)
+            {
+                stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+                stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, specProvider.GenesisSpec);
+            }
+
+            stateProvider.Commit(specProvider.GenesisSpec);
+            stateProvider.CommitTree(0);
+
+            _genesis = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject;
+        }
+
         EthereumEcdsa ecdsa = new(1);
         ITransactionComparerProvider transactionComparerProvider =
             new TransactionComparerProvider(specProvider, _blockTree);
@@ -51,11 +78,11 @@ public class ReorgTests
             .WithSpecProvider(specProvider)
             .TestObject;
 
-        CodeInfoRepository codeInfoRepository = new();
         TxPool.TxPool txPool = new(
             ecdsa,
             new BlobTxStorage(),
-            new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider, codeInfoRepository),
+            new ChainHeadInfoProvider(
+                new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, stateReader),
             new TxPoolConfig(),
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
@@ -66,29 +93,37 @@ public class ReorgTests
             specProvider,
             LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new(
+            BlobBaseFeeCalculator.Instance,
             specProvider,
             stateProvider,
             virtualMachine,
-            codeInfoRepository,
+            new EthereumCodeInfoRepository(stateProvider),
             LimboLogs.Instance);
 
-        BlockProcessor blockProcessor = new(
+        BlockProcessor blockProcessor = new BlockProcessor(
             MainnetSpecProvider.Instance,
             Always.Valid,
             new RewardCalculator(specProvider),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
-            transactionProcessor,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             new BlockhashStore(MainnetSpecProvider.Instance, stateProvider),
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor));
+        BranchProcessor branchProcessor = new BranchProcessor(
+            blockProcessor,
+            MainnetSpecProvider.Instance,
+            stateProvider,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             LimboLogs.Instance);
+
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
-            blockProcessor,
+            branchProcessor,
             new RecoverSignatures(
                 ecdsa,
-                txPool,
                 specProvider,
                 LimboLogs.Instance),
             stateReader,
@@ -104,7 +139,7 @@ public class ReorgTests
     {
         List<Block> events = new();
 
-        Block block0 = Build.A.Block.Genesis.WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
+        Block block0 = Build.A.Block.WithHeader(_genesis).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
         Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(2).WithTotalDifficulty(2L).TestObject;
         Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(1).WithTotalDifficulty(3L).TestObject;
         Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(3).WithTotalDifficulty(6L).TestObject;

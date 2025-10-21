@@ -3,10 +3,11 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -21,22 +22,17 @@ namespace Nethermind.Blockchain
         // For testing
         public bool HasSynced { private get; init; }
 
-        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, ICodeInfoRepository codeInfoRepository)
-            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), codeInfoRepository)
+        [UseConstructorForDependencyInjection]
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader)
+            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader))
         {
         }
 
-        public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, ICodeInfoRepository codeInfoRepository)
-            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, stateProvider, codeInfoRepository)
-        {
-        }
-
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, ICodeInfoRepository codeInfoRepository)
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider)
         {
             SpecProvider = specProvider;
             ReadOnlyStateProvider = stateProvider;
             HeadNumber = blockTree.BestKnownNumber;
-            CodeInfoRepository = codeInfoRepository;
 
             blockTree.BlockAddedToMain += OnHeadChanged;
             _blockTree = blockTree;
@@ -46,8 +42,6 @@ namespace Nethermind.Blockchain
 
         public IReadOnlyStateProvider ReadOnlyStateProvider { get; }
 
-        public ICodeInfoRepository CodeInfoRepository { get; }
-
         public long HeadNumber { get; private set; }
 
         public long? BlockGasLimit { get; internal set; }
@@ -55,6 +49,8 @@ namespace Nethermind.Blockchain
         public UInt256 CurrentBaseFee { get; private set; }
 
         public UInt256 CurrentFeePerBlobGas { get; internal set; }
+
+        public ProofVersion CurrentProofVersion { get; private set; }
 
         public bool IsSyncing
         {
@@ -70,6 +66,8 @@ namespace Nethermind.Blockchain
             }
         }
 
+        public bool IsProcessingBlock => _blockTree.IsProcessingBlock;
+
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
@@ -82,6 +80,7 @@ namespace Nethermind.Blockchain
                 BlobGasCalculator.TryCalculateFeePerBlobGas(e.Block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 currentFeePerBlobGas)
                     ? currentFeePerBlobGas
                     : UInt256.Zero;
+            CurrentProofVersion = spec.BlobProofVersion;
             HeadChanged?.Invoke(sender, e);
         }
     }

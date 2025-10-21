@@ -151,6 +151,7 @@
     "accountStartNonce": "0x0",
     "maximumExtraDataSize": "0x20",
     "minGasLimit": "0x1388",
+    "minHistoryRetentionEpochs": "0x140cd",
     "networkID": "0x1",
     "forkBlock": "0x1d4c00",
     "forkCanonHash": "0x4985f5ca3d2afbec36529aa96f74de3cc10a2a4a6c44f2157a57d2c6059a11bb",
@@ -200,18 +201,15 @@
     "eip7623TransitionTimestamp": "0x681b3057",
     "depositContractAddress": "0x00000000219ab540356cbb839cbe05303d7705fa",
     "terminalTotalDifficulty": "C70D808A128D7380000",
-    "blobSchedule": {
-      "cancun": {
-        "target": 3,
-        "max": 6,
-        "baseFeeUpdateFraction": "0x32f0ed"
-      },
-      "prague": {
+    "blobSchedule": [
+      {
+        "name": "prague",
+        "timestamp": "0x681b3057",
         "target": 6,
         "max": 9,
-        "baseFeeUpdateFraction":  "0x4c6964"
+        "baseFeeUpdateFraction": "0x4c6964"
       }
-    }
+    ]
   },
   "genesis": {
     "seal": {

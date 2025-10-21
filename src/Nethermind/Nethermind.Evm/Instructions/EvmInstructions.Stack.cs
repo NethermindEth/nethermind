@@ -56,11 +56,12 @@ internal static partial class EvmInstructions
         /// <param name="programCounter">The program counter.</param>
         /// <param name="code">The code segment containing the immediate data.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        virtual static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        virtual static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+            where TTracingInst : struct, IFlag
         {
             // Use available bytes and pad left if fewer than expected.
             int usedFromCode = Math.Min(code.Length - programCounter, length);
-            stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+            stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
         }
     }
 
@@ -84,7 +85,8 @@ internal static partial class EvmInstructions
         /// If exactly one byte is available, it is pushed; otherwise, zero is pushed.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+            where TTracingInst : struct, IFlag
         {
             // Determine how many bytes can be used from the code.
             int usedFromCode = Math.Min(code.Length - programCounter, length);
@@ -92,12 +94,12 @@ internal static partial class EvmInstructions
             {
                 // Directly push the single byte.
                 ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.PushByte(Add(ref bytes, programCounter));
+                stack.PushByte<TTracingInst>(Add(ref bytes, programCounter));
             }
             else
             {
                 // Fallback when immediate data is incomplete.
-                stack.PushZero();
+                stack.PushZero<TTracingInst>();
             }
         }
     }
@@ -111,20 +113,21 @@ internal static partial class EvmInstructions
     /// Push operation for two bytes.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionPush2<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInstructions : struct, IFlag
+    public static EvmExceptionType InstructionPush2<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         const int Size = sizeof(ushort);
         // Deduct a very low gas cost for the push operation.
         gasAvailable -= GasCostOf.VeryLow;
         // Retrieve the code segment containing immediate data.
-        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSection.Span;
+        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSpan;
 
         ref byte bytes = ref MemoryMarshal.GetReference(code);
         int remainingCode = code.Length - programCounter;
         Instruction nextInstruction;
-        if (!TTracingInstructions.IsActive &&
+        if (!TTracingInst.IsActive &&
             remainingCode > Size &&
+            stack.Head < EvmStack.MaxStackSize - 1 &&
             ((nextInstruction = (Instruction)Add(ref bytes, programCounter + Size))
                 is Instruction.JUMP or Instruction.JUMPI))
         {
@@ -138,10 +141,12 @@ internal static partial class EvmInstructions
             if (nextInstruction == Instruction.JUMP)
             {
                 gasAvailable -= GasCostOf.Jump;
+                vm.OpCodeCount++;
             }
             else
             {
                 gasAvailable -= GasCostOf.JumpI;
+                vm.OpCodeCount++;
                 bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
                 if (isOverflow) goto StackUnderflow;
                 if (!shouldJump)
@@ -161,17 +166,17 @@ internal static partial class EvmInstructions
         else if (remainingCode >= Size)
         {
             // Optimized push for exactly two bytes.
-            stack.Push2Bytes(ref Add(ref bytes, programCounter));
+            stack.Push2Bytes<TTracingInst>(ref Add(ref bytes, programCounter));
         }
         else if (remainingCode == Op1.Count)
         {
             // Directly push the single byte.
-            stack.PushByte(Add(ref bytes, programCounter));
+            stack.PushByte<TTracingInst>(Add(ref bytes, programCounter));
         }
         else
         {
             // Fallback when immediate data is incomplete.
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
         }
 
         programCounter += Size;
@@ -199,18 +204,19 @@ internal static partial class EvmInstructions
         public static int Count => Size;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+            where TTracingInst : struct, IFlag
         {
             int usedFromCode = Math.Min(code.Length - programCounter, length);
             if (usedFromCode == Size)
             {
                 ref byte bytes = ref MemoryMarshal.GetReference(code);
                 // Direct push of a 4-byte value.
-                stack.Push4Bytes(ref Add(ref bytes, programCounter));
+                stack.Push4Bytes<TTracingInst>(ref Add(ref bytes, programCounter));
             }
             else
             {
-                stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+                stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
             }
         }
     }
@@ -245,17 +251,18 @@ internal static partial class EvmInstructions
         /// Push operation for eight bytes.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+            where TTracingInst : struct, IFlag
         {
             int usedFromCode = Math.Min(code.Length - programCounter, length);
             if (usedFromCode == Size)
             {
                 ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.Push8Bytes(ref Add(ref bytes, programCounter));
+                stack.Push8Bytes<TTracingInst>(ref Add(ref bytes, programCounter));
             }
             else
             {
-                stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+                stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
             }
         }
     }
@@ -311,17 +318,18 @@ internal static partial class EvmInstructions
         /// Push operation for 16 bytes.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+            where TTracingInst : struct, IFlag
         {
             int usedFromCode = Math.Min(code.Length - programCounter, length);
             if (usedFromCode == Size)
             {
                 ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.Push16Bytes(ref Add(ref bytes, programCounter));
+                stack.Push16Bytes<TTracingInst>(ref Add(ref bytes, programCounter));
             }
             else
             {
-                stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+                stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
             }
         }
     }
@@ -356,18 +364,19 @@ internal static partial class EvmInstructions
         /// Push operation for 20 bytes (commonly used for addresses).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+            where TTracingInst : struct, IFlag
         {
             int usedFromCode = Math.Min(code.Length - programCounter, length);
             if (usedFromCode == Size)
             {
                 // Optimized push for address size data.
                 ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.Push20Bytes(ref Add(ref bytes, programCounter));
+                stack.Push20Bytes<TTracingInst>(ref Add(ref bytes, programCounter));
             }
             else
             {
-                stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+                stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
             }
         }
     }
@@ -451,17 +460,18 @@ internal static partial class EvmInstructions
         /// Push operation for 32 bytes.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+            where TTracingInst : struct, IFlag
         {
             int usedFromCode = Math.Min(code.Length - programCounter, length);
             if (usedFromCode == Size)
             {
                 // Leverage reinterpretation of bytes as a 256-bit vector.
-                stack.Push32Bytes(in As<byte, Word>(ref Add(ref MemoryMarshal.GetReference(code), programCounter)));
+                stack.Push32Bytes<TTracingInst>(in As<byte, Word>(ref Add(ref MemoryMarshal.GetReference(code), programCounter)));
             }
             else
             {
-                stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+                stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
             }
         }
     }
@@ -475,10 +485,11 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPush0(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPush0<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.Base;
-        stack.PushZero();
+        stack.PushZero<TTracingInst>();
         return EvmExceptionType.None;
     }
 
@@ -493,15 +504,16 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter, which will be advanced.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPush<TOpCount>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPush<TOpCount, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCount : IOpCount
+        where TTracingInst : struct, IFlag
     {
         // Deduct a very low gas cost for the push operation.
         gasAvailable -= GasCostOf.VeryLow;
         // Retrieve the code segment containing immediate data.
-        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSection.Span;
+        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSpan;
         // Use the push method defined by the specific push operation.
-        TOpCount.Push(TOpCount.Count, ref stack, programCounter, code);
+        TOpCount.Push<TTracingInst>(TOpCount.Count, ref stack, programCounter, code);
         // Advance the program counter by the number of bytes consumed.
         programCounter += TOpCount.Count;
         return EvmExceptionType.None;
@@ -517,16 +529,13 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success or <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDup<TOpCount>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDup<TOpCount, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCount : IOpCount
+        where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
-        // Duplicate the nth element from the top; if it fails, signal a stack underflow.
-        if (!stack.Dup(TOpCount.Count)) goto StackUnderflow;
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+
+        return stack.Dup<TTracingInst>(TOpCount.Count);
     }
 
     /// <summary>
@@ -539,16 +548,13 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success or <see cref="EvmExceptionType.StackUnderflow"/> if insufficient elements.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSwap<TOpCount>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSwap<TOpCount, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCount : IOpCount
+        where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
         // Swap the top element with the (n+1)th element; ensure adequate stack depth.
-        if (!stack.Swap(TOpCount.Count + 1)) goto StackUnderflow;
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return stack.Swap<TTracingInst>(TOpCount.Count + 1);
     }
 
     /// <summary>
@@ -580,9 +586,9 @@ internal static partial class EvmInstructions
         long topicsCount = TOpCount.Count;
 
         // Ensure that the memory expansion for the log data is accounted for.
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) goto OutOfGas;
+        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) goto OutOfGas;
         // Deduct gas for the log entry itself, including per-topic and per-byte data costs.
-        if (!UpdateGas(
+        if (!EvmCalculations.UpdateGas(
                 GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
                 (long)length * GasCostOf.LogData, ref gasAvailable)) goto OutOfGas;
 

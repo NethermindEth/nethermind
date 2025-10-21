@@ -245,52 +245,6 @@ namespace Nethermind.Network.P2P
             }
         }
 
-        public void ReceiveMessage(Packet packet)
-        {
-            Interlocked.Add(ref Metrics.P2PBytesReceived, packet.Data.Length);
-
-            lock (_sessionStateLock)
-            {
-                if (State < SessionState.Initialized)
-                {
-                    throw new InvalidOperationException($"{nameof(ReceiveMessage)} called on {this}");
-                }
-
-                if (IsClosing)
-                {
-                    return;
-                }
-            }
-
-            int dynamicMessageCode = packet.PacketType;
-            (string protocol, int messageId) = _resolver.ResolveProtocol(packet.PacketType);
-            packet.Protocol = protocol;
-
-            MsgReceived?.Invoke(this, new PeerEventArgs(_node, packet.Protocol, packet.PacketType, packet.Data.Length));
-
-            RecordIncomingMessageMetric(protocol, messageId, packet.Data.Length);
-
-            if (_logger.IsTrace)
-                _logger.Trace($"{this} received a message of length {packet.Data.Length} " +
-                              $"({dynamicMessageCode} => {protocol}.{messageId})");
-
-            if (protocol is null)
-            {
-                if (_logger.IsTrace)
-                    _logger.Warn($"Received a message from node: {RemoteNodeId}, ({dynamicMessageCode} => {messageId}), " +
-                                 $"known protocols ({_protocols.Count}): " +
-                                 $"{string.Join(", ", _protocols.Select(static x => $"{x.Value.Name} {x.Value.MessageIdSpaceSize}"))}");
-                return;
-            }
-
-            packet.PacketType = messageId;
-
-            if (State < SessionState.DisconnectingProtocols)
-            {
-                _protocols[protocol].HandleMessage(packet);
-            }
-        }
-
         public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler)
         {
             return _protocols.TryGetValue(protocolCode, out handler);
@@ -410,7 +364,17 @@ namespace Nethermind.Network.P2P
                 State = SessionState.DisconnectingProtocols;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"{this} initiating disconnect because {disconnectReason}, details: {details}");
+            if (_logger.IsDebug)
+            {
+                if (disconnectReason is DisconnectReason.InvalidNetworkId)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"{this} initiating disconnect because {disconnectReason}, details: {details}");
+                }
+                else
+                {
+                    _logger.Debug($"{this} initiating disconnect because {disconnectReason}, details: {details}");
+                }
+            }
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
             if (!_protocols.IsEmpty)
             {
@@ -572,28 +536,29 @@ namespace Nethermind.Network.P2P
 
         public void AddProtocolHandler(IProtocolHandler handler)
         {
-            if (_protocols.ContainsKey(handler.ProtocolCode))
-            {
-                throw new InvalidOperationException($"{this} already has {handler.ProtocolCode} started");
-            }
-
             if (handler.ProtocolCode != Protocol.P2P && !_protocols.ContainsKey(Protocol.P2P))
             {
                 throw new InvalidOperationException(
                     $"{Protocol.P2P} handler has to be started before starting {handler.ProtocolCode} handler on {this}");
             }
 
-            _protocols.TryAdd(handler.ProtocolCode, handler);
+            if (!_protocols.TryAdd(handler.ProtocolCode, handler))
+            {
+                throw new InvalidOperationException($"{this} already has {handler.ProtocolCode} started");
+            }
+
             _resolver = GetOrCreateResolver();
         }
 
         private AdaptiveCodeResolver GetOrCreateResolver()
         {
-            string key = string.Join(":", _protocols.Select(static p => p.Key).OrderBy(static x => x).ToArray());
-            if (!_resolvers.TryGetValue(key, out AdaptiveCodeResolver? value))
+            string key = string.Join(":", _protocols.Select(static p => p.Value.Name).OrderBy(static x => x));
+            if (!_resolvers.TryGetValue(key, out AdaptiveCodeResolver value))
             {
-                value = new AdaptiveCodeResolver(_protocols);
-                _resolvers[key] = value;
+                value = _resolvers.AddOrUpdate(
+                    key,
+                    addValueFactory: (k) => new AdaptiveCodeResolver(_protocols),
+                    updateValueFactory: (k, v) => v);
             }
 
             return value;
@@ -660,7 +625,10 @@ namespace Nethermind.Network.P2P
                     offset += _alphabetically[j].SpaceSize;
                 }
 
-                throw new InvalidOperationException($"Registered protocols do not support {protocol}.{messageCode}");
+                throw new InvalidOperationException(
+                    $"Registered protocols do not support {protocol} with message code {messageCode}. " +
+                    $"Registered: {string.Join(";", _alphabetically)}."
+                );
             }
         }
 

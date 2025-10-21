@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Specs;
 using Nethermind.Core;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 using Int256;
@@ -25,12 +25,13 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionProgramCounter(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionProgramCounter<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         // Deduct the base gas cost for reading the program counter.
         gasAvailable -= GasCostOf.Base;
         // The program counter pushed is adjusted by -1 to reflect the correct opcode location.
-        stack.PushUInt32((uint)(programCounter - 1));
+        stack.PushUInt32<TTracingInst>((uint)(programCounter - 1));
 
         return EvmExceptionType.None;
     }
@@ -171,7 +172,7 @@ internal static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
-        if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
+        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
         {
             goto OutOfGas;
         }
@@ -218,7 +219,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Charge gas for account access; if insufficient, signal out-of-gas.
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, inheritor, chargeForWarm: false))
+        if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, inheritor, chargeForWarm: false))
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
@@ -235,7 +236,7 @@ internal static partial class EvmInstructions
         // For certain specs, charge gas if transferring to a dead account.
         if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor))
         {
-            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
+            if (!EvmCalculations.UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
                 goto OutOfGas;
         }
 
@@ -243,7 +244,7 @@ internal static partial class EvmInstructions
         bool inheritorAccountExists = state.AccountExists(inheritor);
         if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
         {
-            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
+            if (!EvmCalculations.UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
                 goto OutOfGas;
         }
 

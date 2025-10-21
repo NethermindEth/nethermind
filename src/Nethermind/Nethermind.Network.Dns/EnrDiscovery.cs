@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Dns;
@@ -33,7 +34,7 @@ public class EnrDiscovery : INodeSource
     {
         if (string.IsNullOrWhiteSpace(_domain)) yield break;
 
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
+        IByteBuffer buffer = NethermindBuffers.Default.Buffer();
         await using ConfiguredCancelableAsyncEnumerable<string>.Enumerator enumerator = _crawler.SearchTree(_domain)
             .WithCancellation(cancellationToken)
             .GetAsyncEnumerator();

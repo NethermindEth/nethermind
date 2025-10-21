@@ -107,7 +107,6 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max length of HTTP request body, in bytes.", DefaultValue = "30000000")]
     long? MaxRequestBodySize { get; set; }
 
-
     [ConfigItem(
         Description = "The max number of logs per response for the `eth_getLogs` JSON-RPC method. `0` to lift the limit.",
         DefaultValue = "20000")]
@@ -182,4 +181,15 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "false")]
     bool EnablePerMethodMetrics { get; set; }
+
+    [ConfigItem(Description = "The eth_filters timeout, in milliseconds.", DefaultValue = "900000")]
+    int FiltersTimeout { get; set; }
+
+    [ConfigItem(Description = "Preload rpc modules. Useful in rpc provider to reduce latency on first request.", DefaultValue = "false")]
+    bool PreloadRpcModules { get; set; }
+
+    [ConfigItem(
+        Description = "Enable strict parsing rules for Block Params and Hashas in RPC requests. this will decrease compatibility but increase compliance with the spec.",
+        DefaultValue = "true")]
+    bool StrictHexFormat { get; set; }
 }

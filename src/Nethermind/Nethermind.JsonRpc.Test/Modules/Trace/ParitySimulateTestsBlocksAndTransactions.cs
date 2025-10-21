@@ -5,11 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
@@ -21,9 +20,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public class TraceSimulateTestsBlocksAndTransactions
 {
-
     [Test]
-    public async Task Test_trace_simulate_serialisation()
+    public async Task Test_trace_simulate_serialization()
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
@@ -37,19 +35,17 @@ public class TraceSimulateTestsBlocksAndTransactions
         SimulateTxExecutor<ParityLikeTxTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new ParityStyleSimulateBlockTracerFactory(ParityTraceTypes.Trace));
         ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>> data = result.Data;
-        Assert.That(data.Count, Is.EqualTo(7));
+        Assert.That(data, Has.Count.EqualTo(7));
 
         SimulateBlockResult<ParityLikeTxTrace> blockResult = data.Last();
-        blockResult.Traces.Select(static c => c.BlockNumber).Should().NotBeNullOrEmpty();
+        Assert.That(blockResult.Traces.Select(static c => c.BlockNumber), Is.Not.Null.Or.Empty);
     }
 
-
-    /// <summary>
-    ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
-    ///     We test on blocks before current head and after it,
-    ///     Note that if we get blocks before head we set simulation start state to one of that first block
-    /// </summary>
-    [Test]
+    [Test(Description = """
+        Verifies that a temporary forked blockchain can make transactions, blocks and report on them.
+        We test on blocks before current head and after it.
+        Note that if we get blocks before head, we set simulation start state to one of that first block.
+        """)]
     public async Task Test_trace_simulate_eth_moved()
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
@@ -77,18 +73,15 @@ public class TraceSimulateTestsBlocksAndTransactions
             executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>> data = result.Data;
 
-        Assert.That(data.Count, Is.EqualTo(9));
+        Assert.That(data, Has.Count.EqualTo(9));
 
         SimulateBlockResult<ParityLikeTxTrace> blockResult = data[0];
         Assert.That(blockResult.Traces.Count, Is.EqualTo(2));
         blockResult = data.Last();
-        Assert.That(blockResult.Traces.Count, Is.EqualTo(2));
+        Assert.That(blockResult.Traces, Has.Count.EqualTo(2));
     }
 
-    /// <summary>
-    ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
-    /// </summary>
-    [Test]
+    [Test(Description = "Verifies that a temporary forked blockchain can make transactions, blocks and report on them")]
     public async Task Test_trace_simulate_transactions_forced_fail()
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
@@ -117,7 +110,7 @@ public class TraceSimulateTestsBlocksAndTransactions
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        Assert.That(result.Result!.Error!.Contains("higher than sender balance"), Is.True);
+        Assert.That(result.Result!.Error!, Does.Contain("insufficient sender balance"));
     }
 
     [Test]
@@ -127,7 +120,7 @@ public class TraceSimulateTestsBlocksAndTransactions
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
         var result = chain.TraceRpcModule.trace_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Data.First().Traces.First().BlockHash == new Core.Crypto.Hash256("0xd06efac18df9be2d16fb3b7c02d944da96bdae90881cb822ee7896abc88bc019"));
+        Assert.That(result.Data.First().Traces.First().BlockHash, Is.EqualTo(new Core.Crypto.Hash256("0x45635998c509d5571fcc391772c5af77f3f202b70ea9fafb48ea8eb475288b59")));
     }
 
     [Test]
@@ -136,18 +129,18 @@ public class TraceSimulateTestsBlocksAndTransactions
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         JsonRpcResponse response = await RpcTest.TestRequest(chain.TraceRpcModule, "trace_simulateV1", payload!, "latest");
-        response.Should().BeOfType<JsonRpcSuccessResponse>();
+        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
         JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
         IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>> data = (IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>)successResponse.Result!;
-        Assert.That(data.First().Traces.First().BlockHash == new Core.Crypto.Hash256("0xd06efac18df9be2d16fb3b7c02d944da96bdae90881cb822ee7896abc88bc019"));
+        Assert.That(data.First().Traces.First().BlockHash, Is.EqualTo(new Core.Crypto.Hash256("0x45635998c509d5571fcc391772c5af77f3f202b70ea9fafb48ea8eb475288b59")));
     }
 
     [Test]
-    public async Task TestSerializationTraceSimulate_enusre_have_traces_no_Calls()
+    public async Task TestSerializationTraceSimulate_ensure_have_traces_no_Calls()
     {
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         string serialized = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, "trace_simulateV1", payload!, "latest");
-        serialized.Should().Contain("\"traces\":");
+        Assert.That(serialized, Does.Contain("\"traces\":"));
     }
 }

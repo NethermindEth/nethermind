@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -18,8 +20,41 @@ namespace Nethermind.Core.Test.Modules;
 /// component later anyway.
 /// </summary>
 /// <param name="configProvider"></param>
-public class TestNethermindModule(IConfigProvider configProvider) : Module
+public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chainSpec, bool useTestSpecProvider = true) : Module
 {
+    private readonly IReleaseSpec? _releaseSpec;
+
+    public TestNethermindModule(IReleaseSpec? releaseSpec = null) : this(new ConfigProvider())
+    {
+        _releaseSpec = releaseSpec;
+    }
+
+    public TestNethermindModule(params IConfig[] configs) : this(new ConfigProvider(configs))
+    {
+    }
+
+    public TestNethermindModule(IConfigProvider configProvider) : this(configProvider, new ChainSpec()
+    {
+        Parameters = new ChainParameters(),
+        Allocations = new Dictionary<Address, ChainSpecAllocation>(),
+        Genesis = Build.A.Block
+            .WithBlobGasUsed(0) // Non null post 4844
+            .TestObject
+    })
+    {
+    }
+
+    public TestNethermindModule(ChainSpec chainSpec) : this(new ConfigProvider(), chainSpec)
+    {
+    }
+
+    public static TestNethermindModule CreateWithRealChainSpec()
+    {
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
+        return new TestNethermindModule(new ConfigProvider(), spec, useTestSpecProvider: false);
+    }
+
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
@@ -27,8 +62,10 @@ public class TestNethermindModule(IConfigProvider configProvider) : Module
         LongDisposeTracker.Configure(builder);
 
         builder
-            .AddModule(new PseudoNethermindModule(new ChainSpec(), configProvider, LimboLogs.Instance))
-            .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
-            .AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance));
+            .AddModule(new PseudoNethermindModule(chainSpec, configProvider, LimboLogs.Instance))
+            .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()));
+
+        if (useTestSpecProvider)
+            builder.AddSingleton<ISpecProvider>(_ => new TestSpecProvider(_releaseSpec ?? Osaka.Instance));
     }
 }

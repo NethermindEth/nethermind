@@ -6,6 +6,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -37,7 +38,7 @@ public class SnapServerTest
     {
         MemDb stateDbServer = new();
         MemDb codeDbServer = new();
-        TrieStore store = new(stateDbServer, LimboLogs.Instance);
+        TestRawTrieStore store = new TestRawTrieStore(stateDbServer);
         StateTree tree = new(store, LimboLogs.Instance);
         SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance, lastNStateRootTracker);
 
@@ -262,18 +263,17 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        TrieStore store = new(stateDb, LimboLogs.Instance);
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
 
         (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store);
 
         SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
-        IDbProvider dbProviderClient = new DbProvider();
-        dbProviderClient.RegisterDb(DbNames.State, new MemDb());
-        dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
+        IDb codeDb2 = new MemDb();
+        IDb stateDb2 = new MemDb();
 
-        using ProgressTracker progressTracker = new(dbProviderClient.StateDb, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
+        using ProgressTracker progressTracker = new(stateDb2, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, codeDb2, new NodeStorage(stateDb2), LimboLogs.Instance);
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
             server.GetStorageRanges(inputStateTree.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
@@ -298,22 +298,47 @@ public class SnapServerTest
     }
 
     [Test]
+    public void TestGetStorageRange_NoSlotsForAccount()
+    {
+        MemDb stateDb = new MemDb();
+        MemDb codeDb = new MemDb();
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
+
+        (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store);
+
+        SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
+
+        ValueHash256 lastStorageHash = TestItem.Tree.SlotsWithPaths[^1].Path;
+        var asInt = lastStorageHash.ToUInt256();
+        ValueHash256 beyondLast = new ValueHash256((++asInt).ToBigEndian());
+
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
+            server.GetStorageRanges(inputStateTree.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
+                beyondLast, ValueKeccak.MaxValue, 10, CancellationToken.None);
+
+        storageSlots.Count.Should().Be(0);
+        proofs?.Count.Should().BeGreaterThan(0); //in worst case should get at least root node
+
+        storageSlots.DisposeRecursive();
+        proofs?.Dispose();
+    }
+
+    [Test]
     public void TestGetStorageRangeMulti()
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        TrieStore store = new(stateDb, LimboLogs.Instance);
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
 
         (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store, 10000);
 
         SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
-        IDbProvider dbProviderClient = new DbProvider();
-        dbProviderClient.RegisterDb(DbNames.State, new MemDb());
-        dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
+        IDb stateDb2 = new MemDb();
+        IDb codeDb2 = new MemDb();
 
-        using ProgressTracker progressTracker = new(dbProviderClient.StateDb, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
+        using ProgressTracker progressTracker = new(stateDb2, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, codeDb2, new NodeStorage(stateDb2), LimboLogs.Instance);
 
         Hash256 startRange = Keccak.Zero;
         while (true)
@@ -352,7 +377,7 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        TrieStore store = new(stateDb, LimboLogs.Instance);
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
 
         StateTree stateTree = new(store, LimboLogs.Instance);
 
@@ -461,7 +486,7 @@ public class SnapServerTest
     private IStateReader CreateConstantStateRootTracker(bool available)
     {
         IStateReader tracker = Substitute.For<IStateReader>();
-        tracker.HasStateForRoot(Arg.Any<Hash256>()).Returns(available);
+        tracker.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(available);
         return tracker;
     }
 }

@@ -3,10 +3,11 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Reflection;
+using System.Collections.Generic;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
@@ -14,12 +15,30 @@ namespace Nethermind.Network
     {
         private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _zeroSerializers = new ConcurrentDictionary<RuntimeTypeHandle, object>();
 
+        public MessageSerializationService(params IReadOnlyList<SerializerInfo> serializers)
+        {
+            Type openGeneric = typeof(IZeroMessageSerializer<>);
+
+            foreach ((Type MessageType, object Serializer) in serializers)
+            {
+                Type expectedInterface = openGeneric.MakeGenericType(MessageType);
+
+                if (!expectedInterface.IsAssignableFrom(Serializer.GetType()))
+                {
+                    throw new ArgumentException(
+                        $"Serializer of type {Serializer.GetType().Name} must implement {expectedInterface.Name}.");
+                }
+
+                _zeroSerializers.TryAdd(MessageType.TypeHandle, Serializer);
+            }
+        }
+
         public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase
         {
             if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
                 throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
 
-            IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(bytes.Count);
+            IByteBuffer byteBuffer = NethermindBuffers.Default.Buffer(bytes.Count);
             byteBuffer.WriteBytes(bytes.Array, bytes.Offset, bytes.Count);
             try
             {
@@ -40,45 +59,7 @@ namespace Nethermind.Network
             return zeroMessageSerializer.Deserialize(buffer);
         }
 
-        public void Register(Assembly assembly)
-        {
-            foreach (Type type in assembly.GetExportedTypes())
-            {
-                if (!type.IsClass)
-                {
-                    continue;
-                }
-
-                Type[] implementedInterfaces = type.GetInterfaces();
-                foreach (Type implementedInterface in implementedInterfaces)
-                {
-                    if (!implementedInterface.IsGenericType)
-                    {
-                        continue;
-                    }
-
-                    Type interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
-
-                    if (interfaceGenericDefinition == typeof(IZeroMessageSerializer<>).GetGenericTypeDefinition())
-                    {
-                        ConstructorInfo constructor = type.GetConstructor(Type.EmptyTypes);
-                        if (constructor is null)
-                        {
-                            continue;
-                        }
-
-                        _zeroSerializers[implementedInterface.GenericTypeArguments[0].TypeHandle] = Activator.CreateInstance(type);
-                    }
-                }
-            }
-        }
-
-        public void Register<T>(IZeroMessageSerializer<T> messageSerializer) where T : MessageBase
-        {
-            _zeroSerializers[typeof(T).TypeHandle] = messageSerializer;
-        }
-
-        public IByteBuffer ZeroSerialize<T>(T message, AbstractByteBufferAllocator? allocator = null) where T : MessageBase
+        public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase
         {
             if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
                 throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
@@ -96,7 +77,7 @@ namespace Nethermind.Network
                 ? zeroInnerMessageSerializer.GetLength(message, out _) + p2pMessageLength
                 : 64;
 
-            allocator ??= PooledByteBufferAllocator.Default;
+            allocator ??= NethermindBuffers.Default;
             IByteBuffer byteBuffer = allocator.Buffer(length);
 
             try
@@ -130,5 +111,10 @@ namespace Nethermind.Network
             throw new InvalidOperationException($"Zero serializer for {nameof(T)} (registered: {serializerObject?.GetType().Name}) does not implement required interfaces");
         }
 
+    }
+
+    public record SerializerInfo(Type MessageType, object Serializer)
+    {
+        public static SerializerInfo Create<T>(IZeroMessageSerializer<T> messageSerializer) where T : MessageBase => new SerializerInfo(typeof(T), messageSerializer);
     }
 }

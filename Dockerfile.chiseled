@@ -1,19 +1,26 @@
 # SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0-noble AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0.306-noble@sha256:d88e637d15248531967111fba05c6725ad45ea1dace3d35d8cfe2c4d4094e25d AS build
 
 ARG BUILD_CONFIG=release
-ARG BUILD_TIMESTAMP
-ARG CI
+ARG CI=true
 ARG COMMIT_HASH
+ARG SOURCE_DATE_EPOCH
 ARG TARGETARCH
 
+WORKDIR /nethermind
+
 COPY src/Nethermind src/Nethermind
+COPY Directory.*.props .
+COPY nuget.config .
+COPY global.json .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-    dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \
-      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
+  cd src/Nethermind/Nethermind.Runner && \
+  dotnet restore --locked-mode && \
+  dotnet publish -c $BUILD_CONFIG -a $arch -o /publish --no-restore --no-self-contained \
+    -p:SourceRevisionId=$COMMIT_HASH
 
 # Creating these directories here is needed to ensure the correct permissions
 RUN cd /publish && \
@@ -21,7 +28,7 @@ RUN cd /publish && \
   mkdir logs && \
   mkdir nethermind_db
 
-FROM mcr.microsoft.com/dotnet/aspnet:9.0-noble-chiseled
+FROM mcr.microsoft.com/dotnet/aspnet:9.0.10-noble-chiseled@sha256:4df4493cf27cedbfdbed5333bab1651792f7fc105d4c6c4469b3adc039ed5d64
 
 WORKDIR /nethermind
 

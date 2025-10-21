@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.Clique
             (int contentLength, int signersLength, int votesLength, int tallyLength) =
                 GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
-            stream.Encode((UInt256)item.Number);
+            stream.Encode(item.Number);
             stream.Encode(item.Hash);
             EncodeSigners(stream, item.Signers, signersLength);
             EncodeVotes(stream, item.Votes, votesLength);
@@ -68,8 +68,9 @@ namespace Nethermind.Consensus.Clique
         private static SortedList<Address, long> DecodeSigners(RlpStream rlpStream)
         {
             rlpStream.ReadSequenceLength();
-            SortedList<Address, long> signers = new SortedList<Address, long>(AddressComparer.Instance);
             int length = rlpStream.DecodeInt();
+            rlpStream.GuardLimit(length);
+            SortedList<Address, long> signers = new(AddressComparer.Instance);
             for (int i = 0; i < length; i++)
             {
                 Address signer = rlpStream.DecodeAddress();
@@ -83,8 +84,9 @@ namespace Nethermind.Consensus.Clique
         private static List<Vote> DecodeVotes(RlpStream rlpStream)
         {
             rlpStream.ReadSequenceLength();
-            List<Vote> votes = new List<Vote>();
             int length = rlpStream.DecodeInt();
+            rlpStream.GuardLimit(length);
+            List<Vote> votes = new(length);
             for (int i = 0; i < length; i++)
             {
                 Address signer = rlpStream.DecodeAddress();
@@ -100,8 +102,9 @@ namespace Nethermind.Consensus.Clique
         private static Dictionary<Address, Tally> DecodeTally(RlpStream rlpStream)
         {
             rlpStream.ReadSequenceLength();
-            Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
             int length = rlpStream.DecodeInt();
+            rlpStream.GuardLimit(length);
+            Dictionary<Address, Tally> tally = new(length);
             for (int i = 0; i < length; i++)
             {
                 Address address = rlpStream.DecodeAddress();
@@ -137,7 +140,7 @@ namespace Nethermind.Consensus.Clique
             foreach ((Address address, long signedAt) in signers)
             {
                 stream.Encode(address);
-                stream.Encode((UInt256)signedAt);
+                stream.Encode(signedAt);
                 i += 2;
             }
         }
@@ -167,7 +170,7 @@ namespace Nethermind.Consensus.Clique
             for (int i = 0; i < voteCount; i++)
             {
                 stream.Encode(votes[i].Signer);
-                stream.Encode((UInt256)votes[i].Block);
+                stream.Encode(votes[i].Block);
                 stream.Encode(votes[i].Address);
                 stream.Encode(votes[i].Authorize);
             }

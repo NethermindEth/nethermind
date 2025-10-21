@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp;
@@ -41,11 +40,44 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
         b.Withdrawals is not null ? GetWithdrawalsLength(b.Withdrawals) : null
     );
 
-    private int GetTxLength(Transaction[] transactions) => transactions.Sum(t => _txDecoder.GetLength(t, RlpBehaviors.None));
+    private int GetTxLength(Transaction[] transactions)
+    {
+        if (transactions.Length == 0) return 0;
 
-    private int GetUnclesLength(BlockHeader[] headers) => headers.Sum(t => _headerDecoder.GetLength(t, RlpBehaviors.None));
+        int sum = 0;
+        foreach (Transaction tx in transactions)
+        {
+            sum += _txDecoder.GetLength(tx, RlpBehaviors.None);
+        }
 
-    private int GetWithdrawalsLength(Withdrawal[] withdrawals) => withdrawals.Sum(t => _withdrawalDecoderDecoder.GetLength(t, RlpBehaviors.None));
+        return sum;
+    }
+
+    private int GetUnclesLength(BlockHeader[] headers)
+    {
+        if (headers.Length == 0) return 0;
+
+        int sum = 0;
+        foreach (BlockHeader header in headers)
+        {
+            sum += _headerDecoder.GetLength(header, RlpBehaviors.None);
+        }
+
+        return sum;
+    }
+
+    private int GetWithdrawalsLength(Withdrawal[] withdrawals)
+    {
+        if (withdrawals.Length == 0) return 0;
+
+        int sum = 0;
+        foreach (Withdrawal withdrawal in withdrawals)
+        {
+            sum += _withdrawalDecoderDecoder.GetLength(withdrawal, RlpBehaviors.None);
+        }
+
+        return sum;
+    }
 
     public BlockBody? Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -61,9 +93,6 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
 
     public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
     {
-
-        // quite significant allocations (>0.5%) here based on a sample 3M blocks sync
-        // (just on these delegates)
         Transaction[] transactions = ctx.DecodeArray(_txDecoder);
         BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
         Withdrawal[]? withdrawals = null;

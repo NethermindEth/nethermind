@@ -3,7 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm;
@@ -18,20 +18,21 @@ internal static partial class EvmInstructions
     /// and pushes the resulting 256-bit hash onto the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionKeccak256(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionKeccak256<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         // Ensure two 256-bit words are available (memory offset and length).
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b))
             goto StackUnderflow;
 
         // Deduct gas: base cost plus additional cost per 32-byte word.
-        gasAvailable -= GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in b, out bool outOfGas);
+        gasAvailable -= GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in b, out bool outOfGas);
         if (outOfGas)
             goto OutOfGas;
 
         EvmState vmState = vm.EvmState;
         // Charge gas for any required memory expansion.
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b))
+        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in a, b))
             goto OutOfGas;
 
         // Load the target memory region.
@@ -39,7 +40,7 @@ internal static partial class EvmInstructions
         // Compute the Keccak-256 hash.
         KeccakCache.ComputeTo(bytes, out ValueHash256 keccak);
         // Push the 256-bit hash result onto the stack.
-        stack.Push32Bytes(in Unsafe.As<ValueHash256, Vector256<byte>>(ref keccak));
+        stack.Push32Bytes<TTracingInst>(in keccak);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

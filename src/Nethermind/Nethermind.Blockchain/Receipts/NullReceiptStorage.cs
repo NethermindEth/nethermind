@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -21,6 +22,7 @@ namespace Nethermind.Blockchain.Receipts
         {
         }
 
+        public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null) { }
         public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber = null) { }
 
         public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = false) => [];
@@ -41,6 +43,10 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         public void EnsureCanonical(Block block)
+        {
+        }
+
+        public void RemoveReceipts(Block block)
         {
         }
     }

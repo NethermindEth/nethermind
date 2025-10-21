@@ -264,13 +264,49 @@ namespace Nethermind.Core.Test
 
             for (int i = 0; i < 3; i++)
             {
-                Memory<byte>? slice = context.DecodeByteArrayMemory();
+                Memory<byte> slice = context.DecodeByteArrayMemory();
                 slice.Should().NotBeNull();
-                MemoryMarshal.TryGetArray(slice!.Value, out ArraySegment<byte> segment);
+                MemoryMarshal.TryGetArray(slice, out ArraySegment<byte> segment);
 
-                bool isACopy = (segment.Offset == 0 && segment.Count == slice.Value.Length);
+                bool isACopy = (segment.Offset == 0 && segment.Count == slice.Length);
                 isACopy.Should().NotBe(sliceValue);
             }
+        }
+
+        [TestCase(50)]
+        [TestCase(100)]
+        public void Over_limit_throws(int limit)
+        {
+            RlpStream stream = Prepare100BytesStream();
+            RlpLimit rlpLimit = new(limit);
+            if (limit < 100)
+            {
+                Assert.Throws<RlpLimitException>(() => stream.DecodeByteArray(rlpLimit));
+            }
+            else
+            {
+                Assert.DoesNotThrow(() => stream.DecodeByteArray(rlpLimit));
+            }
+        }
+
+        [Test]
+        public void Not_enough_bytes_throws()
+        {
+            RlpStream stream = Prepare100BytesStream();
+            stream.Data[1] = 101; // tamper with length, it is more than available bytes
+            Assert.Throws<RlpLimitException>(() => stream.DecodeByteArray());
+        }
+
+        private static RlpStream Prepare100BytesStream()
+        {
+            byte[] randomBytes = new byte[100];
+            Random.Shared.NextBytes(randomBytes);
+
+            int requiredLength = Rlp.LengthOf(randomBytes);
+            RlpStream stream = new(requiredLength);
+            stream.Encode(randomBytes);
+            stream.Reset();
+            return stream;
         }
     }
 }

@@ -7,12 +7,14 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Specs.Forks;
 using Nethermind.Logging;
+using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -180,26 +182,39 @@ public class StorageProviderTests
     [Test]
     public void Commit_trees_clear_caches_get_previous_root()
     {
-        Context ctx = new();
+        Context ctx = new(setInitialState: false);
         // block 1
+        Hash256 stateRoot;
         WorldState storageProvider = BuildStorageProvider(ctx);
-        storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-        storageProvider.Commit(Frontier.Instance);
-        storageProvider.Commit(Frontier.Instance);
-        storageProvider.CommitTree(0);
+        using (var _ = storageProvider.BeginScope(IWorldState.PreGenesis))
+        {
+            storageProvider.CreateAccount(ctx.Address1, 0);
+            storageProvider.CreateAccount(ctx.Address2, 0);
+            storageProvider.Commit(Frontier.Instance);
+            storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+            storageProvider.Commit(Frontier.Instance);
+            storageProvider.Commit(Frontier.Instance);
+            storageProvider.CommitTree(0);
+            stateRoot = ctx.StateProvider.StateRoot;
+        }
+        BlockHeader newBase = Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject;
 
         // block 2
-        Hash256 stateRoot = ctx.StateProvider.StateRoot;
-        storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-        storageProvider.Commit(Frontier.Instance);
+        using (var _ = storageProvider.BeginScope(newBase))
+        {
+            storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+            storageProvider.Commit(Frontier.Instance);
+            storageProvider.CommitTree(0);
+        }
 
-        // revert
-        storageProvider.Reset();
-        storageProvider.StateRoot = stateRoot;
+        using (var _ = storageProvider.BeginScope(newBase))
+        {
+            storageProvider.AccountExists(ctx.Address1).Should().BeTrue();
 
-        byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1)).ToArray();
+            byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1)).ToArray();
 
-        Assert.That(valueAfter, Is.EqualTo(_values[1]));
+            Assert.That(valueAfter, Is.EqualTo(_values[1]));
+        }
     }
 
     [Test]
@@ -399,9 +414,9 @@ public class StorageProviderTests
 
         snapshots.Should().Equal(
             Snapshot.Empty,
-            new Snapshot(Snapshot.EmptyPosition, new Snapshot.Storage(0, Snapshot.EmptyPosition)),
-            new Snapshot(Snapshot.EmptyPosition, new Snapshot.Storage(1, 0)),
-            new Snapshot(Snapshot.EmptyPosition, new Snapshot.Storage(1, 1))
+            new Snapshot(new Snapshot.Storage(0, Snapshot.EmptyPosition), Snapshot.EmptyPosition),
+            new Snapshot(new Snapshot.Storage(1, 0), Snapshot.EmptyPosition),
+            new Snapshot(new Snapshot.Storage(1, 1), Snapshot.EmptyPosition)
         );
 
         _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray());
@@ -426,6 +441,87 @@ public class StorageProviderTests
         provider.Get(nonAccessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
     }
 
+    [Test]
+    public void Selfdestruct_persist_between_commit()
+    {
+        PreBlockCaches preBlockCaches = new PreBlockCaches();
+        Context ctx = new(preBlockCaches);
+        StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
+        preBlockCaches.StorageCache[accessedStorageCell] = [1, 2, 3];
+
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo([1, 2, 3]);
+        provider.ClearStorage(TestItem.AddressA);
+        provider.Commit(Paris.Instance);
+        provider.Get(accessedStorageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+    }
+
+    [TestCase(2)]
+    [TestCase(1000)]
+    public void Set_empty_value_for_storage_cell_without_read_clears_data(int numItems)
+    {
+        IWorldState worldState = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+
+        using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
+        worldState.CreateAccount(TestItem.AddressA, 1);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(0);
+        Hash256 emptyHash = worldState.StateRoot;
+
+        for (int i = 0; i < numItems; i++)
+        {
+            UInt256 asUInt256 = (UInt256)(i + 1);
+            worldState.Set(new StorageCell(TestItem.AddressA, (UInt256)i), asUInt256.ToBigEndian());
+        }
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(1);
+
+        var fullHash = worldState.StateRoot;
+        fullHash.Should().NotBe(emptyHash);
+
+        for (int i = 0; i < numItems; i++)
+        {
+            worldState.Set(new StorageCell(TestItem.AddressA, (UInt256)i), [0]);
+        }
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(2);
+
+        var clearedHash = worldState.StateRoot;
+
+        clearedHash.Should().Be(emptyHash);
+    }
+
+    [Test]
+    public void Set_empty_value_for_storage_cell_with_read_clears_data()
+    {
+        IWorldState worldState = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+
+        using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
+        worldState.CreateAccount(TestItem.AddressA, 1);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(0);
+        Hash256 emptyHash = worldState.StateRoot;
+
+        worldState.Set(new StorageCell(TestItem.AddressA, 1), _values[11]);
+        worldState.Set(new StorageCell(TestItem.AddressA, 2), _values[12]);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(1);
+
+        var fullHash = worldState.StateRoot;
+        fullHash.Should().NotBe(emptyHash);
+
+        worldState.Get(new StorageCell(TestItem.AddressA, 1));
+        worldState.Get(new StorageCell(TestItem.AddressA, 2));
+        worldState.Set(new StorageCell(TestItem.AddressA, 1), [0]);
+        worldState.Set(new StorageCell(TestItem.AddressA, 2), [0]);
+        worldState.Commit(Prague.Instance);
+        worldState.CommitTree(2);
+
+        var clearedHash = worldState.StateRoot;
+
+        clearedHash.Should().Be(emptyHash);
+    }
+
     private class Context
     {
         public WorldState StateProvider { get; }
@@ -433,12 +529,16 @@ public class StorageProviderTests
         public readonly Address Address1 = new(Keccak.Compute("1"));
         public readonly Address Address2 = new(Keccak.Compute("2"));
 
-        public Context(PreBlockCaches preBlockCaches = null)
+        public Context(PreBlockCaches preBlockCaches = null, bool setInitialState = true)
         {
-            StateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
-            StateProvider.CreateAccount(Address1, 0);
-            StateProvider.CreateAccount(Address2, 0);
-            StateProvider.Commit(Frontier.Instance);
+            StateProvider = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
+            if (setInitialState)
+            {
+                StateProvider.BeginScope(IWorldState.PreGenesis);
+                StateProvider.CreateAccount(Address1, 0);
+                StateProvider.CreateAccount(Address2, 0);
+                StateProvider.Commit(Frontier.Instance);
+            }
         }
     }
 }

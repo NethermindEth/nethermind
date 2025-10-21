@@ -7,20 +7,13 @@ using System.Text.Json;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
-    public class SubscribeRpcModule : ISubscribeRpcModule
+    public class SubscribeRpcModule(ISubscriptionManager subscriptionManager) : ISubscribeRpcModule
     {
-        private readonly ISubscriptionManager _subscriptionManager;
-
-        public SubscribeRpcModule(ISubscriptionManager subscriptionManager)
-        {
-            _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
-        }
-
         public ResultWrapper<string> eth_subscribe(string subscriptionName, string? args = null)
         {
             try
             {
-                ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, args));
+                ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, args));
                 return successfulResult;
             }
             catch (KeyNotFoundException)
@@ -39,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         public ResultWrapper<bool> eth_unsubscribe(string subscriptionId)
         {
-            bool unsubscribed = _subscriptionManager.RemoveSubscription(Context.DuplexClient, subscriptionId);
+            bool unsubscribed = subscriptionManager.RemoveSubscription(Context.DuplexClient, subscriptionId);
             return unsubscribed
                 ? ResultWrapper<bool>.Success(true)
                 : ResultWrapper<bool>.Fail($"Failed to unsubscribe: {subscriptionId}.");

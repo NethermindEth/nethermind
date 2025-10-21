@@ -20,20 +20,20 @@ namespace Nethermind.Network.Discovery;
 public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
 {
     private readonly ILogger _logger;
-    private readonly IDiscoveryManager _discoveryManager;
+    private readonly IDiscoveryMsgListener _discoveryMsgListener;
     private readonly IChannel _channel;
     private readonly IMessageSerializationService _msgSerializationService;
     private readonly ITimestamper _timestamper;
 
     public NettyDiscoveryHandler(
-        IDiscoveryManager? discoveryManager,
+        IDiscoveryMsgListener? discoveryManager,
         IChannel? channel,
         IMessageSerializationService? msgSerializationService,
         ITimestamper? timestamper,
         ILogManager? logManager) : base(logManager)
     {
         _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
-        _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
+        _discoveryMsgListener = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
         _channel = channel ?? throw new ArgumentNullException(nameof(channel));
         _msgSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
@@ -74,7 +74,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         try
         {
             if (_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMsg}");
-            msgBuffer = Serialize(discoveryMsg, PooledByteBufferAllocator.Default);
+            msgBuffer = Serialize(discoveryMsg, _channel.Allocator);
         }
         catch (Exception e)
         {
@@ -177,7 +177,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
 
             // Explicitly run it on the default scheduler to prevent something down the line hanging netty task scheduler.
             Task.Factory.StartNew(
-                () => _discoveryManager.OnIncomingMsg(msg),
+                () => _discoveryMsgListener.OnIncomingMsg(msg),
                 CancellationToken.None,
                 TaskCreationOptions.RunContinuationsAsynchronously,
                 TaskScheduler.Default
@@ -203,7 +203,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         };
     }
 
-    private IByteBuffer Serialize(DiscoveryMsg msg, AbstractByteBufferAllocator? allocator)
+    private IByteBuffer Serialize(DiscoveryMsg msg, IByteBufferAllocator? allocator)
     {
         return msg.MsgType switch
         {

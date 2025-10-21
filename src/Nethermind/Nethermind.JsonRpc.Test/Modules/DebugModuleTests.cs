@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -17,7 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
@@ -38,6 +38,8 @@ public class DebugModuleTests
     private readonly IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
     private readonly ISpecProvider specProvider = Substitute.For<ISpecProvider>();
     private readonly IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+    private readonly IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+    private readonly IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
     private readonly MemDb _blocksDb = new();
 
     private DebugRpcModule CreateDebugRpcModule(IDebugBridge customDebugBridge)
@@ -47,9 +49,9 @@ public class DebugModuleTests
             customDebugBridge,
             jsonRpcConfig,
             specProvider,
-            Substitute.For<IBlockchainBridge>(),
-            new BlocksConfig().SecondsPerSlot,
-            Substitute.For<IBlockFinder>()
+            blockchainBridge,
+            new BlocksConfig(),
+            blockFinder
         );
     }
 
@@ -123,7 +125,7 @@ public class DebugModuleTests
         debugBridge.GetBlock(new BlockParameter((long)0)).Returns(blk);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", 0) as JsonRpcSuccessResponse;
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", "0x") as JsonRpcSuccessResponse;
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
 
@@ -150,7 +152,21 @@ public class DebugModuleTests
         localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(localDebugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", 1) as JsonRpcSuccessResponse;
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "0x1") as JsonRpcSuccessResponse;
+
+        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
+    }
+
+    [Test]
+    public async Task Get_rawblock_named()
+    {
+        BlockDecoder decoder = new();
+        IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
+        Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
+        localDebugBridge.GetBlockRlp(BlockParameter.Latest).Returns(rlp.Bytes);
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(localDebugBridge);
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "latest") as JsonRpcSuccessResponse;
 
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
@@ -172,7 +188,7 @@ public class DebugModuleTests
         debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
-        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", 1) as JsonRpcErrorResponse;
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "0x1") as JsonRpcErrorResponse;
 
         Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
     }
@@ -263,6 +279,10 @@ public class DebugModuleTests
         TransactionForRpc txForRpc = TransactionForRpc.FromTransaction(transaction);
 
         debugBridge.GetTransactionTrace(Arg.Any<Transaction>(), Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
+        blockFinder.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>()).ReturnsForAnyArgs(Build.A.BlockHeader.WithNumber(1).TestObject);
+        blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(Build.A.BlockHeader.WithNumber(1).TestObject);
+        blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
         ResultWrapper<GethLikeTxTrace> debugTraceCall = rpcModule.debug_traceCall(txForRpc, null, gtOptions);

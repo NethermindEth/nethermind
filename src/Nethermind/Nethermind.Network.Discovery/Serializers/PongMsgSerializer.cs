@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -11,7 +12,7 @@ namespace Nethermind.Network.Discovery.Serializers;
 
 public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<PongMsg>
 {
-    public PongMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : base(ecdsa, nodeKey, nodeIdResolver)
+    public PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : base(ecdsa, nodeKey, nodeIdResolver)
     {
     }
 
@@ -39,9 +40,9 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
 
     public PongMsg Deserialize(IByteBuffer msgBytes)
     {
-        (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
+        (PublicKey farPublicKey, _, IByteBuffer data) = PrepareForDeserialization(msgBytes);
 
-        NettyRlpStream rlp = new(Data);
+        NettyRlpStream rlp = new(data);
 
         rlp.ReadSequenceLength();
         rlp.ReadSequenceLength();
@@ -53,7 +54,7 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
         byte[] token = rlp.DecodeByteArray();
         long expirationTime = rlp.DecodeLong();
 
-        PongMsg msg = new(FarPublicKey, expirationTime, token);
+        PongMsg msg = new(farPublicKey, expirationTime, token);
         return msg;
     }
 

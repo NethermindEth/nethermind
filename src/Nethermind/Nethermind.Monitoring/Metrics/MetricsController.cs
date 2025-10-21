@@ -28,7 +28,7 @@ namespace Nethermind.Monitoring.Metrics
 {
     public partial class MetricsController : IMetricsController
     {
-        private readonly int _intervalSeconds;
+        private readonly int _intervalMilliseconds;
         private Timer _timer = null!;
         private static bool _staticLabelsInitialized = false;
 
@@ -188,7 +188,7 @@ namespace Nethermind.Monitoring.Metrics
             { nameof(ProductInfo.Version), ProductInfo.Version },
             { nameof(ProductInfo.Commit), ProductInfo.Commit },
             { nameof(ProductInfo.Runtime), ProductInfo.Runtime },
-            { nameof(ProductInfo.BuildTimestamp), ProductInfo.BuildTimestamp.ToUnixTimeSeconds().ToString() },
+            { nameof(ProductInfo.SourceDate), ProductInfo.SourceDate.ToUnixTimeSeconds().ToString() },
         };
 
         private static ObservableInstrument<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberInfo member, Func<double> observer)
@@ -276,7 +276,7 @@ namespace Nethermind.Monitoring.Metrics
 
             if (!memberType.IsEnumerable())
             {
-                Func<double> accessor = GetValueAccessor(memberInfo);
+                Func<double> accessor = memberInfo.GetValueAccessor<double>();
 
                 if (meter is not null)
                 {
@@ -322,18 +322,34 @@ namespace Nethermind.Monitoring.Metrics
                 Prometheus.Metrics.DefaultRegistry.SetStaticLabels(_commonStaticTags);
             }
 
-            _intervalSeconds = metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds;
+            _intervalMilliseconds = (metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds) * 1000 / 2;
             _useCounters = metricsConfig.CountersEnabled;
             _enableDetailedMetric = metricsConfig.EnableDetailedMetric;
         }
 
-        public void StartUpdating() => _timer = new Timer(UpdateAllMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));
+        public void StartUpdating() => _timer = new Timer(UpdateAllMetrics, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(_intervalMilliseconds));
 
         public void StopUpdating() => _timer?.Change(Timeout.Infinite, 0);
 
         private void UpdateAllMetrics(object? state) => UpdateAllMetrics();
 
+        private bool _isUpdating = false;
         public void UpdateAllMetrics()
+        {
+            if (!Interlocked.Exchange(ref _isUpdating, true))
+            {
+                try
+                {
+                    UpdateAllMetricsInner();
+                }
+                finally
+                {
+                    Volatile.Write(ref _isUpdating, false);
+                }
+            }
+        }
+
+        private void UpdateAllMetricsInner()
         {
             foreach (Action callback in _callbacks)
             {
@@ -360,8 +376,6 @@ namespace Nethermind.Monitoring.Metrics
                 metricUpdater.Update();
             }
         }
-
-        private static Func<double> GetValueAccessor(MemberInfo member) => () => Convert.ToDouble(member.GetValue<object>());
 
         private static string GetGaugeNameKey(params string[] par) => string.Join('.', par);
 

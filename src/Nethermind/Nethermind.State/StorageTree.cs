@@ -42,7 +42,7 @@ namespace Nethermind.State
         }
 
         public StorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager)
-            : base(trieStore, rootHash, false, true, logManager)
+            : base(trieStore, rootHash, true, logManager)
         {
             TrieType = TrieType.Storage;
         }
@@ -57,6 +57,39 @@ namespace Nethermind.State
             KeccakCache.ComputeTo(key, out ValueHash256 keyHash);
             // Which we can then directly assign to fast update the key
             Unsafe.As<byte, ValueHash256>(ref MemoryMarshal.GetReference(key)) = keyHash;
+        }
+
+        public static void ComputeKeyWithLookup(in UInt256 index, Span<byte> key)
+        {
+            if (index < LookupSize)
+            {
+                Lookup[index].CopyTo(key);
+            }
+
+            ComputeKey(index, key);
+        }
+
+        public static BulkSetEntry CreateBulkSetEntry(ValueHash256 key, byte[]? value)
+        {
+            byte[] encodedValue;
+            if (value.IsZero())
+            {
+                encodedValue = [];
+            }
+            else
+            {
+                Rlp rlpEncoded = Rlp.Encode(value);
+                if (rlpEncoded is null)
+                {
+                    encodedValue = [];
+                }
+                else
+                {
+                    encodedValue = rlpEncoded.Bytes;
+                }
+            }
+
+            return new BulkSetEntry(key, encodedValue);
         }
 
         [SkipLocalsInit]

@@ -12,6 +12,11 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Discv5;
+using Nethermind.Network.Discovery.Lifecycle;
+using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Dns;
 using Nethermind.Network.Enr;
 using Nethermind.Network.StaticNodes;
@@ -25,7 +30,6 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
     {
         builder
             // Enr discovery uses DNS to get some bootnodes.
-            // TODO: Node source to discovery 4 feeder.
             .AddSingleton<EnrDiscovery, IEthereumEcdsa, ILogManager>((ethereumEcdsa, logManager) =>
             {
                 // I do not use the key here -> API is broken - no sense to use the node signer here
@@ -39,28 +43,18 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .AddKeyedSingleton<INodeSource>(NodeSourceToDiscV4Feeder.SourceKey, ctx => ctx.Resolve<EnrDiscovery>())
 
             // Uses by RPC also.
-            .AddSingleton<IStaticNodesManager, ILogManager>((logManager) => new StaticNodesManager(initConfig.StaticNodesPath, logManager))
+            .AddSingleton<IStaticNodesManager, ILogManager>(logManager =>
+                new StaticNodesManager(initConfig.StaticNodesPath.GetApplicationResourcePath(initConfig.DataDir), logManager))
             // This load from file.
             .AddSingleton<NodesLoader>()
 
-            .AddSingleton<ITrustedNodesManager, ILogManager>((logManager) =>
-                new TrustedNodesManager(initConfig.TrustedNodesPath, logManager))
+            .AddSingleton<ITrustedNodesManager, ILogManager>(logManager =>
+                new TrustedNodesManager(initConfig.TrustedNodesPath.GetApplicationResourcePath(initConfig.DataDir), logManager))
 
             .Bind<INodeSource, IStaticNodesManager>()
 
             // Used by NodesLoader, and ProtocolsManager which add entry on sync peer connected
-            .AddKeyedSingleton<INetworkStorage>(INetworkStorage.PeerDb, (ctx) =>
-            {
-                ILogManager logManager = ctx.Resolve<ILogManager>();
-
-                // ToDo: PeersDB is registered outside dbProvider
-                string dbName = INetworkStorage.PeerDb;
-                IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
-                    ? new MemDb(dbName)
-                    : new SimpleFilePublicKeyDb(dbName, InitializeNetwork.PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
-                        logManager);
-                return new NetworkStorage(peersDb, logManager);
-            })
+            .AddNetworkStorage(DbNames.PeersDb, "peers")
             .Bind<INodeSource, NodesLoader>()
             .AddComposite<INodeSource, CompositeNodeSource>()
 
@@ -95,6 +89,19 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 networkConfig.Bootnodes = discoveryConfig.Bootnodes;
                 return networkConfig;
             })
+
+            // Serializers
+            // The `IPrivateKeyGenerator` here is not exactly a `generator`. It is used to pass the exact same
+            // private key to the discovery message serializer to sign the message.
+            .AddKeyedSingleton<IPrivateKeyGenerator>(IProtectedPrivateKey.NodeKey, ctx => new SameKeyGenerator(ctx.ResolveKeyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey).Unprotect()))
+            .AddSingleton<INodeIdResolver, NodeIdResolver>()
+            .AddMessageSerializer<PingMsg, PingMsgSerializer>()
+            .AddMessageSerializer<PongMsg, PongMsgSerializer>()
+            .AddMessageSerializer<FindNodeMsg, FindNodeMsgSerializer>()
+            .AddMessageSerializer<NeighborsMsg, NeighborsMsgSerializer>()
+            .AddMessageSerializer<EnrRequestMsg, EnrRequestMsgSerializer>()
+            .AddMessageSerializer<EnrResponseMsg, EnrResponseMsgSerializer>()
+
             ;
 
 
@@ -104,7 +111,26 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
         if (!initConfig.DiscoveryEnabled)
             builder.AddSingleton<IDiscoveryApp, NullDiscoveryApp>();
         else
-            builder.AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>();
+        {
+            builder
+                .AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>()
+                .AddSingleton<INodeRecordProvider, NodeRecordProvider>()
+
+                .AddNetworkStorage(DbNames.DiscoveryNodes, "discoveryNodes")
+                .AddSingleton<DiscoveryV5App>()
+
+                .AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>()
+                .AddSingleton<INodeTable, NodeTable>()
+                .AddSingleton<IEvictionManager, EvictionManager>()
+                .AddSingleton<INodeLifecycleManagerFactory, NodeLifecycleManagerFactory>()
+                .AddSingleton<IDiscoveryManager, DiscoveryManager>()
+                .AddSingleton<INodesLocator, NodesLocator>()
+                .AddSingleton<DiscoveryPersistenceManager>()
+                .AddSingleton<DiscoveryApp>()
+
+                ;
+        }
+
 
         if (!networkConfig.OnlyStaticPeers)
         {

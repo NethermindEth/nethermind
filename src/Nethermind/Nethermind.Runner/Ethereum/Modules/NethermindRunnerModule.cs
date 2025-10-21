@@ -7,14 +7,14 @@ using System.Linq;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Api.Steps;
 using Nethermind.Config;
-using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Core.Specs;
+using Nethermind.Grpc;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
+using Nethermind.JsonRpc.Converters;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -44,7 +44,7 @@ public class NethermindRunnerModule(
         IEnumerable<IConsensusPlugin> consensusPlugins = plugins.OfType<IConsensusPlugin>();
         if (consensusPlugins.Count() != 1)
         {
-            throw new NotSupportedException($"Thse should be exactly one consensus plugin are enabled. Seal engine type: {chainSpec.SealEngineType}. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
+            throw new NotSupportedException($"There should be exactly one consensus plugin enabled. Seal engine type: {chainSpec.SealEngineType}. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
         }
 
         IConsensusPlugin consensusPlugin = consensusPlugins.FirstOrDefault();
@@ -61,7 +61,7 @@ public class NethermindRunnerModule(
             .Bind<IApiWithStores, INethermindApi>()
             .Bind<IBasicApi, INethermindApi>()
 
-            .AddModule(new StartRpcStepsModule())
+            .AddModule(new StartRpcStepsModule(configProvider.GetConfig<IGrpcConfig>()))
             .AddModule(new NethermindInvariantChecks())
 
             .AddSingleton<EthereumRunner>()
@@ -73,23 +73,24 @@ public class NethermindRunnerModule(
             .AddSingleton<NethermindApi.Dependencies>()
             .Bind<INethermindApi, NethermindApi>()
 
+            .AddSingleton<IBlockPreprocessorStep, INethermindApi>((api) => api.BlockPreprocessor)
             .AddSingleton(jsonSerializer)
             .AddSingleton<IConsensusPlugin>(consensusPlugin)
             ;
 
         foreach (var plugin in plugins)
         {
-            foreach (var stepInfo in plugin.GetSteps())
-            {
-                builder.AddStep(stepInfo);
-            }
-
             if (plugin.Module is not null)
             {
                 builder.AddModule(plugin.Module);
             }
             builder.AddSingleton<INethermindPlugin>(plugin);
         }
+
+        builder.OnBuild((ctx) =>
+        {
+            EthereumJsonSerializer.AddConverter(new TxReceiptConverter());
+        });
 
     }
 }

@@ -27,9 +27,6 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "Whether to connect to newly discovered peers.", DefaultValue = "true")]
     bool PeerManagerEnabled { get; set; }
 
-    [ConfigItem(Description = "Whether to seal/mine new blocks.", DefaultValue = "false")]
-    bool IsMining { get; set; }
-
     [ConfigItem(Description = "The path to the chain spec file.", DefaultValue = "chainspec/foundation.json")]
     string ChainSpecPath { get; set; }
 
@@ -42,10 +39,10 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The hash of the genesis block. If not specified, the genesis block validity is not checked which is useful in the case of ad hoc test/private networks.", DefaultValue = "null")]
     string? GenesisHash { get; set; }
 
-    [ConfigItem(Description = "The path to the static nodes file.", DefaultValue = "Data/static-nodes.json")]
+    [ConfigItem(Description = "The path to the static nodes file.", DefaultValue = "static-nodes.json")]
     string StaticNodesPath { get; set; }
 
-    [ConfigItem(Description = "The path to the trusted nodes file.", DefaultValue = "Data/trusted-nodes.json")]
+    [ConfigItem(Description = "The path to the trusted nodes file.", DefaultValue = "trusted-nodes.json")]
     string TrustedNodesPath { get; set; }
 
     [ConfigItem(Description = "The name of the log file.", DefaultValue = "log.txt")]
@@ -56,12 +53,6 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = "The logs format as `LogPath:LogLevel;*`", DefaultValue = "null")]
     string? LogRules { get; set; }
-
-    [ConfigItem(Description = "Moved to ReceiptConfig.", DefaultValue = "true", HiddenFromDocs = true)]
-    bool StoreReceipts { get; set; }
-
-    [ConfigItem(Description = "Moved to ReceiptConfig.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool ReceiptsMigration { get; set; }
 
     [ConfigItem(Description = "The diagnostic mode.", DefaultValue = "None")]
     DiagnosticMode DiagnosticMode { get; set; }
@@ -78,6 +69,9 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored on disk.", DefaultValue = "100")]
     long? BadBlocksStored { get; set; }
 
+    [ConfigItem(Description = "The path to the Nethermind data directory. Defaults to Nethermind's current directory.", DefaultValue = "null", HiddenFromDocs = true)]
+    string? DataDir { get; set; }
+
     [ConfigItem(Description = "[TECHNICAL] Disable garbage collector on newPayload", DefaultValue = "true", HiddenFromDocs = true)]
     bool DisableGcOnNewPayload { get; set; }
 
@@ -90,11 +84,17 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     long? ExitOnBlockNumber { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "1", HiddenFromDocs = true)]
+    [ConfigItem(Description = "[TECHNICAL] Exit when invalid block is triggered. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
+    bool ExitOnInvalidBlock { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "2", HiddenFromDocs = true)]
     int BackgroundTaskConcurrency { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Specify max number of background task.", DefaultValue = "65536", HiddenFromDocs = true)]
+    [ConfigItem(Description = "[TECHNICAL] Specify max number of background task.", DefaultValue = "1024", HiddenFromDocs = true)]
     int BackgroundTaskMaxNumber { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] True when in runner test. Disable some wait.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool InRunnerTest { get; set; }
 }
 
 public enum DiagnosticMode

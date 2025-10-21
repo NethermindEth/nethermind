@@ -11,12 +11,10 @@ namespace Nethermind.Logging
         public static readonly TestLogManager Instance = new TestLogManager();
         private readonly NUnitLogger _logger;
 
-        public TestLogManager(LogLevel level = LogLevel.Info)
+        public TestLogManager(LogLevel level = LogLevel.Warn)
         {
             _logger = new NUnitLogger(level);
         }
-
-        public ILogger GetClassLogger(Type type) => GetClassLogger();
 
         public ILogger GetClassLogger<T>() => GetClassLogger();
 
@@ -24,15 +22,8 @@ namespace Nethermind.Logging
 
         public ILogger GetLogger(string loggerName) => GetClassLogger();
 
-        public class NUnitLogger : InterfaceLogger
+        private class NUnitLogger(LogLevel level) : InterfaceLogger
         {
-            private readonly LogLevel _level;
-
-            public NUnitLogger(LogLevel level)
-            {
-                _level = level;
-            }
-
             public void Info(string text)
             {
                 if (IsInfo)
@@ -79,7 +70,7 @@ namespace Nethermind.Logging
             public bool IsTrace => CheckLevel(LogLevel.Trace);
             public bool IsError => CheckLevel(LogLevel.Error);
 
-            private bool CheckLevel(LogLevel logLevel) => _level >= logLevel;
+            private bool CheckLevel(LogLevel logLevel) => level >= logLevel;
 
             private static void Log(string text, Exception ex = null)
             {

@@ -11,15 +11,14 @@ namespace Nethermind.Trie.Pruning
         public static IPruningStrategy WhenPersistedCacheReaches(this IPruningStrategy baseStrategy, long persistedMemoryLimit)
             => new PersistedMemoryLimit(baseStrategy, persistedMemoryLimit);
 
-        public static IPruningStrategy TrackingPastKeys(this IPruningStrategy baseStrategy, int trackedPastKeyCount)
-            => trackedPastKeyCount <= 0
-                ? baseStrategy
-                : new TrackedPastKeyCountStrategy(baseStrategy, trackedPastKeyCount);
+        public static IPruningStrategy DontDeleteObsoleteNode(this IPruningStrategy baseStrategy)
+            => new DontDeleteObsoleteNodeStrategy(baseStrategy);
 
-        public static IPruningStrategy KeepingLastNState(this IPruningStrategy baseStrategy, int n)
-            => new KeepLastNPruningStrategy(baseStrategy, n);
+        public static IPruningStrategy WhenLastPersistedBlockIsTooOld(this IPruningStrategy baseStrategy, long maxBlockInCache, long pruningBoundary)
+            => new MaxBlockInCachePruneStrategy(baseStrategy, maxBlockInCache, pruningBoundary);
 
-        public static IPruningStrategy WithDirtyNodeShardCount(this IPruningStrategy baseStrategy, int shardCount)
-            => new ShardBitPruningStrategy(baseStrategy, shardCount);
+        public static IPruningStrategy UnlessLastPersistedBlockIsTooNew(this IPruningStrategy baseStrategy, long minBlockInCache, long pruningBoundary)
+            => new MinBlockInCachePruneStrategy(baseStrategy, minBlockInCache, pruningBoundary);
+
     }
 }

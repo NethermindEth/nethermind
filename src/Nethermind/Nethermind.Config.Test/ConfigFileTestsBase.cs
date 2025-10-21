@@ -116,7 +116,7 @@ public abstract class ConfigFileTestsBase
             string singleWildcardBase = singleWildcard.Replace("^", string.Empty);
             IEnumerable<string> result = groups.TryGetValue(singleWildcardBase, out IEnumerable<string>? value) ? value : Enumerable.Repeat(singleWildcardBase, 1);
 
-            if (singleWildcard.StartsWith("^"))
+            if (singleWildcard.StartsWith('^'))
             {
                 result = Configs.Except(result);
             }
@@ -160,14 +160,9 @@ public abstract class ConfigFileTestsBase
         }
     }
 
-    protected class TestConfigProvider : ConfigProvider
+    protected class TestConfigProvider(string fileName) : ConfigProvider
     {
-        public string FileName { get; }
-
-        public TestConfigProvider(string fileName)
-        {
-            FileName = fileName;
-        }
+        public string FileName { get; } = fileName;
     }
 
     private static TestConfigProvider GetConfigProviderFromFile(string configFile)
@@ -207,13 +202,8 @@ public abstract class ConfigFileTestsBase
         }
     }
 
-    protected class ConfigFileGroup : Attribute
+    protected class ConfigFileGroup(string name) : Attribute
     {
-        public ConfigFileGroup(string name)
-        {
-            Name = name;
-        }
-
-        public string Name { get; }
+        public string Name { get; } = name;
     }
 }

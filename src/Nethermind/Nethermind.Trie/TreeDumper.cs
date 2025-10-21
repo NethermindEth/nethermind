@@ -10,9 +10,10 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie
 {
-    public class TreeDumper : ITreeVisitor<OldStyleTrieVisitContext>
+    public class TreeDumper(bool expectAccounts = true) : ITreeVisitor<OldStyleTrieVisitContext>
     {
         private readonly StringBuilder _builder = new();
+        public bool ExpectAccounts => expectAccounts;
 
         public void Reset()
         {
@@ -60,13 +61,17 @@ namespace Nethermind.Trie
 
         public void VisitLeaf(in OldStyleTrieVisitContext context, TrieNode node)
         {
+            if (!expectAccounts)
+            {
+                _builder.AppendLine($"{GetPrefix(context)}LEAF {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+            }
         }
 
         public void VisitAccount(in OldStyleTrieVisitContext context, TrieNode node, in AccountStruct account)
         {
             string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
             _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
-            Rlp.ValueDecoderContext valueDecoderContext = new(node.Value);
+            Rlp.ValueDecoderContext valueDecoderContext = new(node.Value.Span);
             if (!context.IsStorage)
             {
                 _builder.AppendLine($"{GetPrefix(context)}  NONCE: {account.Nonce}");
@@ -86,7 +91,7 @@ namespace Nethermind.Trie
 
         private static string? KeccakOrRlpStringOfNode(TrieNode node)
         {
-            return node.Keccak is not null ? node.Keccak!.Bytes.ToHexString() : node.FullRlp.AsSpan().ToHexString();
+            return node.Keccak is not null ? node.Keccak!.Bytes.ToHexString() : node.FullRlp.Span.ToHexString();
         }
     }
 }

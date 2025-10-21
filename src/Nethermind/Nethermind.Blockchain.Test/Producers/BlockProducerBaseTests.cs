@@ -13,7 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -21,33 +21,28 @@ namespace Nethermind.Blockchain.Test.Producers;
 
 public partial class BlockProducerBaseTests
 {
-    private class ProducerUnderTest : BlockProducerBase
+    private class ProducerUnderTest(
+        ITxSource txSource,
+        IBlockchainProcessor processor,
+        ISealer sealer,
+        IBlockTree blockTree,
+        IWorldState stateProvider,
+        IGasLimitCalculator gasLimitCalculator,
+        ITimestamper timestamper,
+        ILogManager logManager,
+        IBlocksConfig blocksConfig)
+        : BlockProducerBase(txSource,
+            processor,
+            sealer,
+            blockTree,
+            stateProvider,
+            gasLimitCalculator,
+            timestamper,
+            MainnetSpecProvider.Instance,
+            logManager,
+            new TimestampDifficultyCalculator(),
+            blocksConfig)
     {
-        public ProducerUnderTest(
-            ITxSource txSource,
-            IBlockchainProcessor processor,
-            ISealer sealer,
-            IBlockTree blockTree,
-            IWorldState stateProvider,
-            IGasLimitCalculator gasLimitCalculator,
-            ITimestamper timestamper,
-            ILogManager logManager,
-            IBlocksConfig blocksConfig)
-            : base(
-                txSource,
-                processor,
-                sealer,
-                blockTree,
-                stateProvider,
-                gasLimitCalculator,
-                timestamper,
-                MainnetSpecProvider.Instance,
-                logManager,
-                new TimestampDifficultyCalculator(),
-                blocksConfig)
-        {
-        }
-
         public Block Prepare() => PrepareBlock(Build.A.BlockHeader.TestObject);
 
         public Block Prepare(BlockHeader header) => PrepareBlock(header);

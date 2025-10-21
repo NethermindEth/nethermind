@@ -14,18 +14,18 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Crypto;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -160,6 +160,7 @@ namespace Nethermind.Blockchain.Test
                     tx.Type = TxType.Blob;
                     tx.BlobVersionedHashes = new byte[1][];
                     tx.MaxFeePerBlobGas = 1;
+                    tx.NetworkWrapper = new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V0);
                 });
                 maxTransactionsSelected.Transactions[1].BlobVersionedHashes =
                     new byte[maxTransactionsSelected.ReleaseSpec.MaxBlobCount - 1][];
@@ -178,9 +179,13 @@ namespace Nethermind.Blockchain.Test
                 expectedSelectedTransactions[0].BlobVersionedHashes =
                     new byte[enoughTransactionsSelected.ReleaseSpec.MaxBlobCount][];
                 expectedSelectedTransactions[0].MaxFeePerBlobGas = 1;
+                expectedSelectedTransactions[0].NetworkWrapper =
+                    new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V0);
                 expectedSelectedTransactions[1].Type = TxType.Blob;
                 expectedSelectedTransactions[1].BlobVersionedHashes = new byte[1][];
                 expectedSelectedTransactions[1].MaxFeePerBlobGas = 1;
+                expectedSelectedTransactions[1].NetworkWrapper =
+                    new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V0);
                 enoughTransactionsSelected.ExpectedSelectedTransactions.AddRange(
                     expectedSelectedTransactions.Where(static (_, index) => index != 1));
                 yield return new TestCaseData(enoughTransactionsSelected).SetName(
@@ -229,12 +234,13 @@ namespace Nethermind.Blockchain.Test
 
         private static Transaction CreateBlobTransaction(Address address, PrivateKey key, UInt256 maxFee, int blobCount, UInt256 nonce, uint priority = 1)
         {
-            return Build.A.Transaction.WithSenderAddress(address).WithType(TxType.Blob).WithNonce(nonce)
+            return Build.A.Transaction
+                .WithSenderAddress(address)
+                .WithShardBlobTxTypeAndFields(blobCount)
+                .WithNonce(nonce)
                 .WithMaxFeePerGas(maxFee)
-                .WithMaxFeePerBlobGas(2)
                 .WithMaxPriorityFeePerGas(priority)
                 .WithGasLimit(20)
-                .WithBlobVersionedHashes([.. Enumerable.Range(0, blobCount).Select(i => new byte[1] { 0 })])
                 .SignedAndResolved(key).TestObject;
         }
 
@@ -469,16 +475,14 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(BlobTransactionOrderingTestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
-            MemDb stateDb = new();
-            MemDb codeDb = new();
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
-            StateReader _ = new(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
-            void SetAccountStates(IEnumerable<Address> missingAddresses)
+            Hash256 SetAccountStates(IEnumerable<Address> missingAddresses)
             {
                 HashSet<Address> missingAddressesSet = missingAddresses.ToHashSet();
+
+                using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
                 foreach (KeyValuePair<Address, (UInt256 Balance, UInt256 Nonce)> accountState in testCase.AccountStates
                              .Where(v => !missingAddressesSet.Contains(v.Key)))
@@ -492,6 +496,7 @@ namespace Nethermind.Blockchain.Test
 
                 stateProvider.Commit(Homestead.Instance);
                 stateProvider.CommitTree(0);
+                return stateProvider.StateRoot;
             }
 
             ITxPool transactionPool = Substitute.For<ITxPool>();
@@ -530,16 +535,16 @@ namespace Nethermind.Blockchain.Test
 
             BlocksConfig blocksConfig = new() { MinGasPrice = testCase.MinGasPriceForMining };
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
-                .WithMinGasPriceFilter(blocksConfig, specProvider)
-                .WithBaseFeeFilter(specProvider)
+                .WithMinGasPriceFilter(blocksConfig)
+                .WithBaseFeeFilter()
                 .Build;
 
-            SetAccountStates(testCase.MissingAddresses);
+            Hash256 stateRoot = SetAccountStates(testCase.MissingAddresses);
 
             TxPoolTxSource poolTxSource = new(transactionPool, specProvider,
-                transactionComparerProvider, LimboLogs.Instance, txFilterPipeline);
+                transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, blocksConfig);
 
-            BlockHeaderBuilder parentHeader = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithBaseFee(testCase.BaseFee);
+            BlockHeaderBuilder parentHeader = Build.A.BlockHeader.WithStateRoot(stateRoot).WithBaseFee(testCase.BaseFee);
             if (spec.IsEip4844Enabled)
             {
                 parentHeader = parentHeader.WithExcessBlobGas(0);

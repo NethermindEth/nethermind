@@ -58,11 +58,11 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        protected virtual async Task ProducerLoopStep(CancellationToken token)
+        protected virtual Task ProducerLoopStep(CancellationToken token)
         {
             BlockProductionEventArgs args = new(cancellationToken: token);
             TriggerBlockProduction?.Invoke(this, args);
-            await args.BlockProductionTask;
+            return args.BlockProductionTask;
         }
 
         public async ValueTask DisposeAsync()

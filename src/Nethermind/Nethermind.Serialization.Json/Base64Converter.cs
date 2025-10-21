@@ -28,8 +28,7 @@ public class Base64Converter : JsonConverter<byte[]>
         return reader.GetBytesFromBase64();
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     internal static void ThrowJsonException() => throw new JsonException();
 
     public override void Write(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)

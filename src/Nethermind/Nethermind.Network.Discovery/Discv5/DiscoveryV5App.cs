@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Transport.Channels;
 using Lantern.Discv5.Enr;
 using Lantern.Discv5.Enr.Entries;
@@ -20,6 +21,7 @@ using NBitcoin.Secp256k1;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -38,7 +40,13 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly IServiceProvider _serviceProvider;
     private readonly SessionOptions _sessionOptions;
 
-    public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IIPResolver? ipResolver, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IDb discoveryDb, ILogManager logManager)
+    public DiscoveryV5App(
+        [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
+        IIPResolver? ipResolver,
+        INetworkConfig networkConfig,
+        IDiscoveryConfig discoveryConfig,
+        [KeyFilter(DbNames.DiscoveryNodes)] IDb discoveryDb,
+        ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(ipResolver);
 
@@ -47,11 +55,12 @@ public class DiscoveryV5App : IDiscoveryApp
 
         IdentityVerifierV4 identityVerifier = new();
 
+        PrivateKey privateKey = nodeKey.Unprotect();
         _sessionOptions = new()
         {
-            Signer = new IdentitySignerV4(privateKeyProvider.Generate().KeyBytes),
+            Signer = new IdentitySignerV4(privateKey.KeyBytes),
             Verifier = identityVerifier,
-            SessionKeys = new SessionKeys(privateKeyProvider.Generate().KeyBytes),
+            SessionKeys = new SessionKeys(privateKey.KeyBytes),
         };
 
         string[] bootstrapNodes = [.. (discoveryConfig.Bootnodes ?? "").Split(",", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Distinct()];
@@ -87,8 +96,8 @@ public class DiscoveryV5App : IDiscoveryApp
         EnrBuilder enrBuilder = new EnrBuilder()
             .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
             .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-            .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(_sessionOptions.Signer.PublicKey))
             .WithEntry(EnrEntryKey.Ip, new EntryIp(ipResolver.ExternalIp))
+            .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(_sessionOptions.Signer.PublicKey))
             .WithEntry(EnrEntryKey.Tcp, new EntryTcp(networkConfig.P2PPort))
             .WithEntry(EnrEntryKey.Udp, new EntryUdp(networkConfig.DiscoveryPort));
 
@@ -100,7 +109,8 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithSessionOptions(_sessionOptions)
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
             .WithEnrBuilder(enrBuilder)
-            .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
+            .WithTalkResponder(new TalkReqAndRespHandler())
+            .WithLoggerFactory(new NethermindLoggerFactory(logManager, true, Microsoft.Extensions.Logging.LogLevel.Debug))
             .WithServices(s =>
             {
                 s.AddSingleton(logManager);
@@ -108,22 +118,9 @@ public class DiscoveryV5App : IDiscoveryApp
             });
 
         _discv5Protocol = NetworkHelper.HandlePortTakenError(discv5Builder.Build, networkConfig.DiscoveryPort);
-        _discv5Protocol.NodeRemoved += NodeRemovedByDiscovery;
 
         _serviceProvider = discv5Builder.GetServiceProvider();
         _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
-    }
-
-    private void NodeRemovedByDiscovery(NodeTableEntry removedEntry)
-    {
-        if (!TryGetNodeFromEnr(removedEntry.Record, out Node? removedNode))
-        {
-            return;
-        }
-
-        NodeRemoved?.Invoke(this, new NodeEventArgs(removedNode));
-
-        if (_logger.IsDebug) _logger.Debug($"Node removed from discovered via discv5: {removedEntry.Record} = {removedNode}.");
     }
 
     private bool TryGetNodeFromEnr(IEnr enr, [NotNullWhen(true)] out Node? node)
@@ -166,31 +163,32 @@ public class DiscoveryV5App : IDiscoveryApp
         IPAddress ip = enr.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
         int tcpPort = enr.GetEntry<EntryTcp>(EnrEntryKey.Tcp).Value;
 
-        node = new(key, ip.ToString(), tcpPort);
+        node = new(key, ip.ToString(), tcpPort)
+        {
+            Enr = enr.ToString()
+        };
         return true;
     }
 
     private Lantern.Discv5.Enr.Enr GetEnr(Enode node) => new EnrBuilder()
-        .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
+        .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
         .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(Context.Instance.CreatePubKey(node.PublicKey.PrefixedBytes).ToBytes(false)))
         .WithEntry(EnrEntryKey.Ip, new EntryIp(node.HostIp))
+        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(Context.Instance.CreatePubKey(node.PublicKey.PrefixedBytes).ToBytes(false)))
         .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Port))
         .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.DiscoveryPort))
         .Build();
 
     private Lantern.Discv5.Enr.Enr GetEnr(Node node) => new EnrBuilder()
-        .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
+        .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
         .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(node.Id.PrefixedBytes))
         .WithEntry(EnrEntryKey.Ip, new EntryIp(node.Address.Address))
+        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(node.Id.PrefixedBytes))
         .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Address.Port))
         .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.Address.Port))
         .Build();
 
-    public event EventHandler<NodeEventArgs>? NodeRemoved;
-
-    public void Initialize(PublicKey masterPublicKey) { }
+    public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
 
     public void InitializeChannel(IChannel channel)
     {
@@ -202,7 +200,6 @@ public class DiscoveryV5App : IDiscoveryApp
     public async Task StartAsync()
     {
         await _discv5Protocol.InitAsync();
-
         if (_logger.IsDebug) _logger.Debug($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
     }
 
@@ -341,6 +338,8 @@ public class DiscoveryV5App : IDiscoveryApp
         }
         await _appShutdownSource.CancelAsync();
     }
+
+    string IStoppableService.Description => "discv5";
 
     public void AddNodeToDiscovery(Node node)
     {

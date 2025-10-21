@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.Reporting
         private const int NoProgressStateSyncReportFrequency = 30;
         private const int SyncAllocatedPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
-        private static readonly TimeSpan _defaultReportingIntervals = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan _defaultReportingIntervals = TimeSpan.FromSeconds(1);
 
         public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
         {
@@ -148,11 +148,11 @@ namespace Nethermind.Synchronization.Reporting
                 {
                     if (_nodeInfoType++ % 2 == 0)
                     {
-                        _logger.Info(_syncPeersReport.MakeSummaryReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | with best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount}"));
+                        _logger.Info(_syncPeersReport.MakeSummaryReportForPeers(_syncPeerPool.InitializedPeers, $"Peers: {_syncPeerPool.PeerCount} | with best block: {_syncPeerPool.InitializedPeersCount}"));
                     }
                     else
                     {
-                        _logger.Info(_syncPeersReport.MakeDiversityReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | node diversity : "));
+                        _logger.Info(_syncPeersReport.MakeDiversityReportForPeers(_syncPeerPool.InitializedPeers, $"Peers: {_syncPeerPool.PeerCount} | node diversity : "));
                     }
                 }
             }
