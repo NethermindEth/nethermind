@@ -886,6 +886,17 @@ namespace Nethermind.Network
             {
                 // Disconnect the lowest scoring peer (first in array) to make room
                 Peer lowestPeer = activePeers[0];
+
+                // Check if the peer is already disconnecting (possible due to concurrent operations)
+                bool isAlreadyDisconnecting = (lowestPeer.InSession?.IsClosing ?? false) ||
+                                             (lowestPeer.OutSession?.IsClosing ?? false);
+
+                if (isAlreadyDisconnecting)
+                {
+                    // Peer is already being disconnected, no need to make room
+                    return false;
+                }
+
                 if (_logger.IsDebug)
                     _logger.Debug($"Disconnecting peer {lowestPeer.Node:s} (randomized: {lowestPeer.RandomizedScore}) to make room for higher randomized peer {candidateId.ToShortString()} (randomized: {candidateRandomizedScore})");
 
