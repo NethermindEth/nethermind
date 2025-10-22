@@ -19,11 +19,12 @@ public sealed class OptimismBaseFeeCalculator(
     public UInt256 Calculate(BlockHeader parent, IEip1559Spec specFor1559)
     {
         var spec = specFor1559;
+        EIP1559Parameters eip1559Params = default;
 
         if (parent.Timestamp >= holoceneTimestamp)
         {
             // NOTE: This operation should never fail since headers should be valid at this point.
-            if (!parent.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Params, out var error))
+            if (!parent.TryDecodeEIP1559Parameters(out eip1559Params, out var error))
             {
                 throw new InvalidOperationException($"{nameof(BlockHeader)} was not properly validated: {error}");
             }
@@ -35,6 +36,14 @@ public sealed class OptimismBaseFeeCalculator(
             };
         }
 
-        return baseFeeCalculator.Calculate(parent, spec);
+        UInt256 baseFee = baseFeeCalculator.Calculate(parent, spec);
+
+        // TODO: use jovianTimestamp check instead?
+        if (eip1559Params.MinBaseFee is { } minBaseFee)
+        {
+            baseFee = UInt256.Max(baseFee, minBaseFee);
+        }
+
+        return baseFee;
     }
 }

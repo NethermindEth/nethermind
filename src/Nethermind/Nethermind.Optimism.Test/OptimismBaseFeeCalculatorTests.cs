@@ -34,8 +34,8 @@ public class OptimismBaseFeeCalculatorTests
             BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp, new DefaultBaseFeeCalculator())
         };
 
-        var extraData = new byte[EIP1559Parameters.ByteLength];
         var parameters = new EIP1559Parameters(0, denominator, elasticity);
+        var extraData = new byte[parameters.ByteLength];
         parameters.WriteTo(extraData);
 
         BlockHeader blockHeader = Build.A.BlockHeader
