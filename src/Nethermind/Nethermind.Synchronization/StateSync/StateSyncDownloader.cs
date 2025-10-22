@@ -37,55 +37,137 @@ namespace Nethermind.Synchronization.StateSync
             }
 
             ISyncPeer peer = peerInfo.SyncPeer;
-            Task<IOwnedReadOnlyList<byte[]>> task = null;
-            HashList? hashList = null;
-            GetTrieNodesRequest? getTrieNodesRequest = null;
-            // Use GETNODEDATA if possible. Firstly via dedicated NODEDATA protocol
+
+            // Try NODEDATA protocol first if available
             if (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler))
             {
-                if (Logger.IsTrace) Logger.Trace($"Requested NodeData via NodeDataProtocol from peer {peer}");
-                hashList = HashList.Rent(batch.RequestedNodes);
-                task = nodeDataHandler.GetNodeData(hashList, cancellationToken);
+                if (await TryGetNodeDataViaNodeDataProtocol(nodeDataHandler, batch, cancellationToken, peer))
+                {
+                    return;
+                }
             }
-            // If NODEDATA protocol is not supported, try eth66
-            else if (peer.ProtocolVersion < EthVersions.Eth67)
+
+            // Try eth66 if protocol version is below eth67
+            if (peer.ProtocolVersion < EthVersions.Eth67)
             {
-                if (Logger.IsTrace) Logger.Trace($"Requested NodeData via EthProtocol from peer {peer}");
-                hashList = HashList.Rent(batch.RequestedNodes);
-                task = peer.GetNodeData(hashList, cancellationToken);
+                if (await TryGetNodeDataViaEthProtocol(peer, batch, cancellationToken))
+                {
+                    return;
+                }
             }
-            // GETNODEDATA is not supported so we try with SNAP protocol
-            else if (peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapHandler))
+
+            // Try SNAP protocol if available
+            if (peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapHandler))
+            {
+                if (await TryGetNodeDataViaSnapProtocol(snapHandler, batch, cancellationToken, peer))
+                {
+                    return;
+                }
+            }
+
+            throw new InvalidOperationException("State sync dispatch was scheduled to a peer unable to serve state sync.");
+        }
+
+        private async Task<bool> TryGetNodeDataViaNodeDataProtocol(INodeDataPeer nodeDataHandler, StateSyncBatch batch, CancellationToken cancellationToken, ISyncPeer peer)
+        {
+            if (Logger.IsTrace) Logger.Trace($"Requested NodeData via NodeDataProtocol from peer {peer}");
+            HashList? hashList = HashList.Rent(batch.RequestedNodes);
+            try
+            {
+                batch.Responses = await nodeDataHandler.GetNodeData(hashList, cancellationToken);
+                if (batch.Responses is not null && batch.Responses.Count > 0)
+                {
+                    return true;
+                }
+                else
+                {
+                    if (Logger.IsTrace) Logger.Trace($"Received empty response from NodeDataProtocol, trying next protocol for peer {peer}");
+                    batch.Responses?.Dispose();
+                    batch.Responses = null;
+                    return false;
+                }
+            }
+            catch (Exception e)
+            {
+                if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the NodeData request", e);
+                return false;
+            }
+            finally
+            {
+                if (hashList is not null) HashList.Return(hashList);
+            }
+        }
+
+        private async Task<bool> TryGetNodeDataViaEthProtocol(ISyncPeer peer, StateSyncBatch batch, CancellationToken cancellationToken)
+        {
+            if (Logger.IsTrace) Logger.Trace($"Requested NodeData via EthProtocol from peer {peer}");
+            HashList? hashList = HashList.Rent(batch.RequestedNodes);
+            try
+            {
+                batch.Responses = await peer.GetNodeData(hashList, cancellationToken);
+                if (batch.Responses is not null && batch.Responses.Count > 0)
+                {
+                    return true;
+                }
+                else
+                {
+                    if (Logger.IsTrace) Logger.Trace($"Received empty response from EthProtocol, trying next protocol for peer {peer}");
+                    batch.Responses?.Dispose();
+                    batch.Responses = null;
+                    return false;
+                }
+            }
+            catch (Exception e)
+            {
+                if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the EthProtocol request", e);
+                return false;
+            }
+            finally
+            {
+                if (hashList is not null) HashList.Return(hashList);
+            }
+        }
+
+        private async Task<bool> TryGetNodeDataViaSnapProtocol(ISnapSyncPeer snapHandler, StateSyncBatch batch, CancellationToken cancellationToken, ISyncPeer peer)
+        {
+            GetTrieNodesRequest? getTrieNodesRequest = null;
+            HashList? hashList = null;
+            try
             {
                 if (batch.NodeDataType == NodeDataType.Code)
                 {
                     if (Logger.IsTrace) Logger.Trace($"Requested ByteCodes via SnapProtocol from peer {peer}");
                     hashList = HashList.Rent(batch.RequestedNodes);
-                    task = snapHandler.GetByteCodes(new KeccakToValueKeccakList(hashList), cancellationToken);
+                    batch.Responses = await snapHandler.GetByteCodes(new KeccakToValueKeccakList(hashList), cancellationToken);
                 }
                 else
                 {
                     if (Logger.IsTrace) Logger.Trace($"Requested TrieNodes via SnapProtocol from peer {peer}");
                     getTrieNodesRequest = GetGroupedRequest(batch);
-                    task = snapHandler.GetTrieNodes(getTrieNodesRequest, cancellationToken);
+                    batch.Responses = await snapHandler.GetTrieNodes(getTrieNodesRequest, cancellationToken);
                 }
-            }
 
-            if (task is null)
-            {
-                throw new InvalidOperationException("State sync dispatch was scheduled to a peer unable to serve state sync.");
-            }
-
-            try
-            {
-                batch.Responses = await task;
-
-                if (hashList is not null) HashList.Return(hashList);
-                getTrieNodesRequest?.Dispose();
+                if (batch.Responses is not null && batch.Responses.Count > 0)
+                {
+                    return true;
+                }
+                else
+                {
+                    if (Logger.IsTrace) Logger.Trace($"Received empty response from SnapProtocol for peer {peer}");
+                    batch.Responses?.Dispose();
+                    batch.Responses = null;
+                    return false;
+                }
             }
             catch (Exception e)
             {
-                if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", e);
+                if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the SnapProtocol request", e);
+                return false;
+            }
+            finally
+            {
+                if (hashList is not null) HashList.Return(hashList);
+                getTrieNodesRequest?.Dispose();
             }
         }
 
