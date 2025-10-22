@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -32,6 +33,7 @@ public ref struct ArrayPoolListRef<T>
 
     public ArrayPoolListRef(ArrayPool<T> pool, int capacity, int startingCount = 0)
     {
+        System.Console.WriteLine(new StackTrace());
         _arrayPool = pool;
 
         if (capacity != 0)
