@@ -30,7 +30,7 @@ public abstract class NodesManager(string path, ILogger logger)
         }
         else // For backward compatibility. To be removed in future versions.
         {
-            string oldPath = Path.GetFullPath(string.Empty.GetApplicationResourcePath($"Data/{resource}"));
+            string oldPath = Path.GetFullPath($"Data/{resource}".GetApplicationResourcePath());
 
             if (File.Exists(oldPath))
             {
