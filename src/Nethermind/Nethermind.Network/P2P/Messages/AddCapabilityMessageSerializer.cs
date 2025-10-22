@@ -13,7 +13,7 @@ namespace Nethermind.Network.P2P.Messages
     /// </summary>
     public class AddCapabilityMessageSerializer : IZeroMessageSerializer<AddCapabilityMessage>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<Capability>(nameof(Capability.ProtocolCode), (int)1.KiB());
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<Capability>((int)1.KiB(), nameof(Capability.ProtocolCode));
 
         public void Serialize(IByteBuffer byteBuffer, AddCapabilityMessage msg)
         {

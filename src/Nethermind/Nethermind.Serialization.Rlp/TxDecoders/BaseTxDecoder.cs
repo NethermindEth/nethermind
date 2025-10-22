@@ -15,7 +15,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
     private readonly Func<T> _createTransaction = transactionFactory ?? (static () => new T());
 
     // 30MB should be good enough for 300MGas block just filled with call data
-    private static readonly RlpLimit _dataRlpLimit = RlpLimit.For<Transaction>(nameof(Transaction.Data), (int)30.MiB());
+    private static readonly RlpLimit _dataRlpLimit = RlpLimit.For<Transaction>((int)30.MiB(), nameof(Transaction.Data));
 
     public TxType Type => txType;
 

@@ -43,12 +43,13 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .AddKeyedSingleton<INodeSource>(NodeSourceToDiscV4Feeder.SourceKey, ctx => ctx.Resolve<EnrDiscovery>())
 
             // Uses by RPC also.
-            .AddSingleton<IStaticNodesManager, ILogManager>((logManager) => new StaticNodesManager(initConfig.StaticNodesPath, logManager))
+            .AddSingleton<IStaticNodesManager, ILogManager>(logManager =>
+                new StaticNodesManager(initConfig.StaticNodesPath.GetApplicationResourcePath(initConfig.DataDir), logManager))
             // This load from file.
             .AddSingleton<NodesLoader>()
 
-            .AddSingleton<ITrustedNodesManager, ILogManager>((logManager) =>
-                new TrustedNodesManager(initConfig.TrustedNodesPath, logManager))
+            .AddSingleton<ITrustedNodesManager, ILogManager>(logManager =>
+                new TrustedNodesManager(initConfig.TrustedNodesPath.GetApplicationResourcePath(initConfig.DataDir), logManager))
 
             .Bind<INodeSource, IStaticNodesManager>()
 

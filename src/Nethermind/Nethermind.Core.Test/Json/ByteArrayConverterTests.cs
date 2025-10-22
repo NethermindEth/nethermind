@@ -8,6 +8,8 @@ using System.Linq;
 using System.Text.Json;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -292,6 +294,22 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
                 else firstVal.Should().NotBeNull().And.Equal(expected);
             }
         }
+    }
+
+    [Test]
+    public void Test_DictionaryKey()
+    {
+        var random = new CryptoRandom();
+        var dictionary = new Dictionary<byte[], int?>
+        {
+            { Bytes.FromHexString("0x0"), null },
+            { Bytes.FromHexString("0x1"), random.NextInt(int.MaxValue) },
+            { Build.An.Address.TestObject.Bytes, random.NextInt(int.MaxValue) },
+            { random.GenerateRandomBytes(10), random.NextInt(int.MaxValue) },
+            { random.GenerateRandomBytes(32), random.NextInt(int.MaxValue) },
+        };
+
+        TestConverter(dictionary, new ByteArrayConverter());
     }
 
     private static ReadOnlySequence<byte> JsonForLiteral(string literal) =>

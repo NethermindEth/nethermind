@@ -25,7 +25,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         return Convert(ref reader);
     }
 
-    public static byte[]? Convert(ref Utf8JsonReader reader)
+    public static byte[]? Convert(ref Utf8JsonReader reader, bool strictHexFormat = false)
     {
         JsonTokenType tokenType = reader.TokenType;
         if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
@@ -35,7 +35,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
         if (reader.HasValueSequence)
         {
-            return ConvertValueSequence(ref reader);
+            return ConvertValueSequence(ref reader, strictHexFormat);
         }
 
         int length = reader.ValueSpan.Length;
@@ -43,13 +43,14 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         if (hex.Length == 0) return null;
         if (length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == _hexPrefix)
             hex = hex[2..];
+        else if (strictHexFormat) ThrowFormatException();
 
         return Bytes.FromUtf8HexString(hex);
     }
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static byte[]? ConvertValueSequence(ref Utf8JsonReader reader)
+    private static byte[]? ConvertValueSequence(ref Utf8JsonReader reader, bool strictHexFormat)
     {
         ReadOnlySequence<byte> valueSequence = reader.ValueSequence;
         int length = checked((int)valueSequence.Length);
@@ -71,8 +72,11 @@ public class ByteArrayConverter : JsonConverter<byte[]>
                 {
                     // rewind if not really a prefix
                     sr.Rewind(1);
+                    if (strictHexFormat)
+                        ThrowFormatException();
                 }
             }
+            else if (strictHexFormat) ThrowFormatException();
         }
 
         // Compute total hex digit count (after prefix)
@@ -245,5 +249,20 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
         if (array is not null)
             ArrayPool<byte>.Shared.Return(array);
+    }
+
+    public override byte[] ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        byte[]? result = Convert(ref reader);
+
+        if (result is null)
+            ThrowInvalidOperationException();
+
+        return result;
+    }
+
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)
+    {
+        Convert(writer, value, static (w, h) => w.WritePropertyName(h), skipLeadingZeros: false, addQuotations: false, addHexPrefix: true);
     }
 }
