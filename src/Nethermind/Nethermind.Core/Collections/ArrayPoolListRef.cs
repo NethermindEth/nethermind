@@ -101,7 +101,7 @@ public ref struct ArrayPoolListRef<T>
     public readonly int IndexOf(T item) => ArrayPoolListCore.IndexOf(_array, _count, item);
     public readonly void CopyTo(T[] array, int arrayIndex) => ArrayPoolListCore.CopyTo(_array, _count, array, arrayIndex);
 
-    public ArrayPoolListRef<TResult> Select<TResult>(Func<T, TResult> selector)
+    public readonly ArrayPoolListRef<TResult> Select<TResult>(Func<T, TResult> selector)
     {
         ArrayPoolListRef<TResult> result = new(_count);
         foreach (T item in AsSpan()) result.Add(selector(item));
