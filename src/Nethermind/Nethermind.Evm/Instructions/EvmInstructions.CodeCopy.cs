@@ -234,6 +234,8 @@ internal static partial class EvmInstructions
         if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address))
             goto OutOfGas;
 
+        (vm.WorldState as TracedAccessWorldState)?.AddAccountRead(address);
+
         // Attempt a peephole optimization when tracing is not active and code is available.
         ReadOnlySpan<byte> codeSection = vm.EvmState.Env.CodeInfo.CodeSpan;
         if (!TTracingInst.IsActive && programCounter < codeSection.Length)
