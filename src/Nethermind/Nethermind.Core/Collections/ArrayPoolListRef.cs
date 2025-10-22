@@ -96,7 +96,7 @@ public ref struct ArrayPoolListRef<T>
     }
 
     public void Dispose() => ArrayPoolListCore.Dispose(_arrayPool, ref _array, ref _count, ref _capacity);
-    public PooledArrayEnumerator<T> GetEnumerator() => new(_array, _count);
+    public readonly PooledArrayEnumerator<T> GetEnumerator() => new(_array, _count);
     public bool Contains(T item) => ArrayPoolListCore.Contains(_array, item, _count);
     public readonly int IndexOf(T item) => ArrayPoolListCore.IndexOf(_array, _count, item);
     public readonly void CopyTo(T[] array, int arrayIndex) => ArrayPoolListCore.CopyTo(_array, _count, array, arrayIndex);
