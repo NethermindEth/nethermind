@@ -44,6 +44,6 @@ namespace Nethermind.Network.Config
         public long RlpxHostShutdownCloseTimeoutMs { get; set; } = 1000;
         public string PublicClientIdFormat { get; set; } = ProductInfo.DefaultPublicClientIdFormat;
         public bool EnableEnrDiscovery { get; set; } = true;
-        public bool EnablePeerDiversityScoring { get; set; } = true;
+        public double DeterministicPeerPoolPortion { get; set; } = 0.5;
     }
 }

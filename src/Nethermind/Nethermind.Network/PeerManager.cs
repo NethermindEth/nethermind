@@ -439,15 +439,15 @@ namespace Nethermind.Network
                 return false;
             }
 
-            // Only consider replacing the lower half of peers to prevent constant churn
-            int lowerHalfSize = activePeers.Length / 2;
-            if (lowerHalfSize == 0)
+            // Use configured portion to determine threshold
+            int deterministicPoolSize = (int)(activePeers.Length * _networkConfig.DeterministicPeerPoolPortion);
+            if (deterministicPoolSize == 0)
             {
                 return false;
             }
 
-            // Check if the candidate peer has a higher diversity score than the threshold peer in the lower half
-            Peer thresholdPeer = activePeers[lowerHalfSize - 1];
+            // Check if the candidate peer has a higher diversity score than the threshold peer
+            Peer thresholdPeer = activePeers[deterministicPoolSize - 1];
             return candidateDiversityScore > thresholdPeer.DiversityScore;
         }
 
@@ -852,15 +852,15 @@ namespace Nethermind.Network
                 return false;
             }
 
-            // Only consider replacing the lower half of peers to prevent constant churn
-            int lowerHalfSize = activePeers.Length / 2;
-            if (lowerHalfSize == 0)
+            // Use configured portion to determine threshold
+            int deterministicPoolSize = (int)(activePeers.Length * _networkConfig.DeterministicPeerPoolPortion);
+            if (deterministicPoolSize == 0)
             {
                 return false;
             }
 
-            // Check if the candidate peer has a higher diversity score than the threshold peer in the lower half
-            Peer thresholdPeer = activePeers[lowerHalfSize - 1];
+            // Check if the candidate peer has a higher diversity score than the threshold peer
+            Peer thresholdPeer = activePeers[deterministicPoolSize - 1];
             if (candidateDiversityScore > thresholdPeer.DiversityScore)
             {
                 // Disconnect the threshold peer to make room

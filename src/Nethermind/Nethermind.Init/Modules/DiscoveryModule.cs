@@ -62,7 +62,8 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .AddSingleton<IPeerDiversityService, IDbProvider, ILogManager>((dbProvider, logManager) =>
             {
                 IDb metadataDb = dbProvider.MetadataDb;
-                return new PeerDiversityService(metadataDb, networkConfig.EnablePeerDiversityScoring, logManager);
+                bool isEnabled = networkConfig.DeterministicPeerPoolPortion > 0;
+                return new PeerDiversityService(metadataDb, isEnabled, logManager);
             })
 
             // The actual thing that uses the INodeSource(s)

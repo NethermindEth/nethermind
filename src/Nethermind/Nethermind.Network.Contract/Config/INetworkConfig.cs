@@ -111,6 +111,6 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "true", Description = "Enable Enr discovery", HiddenFromDocs = true)]
     bool EnableEnrDiscovery { get; set; }
 
-    [ConfigItem(DefaultValue = "true", Description = "Whether to enable peer diversity scoring to ensure better distribution of connections across different client types and network conditions.")]
-    bool EnablePeerDiversityScoring { get; set; }
+    [ConfigItem(DefaultValue = "0.5", Description = "The portion of the peer pool (0.0-1.0) that uses deterministic diversity scoring. Set to 0 to disable diversity scoring. Higher values give more priority to diverse peer connections.")]
+    double DeterministicPeerPoolPortion { get; set; }
 }
