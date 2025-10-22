@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Modules
 
                 if (blockFinder.IsBlockPruned(blockParameter))
                 {
-                    return new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
+                    return new SearchResult<Block>($"Block {blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
                 }
 
                 if (!allowNulls)
