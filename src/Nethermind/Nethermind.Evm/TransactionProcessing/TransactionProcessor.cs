@@ -496,7 +496,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (validate)
             {
                 BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-                if (!TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
+                if (!opts.HasFlag(ExecutionOptions.SkipValidation) && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
                 {
                     TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
                     return TransactionResult.MinerPremiumNegative;
