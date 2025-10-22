@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -600,6 +601,17 @@ namespace Nethermind.Trie.Test.Pruning
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
                 {
                     _inBatched[key.ToArray()] = value;
+                }
+
+                public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+                {
+                    var keyArr = key.ToArray();
+                    _inBatched[keyArr] = (_inBatched.GetValueOrDefault(keyArr) ?? []).Concat(value.ToArray()).ToArray();
+                }
+
+                public void Clear()
+                {
+                    _inBatched.Clear();
                 }
             }
         }
