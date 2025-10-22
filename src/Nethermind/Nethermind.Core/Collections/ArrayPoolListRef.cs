@@ -66,14 +66,14 @@ public ref struct ArrayPoolListRef<T>
                 AddRange(CollectionsMarshal.AsSpan(listItems));
                 break;
             default:
-            {
-                foreach (T item in items)
                 {
-                    Add(item);
-                }
+                    foreach (T item in items)
+                    {
+                        Add(item);
+                    }
 
-                break;
-            }
+                    break;
+                }
         }
     }
 

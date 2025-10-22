@@ -28,14 +28,14 @@ namespace Nethermind.Core.Collections
                     list.AddRange(readOnlyList);
                     break;
                 default:
-                {
-                    foreach (T item in items)
                     {
-                        list.Add(item);
-                    }
+                        foreach (T item in items)
+                        {
+                            list.Add(item);
+                        }
 
-                    break;
-                }
+                        break;
+                    }
             }
         }
 

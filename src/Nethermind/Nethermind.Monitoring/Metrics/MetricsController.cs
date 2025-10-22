@@ -103,7 +103,7 @@ namespace Nethermind.Monitoring.Metrics
                                 {
                                     labels.Dispose();
                                 }
-                                
+
                                 break;
                             }
                         default:

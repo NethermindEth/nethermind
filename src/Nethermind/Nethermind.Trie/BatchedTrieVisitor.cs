@@ -256,7 +256,7 @@ public class BatchedTrieVisitor<TNodeContext>
     }
 
 
-    void QueueNextNodes(ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> batchResult)
+    void QueueNextNodes(in ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> batchResult)
     {
         // Reverse order is important so that higher level appear at the end of the stack.
         TreePath emptyPath = TreePath.Empty;
@@ -377,7 +377,7 @@ public class BatchedTrieVisitor<TNodeContext>
     /// Like `Accept`, but does not execute its children. Instead it return the next trie to visit in the list
     /// `nextToVisit`. Also, it assume the node is already resolved.
     /// </summary>
-    internal void AcceptResolvedNode(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
+    internal void AcceptResolvedNode(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, in ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
     {
         // Note: The path is not maintained here, its just for a placeholder. This code is only used for BatchedTrieVisitor
         // which should only be used with hash keys.

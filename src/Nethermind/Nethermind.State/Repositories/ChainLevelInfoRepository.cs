@@ -79,7 +79,7 @@ namespace Nethermind.State.Repositories
 
         public ChainLevelInfo? LoadLevel(long number) => _blockInfoDb.Get(number, Rlp.GetStreamDecoder<ChainLevelInfo>(), _blockInfoCache);
 
-        public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(ArrayPoolListRef<long> blockNumbers)
+        public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<long> blockNumbers)
         {
             byte[][] keys = new byte[blockNumbers.Count][];
             for (var i = 0; i < blockNumbers.Count; i++)

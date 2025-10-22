@@ -33,7 +33,7 @@ public class NullBlobTxStorage : IBlobTxStorage
         return false;
     }
 
-    public void AddBlobTransactionsFromBlock(long blockNumber, ArrayPoolListRef<Transaction> blockBlobTransactions) { }
+    public void AddBlobTransactionsFromBlock(long blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions) { }
 
     public void DeleteBlobTransactionsFromBlock(long blockNumber) { }
 }

@@ -1340,7 +1340,7 @@ namespace Nethermind.Blockchain
             return level;
         }
 
-        private void UpdateOrCreateLevel(ArrayPoolListRef<(long number, BlockInfo blockInfo)> blockInfos, bool setAsMain = false)
+        private void UpdateOrCreateLevel(in ArrayPoolListRef<(long number, BlockInfo blockInfo)> blockInfos, bool setAsMain = false)
         {
             using BatchWrite? batch = _chainLevelInfoRepository.StartBatch();
 

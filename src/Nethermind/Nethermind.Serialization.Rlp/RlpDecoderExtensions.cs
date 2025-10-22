@@ -131,7 +131,7 @@ namespace Nethermind.Serialization.Rlp
             return rlpStream;
         }
 
-        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamDecoder<T> decoder, ArrayPoolListRef<T?> items, RlpBehaviors behaviors = RlpBehaviors.None)
+        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamDecoder<T> decoder, in ArrayPoolListRef<T?> items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             int totalLength = 0;
             for (int i = 0; i < items.Count; i++)

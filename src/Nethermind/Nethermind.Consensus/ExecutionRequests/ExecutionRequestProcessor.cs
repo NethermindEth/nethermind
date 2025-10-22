@@ -81,7 +81,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
     }
 
-    private void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec, ArrayPoolListRef<byte[]> requests)
+    private void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec, in ArrayPoolListRef<byte[]> requests)
     {
         if (!spec.DepositsEnabled)
             return;
@@ -160,7 +160,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         }
     }
 
-    private void ReadRequests(Block block, IWorldState state, Address contractAddress, ArrayPoolListRef<byte[]> requests,
+    private void ReadRequests(Block block, IWorldState state, Address contractAddress, in ArrayPoolListRef<byte[]> requests,
         Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError)
     {
         if (!state.HasCode(contractAddress))

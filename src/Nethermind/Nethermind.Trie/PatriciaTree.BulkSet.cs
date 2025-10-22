@@ -62,7 +62,7 @@ public partial class PatriciaTree
     /// </summary>
     /// <param name="entries"></param>
     /// <param name="flags"></param>
-    public void BulkSet(ArrayPoolListRef<BulkSetEntry> entries, Flags flags = Flags.None)
+    public void BulkSet(in ArrayPoolListRef<BulkSetEntry> entries, Flags flags = Flags.None)
     {
         if (entries.Count == 0) return;
 

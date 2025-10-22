@@ -13,6 +13,6 @@ namespace Nethermind.State.Repositories
         void PersistLevel(long number, ChainLevelInfo level, BatchWrite? batch = null);
         BatchWrite StartBatch();
         ChainLevelInfo? LoadLevel(long number);
-        IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(ArrayPoolListRef<long> blockNumbers);
+        IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<long> blockNumbers);
     }
 }
