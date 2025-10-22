@@ -99,7 +99,7 @@ public ref struct ArrayPoolListRef<T>
     public PooledArrayEnumerator<T> GetEnumerator() => new(_array, _count);
     public bool Contains(T item) => ArrayPoolListCore.Contains(_array, item, _count);
     public readonly int IndexOf(T item) => ArrayPoolListCore.IndexOf(_array, _count, item);
-    public void CopyTo(T[] array, int arrayIndex) => ArrayPoolListCore.CopyTo(_array, _count, array, arrayIndex);
+    public readonly void CopyTo(T[] array, int arrayIndex) => ArrayPoolListCore.CopyTo(_array, _count, array, arrayIndex);
 
     public ArrayPoolListRef<TResult> Select<TResult>(Func<T, TResult> selector)
     {
