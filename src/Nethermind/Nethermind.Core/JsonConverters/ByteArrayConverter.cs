@@ -250,4 +250,19 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         if (array is not null)
             ArrayPool<byte>.Shared.Return(array);
     }
+
+    public override byte[] ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        byte[]? result = Convert(ref reader);
+
+        if (result is null)
+            ThrowInvalidOperationException();
+
+        return result;
+    }
+
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)
+    {
+        Convert(writer, value, static (w, h) => w.WritePropertyName(h), skipLeadingZeros: false, addQuotations: false, addHexPrefix: true);
+    }
 }

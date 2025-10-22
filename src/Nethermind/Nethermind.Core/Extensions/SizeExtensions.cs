@@ -67,7 +67,7 @@ namespace Nethermind.Core.Extensions
             return ((long)@this).KiB();
         }
 
-        public static string SizeToString(this long @this, bool useSi = false, int precision = 1)
+        public static string SizeToString(this long @this, bool useSi = false, bool addSpace = false, int precision = 1)
         {
             string[] suf = useSi ? ["B", "KB", "MB", "GB", "TB"] : ["B", "KiB", "MiB", "GiB", "TiB"];
             if (@this == 0)
@@ -77,7 +77,7 @@ namespace Nethermind.Core.Extensions
             long bytes = Math.Abs(@this);
             int place = Math.Min(suf.Length - 1, Convert.ToInt32(Math.Floor(Math.Log(bytes, useSi ? 1000 : 1024))));
             double num = Math.Round(bytes / Math.Pow(useSi ? 1000 : 1024, place), precision);
-            return (Math.Sign(@this) * num).ToString() + suf[place];
+            return string.Concat(Math.Sign(@this) * num, addSpace ? " " : "", suf[place]);
         }
     }
 }
