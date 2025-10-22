@@ -55,10 +55,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             EnsureGossipPolicy();
         }
 
-        public void DisableTxFiltering()
-        {
-            _floodController.IsEnabled = false;
-        }
+        public void DisableTxFiltering() => _floodController.IsEnabled = false;
 
         public override byte ProtocolVersion => EthVersions.Eth62;
         public override string ProtocolCode => Protocol.Eth;
@@ -74,6 +71,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             add { }
             remove { }
         }
+
+        protected ClockCache<ValueHash256, (int, TxType)> TxShapeAnnouncements { get; } = new(MemoryAllowance.TxHashCacheSize / 10);
 
         protected virtual void EnrichStatusMessage(StatusMessage statusMessage) { }
 
@@ -268,6 +267,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         return ValueTask.CompletedTask;
                     }
 
+                    if (!ValidateSizeAndType(transactionsSpan[i]))
+                    {
+                        const string reason = "invalid pooled tx type or size";
+                        if (Logger.IsDebug) Logger.Debug($"Disconnecting {this} due to {reason}");
+                        Disconnect(DisconnectReason.Other, reason);
+                        return ValueTask.CompletedTask;
+                    }
+
                     PrepareAndSubmitTransaction(transactionsSpan[i], isTrace);
                 }
 
@@ -282,6 +289,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             return ValueTask.CompletedTask;
         }
+
+        private bool ValidateSizeAndType(Transaction tx) => !TxShapeAnnouncements.Delete(tx.Hash!, out (int Size, TxType Type) txShape) || tx.GetLength() == txShape.Size && tx.Type == txShape.Type;
 
         private void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
         {

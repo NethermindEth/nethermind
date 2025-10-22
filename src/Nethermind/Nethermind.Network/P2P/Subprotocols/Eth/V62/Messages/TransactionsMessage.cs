@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -11,7 +11,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     {
         // This is the target size for the packs of transactions. A pack can get larger than this if a single
         // transaction exceeds this size. This solution is similar to Geth one.
-        public const int MaxPacketSize = 102400;
+        public const int MaxPacketSize = 2_097_152;
 
         public override int PacketType => Eth62MessageCode.Transactions;
         public override string Protocol => "eth";

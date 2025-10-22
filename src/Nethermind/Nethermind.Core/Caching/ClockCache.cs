@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -151,6 +151,30 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
             return true;
         }
 
+        return false;
+    }
+
+    public bool Delete(TKey key, [NotNullWhen(true)] out TValue? value)
+    {
+        if (MaxCapacity == 0)
+        {
+            value = default;
+            return false;
+        }
+
+        using var lockRelease = _lock.Acquire();
+
+        if (_cacheMap.Remove(key, out LruCacheItem ov))
+        {
+            _count--;
+            KeyToOffset[ov.Offset] = default;
+            ClearAccessed(ov.Offset);
+            FreeOffsets.Enqueue(ov.Offset);
+            value = ov.Value;
+            return ov.Value != null;
+        }
+
+        value = default;
         return false;
     }
 

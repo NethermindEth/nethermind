@@ -126,6 +126,7 @@ public class Eth68ProtocolHandler(ISession session,
             Hash256 hash = hashes[index];
             int txSize = sizes[index];
             TxType txType = (TxType)types[index];
+            TxShapeAnnouncements.Set(hash, (txSize, txType));
 
             long maxTxSize = txType.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
 
