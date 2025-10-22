@@ -202,6 +202,64 @@ public class BlockValidatorTests
         Assert.That(error, Does.StartWith("InvalidStateRoot"));
     }
 
+    [Test]
+    public void ValidateProcessedBlock_ReceiptCountMismatch_ReturnsFalse()
+    {
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        Block suggestedBlock = Build.A.Block.TestObject;
+        Block processedBlock = Build.A.Block
+            .WithStateRoot(Keccak.Zero)
+            .WithTransactions(2, specProvider)
+            .TestObject;
+
+        Assert.That(sut.ValidateProcessedBlock(
+            processedBlock,
+            [],
+            suggestedBlock), Is.False);
+    }
+
+    [Test]
+    public void ValidateProcessedBlock_ReceiptCountMismatch_ErrorIsSet()
+    {
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        Block suggestedBlock = Build.A.Block.TestObject;
+        Block processedBlock = Build.A.Block
+            .WithStateRoot(Keccak.Zero)
+            .WithTransactions(3, specProvider)
+            .TestObject;
+
+        sut.ValidateProcessedBlock(
+            processedBlock,
+            [Build.A.Receipt.TestObject],
+            suggestedBlock, out string? error);
+
+        Assert.That(error, Does.StartWith("ReceiptCountMismatch"));
+    }
+
+    [Test]
+    public void ValidateProcessedBlock_EmptyReceiptsWithTransactions_ErrorIsSet()
+    {
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        Block suggestedBlock = Build.A.Block.TestObject;
+        Block processedBlock = Build.A.Block
+            .WithStateRoot(Keccak.Zero)
+            .WithTransactions(1, specProvider)
+            .TestObject;
+
+        sut.ValidateProcessedBlock(
+            processedBlock,
+            [],
+            suggestedBlock, out string? error);
+
+        Assert.That(error, Does.StartWith("ReceiptCountMismatch"));
+    }
+
     private static IEnumerable<TestCaseData> BadSuggestedBlocks()
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;

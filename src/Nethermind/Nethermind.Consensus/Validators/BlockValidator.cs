@@ -164,6 +164,14 @@ public class BlockValidator(
         if (_logger.IsWarn) _logger.Warn($"Processed block {processedBlock.ToString(Block.Format.Short)} is invalid:");
         if (_logger.IsWarn) _logger.Warn($"- hash: expected {suggestedBlock.Hash}, got {processedBlock.Hash}");
         error = null;
+
+        if (receipts.Length != processedBlock.Transactions.Length)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- receipt count mismatch: expected {processedBlock.Transactions.Length} receipts to match transaction count, got {receipts.Length}");
+            error = BlockErrorMessages.ReceiptCountMismatch(processedBlock.Transactions.Length, receipts.Length);
+            return false;
+        }
+
         if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed)
         {
             if (_logger.IsWarn) _logger.Warn($"- gas used: expected {suggestedBlock.Header.GasUsed}, got {processedBlock.Header.GasUsed} (diff: {processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed})");
