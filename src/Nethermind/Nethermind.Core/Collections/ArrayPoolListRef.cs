@@ -85,7 +85,7 @@ public ref struct ArrayPoolListRef<T>
     public readonly void Sort(Comparison<T> comparison) => ArrayPoolListCore.Sort(_array, _count, comparison);
     public readonly void Reverse() => ArrayPoolListCore.Reverse(_array, _count);
     public readonly ref T GetRef(int index) => ref ArrayPoolListCore.GetRef(_array, index, _count);
-    public Span<T> AsSpan() => _array.AsSpan(0, _count);
+    public readonly Span<T> AsSpan() => _array.AsSpan(0, _count);
     public Memory<T> AsMemory() => new(_array, 0, _count);
     public ReadOnlyMemory<T> AsReadOnlyMemory() => new(_array, 0, _count);
 
