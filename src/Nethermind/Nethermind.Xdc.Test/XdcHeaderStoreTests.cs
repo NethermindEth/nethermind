@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
@@ -52,10 +53,7 @@ internal class XdcBlockAndHeaderStoreTests
         _headerStore.Insert(header);
         XdcBlockHeader? retrievedHeader = _headerStore.Get(header.Hash!, false);
         // Assert
-        Assert.That(retrievedHeader, Is.Not.Null);
-        Assert.That(retrievedHeader!.Hash, Is.EqualTo(header.Hash));
-        Assert.That(retrievedHeader.Number, Is.EqualTo(header.Number));
-        Assert.That(retrievedHeader, Is.InstanceOf<XdcBlockHeader>());
+        retrievedHeader.Should().BeEquivalentTo(header);
     }
 
     [Test]
@@ -70,8 +68,6 @@ internal class XdcBlockAndHeaderStoreTests
         _blockStore.Insert(block);
         Block? retrievedBlock = _blockStore.Get(block.Number, block.Hash!);
         // Assert
-        Assert.That(retrievedBlock, Is.Not.Null);
-        Assert.That(retrievedBlock!.Hash, Is.EqualTo(block.Hash));
-        Assert.That(retrievedBlock.Header.Hash, Is.EqualTo(block.Header.Hash));
+        retrievedBlock.Should().BeEquivalentTo(block, options => options.Excluding(h => h.EncodedSize));
     }
 }

@@ -26,28 +26,6 @@ public static class XdcExtensions
         return ecdsa.Sign(privateKey, in hash);
     }
 
-    public static Address[] DecodeAddressArray(ref Rlp.ValueDecoderContext decoderContext)
-    {
-        if (decoderContext.IsNextItemNull())
-        {
-            _ = decoderContext.ReadByte();
-            return [];
-        }
-
-        int length = decoderContext.ReadSequenceLength();
-
-        Address[] addresses = new Address[length / Rlp.LengthOfAddressRlp];
-
-        int index = 0;
-        while (length > 0)
-        {
-            addresses[index++] = decoderContext.DecodeAddress();
-            length -= Rlp.LengthOfAddressRlp;
-        }
-
-        return addresses;
-    }
-
     public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
     {
         KeccakRlpStream stream = new();

@@ -13,9 +13,9 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 internal interface IXdcHeaderStore : IHeaderStore
 {
-    void Insert(XdcBlockHeader header) => Insert((BlockHeader)header);
+    void Insert(XdcBlockHeader header) => ((IHeaderStore)this).Insert(header);
     void BulkInsert(IReadOnlyList<XdcBlockHeader> headers) => BulkInsert(headers.Cast<BlockHeader>().ToList());
     new XdcBlockHeader? Get(Hash256 blockHash, bool shouldCache, long? blockNumber = null) => ((IHeaderStore)this).Get(blockHash, shouldCache, blockNumber) as XdcBlockHeader;
 
-    void Cache(XdcBlockHeader header) => Cache((BlockHeader)header);
+    void Cache(XdcBlockHeader header) => ((IHeaderStore)this).Cache(header);
 }

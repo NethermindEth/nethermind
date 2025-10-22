@@ -23,9 +23,30 @@ internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>, IRlpValueDecoder<S
 
         long number = decoderContext.DecodeLong();
         Hash256 hash256 = decoderContext.DecodeKeccak();
-        Address[] candidates = XdcExtensions.DecodeAddressArray(ref decoderContext);
+        Address[] candidates = DecodeAddressArray(ref decoderContext);
 
         return new Snapshot(number, hash256, candidates);
+    }
+    public static Address[] DecodeAddressArray(ref Rlp.ValueDecoderContext decoderContext)
+    {
+        if (decoderContext.IsNextItemNull())
+        {
+            _ = decoderContext.ReadByte();
+            return [];
+        }
+
+        int length = decoderContext.ReadSequenceLength();
+
+        Address[] addresses = new Address[length / Rlp.LengthOfAddressRlp];
+
+        int index = 0;
+        while (length > 0)
+        {
+            addresses[index++] = decoderContext.DecodeAddress();
+            length -= Rlp.LengthOfAddressRlp;
+        }
+
+        return addresses;
     }
 
     public Rlp Encode(Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
