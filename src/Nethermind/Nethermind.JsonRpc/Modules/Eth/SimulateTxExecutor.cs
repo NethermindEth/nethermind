@@ -81,32 +81,33 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         // If gas price is not null it's a legacy tx. No metter what
         if (rpcTransaction is LegacyTransactionForRpc legacy)
         {
+            LegacyTransactionForRpc result = legacy;
             if (legacy.GasPrice is not null)
             {
-                legacy = new LegacyTransactionForRpc();
+                result = new LegacyTransactionForRpc();
             }
             else if (rpcTransaction is not EIP1559TransactionForRpc)
             {
-                legacy = new EIP1559TransactionForRpc
+                result = new EIP1559TransactionForRpc
                 {
                     AccessList = rpcTransaction is AccessListTransactionForRpc accessListTx
                         ? accessListTx.AccessList
                         : null
                 };
             }
-            legacy.Nonce = legacy.Nonce;
-            legacy.To = legacy.To;
-            legacy.From = legacy.From;
-            legacy.Gas = legacy.Gas;
-            legacy.Value = legacy.Value;
-            legacy.Input = legacy.Input;
-            legacy.GasPrice = legacy.GasPrice;
-            legacy.ChainId = legacy.ChainId;
-            legacy.V = legacy.V;
-            legacy.R = legacy.R;
-            legacy.S = legacy.S;
+            result.Nonce = legacy.Nonce;
+            result.To = legacy.To;
+            result.From = legacy.From;
+            result.Gas = legacy.Gas;
+            result.Value = legacy.Value;
+            result.Input = legacy.Input;
+            result.GasPrice = legacy.GasPrice;
+            result.ChainId = legacy.ChainId;
+            result.V = legacy.V;
+            result.R = legacy.R;
+            result.S = legacy.S;
 
-            return legacy;
+            return result;
         }
 
         return rpcTransaction;
