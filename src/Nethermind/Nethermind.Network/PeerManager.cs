@@ -908,8 +908,8 @@ namespace Nethermind.Network
                 if (_logger.IsDebug)
                     _logger.Debug($"Disconnecting peer {lowestPeer.Node:s} (randomized: {lowestPeer.RandomizedScore}) to make room for higher randomized peer {candidateId.ToShortString()} (randomized: {candidateRandomizedScore})");
 
-                lowestPeer.InSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher randomized peer");
-                lowestPeer.OutSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher randomized peer");
+                lowestPeer.InSession?.InitiateDisconnect(DisconnectReason.BetterRandomizedPeer, "making room for higher randomized peer");
+                lowestPeer.OutSession?.InitiateDisconnect(DisconnectReason.BetterRandomizedPeer, "making room for higher randomized peer");
 
                 return true;
             }
