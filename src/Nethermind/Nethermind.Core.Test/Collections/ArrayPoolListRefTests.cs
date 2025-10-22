@@ -273,27 +273,4 @@ public class ArrayPoolListRefTests
         list.Add(1);
         list.Count.Should().Be(1);
     }
-
-#if DEBUG
-    [Test]
-    [Explicit("Crashes the test runner")]
-    public void Finalizer_throws_if_not_disposed()
-    {
-        static void CreateAndDrop()
-        {
-            ArrayPoolListRef<int> list = new(1);
-        }
-
-        bool exception = false;
-        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
-        {
-            exception = true;
-        };
-        CreateAndDrop();
-
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        exception.Should().BeTrue();
-    }
-#endif
 }
