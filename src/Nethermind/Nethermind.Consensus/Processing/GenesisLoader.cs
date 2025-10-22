@@ -17,7 +17,7 @@ namespace Nethermind.Consensus.Processing
         IGenesisBuilder genesisBuilder,
         IStateReader stateReader,
         IBlockTree blockTree,
-        IWorldState worldState,
+        IWorldStateManager worldStateManager,
         IBlockchainProcessor blockchainProcessor,
         GenesisLoader.Config genesisConfig,
         ILogManager logManager
@@ -30,6 +30,7 @@ namespace Nethermind.Consensus.Processing
 
         public void Load()
         {
+            IWorldState worldState = worldStateManager.GlobalWorldState;
             using var _ = worldState.BeginScope(IWorldState.PreGenesis);
 
             Block genesis = genesisBuilder.Build();
@@ -67,9 +68,7 @@ namespace Nethermind.Consensus.Processing
                 throw new InvalidBlockException(genesis, "Error while generating genesis block.");
             }
 
-            // Force persist the genesis state to disk to ensure it's available on restart
-            // This prevents issues with unclean shutdown before any state is persisted
-            worldState.CommitTree(0);
+            worldStateManager.FlushCache(CancellationToken.None);
         }
 
         /// <summary>
