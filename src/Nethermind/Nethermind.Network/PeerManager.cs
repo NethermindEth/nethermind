@@ -303,27 +303,11 @@ namespace Nethermind.Network
 
                     foreach (Peer peer in remainingCandidates)
                     {
-                        if (!EnsureAvailableActivePeerSlot())
+                        if (!EnsureAvailableActivePeerSlotOrMakeRoom(peer))
                         {
-                            // Check if we can replace a lower-randomized peer
-                            if (!peer.Node.IsStatic && CanReplaceActivePeer(peer.Node.Id))
-                            {
-                                if (TryMakeRoomForHigherRandomizedPeerOutgoing(peer))
-                                {
-                                    // Successfully made room, continue connecting to this peer
-                                }
-                                else
-                                {
-                                    // Could not make room, break
-                                    break;
-                                }
-                            }
-                            else
-                            {
-                                // Some new connection are in flight at this point, but statistically speaking, they
-                                // are going to fail, so its fine.
-                                break;
-                            }
+                            // Some new connection are in flight at this point, but statistically speaking, they
+                            // are going to fail, so its fine.
+                            break;
                         }
 
                         await taskChannel.Writer.WriteAsync(peer, _cancellationTokenSource.Token);
@@ -401,6 +385,39 @@ namespace Nethermind.Network
             if (AvailableActivePeersCount - _pending > 0)
             {
                 return true;
+            }
+
+            // Once the connection was established, the active peer count will increase, but it might
+            // not pass the handshake and the status check. So we wait for a bit to see if we can get
+            // the active peer count to go down within this time window.
+            DateTimeOffset deadline = DateTimeOffset.UtcNow + Timeouts.Handshake +
+                                      TimeSpan.FromMilliseconds(_networkConfig.ConnectTimeoutMs);
+            while (DateTimeOffset.UtcNow < deadline && (AvailableActivePeersCount - _pending) <= 0)
+            {
+                // The signal is not very reliable. So we just do like a simple pool.
+                _peerUpdateRequested.Reset();
+                _peerUpdateRequested.Wait(TimeSpan.FromMilliseconds(100));
+            }
+
+            return AvailableActivePeersCount - _pending > 0;
+        }
+
+        private bool EnsureAvailableActivePeerSlotOrMakeRoom(Peer peer)
+        {
+            // Quick check: if slots are available, return immediately
+            if (AvailableActivePeersCount - _pending > 0)
+            {
+                return true;
+            }
+
+            // Check if we can replace a lower-randomized peer before waiting
+            if (!peer.Node.IsStatic && CanReplaceActivePeer(peer.Node.Id))
+            {
+                if (TryMakeRoomForHigherRandomizedPeerOutgoing(peer))
+                {
+                    // Successfully made room for this peer
+                    return true;
+                }
             }
 
             // Once the connection was established, the active peer count will increase, but it might
