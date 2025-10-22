@@ -164,14 +164,6 @@ public class BlockValidator(
         if (_logger.IsWarn) _logger.Warn($"Processed block {processedBlock.ToString(Block.Format.Short)} is invalid:");
         if (_logger.IsWarn) _logger.Warn($"- hash: expected {suggestedBlock.Hash}, got {processedBlock.Hash}");
         error = null;
-
-        if (receipts.Length != processedBlock.Transactions.Length)
-        {
-            if (_logger.IsWarn) _logger.Warn($"- receipt count mismatch: expected {processedBlock.Transactions.Length} receipts to match transaction count, got {receipts.Length}");
-            error = BlockErrorMessages.ReceiptCountMismatch(processedBlock.Transactions.Length, receipts.Length);
-            return false;
-        }
-
         if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed)
         {
             if (_logger.IsWarn) _logger.Warn($"- gas used: expected {suggestedBlock.Header.GasUsed}, got {processedBlock.Header.GasUsed} (diff: {processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed})");
@@ -220,12 +212,20 @@ public class BlockValidator(
             error ??= BlockErrorMessages.InvalidRequestsHash(suggestedBlock.Header.RequestsHash, processedBlock.Header.RequestsHash);
         }
 
-        for (int i = 0; i < processedBlock.Transactions.Length; i++)
+        if (receipts.Length != processedBlock.Transactions.Length)
         {
-            if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
+            if (_logger.IsWarn) _logger.Warn($"- receipt count mismatch: expected {processedBlock.Transactions.Length} receipts to match transaction count, got {receipts.Length}");
+            error ??= BlockErrorMessages.ReceiptCountMismatch(processedBlock.Transactions.Length, receipts.Length);
+        }
+        else
+        {
+            for (int i = 0; i < processedBlock.Transactions.Length; i++)
             {
-                if (_logger.IsWarn) _logger.Warn($"- invalid transaction {i}");
-                error ??= BlockErrorMessages.InvalidTxInBlock(i);
+                if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
+                {
+                    if (_logger.IsWarn) _logger.Warn($"- invalid transaction {i}");
+                    error ??= BlockErrorMessages.InvalidTxInBlock(i);
+                }
             }
         }
 

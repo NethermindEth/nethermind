@@ -203,7 +203,7 @@ public class BlockValidatorTests
     }
 
     [Test]
-    public void ValidateProcessedBlock_ReceiptCountMismatch_ReturnsFalse()
+    public void ValidateProcessedBlock_ReceiptCountMismatch_DoesNotThrow()
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -214,14 +214,14 @@ public class BlockValidatorTests
             .WithTransactions(2, specProvider)
             .TestObject;
 
-        Assert.That(sut.ValidateProcessedBlock(
+        Assert.DoesNotThrow(() => sut.ValidateProcessedBlock(
             processedBlock,
             [],
-            suggestedBlock), Is.False);
+            suggestedBlock));
     }
 
     [Test]
-    public void ValidateProcessedBlock_ReceiptCountMismatch_ErrorIsSet()
+    public void ValidateProcessedBlock_ReceiptCountMismatch_ReturnsFalse()
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -232,32 +232,12 @@ public class BlockValidatorTests
             .WithTransactions(3, specProvider)
             .TestObject;
 
-        sut.ValidateProcessedBlock(
+        bool result = sut.ValidateProcessedBlock(
             processedBlock,
             [Build.A.Receipt.TestObject],
-            suggestedBlock, out string? error);
+            suggestedBlock);
 
-        Assert.That(error, Does.StartWith("ReceiptCountMismatch"));
-    }
-
-    [Test]
-    public void ValidateProcessedBlock_EmptyReceiptsWithTransactions_ErrorIsSet()
-    {
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        Block suggestedBlock = Build.A.Block.TestObject;
-        Block processedBlock = Build.A.Block
-            .WithStateRoot(Keccak.Zero)
-            .WithTransactions(1, specProvider)
-            .TestObject;
-
-        sut.ValidateProcessedBlock(
-            processedBlock,
-            [],
-            suggestedBlock, out string? error);
-
-        Assert.That(error, Does.StartWith("ReceiptCountMismatch"));
+        Assert.That(result, Is.False);
     }
 
     private static IEnumerable<TestCaseData> BadSuggestedBlocks()
