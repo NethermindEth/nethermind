@@ -129,7 +129,6 @@ public class ProtocolsManagerTests
                 forkInfo,
                 _gossipPolicy,
                 Substitute.For<IWorldStateManager>(),
-                _blockTree,
                 LimboLogs.Instance);
         }
 
