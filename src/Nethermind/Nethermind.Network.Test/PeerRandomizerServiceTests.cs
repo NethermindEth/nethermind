@@ -10,15 +10,15 @@ namespace Nethermind.Network.Test
 {
     [Parallelizable(ParallelScope.Self)]
     [TestFixture]
-    public class PeerDiversityServiceTests
+    public class PeerRandomizerServiceTests
     {
         [Test]
         public void When_disabled_returns_zero_score()
         {
             IDb metadataDb = new MemDb();
-            PeerDiversityService service = new(metadataDb, isEnabled: false, LimboLogs.Instance);
+            PeerRandomizerService service = new(metadataDb, isEnabled: false, LimboLogs.Instance);
 
-            long score = service.GetDiversityScore(TestItem.PublicKeyA);
+            long score = service.GetRandomizedScore(TestItem.PublicKeyA);
 
             Assert.That(service.IsEnabled, Is.False);
             Assert.That(score, Is.EqualTo(0));
@@ -28,9 +28,9 @@ namespace Nethermind.Network.Test
         public void When_enabled_returns_non_zero_score()
         {
             IDb metadataDb = new MemDb();
-            PeerDiversityService service = new(metadataDb, isEnabled: true, LimboLogs.Instance);
+            PeerRandomizerService service = new(metadataDb, isEnabled: true, LimboLogs.Instance);
 
-            long score = service.GetDiversityScore(TestItem.PublicKeyA);
+            long score = service.GetRandomizedScore(TestItem.PublicKeyA);
 
             Assert.That(service.IsEnabled, Is.True);
             Assert.That(score, Is.GreaterThan(0));
@@ -40,10 +40,10 @@ namespace Nethermind.Network.Test
         public void Same_peer_gets_same_score()
         {
             IDb metadataDb = new MemDb();
-            PeerDiversityService service = new(metadataDb, isEnabled: true, LimboLogs.Instance);
+            PeerRandomizerService service = new(metadataDb, isEnabled: true, LimboLogs.Instance);
 
-            long score1 = service.GetDiversityScore(TestItem.PublicKeyA);
-            long score2 = service.GetDiversityScore(TestItem.PublicKeyA);
+            long score1 = service.GetRandomizedScore(TestItem.PublicKeyA);
+            long score2 = service.GetRandomizedScore(TestItem.PublicKeyA);
 
             Assert.That(score1, Is.EqualTo(score2));
         }
@@ -52,11 +52,11 @@ namespace Nethermind.Network.Test
         public void Different_peers_get_different_scores()
         {
             IDb metadataDb = new MemDb();
-            PeerDiversityService service = new(metadataDb, isEnabled: true, LimboLogs.Instance);
+            PeerRandomizerService service = new(metadataDb, isEnabled: true, LimboLogs.Instance);
 
-            long scoreA = service.GetDiversityScore(TestItem.PublicKeyA);
-            long scoreB = service.GetDiversityScore(TestItem.PublicKeyB);
-            long scoreC = service.GetDiversityScore(TestItem.PublicKeyC);
+            long scoreA = service.GetRandomizedScore(TestItem.PublicKeyA);
+            long scoreB = service.GetRandomizedScore(TestItem.PublicKeyB);
+            long scoreC = service.GetRandomizedScore(TestItem.PublicKeyC);
 
             Assert.That(scoreA, Is.Not.EqualTo(scoreB));
             Assert.That(scoreB, Is.Not.EqualTo(scoreC));
@@ -64,29 +64,29 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Diversity_seed_is_persisted()
+        public void Randomized_seed_is_persisted()
         {
             IDb metadataDb = new MemDb();
-            PeerDiversityService service1 = new(metadataDb, isEnabled: true, LimboLogs.Instance);
+            PeerRandomizerService service1 = new(metadataDb, isEnabled: true, LimboLogs.Instance);
 
-            long score1 = service1.GetDiversityScore(TestItem.PublicKeyA);
+            long score1 = service1.GetRandomizedScore(TestItem.PublicKeyA);
 
-            PeerDiversityService service2 = new(metadataDb, isEnabled: true, LimboLogs.Instance);
+            PeerRandomizerService service2 = new(metadataDb, isEnabled: true, LimboLogs.Instance);
 
-            long score2 = service2.GetDiversityScore(TestItem.PublicKeyA);
+            long score2 = service2.GetRandomizedScore(TestItem.PublicKeyA);
 
             Assert.That(score1, Is.EqualTo(score2));
         }
 
         [Test]
-        public void Diversity_scores_are_positive()
+        public void Randomized_scores_are_positive()
         {
             IDb metadataDb = new MemDb();
-            PeerDiversityService service = new(metadataDb, isEnabled: true, LimboLogs.Instance);
+            PeerRandomizerService service = new(metadataDb, isEnabled: true, LimboLogs.Instance);
 
             for (int i = 0; i < 100; i++)
             {
-                long score = service.GetDiversityScore(TestItem.PublicKeys[i % TestItem.PublicKeys.Length]);
+                long score = service.GetRandomizedScore(TestItem.PublicKeys[i % TestItem.PublicKeys.Length]);
                 Assert.That(score, Is.GreaterThanOrEqualTo(0));
             }
         }

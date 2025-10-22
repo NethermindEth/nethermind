@@ -38,7 +38,7 @@ namespace Nethermind.Network
         private readonly ManualResetEventSlim _peerUpdateRequested = new(false);
         private readonly PeerComparer _peerComparer = new();
         private readonly IPeerPool _peerPool;
-        private readonly IPeerDiversityService _diversityService;
+        private readonly IPeerRandomizerService _randomizerService;
         private readonly Lock _lock = new();
         private readonly List<PeerStats> _candidates;
         private readonly RateLimiter _outgoingConnectionRateLimiter;
@@ -65,14 +65,14 @@ namespace Nethermind.Network
             IPeerPool peerPool,
             INodeStatsManager stats,
             INetworkConfig networkConfig,
-            IPeerDiversityService diversityService,
+            IPeerRandomizerService randomizedService,
             ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
             _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
             _stats = stats ?? throw new ArgumentNullException(nameof(stats));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-            _diversityService = diversityService ?? throw new ArgumentNullException(nameof(diversityService));
+            _randomizerService = randomizedService ?? throw new ArgumentNullException(nameof(randomizedService));
             _outgoingConnectParallelism = networkConfig.NumConcurrentOutgoingConnects;
             if (_outgoingConnectParallelism == 0)
             {
@@ -305,10 +305,10 @@ namespace Nethermind.Network
                     {
                         if (!EnsureAvailableActivePeerSlot())
                         {
-                            // Check if we can replace a lower-diversity peer
+                            // Check if we can replace a lower-randomized peer
                             if (!peer.Node.IsStatic && CanReplaceActivePeer(peer.Node.Id))
                             {
-                                if (TryMakeRoomForHigherDiversityPeerOutgoing(peer))
+                                if (TryMakeRoomForHigherRandomizedPeerOutgoing(peer))
                                 {
                                     // Successfully made room, continue connecting to this peer
                                 }
@@ -420,18 +420,18 @@ namespace Nethermind.Network
 
         private bool CanReplaceActivePeer(PublicKey candidateId)
         {
-            if (!_diversityService.IsEnabled)
+            if (!_randomizerService.IsEnabled)
             {
                 return false;
             }
 
-            // Calculate diversity score for the candidate peer
-            long candidateDiversityScore = _diversityService.GetDiversityScore(candidateId);
+            // Calculate randomized score for the candidate peer
+            long candidateRandomizedScore = _randomizerService.GetRandomizedScore(candidateId);
 
-            // Get all active non-static peers sorted by diversity score
+            // Get all active non-static peers sorted by randomized score
             Peer[] activePeers = _peerPool.ActivePeers.Values
                 .Where(p => !p.Node.IsStatic && IsConnected(p))
-                .OrderBy(p => p.DiversityScore)
+                .OrderBy(p => p.RandomizedScore)
                 .ToArray();
 
             if (activePeers.Length == 0)
@@ -446,9 +446,9 @@ namespace Nethermind.Network
                 return false;
             }
 
-            // Check if the candidate peer has a higher diversity score than the threshold peer
+            // Check if the candidate peer has a higher randomized score than the threshold peer
             Peer thresholdPeer = activePeers[deterministicPoolSize - 1];
-            return candidateDiversityScore > thresholdPeer.DiversityScore;
+            return candidateRandomizedScore > thresholdPeer.RandomizedScore;
         }
 
         private void SelectAndRankCandidates()
@@ -541,10 +541,10 @@ namespace Nethermind.Network
 
                 node.CurrentReputation = peer.Stats.CurrentNodeReputation(nowUTC);
 
-                // Calculate diversity score for all candidates
-                if (_diversityService.IsEnabled)
+                // Calculate randomized score for all candidates
+                if (_randomizerService.IsEnabled)
                 {
-                    peer.DiversityScore = _diversityService.GetDiversityScore(node.Id);
+                    peer.RandomizedScore = _randomizerService.GetRandomizedScore(node.Id);
                 }
             }
 
@@ -793,8 +793,8 @@ namespace Nethermind.Network
 
             if (!session.Node.IsStatic && ActivePeersCount >= MaxActivePeers + MaxActivePeerMargin)
             {
-                // Check if this peer can replace a lower-diversity peer
-                if (CanReplaceActivePeer(session.RemoteNodeId) && TryMakeRoomForHigherDiversityPeer(session))
+                // Check if this peer can replace a lower-randomized peer
+                if (CanReplaceActivePeer(session.RemoteNodeId) && TryMakeRoomForHigherRandomizedPeer(session))
                 {
                     // Successfully made room, continue with adding this peer
                 }
@@ -820,31 +820,31 @@ namespace Nethermind.Network
 
         #endregion
 
-        private bool TryMakeRoomForHigherDiversityPeer(ISession incomingSession)
+        private bool TryMakeRoomForHigherRandomizedPeer(ISession incomingSession)
         {
-            // Calculate diversity score for the incoming peer
-            long incomingDiversityScore = _diversityService.GetDiversityScore(incomingSession.RemoteNodeId);
+            // Calculate randomized score for the incoming peer
+            long incomingRandomizedScore = _randomizerService.GetRandomizedScore(incomingSession.RemoteNodeId);
 
-            return TryMakeRoomForHigherDiversityPeerInternal(incomingDiversityScore, incomingSession.RemoteNodeId);
+            return TryMakeRoomForHigherRandomizedPeerInternal(incomingRandomizedScore, incomingSession.RemoteNodeId);
         }
 
-        private bool TryMakeRoomForHigherDiversityPeerOutgoing(Peer outgoingPeer)
+        private bool TryMakeRoomForHigherRandomizedPeerOutgoing(Peer outgoingPeer)
         {
-            // Calculate diversity score for the outgoing peer
-            long outgoingDiversityScore = _diversityService.GetDiversityScore(outgoingPeer.Node.Id);
+            // Calculate randomized score for the outgoing peer
+            long outgoingRandomizedScore = _randomizerService.GetRandomizedScore(outgoingPeer.Node.Id);
 
-            return TryMakeRoomForHigherDiversityPeerInternal(outgoingDiversityScore, outgoingPeer.Node.Id);
+            return TryMakeRoomForHigherRandomizedPeerInternal(outgoingRandomizedScore, outgoingPeer.Node.Id);
         }
 
-        private bool TryMakeRoomForHigherDiversityPeerInternal(long candidateDiversityScore, PublicKey candidateId)
+        private bool TryMakeRoomForHigherRandomizedPeerInternal(long candidateRandomizedScore, PublicKey candidateId)
         {
             // Debug assertion: active peers should be at capacity
             System.Diagnostics.Debug.Assert(ActivePeersCount >= MaxActivePeers, "Active peers should be full when trying to make room");
 
-            // Get all active non-static peers sorted by diversity score
+            // Get all active non-static peers sorted by randomized score
             Peer[] activePeers = _peerPool.ActivePeers.Values
                 .Where(p => !p.Node.IsStatic && IsConnected(p))
-                .OrderBy(p => p.DiversityScore)
+                .OrderBy(p => p.RandomizedScore)
                 .ToArray();
 
             if (activePeers.Length == 0)
@@ -859,16 +859,16 @@ namespace Nethermind.Network
                 return false;
             }
 
-            // Check if the candidate peer has a higher diversity score than the threshold peer
+            // Check if the candidate peer has a higher randomized score than the threshold peer
             Peer thresholdPeer = activePeers[deterministicPoolSize - 1];
-            if (candidateDiversityScore > thresholdPeer.DiversityScore)
+            if (candidateRandomizedScore > thresholdPeer.RandomizedScore)
             {
                 // Disconnect the threshold peer to make room
                 if (_logger.IsDebug)
-                    _logger.Debug($"Disconnecting peer {thresholdPeer.Node:s} (diversity: {thresholdPeer.DiversityScore}) to make room for higher diversity peer {candidateId.ToShortString()} (diversity: {candidateDiversityScore})");
+                    _logger.Debug($"Disconnecting peer {thresholdPeer.Node:s} (randomized: {thresholdPeer.RandomizedScore}) to make room for higher randomized peer {candidateId.ToShortString()} (randomized: {candidateRandomizedScore})");
 
-                thresholdPeer.InSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher diversity peer");
-                thresholdPeer.OutSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher diversity peer");
+                thresholdPeer.InSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher randomized peer");
+                thresholdPeer.OutSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher randomized peer");
 
                 return true;
             }

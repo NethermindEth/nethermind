@@ -41,10 +41,10 @@ namespace Nethermind.Network
         public ISession? OutSession { get; set; }
 
         /// <summary>
-        /// Diversity score for this peer, used to ensure better distribution of connections.
-        /// Higher scores indicate higher priority for diverse peer distribution.
+        /// Randomized score for this peer, used to ensure better distribution of connections.
+        /// Higher scores indicate higher priority for randomized peer distribution.
         /// </summary>
-        public long DiversityScore { get; set; }
+        public long RandomizedScore { get; set; }
 
         public override string ToString() => $"[Peer|{Node:s}|{InSession}|{OutSession}]";
 

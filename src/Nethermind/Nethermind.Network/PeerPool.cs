@@ -32,7 +32,7 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
         private readonly ITrustedNodesManager _trustedNodesManager;
-        private readonly IPeerDiversityService _diversityService;
+        private readonly IPeerRandomizerService _randomizerService;
 
         public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
@@ -55,7 +55,7 @@ namespace Nethermind.Network
             INodeStatsManager nodeStatsManager,
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
             INetworkConfig networkConfig,
-            IPeerDiversityService diversityService,
+            IPeerRandomizerService randomizedService,
             ILogManager logManager,
             ITrustedNodesManager trustedNodesManager)
 
@@ -64,7 +64,7 @@ namespace Nethermind.Network
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-            _diversityService = diversityService ?? throw new ArgumentNullException(nameof(diversityService));
+            _randomizerService = randomizedService ?? throw new ArgumentNullException(nameof(randomizedService));
             _peerStorage.StartBatch();
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
@@ -100,9 +100,9 @@ namespace Nethermind.Network
             }
             Peer peer = new(arg.Node, _stats.GetOrAdd(arg.Node));
 
-            if (_diversityService.IsEnabled)
+            if (_randomizerService.IsEnabled)
             {
-                peer.DiversityScore = _diversityService.GetDiversityScore(arg.Node.Id);
+                peer.RandomizedScore = _randomizerService.GetRandomizedScore(arg.Node.Id);
             }
 
             if (arg.Node.IsStatic)
@@ -120,9 +120,9 @@ namespace Nethermind.Network
 
             Peer peer = new(node, _stats.GetOrAdd(node));
 
-            if (_diversityService.IsEnabled)
+            if (_randomizerService.IsEnabled)
             {
-                peer.DiversityScore = _diversityService.GetDiversityScore(node.Id);
+                peer.RandomizedScore = _randomizerService.GetRandomizedScore(node.Id);
             }
 
             PeerAdded?.Invoke(this, new PeerEventArgs(peer));

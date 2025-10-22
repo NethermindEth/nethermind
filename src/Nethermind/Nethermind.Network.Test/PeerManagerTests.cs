@@ -655,18 +655,18 @@ namespace Nethermind.Network.Test
                 TestNodeSource = new TestNodeSource();
                 CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp, StaticNodesManager, TestNodeSource);
                 ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-                IPeerDiversityService diversityService = Substitute.For<IPeerDiversityService>();
-                diversityService.IsEnabled.Returns(false);
-                diversityService.GetDiversityScore(Arg.Any<PublicKey>()).Returns(0);
-                PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, diversityService, LimboLogs.Instance, trustedNodesManager);
-                CreatePeerManager(diversityService);
+                IPeerRandomizerService randomizedService = Substitute.For<IPeerRandomizerService>();
+                randomizedService.IsEnabled.Returns(false);
+                randomizedService.GetRandomizedScore(Arg.Any<PublicKey>()).Returns(0);
+                PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, randomizedService, LimboLogs.Instance, trustedNodesManager);
+                CreatePeerManager(randomizedService);
             }
 
-            public void CreatePeerManager(IPeerDiversityService diversityService = null)
+            public void CreatePeerManager(IPeerRandomizerService randomizedService = null)
             {
-                diversityService ??= Substitute.For<IPeerDiversityService>();
-                diversityService.IsEnabled.Returns(false);
-                PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, diversityService, LimboLogs.Instance);
+                randomizedService ??= Substitute.For<IPeerRandomizerService>();
+                randomizedService.IsEnabled.Returns(false);
+                PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, randomizedService, LimboLogs.Instance);
             }
 
             public void SetupPersistedPeers(int count)
