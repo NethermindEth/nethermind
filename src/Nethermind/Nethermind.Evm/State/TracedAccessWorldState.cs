@@ -195,13 +195,13 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     public override bool IsContract(Address address)
     {
         AddAccountRead(address);
-        return _innerWorldState.AccountExists(address);
+        return _innerWorldState.IsContract(address);
     }
 
     public override bool IsDeadAccount(Address address)
     {
         AddAccountRead(address);
-        return _innerWorldState.AccountExists(address);
+        return _innerWorldState.IsDeadAccount(address);
     }
 
     public override void ClearStorage(Address address)
