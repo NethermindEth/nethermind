@@ -256,7 +256,7 @@ public class BatchedTrieVisitor<TNodeContext>
     }
 
 
-    void QueueNextNodes(in ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> batchResult)
+    void QueueNextNodes(ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> batchResult)
     {
         // Reverse order is important so that higher level appear at the end of the stack.
         TreePath emptyPath = TreePath.Empty;
@@ -267,7 +267,7 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 // Inline node. Seems rare, so its fine to create new list for this. Does not have a keccak
                 // to queue, so we'll just process it inline.
-                using ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
+                using ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
                 trieNode.ResolveNode(_resolver, emptyPath);
                 Interlocked.Increment(ref _activeJobs);
                 AcceptResolvedNode(trieNode, nodeContext, _resolver, ctx, recursiveResult);
@@ -290,10 +290,9 @@ public class BatchedTrieVisitor<TNodeContext>
         Interlocked.Decrement(ref _activeJobs);
     }
 
-
     private void BatchedThread()
     {
-        using ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize);
+        using ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize); // I tried to change to ArrayPoolListRef but tests are failing, dunno why
         using ArrayPoolListRef<int> resolveOrdering = new(_maxBatchSize);
         TreePath emptyPath = TreePath.Empty;
         while (GetNextBatch() is { } currentBatch)
@@ -377,7 +376,7 @@ public class BatchedTrieVisitor<TNodeContext>
     /// Like `Accept`, but does not execute its children. Instead it return the next trie to visit in the list
     /// `nextToVisit`. Also, it assume the node is already resolved.
     /// </summary>
-    internal void AcceptResolvedNode(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, in ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
+    internal void AcceptResolvedNode(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
     {
         // Note: The path is not maintained here, its just for a placeholder. This code is only used for BatchedTrieVisitor
         // which should only be used with hash keys.
@@ -421,8 +420,6 @@ public class BatchedTrieVisitor<TNodeContext>
                     if (_visitor.ShouldVisit(childContext, child.Keccak!))
                     {
                         trieVisitContext.Level++;
-
-
                         nextToVisit.Add((child, childContext, trieVisitContext));
                     }
 
@@ -437,7 +434,7 @@ public class BatchedTrieVisitor<TNodeContext>
                     {
                         TNodeContext childContext = nodeContext.Add(node.Key!);
 
-                        Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.Span);
+                        Rlp.ValueDecoderContext decoderContext = new(node.Value.Span);
                         if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
                         {
                             throw new InvalidDataException("Non storage leaf should be an account");
