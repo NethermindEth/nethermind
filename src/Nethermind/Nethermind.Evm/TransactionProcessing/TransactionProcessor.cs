@@ -494,7 +494,8 @@ namespace Nethermind.Evm.TransactionProcessing
             bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
 
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-            if (validate && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
+            bool validatePremiumAndEip1559 = validate || tx.MaxFeePerGas != 0 || tx.MaxPriorityFeePerGas != 0;
+            if (validatePremiumAndEip1559 && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
                 return TransactionResult.MinerPremiumNegative;
@@ -508,7 +509,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             bool overflows;
-            if (spec.IsEip1559Enabled && !tx.IsFree())
+            if (validatePremiumAndEip1559 && spec.IsEip1559Enabled && !tx.IsFree())
             {
                 overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
                 if (overflows || balanceLeft < maxGasFee)
@@ -533,7 +534,8 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
-            if (!overflows && tx.SupportsBlobs)
+            bool validateBlobFee = validate || tx.MaxFeePerBlobGas != 0;
+            if (validateBlobFee && !overflows && tx.SupportsBlobs)
             {
                 overflows = !_blobBaseFeeCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction,
                     out blobBaseFee);
@@ -550,7 +552,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.InsufficientSenderBalance;
             }
 
-            // if (senderReservedGasPayment != 0)
+            if (senderReservedGasPayment != 0)
                 WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
 
             return TransactionResult.Ok;
