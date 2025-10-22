@@ -103,7 +103,7 @@ public class Eth68ProtocolHandler(ISession session,
 
     protected void RequestPooledTransactions(IOwnedReadOnlyList<Hash256> hashes, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<byte> types)
     {
-        using ArrayPoolList<int> newTxHashesIndexes = AddMarkUnknownHashes(hashes.AsSpan());
+        using ArrayPoolListRef<int> newTxHashesIndexes = AddMarkUnknownHashes(hashes.AsSpan());
 
         if (newTxHashesIndexes.Count == 0)
         {
@@ -157,9 +157,9 @@ public class Eth68ProtocolHandler(ISession session,
         }
     }
 
-    private ArrayPoolList<int> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes)
+    private ArrayPoolListRef<int> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes)
     {
-        ArrayPoolList<int> discoveredTxHashesAndSizes = new(hashes.Length);
+        ArrayPoolListRef<int> discoveredTxHashesAndSizes = new(hashes.Length);
         for (int i = 0; i < hashes.Length; i++)
         {
             Hash256 hash = hashes[i];
