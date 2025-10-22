@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -28,50 +27,13 @@ public class TaikoTransactionProcessor(
         in IntrinsicGas intrinsicGas)
         => base.ValidateStatic(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.SkipValidationAndCommit : opts, in intrinsicGas);
 
-    protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer,
-        ExecutionOptions opts,
-        in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
-        out UInt256 blobBaseFee)
-    {
-        if (!tx.IsAnchorTx)
-        {
-            return base.BuyGas(tx, spec, tracer, opts, in effectiveGasPrice, out premiumPerGas,
-                out senderReservedGasPayment, out blobBaseFee);
-        }
-
-        premiumPerGas = UInt256.Zero;
-        senderReservedGasPayment = UInt256.Zero;
-        blobBaseFee = UInt256.Zero;
-        return TransactionResult.Ok;
-    }
+    protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+                in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
+        => base.BuyGas(tx, spec, tracer, tx.IsAnchorTx ? opts | ExecutionOptions.SkipValidationAndCommit : opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
 
     protected override GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
-    {
-        if (!tx.IsAnchorTx)
-        {
-            return base.Refund(tx, header, spec, opts, in substate, in unspentGas, in gasPrice, codeInsertRefunds,
-                floorGas);
-        }
-
-        long spentGas = tx.GasLimit;
-        var codeInsertRefund = (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
-        spentGas -= unspentGas;
-
-        long totalToRefund = codeInsertRefund;
-        if (!substate.ShouldRevert)
-            totalToRefund += substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled);
-        long actualRefund = CalculateClaimableRefund(spentGas, totalToRefund, spec);
-
-        if (Logger.IsTrace)
-            Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + actualRefund);
-        spentGas -= actualRefund;
-
-        long operationGas = spentGas;
-        spentGas = Math.Max(spentGas, floorGas);
-
-        return new GasConsumed(spentGas, operationGas);
-    }
+        => base.Refund(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.SkipValidationAndCommit : opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas);
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
         in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
