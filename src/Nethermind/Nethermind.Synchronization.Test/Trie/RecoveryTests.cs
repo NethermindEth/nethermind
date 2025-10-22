@@ -50,6 +50,7 @@ public class RecoveryTests
     private ISyncPeerPool _syncPeerPool = null!;
     private SnapRangeRecovery _snapRecovery = null!;
     private NodeDataRecovery _nodeDataDataRecovery = null!;
+    private CodeRecovery _codeRecovery = null!;
 
     [SetUp]
     public void SetUp()
@@ -72,11 +73,13 @@ public class RecoveryTests
 
         _snapSyncPeer = Substitute.For<ISnapSyncPeer>();
         _snapSyncPeer.GetAccountRange(Arg.Any<AccountRange>(), Arg.Any<CancellationToken>())
-            .Returns(c => Task.FromResult(new AccountsAndProofs()
+            .Returns(_ => Task.FromResult(new AccountsAndProofs
             {
                 Proofs = new ArrayPoolList<byte[]>(1) { _returnedRlp },
                 PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(_fullPath, TestItem.GenerateIndexedAccount(0)) },
             }));
+        _snapSyncPeer.GetByteCodes(Arg.Any<IReadOnlyList<ValueHash256>>(), Arg.Any<CancellationToken>())
+            .Returns<Task<IOwnedReadOnlyList<byte[]>>>(_ => Task.FromResult((IOwnedReadOnlyList<byte[]>)new ArrayPoolList<byte[]>(1) { _returnedRlp }));
 
         ISyncPeer MakeEth67Peer()
         {
@@ -97,6 +100,7 @@ public class RecoveryTests
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _snapRecovery = new SnapRangeRecovery(_syncPeerPool, LimboLogs.Instance);
         _nodeDataDataRecovery = new NodeDataRecovery(_syncPeerPool, new NodeStorage(new MemDb()), LimboLogs.Instance);
+        _codeRecovery = new CodeRecovery(_syncPeerPool, LimboLogs.Instance);
     }
 
     [TearDown]
@@ -131,7 +135,7 @@ public class RecoveryTests
     [Test]
     public async Task cannot_recover_eth66_invalid_rlp()
     {
-        _returnedRlp = new byte[] { 5, 6, 7 };
+        _returnedRlp = [5, 6, 7];
         IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
         response.Should().BeNull();
     }
@@ -158,6 +162,27 @@ public class RecoveryTests
     }
 
     [Test]
+    public async Task can_recover_code_eth67()
+    {
+        byte[]? response = await RecoverCode(_peerEth67);
+        response!.Should().BeEquivalentTo(_nodeRlp);
+    }
+
+    [Test]
+    public async Task can_recover_code_eth67_2_peer()
+    {
+        byte[]? response = await RecoverCode(_peerEth67, _peerEth67_2);
+        response!.Should().BeEquivalentTo(_nodeRlp);
+    }
+
+    [Test]
+    public async Task cannot_recover_code_eth67_no_peers()
+    {
+        byte[]? response = await RecoverCode(_peerEth66);
+        response.Should().BeNull();
+    }
+
+    [Test]
     public async Task cannot_recover_eth67_empty_response()
     {
         _snapSyncPeer.GetAccountRange(Arg.Any<AccountRange>(), Arg.Any<CancellationToken>())
@@ -168,6 +193,12 @@ public class RecoveryTests
 
     private Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Recover(IPathRecovery recovery, params PeerInfo[] peers)
     {
+        SetupPeers(peers);
+        return recovery.Recover(_rootHash, _storageHash, _path, _hash, _fullPath);
+    }
+
+    private void SetupPeers(PeerInfo[] peers)
+    {
         _syncPeerPool.InitializedPeers.Returns(peers);
         _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(c =>
         {
@@ -175,6 +206,11 @@ public class RecoveryTests
             var alloc = new SyncPeerAllocation(peers[0], allocationContexts);
             return alloc;
         });
-        return recovery.Recover(_rootHash, _storageHash, _path, _hash, _fullPath);
+    }
+
+    private Task<byte[]?> RecoverCode(params PeerInfo[] peers)
+    {
+        SetupPeers(peers);
+        return _codeRecovery.Recover(_hash.Bytes.ToArray());
     }
 }
