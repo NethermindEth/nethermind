@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -17,12 +17,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Network.P2P.Utils;
-using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -61,6 +58,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected ClockKeyCache<ValueHash256>? _notifiedTransactions;
         protected ClockKeyCache<ValueHash256> NotifiedTransactions => _notifiedTransactions ??= new(2 * MemoryAllowance.MemPoolSize);
 
+        protected readonly FloodController _floodController;
+
         protected SyncPeerProtocolHandlerBase(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
@@ -73,6 +72,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _txDecoder = TxDecoder.Instance;
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
+            _floodController = new FloodController(this, Timestamper.Default, Logger);
         }
 
         public void Disconnect(DisconnectReason reason, string details)
@@ -291,6 +291,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             // }
 
             BlockHeadersMessage resp = await FulfillBlockHeadersRequest(message, cancellationToken);
+
+            switch (resp.BlockHeaders.Count)
+            {
+                case 0: _floodController.Report(FloodLevel.Warning); break;
+                default: _floodController.Report(FloodLevel.Correct); break;
+            }
+
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
             return resp;

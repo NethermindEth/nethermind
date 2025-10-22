@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
@@ -122,6 +123,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             using var message = getBlockHeaders;
             V62.Messages.BlockHeadersMessage ethBlockHeadersMessage = await FulfillBlockHeadersRequest(message.EthMessage, cancellationToken);
+
+            switch (ethBlockHeadersMessage.BlockHeaders.Count)
+            {
+                case 0: _floodController.Report(FloodLevel.Warning); break;
+                default: _floodController.Report(FloodLevel.Correct); break;
+            }
+
             return new BlockHeadersMessage(message.RequestId, ethBlockHeadersMessage);
         }
 

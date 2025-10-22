@@ -21,7 +21,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
     [TestFixture]
     public class TxFloodControllerTests
     {
-        private TxFloodController _controller;
+        private FloodController _controller;
         private Eth62ProtocolHandler _handler;
         private ISession _session;
         private ITimestamper _timestamper;
@@ -44,7 +44,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             _timestamper = Substitute.For<ITimestamper>();
             _timestamper.UtcNow.Returns(static c => DateTime.UtcNow);
-            _controller = new TxFloodController(_handler, _timestamper, LimboNoErrorLogger.Instance);
+            _controller = new FloodController(_handler, _timestamper, LimboNoErrorLogger.Instance);
         }
 
         [TearDown]
