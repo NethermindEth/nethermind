@@ -664,6 +664,16 @@ namespace Nethermind.Network
 
             await _outgoingConnectionRateLimiter.WaitAsync(_cancellationTokenSource.Token);
 
+            // If pool is full and diversity scoring is enabled, try to make room for higher diversity peer
+            if (_diversityService.IsEnabled && ActivePeersCount >= MaxActivePeers && !peer.Node.IsStatic)
+            {
+                if (!TryMakeRoomForHigherDiversityPeerOutgoing(peer))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Cannot make room for outgoing peer {peer.Node:s}, pool is full");
+                    return;
+                }
+            }
+
             // Can happen when In connection is received from the same peer and is initialized before we get here
             // In this case we do not initialize OUT connection
             if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
@@ -802,6 +812,19 @@ namespace Nethermind.Network
             // Calculate diversity score for the incoming peer
             long incomingDiversityScore = _diversityService.GetDiversityScore(incomingSession.RemoteNodeId);
 
+            return TryMakeRoomForHigherDiversityPeerInternal(incomingDiversityScore, incomingSession.RemoteNodeId);
+        }
+
+        private bool TryMakeRoomForHigherDiversityPeerOutgoing(Peer outgoingPeer)
+        {
+            // Calculate diversity score for the outgoing peer
+            long outgoingDiversityScore = _diversityService.GetDiversityScore(outgoingPeer.Node.Id);
+
+            return TryMakeRoomForHigherDiversityPeerInternal(outgoingDiversityScore, outgoingPeer.Node.Id);
+        }
+
+        private bool TryMakeRoomForHigherDiversityPeerInternal(long candidateDiversityScore, PublicKey candidateId)
+        {
             // Get all active non-static peers sorted by diversity score
             Peer[] activePeers = _peerPool.ActivePeers.Values
                 .Where(p => !p.Node.IsStatic && IsConnected(p))
@@ -820,14 +843,15 @@ namespace Nethermind.Network
                 return false;
             }
 
-            // Check if the incoming peer has a higher diversity score than the lowest peer
-            Peer lowestDiversityPeer = activePeers[0];
-            if (incomingDiversityScore > lowestDiversityPeer.DiversityScore)
+            // Check if the candidate peer has a higher diversity score than the threshold peer in the lower half
+            Peer thresholdPeer = activePeers[lowerHalfSize - 1];
+            if (candidateDiversityScore > thresholdPeer.DiversityScore)
             {
-                if (_logger.IsDebug)
-                    _logger.Debug($"Disconnecting peer {lowestDiversityPeer.Node:s} (diversity: {lowestDiversityPeer.DiversityScore}) to make room for higher diversity peer (diversity: {incomingDiversityScore})");
-
                 // Disconnect the lowest diversity peer to make room
+                Peer lowestDiversityPeer = activePeers[0];
+                if (_logger.IsDebug)
+                    _logger.Debug($"Disconnecting peer {lowestDiversityPeer.Node:s} (diversity: {lowestDiversityPeer.DiversityScore}) to make room for higher diversity peer {candidateId.ToShortString()} (diversity: {candidateDiversityScore})");
+
                 lowestDiversityPeer.InSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher diversity peer");
                 lowestDiversityPeer.OutSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher diversity peer");
 
