@@ -457,19 +457,15 @@ namespace Nethermind.Network
                 return false;
             }
 
-            // Use configured portion to determine how many high-priority peers to protect
-            int deterministicPoolSize = (int)(activePeers.Length * _networkConfig.DeterministicPeerPoolPortion);
-            if (deterministicPoolSize == 0)
-            {
-                return false;
-            }
-
             // Only attempt replacement if we have enough initialized peers in the deterministic pool
             int minRequiredPeers = (int)(MaxActivePeers * _networkConfig.DeterministicPeerPoolPortion);
             if (activePeers.Length < minRequiredPeers)
             {
                 return false;
             }
+
+            // Use configured portion to determine how many high-priority peers to protect
+            int deterministicPoolSize = (int)(activePeers.Length * _networkConfig.DeterministicPeerPoolPortion);
 
             // The threshold peer is at the boundary: we protect the last deterministicPoolSize peers (high scores)
             // and can replace from the first (length - deterministicPoolSize) peers (low scores)
@@ -880,19 +876,15 @@ namespace Nethermind.Network
                 return false;
             }
 
-            // Use configured portion to determine how many high-priority peers to protect
-            int deterministicPoolSize = (int)(activePeers.Length * _networkConfig.DeterministicPeerPoolPortion);
-            if (deterministicPoolSize == 0)
-            {
-                return false;
-            }
-
             // Only attempt replacement if we have enough initialized peers in the deterministic pool
             int minRequiredPeers = (int)(MaxActivePeers * _networkConfig.DeterministicPeerPoolPortion);
             if (activePeers.Length < minRequiredPeers)
             {
                 return false;
             }
+
+            // Use configured portion to determine how many high-priority peers to protect
+            int deterministicPoolSize = (int)(activePeers.Length * _networkConfig.DeterministicPeerPoolPortion);
 
             // The threshold peer is at the boundary: we protect the last deterministicPoolSize peers (high scores)
             // and can replace from the first (length - deterministicPoolSize) peers (low scores)
