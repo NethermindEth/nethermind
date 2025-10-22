@@ -192,9 +192,7 @@ namespace Nethermind.Consensus.Producers
         protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer,
             CancellationToken token = default)
         {
-            if (_blocksConfig.BuildBlocksOnMainState)
-                return Processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts | ProcessingOptions.DoNotUpdateHead, blockTracer ?? NullBlockTracer.Instance, token);
-            return Processor.Process(block, ProcessingOptions.ProducingBlock, blockTracer ?? NullBlockTracer.Instance, token);
+            return Processor.Process(block, GetProcessingOptions(), blockTracer ?? NullBlockTracer.Instance, token);
         }
 
         private bool PreparedBlockCanBeMined(Block? block)
@@ -248,6 +246,13 @@ namespace Nethermind.Consensus.Producers
                 TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: true);
 
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+        }
+
+        private ProcessingOptions GetProcessingOptions()
+        {
+            if (_blocksConfig.BuildBlocksOnMainState)
+                return ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts | ProcessingOptions.DoNotUpdateHead;
+            return ProcessingOptions.ProducingBlock;
         }
     }
 }
