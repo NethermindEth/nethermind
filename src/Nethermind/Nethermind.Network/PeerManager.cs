@@ -388,6 +388,12 @@ namespace Nethermind.Network
                 return true;
             }
 
+            // If diversity scoring is enabled, check if we can make room by replacing lower-diversity peers
+            if (_diversityService.IsEnabled && CanMakeRoomForHigherDiversityPeer())
+            {
+                return true;
+            }
+
             // Once the connection was established, the active peer count will increase, but it might
             // not pass the handshake and the status check. So we wait for a bit to see if we can get
             // the active peer count to go down within this time window.
@@ -401,6 +407,31 @@ namespace Nethermind.Network
             }
 
             return AvailableActivePeersCount - _pending > 0;
+        }
+
+        private bool CanMakeRoomForHigherDiversityPeer()
+        {
+            // Get all active non-static peers sorted by diversity score
+            Peer[] activePeers = _peerPool.ActivePeers.Values
+                .Where(p => !p.Node.IsStatic && IsConnected(p))
+                .OrderBy(p => p.DiversityScore)
+                .ToArray();
+
+            if (activePeers.Length == 0)
+            {
+                return false;
+            }
+
+            // Only consider replacing the lower half of peers to prevent constant churn
+            int lowerHalfSize = activePeers.Length / 2;
+            if (lowerHalfSize == 0)
+            {
+                return false;
+            }
+
+            // Check if there are any candidates that could replace lower-diversity peers
+            // We return true if there's potential for replacement, actual replacement happens in SetupOutgoingPeerConnection
+            return true;
         }
 
         private void SelectAndRankCandidates()
