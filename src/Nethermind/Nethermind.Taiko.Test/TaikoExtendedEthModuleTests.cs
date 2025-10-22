@@ -84,10 +84,10 @@ public class TaikoExtendedEthModuleTests
     {
         IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
         TaikoExtendedEthModule rpc = new TaikoExtendedEthModule(new SyncConfig(), originStore);
-        int expectedLengthInChars = ValueHash256.Length * 2 + 2;
+        int expectedLengthInChars = Hash256.Size * 2 + 2;
 
         // Create odd length hash values
-        var l2BlockHash = new ValueHash256("0x35a48c5b3ee5b1b2a365fcd1aa68c738d1c06474578087a78fa79dd45de6214");
+        var l2BlockHash = new Hash256("0x35a48c5b3ee5b1b2a365fcd1aa68c738d1c06474578087a78fa79dd45de6214");
         var l1BlockHash = new Hash256("0x2daf7e4b06ca2d3a82c775d9e9ad0c973545a608684146cda0df5f7d71188a5");
 
         L1Origin origin = new L1Origin(0, l2BlockHash, 1, l1BlockHash, null);
