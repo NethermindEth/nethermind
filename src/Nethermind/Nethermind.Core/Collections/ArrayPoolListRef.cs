@@ -13,7 +13,6 @@ public ref struct ArrayPoolListRef<T>
     private T[] _array;
     private int _capacity;
     private int _count;
-    private bool _disposed;
 
     public ArrayPoolListRef(int capacity) : this(ArrayPool<T>.Shared, capacity) { }
 
@@ -48,7 +47,6 @@ public ref struct ArrayPoolListRef<T>
 
         _capacity = _array.Length;
         _count = startingCount;
-        _disposed = false;
     }
 
     public int Count => _count;
@@ -98,7 +96,7 @@ public ref struct ArrayPoolListRef<T>
         set => ArrayPoolListCore.Set(_array, index, _count, value);
     }
 
-    public void Dispose() => ArrayPoolListCore.Dispose(_arrayPool, ref _array, ref _count, ref _capacity, ref _disposed);
+    public void Dispose() => ArrayPoolListCore.Dispose(_arrayPool, ref _array, ref _count, ref _capacity);
     public PooledArrayEnumerator<T> GetEnumerator() => new(_array, _count);
     public bool Contains(T item) => ArrayPoolListCore.Contains(_array, item, _count);
     public int IndexOf(T item) => ArrayPoolListCore.IndexOf(_array, _count, item);

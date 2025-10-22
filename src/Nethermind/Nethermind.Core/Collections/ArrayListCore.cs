@@ -117,7 +117,8 @@ internal static class ArrayPoolListCore
         [StackTraceHidden]
         static void ThrowOnlyReduce(int newCount, int oldCount)
         {
-            throw new ArgumentException($"Count can only be reduced. {newCount} is larger than {oldCount}", nameof(count));
+            throw new ArgumentException($"Count can only be reduced. {newCount} is larger than {oldCount}",
+                nameof(count));
         }
     }
 
@@ -158,6 +159,7 @@ internal static class ArrayPoolListCore
             if (shouldThrow) ThrowArgumentOutOfRangeException();
             return false;
         }
+
         return true;
 
         [DoesNotReturn]
@@ -246,17 +248,10 @@ internal static class ArrayPoolListCore
         ArrayPool<T> pool,
         ref T[] array,
         ref int count,
-        ref int capacity,
-        ref bool disposed)
+        ref int capacity)
     {
-        // Nothing to do if already disposed or empty.
-        if (disposed || capacity == 0)
-            return;
-
-        disposed = true;
-
         T[]? localArray = array;
-        array = null!; // safe for ref struct too, doesn't matter if it stays stack-bound.
+        array = null!;
 
         if (localArray is not null)
         {
@@ -266,5 +261,20 @@ internal static class ArrayPoolListCore
 
         count = 0;
         capacity = 0;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Dispose<T>(
+        ArrayPool<T> pool,
+        ref T[] array,
+        ref int count,
+        ref int capacity,
+        ref bool disposed)
+    {
+        if (!disposed && capacity != 0)
+        {
+            disposed = true;
+            Dispose(pool, ref array, ref count, ref capacity);
+        }
     }
 }
