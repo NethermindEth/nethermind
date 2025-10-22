@@ -491,7 +491,7 @@ namespace Nethermind.Evm.TransactionProcessing
             premiumPerGas = UInt256.Zero;
             senderReservedGasPayment = UInt256.Zero;
             blobBaseFee = UInt256.Zero;
-            bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
+            bool validate = true;
 
             if (validate)
             {
@@ -909,7 +909,7 @@ namespace Nethermind.Evm.TransactionProcessing
             spentGas = Math.Max(spentGas, floorGas);
 
             // If noValidation we didn't charge for gas, so do not refund
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+            if (true)
                 WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - spentGas) * gasPrice, spec);
 
             return new GasConsumed(spentGas, operationGas);
