@@ -214,7 +214,7 @@ public class BatchedTrieVisitor<TNodeContext>
             // So we get more than the batch size, then we sort it by level, and take only the maxNodeBatch nodes with
             // the higher level. This is so that higher level is processed first to reduce memory usage. Its inaccurate,
             // and hacky, but it works.
-            using ArrayPoolListRef<Job> preSort = new(_jobArrayPool, _maxBatchSize * 4);
+            using ArrayPoolList<Job> preSort = new(_jobArrayPool, _maxBatchSize * 4);
             lock (theStack)
             {
                 for (int i = 0; i < _maxBatchSize * 4; i++)
@@ -485,18 +485,11 @@ public class BatchedTrieVisitor<TNodeContext>
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private readonly struct Job
+    private readonly struct Job(ValueHash256 key, TNodeContext nodeContext, SmallTrieVisitContext context)
     {
-        public readonly ValueHash256 Key;
-        public readonly TNodeContext NodeContext;
-        public readonly SmallTrieVisitContext Context;
-
-        public Job(ValueHash256 key, TNodeContext nodeContext, SmallTrieVisitContext context)
-        {
-            Key = key;
-            NodeContext = nodeContext;
-            Context = context;
-        }
+        public readonly ValueHash256 Key = key;
+        public readonly TNodeContext NodeContext = nodeContext;
+        public readonly SmallTrieVisitContext Context = context;
     }
 }
 
