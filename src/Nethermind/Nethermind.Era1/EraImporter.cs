@@ -35,7 +35,7 @@ public class EraImporter(
     private readonly ILogger _logger = logManager.GetClassLogger<EraImporter>();
     private readonly int _maxEra1Size = eraConfig.MaxEra1Size;
 
-    public async Task Import(string src, long from, long to, string? accumulatorFile, CancellationToken cancellation = default)
+    public virtual async Task Import(string src, long from, long to, string? accumulatorFile, CancellationToken cancellation = default)
     {
         if (!fileSystem.Directory.Exists(src))
             throw new ArgumentException($"Import directory {src} does not exist");

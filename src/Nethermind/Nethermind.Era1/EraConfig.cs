@@ -12,6 +12,7 @@ public class EraConfig : IEraConfig
     public long From { get; set; }
     public long To { get; set; }
     public string? TrustedAccumulatorFile { get; set; }
+    public string? TrustedHistoricalRootsFile { get; set; }
     public int MaxEra1Size { get; set; } = EraWriter.MaxEra1Size;
     public string? NetworkName { get; set; }
     public int Concurrency { get; set; }

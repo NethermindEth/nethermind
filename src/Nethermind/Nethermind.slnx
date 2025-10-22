@@ -81,6 +81,7 @@
     <Project Path="Nethermind.Wallet.Test/Nethermind.Wallet.Test.csproj" />
     <Project Path="Nethermind.Xdc.Test/Nethermind.Xdc.Test.csproj" />
   </Folder>
+  <Project Path="ClassLibrary1\ClassLibrary1.csproj" Type="Classic C#" />
   <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
   <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />

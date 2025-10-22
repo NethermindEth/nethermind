@@ -22,7 +22,8 @@ public class EraStoreFactory(
         NetworkName = eraConfig.NetworkName, 
         Concurrency = eraConfig.Concurrency, 
         ImportBlocksBufferSize = eraConfig.ImportBlocksBufferSize, 
-        TrustedAccumulatorFile = eraConfig.TrustedAccumulatorFile, 
+        TrustedAccumulatorFile = eraConfig.TrustedAccumulatorFile,
+        TrustedHistoricalRootsFile = eraConfig.TrustedHistoricalRootsFile,
         From = eraConfig.From, 
         To = eraConfig.To, 
         ImportDirectory = eraConfig.ImportDirectory 

@@ -25,37 +25,30 @@ namespace Nethermind.EraE;
 // which is handled in an appropriate class later.
 public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessageDecoder(skipBloom: true))
 {
-    public void GetFork(long blockNumber) {
-    }
+    protected readonly ProofDecoder _proofDecoder = new();
 
-    public void GetProofType(long slot) {
-
-
-    async Task<ValueHash256> VerifyContentPreMerge(ISpecProvider specProvider, IBlockValidator blockValidator, int verifyConcurrency = 0, CancellationToken cancellation = default)
+    async Task<BlockHeaderProof?> ReadProof(ulong slot, CancellationToken cancellationToken) 
     {
-        return await base.VerifyContent(specProvider, blockValidator, verifyConcurrency, cancellation);
-    }
-
-
-    async Task<ValueHash256> VerifyContentPostMerge(ISpecProvider specProvider, IBlockValidator blockValidator, int verifyConcurrency = 0, CancellationToken cancellation = default)
-    {
-        return await base.VerifyContent(specProvider, blockValidator, verifyConcurrency, cancellation);
-    }
-
-
-    void ReadProofs(long blockNumber) 
-    {
-        BlockOffset blockOffset = ((E2StoreReader)_fileReader).BlockOffset(blockNumber);
+        BlockOffset blockOffset = ((E2StoreReader)_fileReader).BlockOffset((long)slot);
         // if proof is available for a specific block, decode one.
-        if (blockOffset.ProofPosition is not null) {
-            _ = _fileReader.ReadEntryAndDecode(
-                blockOffset.ProofPosition.Value,
-                DecodeProof,
-                EntryTypes.Proof,
-                out Proof proof);
-        }
+        if (blockOffset.ProofPosition is null) return null;
+        (BlockHeaderProof proof, long _) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
+            blockOffset.ProofPosition.Value,
+            DecodeProof,
+            EntryTypes.Proof,
+            cancellationToken
+        );
+        return proof;
     }
 
+    private bool VerifyEpochAccumulator(ArrayPoolList<(Hash256, UInt256)> blockHashes, ValueHash256 accumulator) {
+        using AccumulatorCalculator calculator = new();
+        foreach (var valueTuple in blockHashes.AsSpan())
+        {
+            calculator.Add(valueTuple.Item1, valueTuple.Item2);
+        }
+        return accumulator == calculator.ComputeRoot();
+    }
 
     /// <summary>
     /// Verify the content of this file. Notably, it verify that the accumulator match, but not necessarily trusted.
@@ -64,12 +57,21 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
     /// </summary>
     /// <param name="cancellation"></param>
     /// <returns>Returns <see cref="true"/> if the expected accumulator matches, and <see cref="false"/> if there is no match.</returns>
-    public override async Task<ValueHash256> VerifyContent(ISpecProvider specProvider, IBlockValidator blockValidator, int verifyConcurrency = 0, CancellationToken cancellation = default)
+    public new async Task<bool> VerifyContent(ISpecProvider specProvider, IBlockValidator blockValidator, int verifyConcurrency = 0, CancellationToken cancellation = default)
     {
         ArgumentNullException.ThrowIfNull(specProvider);
+
+        Validator blockProofValidator = new(specProvider);
+        SlotTime slotTime = new(
+            specProvider.BeaconChainGenesisTimestamp!.Value * 1000, 
+            new Timestamper(),
+            // TODO: get slot length from spec or config
+            TimeSpan.FromSeconds(12), 
+            TimeSpan.FromSeconds(0));
+        
         if (verifyConcurrency == 0) verifyConcurrency = Environment.ProcessorCount;
 
-        ValueHash256 accumulator = ReadAccumulator();
+        ValueHash256? accumulator = ReadAccumulator();
 
         long startBlock = _fileReader.First;
         int blockCount = (int)_fileReader.BlockCount;
@@ -100,36 +102,49 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
                     throw new EraVerificationException($"Mismatched receipt root. Block number {blockNumber}.");
                 }
 
+                if (accumulator.HasValue && !err.Block.Header.IsPoS()) {
+                    // for pre-merge blocks, we can use the accumulator to verify the block (if it's available in erae file)
+                    // this is useful for quick verification of the file in case the proof is not available for some blocks
+                    blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
+                }
 
-                // Note: Header.Hash is calculated by HeaderDecoder.
-                blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
+                var slotNumber = err.Block.Header.IsPoS() ? (ulong)blockNumber : slotTime.GetSlot(err.Block.Header.Timestamp);
+                // read proof for this block
+
+                if (await ReadProof(slotNumber, cancellation) is BlockHeaderProof proof) {
+                    await blockProofValidator.VerifyContent(err.Block, proof);
+                } else {
+                    // proof is not available for this block, skip verification
+                    // TODO: allow user to specify if they want to skip verification for blocks without proof
+                    continue;
+                }
             }
         }, cancellation)).ToPooledList(verifyConcurrency);
         await Task.WhenAll(workers.AsSpan());
 
-        using AccumulatorCalculator calculator = new();
-        foreach (var valueTuple in blockHashes.AsSpan())
-        {
-            calculator.Add(valueTuple.Item1, valueTuple.Item2);
-        }
-
-        if (accumulator != calculator.ComputeRoot())
-        {
+        if (accumulator.HasValue && !VerifyEpochAccumulator(blockHashes, accumulator.Value)) {
             throw new EraVerificationException("Computed accumulator does not match stored accumulator");
         }
-
-        return accumulator;
+        return true;
     }
 
-    public override ValueHash256 ReadAccumulator()
+    public new ValueHash256? ReadAccumulator()
     {
-        _ = _fileReader.ReadEntryAndDecode(
-            ((E2StoreReader)_fileReader).AccumulatorOffset,
-            static (buffer) => new ValueHash256(buffer.Span),
-            EntryTypes.Accumulator,
-            out ValueHash256 hash);
+        try {
+            _ = _fileReader.ReadEntryAndDecode(
+                ((E2StoreReader)_fileReader).AccumulatorOffset,
+                static (buffer) => new ValueHash256(buffer.Span),
+                EntryTypes.Accumulator,
+                out ValueHash256 hash);
 
-        return hash;
+            return hash;
+        } 
+        catch (EraException e) {
+            return null; // accumulator is not available for this era
+        }
+        catch (Exception e) {
+            throw new EraVerificationException($"Failed to read accumulator from erae file: {e.Message}");
+        }
     }
 
     protected override async Task<EntryReadResult> ReadBlockAndReceipts(long blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
@@ -172,9 +187,9 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
         return new EntryReadResult(block, receipts);
     }
 
-    protected Proof DecodeProof(Memory<byte> buffer)
+    protected BlockHeaderProof DecodeProof(Memory<byte> buffer)
     {
         var ctx = new Rlp.ValueDecoderContext(buffer.Span);
-        return RlpDecoderExtensions.Decode(_proofDecoder, ref ctx, RlpBehaviors.None);
+        return _proofDecoder.Decode(ref ctx, RlpBehaviors.None);
     }
 }

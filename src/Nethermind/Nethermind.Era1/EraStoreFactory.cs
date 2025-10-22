@@ -15,7 +15,7 @@ public class EraStoreFactory(
     IEraConfig eraConfig
 ) : IEraStoreFactory
 {
-    public virtual IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators)
+    public virtual IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators, ISet<ValueHash256>? trustedHistoricalRoots)
     {
         return new EraStore(
             specProvider,
@@ -24,6 +24,7 @@ public class EraStoreFactory(
             eraConfig.NetworkName!,
             eraConfig.MaxEra1Size,
             trustedAccumulators,
+            trustedHistoricalRoots,
             src,
             eraConfig.Concurrency);
     }
@@ -31,5 +32,5 @@ public class EraStoreFactory(
 
 public interface IEraStoreFactory
 {
-    IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators);
+    IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators, ISet<ValueHash256>? trustedHistoricalRoots);
 }
