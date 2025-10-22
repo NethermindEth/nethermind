@@ -119,7 +119,7 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
 
     private static string GetMetricName(string name)
     {
-        var lowerName = name.ToLower();
+        var lowerName = name.ToLowerInvariant();
         var sanitizedName = lowerName.Replace(" ", "_").Replace("-", "_");
         return $"{JobName}_{sanitizedName}";
     }
