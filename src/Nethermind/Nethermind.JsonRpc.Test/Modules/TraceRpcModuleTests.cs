@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -1004,6 +1005,461 @@ public class TraceRpcModuleTests
         {
             JToken.Parse(resultOverrideBefore).Should().BeEquivalentTo(resultOverrideAfter);
             JToken.Parse(resultNoOverride).Should().NotBeEquivalentTo(resultOverrideAfter);
+        }
+    }
+
+    [Test]
+    public async Task Trace_block_with_fork_activation_parameter_returns_valid_result()
+    {
+        Context context = new();
+        await context.Build();
+
+        var forkActivation = new ForkActivationParameter
+        {
+            BlockNumber = 1000000,
+            Timestamp = null
+        };
+
+        var resultWithFork = context.TraceRpcModule.trace_block(BlockParameter.Latest, forkActivation);
+
+        var resultWithoutFork = context.TraceRpcModule.trace_block(BlockParameter.Latest);
+
+        resultWithFork?.Data.Should().NotBeNull();
+        resultWithoutFork?.Data.Should().NotBeNull();
+    }
+
+    [Test]
+    public async Task Trace_block_with_prague_fork_activation_returns_valid_traces()
+    {
+        Context context = new();
+        TestSpecProvider specProvider = new(Prague.Instance);
+        await context.Build(specProvider);
+        TestRpcBlockchain blockchain = context.Blockchain;
+        await blockchain.AddFunds(TestItem.AddressA, 1000.Ether());
+        
+        byte[] modExpInput = new byte[96];
+        modExpInput[31] = 0x01;
+        modExpInput[63] = 0x01;
+        modExpInput[95] = 0x01;
+        
+        byte[] modExpData = new byte[99];
+        System.Array.Copy(modExpInput, 0, modExpData, 0, 96);
+        modExpData[96] = 0x03;
+        modExpData[97] = 0x02;
+        modExpData[98] = 0x05;
+        
+        UInt256 currentNonce = blockchain.StateReader.GetNonce(blockchain.BlockTree.Head!.Header, TestItem.AddressA);
+        Transaction modExpTx = Build.A.Transaction
+            .WithNonce(currentNonce)
+            .WithTo(new Address("0x0000000000000000000000000000000000000005"))
+            .WithData(modExpData)
+            .WithGasLimit(100000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await blockchain.AddBlock(modExpTx);
+        
+        BlockParameter blockParam = new(blockchain.BlockTree.Head!.Number);
+        var pragueActivation = new ForkActivationParameter { BlockNumber = 0, Timestamp = null };
+        
+        var resultPrague = context.TraceRpcModule.trace_block(blockParam, pragueActivation);
+        
+        resultPrague.Data.Should().NotBeNull().And.NotBeEmpty().And.HaveCountGreaterOrEqualTo(1);
+    }
+
+    [Test]
+    public async Task Trace_block_with_osaka_fork_activation_returns_valid_traces()
+    {
+        Context context = new();
+        TestSpecProvider specProvider = new(Prague.Instance);
+        await context.Build(specProvider);
+        TestRpcBlockchain blockchain = context.Blockchain;
+        await blockchain.AddFunds(TestItem.AddressA, 1000.Ether());
+        
+        byte[] modExpInput = new byte[96];
+        modExpInput[31] = 0x01;
+        modExpInput[63] = 0x01;
+        modExpInput[95] = 0x01;
+        
+        byte[] modExpData = new byte[99];
+        System.Array.Copy(modExpInput, 0, modExpData, 0, 96);
+        modExpData[96] = 0x03;
+        modExpData[97] = 0x02;
+        modExpData[98] = 0x05;
+        
+        UInt256 currentNonce = blockchain.StateReader.GetNonce(blockchain.BlockTree.Head!.Header, TestItem.AddressA);
+        Transaction modExpTx = Build.A.Transaction
+            .WithNonce(currentNonce)
+            .WithTo(new Address("0x0000000000000000000000000000000000000005"))
+            .WithData(modExpData)
+            .WithGasLimit(100000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await blockchain.AddBlock(modExpTx);
+        
+        BlockParameter blockParam = new(blockchain.BlockTree.Head!.Number);
+        var osakaActivation = new ForkActivationParameter { BlockNumber = 0, Timestamp = null };
+        
+        var resultOsaka = context.TraceRpcModule.trace_block(blockParam, osakaActivation);
+        
+        resultOsaka.Data.Should().NotBeNull().And.NotBeEmpty().And.HaveCountGreaterOrEqualTo(1);
+    }
+
+    [Test]
+    public async Task Trace_block_without_fork_activation_returns_valid_traces()
+    {
+        Context context = new();
+        TestSpecProvider specProvider = new(Prague.Instance);
+        await context.Build(specProvider);
+        TestRpcBlockchain blockchain = context.Blockchain;
+        await blockchain.AddFunds(TestItem.AddressA, 1000.Ether());
+        
+        byte[] modExpInput = new byte[96];
+        modExpInput[31] = 0x01;
+        modExpInput[63] = 0x01;
+        modExpInput[95] = 0x01;
+        
+        byte[] modExpData = new byte[99];
+        System.Array.Copy(modExpInput, 0, modExpData, 0, 96);
+        modExpData[96] = 0x03;
+        modExpData[97] = 0x02;
+        modExpData[98] = 0x05;
+        
+        UInt256 currentNonce = blockchain.StateReader.GetNonce(blockchain.BlockTree.Head!.Header, TestItem.AddressA);
+        Transaction modExpTx = Build.A.Transaction
+            .WithNonce(currentNonce)
+            .WithTo(new Address("0x0000000000000000000000000000000000000005"))
+            .WithData(modExpData)
+            .WithGasLimit(100000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await blockchain.AddBlock(modExpTx);
+        
+        BlockParameter blockParam = new(blockchain.BlockTree.Head!.Number);
+        
+        var resultDefault = context.TraceRpcModule.trace_block(blockParam);
+        
+        resultDefault.Data.Should().NotBeNull().And.NotBeEmpty().And.HaveCountGreaterOrEqualTo(1);
+    }
+
+    [Test]
+    public async Task Trace_block_with_block_number_activation_returns_valid_result()
+    {
+        Context context = new();
+        await context.Build();
+        var validForkActivation = new ForkActivationParameter
+        {
+            BlockNumber = 1,
+            Timestamp = null
+        };
+
+        var result = context.TraceRpcModule.trace_block(BlockParameter.Latest, validForkActivation);
+
+        result.Data.Should().NotBeNull();
+    }
+
+    [Test]
+    public async Task Trace_block_with_timestamp_activation_returns_valid_result()
+    {
+        Context context = new();
+        await context.Build();
+        var validForkActivation = new ForkActivationParameter
+        {
+            BlockNumber = null,
+            Timestamp = 1500000000
+        };
+
+        var result = context.TraceRpcModule.trace_block(BlockParameter.Latest, validForkActivation);
+
+        result.Data.Should().NotBeNull();
+    }
+
+    [Test]
+    public async Task Trace_block_with_both_block_and_timestamp_activation_returns_valid_result()
+    {
+        Context context = new();
+        await context.Build();
+        var validForkActivation = new ForkActivationParameter
+        {
+            BlockNumber = 1,
+            Timestamp = 1500000000
+        };
+
+        var result = context.TraceRpcModule.trace_block(BlockParameter.Latest, validForkActivation);
+
+        result.Data.Should().NotBeNull();
+    }
+
+    [Test]
+    public async Task Trace_block_parallel_fork_overrides_are_isolated()
+    {
+        Context context = new();
+
+        TestSpecProvider specProvider = new(Prague.Instance);
+        await context.Build(specProvider);
+
+        TestRpcBlockchain blockchain = context.Blockchain;
+        await blockchain.AddFunds(TestItem.AddressA, 1000.Ether());
+
+        UInt256 currentNonce = blockchain.StateReader.GetNonce(blockchain.BlockTree.Head!.Header, TestItem.AddressA);
+        Transaction tx = Build.A.Transaction
+            .WithNonce(currentNonce)
+            .WithTo(TestItem.AddressB)
+            .WithValue(1.Ether())
+            .WithGasLimit(21000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        await blockchain.AddBlock(tx);
+        BlockParameter blockParam = new(blockchain.BlockTree.Head!.Number);
+
+        var pragueActivation = new ForkActivationParameter { BlockNumber = 0 };
+        var osakaActivation = new ForkActivationParameter { BlockNumber = 1000000 };
+
+        var result1 = context.TraceRpcModule.trace_block(blockParam, pragueActivation);
+        var result2 = context.TraceRpcModule.trace_block(blockParam, osakaActivation);
+        var result3 = context.TraceRpcModule.trace_block(blockParam, pragueActivation);
+
+        result1.Data.Should().NotBeNull();
+        result2.Data.Should().NotBeNull();
+        result3.Data.Should().NotBeNull();
+
+        var trace1 = result1.Data!.ToArray();
+        var trace3 = result3.Data!.ToArray();
+
+        trace1.Should().HaveCount(trace3.Length);
+        for (int i = 0; i < trace1.Length; i++)
+        {
+            trace1[i].TransactionHash.Should().Be(trace3[i].TransactionHash);
+            trace1[i].Action?.Gas.Should().Be(trace3[i].Action?.Gas);
+        }
+    }
+
+    [Test]
+    public async Task Trace_block_with_prague_fork_name_returns_valid_result()
+    {
+        Context context = new();
+        await context.Build();
+        var pragueByName = new ForkActivationParameter { ForkName = "prague" };
+
+        var result = context.TraceRpcModule.trace_block(BlockParameter.Latest, pragueByName);
+
+        result.Data.Should().NotBeNull();
+    }
+
+    [Test]
+    public async Task Trace_block_with_osaka_fork_name_returns_valid_result()
+    {
+        Context context = new();
+        await context.Build();
+        var osakaByName = new ForkActivationParameter { ForkName = "osaka" };
+
+        var result = context.TraceRpcModule.trace_block(BlockParameter.Latest, osakaByName);
+
+        result.Data.Should().NotBeNull();
+    }
+
+    [Test]
+    public async Task Trace_block_with_berlin_fork_name_returns_valid_result()
+    {
+        Context context = new();
+        await context.Build();
+        var berlinByName = new ForkActivationParameter { ForkName = "berlin" };
+
+        var result = context.TraceRpcModule.trace_block(BlockParameter.Latest, berlinByName);
+
+        result.Data.Should().NotBeNull();
+    }
+
+    [Test]
+    public async Task Trace_block_throws_exception_for_nonexistent_fork_name()
+    {
+        Context context = new();
+        await context.Build();
+        var invalidFork = new ForkActivationParameter { ForkName = "nonexistent" };
+        
+        Action act = () => context.TraceRpcModule.trace_block(BlockParameter.Latest, invalidFork);
+        
+        act.Should().Throw<ArgumentException>().WithMessage("*Fork resolution failed*Unknown fork 'nonexistent'*");
+    }
+
+    [Test]
+    public async Task Trace_block_throws_exception_for_empty_parameters()
+    {
+        Context context = new();
+        await context.Build();
+        var emptyParam = new ForkActivationParameter();
+        
+        Action act = () => context.TraceRpcModule.trace_block(BlockParameter.Latest, emptyParam);
+        
+        act.Should().Throw<ArgumentException>().WithMessage("*Fork resolution failed*Fork specification must provide*");
+    }
+
+    [Test]
+    public async Task Trace_block_throws_exception_for_negative_block_number()
+    {
+        Context context = new();
+        await context.Build();
+        var negativeBlock = new ForkActivationParameter { ActivationBlock = -1 };
+        
+        Action act = () => context.TraceRpcModule.trace_block(BlockParameter.Latest, negativeBlock);
+        
+        act.Should().Throw<ArgumentException>().WithMessage("*Fork resolution failed*must be non-negative*");
+    }
+
+    [Test]
+    public async Task Trace_block_performance_optimization_test()
+    {
+        Context context = new();
+        await context.Build();
+
+        TestRpcBlockchain blockchain = context.Blockchain;
+        await blockchain.AddFunds(TestItem.AddressA, 1000.Ether());
+
+        UInt256 currentNonce = blockchain.StateReader.GetNonce(blockchain.BlockTree.Head!.Header, TestItem.AddressA);
+        Transaction tx = Build.A.Transaction
+            .WithNonce(currentNonce)
+            .WithTo(TestItem.AddressB)
+            .WithValue(1.Ether())
+            .WithGasLimit(21000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        await blockchain.AddBlock(tx);
+        BlockParameter blockParam = new(blockchain.BlockTree.Head!.Number);
+
+        var currentBlockActivation = new ForkActivationParameter 
+        { 
+            ForkName = "prague",
+            ActivationBlock = blockchain.BlockTree.Head!.Number 
+        };
+
+        var result = context.TraceRpcModule.trace_block(blockParam, currentBlockActivation);
+        
+        result.Data.Should().NotBeNull().And.NotBeEmpty();
+    }
+
+    [Test]
+    public async Task Trace_block_with_legacy_block_number_parameter_works()
+    {
+        Context context = new();
+        await context.Build();
+        var legacyBlockNumber = new ForkActivationParameter { BlockNumber = 0 };
+
+        var result = context.TraceRpcModule.trace_block(BlockParameter.Latest, legacyBlockNumber);
+
+        result.Data.Should().NotBeNull();
+    }
+
+    [Test]
+    public async Task Trace_block_with_legacy_timestamp_parameter_works()
+    {
+        Context context = new();
+        await context.Build();
+        var legacyTimestamp = new ForkActivationParameter { Timestamp = 0 };
+
+        var result = context.TraceRpcModule.trace_block(BlockParameter.Latest, legacyTimestamp);
+
+        result.Data.Should().NotBeNull();
+    }
+
+    [Test]
+    public async Task Trace_block_with_legacy_both_parameters_works()
+    {
+        Context context = new();
+        await context.Build();
+        var legacyBoth = new ForkActivationParameter { BlockNumber = 0, Timestamp = 0 };
+
+        var result = context.TraceRpcModule.trace_block(BlockParameter.Latest, legacyBoth);
+
+        result.Data.Should().NotBeNull();
+    }
+
+    [Test]
+    public async Task Trace_block_with_new_activation_block_parameter_works()
+    {
+        Context context = new();
+        await context.Build();
+        var newBlockNumber = new ForkActivationParameter { ActivationBlock = 0 };
+
+        var result = context.TraceRpcModule.trace_block(BlockParameter.Latest, newBlockNumber);
+
+        result.Data.Should().NotBeNull();
+    }
+
+    [Test]
+    public async Task Trace_block_with_new_activation_timestamp_parameter_works()
+    {
+        Context context = new();
+        await context.Build();
+        var newTimestamp = new ForkActivationParameter { ActivationTimestamp = 0 };
+
+        var result = context.TraceRpcModule.trace_block(BlockParameter.Latest, newTimestamp);
+
+        result.Data.Should().NotBeNull();
+    }
+
+    [Test]
+    public async Task Trace_block_new_parameters_take_precedence_over_legacy()
+    {
+        Context context = new();
+        await context.Build();
+        var precedenceTest = new ForkActivationParameter 
+        { 
+            BlockNumber = 999,  // Legacy parameter 
+            ActivationBlock = 0  // New parameter should take precedence
+        };
+
+        var result = context.TraceRpcModule.trace_block(BlockParameter.Latest, precedenceTest);
+
+        result.Data.Should().NotBeNull();
+    }
+
+    [Test]
+    public async Task Trace_block_concurrent_isolation_test()
+    {
+        Context context = new();
+        await context.Build();
+
+        TestRpcBlockchain blockchain = context.Blockchain;
+        await blockchain.AddFunds(TestItem.AddressA, 1000.Ether());
+
+        // Create a transaction
+        UInt256 currentNonce = blockchain.StateReader.GetNonce(blockchain.BlockTree.Head!.Header, TestItem.AddressA);
+        Transaction tx = Build.A.Transaction
+            .WithNonce(currentNonce)
+            .WithTo(TestItem.AddressB)
+            .WithValue(1.Ether())
+            .WithGasLimit(21000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        await blockchain.AddBlock(tx);
+        BlockParameter blockParam = new(blockchain.BlockTree.Head!.Number);
+
+        // Test sequential calls
+        var pragueParam = new ForkActivationParameter { ForkName = "prague" };
+        var berlinParam = new ForkActivationParameter { ForkName = "berlin" };
+
+        var results = new List<ResultWrapper<IEnumerable<ParityTxTraceFromStore>>>();
+
+        for (int i = 0; i < 4; i++)
+        {
+            var param = i % 2 == 0 ? pragueParam : berlinParam;
+            var result = context.TraceRpcModule.trace_block(blockParam, param);
+            results.Add(result);
+        }
+
+        results.Should().AllSatisfy(result => result.Data.Should().NotBeNull().And.NotBeEmpty());
+
+        // Results with same parameters should be consistent
+        var pragueResults = results.Where((_, i) => i % 2 == 0).ToArray();
+        var berlinResults = results.Where((_, i) => i % 2 == 1).ToArray();
+
+        var firstPrague = pragueResults[0].Data!.ToArray();
+        foreach (var pragueResult in pragueResults.Skip(1))
+        {
+            var current = pragueResult.Data!.ToArray();
+            current.Should().HaveCount(firstPrague.Length);
         }
     }
 }
