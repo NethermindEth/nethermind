@@ -48,7 +48,7 @@ public ref struct ArrayPoolListRef<T>
         _count = startingCount;
     }
 
-    public int Count => _count;
+    public readonly int Count => _count;
     public int Capacity => _capacity;
     public void Add(T item) => ArrayPoolListCore.Add(_arrayPool, ref _array, ref _capacity, ref _count, item);
     public void AddRange(params T[] items) => AddRange(items.AsSpan());
