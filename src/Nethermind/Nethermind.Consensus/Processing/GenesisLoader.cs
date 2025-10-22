@@ -17,6 +17,7 @@ namespace Nethermind.Consensus.Processing
         IGenesisBuilder genesisBuilder,
         IStateReader stateReader,
         IBlockTree blockTree,
+        IWorldState worldState,
         IWorldStateManager worldStateManager,
         IBlockchainProcessor blockchainProcessor,
         GenesisLoader.Config genesisConfig,
@@ -30,7 +31,12 @@ namespace Nethermind.Consensus.Processing
 
         public void Load()
         {
-            IWorldState worldState = worldStateManager.GlobalWorldState;
+            DoLoad();
+            worldStateManager.FlushCache(CancellationToken.None);
+        }
+
+        private void DoLoad()
+        {
             using var _ = worldState.BeginScope(IWorldState.PreGenesis);
 
             Block genesis = genesisBuilder.Build();
@@ -67,8 +73,6 @@ namespace Nethermind.Consensus.Processing
             {
                 throw new InvalidBlockException(genesis, "Error while generating genesis block.");
             }
-
-            worldStateManager.FlushCache(CancellationToken.None);
         }
 
         /// <summary>
