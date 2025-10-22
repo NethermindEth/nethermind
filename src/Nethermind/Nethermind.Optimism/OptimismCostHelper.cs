@@ -129,7 +129,9 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
                 break;
         }
 
-        return (UInt256)gas * operatorFee.scalar / 1_000_000 + operatorFee.constant;
+        return opSpecHelper.IsJovian(header)
+            ? (UInt256)gas * operatorFee.scalar * 100 + operatorFee.constant // TODO: tests
+            : (UInt256)gas * operatorFee.scalar / 1_000_000 + operatorFee.constant;
 
         static (uint scalar, ulong constant) Parse(scoped ReadOnlySpan<byte> span)
         {
