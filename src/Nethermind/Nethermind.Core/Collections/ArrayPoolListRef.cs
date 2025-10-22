@@ -89,7 +89,7 @@ public ref struct ArrayPoolListRef<T>
     public Memory<T> AsMemory() => new(_array, 0, _count);
     public ReadOnlyMemory<T> AsReadOnlyMemory() => new(_array, 0, _count);
 
-    public T this[int index]
+    public readonly T this[int index]
     {
         get => ArrayPoolListCore.Get(_array, index, _count);
         set => ArrayPoolListCore.Set(_array, index, _count, value);
