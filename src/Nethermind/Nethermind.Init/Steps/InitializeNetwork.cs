@@ -289,7 +289,6 @@ public class InitializeNetwork : IStep
             _forkInfo,
             _api.GossipPolicy,
             _api.WorldStateManager!,
-            _api.BlockTree,
             _api.LogManager,
             _api.Config<ITxPoolConfig>(),
             _api.SpecProvider,

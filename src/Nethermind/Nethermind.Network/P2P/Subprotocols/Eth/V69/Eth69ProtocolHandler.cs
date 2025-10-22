@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -37,7 +36,6 @@ public class Eth69ProtocolHandler(
     ITxPool txPool,
     IGossipPolicy gossipPolicy,
     IForkInfo forkInfo,
-    IBlockFinder blockFinder,
     ILogManager logManager,
     ITxPoolConfig txPoolConfig,
     ISpecProvider specProvider,
@@ -154,7 +152,7 @@ public class Eth69ProtocolHandler(
             NetworkId = SyncServer.NetworkId,
             GenesisHash = SyncServer.Genesis.Hash!,
             ForkId = _forkInfo.GetForkId(head.Number, head.Timestamp),
-            EarliestBlock = blockFinder.GetLowestBlock(),
+            EarliestBlock = SyncServer.LowestBlock,
             LatestBlock = head.Number,
             LatestBlockHash = head.Hash!
         };

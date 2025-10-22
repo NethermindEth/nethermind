@@ -123,7 +123,6 @@ public class ProtocolsManagerTests
                 forkInfo,
                 _gossipPolicy,
                 Substitute.For<IWorldStateManager>(),
-                _blockTree,
                 LimboLogs.Instance,
                 Substitute.For<ITxPoolConfig>(),
                 Substitute.For<ISpecProvider>());

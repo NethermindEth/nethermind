@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -74,7 +73,6 @@ namespace Nethermind.Network
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
         private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
         private readonly ISnapServer? _snapServer;
-        private readonly IBlockFinder _blockFinder;
 
         public ProtocolsManager(
             ISyncPeerPool syncPeerPool,
@@ -90,7 +88,6 @@ namespace Nethermind.Network
             IForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
             IWorldStateManager worldStateManager,
-            IBlockFinder blockFinder,
             ILogManager logManager,
             ITxPoolConfig txPoolConfdig,
             ISpecProvider specProvider,
@@ -113,7 +110,6 @@ namespace Nethermind.Network
             _txPoolConfdig = txPoolConfdig;
             _specProvider = specProvider;
             _snapServer = worldStateManager.SnapServer;
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _protocolFactories = GetProtocolFactories();
@@ -230,7 +226,7 @@ namespace Nethermind.Network
                         66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                         67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                         68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfdig, _specProvider, _txGossipPolicy),
-                        69 => new Eth69ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _blockFinder, _logManager, _txPoolConfdig, _specProvider, _txGossipPolicy),
+                        69 => new Eth69ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfdig, _specProvider, _txGossipPolicy),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 
