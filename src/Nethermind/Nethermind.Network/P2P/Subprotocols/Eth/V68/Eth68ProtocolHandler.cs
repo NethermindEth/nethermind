@@ -110,7 +110,6 @@ public class Eth68ProtocolHandler(ISession session,
             hashes.Dispose();
             sizes.Dispose();
             types.Dispose();
-            newTxHashesIndexes.Dispose();
 
             return;
         }
