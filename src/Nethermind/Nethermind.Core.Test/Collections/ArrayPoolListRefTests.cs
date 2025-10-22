@@ -79,7 +79,7 @@ public class ArrayPoolListRefTests
     [Test]
     public void Can_enumerate()
     {
-        using ArrayPoolList<int> list = new(4);
+        using ArrayPoolListRef<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
         list.ToArray().Should().BeEquivalentTo(Enumerable.Range(0, 50));
     }
