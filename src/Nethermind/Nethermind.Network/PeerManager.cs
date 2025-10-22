@@ -428,7 +428,7 @@ namespace Nethermind.Network
             // Calculate randomized score for the candidate peer
             long candidateRandomizedScore = _randomizerService.GetRandomizedScore(candidateId);
 
-            // Get all active non-static peers sorted by randomized score
+            // Get all active non-static peers sorted by randomized score (ascending - lowest first)
             Peer[] activePeers = _peerPool.ActivePeers.Values
                 .Where(p => !p.Node.IsStatic && IsConnected(p))
                 .OrderBy(p => p.RandomizedScore)
@@ -439,15 +439,17 @@ namespace Nethermind.Network
                 return false;
             }
 
-            // Use configured portion to determine threshold
+            // Use configured portion to determine how many high-priority peers to protect
             int deterministicPoolSize = (int)(activePeers.Length * _networkConfig.DeterministicPeerPoolPortion);
             if (deterministicPoolSize == 0)
             {
                 return false;
             }
 
-            // Check if the candidate peer has a higher randomized score than the threshold peer
-            Peer thresholdPeer = activePeers[deterministicPoolSize - 1];
+            // The threshold peer is at the boundary: we protect the last deterministicPoolSize peers (high scores)
+            // and can replace from the first (length - deterministicPoolSize) peers (low scores)
+            int thresholdIndex = activePeers.Length - deterministicPoolSize;
+            Peer thresholdPeer = activePeers[thresholdIndex];
             return candidateRandomizedScore > thresholdPeer.RandomizedScore;
         }
 
@@ -841,7 +843,7 @@ namespace Nethermind.Network
             // Debug assertion: active peers should be at capacity
             System.Diagnostics.Debug.Assert(ActivePeersCount >= MaxActivePeers, "Active peers should be full when trying to make room");
 
-            // Get all active non-static peers sorted by randomized score
+            // Get all active non-static peers sorted by randomized score (ascending - lowest first)
             Peer[] activePeers = _peerPool.ActivePeers.Values
                 .Where(p => !p.Node.IsStatic && IsConnected(p))
                 .OrderBy(p => p.RandomizedScore)
@@ -852,23 +854,26 @@ namespace Nethermind.Network
                 return false;
             }
 
-            // Use configured portion to determine threshold
+            // Use configured portion to determine how many high-priority peers to protect
             int deterministicPoolSize = (int)(activePeers.Length * _networkConfig.DeterministicPeerPoolPortion);
             if (deterministicPoolSize == 0)
             {
                 return false;
             }
 
-            // Check if the candidate peer has a higher randomized score than the threshold peer
-            Peer thresholdPeer = activePeers[deterministicPoolSize - 1];
+            // The threshold peer is at the boundary: we protect the last deterministicPoolSize peers (high scores)
+            // and can replace from the first (length - deterministicPoolSize) peers (low scores)
+            int thresholdIndex = activePeers.Length - deterministicPoolSize;
+            Peer thresholdPeer = activePeers[thresholdIndex];
             if (candidateRandomizedScore > thresholdPeer.RandomizedScore)
             {
-                // Disconnect the threshold peer to make room
+                // Disconnect the lowest scoring peer (first in array) to make room
+                Peer lowestPeer = activePeers[0];
                 if (_logger.IsDebug)
-                    _logger.Debug($"Disconnecting peer {thresholdPeer.Node:s} (randomized: {thresholdPeer.RandomizedScore}) to make room for higher randomized peer {candidateId.ToShortString()} (randomized: {candidateRandomizedScore})");
+                    _logger.Debug($"Disconnecting peer {lowestPeer.Node:s} (randomized: {lowestPeer.RandomizedScore}) to make room for higher randomized peer {candidateId.ToShortString()} (randomized: {candidateRandomizedScore})");
 
-                thresholdPeer.InSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher randomized peer");
-                thresholdPeer.OutSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher randomized peer");
+                lowestPeer.InSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher randomized peer");
+                lowestPeer.OutSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher randomized peer");
 
                 return true;
             }
