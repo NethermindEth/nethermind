@@ -87,7 +87,7 @@ public ref struct ArrayPoolListRef<T>
     public readonly ref T GetRef(int index) => ref ArrayPoolListCore.GetRef(_array, index, _count);
     public readonly Span<T> AsSpan() => _array.AsSpan(0, _count);
     public readonly Memory<T> AsMemory() => new(_array, 0, _count);
-    public ReadOnlyMemory<T> AsReadOnlyMemory() => new(_array, 0, _count);
+    public readonly ReadOnlyMemory<T> AsReadOnlyMemory() => new(_array, 0, _count);
 
     public readonly T this[int index]
     {
