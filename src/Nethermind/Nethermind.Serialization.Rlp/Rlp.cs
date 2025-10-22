@@ -1839,9 +1839,11 @@ namespace Nethermind.Serialization.Rlp
         [StackTraceHidden]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
         {
+            /*
             RlpLimit l = limit ?? RlpLimit.DefaultLimit;
             if (count > bytesLeft || count > l.Limit)
                 ThrowCountOverLimit(count, bytesLeft, l);
+                */
         }
 
         [DoesNotReturn]
