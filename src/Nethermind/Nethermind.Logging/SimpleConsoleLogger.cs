@@ -34,7 +34,7 @@ namespace Nethermind.Logging
 
         public void Error(string text, Exception ex = null)
         {
-            if (IsError) Console.Error.WriteLine(DateTime.Now.ToString(dateFormat) + text);
+            if (IsError) Console.Error.WriteLine(DateTime.Now.ToString(dateFormat) + text + (ex != null ? " " + ex : string.Empty));
         }
 
         private void WriteEntry(string text)
