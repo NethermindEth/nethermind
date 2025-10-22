@@ -42,6 +42,9 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     // Isthmus
     private readonly StorageCell _operatorFeeParamsSlot = new(l1BlockAddr, new UInt256(8));
 
+    // Jovian
+    private readonly StorageCell _daFootprintGasScalarSlot = new(l1BlockAddr, new UInt256(8));
+
     [SkipLocalsInit]
     public UInt256 ComputeL1Cost(Transaction tx, BlockHeader header, IWorldState worldState)
     {
@@ -141,6 +144,28 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
             var operatorFeeConstant = ReadUInt64BigEndian(span[feeStart..]);
             return (operatorFeeScalar, operatorFeeConstant);
         }
+    }
+
+    public UInt256 ComputeDAFootprint(Transaction tx, BlockHeader header, IWorldState worldState)
+    {
+        // https://specs.optimism.io/protocol/jovian/exec-engine.html#scalar-loading
+        const int scalarPosition = 12;
+        var span = worldState.Get(_daFootprintGasScalarSlot);
+
+        if (span.IsEmpty)
+            return 0;
+
+        var daFootprintGasScalar = ReadUInt16BigEndian(span[scalarPosition..]);
+
+        if (tx.Type == TxType.DepositTx)
+            return 0;
+
+        var daUsageEstimate = UInt256.Max(
+            MinTransactionSizeScaled,
+            L1CostInterceptNeg + L1CostFastlzCoef * ComputeFlzCompressLen(tx)
+        );
+
+        return daUsageEstimate * daFootprintGasScalar;
     }
 
     [SkipLocalsInit]
