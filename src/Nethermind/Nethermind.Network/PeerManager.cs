@@ -36,8 +36,7 @@ namespace Nethermind.Network
         private readonly IRlpxHost _rlpxHost;
         private readonly INodeStatsManager _stats;
         private readonly ManualResetEventSlim _peerUpdateRequested = new(false);
-        private readonly PeerComparer _peerComparerByReputation = new(useDiversityScoring: false);
-        private readonly PeerComparer _peerComparerByDiversity = new(useDiversityScoring: true);
+        private readonly PeerComparer _peerComparer = new();
         private readonly IPeerPool _peerPool;
         private readonly IPeerDiversityService _diversityService;
         private readonly Lock _lock = new();
@@ -306,9 +305,25 @@ namespace Nethermind.Network
                     {
                         if (!EnsureAvailableActivePeerSlot())
                         {
-                            // Some new connection are in flight at this point, but statistically speaking, they
-                            // are going to fail, so its fine.
-                            break;
+                            // Check if we can replace a lower-diversity peer
+                            if (!peer.Node.IsStatic && CanReplaceActivePeer(peer.Node.Id))
+                            {
+                                if (TryMakeRoomForHigherDiversityPeerOutgoing(peer))
+                                {
+                                    // Successfully made room, continue connecting to this peer
+                                }
+                                else
+                                {
+                                    // Could not make room, break
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                // Some new connection are in flight at this point, but statistically speaking, they
+                                // are going to fail, so its fine.
+                                break;
+                            }
                         }
 
                         await taskChannel.Writer.WriteAsync(peer, _cancellationTokenSource.Token);
@@ -533,7 +548,7 @@ namespace Nethermind.Network
                 }
             }
 
-            _currentSelection.Candidates.Sort(_peerComparerByReputation);
+            _currentSelection.Candidates.Sort(_peerComparer);
 
             foreach (var currentSelectionCounter in _currentSelection.Counters)
             {
@@ -672,23 +687,6 @@ namespace Nethermind.Network
             if (cancelIfThrottled && _outgoingConnectionRateLimiter.IsThrottled()) return;
 
             await _outgoingConnectionRateLimiter.WaitAsync(_cancellationTokenSource.Token);
-
-            // If pool is full and diversity scoring is enabled, check if we can replace a lower-diversity peer
-            if (ActivePeersCount >= MaxActivePeers && !peer.Node.IsStatic)
-            {
-                if (!CanReplaceActivePeer(peer.Node.Id))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Cannot make room for outgoing peer {peer.Node:s}, pool is full");
-                    return;
-                }
-
-                // Make room by disconnecting the lowest diversity peer
-                if (!TryMakeRoomForHigherDiversityPeerOutgoing(peer))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Cannot make room for outgoing peer {peer.Node:s}, pool is full");
-                    return;
-                }
-            }
 
             // Can happen when In connection is received from the same peer and is initialized before we get here
             // In this case we do not initialize OUT connection
@@ -840,6 +838,9 @@ namespace Nethermind.Network
 
         private bool TryMakeRoomForHigherDiversityPeerInternal(long candidateDiversityScore, PublicKey candidateId)
         {
+            // Debug assertion: active peers should be at capacity
+            System.Diagnostics.Debug.Assert(ActivePeersCount >= MaxActivePeers, "Active peers should be full when trying to make room");
+
             // Get all active non-static peers sorted by diversity score
             Peer[] activePeers = _peerPool.ActivePeers.Values
                 .Where(p => !p.Node.IsStatic && IsConnected(p))
@@ -862,13 +863,12 @@ namespace Nethermind.Network
             Peer thresholdPeer = activePeers[lowerHalfSize - 1];
             if (candidateDiversityScore > thresholdPeer.DiversityScore)
             {
-                // Disconnect the lowest diversity peer to make room
-                Peer lowestDiversityPeer = activePeers[0];
+                // Disconnect the threshold peer to make room
                 if (_logger.IsDebug)
-                    _logger.Debug($"Disconnecting peer {lowestDiversityPeer.Node:s} (diversity: {lowestDiversityPeer.DiversityScore}) to make room for higher diversity peer {candidateId.ToShortString()} (diversity: {candidateDiversityScore})");
+                    _logger.Debug($"Disconnecting peer {thresholdPeer.Node:s} (diversity: {thresholdPeer.DiversityScore}) to make room for higher diversity peer {candidateId.ToShortString()} (diversity: {candidateDiversityScore})");
 
-                lowestDiversityPeer.InSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher diversity peer");
-                lowestDiversityPeer.OutSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher diversity peer");
+                thresholdPeer.InSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher diversity peer");
+                thresholdPeer.OutSession?.InitiateDisconnect(DisconnectReason.TooManyPeers, "making room for higher diversity peer");
 
                 return true;
             }

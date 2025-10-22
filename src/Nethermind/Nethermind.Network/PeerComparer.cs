@@ -7,13 +7,6 @@ namespace Nethermind.Network
 {
     internal class PeerComparer : IComparer<Peer>
     {
-        private readonly bool _useDiversityScoring;
-
-        public PeerComparer(bool useDiversityScoring = false)
-        {
-            _useDiversityScoring = useDiversityScoring;
-        }
-
         public int Compare(Peer x, Peer y)
         {
             if (x is null)
@@ -30,17 +23,6 @@ namespace Nethermind.Network
             if (staticValue != 0)
             {
                 return staticValue;
-            }
-
-            // If diversity scoring is enabled, use diversity score
-            // Otherwise fall back to reputation-based sorting
-            if (_useDiversityScoring)
-            {
-                int diversityScore = -x.DiversityScore.CompareTo(y.DiversityScore);
-                if (diversityScore != 0)
-                {
-                    return diversityScore;
-                }
             }
 
             int reputation = -x.Node.CurrentReputation.CompareTo(y.Node.CurrentReputation);

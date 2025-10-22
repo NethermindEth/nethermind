@@ -82,57 +82,5 @@ namespace Nethermind.Network.Test
             Assert.That(peers[3], Is.EqualTo(peerD));
             Assert.That(peers[4], Is.EqualTo(peerE));
         }
-
-        [Test]
-        public void Can_sort_by_diversity_score()
-        {
-            PeerComparer diversityComparer = new(useDiversityScoring: true);
-
-            Node a = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
-            Peer peerA = new(a);
-            peerA.DiversityScore = 100;
-
-            Node b = new(TestItem.PublicKeyB, "127.0.0.1", 30304);
-            Peer peerB = new(b);
-            peerB.DiversityScore = 50;
-
-            Node c = new(TestItem.PublicKeyC, "127.0.0.1", 30305);
-            Peer peerC = new(c);
-            peerC.DiversityScore = 200;
-
-            Node d = new(TestItem.PublicKeyD, "127.0.0.1", 30306);
-            Peer peerD = new(d);
-            peerD.DiversityScore = 10;
-
-            List<Peer> peers = new() { peerA, peerB, peerC, peerD };
-
-            peers.Sort(diversityComparer);
-
-            Assert.That(peers[0], Is.EqualTo(peerC));
-            Assert.That(peers[1], Is.EqualTo(peerA));
-            Assert.That(peers[2], Is.EqualTo(peerB));
-            Assert.That(peers[3], Is.EqualTo(peerD));
-        }
-
-        [Test]
-        public void Static_peers_have_priority_over_diversity_score()
-        {
-            PeerComparer diversityComparer = new(useDiversityScoring: true);
-
-            Node a = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
-            Peer peerA = new(a);
-            peerA.DiversityScore = 100;
-
-            Node b = new(TestItem.PublicKeyB, "127.0.0.1", 30304) { IsStatic = true };
-            Peer peerB = new(b);
-            peerB.DiversityScore = 50;
-
-            List<Peer> peers = new() { peerA, peerB };
-
-            peers.Sort(diversityComparer);
-
-            Assert.That(peers[0], Is.EqualTo(peerB));
-            Assert.That(peers[1], Is.EqualTo(peerA));
-        }
     }
 }
