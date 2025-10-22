@@ -550,7 +550,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.InsufficientSenderBalance;
             }
 
-            if (senderReservedGasPayment != 0)
+            // if (senderReservedGasPayment != 0)
                 WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
 
             return TransactionResult.Ok;
