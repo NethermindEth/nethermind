@@ -7,7 +7,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 
@@ -20,7 +19,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 
     public Hash256 StateRoot => _innerWorldState.StateRoot;
 
-    public bool AccountExists(Address address)
+    public virtual bool AccountExists(Address address)
         => _innerWorldState.AccountExists(address);
 
     public virtual void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
@@ -38,7 +37,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
 
-    public void ClearStorage(Address address)
+    public virtual void ClearStorage(Address address)
         => _innerWorldState.ClearStorage(address);
 
     public virtual void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
@@ -74,7 +73,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual UInt256 GetBalance(Address address)
         => _innerWorldState.GetBalance(address);
 
-    public byte[]? GetCode(Address address)
+    public virtual byte[]? GetCode(Address address)
         => _innerWorldState.GetCode(address);
 
     public byte[]? GetCode(in ValueHash256 codeHash)
@@ -101,10 +100,10 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         => _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
 
-    public bool IsContract(Address address)
+    public virtual bool IsContract(Address address)
         => _innerWorldState.IsContract(address);
 
-    public bool IsDeadAccount(Address address)
+    public virtual bool IsDeadAccount(Address address)
         => _innerWorldState.IsDeadAccount(address);
 
     public virtual void RecalculateStateRoot()

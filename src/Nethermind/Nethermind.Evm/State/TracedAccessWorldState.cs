@@ -99,20 +99,20 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     public override UInt256 GetBalance(Address address)
     {
-        if (Enabled)
-        {
-            BlockAccessList.AddAccountRead(address);
-        }
+        AddAccountRead(address);
         return _innerWorldState.GetBalance(address);
     }
 
     public override ValueHash256 GetCodeHash(Address address)
     {
-        if (Enabled)
-        {
-            BlockAccessList.AddAccountRead(address);
-        }
+        AddAccountRead(address);
         return _innerWorldState.GetCodeHash(address);
+    }
+
+    public override byte[]? GetCode(Address address)
+    {
+        AddAccountRead(address);
+        return _innerWorldState.GetCode(address);
     }
 
     public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
@@ -158,10 +158,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     public override bool TryGetAccount(Address address, out AccountStruct account)
     {
-        if (Enabled)
-        {
-            BlockAccessList.AddAccountRead(address);
-        }
+        AddAccountRead(address);
         return _innerWorldState.TryGetAccount(address, out account);
     }
 
@@ -187,5 +184,31 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
         int blockAccessListSnapshot = BlockAccessList.TakeSnapshot();
         Snapshot snapshot = _innerWorldState.TakeSnapshot(newTransactionStart);
         return new(snapshot.StorageSnapshot, snapshot.StateSnapshot, blockAccessListSnapshot);
+    }
+
+    public override bool AccountExists(Address address)
+    {
+        AddAccountRead(address);
+        return _innerWorldState.AccountExists(address);
+    }
+
+    public override bool IsContract(Address address)
+    {
+        AddAccountRead(address);
+        return _innerWorldState.AccountExists(address);
+    }
+
+    public override bool IsDeadAccount(Address address)
+    {
+        AddAccountRead(address);
+        return _innerWorldState.AccountExists(address);
+    }
+
+    public override void ClearStorage(Address address)
+    {
+        // todo: change all storage slots to nothing
+        // consensus issue?
+        AddAccountRead(address);
+        _innerWorldState.ClearStorage(address);
     }
 }
