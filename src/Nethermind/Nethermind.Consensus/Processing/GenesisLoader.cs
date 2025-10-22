@@ -66,6 +66,10 @@ namespace Nethermind.Consensus.Processing
             {
                 throw new InvalidBlockException(genesis, "Error while generating genesis block.");
             }
+
+            // Force persist the genesis state to disk to ensure it's available on restart
+            // This prevents issues with unclean shutdown before any state is persisted
+            worldState.CommitTree(0);
         }
 
         /// <summary>
