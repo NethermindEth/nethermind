@@ -18,7 +18,8 @@ namespace Nethermind.Blockchain.Receipts
         private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt> _transactions = new();
 
 #pragma warning disable CS0067
-        public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+        public event EventHandler<BlockReplacementEventArgs>? NewCanonicalReceipts;
+        public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted;
 #pragma warning restore CS0067
 
         public InMemoryReceiptStorage(bool allowReceiptIterator = true, IBlockTree? blockTree = null)
@@ -32,7 +33,7 @@ namespace Nethermind.Blockchain.Receipts
         private void BlockTree_BlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
             EnsureCanonical(e.Block);
-            ReceiptsInserted?.Invoke(this, e);
+            NewCanonicalReceipts?.Invoke(this, e);
         }
 
         public Hash256 FindBlockHash(Hash256 txHash)
@@ -73,6 +74,8 @@ namespace Nethermind.Blockchain.Receipts
             {
                 EnsureCanonical(block);
             }
+
+            ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
         }
 
         public bool HasBlock(long blockNumber, Hash256 hash)

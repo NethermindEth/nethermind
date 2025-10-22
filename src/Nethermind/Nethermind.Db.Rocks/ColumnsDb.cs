@@ -61,9 +61,9 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         return keys;
     }
 
-    protected override void BuildOptions<O>(IRocksDbConfig dbConfig, Options<O> options, IntPtr? sharedCache)
+    protected override void BuildOptions<TOptions>(IRocksDbConfig dbConfig, Options<TOptions> options, IntPtr? sharedCache, IMergeOperator? mergeOperator)
     {
-        base.BuildOptions(dbConfig, options, sharedCache);
+        base.BuildOptions(dbConfig, options, sharedCache, mergeOperator);
         options.SetCreateMissingColumnFamilies();
     }
 
@@ -130,9 +130,19 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             _writeBatch.Dispose();
         }
 
+        public void Clear()
+        {
+            _writeBatch._writeBatch.Clear();
+        }
+
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             _writeBatch._writeBatch.Set(key, value, _column._columnFamily, flags);
+        }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            _writeBatch._writeBatch.Merge(key, value, _column._columnFamily, flags);
         }
     }
 }

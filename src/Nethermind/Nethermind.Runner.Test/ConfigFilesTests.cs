@@ -268,8 +268,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IInitConfig, string>(configWildcard, c => c.BaseDbPath, (cf, p) => p.Should().StartWith(startWith));
     }
 
-    [TestCase("^sepolia", "Data/static-nodes.json")]
-    [TestCase("sepolia", "Data/static-nodes-sepolia.json")]
+    [TestCase("*", "static-nodes.json")]
     public void Static_nodes_path_is_default(string configWildcard, string staticNodesPath)
     {
         Test<IInitConfig, string>(configWildcard, static c => c.StaticNodesPath, staticNodesPath);
