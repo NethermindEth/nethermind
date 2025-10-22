@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.Producers
 {
     /// <summary>
     /// Block producer environment factory that uses the global world state and stores receipts by default.
-    /// It will not trigger suggesting produced blocks.
+    /// Combined with NonProcessingProducedBlockSuggester will add blocks to block tree
     /// </summary>
     /// <param name="rootLifetime"></param>
     /// <param name="worldStateManager"></param>
