@@ -136,23 +136,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
         }
     }
 
-    public bool Delete(TKey key)
-    {
-        if (MaxCapacity == 0) return false;
-
-        using var lockRelease = _lock.Acquire();
-
-        if (_cacheMap.Remove(key, out LruCacheItem ov))
-        {
-            _count--;
-            KeyToOffset[ov.Offset] = default;
-            ClearAccessed(ov.Offset);
-            FreeOffsets.Enqueue(ov.Offset);
-            return true;
-        }
-
-        return false;
-    }
+    public bool Delete(TKey key) => Delete(key, out _);
 
     public bool Delete(TKey key, [NotNullWhen(true)] out TValue? value)
     {
