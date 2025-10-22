@@ -5,8 +5,8 @@
   <PropertyGroup Label="ProductInfo">
     <SourceDateEpoch>$(SOURCE_DATE_EPOCH)</SourceDateEpoch>
     <SourceDateEpoch Condition="'$(SourceDateEpoch)' == ''">$([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())</SourceDateEpoch>
-    <VersionPrefix>1.35.0</VersionPrefix>
-    <VersionSuffix></VersionSuffix>
+    <VersionPrefix>1.35.1</VersionPrefix>
+    <VersionSuffix>rc</VersionSuffix>
   </PropertyGroup>
 
   <ItemGroup Label="AssemblyCustomMetadata">
