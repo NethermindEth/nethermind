@@ -65,7 +65,8 @@ namespace Nethermind.Synchronization.StateSync
                 }
             }
 
-            throw new InvalidOperationException("State sync dispatch was scheduled to a peer unable to serve state sync.");
+            // All protocols returned empty or failed - peer might be out of sync
+            if (Logger.IsDebug) Logger.Debug($"All protocols returned empty response for peer {peer}. Peer might be out of sync.");
         }
 
         private async Task<bool> TryGetNodeDataViaNodeDataProtocol(INodeDataPeer nodeDataHandler, StateSyncBatch batch, CancellationToken cancellationToken, ISyncPeer peer)
