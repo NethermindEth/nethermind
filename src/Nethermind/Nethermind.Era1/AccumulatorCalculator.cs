@@ -12,16 +12,11 @@ namespace Nethermind.Era1;
 // https://github.com/ethereum/portal-network-specs/blob/master/history/history-network.md#algorithms
 internal class AccumulatorCalculator : IDisposable
 {
-    ArrayPoolList<ReadOnlyMemory<byte>> _roots;
-
-    public AccumulatorCalculator()
-    {
-        _roots = new(EraWriter.MaxEra1Size);
-    }
+    private readonly ArrayPoolList<ReadOnlyMemory<byte>> _roots = new(EraWriter.MaxEra1Size);
 
     public void Add(Hash256 headerHash, UInt256 td)
     {
-        Merkleizer merkleizer = new Merkleizer((int)Merkle.NextPowerOfTwoExponent(2));
+        Merkleizer merkleizer = new(Merkle.NextPowerOfTwoExponent(2));
         merkleizer.Feed(headerHash.Bytes);
         merkleizer.Feed(td);
         _roots.Add(merkleizer.CalculateRoot().ToLittleEndian());
@@ -29,7 +24,7 @@ internal class AccumulatorCalculator : IDisposable
 
     public ValueHash256 ComputeRoot()
     {
-        Merkleizer merkleizer = new Merkleizer(0);
+        Merkleizer merkleizer = new(0);
         merkleizer.Feed(_roots, EraWriter.MaxEra1Size);
         UInt256 root = merkleizer.CalculateRoot();
         return new ValueHash256(MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1)));

@@ -266,7 +266,7 @@ public class PatriciaTreeBulkSetterTests
 
             pTree.Commit();
 
-            using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = new ArrayPoolList<PatriciaTree.BulkSetEntry>(items.Count);
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(items.Count);
             foreach (var valueTuple in items)
             {
                 entries.Add(new PatriciaTree.BulkSetEntry(valueTuple.key, valueTuple.value));
@@ -317,7 +317,7 @@ public class PatriciaTreeBulkSetterTests
 
         pTree.UpdateRootHash();
 
-        using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = new ArrayPoolList<PatriciaTree.BulkSetEntry>(items.Count);
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(items.Count);
         foreach (var valueTuple in items)
         {
             entries.Add(new PatriciaTree.BulkSetEntry(valueTuple.key, valueTuple.value));
@@ -350,7 +350,7 @@ public class PatriciaTreeBulkSetterTests
             pTree.Commit();
 
 
-            using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = new ArrayPoolList<PatriciaTree.BulkSetEntry>(items.Count);
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(items.Count);
             foreach (var valueTuple in items)
             {
                 entries.Add(new PatriciaTree.BulkSetEntry(valueTuple.key, valueTuple.value));
@@ -411,7 +411,7 @@ public class PatriciaTreeBulkSetterTests
             long sw = Stopwatch.GetTimestamp();
             foreach (var valueTuple in items)
             {
-                using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = new ArrayPoolList<PatriciaTree.BulkSetEntry>(items.Count);
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(items.Count);
                 entries.Add(new PatriciaTree.BulkSetEntry(valueTuple.key, valueTuple.value));
                 pTree.BulkSet(entries, PatriciaTree.Flags.None);
             }
@@ -490,15 +490,24 @@ public class PatriciaTreeBulkSetterTests
 
         Random rng = new Random(0);
 
-        using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = new ArrayPoolList<PatriciaTree.BulkSetEntry>(3);
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(3);
         entries.Add(new PatriciaTree.BulkSetEntry(new ValueHash256("8818888888888888888888888888888888888888888888888888888888888888"), MakeRandomValue(rng)));
         entries.Add(new PatriciaTree.BulkSetEntry(new ValueHash256("8828888888888888888888888888888888888888888888888888888888888888"), MakeRandomValue(rng)));
         entries.Add(new PatriciaTree.BulkSetEntry(new ValueHash256("8848888888888888888888888888888888888888888888888888888888888888"), MakeRandomValue(rng)));
         entries.Add(new PatriciaTree.BulkSetEntry(new ValueHash256("8848888888888888888888888888888888888888888888888888888888888888"), MakeRandomValue(rng)));
         entries.Add(new PatriciaTree.BulkSetEntry(new ValueHash256("8858888888888888888888888888888888888888888888888888888888888888"), MakeRandomValue(rng)));
 
-        var act = () => pTree.BulkSet(entries);
-        act.Should().Throw<InvalidOperationException>();
+        bool thrown = false;
+        try
+        {
+            pTree.BulkSet(entries);
+        }
+        catch (InvalidOperationException)
+        {
+            thrown = true;
+        }
+
+        thrown.Should().BeTrue();
     }
 
     public static IEnumerable<TestCaseData> BucketSortTestCase()

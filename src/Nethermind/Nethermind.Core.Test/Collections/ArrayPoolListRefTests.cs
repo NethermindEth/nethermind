@@ -252,7 +252,7 @@ public class ArrayPoolListRefTests
     [TestCase(100, 128)]
     public void AddRange_should_expand(int items, int expectedCapacity)
     {
-        using ArrayPoolListRef<int> list = new(16, [0, 1]);
+        using ArrayPoolListRef<int> list = new(16, 0, 1);
         list.AddRange(Enumerable.Range(2, items));
         list.AsSpan().ToArray().Should().BeEquivalentTo(Enumerable.Range(0, items + 2));
         list.Capacity.Should().Be(expectedCapacity);

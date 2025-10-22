@@ -77,7 +77,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         int blockCount = (int)_fileReader.BlockCount;
         using ArrayPoolList<(Hash256, UInt256)> blockHashes = new(blockCount, blockCount);
 
-        ConcurrentQueue<long> blockNumbers = new ConcurrentQueue<long>(EnumerateBlockNumber());
+        ConcurrentQueue<long> blockNumbers = new(EnumerateBlockNumber());
 
         using ArrayPoolList<Task> workers = Enumerable.Range(0, verifyConcurrency).Select((_) => Task.Run(async () =>
         {
@@ -110,7 +110,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         await Task.WhenAll(workers.AsSpan());
 
         using AccumulatorCalculator calculator = new();
-        foreach (var valueTuple in blockHashes.AsSpan())
+        foreach ((Hash256, UInt256) valueTuple in blockHashes.AsSpan())
         {
             calculator.Add(valueTuple.Item1, valueTuple.Item2);
         }

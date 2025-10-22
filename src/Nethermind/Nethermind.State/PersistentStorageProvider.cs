@@ -349,10 +349,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// <param name="blockNumber">Current block number</param>
     public void CommitTrees(IBlockCommitter blockCommitter)
     {
-        // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
-        // may make it worst. Always check on mainnet.
+        // Note: These all run in about 0.4ms. So the little overhead like attempting to sort the tasks
+        // may make it worse. Always check on mainnet.
 
-        using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
+        using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
         foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
         {
             storage.Value.EnsureStorageTree(); // Cannot be called concurrently
@@ -656,10 +656,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
             else
             {
-                using ArrayPoolList<PatriciaTree.BulkSetEntry> bulkWrite = new(BlockChange.EstimatedSize);
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkWrite = new(BlockChange.EstimatedSize);
 
                 Span<byte> keyBuf = stackalloc byte[32];
-                foreach (var kvp in BlockChange)
+                foreach (KeyValuePair<UInt256, ChangeTrace> kvp in BlockChange)
                 {
                     byte[] after = kvp.Value.After;
                     if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)

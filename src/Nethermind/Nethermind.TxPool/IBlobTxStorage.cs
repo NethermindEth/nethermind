@@ -3,12 +3,13 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.TxPool;
 
 public interface IBlobTxStorage : ITxStorage
 {
     bool TryGetBlobTransactionsFromBlock(long blockNumber, out Transaction[]? blockBlobTransactions);
-    void AddBlobTransactionsFromBlock(long blockNumber, IList<Transaction> blockBlobTransactions);
+    void AddBlobTransactionsFromBlock(long blockNumber, ArrayPoolListRef<Transaction> blockBlobTransactions);
     void DeleteBlobTransactionsFromBlock(long blockNumber);
 }

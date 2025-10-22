@@ -146,9 +146,9 @@ public class BatchedTrieVisitor<TNodeContext>
 
         try
         {
-            using ArrayPoolList<Task> tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
+            using ArrayPoolListRef<Task> tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
                 .Select(_ => Task.Run(BatchedThread))
-                .ToPooledList(trieVisitContext.MaxDegreeOfParallelism);
+                .ToPooledListRef(trieVisitContext.MaxDegreeOfParallelism);
 
             Task.WaitAll(tasks.AsSpan());
         }
@@ -169,7 +169,7 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 Interlocked.Add(ref _currentPointer, -_partitionCount);
 
-                GC.Collect(); // Simulate GC collect of standard visitor
+                GC.Collect(); // Simulate GC collect of a standard visitor
             }
 
             partitionIdx %= _partitionCount;
@@ -214,7 +214,7 @@ public class BatchedTrieVisitor<TNodeContext>
             // So we get more than the batch size, then we sort it by level, and take only the maxNodeBatch nodes with
             // the higher level. This is so that higher level is processed first to reduce memory usage. Its inaccurate,
             // and hacky, but it works.
-            using ArrayPoolList<Job> preSort = new(_jobArrayPool, _maxBatchSize * 4);
+            using ArrayPoolListRef<Job> preSort = new(_jobArrayPool, _maxBatchSize * 4);
             lock (theStack)
             {
                 for (int i = 0; i < _maxBatchSize * 4; i++)
@@ -256,7 +256,7 @@ public class BatchedTrieVisitor<TNodeContext>
     }
 
 
-    void QueueNextNodes(ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> batchResult)
+    void QueueNextNodes(ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> batchResult)
     {
         // Reverse order is important so that higher level appear at the end of the stack.
         TreePath emptyPath = TreePath.Empty;
@@ -267,7 +267,7 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 // Inline node. Seems rare, so its fine to create new list for this. Does not have a keccak
                 // to queue, so we'll just process it inline.
-                using ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
+                using ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
                 trieNode.ResolveNode(_resolver, emptyPath);
                 Interlocked.Increment(ref _activeJobs);
                 AcceptResolvedNode(trieNode, nodeContext, _resolver, ctx, recursiveResult);
@@ -293,11 +293,10 @@ public class BatchedTrieVisitor<TNodeContext>
 
     private void BatchedThread()
     {
-        using ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize);
-        using ArrayPoolList<int> resolveOrdering = new(_maxBatchSize);
-        ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)>? currentBatch;
+        using ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize);
+        using ArrayPoolListRef<int> resolveOrdering = new(_maxBatchSize);
         TreePath emptyPath = TreePath.Empty;
-        while ((currentBatch = GetNextBatch()) is not null)
+        while (GetNextBatch() is { } currentBatch)
         {
             // Storing the idx separately as the ordering is important to reduce memory (approximate dfs ordering)
             // but the path ordering is important for read amplification
@@ -378,7 +377,7 @@ public class BatchedTrieVisitor<TNodeContext>
     /// Like `Accept`, but does not execute its children. Instead it return the next trie to visit in the list
     /// `nextToVisit`. Also, it assume the node is already resolved.
     /// </summary>
-    internal void AcceptResolvedNode(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, IList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
+    internal void AcceptResolvedNode(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
     {
         // Note: The path is not maintained here, its just for a placeholder. This code is only used for BatchedTrieVisitor
         // which should only be used with hash keys.

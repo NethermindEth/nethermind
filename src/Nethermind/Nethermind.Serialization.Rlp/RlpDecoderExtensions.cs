@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -120,6 +121,27 @@ namespace Nethermind.Serialization.Rlp
             int bufferLength = Rlp.LengthOfSequence(totalLength);
 
             rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(bufferLength));
+            rlpStream.StartSequence(totalLength);
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                decoder.Encode(rlpStream, items[i], behaviors);
+            }
+
+            return rlpStream;
+        }
+
+        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamDecoder<T> decoder, ArrayPoolListRef<T?> items, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            int totalLength = 0;
+            for (int i = 0; i < items.Count; i++)
+            {
+                totalLength += decoder.GetLength(items[i], behaviors);
+            }
+
+            int bufferLength = Rlp.LengthOfSequence(totalLength);
+
+            NettyRlpStream rlpStream = new(NethermindBuffers.Default.Buffer(bufferLength));
             rlpStream.StartSequence(totalLength);
 
             for (int i = 0; i < items.Count; i++)

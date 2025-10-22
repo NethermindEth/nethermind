@@ -234,7 +234,7 @@ namespace Nethermind.Consensus.Producers
         {
             int maxCapacity = leftoverCapacity + 1;
             // The maximum total fee achievable with capacity
-            using ArrayPoolList<ulong> dpFeesPooled = new(capacity: maxCapacity, count: maxCapacity);
+            using ArrayPoolListRef<ulong> dpFeesPooled = new(capacity: maxCapacity, count: maxCapacity);
             Span<ulong> dpFees = dpFeesPooled.AsSpan();
 
             using ArrayPoolBitMap isChosen = new(candidateTxs.Count * maxCapacity);

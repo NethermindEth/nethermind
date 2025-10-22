@@ -96,7 +96,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private ArrayPoolList<Hash256> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes)
         {
-            ArrayPoolList<Hash256> discoveredTxHashes = new ArrayPoolList<Hash256>(hashes.Length);
+            ArrayPoolList<Hash256> discoveredTxHashes = new(hashes.Length);
             for (int i = 0; i < hashes.Length; i++)
             {
                 Hash256 hash = hashes[i];

@@ -23,6 +23,11 @@ public ref struct ArrayPoolListRef<T>
         AddRange(items);
     }
 
+    public ArrayPoolListRef(int capacity, params ReadOnlySpan<T> items) : this(ArrayPool<T>.Shared, capacity)
+    {
+        AddRange(items);
+    }
+
     public ArrayPoolListRef(ReadOnlySpan<T> span) : this(ArrayPool<T>.Shared, span.Length) => AddRange(span);
 
     public ArrayPoolListRef(ArrayPool<T> pool, int capacity, int startingCount = 0)
@@ -47,6 +52,7 @@ public ref struct ArrayPoolListRef<T>
     public int Count => _count;
     public int Capacity => _capacity;
     public void Add(T item) => ArrayPoolListCore.Add(_arrayPool, ref _array, ref _capacity, ref _count, item);
+    public void AddRange(params T[] items) => AddRange(items.AsSpan());
     public void AddRange(params ReadOnlySpan<T> items) => ArrayPoolListCore.AddRange(_arrayPool, ref _array, ref _capacity, ref _count, items);
 
     public void AddRange(params IEnumerable<T> items)
@@ -96,4 +102,13 @@ public ref struct ArrayPoolListRef<T>
     public int IndexOf(T item) => ArrayPoolListCore.IndexOf(_array, _count, item);
     public void CopyTo(T[] array, int arrayIndex) => ArrayPoolListCore.CopyTo(_array, _count, array, arrayIndex);
 
+    public ArrayPoolListRef<TResult> Select<TResult>(Func<T, TResult> selector)
+    {
+        ArrayPoolListRef<TResult> result = new(_count);
+        foreach (T item in AsSpan()) result.Add(selector(item));
+        return result;
+    }
+
+    public T[] ToArray() => AsSpan().ToArray();
+    public T[] UnsafeGetInternalArray() => _array;
 }

@@ -152,7 +152,7 @@ public class ValidateSubmissionHandler
 
         IBlobProofsVerifier verifier = IBlobProofsManager.For(releaseSpec.BlobProofVersion);
 
-        using ArrayPoolList<byte[]> hashes = new(blobs.Blobs.Length);
+        using ArrayPoolListRef<byte[]> hashes = new(blobs.Blobs.Length);
 
         foreach (Transaction tx in transactions)
         {

@@ -62,7 +62,7 @@ public class EraExporter(
             fileSystem.Directory.CreateDirectory(destinationPath);
         }
 
-        ProgressLogger progress = new ProgressLogger("Era export", logManager);
+        ProgressLogger progress = new("Era export", logManager);
         progress.Reset(0, to - from + 1);
         int totalProcessed = 0;
 

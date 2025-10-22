@@ -47,7 +47,7 @@ namespace Nethermind.Serialization.Rlp
 
             int sequenceLength = rlpStream.ReadSequenceLength();
             int lastCheck = sequenceLength + rlpStream.Position;
-            using ArrayPoolList<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
+            using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
 
             while (rlpStream.Position < lastCheck)
             {
@@ -96,7 +96,7 @@ namespace Nethermind.Serialization.Rlp
             int lastCheck = sequenceLength + decoderContext.Position;
 
             // Don't know the size exactly, I'll just assume its just an address and add some margin
-            using ArrayPoolList<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
+            using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
             while (decoderContext.Position < lastCheck)
             {
                 logEntries.Add(CompactLogEntryDecoder.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));

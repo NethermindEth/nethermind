@@ -185,7 +185,14 @@ namespace Nethermind.Core.Extensions
 
         public static ArrayPoolList<T> ToPooledList<T>(this in ReadOnlySpan<T> span)
         {
-            ArrayPoolList<T> newList = new ArrayPoolList<T>(span.Length);
+            ArrayPoolList<T> newList = new(span.Length);
+            newList.AddRange(span);
+            return newList;
+        }
+
+        public static ArrayPoolListRef<T> ToPooledListRef<T>(this in ReadOnlySpan<T> span)
+        {
+            ArrayPoolListRef<T> newList = new(span.Length);
             newList.AddRange(span);
             return newList;
         }
