@@ -508,6 +508,8 @@ namespace Nethermind.Evm.Test.Tracing
                 .WithGasLimit(100000)
                 .WithSenderAddress(Address.Zero)
                 .WithValue(0) // No value transfer - should work even with zero balance
+                .WithMaxFeePerGas(0)
+                .WithMaxPriorityFeePerGas(0)
                 .TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
