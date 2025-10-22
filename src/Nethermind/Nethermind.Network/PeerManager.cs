@@ -446,8 +446,9 @@ namespace Nethermind.Network
             long candidateRandomizedScore = _randomizerService.GetRandomizedScore(candidateId);
 
             // Get all active non-static peers sorted by randomized score (ascending - lowest first)
+            // Only consider initialized peers to avoid disconnecting peers that haven't completed handshake
             Peer[] activePeers = _peerPool.ActivePeers.Values
-                .Where(p => !p.Node.IsStatic && IsConnected(p))
+                .Where(p => !p.Node.IsStatic && IsInitialized(p))
                 .OrderBy(p => p.RandomizedScore)
                 .ToArray();
 
@@ -459,6 +460,13 @@ namespace Nethermind.Network
             // Use configured portion to determine how many high-priority peers to protect
             int deterministicPoolSize = (int)(activePeers.Length * _networkConfig.DeterministicPeerPoolPortion);
             if (deterministicPoolSize == 0)
+            {
+                return false;
+            }
+
+            // Only attempt replacement if we have enough initialized peers in the deterministic pool
+            int minRequiredPeers = (int)(MaxActivePeers * _networkConfig.DeterministicPeerPoolPortion);
+            if (activePeers.Length < minRequiredPeers)
             {
                 return false;
             }
@@ -861,8 +869,9 @@ namespace Nethermind.Network
             System.Diagnostics.Debug.Assert(ActivePeersCount >= MaxActivePeers, "Active peers should be full when trying to make room");
 
             // Get all active non-static peers sorted by randomized score (ascending - lowest first)
+            // Only consider initialized peers to avoid disconnecting peers that haven't completed handshake
             Peer[] activePeers = _peerPool.ActivePeers.Values
-                .Where(p => !p.Node.IsStatic && IsConnected(p))
+                .Where(p => !p.Node.IsStatic && IsInitialized(p))
                 .OrderBy(p => p.RandomizedScore)
                 .ToArray();
 
@@ -874,6 +883,13 @@ namespace Nethermind.Network
             // Use configured portion to determine how many high-priority peers to protect
             int deterministicPoolSize = (int)(activePeers.Length * _networkConfig.DeterministicPeerPoolPortion);
             if (deterministicPoolSize == 0)
+            {
+                return false;
+            }
+
+            // Only attempt replacement if we have enough initialized peers in the deterministic pool
+            int minRequiredPeers = (int)(MaxActivePeers * _networkConfig.DeterministicPeerPoolPortion);
+            if (activePeers.Length < minRequiredPeers)
             {
                 return false;
             }
@@ -1067,6 +1083,13 @@ namespace Nethermind.Network
         private static bool IsConnected(Peer peer)
         {
             return !(peer.InSession?.IsClosing ?? true) || !(peer.OutSession?.IsClosing ?? true);
+        }
+
+        private static bool IsInitialized(Peer peer)
+        {
+            bool inSessionInitialized = peer.InSession?.State >= SessionState.Initialized;
+            bool outSessionInitialized = peer.OutSession?.State >= SessionState.Initialized;
+            return inSessionInitialized || outSessionInitialized;
         }
 
         private void OnDisconnected(object sender, DisconnectEventArgs e)
