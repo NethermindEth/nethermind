@@ -82,7 +82,7 @@ public ref struct ArrayPoolListRef<T>
     public void Clear() => ArrayPoolListCore.Clear(_array, ref _count);
     public void ReduceCount(int newCount) => ArrayPoolListCore.ReduceCount(_arrayPool, ref _array, ref _capacity, ref _count, newCount);
     public void Truncate(int newLength) => ArrayPoolListCore.Truncate(newLength, _array, ref _count);
-    public void Sort(Comparison<T> comparison) => ArrayPoolListCore.Sort(_array, _count, comparison);
+    public readonly void Sort(Comparison<T> comparison) => ArrayPoolListCore.Sort(_array, _count, comparison);
     public void Reverse() => ArrayPoolListCore.Reverse(_array, _count);
     public ref T GetRef(int index) => ref ArrayPoolListCore.GetRef(_array, index, _count);
     public Span<T> AsSpan() => _array.AsSpan(0, _count);
