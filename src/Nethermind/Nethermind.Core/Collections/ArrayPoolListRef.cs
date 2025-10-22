@@ -109,5 +109,5 @@ public ref struct ArrayPoolListRef<T>
     }
 
     public T[] ToArray() => AsSpan().ToArray();
-    public T[] UnsafeGetInternalArray() => _array;
+    public readonly T[] UnsafeGetInternalArray() => _array;
 }
