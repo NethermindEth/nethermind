@@ -9,34 +9,19 @@ namespace Nethermind.Core.Collections;
 
 public ref struct ArrayPoolListRef<T>
 {
-    private readonly ArrayPool<T> _arrayPool;
     private T[] _array;
     private int _capacity;
     private int _count;
 
-    public ArrayPoolListRef(int capacity) : this(ArrayPool<T>.Shared, capacity) { }
+    public ArrayPoolListRef(int capacity, IEnumerable<T> items) : this(capacity) => AddRange(items);
+    public ArrayPoolListRef(int capacity, params ReadOnlySpan<T> items) : this(capacity) => AddRange(items);
+    public ArrayPoolListRef(ReadOnlySpan<T> span) : this(span.Length) => AddRange(span);
 
-    public ArrayPoolListRef(int capacity, int count) : this(ArrayPool<T>.Shared, capacity, count) { }
-
-    public ArrayPoolListRef(int capacity, IEnumerable<T> items) : this(ArrayPool<T>.Shared, capacity)
+    public ArrayPoolListRef(int capacity, int startingCount = 0)
     {
-        AddRange(items);
-    }
-
-    public ArrayPoolListRef(int capacity, params ReadOnlySpan<T> items) : this(ArrayPool<T>.Shared, capacity)
-    {
-        AddRange(items);
-    }
-
-    public ArrayPoolListRef(ReadOnlySpan<T> span) : this(ArrayPool<T>.Shared, span.Length) => AddRange(span);
-
-    public ArrayPoolListRef(ArrayPool<T> pool, int capacity, int startingCount = 0)
-    {
-        _arrayPool = pool;
-
         if (capacity != 0)
         {
-            _array = pool.Rent(capacity);
+            _array = ArrayPool<T>.Shared.Rent(capacity);
             _array.AsSpan(0, startingCount).Clear();
         }
         else
@@ -50,9 +35,9 @@ public ref struct ArrayPoolListRef<T>
 
     public readonly int Count => _count;
     public readonly int Capacity => _capacity;
-    public void Add(T item) => ArrayPoolListCore.Add(_arrayPool, ref _array, ref _capacity, ref _count, item);
+    public void Add(T item) => ArrayPoolListCore.Add(ArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, item);
     public void AddRange(params T[] items) => AddRange(items.AsSpan());
-    public void AddRange(params ReadOnlySpan<T> items) => ArrayPoolListCore.AddRange(_arrayPool, ref _array, ref _capacity, ref _count, items);
+    public void AddRange(params ReadOnlySpan<T> items) => ArrayPoolListCore.AddRange(ArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, items);
 
     public void AddRange(params IEnumerable<T> items)
     {
@@ -76,11 +61,11 @@ public ref struct ArrayPoolListRef<T>
         }
     }
 
-    public void Insert(int index, T item) => ArrayPoolListCore.Insert(_arrayPool, ref _array, ref _capacity, ref _count, index, item);
+    public void Insert(int index, T item) => ArrayPoolListCore.Insert(ArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, index, item);
     public bool Remove(T item) => ArrayPoolListCore.Remove(_array, ref _count, item);
     public void RemoveAt(int index) => ArrayPoolListCore.RemoveAt(_array, ref _count, index, shouldThrow: true);
     public void Clear() => ArrayPoolListCore.Clear(_array, ref _count);
-    public void ReduceCount(int newCount) => ArrayPoolListCore.ReduceCount(_arrayPool, ref _array, ref _capacity, ref _count, newCount);
+    public void ReduceCount(int newCount) => ArrayPoolListCore.ReduceCount(ArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, newCount);
     public void Truncate(int newLength) => ArrayPoolListCore.Truncate(newLength, _array, ref _count);
     public readonly void Sort(Comparison<T> comparison) => ArrayPoolListCore.Sort(_array, _count, comparison);
     public readonly void Reverse() => ArrayPoolListCore.Reverse(_array, _count);
@@ -95,7 +80,7 @@ public ref struct ArrayPoolListRef<T>
         set => ArrayPoolListCore.Set(_array, index, _count, value);
     }
 
-    public void Dispose() => ArrayPoolListCore.Dispose(_arrayPool, ref _array, ref _count, ref _capacity);
+    public void Dispose() => ArrayPoolListCore.Dispose(ArrayPool<T>.Shared, ref _array, ref _count, ref _capacity);
     public readonly PooledArrayEnumerator<T> GetEnumerator() => new(_array, _count);
     public readonly bool Contains(T item) => ArrayPoolListCore.Contains(_array, item, _count);
     public readonly int IndexOf(T item) => ArrayPoolListCore.IndexOf(_array, _count, item);
