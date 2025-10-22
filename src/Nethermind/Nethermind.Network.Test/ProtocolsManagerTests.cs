@@ -109,7 +109,6 @@ public class ProtocolsManagerTests
             _peerStorage = Substitute.For<INetworkStorage>();
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
-            _gossipPolicy = Substitute.For<IGossipPolicy>();
             _manager = new ProtocolsManager(
                 _syncPeerPool,
                 _syncServer,
