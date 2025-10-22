@@ -150,6 +150,13 @@ internal static partial class EvmInstructions
             gasExtra += GasCostOf.CallValue;
         }
 
+        // Pop additional parameters: data offset, data length, output offset, and output length.
+        if (!stack.PopUInt256(out UInt256 dataOffset) ||
+            !stack.PopUInt256(out UInt256 dataLength) ||
+            !stack.PopUInt256(out UInt256 outputOffset) ||
+            !stack.PopUInt256(out UInt256 outputLength))
+            goto StackUnderflow;
+
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
         // Charge additional gas if the target account is new or considered empty.
@@ -161,13 +168,6 @@ internal static partial class EvmInstructions
         {
             gasExtra += GasCostOf.NewAccount;
         }
-
-        // Pop additional parameters: data offset, data length, output offset, and output length.
-        if (!stack.PopUInt256(out UInt256 dataOffset) ||
-            !stack.PopUInt256(out UInt256 dataLength) ||
-            !stack.PopUInt256(out UInt256 outputOffset) ||
-            !stack.PopUInt256(out UInt256 outputLength))
-            goto StackUnderflow;
 
         // Update gas: call cost, memory expansion for input and output, and extra gas.
         if (!EvmCalculations.UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
