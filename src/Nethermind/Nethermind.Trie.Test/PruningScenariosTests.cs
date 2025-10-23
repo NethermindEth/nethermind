@@ -48,22 +48,22 @@ namespace Nethermind.Trie.Test
             // Fixed seed for reproducible fuzzing
             const int fuzzSeed = 12345;
             var random = new Random(fuzzSeed);
-            
+
             _logger.Info($"Fuzzing pruning scenarios with seed: {fuzzSeed}");
-            
+
             // Generate random scenario parameters
             int accountsCount = random.Next(5, 20);
             int blocksCount = random.Next(10, 50);
             int maxDepth = random.Next(2, 8);
             int storageOperationsPerBlock = random.Next(1, 5);
-            
+
             _logger.Info($"Scenario: {accountsCount} accounts, {blocksCount} blocks, maxDepth: {maxDepth}, storageOps: {storageOperationsPerBlock}");
-            
+
             // Create pruning context with random configuration
             var pruningContext = PruningContext.InMemory
                 .WithMaxDepth(maxDepth)
                 .TurnOnPrune();
-            
+
             // Randomly choose between different pruning strategies
             var strategyChoice = random.Next(0, 3);
             switch (strategyChoice)
@@ -78,16 +78,16 @@ namespace Nethermind.Trie.Test
                     pruningContext = PruningContext.InMemoryAlwaysPrune;
                     break;
             }
-            
+
             pruningContext = pruningContext.WithMaxDepth(maxDepth).TurnOnPrune();
-            
+
             // Generate random accounts and operations
             var accounts = new List<int>();
             for (int i = 0; i < accountsCount; i++)
             {
                 accounts.Add(i);
             }
-            
+
             // Execute random operations across blocks
             for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
             {
@@ -97,38 +97,38 @@ namespace Nethermind.Trie.Test
                 {
                     int accountIndex = accounts[random.Next(accounts.Count)];
                     var operation = random.Next(0, 4);
-                    
+
                     switch (operation)
                     {
                         case 0: // Create/Update account balance
                             var balance = (UInt256)random.Next(1, 1000);
                             pruningContext.SetAccountBalance(accountIndex, balance);
                             break;
-                            
+
                         case 1: // Set storage
                             var storageKey = random.Next(1, 10);
                             var storageValue = random.Next(1, 100);
                             pruningContext.SetStorage(accountIndex, storageKey, storageValue);
                             break;
-                            
+
                         case 2: // Delete storage
                             var deleteKey = random.Next(1, 10);
                             pruningContext.DeleteStorage(accountIndex, deleteKey);
                             break;
-                            
+
                         case 3: // Read account
                             pruningContext.ReadAccount(accountIndex);
                             break;
                     }
                 }
-                
+
                 // Random storage operations
                 for (int storageOp = 0; storageOp < storageOperationsPerBlock; storageOp++)
                 {
                     int accountIndex = accounts[random.Next(accounts.Count)];
                     var storageKey = random.Next(1, 10);
                     var storageValue = random.Next(1, 100);
-                    
+
                     var storageOperation = random.Next(0, 3);
                     switch (storageOperation)
                     {
@@ -143,17 +143,17 @@ namespace Nethermind.Trie.Test
                             break;
                     }
                 }
-                
+
                 // Commit with random pruning behavior
                 bool shouldWaitForPruning = random.Next(0, 3) == 0; // 33% chance
                 pruningContext.Commit(shouldWaitForPruning);
-                
+
                 // Random branching scenarios
                 if (random.Next(0, 10) == 0) // 10% chance
                 {
                     string branchName = $"branch_{blockNumber}";
                     pruningContext.SaveBranchingPoint(branchName);
-                    
+
                     // Do some operations on branch
                     for (int branchOp = 0; branchOp < random.Next(1, 3); branchOp++)
                     {
@@ -161,9 +161,9 @@ namespace Nethermind.Trie.Test
                         var balance = (UInt256)random.Next(1, 1000);
                         pruningContext.SetAccountBalance(accountIndex, balance);
                     }
-                    
+
                     pruningContext.Commit();
-                    
+
                     // Sometimes restore the branch
                     if (random.Next(0, 2) == 0)
                     {
@@ -171,7 +171,7 @@ namespace Nethermind.Trie.Test
                     }
                 }
             }
-            
+
             // Final verification - ensure all accounts are still accessible
             for (int i = 0; i < accountsCount; i++)
             {
@@ -185,7 +185,7 @@ namespace Nethermind.Trie.Test
                     _logger.Info($"Account {i} not accessible after pruning (expected behavior)");
                 }
             }
-            
+
             _logger.Info($"Fuzzing completed successfully with seed {fuzzSeed}");
         }
 
