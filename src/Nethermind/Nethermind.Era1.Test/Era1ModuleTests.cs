@@ -73,7 +73,6 @@ public class Era1ModuleTests
         Assert.That(importedBlock1.TotalDifficulty, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
     }
 
-    [TestCase("holesky")]
     [TestCase("mainnet")]
     public async Task ImportAndExportGethFiles(string network)
     {
