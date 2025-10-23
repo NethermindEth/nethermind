@@ -486,9 +486,9 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
 {
     if (string.IsNullOrWhiteSpace(path))
     {
-        initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
-        initConfig.LogDirectory ??= string.Empty.GetApplicationResourcePath("logs");
-        keyStoreConfig.KeyStoreDirectory ??= string.Empty.GetApplicationResourcePath("keystore");
+        initConfig.BaseDbPath ??= "db".GetApplicationResourcePath();
+        initConfig.LogDirectory ??= "logs".GetApplicationResourcePath();
+        keyStoreConfig.KeyStoreDirectory ??= "keystore".GetApplicationResourcePath();
     }
     else
     {
