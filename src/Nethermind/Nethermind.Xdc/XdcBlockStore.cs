@@ -15,10 +15,6 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-internal class XdcBlockStore : BlockStore
+internal class XdcBlockStore([KeyFilter(DbNames.Headers)] IDb blockDb) : BlockStore(blockDb, new XdcHeaderDecoder())
 {
-    public XdcBlockStore([KeyFilter(DbNames.Headers)] IDb blockDb)
-        : base(blockDb, new XdcHeaderDecoder())
-    {
-    }
 }
