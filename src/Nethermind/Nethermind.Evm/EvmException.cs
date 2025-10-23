@@ -7,10 +7,8 @@ namespace Nethermind.Evm
 {
     public abstract class EvmException : Exception
     {
-        private string? _customMessage;
         public abstract EvmExceptionType ExceptionType { get; }
-        public override string Message => _customMessage ?? base.Message;
-        public void SetCustomMessage(string? customMessage) => _customMessage = customMessage;
+        public string? CustomMessage { get; set; }
     }
 
     public enum EvmExceptionType

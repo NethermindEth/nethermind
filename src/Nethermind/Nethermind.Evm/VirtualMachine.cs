@@ -618,7 +618,7 @@ public unsafe partial class VirtualMachine(
         // Attempt to cast the exception to EvmException to extract a specific error type.
         EvmException? evmException = failure as EvmException;
         EvmExceptionType errorType = evmException?.ExceptionType ?? EvmExceptionType.Other;
-        string? error = evmException?.Message;
+        string? error = evmException?.CustomMessage;
 
         // If the tracing instructions flag is active, report zero remaining gas and log the error.
         if (TTracingInst.IsActive)
@@ -796,7 +796,7 @@ public unsafe partial class VirtualMachine(
             // If running a precompile on a top-level call frame, and it fails, assign a general execution failure.
             if (currentState.IsPrecompile && currentState.IsTopLevel)
             {
-                PrecompileExecutionFailureException.SetCustomMessage(callResult.Error);
+                PrecompileExecutionFailureException.CustomMessage = callResult.Error;
                 failure = PrecompileExecutionFailureException;
                 goto Failure;
             }
@@ -1023,7 +1023,7 @@ public unsafe partial class VirtualMachine(
                 exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None
             )
             {
-                Error = output.Error
+                Error = $"Precompile {precompile.GetStaticName()} failed with error {output.Error}"
             };
         }
         catch (DllNotFoundException exception)
