@@ -43,7 +43,7 @@ internal class VotesManager(
 
     public Task CastVote(BlockRoundInfo blockInfo)
     {
-        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(null, blockInfo.Hash);
+        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(blockInfo.Hash);
         if (epochSwitchInfo is null)
             throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(EpochSwitchInfo));
         //Optimize this by fetching with block number and round only
@@ -86,7 +86,7 @@ internal class VotesManager(
             return Task.CompletedTask;
         }
 
-        EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(proposedHeader, vote.ProposedBlockInfo.Hash);
+        EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(proposedHeader);
         if (epochInfo is null)
         {
             //Unknown epoch switch info, cannot process vote

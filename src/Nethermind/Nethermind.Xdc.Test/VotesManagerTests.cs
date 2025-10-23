@@ -45,22 +45,22 @@ public class VotesManagerTests
         // Wrong gap number generates different keys for the vote pool
         var keysForVotes = keys.Take(14).ToArray();
         var votesWithDiffGap = new List<Vote>(capacity: keysForVotes.Length);
-        for(var i = 0; i < keysForVotes.Length - 3; i++) votesWithDiffGap.Add(BuildSignedVote(info, 450, keysForVotes[i]));
-        for(var i = keysForVotes.Length - 3; i < keysForVotes.Length; i++) votesWithDiffGap.Add(BuildSignedVote(info, 451, keysForVotes[i]));
+        for (var i = 0; i < keysForVotes.Length - 3; i++) votesWithDiffGap.Add(BuildSignedVote(info, 450, keysForVotes[i]));
+        for (var i = keysForVotes.Length - 3; i < keysForVotes.Length; i++) votesWithDiffGap.Add(BuildSignedVote(info, 451, keysForVotes[i]));
         yield return new TestCaseData(masternodes, header, currentRound, votesWithDiffGap.ToArray(), info, 0);
     }
 
     [TestCaseSource(nameof(VoteCases))]
     public async Task VoteHandler_ExpectedCallsToCommitQc(Address[] masternodes, XdcBlockHeader header, ulong currentRound, Vote[] votes, BlockRoundInfo info, int expectedCalls)
     {
-        var context = new XdcContext{ CurrentRound = currentRound };
+        var context = new XdcContext { CurrentRound = currentRound };
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindHeader(Arg.Any<Hash256>()).Returns(header);
 
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
-        var epochSwitchInfo = new EpochSwitchInfo(masternodes, [], info);
+        var epochSwitchInfo = new EpochSwitchInfo(masternodes, [], [], info);
         epochSwitchManager
-            .GetEpochSwitchInfo(header, Arg.Any<Hash256>())
+            .GetEpochSwitchInfo(header)
             .Returns(epochSwitchInfo);
 
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
@@ -89,7 +89,7 @@ public class VotesManagerTests
         var masternodes = keys.Select(k => k.Address).ToArray();
 
         ulong currentRound = 1;
-        var context = new XdcContext{ CurrentRound = currentRound };
+        var context = new XdcContext { CurrentRound = currentRound };
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithExtraConsensusData(new ExtraFieldsV2(currentRound, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 0, 0), null, 450)))
@@ -97,9 +97,9 @@ public class VotesManagerTests
 
         var info = new BlockRoundInfo(header.Hash!, currentRound, header.Number);
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
-        var epochSwitchInfo = new EpochSwitchInfo(masternodes, [], info);
+        var epochSwitchInfo = new EpochSwitchInfo(masternodes, [], [], info);
         epochSwitchManager
-            .GetEpochSwitchInfo(header, Arg.Any<Hash256>())
+            .GetEpochSwitchInfo(header)
             .Returns(epochSwitchInfo);
 
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
@@ -116,7 +116,7 @@ public class VotesManagerTests
             specProvider, signer, forensicsProcessor);
 
         var keysForVotes = keys.ToArray();
-        for(var i = 0; i < keysForVotes.Length - 1; i++)
+        for (var i = 0; i < keysForVotes.Length - 1; i++)
             await voteManager.HandleVote(BuildSignedVote(info, gap: 450, keysForVotes[i]));
 
         quorumCertificateManager.DidNotReceive().CommitCertificate(Arg.Any<QuorumCertificate>());
