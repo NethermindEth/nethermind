@@ -59,13 +59,6 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithData(string data)
-        {
-            TestObjectInternal.Data = Bytes.FromHexString(data);
-            return this;
-        }
-
-
         public TransactionBuilder<T> WithCode(byte[] data)
         {
             TestObjectInternal.Data = data;
