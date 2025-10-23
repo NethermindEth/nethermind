@@ -22,6 +22,15 @@ internal class RocksdbSortedView : ISortedView
         _iterator.Dispose();
     }
 
+    public bool StartBefore(ReadOnlySpan<byte> value)
+    {
+        if (_started)
+            throw new InvalidOperationException($"{nameof(StartBefore)} can only be called before starting iteration.");
+
+        _iterator.SeekForPrev(value);
+        return _started = _iterator.Valid();
+    }
+
     public bool MoveNext()
     {
         if (!_started)

@@ -174,7 +174,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_transaction_by_block_number_and_index()
     {
         using Context ctx = await Context.Create();
-        string serialized = await ctx.Test.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", ctx.Test.BlockTree.FindHeadBlock()!.Number.ToString(), "1");
+        string serialized = await ctx.Test.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", ctx.Test.BlockTree.FindHeadBlock()!.Number.ToHexString(true), "1");
         JToken.Parse(serialized).Should().BeEquivalentTo("""{"jsonrpc":"2.0","result":{"hash":"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b","nonce":"0x2","blockHash":"0x29f141925d2d8e357ae5b6040c97aa12d7ac6dfcbe2b20e7b616d8907ac8e1f3","blockNumber":"0x3","transactionIndex":"0x1","from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","chainId":"0x1","type":"0x0","v":"0x25","s":"0x575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb","r":"0xe7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bd"},"id":67}""");
     }
 
@@ -182,7 +182,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_transaction_by_block_number_and_index_out_of_bounds()
     {
         using Context ctx = await Context.Create();
-        string serialized = await ctx.Test.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", ctx.Test.BlockTree.FindHeadBlock()!.Number.ToString(), "100");
+        string serialized = await ctx.Test.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", ctx.Test.BlockTree.FindHeadBlock()!.Number.ToHexString(true), "100");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
@@ -202,7 +202,7 @@ public partial class EthRpcModuleTests
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindBlock((BlockParameter?)null).ReturnsForAnyArgs(block);
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
-        string serialized = await ctx.Test!.TestEthRpc("eth_getUncleByBlockNumberAndIndex", ctx.Test.BlockTree.FindHeadBlock()!.Number.ToString(), "1");
+        string serialized = await ctx.Test!.TestEthRpc("eth_getUncleByBlockNumberAndIndex", ctx.Test.BlockTree.FindHeadBlock()!.Number.ToHexString(true), "1");
         Assert.That(serialized, Is.EqualTo(expectedJson), serialized?.Replace("\"", "\\\""));
     }
 
@@ -239,7 +239,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_uncle_count_by_block_number()
     {
         using Context ctx = await Context.Create();
-        string serialized = await ctx.Test.TestEthRpc("eth_getUncleCountByBlockNumber", ctx.Test.BlockTree.FindHeadBlock()!.Number.ToString());
+        string serialized = await ctx.Test.TestEthRpc("eth_getUncleCountByBlockNumber", ctx.Test.BlockTree.FindHeadBlock()!.Number.ToHexString(true));
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}"), serialized.Replace("\"", "\\\""));
     }
 
@@ -766,7 +766,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_block_by_number_null()
     {
         using Context ctx = await Context.Create();
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "1000000", "false");
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", 1000000.ToHexString(), "false");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
@@ -824,7 +824,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestBlockchain.AccountA.ToString(), "[\"0x1\"]", "0x2");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"accountProof\":[\"0xf8718080808080a0fc8311b2cabe1a1b33ea04f1865132a44aa0c17c567acd233422f9cfb516877480808080a0be8ea164b2fb1567e2505295dae6d8a9fe5f09e9c5ac854a7da23b2bc5f8523ca053692ab7cdc9bb02a28b1f45afe7be86cb27041ea98586e6ff05d98c9b0667138080808080\",\"0xf8518080808080a00dd1727b2abb59c0a6ac75c01176a9d1a276b0049d5fe32da3e1551096549e258080808080808080a038ca33d3070331da1ccf804819da57fcfc83358cadbef1d8bde89e1a346de5098080\",\"0xf872a020227dead52ea912e013e7641ccd6b3b174498e55066b0c174a09c8c3cc4bf5eb84ff84d01893635c9adc5de9fadf7a0475ae75f323761db271e75cbdae41aede237e48bc04127fb6611f0f33298f72ba0dbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322\"],\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"balance\":\"0x3635c9adc5de9fadf7\",\"codeHash\":\"0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322\",\"nonce\":\"0x1\",\"storageHash\":\"0x475ae75f323761db271e75cbdae41aede237e48bc04127fb6611f0f33298f72b\",\"storageProof\":[{\"key\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"proof\":[\"0xe7a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf68483abcdef\"],\"value\":\"0xabcdef\"}]},\"id\":67}"), serialized.Replace("\"", "\\\""));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"accountProof\":[\"0xf8718080808080a0fc8311b2cabe1a1b33ea04f1865132a44aa0c17c567acd233422f9cfb516877480808080a0be8ea164b2fb1567e2505295dae6d8a9fe5f09e9c5ac854a7da23b2bc5f8523ca053692ab7cdc9bb02a28b1f45afe7be86cb27041ea98586e6ff05d98c9b0667138080808080\",\"0xf8518080808080a00dd1727b2abb59c0a6ac75c01176a9d1a276b0049d5fe32da3e1551096549e258080808080808080a038ca33d3070331da1ccf804819da57fcfc83358cadbef1d8bde89e1a346de5098080\",\"0xf872a020227dead52ea912e013e7641ccd6b3b174498e55066b0c174a09c8c3cc4bf5eb84ff84d01893635c9adc5de9fadf7a0475ae75f323761db271e75cbdae41aede237e48bc04127fb6611f0f33298f72ba0dbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322\"],\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"balance\":\"0x3635c9adc5de9fadf7\",\"codeHash\":\"0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322\",\"nonce\":\"0x1\",\"storageHash\":\"0x475ae75f323761db271e75cbdae41aede237e48bc04127fb6611f0f33298f72b\",\"storageProof\":[{\"key\":\"0x1\",\"proof\":[\"0xe7a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf68483abcdef\"],\"value\":\"0xabcdef\"}]},\"id\":67}"), serialized.Replace("\"", "\\\""));
     }
 
     [Test]
@@ -988,9 +988,9 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
 
         if (postEip4844)
-            Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"blobGasUsed\":\"0x3\",\"blobGasPrice\":\"0x2\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"status\":\"0x1\",\"error\":\"error\",\"type\":\"0x0\"},\"id\":67}"));
+            Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"blobGasUsed\":\"0x3\",\"blobGasPrice\":\"0x2\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"error\":\"error\",\"type\":\"0x0\"},\"id\":67}"));
         else
-            Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"status\":\"0x1\",\"error\":\"error\",\"type\":\"0x0\"},\"id\":67}"));
+            Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"error\":\"error\",\"type\":\"0x0\"},\"id\":67}"));
     }
 
 
@@ -1099,7 +1099,7 @@ public partial class EthRpcModuleTests
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).WithBlockchainBridge(blockchainBridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionReceipt", tx.Hash!.ToString());
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0xda6b4df2595675cbee0d4889f41c3d0790204e8ed1b8ad4cadaa45a7d50dace5\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"status\":\"0x1\",\"error\":\"error\",\"type\":\"0x0\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0xda6b4df2595675cbee0d4889f41c3d0790204e8ed1b8ad4cadaa45a7d50dace5\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"error\":\"error\",\"type\":\"0x0\"},\"id\":67}"));
     }
 
     [Test]
@@ -1458,7 +1458,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_block_by_number_pruned()
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "100", "false");
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "0xF4240", "false");
         Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
     }
 
@@ -1466,7 +1466,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_tx_count_by_number_pruned()
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockTransactionCountByNumber", 100);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockTransactionCountByNumber", "0x64");
         Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
     }
 
@@ -1474,7 +1474,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_uncle_count_by_block_number_pruned()
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
-        string serialized = await ctx.Test.TestEthRpc("eth_getUncleCountByBlockNumber", 100);
+        string serialized = await ctx.Test.TestEthRpc("eth_getUncleCountByBlockNumber", "0x64");
         Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
     }
 
@@ -1482,7 +1482,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_transaction_by_block_number_and_index_pruned()
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
-        string serialized = await ctx.Test.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", 100, "1");
+        string serialized = await ctx.Test.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", "0x100", "1");
         Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
     }
 
@@ -1526,7 +1526,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_getBlockReceipts_pruned()
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockReceipts", 100);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockReceipts", "0x100");
         Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
     }
 
@@ -1662,7 +1662,9 @@ public partial class EthRpcModuleTests
             });
         }
 
-        public static Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge? blockchainBridge = null, Action<ContainerBuilder>? configurer = null)
+        public static Task<Context> Create(ISpecProvider? specProvider = null,
+            IBlockchainBridge? blockchainBridge = null,
+            Action<ContainerBuilder>? configurer = null)
         {
             Action<ContainerBuilder> wrappedConfigurer = builder =>
             {
@@ -1674,7 +1676,7 @@ public partial class EthRpcModuleTests
             {
                 TestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                     .WithBlockchainBridge(blockchainBridge!)
-                    .WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 })
+                    .WithConfig(new JsonRpcConfig { EstimateErrorMargin = 0 })
                     .Build(wrappedConfigurer).Result,
 
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)
