@@ -65,11 +65,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private long _toBePersistedBlockNumber = -1;
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
+    private readonly IFinalizedHeaderProvider _finalizedHeaderProvider;
 
     public TrieStore(
         INodeStorage nodeStorage,
         IPruningStrategy pruningStrategy,
         IPersistenceStrategy persistenceStrategy,
+        IFinalizedHeaderProvider finalizedHeaderProvider,
         IPruningConfig pruningConfig,
         ILogManager logManager)
     {
@@ -77,6 +79,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _nodeStorage = nodeStorage;
         _pruningStrategy = pruningStrategy;
         _persistenceStrategy = persistenceStrategy;
+        _finalizedHeaderProvider = finalizedHeaderProvider;
+
         _publicStore = new TrieKeyValueStore(this);
         _persistedNodeRecorder = PersistedNodeRecorder;
         _persistedNodeRecorderNoop = PersistedNodeRecorderNoop;
@@ -454,7 +458,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void FinishBlockCommit(BlockCommitSet set, TrieNode? root)
     {
-        if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue?.Count ?? 0}");
+        if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue.Count}");
         // Note: root is null when the state trie is empty. It will therefore make the block commit set not sealed.
         set.Seal(root);
         set.Prune();
@@ -695,6 +699,38 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         ArrayPoolListRef<BlockCommitSet> candidateSets = new(count);
         try
         {
+            if (_commitSetQueue.IsEmpty) return candidateSets;
+
+            BlockHeader finalizedHeader = _finalizedHeaderProvider.FinalizedHeader;
+
+            if (!_commitSetQueue.TryFindCommit(finalizedHeader.Number, finalizedHeader.StateRoot, out BlockCommitSet? finalizedBlockCommitSet))
+            {
+                if (_commitSetQueue.MinBlockNumber > finalizedHeader.Number)
+                {
+                    // could be that it was flushed for full pruning.
+                }
+                else if (_commitSetQueue.MaxBlockNumber < finalizedHeader.Number)
+                {
+                    // Not reached the finalized state yet.
+                }
+
+            }
+
+            while (_commitSetQueue.TryPeek(out BlockCommitSet? set))
+            {
+                if (set.BlockNumber > finalizedHeader.Number) break;
+
+                if (candidateSets.Count > 0 && candidateSets[^1].BlockNumber != set.BlockNumber)
+                {
+                    if (_persistenceStrategy.ShouldPersist(set.BlockNumber))
+                    {
+
+                    }
+                    candidateSets.Clear();
+                }
+
+                candidateSets.Add(set);
+            }
 
             long lastBlockBeforeRorgBoundary = 0;
             foreach (BlockCommitSet blockCommitSet in _commitSetQueue)
@@ -910,7 +946,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private readonly ILogger _logger;
 
-    private ConcurrentQueue<BlockCommitSet> _commitSetQueue = new ConcurrentQueue<BlockCommitSet>();
+    private CommitSetQueue _commitSetQueue = new CommitSetQueue();
 
     private BlockCommitSet? _lastCommitSet = null;
 
@@ -929,6 +965,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private long LatestCommittedBlockNumber { get; set; }
     public INodeStorage.KeyScheme Scheme => _nodeStorage.Scheme;
+
+    private record StateId(long BlockNumber, Hash256 StateRoot);
 
     private void VerifyNewCommitSet(long blockNumber)
     {
@@ -1129,7 +1167,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void PersistOnShutdown()
     {
-        if (_commitSetQueue?.IsEmpty ?? true) return;
+        if (_commitSetQueue.IsEmpty) return;
 
         using ArrayPoolListRef<BlockCommitSet> candidateSets = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
         if (candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommmitSet))
@@ -1170,7 +1208,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         int commitSetCount = 0;
         // We persist all sealed Commitset causing PruneCache to almost completely clear the cache. Any new block that
         // need existing node will have to read back from db causing copy-on-read mechanism to copy the node.
-        ConcurrentQueue<BlockCommitSet> commitSetQueue = _commitSetQueue;
+        CommitSetQueue commitSetQueue = _commitSetQueue;
 
         void ClearCommitSetQueue()
         {
