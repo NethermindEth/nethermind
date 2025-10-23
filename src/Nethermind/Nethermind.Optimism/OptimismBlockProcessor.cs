@@ -16,13 +16,13 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Optimism;
 
 public class OptimismBlockProcessor : BlockProcessor
 {
+    private readonly IOptimismSpecHelper _opSpecHelper;
     private readonly Create2DeployerContractRewriter? _contractRewriter;
     private readonly ICostHelper _costHelper;
 
@@ -55,6 +55,7 @@ public class OptimismBlockProcessor : BlockProcessor
             executionRequestsProcessor)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
+        _opSpecHelper = opSpecHelper;
         _contractRewriter = contractRewriter;
         _costHelper = costHelper;
         ReceiptsTracer = new OptimismBlockReceiptTracer(opSpecHelper, stateProvider);
@@ -65,25 +66,18 @@ public class OptimismBlockProcessor : BlockProcessor
         _contractRewriter?.RewriteContract(block.Header, _stateProvider);
         TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options, spec, token);
 
-        // TODO: handle overflow differently or calculate footprint as long?
-        (ulong value, bool overflow) ulongWithOverflow = CalculateDAFootprint(block).UlongWithOverflow;
-        if (ulongWithOverflow.overflow || ulongWithOverflow.value > long.MaxValue)
-            throw new InvalidOperationException("DA Footprint overflow");
+        if (_opSpecHelper.IsJovian(block.Header))
+        {
+            // TODO: handle overflow differently or calculate footprint as long?
+            var (ulongValue, hasOverflow) = _costHelper.ComputeDAFootprint(block, _stateProvider).UlongWithOverflow;
+            if (hasOverflow || ulongValue > long.MaxValue)
+                throw new InvalidOperationException("DA Footprint overflow");
 
-        var daFootprint = (long)ulongWithOverflow.value;
-        block.Header.GasUsed = Math.Max(block.GasUsed, daFootprint);
-        block.Header.Hash = block.Header.CalculateHash();
+            var daFootprint = (long)ulongValue;
+            block.Header.GasUsed = Math.Max(block.GasUsed, daFootprint);
+            block.Header.Hash = block.Header.CalculateHash();
+        }
 
         return receipts;
-    }
-
-    private UInt256 CalculateDAFootprint(Block block)
-    {
-        UInt256 footprint = UInt256.Zero;
-
-        foreach (Transaction tx in block.Transactions)
-            footprint += _costHelper.ComputeDAFootprint(tx, block.Header, _stateProvider);
-
-        return footprint;
     }
 }
