@@ -16,7 +16,6 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
@@ -113,7 +112,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected internal void Send<T>(T message) where T : P2PMessage
         {
             Interlocked.Increment(ref Counter);
-            if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
+            if (Logger.IsWarn) Logger.Warn($"{Counter} Sending {typeof(T).Name}");
             if (NetworkDiagTracer.IsEnabled)
             {
                 string messageString = message.ToString();

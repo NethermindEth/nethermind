@@ -249,6 +249,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 int startIdx = request.startIndex;
                 bool isTrace = Logger.IsTrace;
+
+                for (int i = startIdx; i < transactionsSpan.Length; i++)
+                {
+                    if (!ValidateSizeAndType(transactionsSpan[i]))
+                    {
+                        throw new SubprotocolException("invalid pooled tx type or size");
+                    }
+                }
+
                 for (int i = startIdx; i < transactionsSpan.Length; i++)
                 {
                     if (cancellationToken.IsCancellationRequested)
@@ -264,14 +273,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
                         // Reschedule and with different start index
                         BackgroundTaskScheduler.ScheduleBackgroundTask((transactions, i), HandleSlow);
-                        return ValueTask.CompletedTask;
-                    }
-
-                    if (!ValidateSizeAndType(transactionsSpan[i]))
-                    {
-                        const string reason = "invalid pooled tx type or size";
-                        if (Logger.IsDebug) Logger.Debug($"Disconnecting {this} due to {reason}");
-                        Disconnect(DisconnectReason.Other, reason);
                         return ValueTask.CompletedTask;
                     }
 

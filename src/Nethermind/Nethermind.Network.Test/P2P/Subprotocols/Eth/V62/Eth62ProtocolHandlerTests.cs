@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -543,8 +543,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [TestCase(1, true)]
-        [TestCase(21622, true)]
-        [TestCase(21623, false)]
+        [TestCase(1055, true)]
+        [TestCase(1056, false)]
         public void should_send_txs_with_size_up_to_MaxPacketSize_in_one_TransactionsMessage(int txCount, bool shouldBeSentInJustOneMessage)
         {
             Transaction[] txs = new Transaction[txCount];
