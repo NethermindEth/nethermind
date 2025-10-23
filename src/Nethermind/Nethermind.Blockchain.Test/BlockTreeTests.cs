@@ -1881,7 +1881,7 @@ public class BlockTreeTests
         // First run
         {
             Hash256 uncleHash = new("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347");
-            BlockTree tree = Build.A.BlockTree(HoleskySpecProvider.Instance)
+            BlockTree tree = Build.A.BlockTree(HoodiSpecProvider.Instance)
                 .WithBlockStore(new BlockStore(blocksDb))
                 .WithBlocksNumberDb(blockNumberDb)
                 .WithHeadersDb(headersDb)
@@ -1947,7 +1947,7 @@ public class BlockTreeTests
 
         // Assume Nethermind got restarted
         {
-            BlockTree tree = Build.A.BlockTree(HoleskySpecProvider.Instance)
+            BlockTree tree = Build.A.BlockTree(HoodiSpecProvider.Instance)
                 .WithBlockStore(new BlockStore(blocksDb))
                 .WithBlocksNumberDb(blockNumberDb)
                 .WithHeadersDb(headersDb)

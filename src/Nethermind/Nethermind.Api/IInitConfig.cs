@@ -45,7 +45,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The path to the static nodes file.", DefaultValue = "Data/static-nodes.json")]
     string StaticNodesPath { get; set; }
 
-    [ConfigItem(Description = "The path to the trusted nodes file.", DefaultValue = "Data/trusted-nodes.json")]
+    [ConfigItem(Description = "The path to the trusted nodes file.", DefaultValue = "trusted-nodes.json")]
     string TrustedNodesPath { get; set; }
 
     [ConfigItem(Description = "The name of the log file.", DefaultValue = "log.txt")]
@@ -71,6 +71,9 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored on disk.", DefaultValue = "100")]
     long? BadBlocksStored { get; set; }
+
+    [ConfigItem(Description = "The path to the Nethermind data directory. Defaults to Nethermind's current directory.", DefaultValue = "null", HiddenFromDocs = true)]
+    string? DataDir { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Disable garbage collector on newPayload", DefaultValue = "true", HiddenFromDocs = true)]
     bool DisableGcOnNewPayload { get; set; }

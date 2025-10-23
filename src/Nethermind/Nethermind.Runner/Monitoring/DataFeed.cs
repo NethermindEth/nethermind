@@ -426,7 +426,7 @@ public class DataFeed
         public UInt256 EffectiveGasPrice { get; set; }
         public Address? ContractAddress { get; set; }
         public LogEntryForWeb[] Logs { get; set; }
-        public long Status { get; set; }
+        public long? Status { get; set; }
         public UInt256 BlobGasPrice { get; set; }
         public ulong BlobGasUsed { get; set; }
     }
