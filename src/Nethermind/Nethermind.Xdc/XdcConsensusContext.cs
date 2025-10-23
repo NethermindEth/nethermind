@@ -12,7 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-public class XdcConsensusContext : IXdcConsensusContext
+public class XdcConsensusContext
 {
     public int TimeoutCounter { get; set; }
     public ulong CurrentRound { get; private set; }
@@ -22,9 +22,14 @@ public class XdcConsensusContext : IXdcConsensusContext
     public QuorumCertificate? LockQC { get; set; }
     public TimeoutCert? HighestTC { get; set; }
     public BlockRoundInfo HighestCommitBlock { get; set; }
-    public void SetNewRound(ulong round)
+
+    public event Action<IBlockTree, ulong> NewRoundSetEvent;
+    internal void SetNewRound(IBlockTree chain, ulong round)
     {
         CurrentRound = round;
         TimeoutCounter = 0;
+
+        // timer should be reset outside
+        NewRoundSetEvent.Invoke(chain, round);
     }
 }
