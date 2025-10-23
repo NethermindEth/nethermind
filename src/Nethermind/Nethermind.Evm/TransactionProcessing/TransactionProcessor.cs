@@ -76,14 +76,9 @@ namespace Nethermind.Evm.TransactionProcessing
             SkipValidation = 4,
 
             /// <summary>
-            /// Do not perform nonce checks. Used in RPC calls
+            /// Do not perform nonce checks. Do not charge base fee
             /// </summary>
-            SkipNonceChecks = 8,
-
-            /// <summary>
-            /// Do not charge base fee if gas params are zero
-            /// </summary>
-            NoBaseFee = 16,
+            RpcValidationRules = 8,
 
             /// <summary>
             /// Skip potential fail checks and commit state after execution
@@ -147,7 +142,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecuteCore(transaction, txTracer, ExecutionOptions.Commit);
 
         public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.NoBaseFee | ExecutionOptions.SkipNonceChecks | ExecutionOptions.Commit);
+            ExecuteCore(transaction, txTracer, ExecutionOptions.RpcValidationRules | ExecutionOptions.Commit);
 
         public virtual TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidation);
@@ -506,7 +501,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.Ok;
             }
 
-            bool noBaseFee = opts.HasFlag(ExecutionOptions.NoBaseFee);
+            bool noBaseFee = opts.HasFlag(ExecutionOptions.RpcValidationRules);
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
             bool validatePremiumAndEip1559 = !noBaseFee || tx.MaxFeePerGas != 0 || tx.MaxPriorityFeePerGas != 0;
             if (validatePremiumAndEip1559 && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
@@ -574,7 +569,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
-            bool validate = !opts.HasFlag(ExecutionOptions.SkipNonceChecks);
+            bool validate = !opts.HasFlag(ExecutionOptions.RpcValidationRules);
             UInt256 nonce = WorldState.GetNonce(tx.SenderAddress);
             if (validate && tx.Nonce != nonce)
             {

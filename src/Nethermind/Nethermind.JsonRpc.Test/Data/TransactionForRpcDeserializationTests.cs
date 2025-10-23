@@ -40,6 +40,7 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.Legacy, """{}""");
             yield return Make(TxType.Legacy, """{"type":null}""");
             yield return Make(TxType.Legacy, """{"additionalField":""}""");
+            yield return Make(TxType.Legacy, """{"MaxFeePerBlobGas":"0x0"}""");
 
             yield return Make(TxType.AccessList, """{"type":null,"accessList":[]}""");
             yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[]}""");
@@ -55,11 +56,10 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.EIP1559, """{"maxFeePerGas":"0x0"}""");
             yield return Make(TxType.EIP1559, """{"maxPriorityFeePerGas":"0x0"}""");
             yield return Make(TxType.EIP1559, """{"MaxPriorityFeePerGas":"0x0"}""");
+            yield return Make(TxType.EIP1559, """{"nonce":"0x0","to":null,"value":"0x0","maxPriorityFeePerGas":"0x0", "maxFeePerGas":"0x0","maxFeePerBlobGas":"0x0"}""");
 
-            yield return Make(TxType.Blob, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[],"maxFeePerBlobGas":"0x0"}""");
-            yield return Make(TxType.Blob, """{"nonce":"0x0","to":null,"value":"0x0","maxPriorityFeePerGas":"0x0", "maxFeePerGas":"0x0","maxFeePerBlobGas":"0x0"}""");
+            yield return Make(TxType.Blob, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[],"blobVersionedHashes":[]}""");
             yield return Make(TxType.Blob, """{"maxFeePerBlobGas":"0x0", "blobVersionedHashes":[]}""");
-            yield return Make(TxType.Blob, """{"MaxFeePerBlobGas":"0x0"}""");
             yield return Make(TxType.Blob, """{"blobVersionedHashes":[]}""");
             yield return Make(TxType.Blob, """{"BlobVersionedHashes":null}""");
             yield return Make(TxType.Blob, """{"blobVersionedHashes":["0x01f1872d656b7a820d763e6001728b9b883f829b922089ec6ad7f5f1665470dc"]}""");
