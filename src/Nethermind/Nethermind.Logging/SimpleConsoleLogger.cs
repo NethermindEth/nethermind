@@ -34,12 +34,12 @@ namespace Nethermind.Logging
 
         public void Error(string text, Exception ex = null)
         {
-            if (IsError) Console.Error.WriteLine(DateTime.Now.ToString(dateFormat) + text + (ex is not null ? " " + ex : string.Empty));
+            if (IsError) Console.Error.WriteLine(DateTime.UtcNow.ToString(dateFormat) + text + (ex is not null ? " " + ex : string.Empty));
         }
 
         private void WriteEntry(string text)
         {
-            Console.Out.WriteLine(DateTime.Now.ToString(dateFormat) + text);
+            Console.Out.WriteLine(DateTime.UtcNow.ToString(dateFormat) + text);
         }
 
         public bool IsInfo => logLevel >= LogLevel.Info;
