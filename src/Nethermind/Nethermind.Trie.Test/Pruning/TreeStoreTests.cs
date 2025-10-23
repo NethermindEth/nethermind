@@ -1206,11 +1206,11 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.WaitForPruning();
 
             fullTrieStore.PrunePersistedNodes();
-            fullTrieStore.CachedNodesCount.Should().Be(45);
+            fullTrieStore.CachedNodesCount.Should().Be(52);
 
             fullTrieStore.PersistAndPruneDirtyCache();
             fullTrieStore.PrunePersistedNodes();
-            fullTrieStore.CachedNodesCount.Should().Be(14);
+            fullTrieStore.CachedNodesCount.Should().Be(20);
         }
 
         [TestCase(27, 1000, 31, 7)]
