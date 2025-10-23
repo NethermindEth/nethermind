@@ -786,18 +786,18 @@ public unsafe partial class VirtualMachine(
         // If the precompile did not succeed, handle the failure conditions.
         if (callResult.PrecompileSuccess == false)
         {
-            // If the failure is due to an exception (e.g., out-of-gas), set the corresponding failure exception.
-            if (callResult.IsException)
-            {
-                failure = PrecompileOutOfGasException;
-                goto Failure;
-            }
-
             // If running a precompile on a top-level call frame, and it fails, assign a general execution failure.
             if (currentState.IsPrecompile && currentState.IsTopLevel)
             {
                 PrecompileExecutionFailureException.CustomMessage = callResult.Error;
                 failure = PrecompileExecutionFailureException;
+                goto Failure;
+            }
+
+            // If the failure is due to an exception (e.g., out-of-gas), set the corresponding failure exception.
+            if (callResult.IsException)
+            {
+                failure = PrecompileOutOfGasException;
                 goto Failure;
             }
 
@@ -968,12 +968,6 @@ public unsafe partial class VirtualMachine(
         return true;
     }
 
-    private enum StorageAccessType
-    {
-        SLOAD,
-        SSTORE
-    }
-
     private CallResult RunPrecompile(EvmState state)
     {
         ReadOnlyMemory<byte> callData = state.Env.InputData;
@@ -1023,7 +1017,7 @@ public unsafe partial class VirtualMachine(
                 exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None
             )
             {
-                Error = $"Precompile {precompile.GetStaticName()} failed with error {output.Error}"
+                Error = $"Precompile {precompile.GetStaticName()} failed with error: {output.Error}"
             };
         }
         catch (DllNotFoundException exception)
