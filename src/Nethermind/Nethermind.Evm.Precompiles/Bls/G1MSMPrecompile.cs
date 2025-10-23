@@ -119,8 +119,12 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
             Parallel.ForEach(pointDestinations, (dest, state, i) =>
             {
                 int index = (int)i;
-                error = BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), dest, index);
-                if (error is not Errors.NoError) state.Break();
+                string? localError = BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), dest, index);
+                if (localError is not Errors.NoError)
+                {
+                    error = localError;
+                    state.Break();
+                }
             });
         }
 #pragma warning restore CS0162 // Unreachable code detected

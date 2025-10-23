@@ -109,8 +109,12 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
             Parallel.ForEach(pointDestinations, (dest, state, i) =>
             {
                 int index = (int)i;
-                error = BlsExtensions.TryDecodeG2ToBuffer(inputData, pointBuffer.AsMemory(), scalarBuffer.AsMemory(), dest, index);
-                if (error is not Errors.NoError) state.Break();
+                string? localError = BlsExtensions.TryDecodeG2ToBuffer(inputData, pointBuffer.AsMemory(), scalarBuffer.AsMemory(), dest, index);
+                if (localError is not Errors.NoError)
+                {
+                    error = localError;
+                    state.Break();
+                }
             });
         }
 #pragma warning restore CS0162 // Unreachable code detected
