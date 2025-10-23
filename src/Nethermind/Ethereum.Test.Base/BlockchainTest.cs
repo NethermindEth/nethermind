@@ -24,7 +24,6 @@ namespace Ethereum.Test.Base
         public Dictionary<Address, AccountState>? Pre { get; set; }
         public Dictionary<Address, AccountState>? PostState { get; set; }
         public Hash256? PostStateRoot { get; set; }
-        public bool SealEngineUsed { get; set; }
 
         public override string? ToString()
         {

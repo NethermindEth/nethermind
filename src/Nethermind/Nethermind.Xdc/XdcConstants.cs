@@ -25,6 +25,8 @@ internal static class XdcConstants
 
     public const int InMemoryRound2Epochs = 65536;   // One epoch ~ 0.5h, 65536 epochs ~ 3.7y, ~10MB memory
 
+    public const byte ConsensusVersion = 0x02;
+
     // --- Compile-time constants ---
     public const int InMemorySnapshots = 128;       // Number of recent vote snapshots to keep in memory
     public const int BlockSignersCacheLimit = 9000;

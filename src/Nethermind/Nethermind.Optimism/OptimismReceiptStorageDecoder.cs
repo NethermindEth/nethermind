@@ -165,9 +165,9 @@ public class OptimismCompactReceiptStorageDecoder :
         decoderContext.DecodeAddressStructRef(out item.Sender);
         item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
 
-        (int PrefixLength, int ContentLength) =
+        (int prefixLength, int contentLength) =
             decoderContext.PeekPrefixAndContentLength();
-        int logsBytes = ContentLength + PrefixLength;
+        int logsBytes = contentLength + prefixLength;
         item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
 
         if (lastCheck > decoderContext.Position)

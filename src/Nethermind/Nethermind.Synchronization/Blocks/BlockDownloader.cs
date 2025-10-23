@@ -162,6 +162,8 @@ namespace Nethermind.Synchronization.Blocks
                 if (cancellation.IsCancellationRequested) return null; // check before every heavy operation
                 if (headers is null || headers.Count <= 1) return null;
 
+                if (_logger.IsTrace) _logger.Trace($"Prepared request from block {headers[0].Number} to {headers[^1].Number}");
+
                 if (previousStartingHeaderNumber == headers[0].Number)
                 {
                     // When the block is suggested right between a `NewPayload` and `ForkChoiceUpdatedHandler` the block is not added because it was added already
