@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Net;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus;
@@ -19,6 +17,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
@@ -31,6 +30,8 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using System;
+using System.Net;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V68;
 
@@ -144,6 +145,38 @@ public class Eth68ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Action action = () => HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
         action.Should().Throw<SubprotocolException>();
+    }
+
+
+    [Test]
+    public void Should_disconnect_if_tx_size_is_wrong()
+    {
+        GenerateTxLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs);
+        sizes[0] += 10;
+        using var hashesMsg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+        using var txsMsg = new PooledTransactionsMessage(1111, new Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage(txs));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.Other, "invalid pooled tx size or type");
+    }
+
+
+    [Test]
+    public void Should_disconnect_if_tx_type_is_wrong()
+    {
+        GenerateTxLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs);
+        types[0]++;
+        using var hashesMsg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+        using var txsMsg = new PooledTransactionsMessage(1111, new Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage(txs));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.Other, "invalid pooled tx size or type");
     }
 
     [Test]
@@ -274,10 +307,17 @@ public class Eth68ProtocolHandlerTests
 
     private void GenerateLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes)
     {
+        GenerateTxLists(txCount, out types, out sizes, out hashes, out ArrayPoolList<Transaction> txs);
+        txs.Dispose();
+    }
+
+    private void GenerateTxLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs)
+    {
         TxDecoder txDecoder = TxDecoder.Instance;
         types = new(txCount);
         sizes = new(txCount);
         hashes = new(txCount);
+        txs = new(txCount);
 
         for (int i = 0; i < txCount; ++i)
         {
@@ -287,6 +327,7 @@ public class Eth68ProtocolHandlerTests
             types.Add((byte)tx.Type);
             sizes.Add(txDecoder.GetLength(tx, RlpBehaviors.None));
             hashes.Add(tx.Hash);
+            txs.Add(tx);
         }
     }
 }
