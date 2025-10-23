@@ -8,7 +8,6 @@ namespace Nethermind.Evm
     public abstract class EvmException : Exception
     {
         public abstract EvmExceptionType ExceptionType { get; }
-        public string? CustomMessage { get; set; }
     }
 
     public enum EvmExceptionType

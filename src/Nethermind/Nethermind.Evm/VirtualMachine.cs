@@ -70,7 +70,7 @@ public unsafe partial class VirtualMachine(
         255, 255, 255, 255, 255, 255, 255, 255
     };
 
-    internal readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
+    internal static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
     internal static readonly OutOfGasException PrecompileOutOfGasException = new();
 
     private readonly ValueHash256 _chainId = ((UInt256)specProvider.ChainId).ToValueHash();
@@ -168,6 +168,7 @@ public unsafe partial class VirtualMachine(
             }
 
             Exception? failure;
+            string? error;
             try
             {
                 CallResult callResult;
@@ -175,7 +176,7 @@ public unsafe partial class VirtualMachine(
                 // If the current state represents a precompiled contract, handle it separately.
                 if (_currentState.IsPrecompile)
                 {
-                    callResult = ExecutePrecompile(_currentState, _txTracer.IsTracingActions, out failure);
+                    callResult = ExecutePrecompile(_currentState, _txTracer.IsTracingActions, out failure, out error);
                     if (failure is not null)
                     {
                         // Jump to the failure handler if a precompile error occurred.
@@ -294,6 +295,7 @@ public unsafe partial class VirtualMachine(
             catch (Exception ex) when (ex is EvmException or OverflowException)
             {
                 failure = ex;
+                error = null;
                 goto Failure;
             }
 
@@ -302,7 +304,7 @@ public unsafe partial class VirtualMachine(
 
         // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
-            TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, ref previousCallOutput, out bool shouldExit);
+            TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, error, ref previousCallOutput, out bool shouldExit);
             if (shouldExit)
             {
                 _currentState = null;
@@ -597,7 +599,7 @@ public unsafe partial class VirtualMachine(
     /// A <see cref="TransactionSubstate"/> if the failure occurs in the top-level call; otherwise, <c>null</c>
     /// to indicate that execution should continue with the parent call frame.
     /// </returns>
-    protected TransactionSubstate HandleFailure<TTracingInst>(Exception failure, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
+    protected TransactionSubstate HandleFailure<TTracingInst>(Exception failure, string? error, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
         where TTracingInst : struct, IFlag
     {
         // Log the exception if trace logging is enabled.
@@ -618,7 +620,6 @@ public unsafe partial class VirtualMachine(
         // Attempt to cast the exception to EvmException to extract a specific error type.
         EvmException? evmException = failure as EvmException;
         EvmExceptionType errorType = evmException?.ExceptionType ?? EvmExceptionType.Other;
-        string? error = evmException?.CustomMessage;
 
         // If the tracing instructions flag is active, report zero remaining gas and log the error.
         if (TTracingInst.IsActive)
@@ -761,11 +762,14 @@ public unsafe partial class VirtualMachine(
     /// <param name="failure">
     /// An output parameter that is set to the encountered exception if the precompile fails; otherwise, <c>null</c>.
     /// </param>
+    /// <param name="error">
+    /// An output parameter that is set to detailed error if the precompile fails; otherwise, <c>null</c>.
+    /// </param>
     /// <returns>
     /// A <see cref="CallResult"/> containing the results of the precompile execution. In case of a failure,
     /// returns the default value of <see cref="CallResult"/>.
     /// </returns>
-    protected virtual CallResult ExecutePrecompile(EvmState currentState, bool isTracingActions, out Exception? failure)
+    protected virtual CallResult ExecutePrecompile(EvmState currentState, bool isTracingActions, out Exception? failure, out string? error)
     {
         // Report the precompile action if tracing is enabled.
         if (isTracingActions)
@@ -786,18 +790,19 @@ public unsafe partial class VirtualMachine(
         // If the precompile did not succeed, handle the failure conditions.
         if (callResult.PrecompileSuccess == false)
         {
-            // If running a precompile on a top-level call frame, and it fails, assign a general execution failure.
-            if (currentState.IsPrecompile && currentState.IsTopLevel)
-            {
-                PrecompileExecutionFailureException.CustomMessage = callResult.Error;
-                failure = PrecompileExecutionFailureException;
-                goto Failure;
-            }
+            error = callResult.Error;
 
             // If the failure is due to an exception (e.g., out-of-gas), set the corresponding failure exception.
             if (callResult.IsException)
             {
                 failure = PrecompileOutOfGasException;
+                goto Failure;
+            }
+
+            // If running a precompile on a top-level call frame, and it fails, assign a general execution failure.
+            if (currentState.IsPrecompile && currentState.IsTopLevel)
+            {
+                failure = PrecompileExecutionFailureException;
                 goto Failure;
             }
 
@@ -807,6 +812,7 @@ public unsafe partial class VirtualMachine(
 
         // If execution reaches here, the precompile operation is considered successful.
         failure = null;
+        error = null;
         return callResult;
 
     Failure:
