@@ -45,7 +45,7 @@ internal class XdcBlockProducer : BlockProducerBase
         this.logManager = logManager;
     }
 
-    protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes)
+    protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes)
     {
         if (parent is not XdcBlockHeader xdcParent)
             throw new ArgumentException("Only XDC header are supported.");
@@ -74,7 +74,7 @@ internal class XdcBlockProducer : BlockProducerBase
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcBlockHeader, currentRound);
 
-        xdcBlockHeader.Timestamp = parent.Timestamp + (ulong)spec.MinePeriod;
+        xdcBlockHeader.Timestamp = payloadAttributes.Timestamp;
 
         xdcBlockHeader.Difficulty = 1;
         xdcBlockHeader.TotalDifficulty = 1;
