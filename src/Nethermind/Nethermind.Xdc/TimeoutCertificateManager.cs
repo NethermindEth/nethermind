@@ -19,9 +19,9 @@ using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
-public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree, ISyncInfoManager syncInfoManager, ISigner signer) : ITimeoutCertificateManager
+public class TimeoutCertificateManager(IXdcConsensusContext context, ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree, ISyncInfoManager syncInfoManager, ISigner signer) : ITimeoutCertificateManager
 {
-    private XdcContext _ctx = context;
+    private IXdcConsensusContext _ctx = context;
     private ISnapshotManager _snapshotManager = snapshotManager;
     private IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
     private ISpecProvider _specProvider = specProvider;
