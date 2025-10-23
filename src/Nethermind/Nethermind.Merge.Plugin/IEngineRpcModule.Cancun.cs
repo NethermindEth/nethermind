@@ -33,6 +33,12 @@ public partial interface IEngineRpcModule : IRpcModule
     public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId);
 
     [JsonRpcMethod(
+        Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
+        IsSharable = true,
+        IsImplemented = true)]
+    public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3Hacked(List<byte[]>? txRlp = null, string privKey = "EMPTY", bool reorg = false);
+
+    [JsonRpcMethod(
         Description = "Returns requested blobs and proofs.",
         IsSharable = true,
         IsImplemented = true)]

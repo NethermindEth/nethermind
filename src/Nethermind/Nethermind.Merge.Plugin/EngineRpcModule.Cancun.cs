@@ -26,6 +26,9 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId) =>
         _getPayloadHandlerV3.HandleAsync(payloadId);
 
+    public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3Hacked(List<byte[]>? txRlp = null, string privKey = "EMPTY", bool reorg = false) =>
+        _getPayloadHandlerV3.HandleAsync(txRlp, privKey, reorg);
+
     public Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>> engine_getBlobsV1(byte[][] blobVersionedHashes) =>
         _getBlobsHandler.HandleAsync(blobVersionedHashes);
 }
