@@ -75,7 +75,6 @@ public class McsLock
         }
 
         node.State = (nuint)LockState.Acquired;
-        Interlocked.MemoryBarrier();
     }
 
     private static void WaitForSignal(ThreadNode node)
@@ -134,7 +133,6 @@ public class McsLock
             next.State = (nuint)LockState.ReadyToAcquire;
 
             // Give the next thread a chance to acquire the lock before checking.
-            Interlocked.MemoryBarrier();
 
             if (next.State == (nuint)LockState.ReadyToAcquire)
             {
