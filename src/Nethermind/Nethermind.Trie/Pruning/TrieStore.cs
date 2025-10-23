@@ -579,9 +579,20 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 PersistAndPruneDirtyCache();
             }
 
-            if (_pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
+            if (_prunePersistedNodePortion > 0)
             {
-                PrunePersistedNodes();
+                // `PrunePersistedNodes` only work on part of the partition at any one time. With commit buffer,
+                // it is possible that the commit buffer once flushed will immediately trigger another prune, which
+                // mean `PrunePersistedNodes` was not able to re-trigger multiple time, which make the persisted node
+                // cache even bigger which causes longer prune which causes bigger commit buffer, etc.
+                // So we loop it here until `ShouldPrunePersistedNode` return false.
+                int maxTry = (int)Math.Ceiling(1 / _prunePersistedNodePortion);
+                int i = 0;
+                while (i < maxTry && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
+                {
+                    PrunePersistedNodes();
+                    i++;
+                }
             }
         }
     }
@@ -591,7 +602,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         try
         {
             long start = Stopwatch.GetTimestamp();
-            if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
+            if (_logger.IsInfo) _logger.Info($"Starting memory pruning. Dirty memory {DirtyMemoryUsedByDirtyCache / 1.MiB()}MB, Persisted node memory {(PersistedMemoryUsedByDirtyCache / 1.MiB())}MB");
 
             long memoryUsedByDirtyCache = DirtyMemoryUsedByDirtyCache;
             SaveSnapshot();
