@@ -384,7 +384,6 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecutionOptions opts,
             in IntrinsicGas intrinsicGas)
         {
-
             bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
 
             if (tx.SenderAddress is null)
@@ -393,7 +392,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.SenderNotSpecified;
             }
 
-            if (validate && tx.Nonce >= ulong.MaxValue - 1)
+            if (validate && !opts.HasFlag(ExecutionOptions.RpcValidationRules) && tx.Nonce >= ulong.MaxValue - 1)
             {
                 // we are here if nonce is at least (ulong.MaxValue - 1). If tx is contract creation,
                 // it is max possible value. Otherwise, (ulong.MaxValue - 1) is allowed, but ulong.MaxValue not.
@@ -928,7 +927,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // If noValidation we didn't charge for gas, so do not refund
             UInt256 refundAmount = (ulong)(tx.GasLimit - spentGas) * gasPrice;
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation) && refundAmount != 0)
                 WorldState.AddToBalance(tx.SenderAddress!, refundAmount, spec);
 
             return new GasConsumed(spentGas, operationGas);
