@@ -458,13 +458,13 @@ internal static partial class EvmInstructions
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-        // Charge gas based on whether this is a cold or warm storage access.
-        if (!EvmCalculations.ChargeStorageAccessGas(ref gasAvailable, vm, in storageCell, StorageAccessType.SSTORE, spec))
-            goto OutOfGas;
-
         // Retrieve the current value from persistent storage.
         ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell);
         bool currentIsZero = currentValue.IsZero();
+
+        // Charge gas based on whether this is a cold or warm storage access.
+        if (!EvmCalculations.ChargeStorageAccessGas(ref gasAvailable, vm, in storageCell, StorageAccessType.SSTORE, spec))
+            goto OutOfGas;
 
         // Determine whether the new value is identical to the current stored value.
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
