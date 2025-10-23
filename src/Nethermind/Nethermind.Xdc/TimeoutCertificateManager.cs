@@ -45,7 +45,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
         var collectedTimeouts = _timeouts.GetItems(timeout);
 
         var xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
-        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(xdcHeader, xdcHeader.Hash);
+        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
         if (epochSwitchInfo is null)
         {
             // Failed to get epoch switch info, cannot process timeout
@@ -201,14 +201,14 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
         var currentHeader = (XdcBlockHeader)_blockTree.Head?.Header;
         if (currentHeader is null) throw new InvalidOperationException("Failed to retrieve current header");
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(currentHeader, _ctx.CurrentRound);
-        if (_epochSwitchManager.IsEpochSwitchAtRound(_ctx.CurrentRound, currentHeader, out ulong epochNumber))
+        if (_epochSwitchManager.IsEpochSwitchAtRound(_ctx.CurrentRound, currentHeader))
         {
             ulong currentNumber = (ulong)currentHeader.Number + 1;
             gapNumber = Math.Max(0, currentNumber - currentNumber % (ulong)spec.EpochLength - (ulong)spec.Gap);
         }
         else
         {
-            EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader, currentHeader.Hash);
+            EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader);
             if (epochSwitchInfo is null)
                 throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
 
@@ -230,7 +230,7 @@ public class TimeoutCertificateManager(XdcContext context, ISnapshotManager snap
     private bool AllowedToSend()
     {
         var currentHeader = (XdcBlockHeader)_blockTree.Head?.Header;
-        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader, currentHeader.Hash);
+        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader);
         if (epochSwitchInfo is null)
             return false;
         return epochSwitchInfo.Masternodes.Contains(_signer.Address);
