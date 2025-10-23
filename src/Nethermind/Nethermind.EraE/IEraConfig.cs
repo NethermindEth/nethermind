@@ -22,6 +22,9 @@ public interface IEraConfig : IConfig
     [ConfigItem(Description = "Accumulator file to be used for trusting era files.", DefaultValue = "null", HiddenFromDocs = false)]
     string? TrustedAccumulatorFile { get; set; }
 
+    [ConfigItem(Description = "Historical roots file to be used for trusting era files.", DefaultValue = "null", HiddenFromDocs = false)]
+    string? TrustedHistoricalRootsFile { get; set; }
+
     [ConfigItem(Description = "Max erae size.", DefaultValue = "8192", HiddenFromDocs = true)]
     int MaxEraESize { get; set; }
 

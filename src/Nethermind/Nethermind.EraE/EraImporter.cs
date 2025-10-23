@@ -8,7 +8,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
-using Nethermind.Era1;
 using Nethermind.Logging;
 
 
@@ -21,7 +20,7 @@ public class EraImporter(
     ILogManager logManager,
     IEraConfig eraConfig,
     ISyncConfig syncConfig,
-    Era1.IEraStoreFactory eraStoreFactory,
+    IEraStoreFactory eraStoreFactory,
     [KeyFilter(DbNames.Blocks)] ITunableDb blocksDb,
     [KeyFilter(DbNames.Receipts)] ITunableDb receiptsDb)
     : Era1.EraImporter(
@@ -35,7 +34,8 @@ public class EraImporter(
         eraStoreFactory, 
         blocksDb, 
         receiptsDb
-    )
+    ), 
+    IEraImporter
 {
     public new async Task Import(string src, long from, long to, string? accumulatorFile, string? historicalRootsFile, CancellationToken cancellation = default)
     {
@@ -49,22 +49,22 @@ public class EraImporter(
         HashSet<ValueHash256>? trustedHistoricalRoots = null;
         if (historicalRootsFile != null)
         {
-            trustedHistoricalRoots = (await fileSystem.File.ReadAllLinesAsync(historicalRootsFile, cancellation)).Select(ValueHash256.FromHexString).ToHashSet();
+            trustedHistoricalRoots = (await fileSystem.File.ReadAllLinesAsync(historicalRootsFile, cancellation)).Select(hex => new ValueHash256(hex)).ToHashSet();
         }
 
         HashSet<ValueHash256>? trustedAccumulators = null;
         if (accumulatorFile != null)
         {
-            trustedAccumulators = (await fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation)).Select(EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry).ToHashSet();
+            trustedAccumulators = (await fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation)).Select(Era1.EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry).ToHashSet();
         }
 
-        IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators, trustedHistoricalRoots);
+        Era1.IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators, trustedHistoricalRoots);
 
         long lastBlockInStore = eraStore.LastBlock;
         if (to == 0) to = long.MaxValue;
         if (to != long.MaxValue && lastBlockInStore < to)
         {
-            throw new EraImportException($"The directory given for import '{src}' have highest block number {lastBlockInStore} which is lower then last requested block {to}.");
+            throw new Era1.EraImportException($"The directory given for import '{src}' have highest block number {lastBlockInStore} which is lower then last requested block {to}.");
         }
         if (to == long.MaxValue)
         {
@@ -78,7 +78,7 @@ public class EraImporter(
         }
         else if (from < firstBlockInStore)
         {
-            throw new EraImportException($"The directory given for import '{src}' have lowest block number {firstBlockInStore} which is lower then first requested block {from}.");
+            throw new Era1.EraImportException($"The directory given for import '{src}' have lowest block number {firstBlockInStore} which is lower then first requested block {from}.");
         }
         if (from > to && to != 0)
             throw new ArgumentException($"Start block ({from}) must not be after end block ({to})");

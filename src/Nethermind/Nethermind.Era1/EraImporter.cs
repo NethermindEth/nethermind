@@ -93,7 +93,7 @@ public class EraImporter(
         }
     }
 
-    private async Task ImportInternal(
+    protected async Task ImportInternal(
         long from,
         long to,
         IEraStore eraStore,

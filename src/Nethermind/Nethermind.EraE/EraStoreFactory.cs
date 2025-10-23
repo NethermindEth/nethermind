@@ -8,28 +8,15 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.EraE;
 
+
 public class EraStoreFactory(
     ISpecProvider specProvider,
     IBlockValidator blockValidator,
     IFileSystem fileSystem,
     IEraConfig eraConfig
-) : Era1.EraStoreFactory(
-    specProvider,
-    blockValidator, 
-    fileSystem, 
-    new Era1.EraConfig { 
-        MaxEra1Size = eraConfig.MaxEraESize, 
-        NetworkName = eraConfig.NetworkName, 
-        Concurrency = eraConfig.Concurrency, 
-        ImportBlocksBufferSize = eraConfig.ImportBlocksBufferSize, 
-        TrustedAccumulatorFile = eraConfig.TrustedAccumulatorFile,
-        TrustedHistoricalRootsFile = eraConfig.TrustedHistoricalRootsFile,
-        From = eraConfig.From, 
-        To = eraConfig.To, 
-        ImportDirectory = eraConfig.ImportDirectory 
-    }
-) {
-    public override Era1.IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators)
+) : Era1.EraStoreFactory(specProvider, blockValidator, fileSystem, new Era1.EraConfig { NetworkName = eraConfig.NetworkName, MaxEra1Size = eraConfig.MaxEraESize, Concurrency = eraConfig.Concurrency }), IEraStoreFactory
+{
+    public virtual Era1.IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators, ISet<ValueHash256>? trustedHistoricalRoots)
     {
         return new EraStore(
             specProvider,
@@ -38,8 +25,14 @@ public class EraStoreFactory(
             eraConfig.NetworkName!,
             eraConfig.MaxEraESize,
             trustedAccumulators,
+            trustedHistoricalRoots,
             src,
             eraConfig.Concurrency);
     }
+}
+
+public interface IEraStoreFactory: Era1.IEraStoreFactory
+{
+    Era1.IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators, ISet<ValueHash256>? trustedHistoricalRoots);
 }
 

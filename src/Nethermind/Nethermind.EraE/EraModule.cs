@@ -4,30 +4,29 @@
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Era1.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.EraE.JsonRpc;
 
 namespace Nethermind.EraE;
 
-public class EraModule : Era1.EraModule
+public class EraModule: Module
 {
-    protected override void Load(ContainerBuilder builder)
+    protected void Load(ContainerBuilder builder)
     {
         base.Load(builder);
-
         builder
             // Does the importing to IBlockTree/IReceiptStore
-            .AddSingleton<Era1.IEraImporter, EraImporter>()
+            .AddSingleton<IEraImporter, EraImporter>()
 
             // Does the exporting to a directory
             .AddSingleton<Era1.IEraExporter, EraExporter>()
 
             // Create IEraStore which is the main high level reader for other code
-            .AddSingleton<Era1.IEraStoreFactory, EraStoreFactory>()
+            .AddSingleton<IEraStoreFactory, EraStoreFactory>()
 
             // Calls IEraImporter or IEraExporter
             .AddSingleton<EraCliRunner>()
-            .AddSingleton<Era1.IAdminEraService, AdminEraService>()
+            .AddSingleton<IAdminEraService, AdminEraService>()
 
             // The admin export/import history method is here
             .RegisterSingletonJsonRpcModule<IEraAdminRpcModule, EraAdminRpcModule>()

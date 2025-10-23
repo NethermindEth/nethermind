@@ -15,14 +15,14 @@ public class BlockHeaderProof
     internal BlockHeaderProof() { }
 
     public BlockHeaderProofType? ProofType { get; set; }
-    public Root[]? HashesAccumulator { get; set; }
-    public Root[]? BeaconBlockProof { get; set; }
-    public Root[]? ExecutionBlockProof { get; set; }
-    public Root? BeaconBlockRoot { get; set; }
+    public ValueHash256[]? HashesAccumulator { get; set; }
+    public ValueHash256[]? BeaconBlockProof { get; set; }
+    public ValueHash256[]? ExecutionBlockProof { get; set; }
+    public ValueHash256? BeaconBlockRoot { get; set; }
     public long? Slot { get; set; }
 
     public BlockHeaderProof(
-        Root[] hashesAccumulator,
+        ValueHash256[] hashesAccumulator,
         BlockHeaderProofType proofType = BlockHeaderProofType.BlockProofHistoricalHashesAccumulator)
     {
         ProofType = proofType;
@@ -30,9 +30,9 @@ public class BlockHeaderProof
     }
 
     public BlockHeaderProof(
-        Root[] beaconBlockProof, 
-        Root[] executionBlockProof,
-        Root beaconBlockRoot,
+        ValueHash256[] beaconBlockProof, 
+        ValueHash256[] executionBlockProof,
+        ValueHash256 beaconBlockRoot,
         long slot, 
         BlockHeaderProofType proofType = BlockHeaderProofType.BlockProofHistoricalSummaries)
     {

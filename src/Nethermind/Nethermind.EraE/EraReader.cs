@@ -27,7 +27,7 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
 {
     protected readonly ProofDecoder _proofDecoder = new();
 
-    async Task<BlockHeaderProof?> ReadProof(ulong slot, CancellationToken cancellationToken) 
+    async Task<BlockHeaderProof?> ReadProof(ulong slot, CancellationToken cancellationToken)
     {
         BlockOffset blockOffset = ((E2StoreReader)_fileReader).BlockOffset((long)slot);
         // if proof is available for a specific block, decode one.
@@ -57,18 +57,25 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
     /// </summary>
     /// <param name="cancellation"></param>
     /// <returns>Returns <see cref="true"/> if the expected accumulator matches, and <see cref="false"/> if there is no match.</returns>
-    public new async Task<bool> VerifyContent(ISpecProvider specProvider, IBlockValidator blockValidator, int verifyConcurrency = 0, CancellationToken cancellation = default)
+    public new async Task<bool> VerifyContent(
+        ISpecProvider specProvider,
+        IBlockValidator blockValidator,
+        int verifyConcurrency = 0,
+        ISet<ValueHash256>? trustedAccumulators = null,
+        ISet<ValueHash256>? trustedHistoricalRoots = null,
+        CancellationToken cancellation = default
+    )
     {
         ArgumentNullException.ThrowIfNull(specProvider);
 
-        Validator blockProofValidator = new(specProvider);
+        Validator blockProofValidator = new(specProvider, trustedAccumulators, trustedHistoricalRoots);
         SlotTime slotTime = new(
-            specProvider.BeaconChainGenesisTimestamp!.Value * 1000, 
+            specProvider.BeaconChainGenesisTimestamp!.Value * 1000,
             new Timestamper(),
             // TODO: get slot length from spec or config
-            TimeSpan.FromSeconds(12), 
+            TimeSpan.FromSeconds(12),
             TimeSpan.FromSeconds(0));
-        
+
         if (verifyConcurrency == 0) verifyConcurrency = Environment.ProcessorCount;
 
         ValueHash256? accumulator = ReadAccumulator();
@@ -138,8 +145,8 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
                 out ValueHash256 hash);
 
             return hash;
-        } 
-        catch (EraException e) {
+        }
+        catch (EraException) {
             return null; // accumulator is not available for this era
         }
         catch (Exception e) {
@@ -164,13 +171,13 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
         (BlockBody body, long _) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
             blockOffset.BodyPosition,
             DecodeBody,
-            EntryTypes.CompressedBody, 
+            EntryTypes.CompressedBody,
             cancellationToken);
 
         (TxReceipt[] receipts, long _) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
             blockOffset.ReceiptsPosition,
             DecodeReceipts,
-            EntryTypes.CompressedSlimReceipts, 
+            EntryTypes.CompressedSlimReceipts,
             cancellationToken);
 
         // if total difficulty is available for a specific block, decode one.
@@ -190,6 +197,6 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
     protected BlockHeaderProof DecodeProof(Memory<byte> buffer)
     {
         var ctx = new Rlp.ValueDecoderContext(buffer.Span);
-        return _proofDecoder.Decode(ref ctx, RlpBehaviors.None);
+        return _proofDecoder.Decode(ref ctx, RlpBehaviors.None)!;
     }
 }

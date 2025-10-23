@@ -36,6 +36,12 @@ public class EraStore: Era1.EraStore {
         _trustedHistoricalRoots = trustedHistoricalRoots;
     }
 
+    protected override EraReader GetReader(long epoch)
+    {
+        GuardMissingEpoch(epoch);
+        return new EraReader(new E2StoreReader(_epochs[epoch]));
+    }
+
     protected async ValueTask EnsureEpochVerified(long epoch, EraReader reader, CancellationToken cancellation)
     {
         if (!(_verifiedEpochs.TryGetValue(epoch, out bool verified) && verified))

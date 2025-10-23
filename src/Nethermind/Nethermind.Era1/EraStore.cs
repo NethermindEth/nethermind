@@ -21,7 +21,7 @@ public class EraStore : IEraStore
     protected readonly IBlockValidator _blockValidator;
     protected readonly ISet<ValueHash256>? _trustedAccumulators;
 
-    private readonly Dictionary<long, string> _epochs;
+    protected readonly Dictionary<long, string> _epochs;
     protected readonly ValueHash256[] _checksums;
 
     // Probably should be persisted in the directory so that on restart we would not verify the epoch again.
@@ -59,7 +59,7 @@ public class EraStore : IEraStore
     }
 
     private long? _lastBlock = null;
-    protected readonly int _verifyConcurrency;
+    private readonly int _verifyConcurrency;
 
     public long LastBlock
     {
@@ -128,9 +128,9 @@ public class EraStore : IEraStore
         return FirstEpoch + epochOffset;
     }
 
-    private bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);
+    protected bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);
 
-    private EraReader GetReader(long epoch)
+    protected virtual EraReader GetReader(long epoch)
     {
         GuardMissingEpoch(epoch);
         return new EraReader(new E2StoreReader(_epochs[epoch]));
@@ -239,7 +239,7 @@ public class EraStore : IEraStore
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void GuardMissingEpoch(long epoch)
+    protected void GuardMissingEpoch(long epoch)
     {
         if (!HasEpoch(epoch))
             throw new ArgumentOutOfRangeException($"Epoch not available.", epoch, nameof(epoch));

@@ -34,6 +34,8 @@ public interface IEraAdminRpcModule : IRpcModule
         [JsonRpcParameter(Description = "End block to import from the era directory. Set to 0 to import until last block.", ExampleValue = "0")]
         int to = 0,
         [JsonRpcParameter(Description = "Accumulator file to trust. Set to null to trust the era archive without accumulator file verification.", ExampleValue = "null")]
-        string? accumulatorFile = null
+        string? accumulatorFile = null,
+        [JsonRpcParameter(Description = "Historical roots file to trust. Set to null to trust the era archive without historical roots file verification.", ExampleValue = "null")]
+        string? historicalRootsFile = null
     );
 }

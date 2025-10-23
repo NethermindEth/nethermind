@@ -3,45 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Ssz;
-
-
-[SszSerializable]
-public struct BlockProofHistoricalHashesAccumulator
-{
-    [SszVector(15)]
-    public Root[] HashesAccumulator { get; set; }
-}
-
-
-[SszSerializable]
-public struct BlockProofHistoricalRoots
-{
-    [SszVector(14)]
-    public Root[] BeaconBlockProof { get; set; }
-    
-    public Root BeaconBlockRoot { get; set; }
-    
-    [SszVector(11)]
-    public Root[] ExecutionBlockProof { get; set; }
-    
-    public long Slot { get; set; }
-}
-
-[SszSerializable]
-public struct BlockProofHistoricalSummaries
-{
-    [SszVector(13)]
-    public Root[] BeaconBlockProof { get; set; }
-    
-    public Root BeaconBlockRoot { get; set; }
-    
-    [SszList(12)]
-    public Root[] ExecutionBlockProof { get; set; }
-    
-    public long Slot { get; set; }
-}
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -66,10 +27,7 @@ namespace Nethermind.Serialization.Rlp
                 case BlockHeaderProofType.BlockProofHistoricalHashesAccumulator: {
                     // ssz decode
                     SszEncoding.Decode(decoderContext.DecodeByteArraySpan(), out BlockProofHistoricalHashesAccumulator proof);
-                    BlockHeaderProof headerProof = new(
-                        proof.HashesAccumulator,
-                        BlockHeaderProofType.BlockProofHistoricalHashesAccumulator
-                    );
+                    BlockHeaderProof headerProof = new(proof.HashesAccumulator);
                     return headerProof;
                 }
                 case BlockHeaderProofType.BlockProofHistoricalRoots: {
@@ -91,8 +49,7 @@ namespace Nethermind.Serialization.Rlp
                         proof.BeaconBlockProof,
                         proof.ExecutionBlockProof,
                         proof.BeaconBlockRoot,
-                        proof.Slot,
-                        BlockHeaderProofType.BlockProofHistoricalSummaries
+                        proof.Slot
                     );
                     return headerProof;
                 }
@@ -116,10 +73,7 @@ namespace Nethermind.Serialization.Rlp
                 case BlockHeaderProofType.BlockProofHistoricalHashesAccumulator: {
                     // ssz decode
                     SszEncoding.Decode(rlpStream.DecodeByteArraySpan(), out BlockProofHistoricalHashesAccumulator proof);
-                    BlockHeaderProof headerProof = new(
-                        proof.HashesAccumulator,
-                        BlockHeaderProofType.BlockProofHistoricalHashesAccumulator
-                    );
+                    BlockHeaderProof headerProof = new(proof.HashesAccumulator);
                     return headerProof;
                 }
                 case BlockHeaderProofType.BlockProofHistoricalRoots: {
@@ -141,8 +95,7 @@ namespace Nethermind.Serialization.Rlp
                         proof.BeaconBlockProof,
                         proof.ExecutionBlockProof,
                         proof.BeaconBlockRoot,
-                        proof.Slot,
-                        BlockHeaderProofType.BlockProofHistoricalSummaries
+                        proof.Slot
                     );
                     return headerProof;
                 }
@@ -162,7 +115,38 @@ namespace Nethermind.Serialization.Rlp
 
             rlpStream.WriteByte((byte)headerProof.ProofType!);
             rlpStream.StartByteArray(GetContentLength(headerProof, rlpBehaviors), false);
-            rlpStream.Write(SszEncoding.Encode(headerProof));
+            switch (headerProof.ProofType) {
+                case BlockHeaderProofType.BlockProofHistoricalHashesAccumulator: {
+                    rlpStream.Write(SszEncoding.Encode(BlockProofHistoricalHashesAccumulator.From(headerProof.HashesAccumulator!)));
+                    break;
+                }
+                case BlockHeaderProofType.BlockProofHistoricalRoots: {
+                    rlpStream.Write(
+                        SszEncoding.Encode(
+                            BlockProofHistoricalRoots.From(
+                                headerProof.BeaconBlockProof!, 
+                                headerProof.BeaconBlockRoot!.Value, 
+                                headerProof.ExecutionBlockProof!, 
+                                headerProof.Slot!.Value
+                            )
+                        )
+                    );
+                    break;
+                }
+                case BlockHeaderProofType.BlockProofHistoricalSummaries: {
+                    rlpStream.Write(
+                        SszEncoding.Encode(
+                            BlockProofHistoricalSummaries.From(
+                                headerProof.BeaconBlockProof!, 
+                                headerProof.BeaconBlockRoot!.Value, 
+                                headerProof.ExecutionBlockProof!, 
+                                headerProof.Slot!.Value
+                            )
+                        )
+                    );
+                    break;
+                }
+            }
         }
 
         public Rlp Encode(BlockHeaderProof? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -189,15 +173,29 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.ProofType == BlockHeaderProofType.BlockProofHistoricalHashesAccumulator)
             {
-                headerProofLength = SszEncoding.GetLength(new BlockProofHistoricalHashesAccumulator { HashesAccumulator = item.HashesAccumulator! });
+                headerProofLength = SszEncoding.GetLength(BlockProofHistoricalHashesAccumulator.From(item.HashesAccumulator!));
             }
             else if (item.ProofType == BlockHeaderProofType.BlockProofHistoricalRoots)
             {
-                headerProofLength = SszEncoding.GetLength(new BlockProofHistoricalRoots { BeaconBlockProof = item.BeaconBlockProof!, ExecutionBlockProof = item.ExecutionBlockProof!, BeaconBlockRoot = item.BeaconBlockRoot!, Slot = item.Slot! });
+                headerProofLength = SszEncoding.GetLength(
+                    BlockProofHistoricalRoots.From(
+                        item.BeaconBlockProof!, 
+                        item.BeaconBlockRoot!.Value, 
+                        item.ExecutionBlockProof!, 
+                        item.Slot!.Value
+                    )
+                );
             }
             else
             {
-                headerProofLength = SszEncoding.GetLength(new BlockProofHistoricalSummaries { BeaconBlockProof = item.BeaconBlockProof!, ExecutionBlockProof = item.ExecutionBlockProof!, BeaconBlockRoot = item.BeaconBlockRoot!, Slot = item.Slot! });
+                headerProofLength = SszEncoding.GetLength(
+                    BlockProofHistoricalSummaries.From(
+                        item.BeaconBlockProof!, 
+                        item.BeaconBlockRoot!.Value, 
+                        item.ExecutionBlockProof!, 
+                        item.Slot!.Value
+                    )
+                );
             }
 
 
