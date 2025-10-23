@@ -147,7 +147,6 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         // need more complex logic like for storage & balance changes?
         if (Enumerable.SequenceEqual(before, after))
         {
-            Console.WriteLine("code deployed already the same");
             return;
         }
 
@@ -326,7 +325,6 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         // storage change edge case
         if (!HasStorageChangedDuringTx(accountChanges.Address, storageKey, before, after))
         {
-            Console.WriteLine($"unchanged! {accountChanges.Address} {Bytes.ToHexString(storageKey)}");
             if (storageChanges.Changes is not [] && storageChanges.Changes[^1].BlockAccessIndex == Index)
             {
                 _changes.Push(new()
@@ -336,14 +334,12 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     PreviousValue = storageChanges.Changes[^1],
                     BlockAccessIndex = Index
                 });
-                Console.WriteLine($"removing change: {storageChanges.Changes[^1]}");
 
                 storageChanges.Changes.RemoveAt(storageChanges.Changes.Count - 1);
             }
 
             if (storageChanges.Changes.Count == 0)
             {
-                Console.WriteLine($"changes empty, removing");
                 accountChanges.StorageChanges.Remove(storageKey);
             }
 
@@ -480,6 +476,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             }
         }
 
+        // assert error? should never happen
         throw new Exception("Error calculating pre tx balance");
     }
 
@@ -497,7 +494,6 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         foreach (StorageChange storageChange in accountChanges.StorageChanges[key].Changes.AsEnumerable().Reverse())
         {
-            Console.WriteLine($"index={Index} storage change = {storageChange.ToString()}");
             if (storageChange.BlockAccessIndex != Index)
             {
                 // storage changed in previous tx in block
@@ -508,20 +504,14 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         // storage only changed within this transaction
         foreach (Change change in _changes)
         {
-            // tmp
-            if (change.Type == ChangeType.StorageChange && change.Address == address && Enumerable.SequenceEqual(change.Slot!, key))
-            {
-                Console.WriteLine($"found change with pretx={(change.PreTxStorage is null ? "null" : Bytes.ToHexString(change.PreTxStorage))} afterInstr={Bytes.ToHexString(afterInstr.ToArray())} previousvalue={(change.PreviousValue is null ? "null" : change.PreviousValue)}");
-            }
             if (change.Type == ChangeType.StorageChange && change.Address == address && Enumerable.SequenceEqual(change.Slot!, key) && change.PreviousValue is null)
             {
-                Console.WriteLine($"has changed = {change.PreTxStorage is null || !Enumerable.SequenceEqual(change.PreTxStorage, afterInstr.ToArray())}");
-
                 // first change of this transaction & block
                 return change.PreTxStorage is null || !Enumerable.SequenceEqual(change.PreTxStorage, afterInstr.ToArray());
             }
         }
 
+        // assert error? should never happen
         throw new Exception("Error calculating pre tx storage");
     }
 
