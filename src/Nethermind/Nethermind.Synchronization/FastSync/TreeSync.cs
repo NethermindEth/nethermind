@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.FastSync
     public class TreeSync : ITreeSync
     {
         public const int AlreadySavedCapacity = 1024 * 1024;
-        public const int MaxRequestSize = 384; // TODO: Consider using peer-specific limits from NodeStats
+        public const int MaxRequestSize = 32; // TODO: Consider using peer-specific limits from NodeStats
 
         private const StateSyncBatch EmptyBatch = null;
 
@@ -111,7 +111,7 @@ namespace Nethermind.Synchronization.FastSync
                     Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Count);
                     Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + secondsInCurrentSync);
 
-                    if (_logger.IsTrace) _logger.Trace($"After preparing a request of {requestItems.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
+                    if (_logger.IsDebug) _logger.Debug($"After preparing a request of {requestItems.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
                     if (_logger.IsTrace) _logger.Trace($"Adding pending request {result}");
                     _ongoingRequests.TryAdd(result, null);
 

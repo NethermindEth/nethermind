@@ -79,13 +79,14 @@ namespace Nethermind.Synchronization.StateSync
             try
             {
                 batch.Responses = await task;
+                if (Logger.IsDebug) Logger.Debug($"Received {batch.Responses.Count} response from {peer}");
 
                 if (hashList is not null) HashList.Return(hashList);
                 getTrieNodesRequest?.Dispose();
             }
             catch (Exception e)
             {
-                if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", e);
+                if (Logger.IsDebug) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", e);
             }
         }
 
