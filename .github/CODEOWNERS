@@ -14,6 +14,7 @@
 /src/Nethermind/Nethermind.Abi @LukaszRozmej
 /src/Nethermind/Nethermind.Blockchain @LukaszRozmej @MarekM25 @flcl42
 /src/Nethermind/Nethermind.Consensus @LukaszRozmej @MarekM25 @flcl42
+/src/Nethermind/Nethermind.Crypto @LukaszRozmej @Marchhill
 /src/Nethermind/Nethermind.Db.Rocks @LukaszRozmej @asdacap @damian-orzechowski
 /src/Nethermind/Nethermind.Era1 @ak88 @Marchhill @smartprogrammer93
 /src/Nethermind/Nethermind.Evm.Precompiles @LukaszRozmej @benaadams @rubo @Marchhill
