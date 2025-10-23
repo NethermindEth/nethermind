@@ -141,10 +141,11 @@ public class EthSimulateTestsBlocksAndTransactions
         };
     }
 
-    public static Transaction GetTransferTxData(UInt256 nonce, IEthereumEcdsa ethereumEcdsa, PrivateKey from, Address to, UInt256 amount)
+    public static Transaction GetTransferTxData(UInt256 nonce, IEthereumEcdsa ethereumEcdsa, PrivateKey from, Address to, UInt256 amount, TxType type = TxType.EIP1559)
     {
         Transaction tx = new()
         {
+            Type = type,
             Value = amount,
             Nonce = nonce,
             GasLimit = 50_000,
@@ -276,6 +277,7 @@ public class EthSimulateTestsBlocksAndTransactions
                             },
                             "calls": [
                               {
+                                "type": "0x3",
                                 "from": "0xc000000000000000000000000000000000000000",
                                 "to": "0xc100000000000000000000000000000000000000",
                                 "gas": "0x5208",

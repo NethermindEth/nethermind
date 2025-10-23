@@ -20,6 +20,7 @@ eth_simulateV1/ethSimulate-simple-no-funds (nethermind)
 eth_simulateV1/ethSimulate-simple-no-funds-with-balance-querying (nethermind)
 eth_simulateV1/ethSimulate-simple-send-from-contract-no-balance (nethermind)
 eth_simulateV1/ethSimulate-try-to-move-non-precompile (nethermind)
+eth_simulateV1/ethSimulate-two-blocks-with-complete-eth-sends (nethermind)
 eth_simulateV1/ethSimulate-use-as-many-features-as-possible (nethermind)
 
 # graphql
