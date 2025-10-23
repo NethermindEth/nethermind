@@ -31,7 +31,7 @@
 /src/Nethermind/Nethermind.Optimism @emlautarom1 @deffrian
 /src/Nethermind/Nethermind.Runner @LukaszRozmej @flcl42
 /src/Nethermind/Nethermind.Serialization.Json @LukaszRozmej @benaadams
-/src/Nethermind/Nethermind.Serialization.Rlp @LukaszRozmej
+/src/Nethermind/Nethermind.Serialization.Rlp @LukaszRozmej @Marchhill
 /src/Nethermind/Nethermind.Serialization.Ssz @flcl42 @ak88 @Marchhill
 /src/Nethermind/Nethermind.Serialization.SszGenerator @flcl42 @ak88 @Marchhill
 /src/Nethermind/Nethermind.Shutter @Marchhill
