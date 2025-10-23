@@ -20,7 +20,7 @@ public class XdcConsensusContext
     public ulong HighestVotedRound { get; set; }
     public QuorumCertificate? HighestQC { get; set; }
     public QuorumCertificate? LockQC { get; set; }
-    public TimeoutCert? HighestTC { get; set; }
+    public TimeoutCertificate? HighestTC { get; set; }
     public BlockRoundInfo HighestCommitBlock { get; set; }
 
     public event Action<IBlockTree, ulong> NewRoundSetEvent;
