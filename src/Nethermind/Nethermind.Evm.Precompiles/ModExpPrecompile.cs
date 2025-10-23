@@ -90,11 +90,6 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     private static long DataGasCostInternal(ReadOnlySpan<byte> inputData, IReleaseSpec releaseSpec)
     {
         (uint baseLength, uint expLength, uint modulusLength) = GetInputLengths(inputData);
-        if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
-        {
-            return long.MaxValue;
-        }
-
         ulong complexity = MultComplexity(baseLength, modulusLength, releaseSpec.IsEip7883Enabled);
 
         uint expLengthUpTo32 = Math.Min(LengthSize, expLength);
@@ -237,7 +232,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
                 : GetInputLengthsShort(inputSpan);
 
         if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
-            return Errors.InvalidInputLength;
+            return "one or more of base/exponent/modulus length exceeded 1024 bytes";
 
         // if both are 0, then expLength can be huge, which leads to a potential buffer too big exception
         if (baseLength == 0 && modulusLength == 0)
