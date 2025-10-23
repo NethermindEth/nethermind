@@ -103,6 +103,12 @@ namespace Nethermind.Db.FullPruning
             _updateDuplicateWriteMetrics?.Invoke();
         }
 
+        private void DuplicateMerge(IMergeableKeyValueStore db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags)
+        {
+            db.Merge(key, value, flags);
+            _updateDuplicateWriteMetrics?.Invoke();
+        }
+
         // we also need to duplicate writes that are in batches
         public IWriteBatch StartWriteBatch() =>
             _pruningContext is null
@@ -317,10 +323,22 @@ namespace Nethermind.Db.FullPruning
                 _clonedWriteBatch.Dispose();
             }
 
+            public void Clear()
+            {
+                _writeBatch.Clear();
+                _clonedWriteBatch.Clear();
+            }
+
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
             {
                 _writeBatch.Set(key, value, flags);
                 _db.Duplicate(_clonedWriteBatch, key, value, flags);
+            }
+
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+            {
+                _writeBatch.Merge(key, value, flags);
+                _db.DuplicateMerge(_clonedWriteBatch, key, value, flags);
             }
         }
 

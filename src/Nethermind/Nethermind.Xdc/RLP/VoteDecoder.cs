@@ -89,7 +89,7 @@ public class VoteDecoder : IRlpValueDecoder<Vote>, IRlpStreamDecoder<Vote>
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public int GetLength(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public int GetLength(Vote item, RlpBehaviors rlpBehaviors)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }

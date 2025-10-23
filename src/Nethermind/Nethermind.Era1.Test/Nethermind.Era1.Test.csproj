@@ -20,15 +20,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="testdata\holesky\holesky-00000-a3bfd81f.era1">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="testdata\holesky\holesky-00001-e343db12.era1">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="testdata\holesky\holesky-00002-5a3ecb1a.era1">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Update="testdata\mainnet\mainnet-00000-5ec1ffb8.era1">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

@@ -82,7 +82,7 @@ namespace Nethermind.State.Proofs
                     _accountProof.StorageProofs[i] = new StorageProof
                     {
                         // we don't know the key (index)
-                        Key = storageKeys is not null ? new ValueHash256(storageKeys[i]) : null,
+                        Key = storageKeys?[i].ToHexString(true, true),
                         Value = Bytes.ZeroByte
                     };
 

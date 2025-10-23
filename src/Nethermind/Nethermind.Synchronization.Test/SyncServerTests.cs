@@ -777,6 +777,14 @@ public class SyncServerTests
         ctx.SyncServer.GetNodeData(new[] { nodeKey }, CancellationToken.None, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.BytesToArray() });
     }
 
+    [Test]
+    public void Correctly_clips_lowestBlock()
+    {
+        Context ctx = new();
+        ctx.BlockTree.GetLowestBlock().Returns(5);
+        ctx.SyncServer.LowestBlock.Should().Be(0);
+    }
+
     private class Context
     {
         public Context()
