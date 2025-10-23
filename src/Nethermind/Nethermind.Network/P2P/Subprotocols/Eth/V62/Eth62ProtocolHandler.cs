@@ -290,7 +290,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return ValueTask.CompletedTask;
         }
 
-        private bool ValidateSizeAndType(Transaction tx) => !TxShapeAnnouncements.Delete(tx.Hash!, out (int Size, TxType Type) txShape) || tx.GetLength() == txShape.Size && tx.Type == txShape.Type;
+        private bool ValidateSizeAndType(Transaction tx)
+            => !TxShapeAnnouncements.Delete(tx.Hash!, out (int Size, TxType Type) txShape) || (tx.GetLength() == txShape.Size && tx.Type == txShape.Type);
 
         private void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
         {

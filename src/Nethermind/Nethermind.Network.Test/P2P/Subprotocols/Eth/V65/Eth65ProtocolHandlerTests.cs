@@ -144,7 +144,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public async Task should_send_requested_PooledTransactions_up_to_MaxPacketSize()
         {
-            Transaction tx = Build.A.Transaction.WithData(new byte[1024]).SignedAndResolved().TestObject;
+            Transaction tx = Build.A.Transaction.WithData(new byte[102400]).SignedAndResolved().TestObject;
             int sizeOfOneTx = tx.GetLength();
             int numberOfTxsInOneMsg = TransactionsMessage.MaxPacketSize / sizeOfOneTx;
             _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
@@ -177,7 +177,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                     x[1] = tx;
                     return true;
                 });
-            using GetPooledTransactionsMessage request = new(new Hash256[2048].ToPooledList());
+            using GetPooledTransactionsMessage request = new(new Hash256[40960].ToPooledList());
             using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
             response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
         }
