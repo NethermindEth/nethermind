@@ -1,12 +1,11 @@
-#!/bin/bash
-# SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
-# SPDX-License-Identifier: LGPL-3.0-only
+#!/usr/bin/env bash
+set -euo pipefail
 
-set -e
-
-./nethermind "$@" 2>&1 &
-
-pid=$(pidof ./nethermind)
-
-#dotnet-trace collect -p $pid -o /nethermind/diag/dotnet.nettrace
-dottrace attach $pid --save-to=/nethermind/diag/dottrace --service-output=on --profiling-type=timeline
+mkdir -p /nethermind/diag/dottrace
+exec dottrace start \
+  --framework=NetCore \
+  --profiling-type=Timeline \
+  --save-to=/nethermind/diag/dottrace/nethermind_$(date +%F_%H-%M-%S).dtt \
+  --service-output=on \
+  --propagate-exit-code \
+  -- ./nethermind "$@"
