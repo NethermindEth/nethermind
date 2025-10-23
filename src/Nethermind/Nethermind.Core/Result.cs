@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.Core
 {
     public readonly record struct Result(ResultType ResultType, string? Error = null)
@@ -16,7 +18,7 @@ namespace Nethermind.Core
         public static Result<TData> Success(TData data) => new() { ResultType = ResultType.Success, Data = data };
         public static implicit operator bool(Result<TData> result) => result.ResultType == ResultType.Success;
         public static implicit operator Result<TData>(TData data) => Success(data);
-        public static implicit operator Result<TData>(string error) => Fail(error);
+        public static implicit operator Result<TData>(string error) => Fail(error, typeof(TData) == typeof(byte[]) ? (TData)(object)Array.Empty<byte>() : default);
         public static implicit operator (TData?, bool)(Result<TData> result) => (result.Data, result.ResultType == ResultType.Success);
 
         public void Deconstruct(out TData? result, out bool success)
