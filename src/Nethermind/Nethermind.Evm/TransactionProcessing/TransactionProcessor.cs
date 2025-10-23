@@ -219,7 +219,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+                    if (!opts.HasFlag(ExecutionOptions.SkipValidation) && !opts.HasFlag(ExecutionOptions.RpcValidationRules))
                         WorldState.AddToBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
                     DecrementNonce(tx);
 
@@ -438,7 +438,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 bool commit = opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled;
                 bool restore = opts.HasFlag(ExecutionOptions.Restore);
-                bool noValidation = opts.HasFlag(ExecutionOptions.SkipValidation);
+                bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation) && !opts.HasFlag(ExecutionOptions.RpcValidationRules);
 
                 if (Logger.IsDebug) Logger.Debug($"TX sender account does not exist {sender} - trying to recover it");
 
@@ -454,7 +454,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 else
                 {
                     TraceLogInvalidTx(tx, $"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
-                    if (!commit || noValidation || effectiveGasPrice.IsZero)
+                    if (!commit || !validate || effectiveGasPrice.IsZero)
                     {
                         deleteCallerAccount = !commit || restore;
                         WorldState.CreateAccount(sender, in UInt256.Zero);
@@ -481,7 +481,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
-            bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
+            bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation) && !opts.HasFlag(ExecutionOptions.RpcValidationRules);
 
             if (validate && WorldState.IsInvalidContractSender(spec, tx.SenderAddress!))
             {
@@ -644,8 +644,6 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        protected virtual bool ShouldValidate(ExecutionOptions opts) => !opts.HasFlag(ExecutionOptions.SkipValidation);
-
         private int ExecuteEvmCall<TTracingInst>(
             Transaction tx,
             BlockHeader header,
@@ -753,7 +751,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.Restore(snapshot);
 
         Complete:
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation) && !opts.HasFlag(ExecutionOptions.RpcValidationRules))
                 header.GasUsed += gasConsumed.SpentGas;
 
             return statusCode;
