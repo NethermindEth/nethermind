@@ -153,8 +153,8 @@ public class Eth68ProtocolHandlerTests
     {
         GenerateTxLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs);
         sizes[0] += 10;
-        using var hashesMsg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
-        using var txsMsg = new PooledTransactionsMessage(1111, new Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage(txs));
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+        using PooledTransactionsMessage txsMsg = new(1111, new(txs));
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
@@ -169,8 +169,8 @@ public class Eth68ProtocolHandlerTests
     {
         GenerateTxLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs);
         types[0]++;
-        using var hashesMsg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
-        using var txsMsg = new PooledTransactionsMessage(1111, new Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage(txs));
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+        using PooledTransactionsMessage txsMsg = new(1111, new(txs));
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
