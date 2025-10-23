@@ -17,6 +17,7 @@ public class Timeout(ulong round, Signature? signature, ulong gapNumber) : IXdcP
     public ulong Round { get; set; } = round;
     public Signature? Signature { get; set; } = signature;
     public ulong GapNumber { get; set; } = gapNumber;
+    public Address? Signer { get; set; }
 
     public override string ToString() => $"{Round}:{GapNumber}";
 
