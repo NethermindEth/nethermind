@@ -160,7 +160,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
-        _session.Received().InitiateDisconnect(DisconnectReason.Other, "invalid pooled tx type or size");
+        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
     }
 
 
@@ -176,7 +176,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
-        _session.Received().InitiateDisconnect(DisconnectReason.Other, "invalid pooled tx type or size");
+        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
     }
 
     [Test]
