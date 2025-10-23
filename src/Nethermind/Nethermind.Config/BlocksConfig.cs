@@ -85,6 +85,9 @@ namespace Nethermind.Config
                 _extraDataBytes = bytes;
             }
         }
+
+        public bool BuildBlocksOnMainState { get; set; }
+
         public byte[] GetExtraDataBytes()
         {
             return _extraDataBytes;

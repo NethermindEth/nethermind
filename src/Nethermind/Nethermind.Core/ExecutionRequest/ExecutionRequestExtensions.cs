@@ -38,7 +38,7 @@ public static class ExecutionRequestExtensions
             throw new ArgumentException("Flat encoded requests must be an array");
         }
 
-        using ArrayPoolList<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);
+        using ArrayPoolListRef<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);
         foreach (byte[] requests in flatEncodedRequests)
         {
             if (requests.Length <= 1) continue;
@@ -57,7 +57,7 @@ public static class ExecutionRequestExtensions
         ExecutionRequest[] consolidationRequests
     )
     {
-        var result = new ArrayPoolList<byte[]>(MaxRequestsCount);
+        ArrayPoolList<byte[]> result = new(MaxRequestsCount);
 
         if (depositRequests.Length > 0)
         {
@@ -78,7 +78,7 @@ public static class ExecutionRequestExtensions
 
         static byte[] FlatEncodeRequests(ExecutionRequest[] requests, int bufferSize, byte type)
         {
-            using ArrayPoolList<byte> buffer = new(bufferSize + 1) { type };
+            using ArrayPoolListRef<byte> buffer = new(bufferSize + 1, type);
 
             foreach (ExecutionRequest request in requests)
             {
