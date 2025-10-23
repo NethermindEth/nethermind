@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -31,7 +32,7 @@ namespace Nethermind.Evm;
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
-public sealed unsafe class EthereumVirtualMachine(
+public sealed class EthereumVirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     ILogManager? logManager
@@ -45,8 +46,8 @@ public unsafe partial class VirtualMachine(
     ILogManager? logManager) : IVirtualMachine
 {
     public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
-    private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
-    internal readonly static byte[] EofHash256 = KeccakHash.ComputeHashBytes(MAGIC);
+    private static readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    internal static readonly byte[] EofHash256 = KeccakHash.ComputeHashBytes(MAGIC);
     internal static ref readonly UInt256 P255 => ref P255Int;
     internal static readonly UInt256 BigInt256 = 256;
     internal static readonly UInt256 BigInt32 = 32;
@@ -69,7 +70,7 @@ public unsafe partial class VirtualMachine(
         255, 255, 255, 255, 255, 255, 255, 255
     };
 
-    internal static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
+    internal readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
     internal static readonly OutOfGasException PrecompileOutOfGasException = new();
 
     private readonly ValueHash256 _chainId = ((UInt256)specProvider.ChainId).ToValueHash();
@@ -617,6 +618,7 @@ public unsafe partial class VirtualMachine(
         // Attempt to cast the exception to EvmException to extract a specific error type.
         EvmException? evmException = failure as EvmException;
         EvmExceptionType errorType = evmException?.ExceptionType ?? EvmExceptionType.Other;
+        string? error = evmException?.Message;
 
         // If the tracing instructions flag is active, report zero remaining gas and log the error.
         if (TTracingInst.IsActive)
@@ -637,7 +639,7 @@ public unsafe partial class VirtualMachine(
             // For an OverflowException, force the error type to a generic Other error.
             EvmExceptionType finalErrorType = failure is OverflowException ? EvmExceptionType.Other : errorType;
             shouldExit = true;
-            return new TransactionSubstate(finalErrorType, txTracer.IsTracing);
+            return new TransactionSubstate(finalErrorType, txTracer.IsTracing, error);
         }
 
         // For nested call frames, prepare to revert to the parent frame.
@@ -782,7 +784,7 @@ public unsafe partial class VirtualMachine(
         CallResult callResult = RunPrecompile(currentState);
 
         // If the precompile did not succeed, handle the failure conditions.
-        if (!callResult.PrecompileSuccess.Value)
+        if (callResult.PrecompileSuccess == false)
         {
             // If the failure is due to an exception (e.g., out-of-gas), set the corresponding failure exception.
             if (callResult.IsException)
@@ -794,6 +796,7 @@ public unsafe partial class VirtualMachine(
             // If running a precompile on a top-level call frame, and it fails, assign a general execution failure.
             if (currentState.IsPrecompile && currentState.IsTopLevel)
             {
+                PrecompileExecutionFailureException.SetCustomMessage(callResult.Error);
                 failure = PrecompileExecutionFailureException;
                 goto Failure;
             }
@@ -1012,7 +1015,16 @@ public unsafe partial class VirtualMachine(
         {
             Result<byte[]> output = precompile.Run(callData, spec);
             bool success = output;
-            return new(success ? output.Data : [], precompileSuccess: success, fromVersion: 0, shouldRevert: !success, exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None);
+            return new(
+                success ? output.Data : [],
+                precompileSuccess: success,
+                fromVersion: 0,
+                shouldRevert: !success,
+                exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None
+            )
+            {
+                Error = output.Error
+            };
         }
         catch (DllNotFoundException exception)
         {

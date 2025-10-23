@@ -57,9 +57,9 @@ public readonly ref struct TransactionSubstate
     public IToArrayCollection<LogEntry> Logs => _logs ?? _emptyLogs;
     public IHashSetEnumerableCollection<Address> DestroyList => _destroyList ?? _emptyDestroyList;
 
-    public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected)
+    public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? error = null)
     {
-        Error = isTracerConnected ? exceptionType.ToString() : SomeError;
+        Error = error ?? (isTracerConnected ? exceptionType.ToString() : SomeError);
         EvmExceptionType = exceptionType;
         Refund = 0;
         _destroyList = _emptyDestroyList;
@@ -67,7 +67,7 @@ public readonly ref struct TransactionSubstate
         ShouldRevert = false;
     }
 
-    public static TransactionSubstate FailedInitCode => new TransactionSubstate("Eip 7698: Invalid CreateTx InitCode");
+    public static TransactionSubstate FailedInitCode => new("Eip 7698: Invalid CreateTx InitCode");
 
     private TransactionSubstate(string errorCode)
     {
