@@ -108,6 +108,11 @@ public class DisposableScopeOverridableEnvTests
             throw new System.NotImplementedException();
         }
 
+        public TransactionResult TraceRpcRules(Transaction transaction, ITxTracer txTracer)
+        {
+            throw new System.NotImplementedException();
+        }
+
         public TransactionResult Warmup(Transaction transaction, ITxTracer txTracer)
         {
             throw new System.NotImplementedException();

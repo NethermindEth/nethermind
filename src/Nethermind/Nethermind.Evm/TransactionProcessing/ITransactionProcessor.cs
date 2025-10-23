@@ -31,6 +31,12 @@ public interface ITransactionProcessor
     TransactionResult Trace(Transaction transaction, ITxTracer txTracer);
 
     /// <summary>
+    /// Call transaction, partial validation, commit state
+    /// Will use simulate validation rules: No base fee if gas params are zero. No nonce checks
+    /// </summary>
+    TransactionResult TraceRpcRules(Transaction transaction, ITxTracer txTracer);
+
+    /// <summary>
     /// Call transaction, no validations, don't commit state
     /// Will NOT charge gas from sender account
     /// </summary>
