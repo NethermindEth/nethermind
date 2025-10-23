@@ -66,8 +66,7 @@ internal static partial class MetricsGenerator
             writeStream.WriteLine(line);
         }
 
-        readStream.Close();
-        writeStream.Close();
+        // 'using' ensures streams are disposed; explicit Close() is unnecessary
 
         File.Move(tempFileName, fileName, true);
         File.Delete(tempFileName);
