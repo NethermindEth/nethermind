@@ -193,7 +193,7 @@ public class EthSimulateTestsBlocksAndTransactions
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
-        Transaction txMainnetAtoB = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+        Transaction txMainnetAtoB = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
 
         SimulatePayload<TransactionForRpc> payload = CreateEthMovedPayload(chain, nonceA);
 
@@ -234,7 +234,7 @@ public class EthSimulateTestsBlocksAndTransactions
         UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
 
         Transaction txMainnetAtoB =
-            GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+            GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
 
         SimulatePayload<TransactionForRpc> payload = CreateTransactionsForcedFail(chain, nonceA);
 

@@ -93,7 +93,7 @@ public class DebugSimulateTestsBlocksAndTransactions
         UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
 
         Transaction txMainnetAtoB =
-            EthSimulateTestsBlocksAndTransactions.GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+            EthSimulateTestsBlocksAndTransactions.GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
 
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransactionsForcedFail(chain, nonceA);
 
