@@ -109,13 +109,6 @@ internal static partial class EvmInstructions
         Address codeSource = stack.PopAddress();
         if (codeSource is null) goto StackUnderflow;
 
-        // Pop additional parameters: data offset, data length, output offset, and output length.
-        if (!stack.PopUInt256(out UInt256 dataOffset) ||
-            !stack.PopUInt256(out UInt256 dataLength) ||
-            !stack.PopUInt256(out UInt256 outputOffset) ||
-            !stack.PopUInt256(out UInt256 outputLength))
-            goto StackUnderflow;
-
         ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         // Determine the call value based on the call type.
         UInt256 callValue;
@@ -133,6 +126,13 @@ internal static partial class EvmInstructions
         {
             goto StackUnderflow;
         }
+
+        // Pop additional parameters: data offset, data length, output offset, and output length.
+        if (!stack.PopUInt256(out UInt256 dataOffset) ||
+            !stack.PopUInt256(out UInt256 dataLength) ||
+            !stack.PopUInt256(out UInt256 outputOffset) ||
+            !stack.PopUInt256(out UInt256 outputLength))
+            goto StackUnderflow;
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) goto OutOfGas;
