@@ -543,8 +543,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [TestCase(1, true)]
-        [TestCase(21620, true)]
-        [TestCase(21621, false)]
+        [TestCase(21622, true)]
+        [TestCase(21623, false)]
         public void should_send_txs_with_size_up_to_MaxPacketSize_in_one_TransactionsMessage(int txCount, bool shouldBeSentInJustOneMessage)
         {
             Transaction[] txs = new Transaction[txCount];
