@@ -11,7 +11,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
     public class GetReceiptsMessageSerializer : HashesMessageSerializer<GetReceiptsMessage>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<GetReceiptsMessage>(nameof(GetReceiptsMessage.Hashes), NethermindSyncLimits.MaxReceiptFetch);
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<GetReceiptsMessage>(NethermindSyncLimits.MaxReceiptFetch, nameof(GetReceiptsMessage.Hashes));
 
         public static GetReceiptsMessage Deserialize(byte[] bytes)
         {

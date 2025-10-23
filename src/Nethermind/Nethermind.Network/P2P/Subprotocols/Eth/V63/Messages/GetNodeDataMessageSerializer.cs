@@ -11,7 +11,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
     public class GetNodeDataMessageSerializer : HashesMessageSerializer<GetNodeDataMessage>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<GetNodeDataMessage>(nameof(GetNodeDataMessage.Hashes), NethermindSyncLimits.MaxHashesFetch);
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<GetNodeDataMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(GetNodeDataMessage.Hashes));
 
         public override GetNodeDataMessage Deserialize(IByteBuffer byteBuffer)
         {

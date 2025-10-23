@@ -8,18 +8,21 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp;
 
-public record struct RlpLimit(int Limit, string TypeName, ReadOnlyMemory<char> PropertyName)
+public record struct RlpLimit(int Limit, string TypeName = "", ReadOnlyMemory<char> PropertyName = default)
 {
-    // We shouldn't allocate any single array bigger than 1M
-    public static readonly RlpLimit DefaultLimit = new((int)256.KiB(), "", ReadOnlyMemory<char>.Empty);
-    public static readonly RlpLimit Bloom = For<Bloom>("", Core.Bloom.ByteLength);
-    public static readonly RlpLimit L4 = new(4, "", ReadOnlyMemory<char>.Empty);
-    public static readonly RlpLimit L8 = new(8, "", ReadOnlyMemory<char>.Empty);
-    public static readonly RlpLimit L32 = new(32, "", ReadOnlyMemory<char>.Empty);
-    public static readonly RlpLimit L64 = new(64, "", ReadOnlyMemory<char>.Empty);
-    public static readonly RlpLimit L65 = new(65, "", ReadOnlyMemory<char>.Empty);
+    private const int Default = 256 * 1024 * 1024;
 
+    // We shouldn't allocate any single array bigger than 1M
+    public static readonly RlpLimit DefaultLimit = new(Default);
+    public static readonly RlpLimit Bloom = For<Bloom>(Core.Bloom.ByteLength);
+    public static readonly RlpLimit L4 = new(4);
+    public static readonly RlpLimit L8 = new(8);
+    public static readonly RlpLimit L32 = new(32);
+    public static readonly RlpLimit L64 = new(64);
+    public static readonly RlpLimit L65 = new(65);
     private string _collectionExpression;
+
+    public RlpLimit() : this(Default) { }
 
     public string CollectionExpression
     {
@@ -33,7 +36,7 @@ public record struct RlpLimit(int Limit, string TypeName, ReadOnlyMemory<char> P
             : $"{TypeName}.{PropertyName}";
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static RlpLimit For<T>(string propertyName, int limit) => new(limit, typeof(T).Name, propertyName.AsMemory());
+    public static RlpLimit For<T>(int limit, string propertyName = "") => new(limit, typeof(T).Name, propertyName.AsMemory());
 
     public override string ToString() => CollectionExpression;
 }

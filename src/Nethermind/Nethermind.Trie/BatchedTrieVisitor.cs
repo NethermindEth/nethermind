@@ -367,10 +367,10 @@ public class BatchedTrieVisitor<TNodeContext>
 
         return;
 
-        static void ThrowUnableToResolve(in SmallTrieVisitContext ctx)
+        void ThrowUnableToResolve(in SmallTrieVisitContext ctx)
         {
             throw new TrieException(
-                $"Unable to resolve node without Keccak. ctx: {ctx.Level}, {ctx.ExpectAccounts}, {ctx.IsStorage}");
+                $"Unable to resolve node without Keccak. ctx: {ctx.Level}, {_visitor.ExpectAccounts}, {ctx.IsStorage}");
         }
     }
 
@@ -434,7 +434,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 {
                     _visitor.VisitLeaf(nodeContext, node);
 
-                    if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
+                    if (!trieVisitContext.IsStorage && _visitor.ExpectAccounts) // can combine these conditions
                     {
                         TNodeContext childContext = nodeContext.Add(node.Key!);
 
