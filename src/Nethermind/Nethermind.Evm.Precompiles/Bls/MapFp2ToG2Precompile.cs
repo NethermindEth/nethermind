@@ -27,7 +27,7 @@ public class MapFp2ToG2Precompile : IPrecompile<MapFp2ToG2Precompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 23800L;
 
-    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

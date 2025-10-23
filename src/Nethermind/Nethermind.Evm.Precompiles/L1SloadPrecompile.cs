@@ -40,7 +40,7 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => L1PrecompileConstants.FixedGasCost;
 
-    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
         inputData.Length != L1PrecompileConstants.ExpectedInputLength ? 0L : L1PrecompileConstants.PerLoadGasCost;
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

@@ -30,7 +30,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
-    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         int k = inputData.Length / ItemSize;
         return 12000L * k * Discount.ForG1(k) / 1000;

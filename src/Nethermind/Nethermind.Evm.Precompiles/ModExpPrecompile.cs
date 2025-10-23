@@ -54,7 +54,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     /// <param name="inputData"></param>
     /// <param name="releaseSpec"></param>
     /// <returns>Gas cost of the MODEXP operation in the context of EIP2565</returns>
-    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         if (!releaseSpec.IsEip2565Enabled)
         {
@@ -72,7 +72,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         }
         catch (OverflowException)
         {
-            return Errors.Overflow;
+            return long.MaxValue;
         }
     }
 

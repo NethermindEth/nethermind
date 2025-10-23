@@ -24,7 +24,7 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
 
     public static string Name => "ECREC";
 
-    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 3000L;
 

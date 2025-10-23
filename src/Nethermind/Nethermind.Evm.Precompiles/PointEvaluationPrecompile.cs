@@ -28,7 +28,7 @@ public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 50000L;
 
-    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {

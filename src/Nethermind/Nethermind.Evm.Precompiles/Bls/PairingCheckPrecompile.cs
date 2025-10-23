@@ -29,7 +29,7 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 37700L;
 
-    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 32600L * (inputData.Length / PairSize);
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 32600L * (inputData.Length / PairSize);
 
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

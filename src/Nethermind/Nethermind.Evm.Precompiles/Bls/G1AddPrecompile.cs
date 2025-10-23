@@ -26,7 +26,7 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 375L;
 
-    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

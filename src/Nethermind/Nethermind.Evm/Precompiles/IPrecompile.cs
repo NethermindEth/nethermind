@@ -12,7 +12,7 @@ namespace Nethermind.Evm.Precompiles
         static virtual Address Address => Address.Zero;
         static virtual string Name => string.Empty;
         long BaseGasCost(IReleaseSpec releaseSpec);
-        Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
+        long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
         // N.B. returns a byte array so that inputData cannot be returned
         // this can lead to the wrong value being returned due to the cache modifying inputData

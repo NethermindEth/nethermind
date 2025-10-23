@@ -23,7 +23,7 @@ public class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
 
-    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         if (inputData.Length != RequiredInputLength)
         {

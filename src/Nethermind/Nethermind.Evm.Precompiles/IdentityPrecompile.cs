@@ -23,7 +23,7 @@ public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 15L;
 
-    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
         3L * EvmCalculations.Div32Ceiling((ulong)inputData.Length);
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => inputData.ToArray();

@@ -29,17 +29,17 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
-    public Result<long> DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         try
         {
             return inputData.Length >= 96
-                ? DataGasCostInternal(inputData.Span.Slice(0, 96), inputData, releaseSpec)
+                ? DataGasCostInternal(inputData.Span.Slice(0, 96), inputData)
                 : DataGasCostInternal(inputData, releaseSpec);
         }
         catch (OverflowException)
         {
-            return Errors.Overflow;
+            return long.MaxValue;
         }
     }
 
@@ -49,11 +49,10 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
         inputData[..Math.Min(96, inputData.Length)].Span
             .CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
 
-        return DataGasCostInternal(extendedInput, inputData, releaseSpec);
+        return DataGasCostInternal(extendedInput, inputData);
     }
 
-    private static long DataGasCostInternal(ReadOnlySpan<byte> extendedInput, ReadOnlyMemory<byte> inputData,
-        IReleaseSpec releaseSpec)
+    private static long DataGasCostInternal(ReadOnlySpan<byte> extendedInput, ReadOnlyMemory<byte> inputData)
     {
         UInt256 baseLength = new(extendedInput[..32], true);
         UInt256 expLength = new(extendedInput.Slice(32, 32), true);

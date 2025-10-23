@@ -17,7 +17,6 @@ public static class Errors
 
     public const string InvalidFinalFlag = "invalid final flag";
     public const string L1StorageAccessFailed = "l1 storage access failed";
-    public const string Overflow = "overflow";
 
     public const string Failed = "failed";
 
