@@ -76,6 +76,16 @@ namespace Nethermind.Evm.TransactionProcessing
             SkipValidation = 4,
 
             /// <summary>
+            /// Do not perform nonce checks. Used in RPC calls
+            /// </summary>
+            SkipNonceChecks = 8,
+
+            /// <summary>
+            /// Do not charge base fee if gas params are zero
+            /// </summary>
+            NoBaseFee = 16,
+
+            /// <summary>
             /// Skip potential fail checks and commit state after execution
             /// </summary>
             SkipValidationAndCommit = Commit | SkipValidation,
@@ -137,7 +147,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecuteCore(transaction, txTracer, ExecutionOptions.Commit);
 
         public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
+            ExecuteCore(transaction, txTracer, ExecutionOptions.NoBaseFee | ExecutionOptions.SkipNonceChecks | ExecutionOptions.Commit);
 
         public virtual TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidation);
@@ -491,10 +501,14 @@ namespace Nethermind.Evm.TransactionProcessing
             premiumPerGas = UInt256.Zero;
             senderReservedGasPayment = UInt256.Zero;
             blobBaseFee = UInt256.Zero;
-            bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
+            if (opts.HasFlag(ExecutionOptions.SkipValidation))
+            {
+                return TransactionResult.Ok;
+            }
 
+            bool noBaseFee = opts.HasFlag(ExecutionOptions.NoBaseFee);
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-            bool validatePremiumAndEip1559 = validate || tx.MaxFeePerGas != 0 || tx.MaxPriorityFeePerGas != 0;
+            bool validatePremiumAndEip1559 = !noBaseFee || tx.MaxFeePerGas != 0 || tx.MaxPriorityFeePerGas != 0;
             if (validatePremiumAndEip1559 && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
@@ -534,7 +548,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
-            bool validateBlobFee = validate || tx.MaxFeePerBlobGas != 0;
+            bool validateBlobFee = !noBaseFee || tx.MaxFeePerBlobGas != 0;
             if (validateBlobFee && !overflows && tx.SupportsBlobs)
             {
                 overflows = !_blobBaseFeeCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction,
@@ -560,7 +574,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
-            bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
+            bool validate = !opts.HasFlag(ExecutionOptions.SkipNonceChecks);
             UInt256 nonce = WorldState.GetNonce(tx.SenderAddress);
             if (validate && tx.Nonce != nonce)
             {
@@ -916,7 +930,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // If noValidation we didn't charge for gas, so do not refund
             UInt256 refundAmount = (ulong)(tx.GasLimit - spentGas) * gasPrice;
-            if (refundAmount != 0)
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
                 WorldState.AddToBalance(tx.SenderAddress!, refundAmount, spec);
 
             return new GasConsumed(spentGas, operationGas);
