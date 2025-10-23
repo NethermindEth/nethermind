@@ -32,6 +32,6 @@ public class ValueHash256Converter : JsonConverter<ValueHash256>
         ValueHash256 keccak,
         JsonSerializerOptions options)
     {
-        ByteArrayConverter.Convert(writer, keccak.Bytes, skipLeadingZeros: true);
+        ByteArrayConverter.Convert(writer, keccak.Bytes, skipLeadingZeros: false);
     }
 }
