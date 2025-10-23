@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+﻿// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -12,9 +12,10 @@ public interface IXdcConsensusContext
     BlockRoundInfo HighestCommitBlock { get; set; }
     QuorumCertificate? HighestQC { get; set; }
     ulong HighestSelfMinedRound { get; set; }
-    TimeoutCert? HighestTC { get; set; }
+    TimeoutCertificate? HighestTC { get; set; }
     ulong HighestVotedRound { get; set; }
     QuorumCertificate? LockQC { get; set; }
     int TimeoutCounter { get; set; }
-    void SetNewRound(ulong round);
+
+    event Action<IBlockTree, ulong> NewRoundSetEvent;
 }

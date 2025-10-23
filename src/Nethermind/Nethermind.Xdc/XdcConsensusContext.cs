@@ -12,7 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-public class XdcConsensusContext
+public class XdcConsensusContext : IXdcConsensusContext
 {
     public int TimeoutCounter { get; set; }
     public ulong CurrentRound { get; private set; }
