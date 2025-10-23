@@ -6,7 +6,6 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -79,7 +78,7 @@ public class BlobTxStorage : IBlobTxStorage
         _lightBlobTxsDb.Remove(hash.BytesAsSpan);
     }
 
-    public void AddBlobTransactionsFromBlock(long blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions)
+    public void AddBlobTransactionsFromBlock(long blockNumber, IList<Transaction> blockBlobTransactions)
     {
         if (blockBlobTransactions.Count == 0)
         {
@@ -145,7 +144,7 @@ public class BlobTxStorage : IBlobTxStorage
         db.PutSpan(txHashPrefixed, rlpStream.AsSpan());
     }
 
-    private void EncodeAndSaveTxs(in ArrayPoolListRef<Transaction> blockBlobTransactions, IDb db, long blockNumber)
+    private void EncodeAndSaveTxs(IList<Transaction> blockBlobTransactions, IDb db, long blockNumber)
     {
         using NettyRlpStream rlpStream = _txDecoder.EncodeToNewNettyStream(blockBlobTransactions!, RlpBehaviors.InMempoolForm);
         db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), rlpStream.AsSpan());

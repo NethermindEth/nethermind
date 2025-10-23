@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -24,7 +23,6 @@ public static class StateOverridesExtensions
     {
         if (overrides is not null)
         {
-            overridableCodeInfoRepository.ResetPrecompileOverrides();
             foreach ((Address address, AccountOverride accountOverride) in overrides)
             {
                 if (!state.TryGetAccount(address, out AccountStruct account))
@@ -52,7 +50,7 @@ public static class StateOverridesExtensions
     {
         state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
 
-        state.Commit(spec, commitRoots: true);
+        state.Commit(spec);
         state.CommitTree(blockNumber);
         state.RecalculateStateRoot();
     }
@@ -85,27 +83,15 @@ public static class StateOverridesExtensions
         AccountOverride accountOverride,
         Address address)
     {
-        if (accountOverride.MovePrecompileToAddress is not null)
-        {
-            if (!overridableCodeInfoRepository.GetCachedCodeInfo(address, currentSpec).IsPrecompile)
-            {
-                throw new ArgumentException($"Account {address} is not a precompile");
-            }
-
-            overridableCodeInfoRepository.MovePrecompile(
-                currentSpec,
-                address,
-                accountOverride.MovePrecompileToAddress);
-        }
-
         if (accountOverride.Code is not null)
         {
             stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
 
-            overridableCodeInfoRepository.SetCodeOverride(
+            overridableCodeInfoRepository.SetCodeOverwrite(
                 currentSpec,
                 address,
-                new CodeInfo(accountOverride.Code));
+                new CodeInfo(accountOverride.Code),
+                accountOverride.MovePrecompileToAddress);
         }
     }
 

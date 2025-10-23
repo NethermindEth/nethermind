@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
@@ -40,6 +41,7 @@ public class Eth68ProtocolHandlerTests
     private IMessageSerializationService _svc = null!;
     private ISyncServer _syncManager = null!;
     private ITxPool _transactionPool = null!;
+    private IPooledTxsRequestor _pooledTxsRequestor = null!;
     private IGossipPolicy _gossipPolicy = null!;
     private ISpecProvider _specProvider = null!;
     private Block _genesisBlock = null!;
@@ -62,6 +64,7 @@ public class Eth68ProtocolHandlerTests
         _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
         _syncManager = Substitute.For<ISyncServer>();
         _transactionPool = Substitute.For<ITxPool>();
+        _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
         _specProvider = Substitute.For<ISpecProvider>();
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _genesisBlock = Build.A.Block.Genesis.TestObject;
@@ -78,11 +81,10 @@ public class Eth68ProtocolHandlerTests
             _syncManager,
             RunImmediatelyScheduler.Instance,
             _transactionPool,
+            _pooledTxsRequestor,
             _gossipPolicy,
             new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance,
-            Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>(),
             _txGossipPolicy);
         _handler.Init();
     }
@@ -121,7 +123,8 @@ public class Eth68ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
 
-        _session.Received(canGossipTransactions && txCount != 0 ? 1 : 0).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+        _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
+            Arg.Any<IOwnedReadOnlyList<Hash256>>(), Arg.Any<IOwnedReadOnlyList<int>>(), Arg.Any<IOwnedReadOnlyList<byte>>());
     }
 
     [TestCase(true)]
@@ -158,7 +161,8 @@ public class Eth68ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
 
-        _session.Received(1).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+        _pooledTxsRequestor.Received(1).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
+            Arg.Any<IOwnedReadOnlyList<Hash256>>(), Arg.Any<IOwnedReadOnlyList<int>>(), Arg.Any<IOwnedReadOnlyList<byte>>());
     }
 
     [TestCase(1)]
@@ -226,14 +230,13 @@ public class Eth68ProtocolHandlerTests
             _syncManager,
             RunImmediatelyScheduler.Instance,
             _transactionPool,
+            new PooledTxsRequestor(_transactionPool, new TxPoolConfig() { MaxTxSize = sizeOfOneTx }, _specProvider),
             _gossipPolicy,
             new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance,
-            Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>(),
             _txGossipPolicy);
 
-        int maxNumberOfTxsInOneMsg = int.Min(sizeOfOneTx < TransactionsMessage.MaxPacketSize ? TransactionsMessage.MaxPacketSize / sizeOfOneTx : 1, 256);
+        int maxNumberOfTxsInOneMsg = sizeOfOneTx < TransactionsMessage.MaxPacketSize ? TransactionsMessage.MaxPacketSize / sizeOfOneTx : 1;
         int messagesCount = numberOfTransactions / maxNumberOfTxsInOneMsg + (numberOfTransactions % maxNumberOfTxsInOneMsg == 0 ? 0 : 1);
 
         using ArrayPoolList<byte> types = new(numberOfTransactions);

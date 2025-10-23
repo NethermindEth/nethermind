@@ -173,7 +173,7 @@ namespace Nethermind.AuRa.Test
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             AuRaBlockProcessor processor = new AuRaBlockProcessor(
-                HoodiSpecProvider.Instance,
+                HoleskySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
@@ -190,7 +190,7 @@ namespace Nethermind.AuRa.Test
 
             BranchProcessor branchProcessor = new BranchProcessor(
                 processor,
-                HoodiSpecProvider.Instance,
+                HoleskySpecProvider.Instance,
                 stateProvider,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 LimboLogs.Instance);

@@ -27,6 +27,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
 {
     private readonly ISyncServer _syncServer;
     private readonly MessageQueue<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>> _nodeDataRequests;
+    private readonly BackgroundTaskSchedulerWrapper _backgroundTaskScheduler;
 
     public override string Name => "nodedata1";
     protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -40,9 +41,10 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         ISyncServer syncServer,
         IBackgroundTaskScheduler backgroundTaskScheduler,
         ILogManager logManager)
-        : base(session, statsManager, serializer, backgroundTaskScheduler, logManager)
+        : base(session, statsManager, serializer, logManager)
     {
         _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
+        _backgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(backgroundTaskScheduler))); ;
         _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>>(Send);
     }
     public override void Init()
@@ -75,7 +77,9 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         {
             case NodeDataMessageCode.GetNodeData:
                 {
-                    HandleInBackground<GetNodeDataMessage, NodeDataMessage>(message, Handle);
+                    GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
+                    ReportIn(getNodeDataMessage, size);
+                    _backgroundTaskScheduler.ScheduleSyncServe(getNodeDataMessage, Handle);
                     break;
                 }
             case NodeDataMessageCode.NodeData:
@@ -102,7 +106,13 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
 
     private NodeDataMessage FulfillNodeDataRequest(GetNodeDataMessage msg, CancellationToken cancellationToken)
     {
+        if (msg.Hashes.Count > 4096)
+        {
+            throw new EthSyncException("NODEDATA protocol: Incoming node data request for more than 4096 nodes");
+        }
+
         IOwnedReadOnlyList<byte[]?>? nodeData = _syncServer.GetNodeData(msg.Hashes, cancellationToken);
+
         return new NodeDataMessage(nodeData);
     }
 

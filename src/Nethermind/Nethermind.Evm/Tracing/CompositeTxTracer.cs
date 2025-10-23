@@ -37,7 +37,6 @@ public class CompositeTxTracer : ITxTracer
             IsTracingStorage |= t.IsTracingStorage;
             IsTracingAccess |= t.IsTracingAccess;
             IsTracingFees |= t.IsTracingFees;
-            IsTracingLogs |= t.IsTracingLogs;
         }
     }
 
@@ -188,12 +187,24 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
+    public void ReportOperationLogs(LogEntry log)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions && innerTracer.IsTracingLogs)
+            {
+                innerTracer.ReportLog(log);
+            }
+        }
+    }
+
     public void ReportLog(LogEntry log)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingLogs)
+            if (innerTracer.IsTracingInstructions)
             {
                 innerTracer.ReportLog(log);
             }

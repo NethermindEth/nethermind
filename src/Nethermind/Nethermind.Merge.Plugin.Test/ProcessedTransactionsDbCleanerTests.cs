@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -41,10 +40,9 @@ public class ProcessedTransactionsDbCleanerTests
 
         IColumnsDb<BlobTxsColumns> columnsDb = new MemColumnsDb<BlobTxsColumns>(BlobTxsColumns.ProcessedTxs);
         BlobTxStorage blobTxStorage = new(columnsDb);
-        using (ArrayPoolListRef<Transaction> txs = new(2, GetTx(TestItem.PrivateKeyA), GetTx(TestItem.PrivateKeyB)))
-        {
-            blobTxStorage.AddBlobTransactionsFromBlock(blockOfTxs, txs);
-        }
+        Transaction[] txs = { GetTx(TestItem.PrivateKeyA), GetTx(TestItem.PrivateKeyB) };
+
+        blobTxStorage.AddBlobTransactionsFromBlock(blockOfTxs, txs);
 
         blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out Transaction[]? returnedTxs).Should().BeTrue();
         returnedTxs!.Length.Should().Be(2);

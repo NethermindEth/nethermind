@@ -32,7 +32,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
-public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksConfig) : Module
+public class BlockProcessingModule(IInitConfig initConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -84,6 +84,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<ISealValidator>(NullSealEngine.Instance)
             .AddSingleton<ISealer>(NullSealEngine.Instance)
             .AddSingleton<ISealEngine, SealEngine>()
+
+            .AddSingleton<IBlockProducerEnvFactory, BlockProducerEnvFactory>()
             .AddSingleton<IBlockProducerTxSourceFactory, TxPoolTxSourceFactory>()
 
             .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>
@@ -101,17 +103,6 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IGenesisBuilder, GenesisBuilder>()
             .AddScoped<IGenesisLoader, GenesisLoader>()
             ;
-
-        if (blocksConfig.BuildBlocksOnMainState)
-        {
-            builder.AddSingleton<IBlockProducerEnvFactory, GlobalWorldStateBlockProducerEnvFactory>()
-                .AddScoped<IProducedBlockSuggester, NonProcessingProducedBlockSuggester>();
-        }
-        else
-        {
-            builder.AddSingleton<IBlockProducerEnvFactory, BlockProducerEnvFactory>()
-                .AddScoped<IProducedBlockSuggester, ProducedBlockSuggester>();
-        }
 
         if (initConfig.ExitOnInvalidBlock) builder.AddStep(typeof(ExitOnInvalidBlock));
     }

@@ -10,9 +10,14 @@ using Snappier;
 
 namespace Nethermind.Network.Rlpx;
 
-public class ZeroSnappyEncoder(ILogManager logManager) : MessageToByteEncoder<IByteBuffer>
+public class ZeroSnappyEncoder : MessageToByteEncoder<IByteBuffer>
 {
-    private readonly ILogger _logger = logManager?.GetClassLogger<ZeroSnappyEncoder>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly ILogger _logger;
+
+    public ZeroSnappyEncoder(ILogManager logManager)
+    {
+        _logger = logManager?.GetClassLogger<ZeroSnappyEncoder>() ?? throw new ArgumentNullException(nameof(logManager));
+    }
 
     protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
     {

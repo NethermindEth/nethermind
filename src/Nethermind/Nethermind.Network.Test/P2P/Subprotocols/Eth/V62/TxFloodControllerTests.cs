@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -25,8 +25,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private Eth62ProtocolHandler _handler;
         private ISession _session;
         private ITimestamper _timestamper;
-
-        private readonly AcceptTxResult Flooding = AcceptTxResult.NonceGap;
 
         [SetUp]
         public void Setup()
@@ -68,7 +66,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             for (int i = 0; i < 601; i++)
             {
-                _controller.Report(Flooding);
+                _controller.Report(false);
             }
 
             int allowedCount = 0;
@@ -85,22 +83,22 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             for (int i = 0; i < 600; i++)
             {
-                _controller.Report(Flooding);
+                _controller.Report(false);
             }
 
             // for easier debugging
-            _controller.Report(Flooding);
+            _controller.Report(false);
 
             _session.DidNotReceiveWithAnyArgs()
                 .InitiateDisconnect(DisconnectReason.TxFlooding, null);
 
             for (int i = 0; i < 6000 - 601; i++)
             {
-                _controller.Report(Flooding);
+                _controller.Report(false);
             }
 
             // for easier debugging
-            _controller.Report(Flooding);
+            _controller.Report(false);
 
             _session.Received()
                 .InitiateDisconnect(DisconnectReason.TxFlooding, Arg.Any<string>());
@@ -111,7 +109,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             for (int i = 0; i < 1000; i++)
             {
-                _controller.Report(Flooding);
+                _controller.Report(false);
             }
 
             _controller.IsDowngraded.Should().BeTrue();
@@ -141,22 +139,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             for (int i = 0; i < 1000; i++)
             {
-                _controller.Report(Flooding);
+                _controller.Report(false);
             }
 
             _controller.IsDowngraded.Should().BeTrue();
             _timestamper.UtcNow.Returns(DateTime.UtcNow.AddSeconds(61));
             _controller.Report(false);
             _controller.IsDowngraded.Should().BeFalse();
-        }
-
-        [Test]
-        public void Will_disconnect_on_invalid_tx()
-        {
-            _controller.Report(AcceptTxResult.Invalid);
-
-            _session.Received(1)
-                .InitiateDisconnect(DisconnectReason.Other, "invalid tx");
         }
     }
 }

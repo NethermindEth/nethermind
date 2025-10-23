@@ -35,7 +35,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         ILogManager logManager)
     {
 
-        IWorldState mainWorldState = worldStateManager.GlobalWorldState;
+        var mainWorldState = worldStateManager.GlobalWorldState;
         ILifetimeScope innerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
             builder
@@ -46,8 +46,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor, IBranchProcessor>((branchProcessor) => new BlockchainProcessor(
-                    blockTree,
+                .AddScoped<IBlockchainProcessor, IBranchProcessor>((branchProcessor) => new BlockchainProcessor(
+                    blockTree!,
                     branchProcessor,
                     compositeBlockPreprocessorStep,
                     worldStateManager.GlobalStateReader,
@@ -60,8 +60,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 {
                     IsMainProcessor = true // Manual construction because of this flag
                 })
-                .AddScoped<IBlockchainProcessor>(ctx => ctx.Resolve<BlockchainProcessor>())
-                .AddScoped<IBlockProcessingQueue>(ctx => ctx.Resolve<BlockchainProcessor>())
+
                 // And finally, to wrap things up.
                 .AddScoped<Components>()
                 ;
@@ -91,10 +90,9 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         await LifetimeScope.DisposeAsync();
     }
 
-    private readonly Components _components;
+    private Components _components;
     public ILifetimeScope LifetimeScope { get; init; }
     public IBlockchainProcessor BlockchainProcessor => _components.BlockchainProcessor;
-    public IBlockProcessingQueue BlockProcessingQueue => _components.BlockProcessingQueue;
     public IWorldState WorldState => _components.WorldState;
     public IBranchProcessor BranchProcessor => _components.BranchProcessor;
     public IBlockProcessor BlockProcessor => _components.BlockProcessor;
@@ -111,7 +109,6 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IBranchProcessor BranchProcessor,
         IBlockProcessor BlockProcessor,
         IBlockchainProcessor BlockchainProcessor,
-        IBlockProcessingQueue BlockProcessingQueue,
         IWorldState WorldState,
         IGenesisLoader GenesisLoader
     );

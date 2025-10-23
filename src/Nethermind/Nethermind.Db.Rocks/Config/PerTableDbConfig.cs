@@ -38,7 +38,7 @@ public class PerTableDbConfig : IRocksDbConfig
         foreach (var prefix in _prefixes)
         {
             string prefixed = string.Concat(prefix, propertyName);
-            if (GetProperty(type, prefixed) is null)
+            if (type.GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance) is null)
             {
                 throw new InvalidConfigurationException($"Configuration {propertyName} not available with prefix {prefix}. Add {prefix}{propertyName} to {nameof(IDbConfig)}.", -1);
             }
@@ -90,13 +90,13 @@ public class PerTableDbConfig : IRocksDbConfig
         Type type = dbConfig.GetType();
         PropertyInfo? propertyInfo;
 
-        string val = (string)GetProperty(type, propertyName)!.GetValue(dbConfig)!;
+        string val = (string)type.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance)!.GetValue(dbConfig)!;
 
         foreach (var prefix in prefixes)
         {
             string prefixed = string.Concat(prefix, propertyName);
 
-            propertyInfo = GetProperty(type, prefixed);
+            propertyInfo = type.GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
             if (propertyInfo is not null)
             {
                 string? valObj = (string?)propertyInfo.GetValue(dbConfig);
@@ -122,7 +122,7 @@ public class PerTableDbConfig : IRocksDbConfig
             {
                 string prefixed = string.Concat(prefix, propertyName);
 
-                propertyInfo = GetProperty(type, prefixed);
+                propertyInfo = type.GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
                 if (propertyInfo is not null)
                 {
                     if (propertyInfo.PropertyType.CanBeAssignedNull())
@@ -147,7 +147,7 @@ public class PerTableDbConfig : IRocksDbConfig
             }
 
             // Use generic one even if its available
-            propertyInfo = GetProperty(type, propertyName);
+            propertyInfo = type.GetProperty(propertyName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
             return (T?)propertyInfo?.GetValue(dbConfig);
         }
         catch (Exception e)
@@ -156,6 +156,4 @@ public class PerTableDbConfig : IRocksDbConfig
         }
     }
 
-    private static PropertyInfo? GetProperty(Type type, string name) =>
-        type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
 }

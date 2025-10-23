@@ -49,7 +49,6 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         int logEntriesCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
         int numberOfReceipts = rlpStream.PeekNumberOfItemsRemaining(logEntriesCheck);
-        rlpStream.GuardLimit(numberOfReceipts);
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {
@@ -128,8 +127,8 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
     /// </summary>
     public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
     {
-        (int total, _) = GetContentLength(item, rlpBehaviors);
-        int receiptPayloadLength = Rlp.LengthOfSequence(total);
+        (int Total, _) = GetContentLength(item, rlpBehaviors);
+        int receiptPayloadLength = Rlp.LengthOfSequence(Total);
 
         bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
         int result = item.TxType != TxType.Legacy

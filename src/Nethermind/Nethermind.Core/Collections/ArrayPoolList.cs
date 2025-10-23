@@ -18,7 +18,6 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
     private T[] _array;
     private int _capacity;
     private bool _disposed;
-    private int _count = 0;
 
     public ArrayPoolList(int capacity) : this(ArrayPool<T>.Shared, capacity) { }
 
@@ -43,17 +42,18 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         }
         _capacity = _array.Length;
 
-        _count = startingCount;
+        Count = startingCount;
     }
 
-    public int Count => _count;
-
-    ReadOnlySpan<T> IOwnedReadOnlyList<T>.AsSpan() => AsSpan();
+    ReadOnlySpan<T> IOwnedReadOnlyList<T>.AsSpan()
+    {
+        return AsSpan();
+    }
 
     public PooledArrayEnumerator<T> GetEnumerator()
     {
         GuardDispose();
-        return new PooledArrayEnumerator<T>(_array, _count);
+        return new PooledArrayEnumerator<T>(_array, Count);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -65,7 +65,6 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         }
 
         [DoesNotReturn]
-        [StackTraceHidden]
         static void ThrowObjectDisposed()
         {
             throw new ObjectDisposedException(nameof(ArrayPoolList<T>));
@@ -78,8 +77,8 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
     public void Add(T item)
     {
-        GuardDispose();
-        ArrayPoolListCore.Add(_arrayPool, ref _array, ref _capacity, ref _count, item);
+        GuardResize();
+        _array[Count++] = item;
     }
 
     int IList.Add(object? value)
@@ -88,25 +87,27 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
         Add((T)value!);
 
-        return _count - 1;
+        return Count - 1;
     }
 
-    public void AddRange(params ReadOnlySpan<T> items)
+    public void AddRange(ReadOnlySpan<T> items)
     {
-        GuardDispose();
-        ArrayPoolListCore.AddRange(_arrayPool, ref _array, ref _capacity, ref _count, items);
+        GuardResize(items.Length);
+        items.CopyTo(_array.AsSpan(Count, items.Length));
+        Count += items.Length;
     }
 
     public void Clear()
     {
-        GuardDispose();
-        ArrayPoolListCore.Clear(_array, ref _count);
+        ClearToCount(_array);
+        Count = 0;
     }
 
     public bool Contains(T item)
     {
         GuardDispose();
-        return ArrayPoolListCore.Contains(_array, item, _count);
+        int indexOf = Array.IndexOf(_array, item);
+        return indexOf >= 0 && indexOf < Count;
     }
 
     bool IList.Contains(object? value) => IsCompatibleObject(value) && Contains((T)value!);
@@ -114,36 +115,73 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
     public void CopyTo(T[] array, int arrayIndex)
     {
         GuardDispose();
-        ArrayPoolListCore.CopyTo(_array, _count, array, arrayIndex);
+        _array.AsMemory(0, Count).CopyTo(array.AsMemory(arrayIndex));
     }
 
-    void ICollection.CopyTo(Array? array, int index)
+    void ICollection.CopyTo(Array array, int index)
     {
-        if (array is not null && array.Rank != 1)
-            ThrowMultiDimensionalArray();
+        if ((array is not null) && (array.Rank != 1))
+            throw new ArgumentException("Only single dimensional arrays are supported.", nameof(array));
 
         GuardDispose();
 
-        Array.Copy(_array, 0, array!, index, _count);
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowMultiDimensionalArray()
-        {
-            throw new ArgumentException("Only single dimensional arrays are supported.", nameof(array));
-        }
+        Array.Copy(_array, 0, array!, index, Count);
     }
 
+    public int Count { get; private set; } = 0;
     public void ReduceCount(int count)
     {
         GuardDispose();
-        ArrayPoolListCore.ReduceCount(_arrayPool, ref _array, ref _capacity, ref _count, count);
+        var oldCount = Count;
+        if (count == oldCount) return;
+
+        if (count > oldCount)
+        {
+            ThrowOnlyReduce(count);
+        }
+
+        Count = count;
+        if (count < _capacity / 2)
+        {
+            // Reduced to less than half of the capacity, resize the array.
+            T[] newArray = _arrayPool.Rent(count);
+            _array.AsSpan(0, count).CopyTo(newArray);
+            T[] oldArray = Interlocked.Exchange(ref _array, newArray);
+            _capacity = newArray.Length;
+            ClearToCount(oldArray);
+            _arrayPool.Return(oldArray);
+        }
+        else if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+        {
+            // Release any references to the objects in the array that are no longer in use.
+            Array.Clear(_array, count, oldCount - count);
+        }
+
+        void ThrowOnlyReduce(int count)
+        {
+            throw new ArgumentException($"Count can only be reduced. {count} is larger than {Count}", nameof(count));
+        }
+    }
+
+    private void ClearToCount(T[] array)
+    {
+        int count = Count;
+        // Release any references to the objects in the array so can be GC'd.
+        if (count > 0 && RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+        {
+            Array.Clear(array, 0, count);
+        }
     }
 
     public void Sort(Comparison<T> comparison)
     {
+        ArgumentNullException.ThrowIfNull(comparison);
         GuardDispose();
-        ArrayPoolListCore.Sort(_array, _count, comparison);
+
+        if (Count > 1)
+        {
+            _array.AsSpan(0, Count).Sort(comparison);
+        }
     }
 
     public int Capacity => _capacity;
@@ -161,15 +199,19 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
     public int IndexOf(T item)
     {
         GuardDispose();
-        return ArrayPoolListCore.IndexOf(_array, _count, item);
+        int indexOf = Array.IndexOf(_array, item);
+        return indexOf < Count ? indexOf : -1;
     }
 
     int IList.IndexOf(object? value) => IsCompatibleObject(value) ? IndexOf((T)value!) : -1;
 
     public void Insert(int index, T item)
     {
-        GuardDispose();
-        ArrayPoolListCore.Insert(_arrayPool, ref _array, ref _capacity, ref _count, index, item);
+        GuardResize();
+        GuardIndex(index, allowEqualToCount: true);
+        _array.AsMemory(index, Count - index).CopyTo(_array.AsMemory(index + 1));
+        _array[index] = item;
+        Count++;
     }
 
     void IList.Insert(int index, object? value)
@@ -179,11 +221,33 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         Insert(index, (T)value!);
     }
 
-    public bool Remove(T item)
+    private void GuardResize(int itemsToAdd = 1)
     {
         GuardDispose();
-        return ArrayPoolListCore.Remove(_array, ref _count, item);
+        int newCount = Count + itemsToAdd;
+        if (_capacity == 0)
+        {
+            _array = _arrayPool.Rent(newCount);
+            _capacity = _array.Length;
+        }
+        else if (newCount > _capacity)
+        {
+            int newCapacity = _capacity * 2;
+            if (newCapacity == 0) newCapacity = 1;
+            while (newCount > newCapacity)
+            {
+                newCapacity *= 2;
+            }
+            T[] newArray = _arrayPool.Rent(newCapacity);
+            _array.CopyTo(newArray, 0);
+            T[] oldArray = Interlocked.Exchange(ref _array, newArray);
+            _capacity = newArray.Length;
+            ClearToCount(oldArray);
+            _arrayPool.Return(oldArray);
+        }
     }
+
+    public bool Remove(T item) => RemoveAtInternal(IndexOf(item), false);
 
     void IList.Remove(object? value)
     {
@@ -191,35 +255,53 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
             Remove((T)value!);
     }
 
-    public void RemoveAt(int index)
+    public void RemoveAt(int index) => RemoveAtInternal(index, true);
+
+    private bool RemoveAtInternal(int index, bool shouldThrow)
     {
-        GuardDispose();
-        ArrayPoolListCore.RemoveAt(_array, ref _count, index, true);
+        bool isValid = GuardIndex(index, shouldThrow);
+        if (isValid)
+        {
+            int start = index + 1;
+            if (start < Count)
+            {
+                _array.AsMemory(start, Count - index).CopyTo(_array.AsMemory(index));
+            }
+
+            Count--;
+            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+            {
+                _array[Count] = default!;
+            }
+        }
+
+        return isValid;
     }
 
     public void Truncate(int newLength)
     {
         GuardDispose();
-        ArrayPoolListCore.Truncate(newLength, _array, ref _count);
+        GuardIndex(newLength, allowEqualToCount: true);
+        Count = newLength;
     }
 
     public ref T GetRef(int index)
     {
-        GuardDispose();
-        return ref ArrayPoolListCore.GetRef(_array, index, _count);
+        GuardIndex(index);
+        return ref _array[index];
     }
 
     public T this[int index]
     {
         get
         {
-            GuardDispose();
-            return ArrayPoolListCore.Get(_array, index, _count);
+            GuardIndex(index);
+            return _array[index];
         }
         set
         {
-            GuardDispose();
-            ArrayPoolListCore.Set(_array, index, _count, value);
+            GuardIndex(index);
+            _array[index] = value;
         }
     }
 
@@ -229,21 +311,59 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         set
         {
             ThrowHelper.IfNullAndNullsAreIllegalThenThrow<T>(value, nameof(value));
+
             this[index] = (T)value!;
         }
     }
 
+    private bool GuardIndex(int index, bool shouldThrow = true, bool allowEqualToCount = false)
+    {
+        GuardDispose();
+        int count = Count;
+        if ((uint)index > (uint)count || (!allowEqualToCount && index == count))
+        {
+            if (shouldThrow)
+            {
+                ThrowArgumentOutOfRangeException();
+            }
+            return false;
+        }
+
+        return true;
+
+        [DoesNotReturn]
+        static void ThrowArgumentOutOfRangeException()
+        {
+            throw new ArgumentOutOfRangeException(nameof(index));
+        }
+    }
 
     private static bool IsCompatibleObject(object? value) => value is T || value is null && default(T) is null;
 
     public static ArrayPoolList<T> Empty() => new(0);
 
+
+
     public void Dispose()
     {
-        ArrayPoolListCore.Dispose(_arrayPool, ref _array, ref _count, ref _capacity, ref _disposed);
+        // Noop for empty array as sometimes this is used as part of an empty shared response.
+        if (_capacity == 0) return;
+
+        if (!_disposed)
+        {
+            _disposed = true;
+            T[]? array = _array;
+            _array = null!;
+            if (array is not null)
+            {
+                ClearToCount(array);
+                _arrayPool.Return(array);
+            }
+            Count = 0;
+        }
 
 #if DEBUG
-    GC.SuppressFinalize(this);
+        GC.SuppressFinalize(this);
 #endif
     }
 
@@ -259,29 +379,9 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
     }
 #endif
 
-    public Span<T> AsSpan()
-    {
-        GuardDispose();
-        return _array.AsSpan(0, _count);
-    }
-    public Memory<T> AsMemory()
-    {
-        GuardDispose();
-        return new(_array, 0, _count);
-    }
-    public ReadOnlyMemory<T> AsReadOnlyMemory()
-    {
-        GuardDispose();
-        return new(_array, 0, _count);
-    }
-    public T[] UnsafeGetInternalArray()
-    {
-        GuardDispose();
-        return _array;
-    }
-    public void Reverse()
-    {
-        GuardDispose();
-        ArrayPoolListCore.Reverse(_array, _count);
-    }
+    public Span<T> AsSpan() => _array.AsSpan(0, Count);
+    public Memory<T> AsMemory() => new(_array, 0, Count);
+    public ReadOnlyMemory<T> AsReadOnlyMemory() => new(_array, 0, Count);
+    public T[] UnsafeGetInternalArray() => _array;
+    public void Reverse() => AsSpan().Reverse();
 }

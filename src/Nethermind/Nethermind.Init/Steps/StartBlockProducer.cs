@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Autofac;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.Producers;
 using Nethermind.Logging;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Nethermind.Init.Steps
 {
@@ -31,7 +30,8 @@ namespace Nethermind.Init.Steps
 
                 ILogger logger = _api.LogManager.GetClassLogger();
                 if (logger.IsInfo) logger.Info($"Starting {_api.SealEngineType} block producer & sealer");
-                _api.Context.ResolveOptional<IProducedBlockSuggester>();
+                ProducedBlockSuggester suggester = new(_api.BlockTree, _api.BlockProducerRunner);
+                _api.DisposeStack.Push(suggester);
                 _api.BlockProducerRunner.Start();
             }
 

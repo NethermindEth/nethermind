@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
@@ -18,8 +18,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             Hash256 a = new("0x00000000000000000000000000000000000000000000000000000000deadc0de");
             Hash256 b = new("0x00000000000000000000000000000000000000000000000000000000feedbeef");
             Hash256[] keys = { a, b };
+            using var ethMessage = new Network.P2P.Subprotocols.Eth.V65.Messages.GetPooledTransactionsMessage(keys.ToPooledList());
 
-            using GetPooledTransactionsMessage message = new(keys.ToPooledList()) { RequestId = 1111 };
+            GetPooledTransactionsMessage message = new(1111, ethMessage);
 
             GetPooledTransactionsMessageSerializer serializer = new();
 

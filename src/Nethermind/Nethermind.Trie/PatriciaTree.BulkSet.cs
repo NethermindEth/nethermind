@@ -62,13 +62,13 @@ public partial class PatriciaTree
     /// </summary>
     /// <param name="entries"></param>
     /// <param name="flags"></param>
-    public void BulkSet(in ArrayPoolListRef<BulkSetEntry> entries, Flags flags = Flags.None)
+    public void BulkSet(ArrayPoolList<BulkSetEntry> entries, Flags flags = Flags.None)
     {
         if (entries.Count == 0) return;
 
-        using ArrayPoolListRef<BulkSetEntry> sortBuffer = new(entries.Count, entries.Count);
+        using ArrayPoolList<BulkSetEntry> sortBuffer = new ArrayPoolList<BulkSetEntry>(entries.Count, entries.Count);
 
-        Context ctx = new()
+        Context ctx = new Context()
         {
             originalSortBufferArray = sortBuffer.UnsafeGetInternalArray(),
             originalEntriesArray = entries.UnsafeGetInternalArray(),
@@ -166,7 +166,8 @@ public partial class PatriciaTree
         int nonNullChildCount = 0;
         if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
         {
-            var jobs = new (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)[TrieNode.BranchesCount];
+            (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)[] jobs =
+                new (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)[TrieNode.BranchesCount];
 
             Context closureCtx = ctx;
             BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.originalEntriesArray : ctx.originalSortBufferArray;
@@ -261,7 +262,8 @@ public partial class PatriciaTree
         return node;
     }
 
-    private TrieNode? BulkSetOne(Stack<TraverseStack> traverseStack, in BulkSetEntry entry, ref TreePath path, TrieNode? node)
+    private TrieNode? BulkSetOne(Stack<TraverseStack> traverseStack, in BulkSetEntry entry, ref TreePath path,
+        TrieNode? node)
     {
         Span<byte> nibble = stackalloc byte[64];
         Nibbles.BytesToNibbleBytes(entry.Path.BytesAsSpan, nibble);

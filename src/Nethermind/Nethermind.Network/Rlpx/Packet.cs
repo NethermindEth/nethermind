@@ -7,24 +7,36 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Network.Rlpx
 {
     [DebuggerDisplay("{Protocol}.{PacketType}")]
-    public class Packet(string? protocol, int packetType, byte[] data)
+    public class Packet
     {
-        public byte[] Data = data;
+        public byte[] Data;
 
-        public Packet(ZeroPacket zeroPacket) : this(zeroPacket.Protocol, zeroPacket.PacketType, zeroPacket.Content.ReadAllBytesAsArray())
+        public Packet(ZeroPacket zeroPacket)
         {
+            Data = zeroPacket.Content.ReadAllBytesAsArray();
+            PacketType = zeroPacket.PacketType;
+            Protocol = zeroPacket.Protocol;
         }
 
-        public Packet(byte[] data) : this(null, 0, data)
+        public Packet(string protocol, int packetType, byte[] data)
         {
+            Data = data;
+            Protocol = protocol;
+            PacketType = packetType;
         }
 
-        public int PacketType { get; set; } = packetType;
+        public Packet(byte[] data)
+        {
+            Data = data;
+        }
 
-        public string? Protocol { get; set; } = protocol;
+        public int PacketType { get; set; }
 
-        public override string ToString() => $"{Protocol ?? "???"}.{PacketType}";
+        public string Protocol { get; set; }
 
-        public static implicit operator ZeroPacket(Packet packet) => new(packet);
+        public override string ToString()
+        {
+            return $"{Protocol ?? "???"}.{PacketType}";
+        }
     }
 }

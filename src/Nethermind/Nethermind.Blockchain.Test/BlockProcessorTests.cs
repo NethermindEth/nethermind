@@ -45,7 +45,7 @@ public class BlockProcessorTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockProcessor processor = new BlockProcessor(HoodiSpecProvider.Instance,
+        BlockProcessor processor = new BlockProcessor(HoleskySpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
@@ -58,7 +58,7 @@ public class BlockProcessorTests
             new ExecutionRequestsProcessor(transactionProcessor));
         BranchProcessor branchProcessor = new BranchProcessor(
             processor,
-            HoodiSpecProvider.Instance,
+            HoleskySpecProvider.Instance,
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             LimboLogs.Instance);
@@ -80,7 +80,7 @@ public class BlockProcessorTests
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockProcessor processor = new BlockProcessor(
-            HoodiSpecProvider.Instance,
+            HoleskySpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             new RewardCalculator(MainnetSpecProvider.Instance),
             new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
@@ -93,7 +93,7 @@ public class BlockProcessorTests
             new ExecutionRequestsProcessor(transactionProcessor));
         BranchProcessor branchProcessor = new BranchProcessor(
             processor,
-            HoodiSpecProvider.Instance,
+            HoleskySpecProvider.Instance,
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             LimboLogs.Instance);

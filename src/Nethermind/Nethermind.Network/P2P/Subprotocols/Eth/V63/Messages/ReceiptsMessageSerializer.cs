@@ -8,13 +8,11 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
     public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<ReceiptsMessage>(NethermindSyncLimits.MaxReceiptFetch, nameof(ReceiptsMessage.TxReceipts));
         private readonly ISpecProvider _specProvider;
         private readonly IRlpStreamDecoder<TxReceipt> _decoder;
         private readonly Func<RlpStream, TxReceipt[]> _decodeArrayFunc;
@@ -25,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _decoder = decoder ?? throw new ArgumentNullException(nameof(decoder));
-            _decodeArrayFunc = ctx => ctx.DecodeArray(nestedContext => _decoder.Decode(nestedContext), limit: RlpLimit) ?? [];
+            _decodeArrayFunc = ctx => ctx.DecodeArray(nestedContext => _decoder.Decode(nestedContext)) ?? [];
         }
 
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
@@ -36,7 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(contentLength);
 
-            // Track the last ‐ seen block number & its RLP behavior
+            // Track last‐seen block number & its RLP behavior
             long lastBlockNumber = -1;
             RlpBehaviors behaviors = RlpBehaviors.None;
 
@@ -91,7 +89,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public ReceiptsMessage Deserialize(RlpStream rlpStream)
         {
-            ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeArrayPoolList(_decodeArrayFunc, limit: RlpLimit);
+            ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeArrayPoolList(_decodeArrayFunc, true);
             ReceiptsMessage message = new(data);
 
             return message;

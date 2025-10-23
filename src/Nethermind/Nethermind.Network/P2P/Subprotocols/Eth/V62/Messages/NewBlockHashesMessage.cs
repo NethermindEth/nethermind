@@ -6,12 +6,17 @@ using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class NewBlockHashesMessage(params (Hash256, long)[] blockHashes) : P2PMessage
+    public class NewBlockHashesMessage : P2PMessage
     {
-        public override int PacketType => Eth62MessageCode.NewBlockHashes;
-        public override string Protocol => "eth";
+        public override int PacketType { get; } = Eth62MessageCode.NewBlockHashes;
+        public override string Protocol { get; } = "eth";
 
-        public (Hash256, long)[] BlockHashes { get; } = blockHashes;
+        public (Hash256, long)[] BlockHashes { get; }
+
+        public NewBlockHashesMessage(params (Hash256, long)[] blockHashes)
+        {
+            BlockHashes = blockHashes;
+        }
 
         public override string ToString()
         {

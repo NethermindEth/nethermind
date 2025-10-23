@@ -3,6 +3,7 @@
 
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
+using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using NSubstitute;
 
@@ -12,7 +13,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
     {
         private readonly IChannelHandlerContext _context;
 
-        public ZeroFrameEncoderTestWrapper(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor)
+        public ZeroFrameEncoderTestWrapper(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
         {
             _context = Substitute.For<IChannelHandlerContext>();
         }

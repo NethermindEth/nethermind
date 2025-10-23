@@ -1,8 +1,9 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using System.CommandLine;
 using Nethermind.Core.Specs;
@@ -12,7 +13,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 
 namespace SendBlobs;
-
 internal static class SetupCli
 {
     public static void SetupExecute(RootCommand command)
@@ -178,12 +178,12 @@ internal static class SetupCli
             Description = "File where the newly generated keys are written",
             HelpName = "path"
         };
-        Option<ulong> maxPriorityFeeGasOption = new("--maxpriorityfee")
+        Option<UInt256> maxPriorityFeeGasOption = new("--maxpriorityfee")
         {
             Description = "The maximum priority fee for each transaction",
             HelpName = "fee"
         };
-        Option<ulong> maxFeeOption = new("--maxfee")
+        Option<UInt256> maxFeeOption = new("--maxfee")
         {
             Description = "The maxFeePerGas fee paid for each transaction",
             HelpName = "fee"
@@ -242,12 +242,12 @@ internal static class SetupCli
             Description = "File of the private keys to reclaim from",
             HelpName = "path"
         };
-        Option<ulong> maxPriorityFeeGasOption = new("--maxpriorityfee")
+        Option<UInt256> maxPriorityFeeGasOption = new("--maxpriorityfee")
         {
             Description = "The maximum priority fee for each transaction",
             HelpName = "fee"
         };
-        Option<ulong> maxFeeOption = new("--maxfee")
+        Option<UInt256> maxFeeOption = new("--maxfee")
         {
             Description = "The maxFeePerGas fee paid for each transaction",
             HelpName = "fee"
@@ -312,7 +312,7 @@ internal static class SetupCli
             HelpName = "address",
             Required = true,
         };
-        Option<ulong> maxFeePerBlobGasOption = new("--maxfeeperblobgas")
+        Option<UInt256> maxFeePerBlobGasOption = new("--maxfeeperblobgas")
         {
             DefaultValueFactory = r => 1000,
             Description = "Set the maximum fee per blob data",
@@ -324,7 +324,7 @@ internal static class SetupCli
             Description = "A multiplier to use for gas fees",
             HelpName = "value"
         };
-        Option<ulong?> maxPriorityFeeGasOption = new("--maxpriorityfee")
+        Option<UInt256?> maxPriorityFeeGasOption = new("--maxpriorityfee")
         {
             Description = "The maximum priority fee for each transaction",
             HelpName = "fee"

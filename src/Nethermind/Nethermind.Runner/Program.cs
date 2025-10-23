@@ -429,8 +429,6 @@ RootCommand CreateRootCommand()
         BasicOptions.PluginsDirectory
     ];
 
-    rootCommand.Description = "Nethermind Ethereum execution client";
-
     var versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
 
     if (versionOption is not null)
@@ -486,31 +484,30 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
 {
     if (string.IsNullOrWhiteSpace(path))
     {
-        initConfig.BaseDbPath ??= "db".GetApplicationResourcePath();
-        initConfig.LogDirectory ??= "logs".GetApplicationResourcePath();
-        keyStoreConfig.KeyStoreDirectory ??= "keystore".GetApplicationResourcePath();
+        initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
+        keyStoreConfig.KeyStoreDirectory ??= string.Empty.GetApplicationResourcePath("keystore");
+        initConfig.LogDirectory ??= string.Empty.GetApplicationResourcePath("logs");
     }
     else
     {
         string newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(path);
-        string newLogDirectory = initConfig.LogDirectory.GetApplicationResourcePath(path);
         string newKeyStorePath = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath(path);
+        string newLogDirectory = initConfig.LogDirectory.GetApplicationResourcePath(path);
         string newSnapshotPath = snapshotConfig.SnapshotDirectory.GetApplicationResourcePath(path);
 
         if (logger.IsInfo)
         {
             logger.Info($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(newDbPath)}");
-            logger.Info($"{nameof(initConfig.LogDirectory)}: {Path.GetFullPath(newLogDirectory)}");
             logger.Info($"{nameof(keyStoreConfig.KeyStoreDirectory)}: {Path.GetFullPath(newKeyStorePath)}");
+            logger.Info($"{nameof(initConfig.LogDirectory)}: {Path.GetFullPath(newLogDirectory)}");
 
             if (snapshotConfig.Enabled)
                 logger.Info($"{nameof(snapshotConfig.SnapshotDirectory)}: {Path.GetFullPath(newSnapshotPath)}");
         }
 
         initConfig.BaseDbPath = newDbPath;
-        initConfig.DataDir = path;
-        initConfig.LogDirectory = newLogDirectory;
         keyStoreConfig.KeyStoreDirectory = newKeyStorePath;
+        initConfig.LogDirectory = newLogDirectory;
         snapshotConfig.SnapshotDirectory = newSnapshotPath;
     }
 }

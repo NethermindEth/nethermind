@@ -18,7 +18,6 @@ namespace Nethermind.Consensus.Processing
         IStateReader stateReader,
         IBlockTree blockTree,
         IWorldState worldState,
-        IWorldStateManager worldStateManager,
         IBlockchainProcessor blockchainProcessor,
         GenesisLoader.Config genesisConfig,
         ILogManager logManager
@@ -30,12 +29,6 @@ namespace Nethermind.Consensus.Processing
         ILogger _logger = logManager.GetClassLogger<GenesisLoader>();
 
         public void Load()
-        {
-            DoLoad();
-            worldStateManager.FlushCache(CancellationToken.None);
-        }
-
-        private void DoLoad()
         {
             using var _ = worldState.BeginScope(IWorldState.PreGenesis);
 

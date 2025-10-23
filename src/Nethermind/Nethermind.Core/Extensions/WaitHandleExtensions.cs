@@ -23,12 +23,8 @@ namespace Nethermind.Core.Extensions
                     millisecondsTimeout,
                     true);
                 tokenRegistration = cancellationToken.Register(
-                    static state =>
-                    {
-                        var (tcs, ct) = ((TaskCompletionSource<bool> tcs, CancellationToken ct))state!;
-                        tcs.TrySetCanceled(ct);
-                    },
-                    (tcs, cancellationToken));
+                    static state => ((TaskCompletionSource<bool>)state!).TrySetCanceled(),
+                    tcs);
 
                 return await tcs.Task;
             }

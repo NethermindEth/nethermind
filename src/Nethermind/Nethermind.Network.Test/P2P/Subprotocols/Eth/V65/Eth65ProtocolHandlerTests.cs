@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,7 @@ using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -19,6 +21,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -40,6 +43,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         private IMessageSerializationService _svc = null!;
         private ISyncServer _syncManager = null!;
         private ITxPool _transactionPool = null!;
+        private IPooledTxsRequestor _pooledTxsRequestor = null!;
         private ISpecProvider _specProvider = null!;
         private Block _genesisBlock = null!;
         private Eth65ProtocolHandler _handler = null!;
@@ -60,6 +64,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
             _syncManager = Substitute.For<ISyncServer>();
             _transactionPool = Substitute.For<ITxPool>();
+            _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
             _specProvider = Substitute.For<ISpecProvider>();
             _genesisBlock = Build.A.Block.Genesis.TestObject;
             _syncManager.Head.Returns(_genesisBlock.Header);
@@ -75,6 +80,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                 _syncManager,
                 RunImmediatelyScheduler.Instance,
                 _transactionPool,
+                _pooledTxsRequestor,
                 Policy.FullGossip,
                 new ForkInfo(_specProvider, _syncManager),
                 LimboLogs.Instance,
@@ -191,7 +197,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth65MessageCode.NewPooledTransactionHashes);
 
-            _session.Received(canGossipTransactions ? 1 : 0).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+            _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactions(Arg.Any<Action<GetPooledTransactionsMessage>>(), Arg.Any<IOwnedReadOnlyList<Hash256>>());
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase

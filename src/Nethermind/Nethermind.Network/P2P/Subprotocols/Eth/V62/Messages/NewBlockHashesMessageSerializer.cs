@@ -4,14 +4,11 @@
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class NewBlockHashesMessageSerializer : IZeroInnerMessageSerializer<NewBlockHashesMessage>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<NewBlockHashesMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(NewBlockHashesMessage.BlockHashes));
-
         public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message)
         {
             int length = GetLength(message, out int contentLength);
@@ -54,7 +51,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             {
                 ctx.ReadSequenceLength();
                 return (ctx.DecodeKeccak(), (long)ctx.DecodeUInt256());
-            }, false, limit: RlpLimit);
+            }, false);
 
             return new NewBlockHashesMessage(blockHashes);
         }

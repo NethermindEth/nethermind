@@ -189,7 +189,7 @@ namespace Nethermind.JsonRpc.Data
             {
                 return BlockParameter.Latest;
             }
-            if (tokenType == JsonTokenType.Number & !EthereumJsonSerializer.StrictHexFormat)
+            if (tokenType == JsonTokenType.Number)
             {
                 return new BlockParameter(reader.GetInt64());
             }
@@ -249,7 +249,7 @@ namespace Nethermind.JsonRpc.Data
                 return new BlockParameter(value);
             }
 
-            if (!EthereumJsonSerializer.StrictHexFormat && Utf8Parser.TryParse(span, out value, out _))
+            if (Utf8Parser.TryParse(span, out value, out _))
             {
                 return new BlockParameter(value);
             }
@@ -291,7 +291,7 @@ namespace Nethermind.JsonRpc.Data
 
         private static void ThrowInvalidFormatting()
         {
-            throw new FormatException("unknown block parameter type");
+            throw new InvalidOperationException("unknown block parameter type");
         }
 
         public static BlockParameter GetBlockParameter(string? value)

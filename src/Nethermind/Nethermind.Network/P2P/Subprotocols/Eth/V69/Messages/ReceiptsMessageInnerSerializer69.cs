@@ -11,10 +11,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 /// "Inner" serializer here inherits and overrides parts of eth/63 implementation,
 /// while <see cref="ReceiptsMessageSerializer69"/> "wraps" it after, similar to eth/66 version.
 /// </remarks>
-public class ReceiptsMessageInnerSerializer69(ISpecProvider specProvider) :
-    ReceiptsMessageSerializer(specProvider, new ReceiptMessageDecoder69()),
+public class ReceiptsMessageInnerSerializer69 :
+    ReceiptsMessageSerializer,
     IZeroInnerMessageSerializer<ReceiptsInnerMessage69>
 {
+    public ReceiptsMessageInnerSerializer69(ISpecProvider specProvider) : base(specProvider, new ReceiptMessageDecoder69()) { }
+
     int IZeroInnerMessageSerializer<ReceiptsInnerMessage69>.GetLength(ReceiptsInnerMessage69 message, out int contentLength) =>
         GetLength(message, out contentLength);
 

@@ -3,6 +3,10 @@
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 {
-    public class PooledTransactionsMessageSerializer()
-        : Eth66MessageSerializer<PooledTransactionsMessage, V65.Messages.PooledTransactionsMessage>(new V65.Messages.PooledTransactionsMessageSerializer());
+    public class PooledTransactionsMessageSerializer : Eth66MessageSerializer<PooledTransactionsMessage, V65.Messages.PooledTransactionsMessage>
+    {
+        public PooledTransactionsMessageSerializer() : base(new V65.Messages.PooledTransactionsMessageSerializer())
+        {
+        }
+    }
 }

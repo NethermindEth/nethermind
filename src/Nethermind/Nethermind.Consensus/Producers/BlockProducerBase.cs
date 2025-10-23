@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Producers
     /// </summary>
     public abstract class BlockProducerBase : IBlockProducer
     {
-        protected IBlockchainProcessor Processor { get; }
+        private IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
         private ITimestamper Timestamper { get; }
 
@@ -189,11 +189,8 @@ namespace Nethermind.Consensus.Producers
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
             Sealer.SealBlock(block, token);
 
-        protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer,
-            CancellationToken token = default)
-        {
-            return Processor.Process(block, GetProcessingOptions(), blockTracer ?? NullBlockTracer.Instance, token);
-        }
+        protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token = default) =>
+            Processor.Process(block, ProcessingOptions.ProducingBlock, blockTracer ?? NullBlockTracer.Instance, token);
 
         private bool PreparedBlockCanBeMined(Block? block)
         {
@@ -246,13 +243,6 @@ namespace Nethermind.Consensus.Producers
                 TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: true);
 
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
-        }
-
-        private ProcessingOptions GetProcessingOptions()
-        {
-            if (_blocksConfig.BuildBlocksOnMainState)
-                return ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts | ProcessingOptions.DoNotUpdateHead;
-            return ProcessingOptions.ProducingBlock;
         }
     }
 }

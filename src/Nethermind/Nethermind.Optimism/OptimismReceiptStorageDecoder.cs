@@ -41,7 +41,7 @@ public class OptimismCompactReceiptStorageDecoder :
 
         int sequenceLength = rlpStream.ReadSequenceLength();
         int logEntriesCheck = sequenceLength + rlpStream.Position;
-        using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / LengthOfAddressRlp);
+        using ArrayPoolList<LogEntry> logEntries = new(sequenceLength * 2 / LengthOfAddressRlp);
 
         while (rlpStream.Position < logEntriesCheck)
         {
@@ -104,7 +104,7 @@ public class OptimismCompactReceiptStorageDecoder :
         int logEntriesCheck = sequenceLength + decoderContext.Position;
 
         // Don't know the size exactly, I'll just assume its just an address and add some margin
-        using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / LengthOfAddressRlp);
+        using ArrayPoolList<LogEntry> logEntries = new(sequenceLength * 2 / LengthOfAddressRlp);
         while (decoderContext.Position < logEntriesCheck)
         {
             logEntries.Add(CompactLogEntryDecoder.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes)!);
@@ -165,9 +165,9 @@ public class OptimismCompactReceiptStorageDecoder :
         decoderContext.DecodeAddressStructRef(out item.Sender);
         item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
 
-        (int prefixLength, int contentLength) =
+        (int PrefixLength, int ContentLength) =
             decoderContext.PeekPrefixAndContentLength();
-        int logsBytes = contentLength + prefixLength;
+        int logsBytes = ContentLength + PrefixLength;
         item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
 
         if (lastCheck > decoderContext.Position)

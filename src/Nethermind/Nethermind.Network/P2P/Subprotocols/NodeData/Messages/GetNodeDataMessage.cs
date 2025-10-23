@@ -6,8 +6,13 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 
-public class GetNodeDataMessage(IOwnedReadOnlyList<Hash256> keys) : Eth.V63.Messages.GetNodeDataMessage(keys)
+public class GetNodeDataMessage : Eth.V63.Messages.GetNodeDataMessage
 {
-    public override int PacketType => NodeDataMessageCode.GetNodeData;
-    public override string Protocol => "nodedata";
+    public override int PacketType { get; } = NodeDataMessageCode.GetNodeData;
+    public override string Protocol { get; } = "nodedata";
+
+    public GetNodeDataMessage(IOwnedReadOnlyList<Hash256> keys)
+        : base(keys)
+    {
+    }
 }

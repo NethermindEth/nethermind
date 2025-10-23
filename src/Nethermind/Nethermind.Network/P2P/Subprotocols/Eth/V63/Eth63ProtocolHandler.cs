@@ -56,7 +56,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             switch (message.PacketType)
             {
                 case Eth63MessageCode.GetReceipts:
-                    HandleInBackground<GetReceiptsMessage, ReceiptsMessage>(message, Handle);
+                    GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
+                    ReportIn(getReceiptsMessage, size);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getReceiptsMessage, Handle);
                     break;
                 case Eth63MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
@@ -64,7 +66,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                     Handle(receiptsMessage, size);
                     break;
                 case Eth63MessageCode.GetNodeData:
-                    HandleInBackground<GetNodeDataMessage, NodeDataMessage>(message, Handle);
+                    GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
+                    ReportIn(getNodeDataMessage, size);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getNodeDataMessage, Handle);
                     break;
                 case Eth63MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
@@ -94,7 +98,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         protected Task<NodeDataMessage> FulfillNodeDataRequest(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
+            if (msg.Hashes.Count > 4096)
+            {
+                throw new EthSyncException("Incoming node data request for more than 4096 nodes");
+            }
+
             IOwnedReadOnlyList<byte[]> nodeData = SyncServer.GetNodeData(msg.Hashes, cancellationToken);
+
             return Task.FromResult(new NodeDataMessage(nodeData));
         }
 

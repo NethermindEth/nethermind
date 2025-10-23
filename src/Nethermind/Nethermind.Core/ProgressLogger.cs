@@ -47,9 +47,9 @@ namespace Nethermind.Core
             Interlocked.Add(ref _skipped, skipped);
         }
 
-        public void SetMeasuringPoint(bool resetCompletion = true)
+        public void SetMeasuringPoint()
         {
-            if (resetCompletion) UtcEndTime = null;
+            UtcEndTime = null;
 
             if (UtcStartTime is not null)
             {
@@ -169,7 +169,7 @@ namespace Nethermind.Core
                 _lastReportState = reportState;
                 _logger.Info(reportString);
             }
-            SetMeasuringPoint(resetCompletion: false);
+            SetMeasuringPoint();
         }
 
         private string DefaultFormatter()

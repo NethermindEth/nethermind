@@ -89,21 +89,13 @@ namespace Nethermind.Monitoring.Metrics
                             break;
                         case ITuple keyAsTuple:
                             {
-                                ArrayPoolListRef<string> labels = new(keyAsTuple.Length, keyAsTuple.Length);
-                                try
+                                using ArrayPoolList<string> labels = new ArrayPoolList<string>(keyAsTuple.Length, keyAsTuple.Length);
+                                for (int i = 0; i < keyAsTuple.Length; i++)
                                 {
-                                    for (int i = 0; i < keyAsTuple.Length; i++)
-                                    {
-                                        labels[i] = keyAsTuple[i]!.ToString()!;
-                                    }
-
-                                    Update(value, labels.AsSpan());
-                                }
-                                finally
-                                {
-                                    labels.Dispose();
+                                    labels[i] = keyAsTuple[i]!.ToString()!;
                                 }
 
+                                Update(value, labels.AsSpan());
                                 break;
                             }
                         default:

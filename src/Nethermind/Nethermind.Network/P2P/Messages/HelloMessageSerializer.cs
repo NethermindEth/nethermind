@@ -70,7 +70,7 @@ namespace Nethermind.Network.P2P.Messages
 
             helloMessage.ListenPort = rlpStream.DecodeInt();
 
-            ReadOnlySpan<byte> publicKeyBytes = rlpStream.DecodeByteArraySpan(RlpLimit.L64);
+            ReadOnlySpan<byte> publicKeyBytes = rlpStream.DecodeByteArraySpan();
             if (publicKeyBytes.Length != PublicKey.LengthInBytes &&
                 publicKeyBytes.Length != PublicKey.PrefixedLengthInBytes)
             {

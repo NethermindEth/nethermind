@@ -23,11 +23,11 @@ namespace Nethermind.Trie.Test;
 public class VisitingTests
 {
     [TestCaseSource(nameof(GetOptions))]
-    public void Visitors_state(VisitingOptions options, INodeStorage.KeyScheme scheme)
+    public void Visitors_state(VisitingOptions options)
     {
         MemDb memDb = new();
 
-        using ITrieStore trieStore = TestTrieStoreFactory.Build(new NodeStorage(memDb, scheme), LimboLogs.Instance);
+        using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, LimboLogs.Instance);
         PatriciaTree patriciaTree = new(trieStore, LimboLogs.Instance);
 
         Span<byte> raw = stackalloc byte[32];
@@ -62,11 +62,11 @@ public class VisitingTests
     }
 
     [TestCaseSource(nameof(GetOptions))]
-    public void Visitors_storage(VisitingOptions options, INodeStorage.KeyScheme scheme)
+    public void Visitors_storage(VisitingOptions options)
     {
         MemDb memDb = new();
 
-        using ITrieStore trieStore = TestTrieStoreFactory.Build(new NodeStorage(memDb, scheme), LimboLogs.Instance);
+        using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, LimboLogs.Instance);
 
         byte[] value = Enumerable.Range(1, 32).Select(static i => (byte)i).ToArray();
         Hash256 stateRootHash = Keccak.Zero;
@@ -109,11 +109,8 @@ public class VisitingTests
 
         stateTree.Accept(visitor, stateTree.RootHash, options);
 
-        int totalPath = 0;
-
         foreach (var path in visitor.LeafPaths)
         {
-            totalPath++;
             if (path.Length == 64)
             {
                 AssertPath(path);
@@ -130,8 +127,6 @@ public class VisitingTests
             }
         }
 
-        totalPath.Should().Be(4160);
-
         return;
 
         static void AssertPath(ReadOnlySpan<byte> path)
@@ -147,23 +142,13 @@ public class VisitingTests
     {
         yield return new TestCaseData(new VisitingOptions
         {
-        }, INodeStorage.KeyScheme.HalfPath).SetName("Default");
-
-        yield return new TestCaseData(new VisitingOptions
-        {
-        }, INodeStorage.KeyScheme.Hash).SetName("Default Hash");
+        }).SetName("Default");
 
         yield return new TestCaseData(new VisitingOptions
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount,
             FullScanMemoryBudget = 1.MiB(),
-        }, INodeStorage.KeyScheme.HalfPath).SetName("Parallel");
-
-        yield return new TestCaseData(new VisitingOptions
-        {
-            MaxDegreeOfParallelism = Environment.ProcessorCount,
-            FullScanMemoryBudget = 1.MiB(),
-        }, INodeStorage.KeyScheme.Hash).SetName("Parallel Hash");
+        }).SetName("Parallel");
     }
 
     public class AppendingVisitor(bool expectAccount) : ITreeVisitor<AppendingVisitor.PathGatheringContext>

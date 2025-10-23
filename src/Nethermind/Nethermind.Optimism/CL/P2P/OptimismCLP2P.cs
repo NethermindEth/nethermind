@@ -265,7 +265,7 @@ public class OptimismCLP2P : IDisposable
             return false;
         }
 
-        using ArrayPoolListRef<byte> decompressed = new(length, length);
+        using ArrayPoolList<byte> decompressed = new(length, length);
         Snappy.Decompress(msg, decompressed.AsSpan());
 
         Span<byte> signature = decompressed.AsSpan()[..65];

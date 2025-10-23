@@ -50,7 +50,7 @@ namespace Nethermind.Network.P2P.Messages
 
             rlpStream.ReadSequenceLength();
             int reason = rlpStream.DecodeInt();
-            DisconnectMessage disconnectMessage = new(reason);
+            DisconnectMessage disconnectMessage = new DisconnectMessage(reason);
             return disconnectMessage;
         }
     }

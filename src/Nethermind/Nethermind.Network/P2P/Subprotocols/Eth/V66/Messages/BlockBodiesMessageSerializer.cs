@@ -3,6 +3,10 @@
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 {
-    public class BlockBodiesMessageSerializer()
-        : Eth66MessageSerializer<BlockBodiesMessage, V62.Messages.BlockBodiesMessage>(new V62.Messages.BlockBodiesMessageSerializer());
+    public class BlockBodiesMessageSerializer : Eth66MessageSerializer<BlockBodiesMessage, V62.Messages.BlockBodiesMessage>
+    {
+        public BlockBodiesMessageSerializer() : base(new V62.Messages.BlockBodiesMessageSerializer())
+        {
+        }
+    }
 }

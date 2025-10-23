@@ -9,22 +9,17 @@ ARG COMMIT_HASH
 ARG TARGETARCH
 ARG TARGETOS
 
-COPY ./src/Nethermind ./src/Nethermind
-COPY ./tools/SendBlobs ./tools/SendBlobs
-COPY ./Directory.*.props .
-COPY ./global.json ./global.json
-COPY ./nuget.config ./nuget.config
-COPY ./tools/Directory.Build.props ./tools/Directory.Build.props
+COPY . .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-  dotnet publish tools/SendBlobs/SendBlobs.csproj -c $BUILD_CONFIG -r $TARGETOS-$arch -o /out --sc true \
-  -p:DebugType=None \
-  -p:DebugSymbols=false
+    dotnet publish tools/SendBlobs -c $BUILD_CONFIG -r $TARGETOS-$arch -o out --sc true \
+      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
 
-FROM mcr.microsoft.com/dotnet/runtime-deps:9.0-noble
+FROM --platform=$TARGETPLATFORM ubuntu
 
 WORKDIR /nethermind
 
-COPY --from=build /out ./
+COPY --from=build /out/SendBlobs .
 
+RUN apt update && apt-get install -y ca-certificates
 ENTRYPOINT ["./SendBlobs"]

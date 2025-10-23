@@ -98,16 +98,15 @@ public class BackgroundTaskSchedulerTests
     }
 
     [Test]
-    [Retry(3)]
     public async Task Test_task_that_is_scheduled_during_block_processing_will_continue_after()
     {
-        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
+        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
         _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
 
         int executionCount = 0;
         for (int i = 0; i < 5; i++)
         {
-            scheduler.ScheduleTask(1, (_, _) =>
+            scheduler.ScheduleTask(1, (_, token) =>
             {
                 executionCount++;
                 return Task.CompletedTask;
@@ -118,13 +117,13 @@ public class BackgroundTaskSchedulerTests
         executionCount.Should().Be(0);
 
         _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
-        Assert.That(() => executionCount, Is.EqualTo(5).After(1000, 10));
+        Assert.That(() => executionCount, Is.EqualTo(5).After(50, 1));
     }
 
     [Test]
     public async Task Test_task_that_is_scheduled_during_block_processing_but_deadlined_will_get_called_and_cancelled()
     {
-        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
+        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
         _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
 
         bool wasCancelled = false;

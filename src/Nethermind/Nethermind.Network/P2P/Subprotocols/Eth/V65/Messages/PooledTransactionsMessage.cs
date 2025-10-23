@@ -7,11 +7,15 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 {
-    public class PooledTransactionsMessage(IOwnedReadOnlyList<Transaction> transactions)
-        : TransactionsMessage(transactions)
+    public class PooledTransactionsMessage : TransactionsMessage
     {
-        public override int PacketType => Eth65MessageCode.PooledTransactions;
-        public override string Protocol => "eth";
+        public override int PacketType { get; } = Eth65MessageCode.PooledTransactions;
+        public override string Protocol { get; } = "eth";
+
+        public PooledTransactionsMessage(IOwnedReadOnlyList<Transaction> transactions)
+            : base(transactions)
+        {
+        }
 
         public override string ToString() => $"{nameof(PooledTransactionsMessage)}({Transactions?.Count})";
     }

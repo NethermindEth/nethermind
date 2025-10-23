@@ -12,12 +12,17 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class ZeroFrameMerger(ILogManager logManager) : ByteToMessageDecoder
+    public class ZeroFrameMerger : ByteToMessageDecoder
     {
-        private readonly ILogger _logger = logManager?.GetClassLogger<ZeroFrameMerger>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly ILogger _logger;
 
         private ZeroPacket? _zeroPacket;
         private readonly FrameHeaderReader _headerReader = new();
+
+        public ZeroFrameMerger(ILogManager logManager)
+        {
+            _logger = logManager?.GetClassLogger<ZeroFrameMerger>() ?? throw new ArgumentNullException(nameof(logManager));
+        }
 
         public override void HandlerRemoved(IChannelHandlerContext context)
         {
@@ -83,12 +88,10 @@ namespace Nethermind.Network.Rlpx
                 content = input.ReadRetainedSlice(frame.Size - 1);
             }
 
-            _zeroPacket = new ZeroPacket(content)
-            {
-                PacketType = GetPacketType(packetTypeRlp)
-            };
+            _zeroPacket = new ZeroPacket(content);
+            _zeroPacket.PacketType = GetPacketType(packetTypeRlp);
 
-            // If not chunked, then we already used a slice of the input,
+            // If not chunked then we already used a slice of the input,
             // otherwise we need to read into the freshly allocated buffer.
             if (frame.IsChunked)
             {
@@ -98,6 +101,9 @@ namespace Nethermind.Network.Rlpx
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static byte GetPacketType(byte packetTypeRlp) => packetTypeRlp == 128 ? (byte)0 : packetTypeRlp;
+        private static byte GetPacketType(byte packetTypeRlp)
+        {
+            return packetTypeRlp == 128 ? (byte)0 : packetTypeRlp;
+        }
     }
 }

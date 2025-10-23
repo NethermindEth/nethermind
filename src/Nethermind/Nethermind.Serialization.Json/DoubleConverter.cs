@@ -48,7 +48,7 @@ namespace Nethermind.Serialization.Json
             {
                 throw new JsonException();
             }
-            using ArrayPoolListRef<double> values = new(16);
+            using ArrayPoolList<double> values = new ArrayPoolList<double>(16);
             while (reader.Read() && reader.TokenType == JsonTokenType.Number)
             {
                 values.Add(reader.GetDouble());

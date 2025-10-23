@@ -7,14 +7,15 @@ using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
+using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class ZeroFrameDecoder(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor)
-        : ByteToMessageDecoder
+    public class ZeroFrameDecoder : ByteToMessageDecoder
     {
-        private readonly IFrameCipher _cipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
-        private readonly FrameMacProcessor _authenticator = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
+        private readonly ILogger _logger;
+        private readonly IFrameCipher _cipher;
+        private readonly FrameMacProcessor _authenticator;
 
         private readonly byte[] _headerBytes = new byte[Frame.HeaderSize];
         private readonly byte[] _macBytes = new byte[Frame.MacSize];
@@ -25,6 +26,13 @@ namespace Nethermind.Network.Rlpx
         private IByteBuffer? _innerBuffer;
         private int _frameSize;
         private int _remainingPayloadBlocks;
+
+        public ZeroFrameDecoder(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor, ILogManager logManager)
+        {
+            _cipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
+            _authenticator = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
+            _logger = logManager?.GetClassLogger<ZeroFrameDecoder>() ?? throw new ArgumentNullException(nameof(logManager));
+        }
 
         public override void HandlerRemoved(IChannelHandlerContext context)
         {

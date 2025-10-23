@@ -1,13 +1,12 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
-using Nethermind.Network.Contract.Messages;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
@@ -87,7 +86,6 @@ namespace Nethermind.TxPool
 
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
-        public AnnounceResult AnnounceTx(ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.New;
 
         public event EventHandler<TxEventArgs> NewDiscovered
         {

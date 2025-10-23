@@ -35,6 +35,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Holesky": {
+      "commandName": "Project",
+      "commandLineArgs": "-c holesky --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Hoodi": {
       "commandName": "Project",
       "commandLineArgs": "-c hoodi --data-dir .data",
@@ -114,11 +121,11 @@
     },
     "Docker": {
       "commandName": "Docker",
-      "commandLineArgs": "-c hoodi --data-dir /data --jsonrpc-enginehost 0.0.0.0 --jsonrpc-engineport 8551 --jsonrpc-host 0.0.0.0"
+      "commandLineArgs": "-c holesky --data-dir /data --jsonrpc-enginehost 0.0.0.0 --jsonrpc-engineport 8551 --jsonrpc-host 0.0.0.0"
     },
     "WSL": {
       "commandName": "WSL2",
-      "commandLineArgs": "\"{OutDir}/nethermind.dll\" -c hoodi --data-dir .data",
+      "commandLineArgs": "\"{OutDir}/nethermind.dll\" -c holesky --data-dir .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },

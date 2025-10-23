@@ -212,20 +212,12 @@ public class BlockValidator(
             error ??= BlockErrorMessages.InvalidRequestsHash(suggestedBlock.Header.RequestsHash, processedBlock.Header.RequestsHash);
         }
 
-        if (receipts.Length != processedBlock.Transactions.Length)
+        for (int i = 0; i < processedBlock.Transactions.Length; i++)
         {
-            if (_logger.IsWarn) _logger.Warn($"- receipt count mismatch: expected {processedBlock.Transactions.Length} receipts to match transaction count, got {receipts.Length}");
-            error ??= BlockErrorMessages.ReceiptCountMismatch(processedBlock.Transactions.Length, receipts.Length);
-        }
-        else
-        {
-            for (int i = 0; i < processedBlock.Transactions.Length; i++)
+            if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
             {
-                if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
-                {
-                    if (_logger.IsWarn) _logger.Warn($"- invalid transaction {i}");
-                    error ??= BlockErrorMessages.InvalidTxInBlock(i);
-                }
+                if (_logger.IsWarn) _logger.Warn($"- invalid transaction {i}");
+                error ??= BlockErrorMessages.InvalidTxInBlock(i);
             }
         }
 
