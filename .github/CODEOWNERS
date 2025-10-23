@@ -22,8 +22,8 @@
 /src/Nethermind/Nethermind.History @LukaszRozmej @Marchhill
 /src/Nethermind/Nethermind.Hive @flcl42 @marcindsobczak 
 /src/Nethermind/Nethermind.Init @LukaszRozmej @asdacap
-/src/Nethermind/Nethermind.JsonRpc.TraceStore @LukaszRozmej @smartprogrammer93 
-/src/Nethermind/Nethermind.JsonRpc @LukaszRozmej @benaadams
+/src/Nethermind/Nethermind.JsonRpc.TraceStore @LukaszRozmej
+/src/Nethermind/Nethermind.JsonRpc @LukaszRozmej @benaadams @smartprogrammer93 
 /src/Nethermind/Nethermind.Merge.Plugin @LukaszRozmej @MarekM25 @flcl42 @benaadams
 /src/Nethermind/Nethermind.Merkleization @ak88 @Marchhill @smartprogrammer93 @flcl42
 /src/Nethermind/Nethermind.Network.Discovery @LukaszRozmej @flcl42 @asdacap
