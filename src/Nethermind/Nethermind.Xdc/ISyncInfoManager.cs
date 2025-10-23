@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
-internal interface ISyncInfoManager
+public interface ISyncInfoManager
 {
     void ProcessSyncInfo(SyncInfo syncInfo);
     bool VerifySyncInfo(SyncInfo syncInfo);
