@@ -108,10 +108,9 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
 #pragma warning disable CS0162 // Unreachable code detected
         if (BlsConst.DisableConcurrency)
         {
-            for (int i = 0; i < pointDestinations.Count; i++)
+            for (int i = 0; i < pointDestinations.Count && error is not Errors.NoError; i++)
             {
                 error = BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), pointDestinations[i], i);
-                if (error is not Errors.NoError) break;
             }
         }
         else
