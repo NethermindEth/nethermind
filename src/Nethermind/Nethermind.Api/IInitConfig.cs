@@ -42,7 +42,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The network id. If not specified, taken from the chain spec file.", DefaultValue = "null")]
     ulong? NetworkId { get; set; }
 
-    [ConfigItem(Description = "The path to the static nodes file.", DefaultValue = "Data/static-nodes.json")]
+    [ConfigItem(Description = "The path to the static nodes file.", DefaultValue = "static-nodes.json")]
     string StaticNodesPath { get; set; }
 
     [ConfigItem(Description = "The path to the trusted nodes file.", DefaultValue = "trusted-nodes.json")]
