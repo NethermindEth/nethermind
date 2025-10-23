@@ -383,7 +383,7 @@ namespace Nethermind.Synchronization.Blocks
             response.OwnedBodies?.Disown();
 
             SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
-            using ArrayPoolList<Block> blocks = new ArrayPoolList<Block>(response.BodiesRequests?.Count ?? 0);
+            using ArrayPoolListRef<Block> blocks = new(response.BodiesRequests?.Count ?? 0);
             int bodiesCount = 0;
             int receiptsCount = 0;
 

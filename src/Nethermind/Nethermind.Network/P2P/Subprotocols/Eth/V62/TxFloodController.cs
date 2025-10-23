@@ -1,10 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
+using Nethermind.TxPool;
+using System;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
@@ -19,12 +20,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         internal bool IsDowngraded { get; private set; }
 
-        public void Report(bool accepted)
+        public void Report(AcceptTxResult accepted)
         {
             TryReset();
 
             if (!accepted)
             {
+                if (accepted == AcceptTxResult.Invalid)
+                {
+                    if (logger.IsDebug) logger.Debug($"Disconnecting {_protocolHandler} due to invalid tx received");
+                    _protocolHandler.Disconnect(DisconnectReason.Other, $"invalid tx");
+                    return;
+                }
+
                 _notAcceptedSinceLastCheck++;
                 if (!IsDowngraded && _notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 10)
                 {
