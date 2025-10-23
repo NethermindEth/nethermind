@@ -66,7 +66,6 @@
     <Project Path="Nethermind.Network.Enr.Test/Nethermind.Network.Enr.Test.csproj" />
     <Project Path="Nethermind.Network.Test/Nethermind.Network.Test.csproj" />
     <Project Path="Nethermind.Optimism.Test/Nethermind.Optimism.Test.csproj" />
-    <Project Path="Nethermind.Overseer.Test/Nethermind.Overseer.Test.csproj" />
     <Project Path="Nethermind.Runner.Test/Nethermind.Runner.Test.csproj" />
     <Project Path="Nethermind.Serialization.Ssz.Test/Nethermind.Serialization.Ssz.Test.csproj" />
     <Project Path="Nethermind.Serialization.SszGenerator.Test/Nethermind.Serialization.SszGenerator.Test.csproj" />

@@ -630,17 +630,16 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         int count = _commitSetQueue?.Count ?? 0;
         if (count == 0) return;
 
-        using ArrayPoolList<BlockCommitSet> candidateSets = DetermineCommitSetToPersistInSnapshot(count);
+        using ArrayPoolListRef<BlockCommitSet> candidateSets = DetermineCommitSetToPersistInSnapshot(count);
 
         bool shouldTrackPastKey =
             // Its disabled
             _pastKeyTrackingEnabled &&
             // Full pruning need to visit all node, so can't delete anything.
-            (_deleteOldNodes
-                // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
-                ? candidateSets.Count == 1
-                // For archice node, it is safe to remove canon key from cache as it will just get re-loaded.
-                : true);
+
+            // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
+            // For archice node, it is safe to remove canon key from cache as it will just get re-loaded.
+            (!_deleteOldNodes || candidateSets.Count == 1);
 
         if (shouldTrackPastKey)
         {
@@ -673,9 +672,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (_logger.IsDebug) _logger.Debug($"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {_maxDepth})");
     }
 
-    private ArrayPoolList<BlockCommitSet> DetermineCommitSetToPersistInSnapshot(int count)
+    private ArrayPoolListRef<BlockCommitSet> DetermineCommitSetToPersistInSnapshot(int count)
     {
-        ArrayPoolList<BlockCommitSet>? candidateSets = null;
+        ArrayPoolListRef<BlockCommitSet> candidateSets = new(count);
         try
         {
 
@@ -689,8 +688,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 }
             }
 
-            using ArrayPoolList<BlockCommitSet> toAddBack = new(count);
-            candidateSets = new(count);
+            using ArrayPoolListRef<BlockCommitSet> toAddBack = new(count);
             while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
             {
                 if (frontSet.BlockNumber == lastBlockBeforeRorgBoundary || (_persistenceStrategy.ShouldPersist(frontSet.BlockNumber) && frontSet.BlockNumber < lastBlockBeforeRorgBoundary))
@@ -712,7 +710,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
         catch
         {
-            candidateSets?.Dispose();
+            candidateSets.Dispose();
             throw;
         }
     }
@@ -812,7 +810,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             if (_logger.IsWarn) _logger.Debug($"Pruning persisted nodes {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, Pruning {shardCountToPrune} shards starting from shard {_lastPrunedShardIdx}");
             long start = Stopwatch.GetTimestamp();
 
-            using ArrayPoolList<Task> pruneTask = new(shardCountToPrune);
+            using ArrayPoolListRef<Task> pruneTask = new(shardCountToPrune);
 
             for (int i = 0; i < shardCountToPrune; i++)
             {
@@ -1109,7 +1107,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         if (_commitSetQueue?.IsEmpty ?? true) return;
 
-        using ArrayPoolList<BlockCommitSet> candidateSets = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
+        using ArrayPoolListRef<BlockCommitSet> candidateSets = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
         if (candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommmitSet))
         {
             // No commitset to persist, likely as not enough block was processed to reached prune boundary

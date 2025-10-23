@@ -560,52 +560,6 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak).Should().BeTrue();
         }
 
-        private class BadDb : IKeyValueStoreWithBatching
-        {
-            private readonly Dictionary<byte[], byte[]> _db = new();
-
-            public byte[]? this[ReadOnlySpan<byte> key]
-            {
-                get => Get(key);
-                set => Set(key, value);
-            }
-
-            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-            {
-                _db[key.ToArray()] = value;
-            }
-
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-            {
-                return _db[key.ToArray()];
-            }
-
-            public IWriteBatch StartWriteBatch()
-            {
-                return new BadWriteBatch();
-            }
-
-            private class BadWriteBatch : IWriteBatch
-            {
-                private readonly Dictionary<byte[], byte[]> _inBatched = new();
-
-                public void Dispose()
-                {
-                }
-
-                public byte[]? this[ReadOnlySpan<byte> key]
-                {
-                    set => Set(key, value);
-                }
-
-                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-                {
-                    _inBatched[key.ToArray()] = value;
-                }
-            }
-        }
-
-
         [Test]
         public void Trie_store_multi_threaded_scenario()
         {

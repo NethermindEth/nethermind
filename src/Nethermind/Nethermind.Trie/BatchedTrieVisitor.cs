@@ -146,9 +146,9 @@ public class BatchedTrieVisitor<TNodeContext>
 
         try
         {
-            using ArrayPoolList<Task> tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
+            using ArrayPoolListRef<Task> tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
                 .Select(_ => Task.Run(BatchedThread))
-                .ToPooledList(trieVisitContext.MaxDegreeOfParallelism);
+                .ToPooledListRef(trieVisitContext.MaxDegreeOfParallelism);
 
             Task.WaitAll(tasks.AsSpan());
         }
@@ -169,7 +169,7 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 Interlocked.Add(ref _currentPointer, -_partitionCount);
 
-                GC.Collect(); // Simulate GC collect of standard visitor
+                GC.Collect(); // Simulate GC collect of a standard visitor
             }
 
             partitionIdx %= _partitionCount;
@@ -256,7 +256,7 @@ public class BatchedTrieVisitor<TNodeContext>
     }
 
 
-    void QueueNextNodes(ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> batchResult)
+    void QueueNextNodes(ref ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> batchResult)
     {
         // Reverse order is important so that higher level appear at the end of the stack.
         TreePath emptyPath = TreePath.Empty;
@@ -267,11 +267,19 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 // Inline node. Seems rare, so its fine to create new list for this. Does not have a keccak
                 // to queue, so we'll just process it inline.
-                using ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
-                trieNode.ResolveNode(_resolver, emptyPath);
-                Interlocked.Increment(ref _activeJobs);
-                AcceptResolvedNode(trieNode, nodeContext, _resolver, ctx, recursiveResult);
-                QueueNextNodes(recursiveResult);
+                ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
+                try
+                {
+                    trieNode.ResolveNode(_resolver, emptyPath);
+                    Interlocked.Increment(ref _activeJobs);
+                    AcceptResolvedNode(trieNode, nodeContext, _resolver, ctx, ref recursiveResult);
+                    QueueNextNodes(ref recursiveResult);
+                }
+                finally
+                {
+                    recursiveResult.Dispose();
+                }
+
                 continue;
             }
 
@@ -290,79 +298,85 @@ public class BatchedTrieVisitor<TNodeContext>
         Interlocked.Decrement(ref _activeJobs);
     }
 
-
     private void BatchedThread()
     {
-        using ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize);
-        using ArrayPoolList<int> resolveOrdering = new(_maxBatchSize);
-        ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)>? currentBatch;
-        TreePath emptyPath = TreePath.Empty;
-        while ((currentBatch = GetNextBatch()) is not null)
+        ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize);
+        try
         {
-            // Storing the idx separately as the ordering is important to reduce memory (approximate dfs ordering)
-            // but the path ordering is important for read amplification
-            resolveOrdering.Clear();
-            for (int i = 0; i < currentBatch.Count; i++)
+            using ArrayPoolListRef<int> resolveOrdering = new(_maxBatchSize);
+            TreePath emptyPath = TreePath.Empty;
+            while (GetNextBatch() is { } currentBatch)
             {
-                (TrieNode? cur, TNodeContext _, SmallTrieVisitContext ctx) = currentBatch[i];
-
-                cur.ResolveKey(_resolver, ref emptyPath);
-
-                if (cur.FullRlp.IsNotNull) continue;
-                if (cur.Keccak is null)
-                    ThrowUnableToResolve(ctx);
-
-                resolveOrdering.Add(i);
-            }
-
-            // This innocent looking sort is surprisingly effective when batch size is large enough. The sort itself
-            // take about 0.1% of the time, so not very cpu intensive in this case.
-            resolveOrdering
-                .AsSpan()
-                .Sort((item1, item2) => currentBatch[item1].Item1.Keccak.CompareTo(currentBatch[item2].Item1.Keccak));
-
-            ReadFlags flags = ReadFlags.None;
-            if (resolveOrdering.Count > _readAheadThreshold)
-            {
-                flags = ReadFlags.HintReadAhead;
-            }
-
-            // This loop is about 60 to 70% of the time spent. If you set very high memory budget, this drop to about 50MB.
-            for (int i = 0; i < resolveOrdering.Count; i++)
-            {
-                int idx = resolveOrdering[i];
-
-                (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[idx];
-                try
+                // Storing the idx separately as the ordering is important to reduce memory (approximate dfs ordering)
+                // but the path ordering is important for read amplification
+                resolveOrdering.Clear();
+                for (int i = 0; i < currentBatch.Count; i++)
                 {
-                    Hash256 theKeccak = nodeToResolve.Keccak;
-                    nodeToResolve.ResolveNode(_resolver, emptyPath, flags);
-                    nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
-                }
-                catch (TrieException)
-                {
-                    _visitor.VisitMissingNode(nodeContext, nodeToResolve.Keccak);
-                }
-            }
+                    (TrieNode? cur, TNodeContext _, SmallTrieVisitContext ctx) = currentBatch[i];
 
-            // Going in reverse to reduce memory
-            for (int i = currentBatch.Count - 1; i >= 0; i--)
-            {
-                (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[i];
+                    cur.ResolveKey(_resolver, ref emptyPath);
 
-                nextToProcesses.Clear();
-                if (nodeToResolve.FullRlp.IsNull)
-                {
-                    // Still need to decrement counter
-                    QueueNextNodes(nextToProcesses);
-                    return; // missing node
+                    if (cur.FullRlp.IsNotNull) continue;
+                    if (cur.Keccak is null)
+                        ThrowUnableToResolve(ctx);
+
+                    resolveOrdering.Add(i);
                 }
 
-                AcceptResolvedNode(nodeToResolve, nodeContext, _resolver, ctx, nextToProcesses);
-                QueueNextNodes(nextToProcesses);
-            }
+                // This innocent looking sort is surprisingly effective when batch size is large enough. The sort itself
+                // take about 0.1% of the time, so not very cpu intensive in this case.
+                resolveOrdering
+                    .AsSpan()
+                    .Sort((item1, item2) =>
+                        currentBatch[item1].Item1.Keccak.CompareTo(currentBatch[item2].Item1.Keccak));
 
-            currentBatch.Dispose();
+                ReadFlags flags = ReadFlags.None;
+                if (resolveOrdering.Count > _readAheadThreshold)
+                {
+                    flags = ReadFlags.HintReadAhead;
+                }
+
+                // This loop is about 60 to 70% of the time spent. If you set very high memory budget, this drop to about 50MB.
+                for (int i = 0; i < resolveOrdering.Count; i++)
+                {
+                    int idx = resolveOrdering[i];
+
+                    (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[idx];
+                    try
+                    {
+                        Hash256 theKeccak = nodeToResolve.Keccak;
+                        nodeToResolve.ResolveNode(_resolver, emptyPath, flags);
+                        nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
+                    }
+                    catch (TrieException)
+                    {
+                        _visitor.VisitMissingNode(nodeContext, nodeToResolve.Keccak);
+                    }
+                }
+
+                // Going in reverse to reduce memory
+                for (int i = currentBatch.Count - 1; i >= 0; i--)
+                {
+                    (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[i];
+
+                    nextToProcesses.Clear();
+                    if (nodeToResolve.FullRlp.IsNull)
+                    {
+                        // Still need to decrement counter
+                        QueueNextNodes(ref nextToProcesses);
+                        return; // missing node
+                    }
+
+                    AcceptResolvedNode(nodeToResolve, nodeContext, _resolver, ctx, ref nextToProcesses);
+                    QueueNextNodes(ref nextToProcesses);
+                }
+
+                currentBatch.Dispose();
+            }
+        }
+        finally
+        {
+            nextToProcesses.Dispose();
         }
 
         return;
@@ -378,7 +392,7 @@ public class BatchedTrieVisitor<TNodeContext>
     /// Like `Accept`, but does not execute its children. Instead it return the next trie to visit in the list
     /// `nextToVisit`. Also, it assume the node is already resolved.
     /// </summary>
-    internal void AcceptResolvedNode(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, IList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
+    internal void AcceptResolvedNode(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, ref ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
     {
         // Note: The path is not maintained here, its just for a placeholder. This code is only used for BatchedTrieVisitor
         // which should only be used with hash keys.
@@ -422,8 +436,6 @@ public class BatchedTrieVisitor<TNodeContext>
                     if (_visitor.ShouldVisit(childContext, child.Keccak!))
                     {
                         trieVisitContext.Level++;
-
-
                         nextToVisit.Add((child, childContext, trieVisitContext));
                     }
 
@@ -438,7 +450,7 @@ public class BatchedTrieVisitor<TNodeContext>
                     {
                         TNodeContext childContext = nodeContext.Add(node.Key!);
 
-                        Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.Span);
+                        Rlp.ValueDecoderContext decoderContext = new(node.Value.Span);
                         if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
                         {
                             throw new InvalidDataException("Non storage leaf should be an account");
@@ -473,18 +485,11 @@ public class BatchedTrieVisitor<TNodeContext>
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private readonly struct Job
+    private readonly struct Job(ValueHash256 key, TNodeContext nodeContext, SmallTrieVisitContext context)
     {
-        public readonly ValueHash256 Key;
-        public readonly TNodeContext NodeContext;
-        public readonly SmallTrieVisitContext Context;
-
-        public Job(ValueHash256 key, TNodeContext nodeContext, SmallTrieVisitContext context)
-        {
-            Key = key;
-            NodeContext = nodeContext;
-            Context = context;
-        }
+        public readonly ValueHash256 Key = key;
+        public readonly TNodeContext NodeContext = nodeContext;
+        public readonly SmallTrieVisitContext Context = context;
     }
 }
 
