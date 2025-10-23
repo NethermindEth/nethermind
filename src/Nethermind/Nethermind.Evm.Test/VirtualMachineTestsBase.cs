@@ -203,12 +203,9 @@ public abstract class VirtualMachineTestsBase
         int value = 1,
         long blockGasLimit = DefaultBlockGasLimit,
         byte[][]? blobVersionedHashes = null,
-        ulong excessBlobGas = 0,
-        UInt256? maxFeePerGas = null,
-        UInt256? maxPriorityFeePerGas = null)
+        ulong excessBlobGas = 0)
     {
-        return PrepareTx((blockNumber, Timestamp), gasLimit, code, senderRecipientAndMiner, value, blockGasLimit,
-            blobVersionedHashes, excessBlobGas, maxFeePerGas: maxFeePerGas, maxPriorityFeePerGas: maxPriorityFeePerGas);
+        return PrepareTx((blockNumber, Timestamp), gasLimit, code, senderRecipientAndMiner, value, blockGasLimit, blobVersionedHashes, excessBlobGas);
     }
 
     protected (Block block, Transaction transaction) PrepareTx(
@@ -220,9 +217,7 @@ public abstract class VirtualMachineTestsBase
         long blockGasLimit = DefaultBlockGasLimit,
         byte[][]? blobVersionedHashes = null,
         ulong excessBlobGas = 0,
-        Transaction transaction = null,
-        UInt256? maxFeePerGas = null,
-        UInt256? maxPriorityFeePerGas = null)
+        Transaction transaction = null)
     {
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
 
@@ -255,8 +250,6 @@ public abstract class VirtualMachineTestsBase
         transaction ??= Build.A.Transaction
             .WithGasLimit(gasLimit)
             .WithGasPrice(1)
-            .WithMaxFeePerGas(maxFeePerGas ?? 1)
-            .WithMaxPriorityFeePerGas(maxPriorityFeePerGas ?? 1)
             .WithValue(value)
             .WithBlobVersionedHashes(blobVersionedHashes)
             .WithNonce(TestState.GetNonce(senderRecipientAndMiner.Sender))

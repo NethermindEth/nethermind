@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -19,23 +18,12 @@ public class TransactionProcessorTraceTest : VirtualMachineTestsBase
 
     [TestCase(21000)]
     [TestCase(50000)]
-    public void Trace_should_not_charge_base_fee(long gasLimit)
+    public void Trace_should_not_charge_gas(long gasLimit)
     {
-        (Block block, Transaction transaction) = PrepareTx(BlockNumber, gasLimit, maxFeePerGas: 0, maxPriorityFeePerGas: 0);
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, gasLimit);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.All);
         _processor.Trace(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         var senderBalance = tracer.BuildResult().StateChanges[TestItem.AddressA].Balance;
         (senderBalance.Before - senderBalance.After).Should().Be(transaction.Value);
-    }
-
-    [TestCase(21000)]
-    [TestCase(50000)]
-    public void Trace_should_charge_base_fee_if_priority_fee_is_set(long gasLimit)
-    {
-        (Block block, Transaction transaction) = PrepareTx(BlockNumber, gasLimit, maxFeePerGas: 0, maxPriorityFeePerGas: 1);
-        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.All);
-        _processor.Trace(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
-        var senderBalance = tracer.BuildResult().StateChanges[TestItem.AddressA].Balance;
-        (senderBalance.Before - senderBalance.After).Should().Be(transaction.Value + 21000);
     }
 }
