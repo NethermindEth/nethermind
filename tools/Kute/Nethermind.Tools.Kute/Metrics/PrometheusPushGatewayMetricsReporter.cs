@@ -41,8 +41,9 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
         _singleDuration = factory.CreateHistogram(GetMetricName("single_duration_seconds"), "", labelNames: ["jsonrpc_id", "method"]);
         _batchDuration = factory.CreateHistogram(GetMetricName("batch_duration_seconds"), "", labelNames: ["jsonrpc_id"]);
 
-        string instanceLabel = labels.TryGetValue("instance", out var instance) ? instance : Guid.NewGuid().ToString();
-        labels.Remove("instance");
+        var additionalLabels = new Dictionary<string, string>(labels);
+        string instanceLabel = additionalLabels.TryGetValue("instance", out var instance) ? instance : Guid.NewGuid().ToString();
+        additionalLabels.Remove("instance");
 
         var httpClient = new HttpClient();
         if (user is not null && password is not null)
@@ -57,7 +58,7 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
             Endpoint = endpoint,
             Job = JobName,
             Instance = instanceLabel,
-            AdditionalLabels = labels,
+            AdditionalLabels = additionalLabels,
             HttpClient = httpClient,
         });
 
