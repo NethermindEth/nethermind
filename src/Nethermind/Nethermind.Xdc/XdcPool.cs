@@ -37,7 +37,7 @@ public class XdcPool<T> where T : IXdcPoolItem
     {
         using var lockRelease = _lock.Acquire();
         {
-            foreach (var key in _items.Keys.ToArray())
+            foreach (var key in _items.Keys)
             {
                 if (key.Round <= round && _items.Remove(key, out ArrayPoolList<T> list))
                 {
