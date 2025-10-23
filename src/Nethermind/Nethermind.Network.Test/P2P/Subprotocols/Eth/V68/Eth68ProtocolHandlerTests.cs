@@ -160,7 +160,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
-        _session.Received().InitiateDisconnect(DisconnectReason.Other, "invalid pooled tx size or type");
+        _session.Received().InitiateDisconnect(DisconnectReason.Other, "invalid pooled tx type or size");
     }
 
 
@@ -176,7 +176,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
-        _session.Received().InitiateDisconnect(DisconnectReason.Other, "invalid pooled tx size or type");
+        _session.Received().InitiateDisconnect(DisconnectReason.Other, "invalid pooled tx type or size");
     }
 
     [Test]
@@ -321,7 +321,7 @@ public class Eth68ProtocolHandlerTests
 
         for (int i = 0; i < txCount; ++i)
         {
-            Transaction tx = Build.A.Transaction.WithType((TxType)(i % 3)).WithData(new byte[i])
+            Transaction tx = Build.A.Transaction.WithType((TxType)(i % 3)).SignedAndResolved().WithData(new byte[i])
                 .WithHash(i % 2 == 0 ? TestItem.KeccakA : TestItem.KeccakB).TestObject;
 
             types.Add((byte)tx.Type);
