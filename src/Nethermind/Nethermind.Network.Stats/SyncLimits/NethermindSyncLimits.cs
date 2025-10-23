@@ -5,9 +5,10 @@ namespace Nethermind.Stats.SyncLimits
 {
     public static class NethermindSyncLimits
     {
-        public const int MaxHeaderFetch = 512; // Amount of block headers to be fetched per retrieval request
-        public const int MaxBodyFetch = 256; // Amount of block bodies to be fetched per retrieval request
-        public const int MaxReceiptFetch = 256; // Amount of transaction receipts to allow fetching per request
-        public const int MaxCodeFetch = 1024; // Amount of contract codes to allow fetching per request
+        public const int MaxHeaderFetch = 1024; // Number of block headers to be fetched per retrieval request
+        public const int MaxBodyFetch = 512; // Number of block bodies to be fetched per retrieval request
+        public const int MaxReceiptFetch = 512; // Number of transaction receipts to allow fetching per request
+        public const int MaxCodeFetch = 1024; // Number of contract codes to allow fetching per request
+        public const int MaxHashesFetch = 10000; // Number of hashes to allow fetching per request
     }
 }

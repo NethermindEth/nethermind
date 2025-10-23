@@ -25,7 +25,6 @@ public class BuiltInStepsModule : Module
         typeof(InitTxTypesAndRlp),
         typeof(LoadGenesisBlock),
         typeof(LogHardwareInfo),
-        typeof(MigrateConfigs),
         typeof(RegisterPluginRpcModules),
         typeof(RegisterRpcModules),
         typeof(ResolveIps),

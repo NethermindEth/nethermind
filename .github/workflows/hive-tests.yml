@@ -49,6 +49,7 @@ jobs:
     name: Build and run tests
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         test-suite: ${{ fromJson(github.event.inputs.test-suite == '' &&
           '["ethereum/engine","ethereum/graphql","ethereum/rpc","ethereum/rpc-compat","ethereum/sync"]' ||

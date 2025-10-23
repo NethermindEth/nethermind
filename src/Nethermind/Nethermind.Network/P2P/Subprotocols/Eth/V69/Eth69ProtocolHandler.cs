@@ -1,15 +1,14 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -35,14 +34,14 @@ public class Eth69ProtocolHandler(
     ISyncServer syncServer,
     IBackgroundTaskScheduler backgroundTaskScheduler,
     ITxPool txPool,
-    IPooledTxsRequestor pooledTxsRequestor,
     IGossipPolicy gossipPolicy,
     IForkInfo forkInfo,
-    IBlockFinder blockFinder,
     ILogManager logManager,
+    ITxPoolConfig txPoolConfig,
+    ISpecProvider specProvider,
     ITxGossipPolicy? transactionsGossipPolicy = null)
     : Eth68ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-        pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), ISyncPeer
+        gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer
 {
     public override string Name => "eth69";
 
@@ -66,23 +65,21 @@ public class Eth69ProtocolHandler(
         {
             case Eth69MessageCode.Status:
                 StatusMessage69 statusMsg = Deserialize<StatusMessage69>(message.Content);
-                base.ReportIn(statusMsg, size);
-                this.Handle(statusMsg);
+                ReportIn(statusMsg, size);
+                Handle(statusMsg);
                 break;
             case Eth69MessageCode.Receipts:
                 ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content);
-                base.ReportIn(receiptsMessage, size);
+                ReportIn(receiptsMessage, size);
                 base.Handle(receiptsMessage, size);
                 break;
             case Eth69MessageCode.GetReceipts:
-                GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
-                ReportIn(getReceiptsMessage, size);
-                BackgroundTaskScheduler.ScheduleSyncServe(getReceiptsMessage, this.Handle);
+                HandleInBackground<GetReceiptsMessage, ReceiptsMessage69>(message, Handle);
                 break;
             case Eth69MessageCode.BlockRangeUpdate:
                 BlockRangeUpdateMessage blockRangeUpdateMsg = Deserialize<BlockRangeUpdateMessage>(message.Content);
                 ReportIn(blockRangeUpdateMsg, size);
-                this.Handle(blockRangeUpdateMsg);
+                Handle(blockRangeUpdateMsg);
                 break;
             default:
                 base.HandleMessage(message);
@@ -155,7 +152,7 @@ public class Eth69ProtocolHandler(
             NetworkId = SyncServer.NetworkId,
             GenesisHash = SyncServer.Genesis.Hash!,
             ForkId = _forkInfo.GetForkId(head.Number, head.Timestamp),
-            EarliestBlock = blockFinder.GetLowestBlock(),
+            EarliestBlock = SyncServer.LowestBlock,
             LatestBlock = head.Number,
             LatestBlockHash = head.Hash!
         };

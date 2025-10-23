@@ -46,7 +46,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddSingleton<BlockTreeOverlay>(overrideBlockTree)
             .AddModule(validationModules)
             .AddDecorator<IBlockhashProvider, SimulateBlockhashProvider>()
-            .AddDecorator<IVirtualMachine, SimulateVirtualMachine>()
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
             .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, SimulateBlobBaseFeeCalculatorDecorator>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, SimulateBlockValidationTransactionsExecutor>()

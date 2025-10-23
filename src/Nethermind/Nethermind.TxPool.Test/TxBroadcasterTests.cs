@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using FastEnumUtility;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
@@ -22,7 +23,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
@@ -519,10 +519,11 @@ public class TxBroadcasterTests
             Substitute.For<ISyncServer>(),
             RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
-            Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
             Substitute.For<IForkInfo>(),
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<ITxPoolConfig>(),
+            Substitute.For<ISpecProvider>());
         _broadcaster.AddPeer(eth68Handler);
 
         Transaction localTx = Build.A.Transaction
@@ -547,7 +548,6 @@ public class TxBroadcasterTests
             Substitute.For<ISyncServer>(),
             RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
-            Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>());
@@ -560,10 +560,11 @@ public class TxBroadcasterTests
             Substitute.For<ISyncServer>(),
             RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
-            Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
             Substitute.For<IForkInfo>(),
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<ITxPoolConfig>(),
+            Substitute.For<ISpecProvider>());
 
         Transaction localTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields()
@@ -601,10 +602,11 @@ public class TxBroadcasterTests
             Substitute.For<ISyncServer>(),
             RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
-            Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
             Substitute.For<IForkInfo>(),
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<ITxPoolConfig>(),
+            Substitute.For<ISpecProvider>());
 
         Transaction localTx = Build.A.Transaction
             .WithData(new byte[txSize])
@@ -655,10 +657,11 @@ public class TxBroadcasterTests
             Substitute.For<ISyncServer>(),
             RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
-            Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
             Substitute.For<IForkInfo>(),
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<ITxPoolConfig>(),
+            Substitute.For<ISpecProvider>());
         _broadcaster.AddPeer(eth68Handler);
 
         Transaction localTx = Build.A.Transaction
@@ -727,6 +730,38 @@ public class TxBroadcasterTests
             UInt256.MultiplyOverflow(baseFee, (UInt256)threshold, out UInt256 baseFeeThreshold)
                 ? overflow ? UInt256.MaxValue : lessAccurateBaseFeeThreshold
                 : baseFeeThreshold);
+    }
+
+    [Test]
+    public void can_correctly_broadcast_light_transactions_without_wrappers([Values] ProofVersion proofVersion, [Values] bool versionMatches)
+    {
+        // Arrange
+        IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        mockChainHeadInfoProvider.CurrentProofVersion.Returns(proofVersion);
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.BlobProofVersion.Returns(versionMatches ? proofVersion : GetInvalidVersion(proofVersion));
+
+        SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);
+
+        Transaction blobTransaction = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: spec)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        LightTransaction lightTransaction = new(blobTransaction);
+
+        // Act
+        bool result = gossipPolicy.ShouldGossipTransaction(lightTransaction);
+
+        // Assert
+        result.Should().Be(versionMatches, "LightTransaction from blob transaction should be gossiped when proof version matches.");
+
+        // Gets (version + 1) % (version + 1) - so next version round robin
+        ProofVersion GetInvalidVersion(ProofVersion version)
+        {
+            byte mod = (byte)(FastEnum.GetMaxValue<ProofVersion>() + 1);
+            return (ProofVersion)((byte)(version + 1) % mod);
+        }
     }
 
     private (IList<Transaction> expectedTxs, IList<Hash256> expectedHashes) GetTxsAndHashesExpectedToBroadcast(Transaction[] transactions, int expectedCountTotal)

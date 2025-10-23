@@ -21,7 +21,7 @@ using Nethermind.State.Repositories;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(InitDatabase), typeof(MigrateConfigs), typeof(SetupKeyStore))]
+    [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(InitDatabase), typeof(SetupKeyStore))]
     public class InitializeBlockTree : IStep
     {
         private readonly IBasicApi _get;

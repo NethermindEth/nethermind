@@ -19,6 +19,6 @@ public sealed class FileResponseTracer : IResponseTracer
             : File.CreateText(_tracesFilePath);
 
         var content = response.Json.ToString() ?? "null";
-        await sw.WriteLineAsync(MemoryExtensions.AsMemory(content), token);
+        await sw.WriteLineAsync(content.AsMemory(), token);
     }
 }

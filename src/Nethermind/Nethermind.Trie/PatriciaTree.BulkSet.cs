@@ -62,13 +62,13 @@ public partial class PatriciaTree
     /// </summary>
     /// <param name="entries"></param>
     /// <param name="flags"></param>
-    public void BulkSet(ArrayPoolList<BulkSetEntry> entries, Flags flags = Flags.None)
+    public void BulkSet(in ArrayPoolListRef<BulkSetEntry> entries, Flags flags = Flags.None)
     {
         if (entries.Count == 0) return;
 
-        using ArrayPoolList<BulkSetEntry> sortBuffer = new ArrayPoolList<BulkSetEntry>(entries.Count, entries.Count);
+        using ArrayPoolListRef<BulkSetEntry> sortBuffer = new(entries.Count, entries.Count);
 
-        Context ctx = new Context()
+        Context ctx = new()
         {
             originalSortBufferArray = sortBuffer.UnsafeGetInternalArray(),
             originalEntriesArray = entries.UnsafeGetInternalArray(),
@@ -166,8 +166,7 @@ public partial class PatriciaTree
         int nonNullChildCount = 0;
         if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
         {
-            (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)[] jobs =
-                new (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)[TrieNode.BranchesCount];
+            var jobs = new (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)[TrieNode.BranchesCount];
 
             Context closureCtx = ctx;
             BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.originalEntriesArray : ctx.originalSortBufferArray;
@@ -210,7 +209,7 @@ public partial class PatriciaTree
                 TrieNode? child = jobs[i].currentChild;
                 TrieNode? newChild = jobs[i].newChild;
 
-                if (!ShouldUpdateChild(node, child, newChild)) continue;
+                if (!ShouldUpdateChild(originalNode, child, newChild)) continue;
 
                 if (newChild is null) hasRemove = true;
                 if (newChild is not null) nonNullChildCount++;
@@ -242,7 +241,7 @@ public partial class PatriciaTree
                     ? BulkSetOne(traverseStack, entries[startRange], ref path, child)
                     : BulkSet(in ctx, traverseStack, entries[startRange..endRange], sortBuffer[startRange..endRange], ref path, child, flipCount, flags);
 
-                if (!ShouldUpdateChild(node, child, newChild)) continue;
+                if (!ShouldUpdateChild(originalNode, child, newChild)) continue;
 
                 if (newChild is null) hasRemove = true;
                 if (newChild is not null) nonNullChildCount++;
@@ -257,13 +256,12 @@ public partial class PatriciaTree
         if (!hasRemove && nonNullChildCount == 0) return originalNode;
 
         if ((hasRemove || newBranch) && nonNullChildCount < 2)
-            node = MaybeCombineNode(ref path, node);
+            node = MaybeCombineNode(ref path, node, originalNode);
 
         return node;
     }
 
-    private TrieNode? BulkSetOne(Stack<TraverseStack> traverseStack, in BulkSetEntry entry, ref TreePath path,
-        TrieNode? node)
+    private TrieNode? BulkSetOne(Stack<TraverseStack> traverseStack, in BulkSetEntry entry, ref TreePath path, TrieNode? node)
     {
         Span<byte> nibble = stackalloc byte[64];
         Nibbles.BytesToNibbleBytes(entry.Path.BytesAsSpan, nibble);

@@ -184,134 +184,251 @@ jobs:
     timeout-minutes: 1440
     steps:
       - uses: actions/checkout@v5
-      
+
       - name: Wait for the nodes to sync
         timeout-minutes: 1440
         env:
           ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
-        run: |          
-          # Assuming rpc_urls_str is a comma-separated string of URLs
+        shell: bash
+        run: |
+          set -o pipefail
+
+          # ------------------------------------------------------------
+          # Parse aggregated RPCs from previous job output
+          # Format: "label::http://ip:port,label::http://ip:port"
+          # ------------------------------------------------------------
           rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
+          if [[ -z "$rpc_urls_str" ]]; then
+            echo "No RPC URLs provided in needs.aggregate_rpcs.outputs.rpc_urls"
+            exit 1
+          fi
+
           IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"
-          
-          # Loop through the array and strip the branch prefix
+
           processed_rpc_urls=()
           for url_entry in "${rpc_urls_array[@]}"; do
-            processed_url="${url_entry#*::}"  # Remove everything up to and including "::"
+            processed_url="${url_entry#*::}"  # strip 'label::'
             processed_rpc_urls+=("$processed_url")
-          done          
-          
-          check_eth_syncing() {
-            rpc_url=$1
-            # Loop until the "eth_syncing" response is "false"
-            while true; do
-              response=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' "$rpc_url")
-              # Check if the response contains "false"
-              if echo "$response" | jq -e '.result == false'; then
-                echo "Node at $rpc_url synced."
-                break
-              else
-                echo "Still waiting for node to be synced at RPC: $rpc_url."
-                sleep 60
-              fi
-            done
+          done
+
+          if [[ ${#processed_rpc_urls[@]} -eq 0 ]]; then
+            echo "Parsed RPC list is empty after processing."
+            exit 1
+          fi
+
+          # ------------------------------------------------------------
+          # Helper: guarded curl POST with timeouts/retries and JSON header
+          # ------------------------------------------------------------
+          rpc_post() {
+            local url="$1"
+            local payload="$2"
+            # -sS: silent but show errors; -m 10: overall timeout; --connect-timeout 5
+            # --retry 5 with --retry-all-errors/--retry-connrefused to handle brief restarts
+            curl -sS \
+                 -m 10 --connect-timeout 5 \
+                 --retry 5 --retry-all-errors --retry-connrefused \
+                 -H 'Content-Type: application/json' \
+                 -X POST --data "$payload" "$url"
           }
 
+          # ------------------------------------------------------------
+          # Function: wait until debug_getSyncStage shows SnapSync or StateNodes
+          # (Option A guard on curl + extra hardening)
+          # ------------------------------------------------------------
           check_sync_stage() {
-            rpc_url=$1
+            local rpc_url="$1"
+            echo "Waiting for SnapSync/StateNodes at $rpc_url ..."
             while true; do
-              response=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"debug_getSyncStage","params":[],"id":0}' "$rpc_url")
-              
-              # Check if the currentStage contains "SnapSync" or "StateNodes"
-              if echo "$response" | jq -e '.result.currentStage | test("SnapSync|StateNodes")'; then
-                echo "SnapSync or StateNodes stage reached at RPC: $rpc_url. Node is syncing."
+              response="$(rpc_post "$rpc_url" '{"jsonrpc":"2.0","method":"debug_getSyncStage","params":[],"id":0}')" \
+                || { echo "RPC unreachable at $rpc_url; retrying in 60s"; sleep 60; continue; }
+
+              # Ensure we got JSON we can parse
+              if ! echo "$response" | jq -e . >/dev/null 2>&1; then
+                echo "Invalid JSON from $rpc_url (debug_getSyncStage): $response"
+                echo "Retrying in 60s..."
+                sleep 60
+                continue
+              fi
+
+              current_stage="$(echo "$response" | jq -r '.result.currentStage // empty')"
+              if [[ -z "$current_stage" || "$current_stage" == "null" ]]; then
+                echo "Current stage not available yet from $rpc_url; retrying in 60s..."
+                sleep 60
+                continue
+              fi
+
+              if echo "$current_stage" | grep -Eq 'SnapSync|StateNodes'; then
+                echo "SnapSync/StateNodes stage reached at $rpc_url (currentStage: $current_stage)."
                 break
               else
-                current_stage=$(echo "$response" | jq -r '.result.currentStage')
-                echo "Current stage at RPC: $rpc_url is not SnapSync or StateNodes. Current stage: $current_stage"
+                echo "Current stage at $rpc_url: $current_stage (not SnapSync/StateNodes). Retrying in 60s..."
                 sleep 60
               fi
             done
           }
 
-          check_jsonrpc_responding() {
-            rpc_url=$1
-            echo "Checking if JsonRPC is responding at $rpc_url."
-    
-            # Flag to ensure at least one failure has been logged
-            has_failed_before=false
-    
+          # ------------------------------------------------------------
+          # Function: wait until eth_syncing == false (fully synced)
+          # (Option A guard on curl + extra hardening)
+          # ------------------------------------------------------------
+          check_eth_syncing() {
+            local rpc_url="$1"
+            echo "Waiting for node to report eth_syncing=false at $rpc_url ..."
             while true; do
-              response=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' -m 10 "$rpc_url" || echo "curl_failed")
-        
-              if [[ "$response" == "curl_failed" ]]; then
-                echo "JsonRPC not responding at $rpc_url, node might be stopped for migration."
+              response="$(rpc_post "$rpc_url" '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}')" \
+                || { echo "RPC unreachable at $rpc_url; retrying in 60s"; sleep 60; continue; }
+
+              if ! echo "$response" | jq -e . >/dev/null 2>&1; then
+                echo "Invalid JSON from $rpc_url (eth_syncing): $response"
+                echo "Retrying in 60s..."
+                sleep 60
+                continue
+              fi
+
+              if echo "$response" | jq -e '.result == false' >/dev/null 2>&1; then
+                echo "Node at $rpc_url reports synced (eth_syncing=false)."
+                break
+              else
+                # When syncing, .result is an object; show a short summary if available
+                syncing_summary="$(echo "$response" | jq -c '.result | {startingBlock, currentBlock, highestBlock} // {}' 2>/dev/null)"
+                echo "Still syncing at $rpc_url. Details: ${syncing_summary:-unknown}. Retrying in 60s..."
+                sleep 60
+              fi
+            done
+          }
+
+          # ------------------------------------------------------------
+          # Function: detect a brief downtime/restart and then confirm JSON-RPC is back
+          # (already guarded; add headers/timeouts)
+          # ------------------------------------------------------------
+          check_jsonrpc_responding() {
+            local rpc_url="$1"
+            echo "Checking if JsonRPC restarts and responds at $rpc_url."
+
+            local has_failed_before=false
+
+            while true; do
+              response="$(curl -sS \
+                               -m 10 --connect-timeout 5 \
+                               --retry 3 --retry-all-errors --retry-connrefused \
+                               -H 'Content-Type: application/json' \
+                               -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
+                               "$rpc_url" 2>/dev/null)" || response="curl_failed"
+
+              if [[ "$response" == "curl_failed" || -z "$response" ]]; then
+                echo "JsonRPC not responding at $rpc_url (expected during migration/restart)."
                 has_failed_before=true
               else
-                if [ "$has_failed_before" = true ]; then
-                  echo "JsonRPC responded at $rpc_url, node might have restarted."
+                if [[ "$has_failed_before" == true ]]; then
+                  echo "JsonRPC responded at $rpc_url after a failure; node likely restarted."
                   break
                 else
-                  # Log the successful response but do not break; wait for a possible failure
-                  echo "JsonRPC responded at $rpc_url, but waiting for at least one failure before confirming."
+                  echo "JsonRPC currently responding at $rpc_url; waiting to observe at least one failure before confirming restart."
                 fi
-              fi        
-              sleep 60 # Check every 60 seconds
+              fi
+              sleep 60
             done
           }
 
+          # ------------------------------------------------------------
+          # Function: compare node head vs Etherscan (optional)
+          # (extra guards for null/empty and missing API key)
+          # ------------------------------------------------------------
           check_chain_head() {
-              rpc_url=$1
-              etherscan_api_key="$ETHERSCAN_API_KEY"
-              etherscan_api_url="https://api.etherscan.io/api"
+            local rpc_url="$1"
+            local etherscan_api_key="${ETHERSCAN_API_KEY:-}"
+            local etherscan_api_url="https://api.etherscan.io/api"
 
-              while true; do
-                  # Fetch current chain head from node
-                  node_head_hex=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' "$rpc_url" | jq -r '.result')
-                  node_head_decimal=$(echo $((16#${node_head_hex#0x})))
-                  echo "Current chain head at $rpc_url: $node_head_decimal"
+            if [[ -z "$etherscan_api_key" ]]; then
+              echo "ETHERSCAN_API_KEY not provided; skipping head comparison."
+              return 0
+            fi
 
-                  # Fetch current chain head from Etherscan API
-                  etherscan_response=$(curl -s "$etherscan_api_url?module=proxy&action=eth_blockNumber&apikey=$etherscan_api_key")
-                  etherscan_head_hex=$(echo "$etherscan_response" | jq -r '.result')
-                  etherscan_head_decimal=$(echo $((16#${etherscan_head_hex#0x})))
-                  echo "Current chain head at Etherscan: $etherscan_head_decimal"
+            echo "Comparing chain head of $rpc_url vs Etherscan ..."
 
-                  # Compare heads
-                  if [ "$node_head_decimal" -ge "$etherscan_head_decimal" ]; then
-                      echo "Node at $rpc_url has caught up with the chain."
-                      break
-                  else
-                      echo "Node at $rpc_url has not caught up with the chain. Node head: $node_head_decimal, Etherscan head: $etherscan_head_decimal"
-                      echo "Waiting for 30 seconds before rechecking..."
-                      sleep 30
-                  fi
-              done
+            while true; do
+              # Node head
+              node_resp="$(rpc_post "$rpc_url" '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}')" \
+                || { echo "RPC unreachable at $rpc_url; retrying in 30s"; sleep 30; continue; }
+
+              node_head_hex="$(echo "$node_resp" | jq -r '.result // empty' 2>/dev/null)"
+              if [[ -z "$node_head_hex" || "$node_head_hex" == "null" ]]; then
+                echo "No blockNumber yet from $rpc_url; retrying in 30s..."
+                sleep 30
+                continue
+              fi
+              # hex -> dec (strip 0x)
+              node_head_decimal=$((16#${node_head_hex#0x}))
+              echo "Current chain head at $rpc_url: $node_head_decimal"
+
+              # Etherscan head
+              etherscan_response="$(curl -sS -m 10 --connect-timeout 5 \
+                                       --retry 5 --retry-all-errors --retry-connrefused \
+                                       "$etherscan_api_url?module=proxy&action=eth_blockNumber&apikey=$etherscan_api_key")" \
+                || { echo "Etherscan unreachable; retrying in 30s"; sleep 30; continue; }
+
+              if ! echo "$etherscan_response" | jq -e . >/dev/null 2>&1; then
+                echo "Invalid JSON from Etherscan: $etherscan_response"
+                echo "Retrying in 30s..."
+                sleep 30
+                continue
+              fi
+
+              etherscan_head_hex="$(echo "$etherscan_response" | jq -r '.result // empty')"
+              if [[ -z "$etherscan_head_hex" || "$etherscan_head_hex" == "null" ]]; then
+                echo "Etherscan did not return a blockNumber; retrying in 30s..."
+                sleep 30
+                continue
+              fi
+              etherscan_head_decimal=$((16#${etherscan_head_hex#0x}))
+              echo "Current chain head at Etherscan: $etherscan_head_decimal"
+
+              # Compare heads
+              if (( node_head_decimal >= etherscan_head_decimal )); then
+                echo "Node at $rpc_url has caught up with the chain."
+                break
+              else
+                echo "Node at $rpc_url has not caught up yet. Node: $node_head_decimal, Etherscan: $etherscan_head_decimal"
+                echo "Waiting for 30 seconds before rechecking..."
+                sleep 30
+              fi
+            done
           }
 
-          # Just an RPC warmup - to make sure no faulty info reached a check
+          # -----------------------------
+          # Warmup (avoid transient boot noise)
+          # -----------------------------
+          echo "Initial warmup sleep (60s)..."
           sleep 60
 
-          # Check if nodes progressed to SnapSync
+          # -----------------------------
+          # Stage check: SnapSync/StateNodes
+          # -----------------------------
           for url in "${processed_rpc_urls[@]}"; do
             check_sync_stage "$url"
           done
 
-          # Check if nodes are synced
+          # -----------------------------
+          # Sync completion (eth_syncing == false)
+          # -----------------------------
           for url in "${processed_rpc_urls[@]}"; do
             check_eth_syncing "$url"
-          done            
+          done
 
-          if [ "${{ inputs.convert_to_paprika }}" == "true" ]; then
-            # Waiting for Paprika Import
+          # -----------------------------
+          # Optional: Paprika import wait and head comparison
+          # -----------------------------
+          if [[ "${{ inputs.convert_to_paprika }}" == "true" ]]; then
             url="${processed_rpc_urls[0]}"
             check_jsonrpc_responding "$url"
             check_chain_head "$url"
           fi
 
-          # Extra wait - nodes need to process a few new blocks - nice to have at least 128 of them after StateHealing
-          # Adding (128 - 32) * 12 seconds (-32 because we always keep 32 blocks to be processed after healing)
-          echo "Waiting for (128 - 32) blocks to be synced"
+          # -----------------------------
+          # Extra wait for ~96 blocks after StateHealing
+          # (128 - 32) * 12s = 1152s
+          # -----------------------------
+          echo "Waiting for (128 - 32) Ethereum blocks ≈ 1152 seconds..."
           sleep 1152
   
   compare:

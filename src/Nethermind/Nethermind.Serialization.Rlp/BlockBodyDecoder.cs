@@ -9,15 +9,16 @@ namespace Nethermind.Serialization.Rlp;
 public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<BlockBody>
 {
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
-    private readonly HeaderDecoder _headerDecoder = new();
+    private readonly IHeaderDecoder _headerDecoder;
     private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
 
     private static BlockBodyDecoder? _instance = null;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
 
     // Cant set to private because of `Rlp.RegisterDecoder`.
-    public BlockBodyDecoder()
+    public BlockBodyDecoder(IHeaderDecoder headerDecoder = null)
     {
+        _headerDecoder = headerDecoder ?? new HeaderDecoder();
     }
 
     public int GetLength(BlockBody item, RlpBehaviors rlpBehaviors)
@@ -93,9 +94,6 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
 
     public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
     {
-
-        // quite significant allocations (>0.5%) here based on a sample 3M blocks sync
-        // (just on these delegates)
         Transaction[] transactions = ctx.DecodeArray(_txDecoder);
         BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
         Withdrawal[]? withdrawals = null;

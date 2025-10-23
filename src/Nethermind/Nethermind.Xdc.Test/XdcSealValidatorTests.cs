@@ -1,31 +1,18 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Codecs;
-using Google.Protobuf.WellKnownTypes;
-using Microsoft.Testing.Platform.Extensions.Messages;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
-using NSubstitute.Core;
 using NUnit.Framework;
-using Org.BouncyCastle.Utilities.Encoders;
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
-using System.Numerics;
-using System.Reflection.PortableExecutable;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 internal class XdcSealValidatorTests

@@ -6,10 +6,10 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Xdc.Types;
 
-public class SyncInfo(QuorumCertificate highestQuorumCert, TimeoutCert highestTimeoutCert)
+public class SyncInfo(QuorumCertificate highestQuorumCert, TimeoutCertificate highestTimeoutCert)
 {
     public QuorumCertificate HighestQuorumCert { get; set; } = highestQuorumCert;
-    public TimeoutCert HighestTimeoutCert { get; set; } = highestTimeoutCert;
+    public TimeoutCertificate HighestTimeoutCert { get; set; } = highestTimeoutCert;
 
     public Hash256 SigHash() => Keccak.Compute(Rlp.Encode(this).Bytes);
 }

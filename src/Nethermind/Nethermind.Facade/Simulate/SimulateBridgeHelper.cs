@@ -19,7 +19,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Consensus;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
@@ -36,6 +38,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
         IWorldState stateProvider,
         IOverridableCodeInfoRepository codeInfoRepository,
+        long blockNumber,
         IReleaseSpec releaseSpec)
     {
         stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec);
@@ -46,6 +49,9 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         {
             stateProvider.CreateAccountIfNotExists(address, 0, 0);
         }
+
+        stateProvider.Commit(releaseSpec, commitRoots: true);
+        stateProvider.CommitTree(blockNumber);
     }
 
     public SimulateOutput<TTrace> TrySimulate<TTrace>(
@@ -98,7 +104,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         if (payload.BlockStateCalls is not null)
         {
-            Dictionary<Address, UInt256> nonceCache = new();
+            Dictionary<Address, ulong> nonceCache = new();
             IBlockTracer cancellationBlockTracer = tracer.WithCancellation(cancellationToken);
 
             foreach (BlockStateCall<TransactionWithSourceDetails> blockCall in payload.BlockStateCalls)
@@ -114,10 +120,10 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     .Select((c) => c.HadGasLimitInRequest)
                     .ToArray();
 
+                PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
+
                 BlockBody body = AssembleBody(calls, stateProvider, nonceCache, spec);
                 Block callBlock = new Block(callHeader, body);
-
-                PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, spec);
 
                 ProcessingOptions processingFlags = payload.Validation
                     ? SimulateProcessingOptions
@@ -137,9 +143,9 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
                 blockTree.UpdateHeadBlock(processedBlock.Hash!);
 
-                if (tracer is SimulateBlockMutatorTracer simulateTracer)
+                if (tracer is SimulateBlockTracer simulateTracer)
                 {
-                    simulateTracer.ReapplyBlockHash();
+                    simulateTracer.ReapplyBlockHash(processedBlock.Hash);
                 }
 
                 SimulateBlockResult<TTrace> blockResult = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
@@ -159,7 +165,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private BlockBody AssembleBody(
         TransactionWithSourceDetails[] calls,
         IWorldState stateProvider,
-        Dictionary<Address, UInt256> nonceCache,
+        Dictionary<Address, ulong> nonceCache,
         IReleaseSpec spec)
     {
         Transaction[] transactions = calls
@@ -204,19 +210,19 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private Transaction CreateTransaction(
         TransactionWithSourceDetails transactionDetails,
         IWorldState stateProvider,
-        Dictionary<Address, UInt256> nonceCache)
+        Dictionary<Address, ulong> nonceCache)
     {
         Transaction? transaction = transactionDetails.Transaction;
         transaction.SenderAddress ??= Address.Zero;
 
         if (!transactionDetails.HadNonceInRequest)
         {
-            ref UInt256 cachedNonce = ref CollectionsMarshal.GetValueRefOrAddDefault(nonceCache, transaction.SenderAddress, out bool exist);
+            ref ulong cachedNonce = ref CollectionsMarshal.GetValueRefOrAddDefault(nonceCache, transaction.SenderAddress, out bool exist);
             if (!exist)
             {
                 if (stateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
                 {
-                    cachedNonce = test.Nonce;
+                    cachedNonce = test.Nonce.ToUInt64(null);
                 }
                 // else // Todo think if we shall create account here
             }
@@ -252,10 +258,20 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             [],
             requestsHash: parent.RequestsHash)
         {
-            MixHash = parent.MixHash,
-            IsPostMerge = parent.Difficulty == 0,
+            MixHash = Hash256.Zero,
             RequestsHash = parent.RequestsHash,
         };
+
+        if ((ForkActivation)result.Number >= specProvider.MergeBlockNumber)
+        {
+            result.Difficulty = UInt256.Zero;
+            result.IsPostMerge = true;
+        }
+        else
+        {
+            result.Difficulty = parent.Difficulty;
+            result.IsPostMerge = false;
+        }
 
         IReleaseSpec spec = specProvider.GetSpec(result);
 
@@ -274,7 +290,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             result.BaseFeePerGas = 0;
         }
 
-        result.ExcessBlobGas = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateExcessBlobGas(parent, spec) : (ulong?)0;
+        result.ExcessBlobGas = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateExcessBlobGas(parent, spec) : null;
 
         block.BlockOverrides?.ApplyOverrides(result);
 

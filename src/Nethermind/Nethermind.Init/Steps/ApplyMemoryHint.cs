@@ -14,7 +14,6 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(MigrateConfigs))]
     public sealed class ApplyMemoryHint(
         IInitConfig initConfig,
         IDbConfig dbConfig,

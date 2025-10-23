@@ -8,6 +8,7 @@ using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -19,7 +20,7 @@ namespace Nethermind.Core.Test.Modules;
 /// component later anyway.
 /// </summary>
 /// <param name="configProvider"></param>
-public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chainSpec) : Module
+public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chainSpec, bool useTestSpecProvider = true) : Module
 {
     private readonly IReleaseSpec? _releaseSpec;
 
@@ -47,6 +48,13 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
     {
     }
 
+    public static TestNethermindModule CreateWithRealChainSpec()
+    {
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
+        return new TestNethermindModule(new ConfigProvider(), spec, useTestSpecProvider: false);
+    }
+
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
@@ -55,7 +63,9 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
 
         builder
             .AddModule(new PseudoNethermindModule(chainSpec, configProvider, LimboLogs.Instance))
-            .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
-            .AddSingleton<ISpecProvider>(_ => new TestSpecProvider(_releaseSpec ?? Osaka.Instance));
+            .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()));
+
+        if (useTestSpecProvider)
+            builder.AddSingleton<ISpecProvider>(_ => new TestSpecProvider(_releaseSpec ?? Osaka.Instance));
     }
 }
