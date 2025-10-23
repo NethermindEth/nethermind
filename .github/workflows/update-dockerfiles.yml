@@ -54,10 +54,18 @@ jobs:
           file_count=$(git status --porcelain | wc -l)
           echo "file-count=$file_count" >> $GITHUB_OUTPUT
 
+      - name: Create GitHub app token
+        if: steps.update.outputs.file-count != '0'
+        id: gh-app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Create a pull request
         if: steps.update.outputs.file-count != '0'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
           head_branch=chore/update-dockerfiles-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT
           body=$(cat <<EOF

@@ -293,8 +293,8 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Cannot accept new blocks at the moment.");
             }
 
-            using ArrayPoolList<(long, Bloom)> bloomToStore = new ArrayPoolList<(long, Bloom)>(headers.Count);
-            foreach (var header in headers)
+            using ArrayPoolList<(long, Bloom)> bloomToStore = new(headers.Count);
+            foreach (BlockHeader? header in headers)
             {
                 if (header.Hash is null)
                 {
@@ -330,9 +330,9 @@ namespace Nethermind.Blockchain
 
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
             bool beaconInsert = (headerOptions & BlockTreeInsertHeaderOptions.BeaconHeaderMetadata) != 0;
-            using ArrayPoolList<(long, BlockInfo)> blockInfos = new ArrayPoolList<(long, BlockInfo)>(headers.Count);
+            using ArrayPoolListRef<(long, BlockInfo)> blockInfos = new(headers.Count);
 
-            foreach (var header in headers)
+            foreach (BlockHeader? header in headers)
             {
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
                 if (!beaconInsert)
@@ -688,7 +688,7 @@ namespace Nethermind.Blockchain
                         return new ArrayPoolList<BlockHeader>(1) { startHeader };
                     }
 
-                    ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(numberOfBlocks, numberOfBlocks);
+                    ArrayPoolList<BlockHeader> result = new(numberOfBlocks, numberOfBlocks);
 
                     BlockHeader current = startHeader;
                     int responseIndex = reverse ? 0 : numberOfBlocks - 1;
@@ -725,7 +725,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(numberOfBlocks, numberOfBlocks);
+            ArrayPoolList<BlockHeader> result = new(numberOfBlocks, numberOfBlocks);
             BlockHeader current = startHeader;
             int directionMultiplier = reverse ? -1 : 1;
             int responseIndex = 0;
@@ -1345,11 +1345,11 @@ namespace Nethermind.Blockchain
             return level;
         }
 
-        private void UpdateOrCreateLevel(IReadOnlyList<(long number, BlockInfo blockInfo)> blockInfos, bool setAsMain = false)
+        private void UpdateOrCreateLevel(in ArrayPoolListRef<(long number, BlockInfo blockInfo)> blockInfos, bool setAsMain = false)
         {
             using BatchWrite? batch = _chainLevelInfoRepository.StartBatch();
 
-            using ArrayPoolList<long> blockNumbers = blockInfos.Select(b => b.number).ToPooledList(blockInfos.Count);
+            using ArrayPoolListRef<long> blockNumbers = blockInfos.Select(b => b.number);
 
             // Yes, this is measurably faster
             using IOwnedReadOnlyList<ChainLevelInfo?> levels = _chainLevelInfoRepository.MultiLoadLevel(blockNumbers);
