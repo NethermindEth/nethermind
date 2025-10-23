@@ -55,7 +55,7 @@ internal class XdcBlockProducer : BlockProducerBase
 
         //TODO maybe some sanity checks here for round and hash
 
-        byte[] extra = [2, .. _extraConsensusDataDecoder.Encode(new ExtraFieldsV2(currentRound, highestCert)).Bytes];
+        byte[] extra = [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(new ExtraFieldsV2(currentRound, highestCert)).Bytes];
 
         Address blockAuthor = sealer.Address;
         XdcBlockHeader xdcBlockHeader = new(
@@ -64,6 +64,7 @@ internal class XdcBlockProducer : BlockProducerBase
             blockAuthor,
             UInt256.Zero,
             parent.Number + 1,
+            //This should probably use TargetAdjustedGasLimitCalculator
             XdcConstants.TargetGasLimit,
             0,
             extra)
