@@ -3,12 +3,10 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
-using Nethermind.Core.Collections;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -17,7 +15,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Core;
 
 namespace Nethermind.Xdc;
 internal class VotesManager(
@@ -51,7 +48,7 @@ internal class VotesManager(
             throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(EpochSwitchInfo));
         //Optimize this by fetching with block number and round only
 
-        XdcBlockHeader header = _tree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
+        var header = _tree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(header, blockInfo.Round);
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
         long gapNumber = Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
@@ -201,13 +198,9 @@ internal class VotesManager(
         {
             XdcBlockHeader parentHeader = _tree.FindHeader(nextBlockHash) as XdcBlockHeader;
             if (parentHeader is null)
-            {
                 return false;
-            }
-            else
-            {
-                nextBlockHash = parentHeader.ParentHash;
-            }
+
+            nextBlockHash = parentHeader.ParentHash;
         }
 
         return nextBlockHash == ancestorBlockInfo.Hash;

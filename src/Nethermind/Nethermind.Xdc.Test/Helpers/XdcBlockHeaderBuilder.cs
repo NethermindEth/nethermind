@@ -90,6 +90,12 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
         return this;
     }
 
+    public new XdcBlockHeaderBuilder WithNumber(long blockNumber)
+    {
+        TestObjectInternal.Number = blockNumber;
+        return this;
+    }
+
     public new XdcBlockHeaderBuilder WithHash(Hash256 hash256)
     {
         TestObjectInternal.Hash = hash256;
