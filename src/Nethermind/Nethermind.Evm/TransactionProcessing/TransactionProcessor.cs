@@ -142,7 +142,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecuteCore(transaction, txTracer, ExecutionOptions.Commit);
 
         public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidation | ExecutionOptions.Commit);
+            ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
 
         public TransactionResult TraceRpcRules(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.RpcValidationRules | ExecutionOptions.Commit);
@@ -572,7 +572,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
-            bool validate = !opts.HasFlag(ExecutionOptions.RpcValidationRules);
+            bool validate = !opts.HasFlag(ExecutionOptions.RpcValidationRules) && !opts.HasFlag(ExecutionOptions.SkipValidation);
             UInt256 nonce = WorldState.GetNonce(tx.SenderAddress);
             if (validate && tx.Nonce != nonce)
             {

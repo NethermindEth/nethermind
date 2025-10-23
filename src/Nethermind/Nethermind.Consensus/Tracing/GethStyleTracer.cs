@@ -189,13 +189,13 @@ public class GethStyleTracer(
 
         try
         {
-            scope.Component.BlockchainProcessor.Process(block, processingOptions,
-                tracer.WithCancellation(cancellationToken), cancellationToken);
+            scope.Component.BlockchainProcessor.Process(block, processingOptions, tracer.WithCancellation(cancellationToken), cancellationToken);
             return tracer.BuildResult().SingleOrDefault();
         }
-        finally
+        catch
         {
             tracer.TryDispose();
+            throw;
         }
     }
 
