@@ -23,7 +23,7 @@ public class PreBlockCaches
     private readonly ConcurrentDictionary<StorageCell, byte[]> _storageCache = new(LockPartitions, InitialCapacity);
     private readonly ConcurrentDictionary<AddressAsKey, Account> _stateCache = new(LockPartitions, InitialCapacity);
     private readonly ConcurrentDictionary<NodeKey, byte[]?> _rlpCache = new(LockPartitions, InitialCapacity);
-    private readonly ConcurrentDictionary<PrecompileCacheKey, (byte[], bool)> _precompileCache = new(LockPartitions, InitialCapacity);
+    private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
 
     public PreBlockCaches()
     {
@@ -39,7 +39,7 @@ public class PreBlockCaches
     public ConcurrentDictionary<StorageCell, byte[]> StorageCache => _storageCache;
     public ConcurrentDictionary<AddressAsKey, Account> StateCache => _stateCache;
     public ConcurrentDictionary<NodeKey, byte[]?> RlpCache => _rlpCache;
-    public ConcurrentDictionary<PrecompileCacheKey, (byte[], bool)> PrecompileCache => _precompileCache;
+    public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
 
     public CacheType ClearCaches()
     {
