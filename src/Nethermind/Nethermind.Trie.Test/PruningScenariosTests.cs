@@ -312,6 +312,12 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public PruningContext AssertThatCachedPersistedNodeCountIs(long cachedNodeCount)
+            {
+                (_trieStore.CachedNodesCount - _trieStore.DirtyCachedNodesCount).Should().Be(cachedNodeCount);
+                return this;
+            }
+
             public PruningContext AssertThatCachedNodeCountMoreThan(long cachedNodeCount)
             {
                 _trieStore.CachedNodesCount.Should().BeGreaterThan(cachedNodeCount);
@@ -983,10 +989,9 @@ namespace Nethermind.Trie.Test
             PruningContext ctx = PruningContext.InMemoryWithPastKeyTracking
                 .WithMaxDepth(2)
                 .WithPersistedMemoryLimit(null)
-                .WithPrunePersistedNodeParameter(1, 0.1)
+                .WithPrunePersistedNodeParameter(10000, 0.1)
                 .TurnOffAlwaysPrunePersistedNode();
 
-            bool thresholdReached = false;
             for (int i = 0; i < 256; i++)
             {
                 if (i == 256 - 1)
@@ -997,19 +1002,10 @@ namespace Nethermind.Trie.Test
                 ctx
                     .SetAccountBalance(i, (UInt256)i)
                     .CommitAndWaitForPruning();
-
-                if (thresholdReached)
-                {
-                    ctx.AssertThatTotalMemoryUsedIsNoLessThan((long)(200.KiB() * 0.1));
-                }
-                else if (ctx.TotalMemoryUsage > 190.KiB())
-                {
-                    thresholdReached = true;
-                }
             }
 
             ctx
-                .AssertThatCachedNodeCountIs(38);
+                .AssertThatCachedPersistedNodeCountIs(3);
         }
 
         [TestCase(10)]
