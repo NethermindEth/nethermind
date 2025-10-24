@@ -83,7 +83,7 @@ internal class XdcBlockProducer : BlockProducerBase
 
         xdcBlockHeader.MixHash = Hash256.Zero;
 
-        if (epochSwitchManager.IsEpochSwitch(xdcBlockHeader, out _))
+        if (epochSwitchManager.IsEpochSwitchAtBlock(xdcBlockHeader))
         {
             (Address[] masternodes, Address[] penalties) = snapshotManager.CalculateNextEpochMasternodes(xdcBlockHeader, spec);
 
