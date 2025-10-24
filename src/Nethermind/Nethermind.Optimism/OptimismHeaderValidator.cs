@@ -49,7 +49,7 @@ public class OptimismHeaderValidator(
 
             if (parameters.IsZero())
             {
-                error = $"{nameof(EIP1559Parameters)} is zero";
+                error = $"{nameof(HoloceneExtraParams)} is zero";
                 return false;
             }
         }
@@ -64,7 +64,7 @@ public class OptimismHeaderValidator(
 
             if (parameters.IsZero())
             {
-                error = $"{nameof(parameters)} is zero";
+                error = $"{nameof(JovianExtraParams)} is zero";
                 return false;
             }
         }
