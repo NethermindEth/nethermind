@@ -724,7 +724,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
             int length = (int)valueLength;
             byte[] result = new byte[length];
-            new ReadOnlySpan<byte>((void*)valuePtr, length).CopyTo(new Span<byte>(result));
+            fixed (byte* dst = result)
+                Buffer.MemoryCopy((void*)valuePtr, dst, length, length);
             return result;
         }
         finally
