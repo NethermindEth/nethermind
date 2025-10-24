@@ -117,7 +117,7 @@ internal class XdcHotStuff(
                 //If its my turn produce a block and broadcast after minimum wait time
                 //This should be done by PayloadPreparationService
                 Task<Block> blockProduction = blockBuilder.BuildBlock(currentHead, null, null, IBlockProducer.Flags.None, _cancellationTokenSource.Token);
-                
+
                 Task minWaitTask = Task.Delay(minimumMiningTime > TimeSpan.Zero ? minimumMiningTime : TimeSpan.Zero);
 
                 Task firstDone = await Task.WhenAny(blockProduction, timeoutTask);
@@ -126,7 +126,7 @@ internal class XdcHotStuff(
                 {
                     //TODO Trigger timeout
                 }
-                else 
+                else
                 {
                     BlockProduced?.Invoke(this, new BlockEventArgs(await blockProduction));
                 }

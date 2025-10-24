@@ -33,7 +33,7 @@ public class TimeoutCertificateManager(IXdcConsensusContext context, ISnapshotMa
     private static readonly TimeoutDecoder _timeoutDecoder = new();
     private XdcPool<Timeout> _timeouts = new();
 
-    public Task HandleTimeout(Timeout timeout)
+    public Task HandleTimeoutVote(Timeout timeout)
     {
         if (timeout.Round != _ctx.CurrentRound)
         {
@@ -176,7 +176,7 @@ public class TimeoutCertificateManager(IXdcConsensusContext context, ISnapshotMa
         if (FilterTimeout(timeout))
         {
             //TODO: Broadcast Timeout
-            return HandleTimeout(timeout);
+            return HandleTimeoutVote(timeout);
         }
         return Task.CompletedTask;
     }
@@ -221,7 +221,7 @@ public class TimeoutCertificateManager(IXdcConsensusContext context, ISnapshotMa
         var timeoutMsg = new Timeout(_ctx.CurrentRound, signedHash, gapNumber);
         timeoutMsg.Signer = _signer.Address;
 
-        HandleTimeout(timeoutMsg);
+        HandleTimeoutVote(timeoutMsg);
 
         //TODO: Broadcast _ctx.HighestTC
     }

@@ -21,12 +21,13 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc
 {
     /// <summary>
-    /// This runner orchestrates the BFT consensus loop: leader proposal, voting, QC aggregation,
-    /// timeout handling, and 3-chain finalization (delegated to existing managers).
+    /// This runner orchestrates the consensus loop: leader block proposal, voting, QC aggregation,
+    /// timeout handling, and 3-chain finalization
     /// </summary>
     internal class XdcHotStuff2 : IBlockProducerRunner
     {
         private readonly IBlockTree _blockTree;
+        private readonly IXdcConsensusContext _xdcContext;
         private readonly ISpecProvider _specProvider;
         private readonly IBlockProducer _blockBuilder;
         private readonly IEpochSwitchManager _epochSwitchManager;
@@ -49,6 +50,7 @@ namespace Nethermind.Xdc
 
         public XdcHotStuff2(
             IBlockTree blockTree,
+            IXdcConsensusContext xdcContext,
             ISpecProvider specProvider,
             IBlockProducer blockBuilder,
             IEpochSwitchManager epochSwitchManager,
@@ -59,6 +61,7 @@ namespace Nethermind.Xdc
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _xdcContext = xdcContext;
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockBuilder = blockBuilder ?? throw new ArgumentNullException(nameof(blockBuilder));
             _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
@@ -79,7 +82,7 @@ namespace Nethermind.Xdc
         }
 
         /// <summary>
-        /// Starts the consensus runner. Idempotent - subsequent calls are ignored.
+        /// Starts the consensus runner.
         /// </summary>
         public void Start()
         {
@@ -191,44 +194,56 @@ namespace Nethermind.Xdc
         {
             ulong currentRound = _roundCount.Current;
 
-            BlockHeader? head = _blockTree.Head.Header;
-            if (head == null || head is not XdcBlockHeader xdcHead)
+            XdcBlockHeader? parent = GetParentForRound();
+            if (parent == null)
             {
                 throw new InvalidOperationException($"Head is null or not XdcBlockHeader.");
             }
 
             // Get XDC spec for this round
-            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHead, currentRound);
+            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(parent, currentRound);
             if (spec == null)
             {
                 _logger.Error($"Round {currentRound}: Failed to get XDC spec, skipping");
                 return;
             }
+            CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            //TODO Technically we have to apply timeout exponents from spec, but they are always 1
+            Task timeoutTask = Task.Delay(TimeSpan.FromSeconds(spec.TimeoutPeriod))
+                .ContinueWith((t) => timeoutCts.Cancel());
 
             // Get epoch info and check for epoch switch
-            EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(xdcHead);
+            EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(parent);
             if (epochInfo?.Masternodes == null || epochInfo.Masternodes.Length == 0)
             {
                 _logger.Warn($"Round {currentRound}: No masternodes in epoch, skipping");
                 return;
             }
 
-            bool isMyTurn = IsMyTurn(xdcHead, currentRound, epochInfo.Masternodes, spec);
+            bool isMyTurn = IsMyTurn(parent, currentRound, epochInfo.Masternodes, spec);
             Address? myAddress = _signer.Address;
 
-            _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(xdcHead, currentRound, epochInfo.Masternodes, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
+            _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(parent, currentRound, epochInfo.Masternodes, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
 
             if (isMyTurn)
             {
-                await BuildAndProposeBlock(xdcHead, spec, ct);
+                await BuildAndProposeBlock(parent, spec, timeoutCts.Token);
             }
             else
             {
-                ExecuteVoterPath(xdcHead, epochInfo);
+                await ExecuteVoterPath(parent, epochInfo);
             }
 
             TimeSpan roundDuration = DateTime.UtcNow - _roundCount.RoundStarted;
             _logger.Info($"Round {currentRound} completed in {roundDuration.TotalSeconds:F2}s");
+        }
+
+        private XdcBlockHeader GetParentForRound()
+        {
+            BlockHeader parent = _blockTree.FindHeader(_xdcContext.HighestQC.ProposedBlockInfo.Hash, _xdcContext.HighestQC.ProposedBlockInfo.BlockNumber);
+            if (parent == null)
+                parent = _blockTree.Head.Header;
+            return parent as XdcBlockHeader;
         }
 
         /// <summary>
@@ -253,7 +268,7 @@ namespace Nethermind.Xdc
                 _logger.Debug($"Round {currentRound}: Building proposal block");
 
                 DefaultPayloadAttributes.Timestamp = minTimestamp;
-                Task<Block?> proposedBlockTask = 
+                Task<Block?> proposedBlockTask =
                     _blockBuilder.BuildBlock(parent, null, DefaultPayloadAttributes, IBlockProducer.Flags.None, roundCts.Token);
 
                 if (currentTimestamp < minTimestamp)
@@ -290,7 +305,7 @@ namespace Nethermind.Xdc
         /// <summary>
         /// Voter path - commit received QC, check voting rule, cast vote.
         /// </summary>
-        private void ExecuteVoterPath(XdcBlockHeader head, EpochSwitchInfo epochInfo)
+        private async Task ExecuteVoterPath(XdcBlockHeader head, EpochSwitchInfo epochInfo)
         {
             ulong currentRound = _roundCount.Current;
 
@@ -326,7 +341,7 @@ namespace Nethermind.Xdc
             try
             {
                 BlockRoundInfo voteInfo = new BlockRoundInfo(head.Hash!, head.ExtraConsensusData.BlockRound, head.Number);
-                _votesManager.CastVote(voteInfo);
+                await _votesManager.CastVote(voteInfo);
                 _lastActivityTime = DateTime.UtcNow;
                 _logger.Info($"Round {currentRound}: Voted for block #{head.Number}, hash={head.Hash}");
             }
@@ -344,7 +359,7 @@ namespace Nethermind.Xdc
             try
             {
                 // Get current highQC from QC manager
-                var highQC =  .GetHighQC();
+                var highQC =  _xdcContext.HighestQC;
 
                 // Broadcast timeout via TC manager 
                 _timeoutCertificateManager.OnCountdownTimer(round, highQC);
@@ -388,7 +403,6 @@ namespace Nethermind.Xdc
             // Signal new round
             _lastActivityTime = DateTime.UtcNow;
             _newRoundSignals.Writer.TryWrite(new RoundSignal(xdcHead));
-            
         }
 
         /// <summary>
@@ -440,21 +454,6 @@ namespace Nethermind.Xdc
         }
 
         /// <summary>
-        /// Check if the next round triggers an epoch switch.
-        /// </summary>
-        private bool IsNextEpochSwitch(XdcBlockHeader head, ulong nextRound)
-        {
-            try
-            {
-                return _epochSwitchManager.IsEpochSwitchAtRound(nextRound, head);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        /// <summary>
         /// Check if the runner is actively producing blocks within the given interval.
         /// </summary>
         public bool IsProducingBlocks(ulong? maxProducingInterval)
@@ -475,7 +474,6 @@ namespace Nethermind.Xdc
         /// </summary>
         public async Task StopAsync()
         {
-            CancellationTokenSource? cts;
             Task? task;
 
             lock (_lockObject)
@@ -485,18 +483,15 @@ namespace Nethermind.Xdc
                     return;
                 }
 
-                cts = _cancellationTokenSource;
                 task = _runTask;
                 _cancellationTokenSource = null;
                 _runTask = null;
             }
 
-            _logger.Info("Stopping XdcHotStuff consensus runner...");
-
-            _blockTree.NewHeadBlock -= OnNewHeadBlock;
+            _logger.Debug("Stopping XdcHotStuff consensus runner...");
 
             // Signal cancellation
-            cts.Cancel();
+            _cancellationTokenSource?.Cancel();
 
             _newRoundSignals.Writer.Complete();
 
@@ -513,7 +508,7 @@ namespace Nethermind.Xdc
                 }
             }
 
-            cts.Dispose();
+            _cancellationTokenSource?.Dispose();
             _logger.Info("XdcHotStuff consensus runner stopped");
         }
 

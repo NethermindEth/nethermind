@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -18,4 +18,6 @@ public interface IXdcConsensusContext
     int TimeoutCounter { get; set; }
 
     event Action<IBlockTree, ulong> NewRoundSetEvent;
+
+    void SetNewRound(IBlockTree blockTree, ulong round);
 }
