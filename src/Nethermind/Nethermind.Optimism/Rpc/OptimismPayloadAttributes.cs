@@ -10,6 +10,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Optimism.ExtraParams;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.Rpc;
@@ -35,6 +36,11 @@ public class OptimismPayloadAttributes : PayloadAttributes
     /// See <see href="https://specs.optimism.io/protocol/holocene/exec-engine.html#eip-1559-parameters-in-payloadattributesv3"/>
     /// </remarks>
     public byte[]? EIP1559Params { get; set; }
+
+    /// <remarks>
+    /// See <see href="https://specs.optimism.io/protocol/jovian/exec-engine.html#minimum-base-fee-in-payloadattributesv3"/>
+    /// </remarks>
+    public long? MinBaseFee { get; set; }
 
     private int TransactionsLength => Transactions?.Length ?? 0;
 
@@ -74,7 +80,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
         + sizeof(bool) // noTxPool
         + (Keccak.Size * TransactionsLength) // Txs
         + sizeof(long) // gasLimit
-        + ((EIP1559Params?.Length * sizeof(byte)) ?? 0); // eip1559Params
+        + ((EIP1559Params?.Length * sizeof(byte)) ?? 0) // eip1559Params
+        + (MinBaseFee.HasValue ? sizeof(long) : 0); // minimumBaseFee
 
     protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
@@ -102,6 +109,12 @@ public class OptimismPayloadAttributes : PayloadAttributes
             offset += EIP1559Params.Length;
         }
 
+        if (MinBaseFee.HasValue)
+        {
+            BinaryPrimitives.WriteInt64BigEndian(inputSpan.Slice(offset, sizeof(long)), MinBaseFee.Value);
+            offset += sizeof(long);
+        }
+
         return offset;
     }
 
@@ -115,16 +128,30 @@ public class OptimismPayloadAttributes : PayloadAttributes
         }
 
         IReleaseSpec releaseSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp));
+        // Holocene
         if (!releaseSpec.IsOpHoloceneEnabled && EIP1559Params is not null)
         {
             error = $"{nameof(EIP1559Params)} should be null before Holocene";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
-        if (releaseSpec.IsOpHoloceneEnabled && !this.TryDecodeEIP1559Parameters(out _, out var decodeError))
+        if (releaseSpec.IsOpHoloceneEnabled && !HoloceneExtraParams.TryParse(this, out _, out var decodeErrorHolocene))
         {
-            error = decodeError;
+            error = decodeErrorHolocene;
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
+        // Jovian
+#pragma warning disable CS0162 // Unreachable code detected
+        if (false /* !releaseSpec.IsOpJovianEnabled */ && MinBaseFee.HasValue)
+        {
+            error = $"{nameof(MinBaseFee)} should be null before Jovian";
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+        if (false /* releaseSpec.IsOpJovianEnabled */ && !JovianExtraParams.TryParse(this, out _, out var decodeErrorJovian))
+        {
+            error = decodeErrorJovian;
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+#pragma warning restore CS0162 // Unreachable code detected
 
         try
         {
@@ -146,7 +173,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
             .Append($"{nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient}, ")
             .Append($"{nameof(GasLimit)}: {GasLimit}, ")
             .Append($"{nameof(NoTxPool)}: {NoTxPool}, ")
-            .Append($"{nameof(EIP1559Params)}: {EIP1559Params}")
+            .Append($"{nameof(EIP1559Params)}: {EIP1559Params}, ")
+            .Append($"{nameof(MinBaseFee)}: {MinBaseFee}, ")
             .Append($"{nameof(Transactions)}: {Transactions?.Length ?? 0}");
 
         if (Withdrawals is not null)
