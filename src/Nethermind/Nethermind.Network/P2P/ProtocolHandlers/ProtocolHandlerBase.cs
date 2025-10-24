@@ -114,7 +114,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected internal void Send<T>(T message) where T : P2PMessage
         {
             Interlocked.Increment(ref Counter);
-            Logger.Trace($"{Counter} Sending {typeof(T).Name}");
+            if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
             if (NetworkDiagTracer.IsEnabled)
             {
                 string messageString = message.ToString();
