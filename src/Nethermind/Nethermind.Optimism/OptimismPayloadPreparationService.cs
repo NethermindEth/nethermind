@@ -67,7 +67,8 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
                 parameters.WriteTo(currentBestBlock.Header.ExtraData);
             }
 
-            if (true /* spec.IsOpJovianEnabled */)
+            if (false /* spec.IsOpJovianEnabled */)
+#pragma warning disable CS0162 // Unreachable code detected
             {
                 // NOTE: This operation should never fail since headers should be valid at this point.
                 if (!JovianExtraParams.TryParse(optimismPayload, out JovianExtraParams parameters, out var error))
@@ -83,6 +84,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
                 currentBestBlock.Header.ExtraData = new byte[JovianExtraParams.BinaryLength];
                 parameters.WriteTo(currentBestBlock.Header.ExtraData);
             }
+#pragma warning restore CS0162 // Unreachable code detected
 
             // NOTE: Since we updated the `Header` we need to recalculate the hash.
             currentBestBlock.Header.Hash = currentBestBlock.Header.CalculateHash();

@@ -37,7 +37,8 @@ public sealed class OptimismBaseFeeCalculator(
             };
         }
 
-        if (true /* parent.Timestamp >= jovianTimestamp */)
+        if (false /* parent.Timestamp >= jovianTimestamp */)
+#pragma warning disable CS0162 // Unreachable code detected
         {
             // NOTE: This operation should never fail since headers should be valid at this point.
             if (!JovianExtraParams.TryParse(parent, out JovianExtraParams eip1559Params, out var error))
@@ -51,6 +52,7 @@ public sealed class OptimismBaseFeeCalculator(
                 BaseFeeMaxChangeDenominator = eip1559Params.Denominator
             };
         }
+#pragma warning restore CS0162 // Unreachable code detected
 
         return baseFeeCalculator.Calculate(parent, spec);
     }
