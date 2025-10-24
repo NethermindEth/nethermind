@@ -624,8 +624,30 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 return;
             }
 
-            foreach (ref readonly UInt256 storageIndex in storageIndexes)
+            EnsureStorageTree();
+
+            int count = storageIndexes.Length;
+            using ArrayPoolList<UInt256> deduped = new(count);
+
+            // Copy into pooled list for sorting/deduplication while staying on stack when possible.
+            for (int i = 0; i < count; i++)
             {
+                deduped.Add(storageIndexes[i]);
+            }
+
+            Span<UInt256> span = deduped.AsSpan();
+            span.Sort();
+
+            UInt256? previous = null;
+            foreach (ref readonly UInt256 storageIndex in span)
+            {
+                if (previous is not null && previous.Value == storageIndex)
+                {
+                    continue;
+                }
+
+                previous = storageIndex;
+
                 StorageCell storageCell = new(_address, in storageIndex);
                 LoadFromTree(storageCell);
             }
