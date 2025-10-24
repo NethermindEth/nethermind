@@ -216,18 +216,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
             }
         }
 
-        if (results.Error is not null)
-        {
-            results.ErrorCode = results.Error switch
-            {
-                var e when e.Contains("invalid transaction", StringComparison.OrdinalIgnoreCase) => ErrorCodes.InvalidTransaction,
-                var e when e.Contains("InsufficientBalanceException", StringComparison.OrdinalIgnoreCase) => -38014,
-                var e when e.Contains("InvalidBlockException", StringComparison.OrdinalIgnoreCase) => ErrorCodes.InvalidParams,
-                var e when e.Contains("below intrinsic gas", StringComparison.OrdinalIgnoreCase) => ErrorCodes.InsufficientIntrinsicGas,
-                _ => results.ErrorCode
-            };
-        }
-
         return results.Error is null
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success([.. results.Items])
             : results.ErrorCode is not null
