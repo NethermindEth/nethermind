@@ -54,7 +54,8 @@ public class OptimismHeaderValidator(
             }
         }
 
-        if (true /* specHelper.IsJovian(header) */)
+        if (false /* specHelper.IsJovian(header) */)
+#pragma warning disable CS0162 // Unreachable code detected
         {
             if (!JovianExtraParams.TryParse(header, out JovianExtraParams parameters, out var decodeError))
             {
@@ -68,6 +69,7 @@ public class OptimismHeaderValidator(
                 return false;
             }
         }
+#pragma warning restore CS0162 // Unreachable code detected
 
         return base.Validate<TOrphaned>(header, parent, isUncle, out error);
     }

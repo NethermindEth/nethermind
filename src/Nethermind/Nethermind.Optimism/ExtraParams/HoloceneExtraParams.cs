@@ -42,6 +42,12 @@ public readonly struct HoloceneExtraParams
         var denominator = BinaryPrimitives.ReadUInt32BigEndian(extraData.TakeAndMove(4));
         var elasticity = BinaryPrimitives.ReadUInt32BigEndian(extraData.TakeAndMove(4));
 
+        if (denominator == 0 && elasticity != 0)
+        {
+            error = $"{nameof(denominator)} must not be 0";
+            return false;
+        }
+
         parameters = new HoloceneExtraParams { Denominator = denominator, Elasticity = elasticity };
         return true;
     }
