@@ -40,7 +40,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
     /// <remarks>
     /// See <see href="https://specs.optimism.io/protocol/jovian/exec-engine.html#minimum-base-fee-in-payloadattributesv3"/>
     /// </remarks>
-    public long? MinimumBaseFee { get; set; }
+    public long? MinBaseFee { get; set; }
 
     private int TransactionsLength => Transactions?.Length ?? 0;
 
@@ -81,7 +81,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         + (Keccak.Size * TransactionsLength) // Txs
         + sizeof(long) // gasLimit
         + ((EIP1559Params?.Length * sizeof(byte)) ?? 0) // eip1559Params
-        + (MinimumBaseFee.HasValue ? sizeof(long) : 0); // minimumBaseFee
+        + (MinBaseFee.HasValue ? sizeof(long) : 0); // minimumBaseFee
 
     protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
@@ -109,9 +109,9 @@ public class OptimismPayloadAttributes : PayloadAttributes
             offset += EIP1559Params.Length;
         }
 
-        if (MinimumBaseFee.HasValue)
+        if (MinBaseFee.HasValue)
         {
-            BinaryPrimitives.WriteInt64BigEndian(inputSpan.Slice(offset, sizeof(long)), MinimumBaseFee.Value);
+            BinaryPrimitives.WriteInt64BigEndian(inputSpan.Slice(offset, sizeof(long)), MinBaseFee.Value);
             offset += sizeof(long);
         }
 
@@ -141,9 +141,9 @@ public class OptimismPayloadAttributes : PayloadAttributes
         }
         // Jovian
 #pragma warning disable CS0162 // Unreachable code detected
-        if (false /* !releaseSpec.IsOpJovianEnabled */ && MinimumBaseFee.HasValue)
+        if (false /* !releaseSpec.IsOpJovianEnabled */ && MinBaseFee.HasValue)
         {
-            error = $"{nameof(MinimumBaseFee)} should be null before Jovian";
+            error = $"{nameof(MinBaseFee)} should be null before Jovian";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
         if (false /* releaseSpec.IsOpJovianEnabled */ && !JovianExtraParams.TryParse(this, out _, out var decodeErrorJovian))
@@ -174,7 +174,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
             .Append($"{nameof(GasLimit)}: {GasLimit}, ")
             .Append($"{nameof(NoTxPool)}: {NoTxPool}, ")
             .Append($"{nameof(EIP1559Params)}: {EIP1559Params}, ")
-            .Append($"{nameof(MinimumBaseFee)}: {MinimumBaseFee}, ")
+            .Append($"{nameof(MinBaseFee)}: {MinBaseFee}, ")
             .Append($"{nameof(Transactions)}: {Transactions?.Length ?? 0}");
 
         if (Withdrawals is not null)

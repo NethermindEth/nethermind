@@ -16,7 +16,7 @@ public readonly struct JovianExtraParams
 
     public required UInt32 Denominator { get; init; }
     public required UInt32 Elasticity { get; init; }
-    public required long MinimumBaseFee { get; init; }
+    public required long MinBaseFee { get; init; }
 
     public bool IsZero() => Denominator == 0 && Elasticity == 0;
 
@@ -51,7 +51,7 @@ public readonly struct JovianExtraParams
 
         var minimumBaseFee = BinaryPrimitives.ReadInt64BigEndian(extraData.TakeAndMove(8));
 
-        parameters = new JovianExtraParams { Denominator = denominator, Elasticity = elasticity, MinimumBaseFee = minimumBaseFee };
+        parameters = new JovianExtraParams { Denominator = denominator, Elasticity = elasticity, MinBaseFee = minimumBaseFee };
         return true;
     }
 
@@ -70,14 +70,14 @@ public readonly struct JovianExtraParams
         var denominator = BinaryPrimitives.ReadUInt32BigEndian(span.TakeAndMove(4));
         var elasticity = BinaryPrimitives.ReadUInt32BigEndian(span.TakeAndMove(4));
 
-        if (payloadAttributes.MinimumBaseFee is null)
+        if (payloadAttributes.MinBaseFee is null)
         {
-            error = $"{nameof(payloadAttributes.MinimumBaseFee)} is missing";
+            error = $"{nameof(payloadAttributes.MinBaseFee)} is missing";
             return false;
         }
-        var minimumBaseFee = payloadAttributes.MinimumBaseFee.Value;
+        var minimumBaseFee = payloadAttributes.MinBaseFee.Value;
 
-        parameters = new JovianExtraParams { Denominator = denominator, Elasticity = elasticity, MinimumBaseFee = minimumBaseFee };
+        parameters = new JovianExtraParams { Denominator = denominator, Elasticity = elasticity, MinBaseFee = minimumBaseFee };
         return true;
     }
 
@@ -86,6 +86,6 @@ public readonly struct JovianExtraParams
         span[0] = 1;
         BinaryPrimitives.WriteUInt32BigEndian(span.Slice(1, 4), Denominator);
         BinaryPrimitives.WriteUInt32BigEndian(span.Slice(5, 4), Elasticity);
-        BinaryPrimitives.WriteInt64BigEndian(span.Slice(9, 8), MinimumBaseFee);
+        BinaryPrimitives.WriteInt64BigEndian(span.Slice(9, 8), MinBaseFee);
     }
 }
