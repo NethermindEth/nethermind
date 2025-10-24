@@ -81,8 +81,11 @@ public class QuorumCertificateManagerTest
     {
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         epochSwitchManager
-            .GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>())
-            .Returns(new EpochSwitchInfo(masternodes.ToArray(), [], new BlockRoundInfo(Hash256.Zero, 1, 10)));
+            .GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>())
+            .Returns(new EpochSwitchInfo(masternodes.ToArray(), [], [], new BlockRoundInfo(Hash256.Zero, 1, 10)));
+        epochSwitchManager
+            .GetEpochSwitchInfo(Arg.Any<Hash256>())
+            .Returns(new EpochSwitchInfo(masternodes.ToArray(), [], [], new BlockRoundInfo(Hash256.Zero, 1, 10)));
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
         xdcReleaseSpec.EpochLength.Returns(900);
