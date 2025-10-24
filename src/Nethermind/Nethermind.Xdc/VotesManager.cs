@@ -156,7 +156,7 @@ internal class VotesManager(
     }
 
     public Task OnReceiveVote(Vote vote)
-    {        
+    {
         var voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
         var currentBlockNumber = _tree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
         if (Math.Abs(voteBlockNumber - currentBlockNumber) > XdcConstants.MaxBlockDistance)
