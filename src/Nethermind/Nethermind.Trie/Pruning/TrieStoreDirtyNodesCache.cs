@@ -35,14 +35,16 @@ internal class TrieStoreDirtyNodesCache
     public long TotalDirtyMemory => _totalDirtyMemory;
 
     public readonly long KeyMemoryUsage;
+    private readonly bool _keepRoot;
 
-    public TrieStoreDirtyNodesCache(TrieStore trieStore, bool storeByHash, ILogger logger)
+    public TrieStoreDirtyNodesCache(TrieStore trieStore, bool storeByHash, bool keepRoot, ILogger logger)
     {
         _trieStore = trieStore;
         _logger = logger;
         // If the nodestore indicated that path is not required,
         // we will use a map with hash as its key instead of the full Key to reduce memory usage.
         _storeByHash = storeByHash;
+        _keepRoot = keepRoot;
         // NOTE: DirtyNodesCache is already sharded.
         int concurrencyLevel = Math.Min(Environment.ProcessorCount * 4, 32);
         int initialBuckets = TrieStore.HashHelpers.GetPrime(Math.Max(31, concurrencyLevel));
@@ -325,7 +327,7 @@ internal class TrieStoreDirtyNodesCache
                         continue;
                     }
 
-                    if (_trieStore.IsNoLongerNeeded(lastCommit))
+                    if (_trieStore.IsNoLongerNeeded(lastCommit) && !(_keepRoot && key.Path.Length == 0))
                     {
                         RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);
                         continue;

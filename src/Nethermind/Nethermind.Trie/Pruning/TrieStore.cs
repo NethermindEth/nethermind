@@ -84,6 +84,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _prunePersistedNodeMinimumTarget = pruningConfig.PrunePersistedNodeMinimumTarget;
         _maxBufferedCommitCount = pruningConfig.MaxBufferedCommitCount;
 
+        _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys;
         _shardBit = pruningConfig.DirtyNodeShardBit;
         _shardedDirtyNodeCount = 1 << _shardBit;
         _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];
@@ -91,11 +92,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _persistedHashes = new ConcurrentDictionary<HashAndTinyPath, Hash256?>[_shardedDirtyNodeCount];
         for (int i = 0; i < _shardedDirtyNodeCount; i++)
         {
-            _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, _logger);
+            _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, keepRoot: _deleteOldNodes, _logger);
             _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
         }
 
-        _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys;
         _pastKeyTrackingEnabled = pruningConfig.TrackPastKeys && nodeStorage.RequirePath;
     }
 
@@ -1443,7 +1443,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             _dirtyNodesBuffer = new TrieStoreDirtyNodesCache[trieStore._dirtyNodes.Length];
             for (int i = 0; i < trieStore._shardedDirtyNodeCount; i++)
             {
-                _dirtyNodesBuffer[i] = new TrieStoreDirtyNodesCache(trieStore, !trieStore._nodeStorage.RequirePath, trieStore._logger);
+                _dirtyNodesBuffer[i] = new TrieStoreDirtyNodesCache(trieStore, !trieStore._nodeStorage.RequirePath, _trieStore._deleteOldNodes, trieStore._logger);
             }
         }
 
