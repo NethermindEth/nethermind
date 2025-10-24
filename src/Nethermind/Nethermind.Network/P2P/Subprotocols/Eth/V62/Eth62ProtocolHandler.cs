@@ -241,7 +241,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             BackgroundTaskScheduler.ScheduleBackgroundTask((iList, 0), _handleSlow);
         }
 
-        private ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
+        protected virtual ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
         {
             IOwnedReadOnlyList<Transaction> transactions = request.txs;
             ReadOnlySpan<Transaction> transactionsSpan = transactions.AsSpan();
@@ -249,14 +249,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 int startIdx = request.startIndex;
                 bool isTrace = Logger.IsTrace;
-
-                for (int i = startIdx; i < transactionsSpan.Length; i++)
-                {
-                    if (!ValidateSizeAndType(transactionsSpan[i]))
-                    {
-                        throw new SubprotocolException("invalid pooled tx type or size");
-                    }
-                }
 
                 for (int i = startIdx; i < transactionsSpan.Length; i++)
                 {
@@ -290,9 +282,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             return ValueTask.CompletedTask;
         }
-
-        private bool ValidateSizeAndType(Transaction tx)
-            => !TxShapeAnnouncements.Delete(tx.Hash!, out (int Size, TxType Type) txShape) || (tx.GetLength() == txShape.Size && tx.Type == txShape.Type);
 
         private void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
         {

@@ -20,6 +20,8 @@ using Nethermind.TxPool;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V68;
 
@@ -240,4 +242,21 @@ public class Eth68ProtocolHandler(ISession session,
         NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
         Send(message);
     }
+
+    protected override ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
+    {
+        int startIdx = request.startIndex;
+        for (int i = startIdx; i < request.txs.Count; i++)
+        {
+            if (!ValidateSizeAndType(request.txs[i]))
+            {
+                throw new SubprotocolException("invalid pooled tx type or size");
+            }
+        }
+
+        return base.HandleSlow(request, cancellationToken);
+    }
+
+    private bool ValidateSizeAndType(Transaction tx)
+        => !TxShapeAnnouncements.Delete(tx.Hash!, out (int Size, TxType Type) txShape) || (tx.GetLength() == txShape.Size && tx.Type == txShape.Type);
 }
