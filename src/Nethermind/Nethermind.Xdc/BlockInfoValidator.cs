@@ -5,9 +5,15 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
-public static class BlockInfoValidator
+public interface IBlockInfoValidator
 {
-    public static bool ValidateBlockInfo(BlockRoundInfo blockInfo, XdcBlockHeader blockHeader) =>
-        (blockInfo.BlockNumber == blockHeader.Number) && (blockInfo.Hash == blockHeader.Hash) &&
-        (blockInfo.Round == blockHeader.ExtraConsensusData.CurrentRound);
+    bool ValidateBlockInfo(BlockRoundInfo blockInfo, XdcBlockHeader blockHeader);
+}
+
+public class BlockInfoValidator : IBlockInfoValidator
+{
+    public bool ValidateBlockInfo(BlockRoundInfo blockInfo, XdcBlockHeader blockHeader) =>
+        (blockInfo.BlockNumber == blockHeader.Number)
+        && (blockInfo.Hash == blockHeader.Hash)
+        && (blockInfo.Round == blockHeader.ExtraConsensusData.CurrentRound);
 }

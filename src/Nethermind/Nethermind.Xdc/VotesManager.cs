@@ -17,6 +17,7 @@ using System.Linq;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 internal class VotesManager(
     XdcContext context,
     IBlockTree tree,
@@ -25,7 +26,8 @@ internal class VotesManager(
     IQuorumCertificateManager quorumCertificateManager,
     ISpecProvider specProvider,
     ISigner signer,
-    IForensicsProcessor forensicsProcessor) : IVotesManager
+    IForensicsProcessor forensicsProcessor,
+    IBlockInfoValidator blockInfoValidator) : IVotesManager
 {
     private IBlockTree _tree = tree;
     private IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
@@ -35,11 +37,13 @@ internal class VotesManager(
     private IForensicsProcessor _forensicsProcessor = forensicsProcessor;
     private ISpecProvider _specProvider = specProvider;
     private ISigner _signer = signer;
+    private IBlockInfoValidator _blockInfoValidator = blockInfoValidator;
 
     private XdcPool<Vote> _votePool = new();
     private static VoteDecoder _voteDecoder = new();
     private static EthereumEcdsa _ethereumEcdsa = new(0);
     private readonly ConcurrentDictionary<ulong, byte> _qcBuildStartedByRound = new();
+    private const int _maxBlockDistance = 7; // Maximum allowed backward distance from the chain head
 
     public Task CastVote(BlockRoundInfo blockInfo)
     {
@@ -101,10 +105,11 @@ internal class VotesManager(
         bool thresholdReached = roundVotes.Count >= epochInfo.Masternodes.Length * certThreshold;
         if (thresholdReached)
         {
-            if (!BlockInfoValidator.ValidateBlockInfo(vote.ProposedBlockInfo, proposedHeader))
+            if (!_blockInfoValidator.ValidateBlockInfo(vote.ProposedBlockInfo, proposedHeader))
                 return Task.CompletedTask;
 
-            if (!EnsureVotesRecovered(roundVotes, epochInfo.Masternodes, certThreshold, out Signature[] validSignatures))
+            Signature[] validSignatures = GetValidSignatures(roundVotes, epochInfo.Masternodes);
+            if (validSignatures.Length < epochInfo.Masternodes.Length * certThreshold)
                 return Task.CompletedTask;
 
             // At this point, the QC should be processed for this *round*.
@@ -147,7 +152,7 @@ internal class VotesManager(
             return true;
         }
 
-        if (!IsExtendingFromAncestor(blockInfo, blockInfo, _ctx.LockQC.ProposedBlockInfo))
+        if (!IsExtendingFromAncestor(blockInfo, _ctx.LockQC.ProposedBlockInfo))
         {
             return false;
         }
@@ -159,7 +164,7 @@ internal class VotesManager(
     {
         var voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
         var currentBlockNumber = _tree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
-        if (Math.Abs(voteBlockNumber - currentBlockNumber) > XdcConstants.MaxBlockDistance)
+        if (Math.Abs(voteBlockNumber - currentBlockNumber) > _maxBlockDistance)
         {
             // Discarded propagated vote, too far away
             return Task.CompletedTask;
@@ -190,7 +195,7 @@ internal class VotesManager(
         _quorumCertificateManager.CommitCertificate(qc);
     }
 
-    private bool IsExtendingFromAncestor(BlockRoundInfo blockInfo, BlockRoundInfo currentBlockInfo, BlockRoundInfo ancestorBlockInfo)
+    private bool IsExtendingFromAncestor(BlockRoundInfo currentBlockInfo, BlockRoundInfo ancestorBlockInfo)
     {
         long blockNumDiff = currentBlockInfo.BlockNumber - ancestorBlockInfo.BlockNumber;
         var nextBlockHash = currentBlockInfo.Hash;
@@ -207,7 +212,7 @@ internal class VotesManager(
         return nextBlockHash == ancestorBlockInfo.Hash;
     }
 
-    private bool EnsureVotesRecovered(IEnumerable<Vote> votes, Address[] masternodes, double certThreshold, out Signature[] validSignatures)
+    private Signature[] GetValidSignatures(IEnumerable<Vote> votes, Address[] masternodes)
     {
         var masternodeSet = new HashSet<Address>(masternodes);
         var signatures = new List<Signature>();
@@ -223,9 +228,7 @@ internal class VotesManager(
                 signatures.Add(vote.Signature);
             }
         }
-        validSignatures = signatures.ToArray();
-
-        return validSignatures.Length >= masternodes.Length * certThreshold;
+        return signatures.ToArray();
     }
 
     private void Sign(Vote vote)

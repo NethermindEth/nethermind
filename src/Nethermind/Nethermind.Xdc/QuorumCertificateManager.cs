@@ -25,18 +25,21 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         IBlockTree chain,
         IDb qcDb,
         ISpecProvider xdcConfig,
-        IEpochSwitchManager epochSwitchManager)
+        IEpochSwitchManager epochSwitchManager,
+        IBlockInfoValidator blockInfoValidator)
     {
         _context = context;
         _blockTree = chain;
         _qcDb = qcDb;
         _specProvider = xdcConfig;
         _epochSwitchManager = epochSwitchManager;
+        _blockInfoValidator = blockInfoValidator;
     }
 
     private XdcContext _context { get; }
     private IBlockTree _blockTree;
     private readonly IDb _qcDb;
+    private IBlockInfoValidator _blockInfoValidator;
     private IEpochSwitchManager _epochSwitchManager { get; }
     private ISpecProvider _specProvider { get; }
     private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
@@ -54,8 +57,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         if (proposedBlockHeader is null)
             throw new InvalidBlockException(proposedBlockHeader, "Proposed block header not found in chain");
 
-        //TODO this could be wrong way of fetching spec if a release spec is defined on a round basis
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader, _context.CurrentRound);
 
         //Can only look for a QC in proposed block after the switch block
         if (proposedBlockHeader.Number > spec.SwitchBlock)
@@ -189,7 +191,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        if (!BlockInfoValidator.ValidateBlockInfo(qc.ProposedBlockInfo, parentHeader))
+        if (!_blockInfoValidator.ValidateBlockInfo(qc.ProposedBlockInfo, parentHeader))
         {
             error = "QC block data does not match header data.";
             return false;

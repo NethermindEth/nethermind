@@ -33,6 +33,4 @@ internal static class XdcConstants
 
     public static readonly Hash256 UncleHash = Keccak.OfAnEmptySequenceRlp; // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW
     public static readonly UInt256 DifficultyDefault = UInt256.One;
-
-    public const int MaxBlockDistance = 7; // Maximum allowed backward distance from the chain head
 }
