@@ -16,7 +16,6 @@ namespace Nethermind.State;
 public class PreBlockCaches
 {
     private const int InitialCapacity = 4096 * 8;
-    private const int StickyThreshold = 4096;
     private static int LockPartitions => CollectionExtensions.LockPartitions;
 
     private readonly Func<CacheType>[] _clearCaches;
@@ -30,10 +29,10 @@ public class PreBlockCaches
     {
         _clearCaches =
         [
-            ClearStorageCache,
-            ClearStateCache,
-            ClearRlpCache,
-            ClearPrecompileCache
+            () => _storageCache.NoResizeClear() ? CacheType.Storage : CacheType.None,
+            () => _stateCache.NoResizeClear() ? CacheType.State : CacheType.None,
+            () => _rlpCache.NoResizeClear() ? CacheType.Rlp : CacheType.None,
+            () => _precompileCache.NoResizeClear() ? CacheType.Precompile : CacheType.None
         ];
     }
 
@@ -51,46 +50,6 @@ public class PreBlockCaches
         }
 
         return isDirty;
-    }
-
-    private CacheType ClearStorageCache()
-    {
-        if (_storageCache.IsEmpty || _storageCache.Count <= StickyThreshold)
-        {
-            return CacheType.None;
-        }
-
-        return _storageCache.NoResizeClear() ? CacheType.Storage : CacheType.None;
-    }
-
-    private CacheType ClearStateCache()
-    {
-        if (_stateCache.IsEmpty || _stateCache.Count <= StickyThreshold)
-        {
-            return CacheType.None;
-        }
-
-        return _stateCache.NoResizeClear() ? CacheType.State : CacheType.None;
-    }
-
-    private CacheType ClearRlpCache()
-    {
-        if (_rlpCache.IsEmpty || _rlpCache.Count <= StickyThreshold)
-        {
-            return CacheType.None;
-        }
-
-        return _rlpCache.NoResizeClear() ? CacheType.Rlp : CacheType.None;
-    }
-
-    private CacheType ClearPrecompileCache()
-    {
-        if (_precompileCache.IsEmpty || _precompileCache.Count <= StickyThreshold)
-        {
-            return CacheType.None;
-        }
-
-        return _precompileCache.NoResizeClear() ? CacheType.Precompile : CacheType.None;
     }
 
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>
