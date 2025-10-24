@@ -24,7 +24,7 @@ public class XdcConsensusContext : IXdcConsensusContext
     public BlockRoundInfo HighestCommitBlock { get; set; }
 
     public event Action<IBlockTree, ulong> NewRoundSetEvent;
-    internal void SetNewRound(IBlockTree chain, ulong round)
+    public void SetNewRound(IBlockTree chain, ulong round)
     {
         CurrentRound = round;
         TimeoutCounter = 0;

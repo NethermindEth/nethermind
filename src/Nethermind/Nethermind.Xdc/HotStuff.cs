@@ -207,10 +207,11 @@ namespace Nethermind.Xdc
                 _logger.Error($"Round {currentRound}: Failed to get XDC spec, skipping");
                 return;
             }
-            CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
             //TODO Technically we have to apply timeout exponents from spec, but they are always 1
-            Task timeoutTask = Task.Delay(TimeSpan.FromSeconds(spec.TimeoutPeriod))
-                .ContinueWith((t) => timeoutCts.Cancel());
+            TimeSpan timeout = TimeSpan.FromSeconds(spec.TimeoutPeriod);
+            using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(timeout);
 
             // Get epoch info and check for epoch switch
             EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(parent);
@@ -227,12 +228,10 @@ namespace Nethermind.Xdc
 
             if (isMyTurn)
             {
-                await BuildAndProposeBlock(parent, spec, timeoutCts.Token);
+                Task blockBuilder = BuildAndProposeBlock(parent, spec, timeoutCts.Token);
             }
-            else
-            {
-                await ExecuteVoterPath(parent, epochInfo);
-            }
+
+            await ExecuteVoterPath(parent, epochInfo);
 
             TimeSpan roundDuration = DateTime.UtcNow - _roundCount.RoundStarted;
             _logger.Info($"Round {currentRound} completed in {roundDuration.TotalSeconds:F2}s");
@@ -254,13 +253,10 @@ namespace Nethermind.Xdc
             ulong currentRound = _roundCount.Current;
             _logger.Info($"Round {currentRound}: Executing leader path");
 
-            TimeSpan timeout = TimeSpan.FromSeconds(spec.TimeoutPeriod);
-            using CancellationTokenSource roundCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            roundCts.CancelAfter(timeout);
+            DateTime now = DateTime.UtcNow;
 
             try
             {
-                DateTime now = DateTime.UtcNow;
                 ulong parentTimestamp = parent.Timestamp;
                 ulong minTimestamp = parentTimestamp + (ulong)spec.MinePeriod;
                 ulong currentTimestamp = (ulong)new DateTimeOffset(now).ToUnixTimeSeconds();
@@ -269,14 +265,14 @@ namespace Nethermind.Xdc
 
                 DefaultPayloadAttributes.Timestamp = minTimestamp;
                 Task<Block?> proposedBlockTask =
-                    _blockBuilder.BuildBlock(parent, null, DefaultPayloadAttributes, IBlockProducer.Flags.None, roundCts.Token);
+                    _blockBuilder.BuildBlock(parent, null, DefaultPayloadAttributes, IBlockProducer.Flags.None, ct);
 
                 if (currentTimestamp < minTimestamp)
                 {
                     TimeSpan delay = TimeSpan.FromSeconds(minTimestamp - currentTimestamp);
                     _logger.Debug($"Round {currentRound}: Waiting {delay.TotalSeconds:F1}s for minimum mining time");
                     // Enforce minimum mining time per XDC rules
-                    await Task.Delay(delay, roundCts.Token);
+                    await Task.Delay(delay, ct);
                 }
 
                 Block? proposedBlock = await proposedBlockTask;
@@ -295,10 +291,9 @@ namespace Nethermind.Xdc
                     // Timeout will trigger below
                 }
             }
-            catch (OperationCanceledException) when (roundCts.Token.IsCancellationRequested && !ct.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
-                _logger.Warn($"Failed to build block in round {currentRound}: Timeout after {timeout.TotalSeconds}s, broadcasting timeout");
-                await HandleTimeout(currentRound, ct);
+                _logger.Warn($"Failed to build block in round {currentRound}: Timeout after {(DateTime.UtcNow - now).TotalSeconds}s");
             }
         }
 
@@ -309,14 +304,7 @@ namespace Nethermind.Xdc
         {
             ulong currentRound = _roundCount.Current;
 
-            // Check if we are in the masternode set
-            if (!epochInfo.Masternodes. (_signer.Address))
-            {
-                _logger.Debug($"Round {currentRound}: Skipped voting (not in masternode set)");
-                return;
-            }
-
-            // Alg.2 L9: Commit/record the header's QC
+            // Commit/record the header's QC
             if (head.ExtraConsensusData?.QuorumCert != null)
             {
                 try
@@ -326,15 +314,23 @@ namespace Nethermind.Xdc
                 }
                 catch (Exception ex)
                 {
-                    _logger.Warn($"Round {currentRound}: Failed to commit QC: {ex.Message}");
+                    _logger.Error($"Round {currentRound}: Failed to commit QC", ex);
                 }
+            }
+
+            // Check if we are in the masternode set
+
+            if (!Array.Exists(epochInfo.Masternodes, (a) => a == _signer.Address))
+            {
+                _logger.Debug($"Round {currentRound}: Skipped voting (not in masternode set)");
+                return;
             }
 
             // Check voting rule 
             bool canVote = _quorumCertificateManager.VerifyVotingRule(head);
             if (!canVote)
             {
-                _logger.Debug($"Round {currentRound}: Voting rule not satisfied for block #{head.Number}");
+                _logger.Debug($"Round {currentRound}: Voting rule not satisfied for block #{head.Hash}");
                 return;
             }
 
@@ -359,11 +355,11 @@ namespace Nethermind.Xdc
             try
             {
                 // Get current highQC from QC manager
-                var highQC =  _xdcContext.HighestQC;
+                QuorumCertificate highQC = _xdcContext.HighestQC;
 
                 // Broadcast timeout via TC manager 
-                _timeoutCertificateManager.OnCountdownTimer(round, highQC);
-                _logger.Info($"Round {round}: Broadcasted timeout with highQC round={highQC?.Round ?? 0}");
+                _timeoutCertificateManager.OnCountdownTimer();
+                _logger.Info($"Round {round}: Broadcasted timeout with highQC round={highQC?.ProposedBlockInfo.Round ?? 0}");
 
                 // In a real implementation, the TC manager would notify us when TC is formed
                 // For now, we advance round optimistically after timeout
