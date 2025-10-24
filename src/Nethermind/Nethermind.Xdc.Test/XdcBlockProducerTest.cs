@@ -17,17 +17,14 @@ using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
 using NSubstitute;
 using NUnit.Framework;
-using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 internal class XdcBlockProducerTest
 {
     [Test]
-    public async Task SampleTest()
+    public async Task BuildBlock_HasCorrectQC_ProducesValidHeader()
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
