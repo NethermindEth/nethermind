@@ -62,6 +62,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private readonly bool _pastKeyTrackingEnabled = false;
 
     private bool _lastPersistedReachedReorgBoundary;
+    private long _toBePersistedBlockNumber = -1;
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
 
@@ -321,22 +322,51 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     public IDisposable BeginScope(BlockHeader? baseBlock)
     {
         _scopeLock.Enter();
-        if (_pruningLock.TryEnter())
-        {
-            // When in non commit buffer mode, FindCachedOrUnknown can also modify the dirty cache which has
-            // a notable performance benefit. So we try to clear the buffer before.
-            FlushCommitBufferNoLock();
 
-            return new Reactive.AnonymousDisposable(() =>
+        while (true)
+        {
+            if (_pruningLock.TryEnter())
             {
-                _pruningLock.Exit();
-                _scopeLock.Exit();
-            });
+                // When in non commit buffer mode, FindCachedOrUnknown can also modify the dirty cache which has
+                // a notable performance benefit. So we try to clear the buffer before.
+                FlushCommitBufferNoLock();
+
+                return new Reactive.AnonymousDisposable(() =>
+                {
+                    _pruningLock.Exit();
+                    _scopeLock.Exit();
+                });
+            }
+
+            if (_commitBuffer is null)
+            {
+                long persistedBoundary = Interlocked.Read(ref _toBePersistedBlockNumber);
+                if (persistedBoundary == -1)
+                {
+                    // This can happen in the tiny time in between pruningLock was acquired but the exact block to
+                    // persist was not determined yet.
+                    Thread.Sleep(1);
+                    continue;
+                }
+
+                // _dirtyNodesLock was not acquired, likely due to memory pruning.
+                // Will continue with commit buffer.
+                CommitBuffer? commitBuffer = _commitBufferUnused;
+                if (commitBuffer is null)
+                {
+                    commitBuffer = new CommitBuffer(this, persistedBoundary);
+                }
+                else
+                {
+                    commitBuffer.Reset(persistedBoundary);
+                }
+
+                _commitBuffer = commitBuffer;
+            }
+
+            break;
         }
 
-        // _dirtyNodesLock was not acquired, likely due to memory pruning.
-        // Will continue with commit buffer.
-        if (_commitBuffer is null) _commitBuffer = _commitBufferUnused ?? new CommitBuffer(this);
         if (_commitBuffer.CommitCount >= _maxBufferedCommitCount)
         {
             // Prevent commit buffer from becoming too large.
@@ -582,6 +612,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             if (_logger.IsError) _logger.Error("Pruning failed with exception.", e);
         }
+        finally
+        {
+            _toBePersistedBlockNumber = -1;
+        }
     }
 
     private void SaveSnapshot()
@@ -611,6 +645,16 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                     _logger.Error($"Shard {i} is not empty and contain {_persistedHashes[i].Count} item");
                 }
             }
+        }
+
+        if (candidateSets.Count > 0)
+        {
+            long minToBePersistedBlock = long.MaxValue;
+            foreach (BlockCommitSet blockCommitSet in candidateSets)
+            {
+                minToBePersistedBlock = Math.Min(minToBePersistedBlock, blockCommitSet.BlockNumber);
+            }
+            _toBePersistedBlockNumber = minToBePersistedBlock;
         }
 
         Action<TreePath, Hash256?, TrieNode> persistedNodeRecorder = shouldTrackPastKey ? _persistedNodeRecorder : _persistedNodeRecorderNoop;
@@ -1435,9 +1479,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         private readonly ILogger _logger;
 
         public int CommitCount => _commitSetQueueBuffer.Count;
+        private long _minCommitBlockNumber;
 
-        public CommitBuffer(TrieStore trieStore)
+        public CommitBuffer(TrieStore trieStore, long minCommitBlockNumber)
         {
+            _minCommitBlockNumber = minCommitBlockNumber;
             _trieStore = trieStore;
             _logger = trieStore._logger;
             _dirtyNodesBuffer = new TrieStoreDirtyNodesCache[trieStore._dirtyNodes.Length];
@@ -1445,6 +1491,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             {
                 _dirtyNodesBuffer[i] = new TrieStoreDirtyNodesCache(trieStore, !trieStore._nodeStorage.RequirePath, _trieStore._deleteOldNodes, trieStore._logger);
             }
+        }
+
+        public void Reset(long minCommitBlockNumber)
+        {
+            _minCommitBlockNumber = minCommitBlockNumber;
         }
 
         public void EnqueueCommitSet(BlockCommitSet set)
@@ -1489,42 +1540,43 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             TrieStoreDirtyNodesCache mainShard = _trieStore._dirtyNodes[shardIdx];
 
             var hasInBuffer = bufferShard.TryGetValue(key, out TrieNode bufferNode);
+            if (isReadOnly)
+            {
+                if (hasInBuffer)
+                {
+                    return _trieStore.CloneForReadOnly(key, bufferNode);
+                }
+
+                return mainShard.FromCachedRlpOrUnknown(key);
+            }
+
             if (!hasInBuffer && mainShard.TryGetRecord(key, out TrieStoreDirtyNodesCache.NodeRecord nodeRecord))
             {
-                if (_trieStore.IsStillNeeded(nodeRecord.LastCommit))
+                if (nodeRecord.Node.IsPersisted)
                 {
-                    var rlp = nodeRecord.Node.FullRlp;
-                    if (rlp.IsNull)
+                    // If a node is persisted, then it is either a node that was previously not persisted and not yet
+                    // in disk, or a node that will be deleted. We must never get a node that will be deleted.
+                    if (nodeRecord.LastCommit >= _minCommitBlockNumber)
                     {
-                        bufferShard.GetOrAdd(key, nodeRecord);
-                        if (!isReadOnly) return nodeRecord.Node;
+                        bufferShard.GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(nodeRecord.Node, -1));
+                        return nodeRecord.Node;
                     }
-                    else
-                    {
-                        // clone is as if it read only
-                        TrieNode node = nodeRecord.Node.Clone();
-                        if (nodeRecord.Node.IsSealed) node.Seal();
-                        if (nodeRecord.Node.IsPersisted) node.IsPersisted = true;
-                        node.Keccak = nodeRecord.Node.Keccak;
-                        bufferShard.GetOrAdd(key, nodeRecord);
-                        if (!isReadOnly) return nodeRecord.Node;
-                    }
+                }
+                else
+                {
+                    // If it is not persisted, then its child is still referred directly.
+                    // The child will not get unreferred until after later it and all its children was persisted.
+                    bufferShard.GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(nodeRecord.Node, -1));
+                    return nodeRecord.Node;
                 }
             }
 
             if (hasInBuffer)
             {
-                if (!isReadOnly)
-                {
-                    return bufferNode;
-                }
-                else
-                {
-                    return _trieStore.CloneForReadOnly(key, bufferNode);
-                }
+                return bufferNode;
             }
-
-            return isReadOnly ? bufferShard.FromCachedRlpOrUnknown(key) : bufferShard.FindCachedOrUnknown(key);
+            else
+                return bufferShard.FindCachedOrUnknown(key);
         }
     }
 
