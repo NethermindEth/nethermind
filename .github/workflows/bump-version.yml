@@ -19,6 +19,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v5
 
+      - name: Checkout to master branch
+        run: |
+          git checkout master
+          git pull origin master
+
       - name: Bump up the version
         id: version
         run: |
@@ -56,4 +61,5 @@ jobs:
           gh pr create -B master -H $head_branch \
             -t "Bump up the version to ${{ steps.version.outputs.new_version }}-unstable" \
             -b "Automated version bump-up from ${{ steps.version.outputs.current_version }} to ${{ steps.version.outputs.new_version }}-unstable" \
-            -l "version bump"
+            -l "version bump" \
+            -r "kamilchodola,stdevMac,LukaszRozmej"
