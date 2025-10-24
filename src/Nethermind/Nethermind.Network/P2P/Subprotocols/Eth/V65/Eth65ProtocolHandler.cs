@@ -185,6 +185,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             TxPool.Metrics.PendingTransactionsHashesReceived += hashes.Count;
 
             ArrayPoolList<Hash256> newTxHashes = AddMarkUnknownHashes(hashes.AsSpan());
+            hashes.Dispose();
 
             if (newTxHashes.Count is 0)
             {
