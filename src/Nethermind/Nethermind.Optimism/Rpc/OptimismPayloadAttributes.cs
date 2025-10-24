@@ -133,16 +133,18 @@ public class OptimismPayloadAttributes : PayloadAttributes
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
         // Jovian
-        if (true /* !releaseSpec.IsOpJovianEnabled */ && MinimumBaseFee.HasValue)
+#pragma warning disable CS0162 // Unreachable code detected
+        if (false /* !releaseSpec.IsOpJovianEnabled */ && MinimumBaseFee.HasValue)
         {
             error = $"{nameof(MinimumBaseFee)} should be null before Jovian";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
-        if (true /* releaseSpec.IsOpJovianEnabled */ && !JovianExtraParams.TryParse(this, out _, out var decodeErrorJovian))
+        if (false /* releaseSpec.IsOpJovianEnabled */ && !JovianExtraParams.TryParse(this, out _, out var decodeErrorJovian))
         {
             error = decodeErrorJovian;
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
+#pragma warning restore CS0162 // Unreachable code detected
 
         try
         {
