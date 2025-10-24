@@ -76,7 +76,7 @@ public readonly struct EIP1559Parameters
         BinaryPrimitives.WriteUInt32BigEndian(span.Slice(1, sizeof(UInt32)), Denominator);
         BinaryPrimitives.WriteUInt32BigEndian(span.Slice(5, sizeof(UInt32)), Elasticity);
 
-        if (MinBaseFee is {} minBaseFee)
+        if (MinBaseFee is { } minBaseFee)
             BinaryPrimitives.WriteUInt64BigEndian(span.Slice(9, sizeof(UInt64)), minBaseFee);
     }
 }
