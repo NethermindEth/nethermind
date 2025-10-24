@@ -44,27 +44,28 @@ public class RetryCache<TMessage, TResourceId>
 
                     if (_retryRequests.TryRemove(item.ResourceId, out PooledSet<IMessageHandler<TMessage>>? requests))
                     {
-                        if (requests.Count > 0)
+                        using (requests)
                         {
-                            _requestingResources.Set(item.ResourceId);
-                        }
-
-                        if (_logger.IsWarn) _logger.Warn($"Sending retry requests for {item.ResourceId} after timeout");
-
-
-                        foreach (IMessageHandler<TMessage> retryHandler in requests)
-                        {
-                            try
+                            if (requests.Count > 0)
                             {
-                                retryHandler.HandleMessage(TMessage.New(item.ResourceId));
+                                _requestingResources.Set(item.ResourceId);
                             }
-                            catch (Exception ex)
+
+                            if (_logger.IsWarn) _logger.Warn($"Sending retry requests for {item.ResourceId} after timeout");
+
+
+                            foreach (IMessageHandler<TMessage> retryHandler in requests)
                             {
-                                if (_logger.IsWarn) _logger.Error($"Failed to send retry request to {retryHandler} for {item.ResourceId}", ex);
+                                try
+                                {
+                                    retryHandler.HandleMessage(TMessage.New(item.ResourceId));
+                                }
+                                catch (Exception ex)
+                                {
+                                    if (_logger.IsWarn) _logger.Error($"Failed to send retry request to {retryHandler} for {item.ResourceId}", ex);
+                                }
                             }
                         }
-
-                        requests.Dispose();
                     }
                 }
             }
