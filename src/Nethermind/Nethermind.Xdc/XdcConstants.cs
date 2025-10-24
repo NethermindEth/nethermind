@@ -25,7 +25,11 @@ internal static class XdcConstants
 
     public const int InMemoryRound2Epochs = 65536;   // One epoch ~ 0.5h, 65536 epochs ~ 3.7y, ~10MB memory
 
+    public const long TargetGasLimit = 84000000; // XDC default gas limit per block
+
     public const byte ConsensusVersion = 0x02;
+
+    public const int GasLimitBoundDivisor = 1024; // The bound divisor of gas limit adjustment per block
 
     // --- Compile-time constants ---
     public const int InMemorySnapshots = 128;       // Number of recent vote snapshots to keep in memory

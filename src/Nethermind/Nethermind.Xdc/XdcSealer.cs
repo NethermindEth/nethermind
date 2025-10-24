@@ -34,6 +34,8 @@ internal class XdcSealer(ISigner signer) : ISealer
         KeccakRlpStream hashStream = new KeccakRlpStream();
         _xdcHeaderDecoder.Encode(hashStream, xdcBlockHeader, RlpBehaviors.ForSealing);
         xdcBlockHeader.Validator = signer.Sign(hashStream.GetValueHash()).BytesWithRecovery;
+
+        xdcBlockHeader.Hash = xdcBlockHeader.CalculateHash().ToHash256();
         return Task.FromResult(block);
     }
 }
