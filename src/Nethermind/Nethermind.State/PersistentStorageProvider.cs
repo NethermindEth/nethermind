@@ -398,6 +398,31 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
+    public void WarmUp(Address address, ReadOnlySpan<UInt256> storageKeys, bool isEmpty)
+    {
+        if (storageKeys.IsEmpty)
+        {
+            return;
+        }
+
+        if (isEmpty)
+        {
+            if (_preBlockCache is not null)
+            {
+                foreach (ref readonly UInt256 storageKey in storageKeys)
+                {
+                    StorageCell storageCell = new(address, in storageKey);
+                    _preBlockCache[storageCell] = [];
+                }
+            }
+
+            return;
+        }
+
+        PerContractState contractState = GetOrCreateStorage(address);
+        contractState.WarmUpBatch(storageKeys);
+    }
+
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
     {
         return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
@@ -590,6 +615,20 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
             return valueChange.After;
+        }
+
+        public void WarmUpBatch(ReadOnlySpan<UInt256> storageIndexes)
+        {
+            if (storageIndexes.IsEmpty)
+            {
+                return;
+            }
+
+            foreach (ref readonly UInt256 storageIndex in storageIndexes)
+            {
+                StorageCell storageCell = new(_address, in storageIndex);
+                LoadFromTree(storageCell);
+            }
         }
 
         private byte[] LoadFromTreeReadPreWarmCache(in StorageCell storageCell)

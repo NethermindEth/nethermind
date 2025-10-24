@@ -19,6 +19,7 @@ public class NodeStorage(
     : INodeStorage
 {
     private readonly IKeyValueStore _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Hash256AsKey, KeyEncoding> _encodingCache = new();
     private static readonly byte[] EmptyTreeHashBytes = [128];
     private const int StoragePathLength = 74;
     private const int TopStateBoundary = 5;
@@ -122,14 +123,55 @@ public class NodeStorage(
         }
 
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
-        if (Scheme == INodeStorage.KeyScheme.HalfPath)
+        Hash256AsKey keccakKey = new(keccak.ToHash256());
+        if (_encodingCache.TryGetValue(keccakKey, out KeyEncoding cachedEncoding) && cachedEncoding != KeyEncoding.Unknown)
         {
-            return _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags)
-                   ?? _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
+            ReadOnlySpan<byte> cachedKey = cachedEncoding == KeyEncoding.HalfPath
+                ? GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak)
+                : GetHashBasedStoragePath(storagePathSpan, keccak);
+            byte[]? cachedResult = _keyValueStore.Get(cachedKey, readFlags);
+            if (cachedResult is not null)
+            {
+                return cachedResult;
+            }
+
+            _encodingCache.TryRemove(keccakKey, out _);
         }
 
-        return _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags)
-               ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
+        if (Scheme == INodeStorage.KeyScheme.HalfPath)
+        {
+            byte[]? result = _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
+            if (result is not null)
+            {
+                _encodingCache[keccakKey] = KeyEncoding.HalfPath;
+                return result;
+            }
+
+            result = _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
+            if (result is not null)
+            {
+                _encodingCache[keccakKey] = KeyEncoding.HashPath;
+            }
+
+            return result;
+        }
+        else
+        {
+            byte[]? result = _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
+            if (result is not null)
+            {
+                _encodingCache[keccakKey] = KeyEncoding.HashPath;
+                return result;
+            }
+
+            result = _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
+            if (result is not null)
+            {
+                _encodingCache[keccakKey] = KeyEncoding.HalfPath;
+            }
+
+            return result;
+        }
     }
 
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
@@ -140,14 +182,49 @@ public class NodeStorage(
         }
 
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
-        if (Scheme == INodeStorage.KeyScheme.HalfPath)
+        Hash256AsKey keccakKey = new(keccak.ToHash256());
+        if (_encodingCache.TryGetValue(keccakKey, out KeyEncoding cachedEncoding) && cachedEncoding != KeyEncoding.Unknown)
         {
-            return _keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak))
-                   || _keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak));
+            if (_keyValueStore.KeyExists(cachedEncoding == KeyEncoding.HalfPath
+                    ? GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak)
+                    : GetHashBasedStoragePath(storagePathSpan, keccak)))
+            {
+                return true;
+            }
+
+            _encodingCache.TryRemove(keccakKey, out _);
         }
 
-        return _keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak))
-               || _keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak));
+        if (Scheme == INodeStorage.KeyScheme.HalfPath)
+        {
+            if (_keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak)))
+            {
+                _encodingCache[keccakKey] = KeyEncoding.HalfPath;
+                return true;
+            }
+
+            if (_keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak)))
+            {
+                _encodingCache[keccakKey] = KeyEncoding.HashPath;
+                return true;
+            }
+
+            return false;
+        }
+
+        if (_keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak)))
+        {
+            _encodingCache[keccakKey] = KeyEncoding.HashPath;
+            return true;
+        }
+
+        if (_keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak)))
+        {
+            _encodingCache[keccakKey] = KeyEncoding.HalfPath;
+            return true;
+        }
+
+        return false;
     }
 
     public INodeStorage.IWriteBatch StartWriteBatch()
@@ -173,7 +250,11 @@ public class NodeStorage(
             return;
         }
 
-        _keyValueStore.PutSpan(GetExpectedPath(stackalloc byte[StoragePathLength], address, path, keccak), data, writeFlags);
+        Span<byte> pathSpan = stackalloc byte[StoragePathLength];
+        Span<byte> expectedPath = GetExpectedPath(pathSpan, address, path, keccak);
+        _keyValueStore.PutSpan(expectedPath, data, writeFlags);
+        KeyEncoding encodingUsed = expectedPath.Length == 32 ? KeyEncoding.HashPath : KeyEncoding.HalfPath;
+        _encodingCache[new Hash256AsKey(keccak.ToHash256())] = encodingUsed;
     }
 
     public void Flush(bool onlyWal)
@@ -203,8 +284,19 @@ public class NodeStorage(
         {
             if (keccak != Keccak.EmptyTreeHash.ValueHash256)
             {
-                writeBatch.PutSpan(nodeStorage.GetExpectedPath(stackalloc byte[StoragePathLength], address, path, keccak), data, writeFlags);
+                Span<byte> pathSpan = stackalloc byte[StoragePathLength];
+                Span<byte> expectedPath = nodeStorage.GetExpectedPath(pathSpan, address, path, keccak);
+                writeBatch.PutSpan(expectedPath, data, writeFlags);
+                nodeStorage._encodingCache[new Hash256AsKey(keccak.ToHash256())] =
+                    expectedPath.Length == 32 ? KeyEncoding.HashPath : KeyEncoding.HalfPath;
             }
         }
+    }
+
+    private enum KeyEncoding : byte
+    {
+        Unknown = 0,
+        HalfPath = 1,
+        HashPath = 2,
     }
 }
