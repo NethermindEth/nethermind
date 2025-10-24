@@ -79,7 +79,7 @@ internal class VotesManager(
         _ = _forensicsProcessor.ProcessVoteEquivocation(vote);
 
         //TODO Optimize this by fetching with block number and round only
-        XdcBlockHeader proposedHeader = _tree.FindHeader(vote.ProposedBlockInfo.Hash) as XdcBlockHeader;
+        XdcBlockHeader proposedHeader = _tree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) as XdcBlockHeader;
         if (proposedHeader is null)
         {
             //This is a vote for a block we have not seen yet, just return for now
@@ -101,9 +101,11 @@ internal class VotesManager(
         bool thresholdReached = roundVotes.Count >= epochInfo.Masternodes.Length * certThreshold;
         if (thresholdReached)
         {
-            if (!BlockInfoValidator.ValidateBlockInfo(vote.ProposedBlockInfo, proposedHeader)) return Task.CompletedTask;
+            if (!BlockInfoValidator.ValidateBlockInfo(vote.ProposedBlockInfo, proposedHeader))
+                return Task.CompletedTask;
 
-            if (!EnsureVotesRecovered(roundVotes, epochInfo.Masternodes, certThreshold, out Signature[] validSignatures)) return Task.CompletedTask;
+            if (!EnsureVotesRecovered(roundVotes, epochInfo.Masternodes, certThreshold, out Signature[] validSignatures))
+                return Task.CompletedTask;
 
             // At this point, the QC should be processed for this *round*.
             // Ensure this runs only once per round:
@@ -154,7 +156,7 @@ internal class VotesManager(
     }
 
     public Task OnReceiveVote(Vote vote)
-    {
+    {        
         var voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
         var currentBlockNumber = _tree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
         if (Math.Abs(voteBlockNumber - currentBlockNumber) > XdcConstants.MaxBlockDistance)
@@ -178,9 +180,8 @@ internal class VotesManager(
         Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(_tree, vote.GapNumber);
         if (snapshot is null) throw new InvalidOperationException($"Failed to get snapshot by gapNumber={vote.GapNumber}");
         // Verify message signature
-        Address signer = _ethereumEcdsa.RecoverVoteSigner(vote);
-        vote.Signer = signer;
-        return snapshot.NextEpochCandidates.Any(x => x == signer);
+        vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
+        return snapshot.NextEpochCandidates.Any(x => x == vote.Signer);
     }
 
     private void OnVotePoolThresholdReached(Signature[] validSignatures, Vote currVote)
