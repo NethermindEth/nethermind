@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
@@ -14,6 +13,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Optimism.ExtraParams;
 using Nethermind.Optimism.Rpc;
 using Nethermind.TxPool;
 
@@ -53,22 +53,39 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             if (spec.IsOpHoloceneEnabled)
             {
                 // NOTE: This operation should never fail since headers should be valid at this point.
-                if (!optimismPayload.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Parameters, out var error))
+                if (!HoloceneExtraParams.TryParse(optimismPayload, out HoloceneExtraParams parameters, out var error))
                 {
                     throw new InvalidOperationException($"{nameof(BlockHeader)} was not properly validated: {error}");
                 }
 
-                if (eip1559Parameters.IsZero())
+                if (parameters.IsZero())
                 {
-                    eip1559Parameters = new EIP1559Parameters(eip1559Parameters.Version, (UInt32)spec.BaseFeeMaxChangeDenominator, (UInt32)spec.ElasticityMultiplier);
+                    parameters = parameters with { Denominator = (UInt32)spec.BaseFeeMaxChangeDenominator, Elasticity = (UInt32)spec.ElasticityMultiplier };
                 }
 
-                currentBestBlock.Header.ExtraData = new byte[EIP1559Parameters.ByteLength];
-                eip1559Parameters.WriteTo(currentBestBlock.Header.ExtraData);
-
-                // NOTE: Since we updated the `Header` we need to recalculate the hash.
-                currentBestBlock.Header.Hash = currentBestBlock.Header.CalculateHash();
+                currentBestBlock.Header.ExtraData = new byte[HoloceneExtraParams.BinaryLength];
+                parameters.WriteTo(currentBestBlock.Header.ExtraData);
             }
+
+            if (true /* spec.IsOpJovianEnabled */)
+            {
+                // NOTE: This operation should never fail since headers should be valid at this point.
+                if (!JovianExtraParams.TryParse(optimismPayload, out JovianExtraParams parameters, out var error))
+                {
+                    throw new InvalidOperationException($"{nameof(BlockHeader)} was not properly validated: {error}");
+                }
+
+                if (parameters.IsZero())
+                {
+                    parameters = parameters with { Denominator = (UInt32)spec.BaseFeeMaxChangeDenominator, Elasticity = (UInt32)spec.ElasticityMultiplier };
+                }
+
+                currentBestBlock.Header.ExtraData = new byte[JovianExtraParams.BinaryLength];
+                parameters.WriteTo(currentBestBlock.Header.ExtraData);
+            }
+
+            // NOTE: Since we updated the `Header` we need to recalculate the hash.
+            currentBestBlock.Header.Hash = currentBestBlock.Header.CalculateHash();
         }
 
         if (payloadAttributes is OptimismPayloadAttributes { NoTxPool: true })

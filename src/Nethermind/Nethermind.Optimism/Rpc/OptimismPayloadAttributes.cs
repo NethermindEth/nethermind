@@ -10,6 +10,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Optimism.ExtraParams;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.Rpc;
@@ -35,6 +36,11 @@ public class OptimismPayloadAttributes : PayloadAttributes
     /// See <see href="https://specs.optimism.io/protocol/holocene/exec-engine.html#eip-1559-parameters-in-payloadattributesv3"/>
     /// </remarks>
     public byte[]? EIP1559Params { get; set; }
+
+    /// <remarks>
+    /// See <see href="https://specs.optimism.io/protocol/jovian/exec-engine.html#minimum-base-fee-in-payloadattributesv3"/>
+    /// </remarks>
+    public long? MinimumBaseFee { get; set; }
 
     private int TransactionsLength => Transactions?.Length ?? 0;
 
@@ -115,14 +121,26 @@ public class OptimismPayloadAttributes : PayloadAttributes
         }
 
         IReleaseSpec releaseSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp));
+        // Holocene
         if (!releaseSpec.IsOpHoloceneEnabled && EIP1559Params is not null)
         {
             error = $"{nameof(EIP1559Params)} should be null before Holocene";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
-        if (releaseSpec.IsOpHoloceneEnabled && !this.TryDecodeEIP1559Parameters(out _, out var decodeError))
+        if (releaseSpec.IsOpHoloceneEnabled && !HoloceneExtraParams.TryParse(this, out _, out var decodeErrorHolocene))
         {
-            error = decodeError;
+            error = decodeErrorHolocene;
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+        // Jovian
+        if (true /* !releaseSpec.IsOpJovianEnabled */ && MinimumBaseFee.HasValue)
+        {
+            error = $"{nameof(MinimumBaseFee)} should be null before Jovian";
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+        if (true /* releaseSpec.IsOpJovianEnabled */ && !JovianExtraParams.TryParse(this, out _, out var decodeErrorJovian))
+        {
+            error = decodeErrorJovian;
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
