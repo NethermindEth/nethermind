@@ -25,6 +25,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 internal class XdcBlockProducer : BlockProducerBase
 {
     private readonly IEpochSwitchManager epochSwitchManager;
