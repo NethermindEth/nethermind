@@ -80,7 +80,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
         + sizeof(bool) // noTxPool
         + (Keccak.Size * TransactionsLength) // Txs
         + sizeof(long) // gasLimit
-        + ((EIP1559Params?.Length * sizeof(byte)) ?? 0); // eip1559Params
+        + ((EIP1559Params?.Length * sizeof(byte)) ?? 0) // eip1559Params
+        + (MinimumBaseFee.HasValue ? sizeof(long) : 0); // minimumBaseFee
 
     protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
@@ -106,6 +107,12 @@ public class OptimismPayloadAttributes : PayloadAttributes
         {
             EIP1559Params.CopyTo(inputSpan.Slice(offset));
             offset += EIP1559Params.Length;
+        }
+
+        if (MinimumBaseFee.HasValue)
+        {
+            BinaryPrimitives.WriteInt64BigEndian(inputSpan.Slice(offset, sizeof(long)), MinimumBaseFee.Value);
+            offset += sizeof(long);
         }
 
         return offset;
@@ -166,7 +173,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
             .Append($"{nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient}, ")
             .Append($"{nameof(GasLimit)}: {GasLimit}, ")
             .Append($"{nameof(NoTxPool)}: {NoTxPool}, ")
-            .Append($"{nameof(EIP1559Params)}: {EIP1559Params}")
+            .Append($"{nameof(EIP1559Params)}: {EIP1559Params}, ")
+            .Append($"{nameof(MinimumBaseFee)}: {MinimumBaseFee}, ")
             .Append($"{nameof(Transactions)}: {Transactions?.Length ?? 0}");
 
         if (Withdrawals is not null)
