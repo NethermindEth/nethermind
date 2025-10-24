@@ -69,10 +69,12 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         try
         {
-            if (!TrySimulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken, out string? error))
-            {
-                result.Error = error;
-            }
+            Simulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            result.Error = ex.Message;
+            result.ErrorCode = (int)SimulateErrorCode.InvalidParams;
         }
         catch (InvalidTransactionException ex)
         {
@@ -103,9 +105,9 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance
                     or TransactionResult.ErrorType.InsufficientSenderBalance => SimulateErrorCode.InsufficientFunds,
                 TransactionResult.ErrorType.MalformedTransaction => SimulateErrorCode.InternalError,
-                TransactionResult.ErrorType.MinerPremiumNegative => SimulateErrorCode.InternalError,
+                TransactionResult.ErrorType.MinerPremiumNegative => SimulateErrorCode.InvalidParams,
                 TransactionResult.ErrorType.NonceOverflow => SimulateErrorCode.NonceTooHigh,
-                TransactionResult.ErrorType.SenderHasDeployedCode => SimulateErrorCode.InternalError,
+                TransactionResult.ErrorType.SenderHasDeployedCode => SimulateErrorCode.InvalidParams,
                 TransactionResult.ErrorType.SenderNotSpecified => SimulateErrorCode.InternalError,
                 TransactionResult.ErrorType.TransactionSizeOverMaxInitCodeSize => SimulateErrorCode.MaxInitCodeSizeExceeded,
                 TransactionResult.ErrorType.WrongTransactionNonce => SimulateErrorCode.InternalError,
@@ -116,18 +118,17 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         return txResult.EvmExceptionType switch
         {
             EvmExceptionType.Revert => SimulateErrorCode.Reverted,
-            _ => SimulateErrorCode.InternalError
+            _ => SimulateErrorCode.VMError
         };
     }
 
-    private bool TrySimulate<TTrace>(BlockHeader parent,
+    private void Simulate<TTrace>(BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
         List<SimulateBlockResult<TTrace>> output,
         long gasCapLimit,
-        CancellationToken cancellationToken,
-        [NotNullWhen(false)] out string? error)
+        CancellationToken cancellationToken)
     {
         IBlockTree blockTree = env.BlockTree;
         IWorldState stateProvider = env.WorldState;
@@ -190,9 +191,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 parent = processedBlock.Header;
             }
         }
-
-        error = null;
-        return true;
     }
 
     private BlockBody AssembleBody(
