@@ -114,7 +114,7 @@ namespace Nethermind.Xdc
                 InitializeRoundFromHead();
 
                 // Trigger initial round
-                await _newRoundSignals.Writer.WriteAsync(new RoundSignal(RoundSignal.SignalType.NewBlock), _cancellationTokenSource.Token);
+                await _newRoundSignals.Writer.WriteAsync(new RoundSignal((XdcBlockHeader)_blockTree.Head.Header), _cancellationTokenSource.Token);
 
                 // Main consensus flow
                 await MainFlow();
@@ -148,7 +148,7 @@ namespace Nethermind.Xdc
         }
 
         /// <summary>
-        /// Initialize _roundCount from the current head's ExtraConsensusData.BlockRound.
+        /// Initialize RoundCount from the current head's ExtraConsensusData.BlockRound.
         /// </summary>
         private void InitializeRoundFromHead()
         {
@@ -189,7 +189,6 @@ namespace Nethermind.Xdc
         /// </summary>
         private async Task ProcessRound(CancellationToken ct)
         {
-            DateTime roundStart = DateTime.UtcNow;
             ulong currentRound = _roundCount.Current;
 
             BlockHeader? head = _blockTree.Head.Header;
@@ -225,13 +224,10 @@ namespace Nethermind.Xdc
             }
             else
             {
-                // Voter path: Alg.2 L7-12 (vote on received proposal)
-                // Note: In real implementation, voting happens when receiving proposal via P2P
-                // Here we handle what's already in the head (which was proposed by the leader)
                 ExecuteVoterPath(xdcHead, epochInfo);
             }
 
-            TimeSpan roundDuration = DateTime.UtcNow - roundStart;
+            TimeSpan roundDuration = DateTime.UtcNow - _roundCount.RoundStarted;
             _logger.Info($"Round {currentRound} completed in {roundDuration.TotalSeconds:F2}s");
         }
 
@@ -299,7 +295,7 @@ namespace Nethermind.Xdc
             ulong currentRound = _roundCount.Current;
 
             // Check if we are in the masternode set
-            if (!epochInfo.Masternodes.Contains(_signer.Address))
+            if (!epochInfo.Masternodes. (_signer.Address))
             {
                 _logger.Debug($"Round {currentRound}: Skipped voting (not in masternode set)");
                 return;
@@ -319,7 +315,7 @@ namespace Nethermind.Xdc
                 }
             }
 
-            // Alg.2 L10-11: Check voting rule via QC manager
+            // Check voting rule 
             bool canVote = _quorumCertificateManager.VerifyVotingRule(head);
             if (!canVote)
             {
@@ -327,7 +323,6 @@ namespace Nethermind.Xdc
                 return;
             }
 
-            // Alg.2 L12: Cast vote via votes manager
             try
             {
                 BlockRoundInfo voteInfo = new BlockRoundInfo(head.Hash!, head.ExtraConsensusData.BlockRound, head.Number);
@@ -342,7 +337,7 @@ namespace Nethermind.Xdc
         }
 
         /// <summary>
-        /// Alg.2 L22-31: Timeout handling - broadcast timeout with highQC, wait for TC.
+        /// Timeout handling - broadcast timeout with highQC, wait for TC.
         /// </summary>
         private async Task HandleTimeout(ulong round, CancellationToken ct)
         {
@@ -379,19 +374,20 @@ namespace Nethermind.Xdc
 
             _logger.Debug($"New head block #{xdcHead.Number}, round={xdcHead.ExtraConsensusData?.BlockRound}");
 
-            if (xdcHead.ExtraConsensusData?.QuorumCert != null)
+            if (xdcHead.ExtraConsensusData is null)
+                throw new InvalidOperationException("New head block missing ExtraConsensusData");
+
+            ulong headRound = xdcHead.ExtraConsensusData.BlockRound;
+            if (headRound > _roundCount.Current)
             {
-                ulong headRound = xdcHead.ExtraConsensusData.BlockRound;
-                if (headRound > _roundCount.Current)
-                {
-                    _logger.Info($"Advancing to round {headRound + 1} due to QC in new head");
-                    _roundCount = new RoundCount(headRound + 1);
-                }
+                _logger.Warn($"New head block round is ahead of us. Advancing to round {headRound + 1}");
+                //TODO This should probably trigger a sync
             }
 
+            _roundCount = new RoundCount(headRound + 1);
             // Signal new round
             _lastActivityTime = DateTime.UtcNow;
-            _newRoundSignals.Writer.TryWrite(new RoundSignal(RoundSignal.SignalType.NewBlock));
+            _newRoundSignals.Writer.TryWrite(new RoundSignal(xdcHead));
             
         }
 
@@ -433,7 +429,6 @@ namespace Nethermind.Xdc
             if (_epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
             {
                 //TODO calculate master nodes based on the current round
-                _
             }
             else
             {
@@ -498,13 +493,11 @@ namespace Nethermind.Xdc
 
             _logger.Info("Stopping XdcHotStuff consensus runner...");
 
-            // Unsubscribe from events
             _blockTree.NewHeadBlock -= OnNewHeadBlock;
 
             // Signal cancellation
             cts.Cancel();
 
-            // Complete the channel
             _newRoundSignals.Writer.Complete();
 
             // Wait for task completion
@@ -529,18 +522,11 @@ namespace Nethermind.Xdc
         /// </summary>
         internal class RoundSignal
         {
-            public enum SignalType
-            {
-                NewBlock,
-                RoundAdvance,
-                Timeout
-            }
+            public XdcBlockHeader HeadBlockHeader { get; }
 
-            public SignalType Type { get; }
-
-            public RoundSignal(SignalType type)
+            public RoundSignal(XdcBlockHeader xdcBlockHeader)
             {
-                Type = type;
+                HeadBlockHeader = xdcBlockHeader;
             }
         }
 
