@@ -11,6 +11,7 @@ using static System.Runtime.CompilerServices.Unsafe;
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
+
 using Word = Vector256<byte>;
 
 internal static partial class EvmInstructions

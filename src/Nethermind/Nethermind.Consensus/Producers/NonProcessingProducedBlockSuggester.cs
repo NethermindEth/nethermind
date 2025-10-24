@@ -5,6 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Producers;
+
 public class NonProcessingProducedBlockSuggester : IProducedBlockSuggester
 {
     private readonly IBlockTree _blockTree;

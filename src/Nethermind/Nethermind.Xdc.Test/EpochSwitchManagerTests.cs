@@ -26,6 +26,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
+
 internal class EpochSwitchManagerTests
 {
     private static ImmutableArray<Address> SignerAddresses = [TestItem.AddressA, TestItem.AddressB];

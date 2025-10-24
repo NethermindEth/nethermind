@@ -12,6 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 public interface ISignatureManager
 {
     public ISigner CurrentSigner { get; }

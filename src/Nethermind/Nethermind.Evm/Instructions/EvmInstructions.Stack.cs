@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm;
+
 using Int256;
 using Word = Vector256<byte>;
 using static Unsafe;

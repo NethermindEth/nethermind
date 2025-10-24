@@ -15,6 +15,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
+
 internal class XdcBlockAndHeaderStoreTests
 {
     IXdcHeaderStore _headerStore;

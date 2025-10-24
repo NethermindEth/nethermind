@@ -17,6 +17,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
+
 internal class SnapshotManagerTests
 {
     private ISnapshotManager _snapshotManager;

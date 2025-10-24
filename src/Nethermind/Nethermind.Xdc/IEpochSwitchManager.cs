@@ -11,6 +11,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 public interface IEpochSwitchManager
 {
     bool IsEpochSwitchAtRound(ulong currentRound, XdcBlockHeader parent);

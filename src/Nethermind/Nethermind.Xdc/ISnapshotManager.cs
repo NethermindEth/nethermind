@@ -12,6 +12,7 @@ using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 
 namespace Nethermind.Xdc;
+
 public interface ISnapshotManager
 {
     Snapshot? GetSnapshot(Hash256 hash);

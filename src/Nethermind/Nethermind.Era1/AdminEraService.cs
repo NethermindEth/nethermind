@@ -5,6 +5,7 @@ using Nethermind.Config;
 using Nethermind.Logging;
 
 namespace Nethermind.Era1;
+
 public class AdminEraService : IAdminEraService
 {
     private readonly ILogger _logger;

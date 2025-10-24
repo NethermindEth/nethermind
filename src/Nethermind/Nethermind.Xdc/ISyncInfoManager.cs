@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 public interface ISyncInfoManager
 {
     void ProcessSyncInfo(SyncInfo syncInfo);

@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Spec;
+
 public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 {
     public string EngineName => SealEngineType;
