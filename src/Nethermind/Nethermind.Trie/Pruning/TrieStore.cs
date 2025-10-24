@@ -910,7 +910,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             if (path.Length < parallelBoundaryPathLength)
             {
                 persistedNodeRecorder.Invoke(path, address2, tn);
-                PersistNode(address2, path, tn, topLevelWriteBatch, writeFlags);
+                PersistNode(address2, path, tn, commitSet.BlockNumber, topLevelWriteBatch, writeFlags);
             }
             else
             {
@@ -948,7 +948,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
 
             using ArrayPoolList<Task> persistNodeStartingFromTasks = parallelStartNodes.Select(
-                    entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, persistedNodeRecorder, writeFlags, disposeQueue)))
+                    entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, commitSet.BlockNumber, persistedNodeRecorder, writeFlags, disposeQueue)))
                 .ToPooledList(parallelStartNodes.Count);
 
             Task.WaitAll(persistNodeStartingFromTasks.AsSpan());
@@ -973,6 +973,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     }
 
     private async Task PersistNodeStartingFrom(TrieNode tn, Hash256 address2, TreePath path,
+        long blockNumber,
         Action<TreePath, Hash256?, TrieNode> persistedNodeRecorder,
         WriteFlags writeFlags, Channel<INodeStorage.IWriteBatch> disposeQueue)
     {
@@ -982,7 +983,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         async ValueTask DoPersist(TrieNode node, Hash256? address3, TreePath path2)
         {
             persistedNodeRecorder.Invoke(path2, address3, node);
-            PersistNode(address3, path2, node, writeBatch, writeFlags);
+            PersistNode(address3, path2, node, blockNumber, writeBatch, writeFlags);
 
             persistedNodeCount++;
             if (persistedNodeCount % 512 == 0)
@@ -996,12 +997,17 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         await disposeQueue.Writer.WriteAsync(writeBatch);
     }
 
-    private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, INodeStorage.IWriteBatch writeBatch, WriteFlags writeFlags = WriteFlags.None)
+    private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, long blockNumber, INodeStorage.IWriteBatch writeBatch, WriteFlags writeFlags = WriteFlags.None)
     {
         ArgumentNullException.ThrowIfNull(currentNode);
 
         if (currentNode.Keccak is not null)
         {
+            TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, currentNode.Keccak);
+            // Unpersisted note may have lower commit number than its parent. This can when its child is created
+            // on a different block than its parent.
+            GetDirtyNodeShard(key).GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(currentNode, blockNumber));
+
             if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
             writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp.Span, writeFlags);
             currentNode.IsPersisted = true;
