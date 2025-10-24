@@ -17,17 +17,14 @@ using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
 using NSubstitute;
 using NUnit.Framework;
-using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 internal class XdcBlockProducerTest
 {
     [Test]
-    public async Task SampleTest()
+    public async Task BuildBlock_HasCorrectQC_ProducesValidHeader()
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
@@ -41,8 +38,8 @@ internal class XdcBlockProducerTest
 
         PrivateKey[] masterNodes = XdcTestHelper.GeneratePrivateKeys(108);
         epochManager
-            .GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>())
-            .Returns(new Types.EpochSwitchInfo(masterNodes.Select(m => m.Address).ToArray(), [], new Types.BlockRoundInfo(Hash256.Zero, 0, 0)));
+            .GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>())
+            .Returns(new Types.EpochSwitchInfo(masterNodes.Select(m => m.Address).ToArray(), [], [], new Types.BlockRoundInfo(Hash256.Zero, 0, 0)));
 
         ISealer sealer = new XdcSealer(new Signer(0, new ProtectedPrivateKey(masterNodes[1], ""), NullLogManager.Instance));
 

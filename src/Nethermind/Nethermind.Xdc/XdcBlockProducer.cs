@@ -32,6 +32,7 @@ internal class XdcBlockProducer : BlockProducerBase
     private readonly IXdcConsensusContext xdcContext;
     private readonly ISealer sealer;
     private readonly ISpecProvider specProvider;
+    private readonly ILogManager logManager;
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
 
     public XdcBlockProducer(IEpochSwitchManager epochSwitchManager, ISnapshotManager snapshotManager, IXdcConsensusContext xdcContext, ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IWorldState stateProvider, IGasLimitCalculator? gasLimitCalculator, ITimestamper? timestamper, ISpecProvider specProvider, ILogManager logManager, IDifficultyCalculator? difficultyCalculator, IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
@@ -41,6 +42,7 @@ internal class XdcBlockProducer : BlockProducerBase
         this.xdcContext = xdcContext;
         this.sealer = sealer;
         this.specProvider = specProvider;
+        this.logManager = logManager;
     }
 
     protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes)
@@ -72,7 +74,7 @@ internal class XdcBlockProducer : BlockProducerBase
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcBlockHeader, currentRound);
 
-        xdcBlockHeader.Timestamp = payloadAttributes.Timestamp;
+        xdcBlockHeader.Timestamp = payloadAttributes?.Timestamp ?? parent.Timestamp + (ulong)spec.MinePeriod;
 
         xdcBlockHeader.Difficulty = 1;
         xdcBlockHeader.TotalDifficulty = 1;
@@ -81,7 +83,7 @@ internal class XdcBlockProducer : BlockProducerBase
 
         xdcBlockHeader.MixHash = Hash256.Zero;
 
-        if (epochSwitchManager.IsEpochSwitch(xdcBlockHeader, out _))
+        if (epochSwitchManager.IsEpochSwitchAtBlock(xdcBlockHeader))
         {
             (Address[] masternodes, Address[] penalties) = snapshotManager.CalculateNextEpochMasternodes(xdcBlockHeader, spec);
 

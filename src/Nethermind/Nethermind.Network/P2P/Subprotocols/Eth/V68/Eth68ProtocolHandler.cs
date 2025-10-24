@@ -4,6 +4,7 @@
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -20,6 +21,8 @@ using Nethermind.TxPool;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V68;
 
@@ -44,6 +47,8 @@ public class Eth68ProtocolHandler(ISession session,
     private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
         ? long.MaxValue
         : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock();
+
+    private ClockCache<ValueHash256, (int, TxType)> TxShapeAnnouncements { get; } = new(MemoryAllowance.TxHashCacheSize / 10);
 
     public override string Name => "eth68";
 
@@ -125,6 +130,7 @@ public class Eth68ProtocolHandler(ISession session,
             Hash256 hash = hashes[index];
             int txSize = sizes[index];
             TxType txType = (TxType)types[index];
+            TxShapeAnnouncements.Set(hash, (txSize, txType));
 
             long maxTxSize = txType.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
 
@@ -239,4 +245,21 @@ public class Eth68ProtocolHandler(ISession session,
         NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
         Send(message);
     }
+
+    protected override ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
+    {
+        int startIdx = request.startIndex;
+        for (int i = startIdx; i < request.txs.Count; i++)
+        {
+            if (!ValidateSizeAndType(request.txs[i]))
+            {
+                throw new SubprotocolException("invalid pooled tx type or size");
+            }
+        }
+
+        return base.HandleSlow(request, cancellationToken);
+    }
+
+    private bool ValidateSizeAndType(Transaction tx)
+        => !TxShapeAnnouncements.Delete(tx.Hash!, out (int Size, TxType Type) txShape) || (tx.GetLength() == txShape.Size && tx.Type == txShape.Type);
 }
