@@ -106,6 +106,8 @@ namespace Nethermind.Blockchain
 
         private TaskCompletionSource? _taskCompletionSource;
 
+        private readonly long _genesisBlockNumber;
+
         public BlockTree(
             IBlockStore? blockStore,
             IHeaderStore? headerDb,
@@ -116,7 +118,8 @@ namespace Nethermind.Blockchain
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
             ISyncConfig? syncConfig,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            long genesisBlockNumber = 0)
         {
             _logger = logManager?.GetClassLogger<BlockTree>() ?? throw new ArgumentNullException(nameof(logManager));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
@@ -131,6 +134,8 @@ namespace Nethermind.Blockchain
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
             _oldestBlock = syncConfig.AncientBodiesBarrierCalc;
 
+            _genesisBlockNumber = genesisBlockNumber;
+
             LoadSyncPivot();
 
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
@@ -142,7 +147,7 @@ namespace Nethermind.Blockchain
             // Need to be here because it still need to run even if there are no genesis to store the null entry.
             LoadLowestInsertedHeader();
 
-            ChainLevelInfo? genesisLevel = LoadLevel(0);
+            ChainLevelInfo? genesisLevel = LoadLevel(_genesisBlockNumber);
             if (genesisLevel is not null)
             {
                 BlockInfo genesisBlockInfo = genesisLevel.BlockInfos[0];
@@ -203,7 +208,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("An attempt to insert a block header without a known bloom.");
             }
 
-            if (header.Number == 0)
+            if (header.Number == _genesisBlockNumber)
             {
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
@@ -301,7 +306,7 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("An attempt to insert a block header without a known bloom.");
                 }
 
-                if (header.Number == 0)
+                if (header.Number == _genesisBlockNumber)
                 {
                     throw new InvalidOperationException("Genesis block should not be inserted.");
                 }
@@ -405,7 +410,7 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.CannotAccept;
             }
 
-            if (block.Number == 0)
+            if (block.Number == _genesisBlockNumber)
             {
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
@@ -1178,7 +1183,7 @@ namespace Nethermind.Blockchain
 
             if (forceUpdateHeadBlock || block.IsGenesis || HeadImprovementRequirementsSatisfied(block.Header))
             {
-                if (block.Number == 0)
+                if (block.Number == _genesisBlockNumber)
                 {
                     Genesis = block.Header;
                 }
@@ -1408,7 +1413,7 @@ namespace Nethermind.Blockchain
         /// <returns></returns>
         private bool ShouldCache(long number)
         {
-            return number == 0L || Head is null || number >= Head.Number - BlockStore.CacheSize;
+            return number == _genesisBlockNumber || Head is null || number >= Head.Number - BlockStore.CacheSize;
         }
 
         public ChainLevelInfo? FindLevel(long number)
