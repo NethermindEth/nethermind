@@ -44,7 +44,8 @@ public class BlockHeader
         ExcessBlobGas = excessBlobGas;
     }
 
-    public bool IsGenesis => Number == 0L;
+    public virtual long GenesisBlockNumber => 0;
+    public bool IsGenesis => Number == GenesisBlockNumber;
     public Hash256? ParentHash { get; set; }
     public Hash256? UnclesHash { get; set; }
     public Address? Author { get; set; }
