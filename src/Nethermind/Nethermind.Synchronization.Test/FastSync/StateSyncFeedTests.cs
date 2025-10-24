@@ -34,13 +34,16 @@ namespace Nethermind.Synchronization.Test.FastSync
         : StateSyncFeedTestsBase(peerCount, maxNodeLatency)
     {
         // Useful for set and forget run. But this test is taking a long time to have it set to other than 1.
-        private const int TestRepeatCount = 1;
+        private const int TestRepeatCount = 10000;
 
         [Test]
         [TestCaseSource(nameof(Scenarios))]
         [Repeat(TestRepeatCount)]
         public async Task Big_test((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
+            try
+            {
+
             DbContext dbContext = new(_logger, _logManager)
             {
                 RemoteCodeDb =
@@ -107,6 +110,12 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("END");
             dbContext.AssertFlushed();
+            }
+            catch (Exception e)
+            {
+                _logger.Error("test don't pass", e);
+                throw;
+            }
         }
 
         private static Hash256 HashKey(byte[] k)

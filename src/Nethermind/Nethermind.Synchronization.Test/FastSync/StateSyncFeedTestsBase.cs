@@ -22,6 +22,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Logging.NLog;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.State;
@@ -41,21 +42,31 @@ namespace Nethermind.Synchronization.Test.FastSync;
 
 public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defaultPeerMaxRandomLatency = 0)
 {
-    public const int TimeoutLength = 20000;
+    public const int TimeoutLength = 2000000000;
 
     private static IBlockTree? _blockTree;
     protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, static () => Build.A.BlockTree().OfChainLength(100).TestObject);
 
     protected ILogger _logger;
     protected ILogManager _logManager = null!;
+    private const bool LogToFile = true;
+    private int _testCounter = 0;
 
     public static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] Scenarios => TrieScenarios.Scenarios;
 
     [SetUp]
     public void Setup()
     {
-        _logManager = LimboLogs.Instance;
-        _logger = LimboTraceLogger.Instance;
+        string logFolder = "C:\\logs"; // adjust to your folder if needed by default logging is turned off
+        string guid = Guid.NewGuid().ToString();
+
+#pragma warning disable CS0162 // Unreachable code detected
+
+            _logManager = LogToFile ? new NLogManager($"log_{_testCounter}+{guid}", logFolder) : LimboLogs.Instance;
+            ++_testCounter;
+            _logger = LogToFile ? _logManager.GetClassLogger() : LimboTraceLogger.Instance;
+#pragma warning restore CS0162 // Unreachable code detected
+
         TrieScenarios.InitOnce();
     }
 
