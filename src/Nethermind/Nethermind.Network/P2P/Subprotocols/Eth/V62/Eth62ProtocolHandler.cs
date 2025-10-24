@@ -72,8 +72,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             remove { }
         }
 
-        protected ClockCache<ValueHash256, (int, TxType)> TxShapeAnnouncements { get; } = new(MemoryAllowance.TxHashCacheSize / 10);
-
         protected virtual void EnrichStatusMessage(StatusMessage statusMessage) { }
 
         public override void Init()
