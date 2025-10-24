@@ -29,7 +29,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
             Address.Zero,
             UInt256.One,
             1,
-            30_000_000,
+            XdcConstants.TargetGasLimit,
             1_700_000_000,
             new byte[] { 1, 2, 3 })
         {
