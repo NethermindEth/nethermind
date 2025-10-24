@@ -538,10 +538,13 @@ namespace Nethermind.TxPool
                 _newHeadLock.ExitReadLock();
             }
 
-            if (accepted)
+            if (accepted != AcceptTxResult.Invalid)
             {
                 _retryCache.Received(tx.Hash!);
+            }
 
+            if (accepted)
+            {
                 // Clear proper snapshot
                 if (tx.SupportsBlobs)
                     _blobTransactionSnapshot = null;
