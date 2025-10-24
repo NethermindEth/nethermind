@@ -989,7 +989,7 @@ namespace Nethermind.Trie.Test
             PruningContext ctx = PruningContext.InMemoryWithPastKeyTracking
                 .WithMaxDepth(2)
                 .WithPersistedMemoryLimit(null)
-                .WithPrunePersistedNodeParameter(10000, 0.1)
+                .WithPrunePersistedNodeParameter(0, 0.1)
                 .TurnOffAlwaysPrunePersistedNode();
 
             for (int i = 0; i < 256; i++)

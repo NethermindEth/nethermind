@@ -588,7 +588,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 // mean `PrunePersistedNodes` was not able to re-trigger multiple time, which make the persisted node
                 // cache even bigger which causes longer prune which causes bigger commit buffer, etc.
                 // So we loop it here until `ShouldPrunePersistedNode` return false.
-                int maxTry = (int)Math.Ceiling(1 / _prunePersistedNodePortion);
+                int maxTry = _shardedDirtyNodeCount;
                 int i = 0;
                 while (i < maxTry && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
                 {
