@@ -3,7 +3,6 @@
 
 using System.Threading.Tasks;
 using System.Collections.Generic;
-using System;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Evm.State;
@@ -26,24 +25,25 @@ using FluentAssertions;
 using Nethermind.Crypto;
 using System.Threading;
 using Nethermind.TxPool;
+using Nethermind.Optimism.ExtraParams;
 
 namespace Nethermind.Optimism.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class OptimismPayloadPreparationServiceTests
 {
-    private static IEnumerable<(OptimismPayloadAttributes, EIP1559Parameters?)> TestCases()
+    private static IEnumerable<(OptimismPayloadAttributes, HoloceneExtraParams?)> TestCases()
     {
         foreach (var noTxPool in (bool[])[true, false])
         {
-            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 8, 0, 0, 0, 2], NoTxPool = noTxPool }, new EIP1559Parameters(0, 8, 2));
-            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 2], NoTxPool = noTxPool }, new EIP1559Parameters(0, 2, 2));
-            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 10], NoTxPool = noTxPool }, new EIP1559Parameters(0, 2, 10));
-            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = noTxPool }, new EIP1559Parameters(0, 250, 6));
+            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 8, 0, 0, 0, 2], NoTxPool = noTxPool }, new HoloceneExtraParams { Denominator = 8, Elasticity = 2 });
+            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 2], NoTxPool = noTxPool }, new HoloceneExtraParams { Denominator = 2, Elasticity = 2 });
+            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 10], NoTxPool = noTxPool }, new HoloceneExtraParams { Denominator = 2, Elasticity = 10 });
+            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = noTxPool }, new HoloceneExtraParams { Denominator = 250, Elasticity = 6 });
         }
     }
     [TestCaseSource(nameof(TestCases))]
-    public async Task Writes_EIP1559Params_Into_HeaderExtraData((OptimismPayloadAttributes Attributes, EIP1559Parameters? ExpectedEIP1559Parameters) testCase)
+    public async Task Writes_HoloceneExtraParams_Into_HeaderExtraData((OptimismPayloadAttributes Attributes, HoloceneExtraParams? ExpectedHoloceneExtraParams) testCase)
     {
         var parent = Build.A.BlockHeader.TestObject;
 
@@ -95,8 +95,8 @@ public class OptimismPayloadPreparationServiceTests
         var currentBestBlock = context?.CurrentBestBlock!;
 
         currentBestBlock.Should().Be(block);
-        currentBestBlock.Header.TryDecodeEIP1559Parameters(out var parameters, out _).Should().BeTrue();
-        parameters.Should().BeEquivalentTo(testCase.ExpectedEIP1559Parameters);
+        HoloceneExtraParams.TryParse(currentBestBlock.Header, out var parameters, out _).Should().BeTrue();
+        parameters.Should().BeEquivalentTo(testCase.ExpectedHoloceneExtraParams);
         currentBestBlock.Header.Hash.Should().BeEquivalentTo(currentBestBlock.Header.CalculateHash());
     }
 }
