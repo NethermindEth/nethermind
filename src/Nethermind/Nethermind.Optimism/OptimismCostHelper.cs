@@ -42,6 +42,9 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     // Isthmus
     private readonly StorageCell _operatorFeeParamsSlot = new(l1BlockAddr, new UInt256(8));
 
+    // Jovian
+    private readonly StorageCell _daFootprintGasScalarSlot = new(l1BlockAddr, new UInt256(8));
+
     [SkipLocalsInit]
     public UInt256 ComputeL1Cost(Transaction tx, BlockHeader header, IWorldState worldState)
     {
@@ -129,7 +132,9 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
                 break;
         }
 
-        return (UInt256)gas * operatorFee.scalar / 1_000_000 + operatorFee.constant;
+        return opSpecHelper.IsJovian(header)
+            ? (UInt256)gas * operatorFee.scalar * 100 + operatorFee.constant // TODO: tests
+            : (UInt256)gas * operatorFee.scalar / 1_000_000 + operatorFee.constant;
 
         static (uint scalar, ulong constant) Parse(scoped ReadOnlySpan<byte> span)
         {
@@ -139,6 +144,35 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
             var operatorFeeConstant = ReadUInt64BigEndian(span[feeStart..]);
             return (operatorFeeScalar, operatorFeeConstant);
         }
+    }
+
+    public UInt256 ComputeDAFootprint(Block block, IWorldState worldState)
+    {
+        // https://specs.optimism.io/protocol/jovian/exec-engine.html#scalar-loading
+        const int scalarPosition = 12;
+        ReadOnlySpan<byte> span = worldState.Get(_daFootprintGasScalarSlot);
+
+        if (span.IsEmpty)
+            return 0;
+
+        var daFootprintGasScalar = ReadUInt16BigEndian(span[scalarPosition..]);
+
+        UInt256 footprint = UInt256.Zero;
+
+        foreach (Transaction tx in block.Transactions)
+        {
+            if (tx.Type == TxType.DepositTx)
+                return 0;
+
+            var daUsageEstimate = UInt256.Max(
+                MinTransactionSizeScaled,
+                L1CostInterceptNeg + L1CostFastlzCoef * ComputeFlzCompressLen(tx)
+            );
+
+            footprint += daUsageEstimate * daFootprintGasScalar;
+        }
+
+        return footprint;
     }
 
     [SkipLocalsInit]
