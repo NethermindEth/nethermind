@@ -49,7 +49,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     // Small optimization to not re-create CommitBuffer
     private CommitBuffer? _commitBufferUnused = null;
 
-    private bool IsInCommitBufferMode => _commitBuffer is not null;
+    internal bool IsInCommitBufferMode => _commitBuffer is not null;
 
     // Only one scope can be active at the same time. Any mutation to trieStore as part of block processing need to
     // acquire _scopeLock.
@@ -568,27 +568,40 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         var state = CaptureCurrentState();
         if ((_pruningStrategy.ShouldPruneDirtyNode(state) || _pruningStrategy.ShouldPrunePersistedNode(state)) && _pruningTask.IsCompleted)
         {
-            _pruningTask = Task.Run(() =>
-            {
-                using (var _ = _pruningLock.EnterScope())
-                {
-                    if (_pruningStrategy.ShouldPruneDirtyNode(CaptureCurrentState()))
-                    {
-                        PersistAndPruneDirtyCache();
-                    }
-
-                    if (_pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
-                    {
-                        PrunePersistedNodes();
-                    }
-                }
-
-                TryExitCommitBufferMode();
-            });
+            _pruningTask = Task.Run(SyncPruneCheck);
         }
     }
 
-    private void PersistAndPruneDirtyCache()
+    internal void SyncPruneCheck()
+    {
+        using (var _ = _pruningLock.EnterScope())
+        {
+            if (_pruningStrategy.ShouldPruneDirtyNode(CaptureCurrentState()))
+            {
+                PersistAndPruneDirtyCache();
+            }
+
+            if (_prunePersistedNodePortion > 0)
+            {
+                // `PrunePersistedNodes` only work on part of the partition at any one time. With commit buffer,
+                // it is possible that the commit buffer once flushed will immediately trigger another prune, which
+                // mean `PrunePersistedNodes` was not able to re-trigger multiple time, which make the persisted node
+                // cache even bigger which causes longer prune which causes bigger commit buffer, etc.
+                // So we loop it here until `ShouldPrunePersistedNode` return false.
+                int maxTry = (int)Math.Ceiling(1 / _prunePersistedNodePortion);
+                int i = 0;
+                while (i < maxTry && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
+                {
+                    PrunePersistedNodes();
+                    i++;
+                }
+            }
+        }
+
+        TryExitCommitBufferMode();
+    }
+
+    internal void PersistAndPruneDirtyCache()
     {
         try
         {
@@ -802,7 +815,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     /// <summary>
     /// Only prune persisted nodes. This method attempt to pick only some shard for pruning.
     /// </summary>
-    private void PrunePersistedNodes()
+    internal void PrunePersistedNodes()
     {
         try
         {
@@ -1582,6 +1595,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     internal TrieNode CloneForReadOnly(in TrieStoreDirtyNodesCache.Key key, TrieNode node)
     {
+        if (node!.FullRlp.IsNull)
+        {
+            // // this happens in SyncProgressResolver
+            // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
+            return new TrieNode(NodeType.Unknown, key.Keccak);
+        }
+
         // we returning a copy to avoid multithreaded access
         var trieNode = new TrieNode(NodeType.Unknown, key.Keccak, node.FullRlp);
         trieNode.ResolveNode(GetTrieStore(key.Address), key.Path);

@@ -89,13 +89,6 @@ internal class TrieStoreDirtyNodesCache
         // ReSharper disable once ConditionIsAlwaysTrueOrFalse
         if (TryGetValue(key, out TrieNode trieNode))
         {
-            if (trieNode!.FullRlp.IsNull)
-            {
-                // // this happens in SyncProgressResolver
-                // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
-                return new TrieNode(NodeType.Unknown, key.Keccak);
-            }
-
             trieNode = _trieStore.CloneForReadOnly(key, trieNode);
 
             Metrics.LoadedFromCacheNodesCount++;
