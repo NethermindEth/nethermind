@@ -5,6 +5,7 @@ namespace Nethermind.Facade.Simulate;
 
 public enum SimulateErrorCode
 {
+    Default = -32000,
     NonceTooHigh = -38011,
     NonceTooLow = -38010,
     IntrinsicGas = -38013,

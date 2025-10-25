@@ -74,7 +74,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         catch (ArgumentException ex)
         {
             result.Error = ex.Message;
-            result.ErrorCode = (int)SimulateErrorCode.InvalidParams;
+            result.ErrorCode = (int)SimulateErrorCode.Default;
         }
         catch (InvalidTransactionException ex)
         {
@@ -106,7 +106,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     or TransactionResult.ErrorType.InsufficientSenderBalance => SimulateErrorCode.InsufficientFunds,
                 TransactionResult.ErrorType.MalformedTransaction => SimulateErrorCode.InternalError,
                 TransactionResult.ErrorType.MinerPremiumNegative => SimulateErrorCode.InvalidParams,
-                TransactionResult.ErrorType.NonceOverflow => SimulateErrorCode.NonceTooHigh,
+                TransactionResult.ErrorType.NonceOverflow => SimulateErrorCode.InternalError,
                 TransactionResult.ErrorType.SenderHasDeployedCode => SimulateErrorCode.InvalidParams,
                 TransactionResult.ErrorType.SenderNotSpecified => SimulateErrorCode.InternalError,
                 TransactionResult.ErrorType.TransactionSizeOverMaxInitCodeSize => SimulateErrorCode.MaxInitCodeSizeExceeded,
