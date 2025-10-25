@@ -19,9 +19,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Nethermind.Consensus;
 using Nethermind.Evm.State;
-using Nethermind.Logging;
+using Nethermind.Evm.TransactionProcessing;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
@@ -70,14 +69,22 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         try
         {
-            if (!TrySimulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken, out string? error))
-            {
-                result.Error = error;
-            }
+            Simulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            result.Error = ex.Message;
+            result.ErrorCode = (int)SimulateErrorCode.Default;
+        }
+        catch (InvalidTransactionException ex)
+        {
+            result.Error = ex.Reason.ErrorDescription;
+            result.ErrorCode = (int)MapSimulateErrorCode(ex.Reason);
         }
         catch (InsufficientBalanceException ex)
         {
             result.Error = ex.Message;
+            result.ErrorCode = (int)SimulateErrorCode.InsufficientFunds;
         }
         catch (Exception ex)
         {
@@ -87,14 +94,41 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         return result;
     }
 
-    private bool TrySimulate<TTrace>(BlockHeader parent,
+    private SimulateErrorCode MapSimulateErrorCode(TransactionResult txResult)
+    {
+        if (txResult.Error != TransactionResult.ErrorType.None)
+        {
+            return txResult.Error switch
+            {
+                TransactionResult.ErrorType.BlockGasLimitExceeded => SimulateErrorCode.BlockGasLimitReached,
+                TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => SimulateErrorCode.IntrinsicGas,
+                TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance
+                    or TransactionResult.ErrorType.InsufficientSenderBalance => SimulateErrorCode.InsufficientFunds,
+                TransactionResult.ErrorType.MalformedTransaction => SimulateErrorCode.InternalError,
+                TransactionResult.ErrorType.MinerPremiumNegative => SimulateErrorCode.InvalidParams,
+                TransactionResult.ErrorType.NonceOverflow => SimulateErrorCode.InternalError,
+                TransactionResult.ErrorType.SenderHasDeployedCode => SimulateErrorCode.InvalidParams,
+                TransactionResult.ErrorType.SenderNotSpecified => SimulateErrorCode.InternalError,
+                TransactionResult.ErrorType.TransactionSizeOverMaxInitCodeSize => SimulateErrorCode.MaxInitCodeSizeExceeded,
+                TransactionResult.ErrorType.WrongTransactionNonce => SimulateErrorCode.InternalError,
+                _ => SimulateErrorCode.InternalError
+            };
+        }
+
+        return txResult.EvmExceptionType switch
+        {
+            EvmExceptionType.Revert => SimulateErrorCode.Reverted,
+            _ => SimulateErrorCode.VMError
+        };
+    }
+
+    private void Simulate<TTrace>(BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
         List<SimulateBlockResult<TTrace>> output,
         long gasCapLimit,
-        CancellationToken cancellationToken,
-        [NotNullWhen(false)] out string? error)
+        CancellationToken cancellationToken)
     {
         IBlockTree blockTree = env.BlockTree;
         IWorldState stateProvider = env.WorldState;
@@ -157,9 +191,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 parent = processedBlock.Header;
             }
         }
-
-        error = null;
-        return true;
     }
 
     private BlockBody AssembleBody(

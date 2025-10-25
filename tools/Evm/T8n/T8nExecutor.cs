@@ -116,9 +116,9 @@ public static class T8nExecutor
                 blockReceiptsTracer.LastReceipt.BlockNumber = 0;
                 transactionExecutionReport.SuccessfulTransactionReceipts.Add(blockReceiptsTracer.LastReceipt);
             }
-            else if (transactionResult.Error is not null && transaction.SenderAddress is not null)
+            else if (!transactionResult.TransactionExecuted && transaction.SenderAddress is not null)
             {
-                var error = GethErrorMappings.GetErrorMapping(transactionResult.Error,
+                var error = GethErrorMappings.GetErrorMapping(transactionResult.ErrorDescription,
                     transaction.SenderAddress.ToString(true),
                     transaction.Nonce, stateProvider.GetNonce(transaction.SenderAddress));
 
