@@ -22,15 +22,15 @@ public class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254MulPrecompile++;
 
         Span<byte> input = stackalloc byte[96];
         Span<byte> output = stackalloc byte[64];
 
-        inputData.Span[0..Math.Min(inputData.Length, input.Length)].CopyTo(input);
+        inputData.Span[..Math.Min(inputData.Length, input.Length)].CopyTo(input);
 
-        return BN254.Mul(input, output) ? (output.ToArray(), true) : IPrecompile.Failure;
+        return BN254.Mul(input, output) ? output.ToArray() : Errors.Failed;
     }
 }

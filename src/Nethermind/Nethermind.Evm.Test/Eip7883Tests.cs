@@ -58,11 +58,11 @@ public class Eip7883Tests
         yield return new Eip7883TestCase
         { Lp = 5, FusakaEnabled = true, BaseLength = 32, ExpLength = 1024, ModulusLength = 1024, Result = 528449536L };
         yield return new Eip7883TestCase
-        { Lp = 6, FusakaEnabled = true, BaseLength = 10000, ExpLength = 1024, ModulusLength = 32, Result = long.MaxValue };
+        { Lp = 6, FusakaEnabled = true, BaseLength = 10000, ExpLength = 1024, ModulusLength = 32, Result = 50396875000L };
         yield return new Eip7883TestCase
-        { Lp = 7, FusakaEnabled = true, BaseLength = 1024, ExpLength = 10000, ModulusLength = 1024, Result = long.MaxValue };
+        { Lp = 7, FusakaEnabled = true, BaseLength = 1024, ExpLength = 10000, ModulusLength = 1024, Result = 5234458624L };
         yield return new Eip7883TestCase
-        { Lp = 8, FusakaEnabled = true, BaseLength = 1024, ExpLength = 1024, ModulusLength = 10000, Result = long.MaxValue };
+        { Lp = 8, FusakaEnabled = true, BaseLength = 1024, ExpLength = 1024, ModulusLength = 10000, Result = 50396875000L };
         yield return new Eip7883TestCase        // testing exponent >32bytes
         { Lp = 9, FusakaEnabled = true, BaseLength = 8, ExpLength = 81, ModulusLength = 8, Result = 16624L };
         yield return new Eip7883TestCase        // testing base/modulo below 32 bytes

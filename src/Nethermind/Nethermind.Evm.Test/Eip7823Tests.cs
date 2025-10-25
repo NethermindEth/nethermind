@@ -44,10 +44,6 @@ public class Eip7823Tests
         {
             Assert.That(gas, Is.LessThan(long.MaxValue));
         }
-        else
-        {
-            Assert.That(gas, Is.EqualTo(long.MaxValue));
-        }
     }
 
     [TestCase("0x9e5faafc")]
