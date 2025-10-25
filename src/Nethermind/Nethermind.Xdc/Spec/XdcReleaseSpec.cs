@@ -29,6 +29,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; }
 
+
     public void ApplyV2Config(ulong round)
     {
         V2ConfigParams configParams = GetConfigAtRound(V2Configs, round);

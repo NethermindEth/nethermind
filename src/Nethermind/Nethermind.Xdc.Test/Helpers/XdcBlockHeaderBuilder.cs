@@ -84,9 +84,21 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
         return this;
     }
 
+    public new XdcBlockHeaderBuilder WithParentHash(Hash256 parentHash)
+    {
+        XdcTestObjectInternal.ParentHash = parentHash;
+        return this;
+    }
+
     public new XdcBlockHeaderBuilder WithBaseFee(UInt256 baseFee)
     {
         TestObjectInternal.BaseFeePerGas = baseFee;
+        return this;
+    }
+
+    public new XdcBlockHeaderBuilder WithNumber(long blockNumber)
+    {
+        TestObjectInternal.Number = blockNumber;
         return this;
     }
 
