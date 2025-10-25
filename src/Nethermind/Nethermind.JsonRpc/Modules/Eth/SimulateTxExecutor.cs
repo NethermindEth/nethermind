@@ -77,23 +77,37 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
 
     private static TransactionForRpc UpdateTxType(TransactionForRpc rpcTransaction)
     {
-        // TODO: This is a bit messy since we're changing the transaction type
-        if (rpcTransaction is LegacyTransactionForRpc legacy && rpcTransaction is not EIP1559TransactionForRpc)
+        // If transaction is Legacy or AccessList update to Eip1559
+        // If gas price is not null it's a legacy tx. No metter what
+        if (rpcTransaction is LegacyTransactionForRpc legacy)
         {
-            rpcTransaction = new EIP1559TransactionForRpc
+            LegacyTransactionForRpc result = legacy;
+            if (legacy.GasPrice is not null)
             {
-                Nonce = legacy.Nonce,
-                To = legacy.To,
-                From = legacy.From,
-                Gas = legacy.Gas,
-                Value = legacy.Value,
-                Input = legacy.Input,
-                GasPrice = legacy.GasPrice,
-                ChainId = legacy.ChainId,
-                V = legacy.V,
-                R = legacy.R,
-                S = legacy.S,
-            };
+                result = new LegacyTransactionForRpc();
+            }
+            else if (rpcTransaction is not EIP1559TransactionForRpc)
+            {
+                result = new EIP1559TransactionForRpc
+                {
+                    AccessList = rpcTransaction is AccessListTransactionForRpc accessListTx
+                        ? accessListTx.AccessList
+                        : null
+                };
+            }
+            result.Nonce = legacy.Nonce;
+            result.To = legacy.To;
+            result.From = legacy.From;
+            result.Gas = legacy.Gas;
+            result.Value = legacy.Value;
+            result.Input = legacy.Input;
+            result.GasPrice = legacy.GasPrice;
+            result.ChainId = legacy.ChainId;
+            result.V = legacy.V;
+            result.R = legacy.R;
+            result.S = legacy.S;
+
+            return result;
         }
 
         return rpcTransaction;
