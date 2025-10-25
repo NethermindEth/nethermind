@@ -1,17 +1,17 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Microsoft.Extensions.Logging;
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+
 using Nethermind.Blockchain;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc;
 using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -32,20 +32,21 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         IBlockTree chain,
         IDb qcDb,
         ISpecProvider xdcConfig,
-        IEpochSwitchManager epochSwitchManager)
+        IEpochSwitchManager epochSwitchManager,
+        IBlockInfoValidator blockInfoValidator)
     {
         _context = context;
         _blockTree = chain;
         _qcDb = qcDb;
         _specProvider = xdcConfig;
         _epochSwitchManager = epochSwitchManager;
+        _blockInfoValidator = blockInfoValidator;
     }
 
     private IXdcConsensusContext _context { get; }
     private IBlockTree _blockTree;
     private readonly IDb _qcDb;
-    private readonly static VoteDecoder _voteDecoder = new();
-
+    private IBlockInfoValidator _blockInfoValidator;
     private IEpochSwitchManager _epochSwitchManager { get; }
     private ISpecProvider _specProvider { get; }
     private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
@@ -66,8 +67,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         if (proposedBlockHeader is null)
             throw new InvalidBlockException(proposedBlockHeader, "Proposed block header not found in chain");
 
-        //TODO this could be wrong way of fetching spec if a release spec is defined on a round basis 
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader, _context.CurrentRound);
 
         //Can only look for a QC in proposed block after the switch block
         if (proposedBlockHeader.Number > spec.SwitchBlock)
@@ -83,54 +83,12 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
                 SaveLockQc(parentQc);
             }
 
-            CommitBlock(_blockTree, proposedBlockHeader, proposedBlockHeader.ExtraConsensusData.BlockRound, qc);
-        }
-    }
-
-    public bool VerifyVotingRule(XdcBlockHeader header)
-    {
-        if (_context.CurrentRound <= _context.HighestVotedRound ||
-            header.ExtraConsensusData.BlockRound != _context.CurrentRound)
-        {
-            return false;
+            CommitBlock(_blockTree, proposedBlockHeader, proposedBlockHeader.ExtraConsensusData.CurrentRound, qc);
         }
 
-        //TODO check this behavior again when transition from V1 to V2 is better defined
-        if (_context.LockQC is null)
+        if (qc.ProposedBlockInfo.Round >= _context.CurrentRound)
         {
-            return true;
-        }
-
-        //Exception in the voting rule described in the whitepaper
-        //https://xdcf.cdn.prismic.io/xdcf/876fd551-96c0-41e8-9a9a-437620cc1fee_XDPoS2.0_whitepaper.pdf
-        if (_context.LockQC.ProposedBlockInfo.Round < header.ExtraConsensusData.QuorumCert.ProposedBlockInfo.Round)
-        {
-            return true;
-        }
-
-        //We can only vote for a QC that is an ancestor of our lock QC
-        if (IsAncestor(_context.LockQC.ProposedBlockInfo, header.ExtraConsensusData.QuorumCert.ProposedBlockInfo))
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    private bool IsAncestor(BlockRoundInfo ancestor, BlockRoundInfo child)
-    {
-        long blockNumberDiff = child.BlockNumber - ancestor.BlockNumber;
-        if (blockNumberDiff < 0)
-            return false;
-        BlockHeader parentHeader = _blockTree.FindHeader(child.Hash, child.BlockNumber);
-        //TODO should this be bounded by some max number of blocks?
-        for (int i = 0; i < blockNumberDiff; i++)
-        {
-            if (parentHeader is null)
-                return false;
-            if (parentHeader.Hash == ancestor.Hash)
-                return true;
-            parentHeader = _blockTree.FindHeader(parentHeader.ParentHash, parentHeader.Number - 1);
+            _context.SetNewRound(_blockTree, qc.ProposedBlockInfo.Round);
         }
         return false;
     }
@@ -155,7 +113,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     private bool CommitBlock(IBlockTree chain, XdcBlockHeader proposedBlockHeader, ulong proposedRound, QuorumCertificate proposedQuorumCert)
     {
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
-        //Can only commit a QC if the proposed block is at least 2 blocks after the switch block, since we want to check grand parent of proposed QC
+        //Can only commit a QC if the proposed block is at least 2 blocks after the switch block, since we want to check grandparent of proposed QC
         if ((proposedBlockHeader.Number - 2) <= spec.SwitchBlock)
             return false;
 
@@ -245,31 +203,13 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        if (!ValidateBlockInfo(qc, certificateTarget))
+        if (!_blockInfoValidator.ValidateBlockInfo(qc.ProposedBlockInfo, parentHeader))
         {
             error = "QC block data does not match header data.";
             return false;
         }
 
         error = null;
-        return true;
-    }
-
-    private ValueHash256 VoteHash(BlockRoundInfo proposedBlockInfo, ulong gapNumber)
-    {
-        KeccakRlpStream stream = new();
-        _voteDecoder.Encode(stream, new Vote(proposedBlockInfo, gapNumber), RlpBehaviors.ForSealing);
-        return stream.GetValueHash();
-    }
-
-    private bool ValidateBlockInfo(QuorumCertificate qc, XdcBlockHeader parentHeader)
-    {
-        if (qc.ProposedBlockInfo.BlockNumber != parentHeader.Number)
-            return false;
-        if (qc.ProposedBlockInfo.Hash != parentHeader.Hash)
-            return false;
-        if (qc.ProposedBlockInfo.Round != parentHeader.ExtraConsensusData.BlockRound)
-            return false;
         return true;
     }
 }

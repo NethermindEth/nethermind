@@ -7,13 +7,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 
 namespace Nethermind.Xdc;
 public static class XdcExtensions
