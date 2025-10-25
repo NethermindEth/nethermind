@@ -345,7 +345,7 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
-            public PruningContext WithPersistedMemoryLimit(long persistedMemoryLimit)
+            public PruningContext WithPersistedMemoryLimit(long? persistedMemoryLimit)
             {
                 _pruningStrategy.WithPersistedMemoryLimit = persistedMemoryLimit;
                 return this;
@@ -977,12 +977,71 @@ namespace Nethermind.Trie.Test
                 .AssertThatCachedNodeCountMoreThan(280);
         }
 
+        [Test]
+        public void Can_Prune_AllPersistedNodeInOnePrune()
+        {
+            PruningContext ctx = PruningContext.InMemoryWithPastKeyTracking
+                .WithMaxDepth(2)
+                .WithPersistedMemoryLimit(null)
+                .WithPrunePersistedNodeParameter(1, 0.1)
+                .TurnOffAlwaysPrunePersistedNode();
+
+            bool thresholdReached = false;
+            for (int i = 0; i < 256; i++)
+            {
+                if (i == 256 - 1)
+                {
+                    ctx.TurnOnPrune();
+                }
+
+                ctx
+                    .SetAccountBalance(i, (UInt256)i)
+                    .CommitAndWaitForPruning();
+
+                if (thresholdReached)
+                {
+                    ctx.AssertThatTotalMemoryUsedIsNoLessThan((long)(200.KiB() * 0.1));
+                }
+                else if (ctx.TotalMemoryUsage > 190.KiB())
+                {
+                    thresholdReached = true;
+                }
+            }
+
+            ctx
+                .AssertThatCachedNodeCountIs(38);
+        }
+
         [TestCase(10)]
         [TestCase(64)]
         [TestCase(100)]
         public void Can_ContinueCommittingEvenWhenPruning(int maxDepth)
         {
             PruningContext ctx = PruningContext.InMemory
+                .WithMaxDepth(maxDepth)
+                .TurnOnPrune();
+
+            using ArrayPoolList<Hash256> stateRoots = new ArrayPoolList<Hash256>(256);
+            for (int i = 0; i < 256; i++)
+            {
+                ctx
+                    .SetAccountBalance(0, (UInt256)i)
+                    .CommitAndWaitForPruning();
+                stateRoots.Add(ctx.CurrentStateRoot);
+            }
+
+            for (int i = 0; i < 256; i++)
+            {
+                ctx.VerifyNodeInCache(stateRoots[i], i >= 255 - maxDepth);
+            }
+        }
+
+        [TestCase(10)]
+        [TestCase(64)]
+        [TestCase(100)]
+        public void Can_ContinueCommittingEvenWhenPruning_WithKeyTracking(int maxDepth)
+        {
+            PruningContext ctx = PruningContext.InMemoryWithPastKeyTracking
                 .WithMaxDepth(maxDepth)
                 .TurnOnPrune();
 

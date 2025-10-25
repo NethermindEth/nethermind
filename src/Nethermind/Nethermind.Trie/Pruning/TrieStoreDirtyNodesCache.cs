@@ -28,6 +28,7 @@ internal class TrieStoreDirtyNodesCache
     private readonly bool _storeByHash;
     private readonly ConcurrentDictionary<Key, NodeRecord> _byKeyObjectCache;
     private readonly ConcurrentDictionary<Hash256AsKey, NodeRecord> _byHashObjectCache;
+    private readonly int _keyTopLevel;
 
     public long Count => _count;
     public long DirtyCount => _dirtyCount;
@@ -35,8 +36,9 @@ internal class TrieStoreDirtyNodesCache
     public long TotalDirtyMemory => _totalDirtyMemory;
 
     public readonly long KeyMemoryUsage;
+    private readonly bool _isForCommitBuffer;
 
-    public TrieStoreDirtyNodesCache(TrieStore trieStore, bool storeByHash, ILogger logger)
+    public TrieStoreDirtyNodesCache(TrieStore trieStore, bool storeByHash, int keyTopLevel, ILogger logger, bool isForCommitBuffer = false)
     {
         _trieStore = trieStore;
         _logger = logger;
@@ -44,6 +46,7 @@ internal class TrieStoreDirtyNodesCache
         // we will use a map with hash as its key instead of the full Key to reduce memory usage.
         _storeByHash = storeByHash;
         // NOTE: DirtyNodesCache is already sharded.
+        _keyTopLevel = keyTopLevel;
         int concurrencyLevel = Math.Min(Environment.ProcessorCount * 4, 32);
         int initialBuckets = TrieStore.HashHelpers.GetPrime(Math.Max(31, concurrencyLevel));
         if (_storeByHash)
@@ -59,6 +62,8 @@ internal class TrieStoreDirtyNodesCache
         // Overhead for each key in concurrent dictionary. The key is stored in a "node" for the hashtable.
         // <object header> + <value ref> + <hashcode> + <next node ref>
         KeyMemoryUsage += MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
+
+        _isForCommitBuffer = isForCommitBuffer;
     }
 
     public TrieNode FindCachedOrUnknown(in Key key)
@@ -87,13 +92,6 @@ internal class TrieStoreDirtyNodesCache
         // ReSharper disable once ConditionIsAlwaysTrueOrFalse
         if (TryGetValue(key, out TrieNode trieNode))
         {
-            if (trieNode!.FullRlp.IsNull)
-            {
-                // // this happens in SyncProgressResolver
-                // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
-                return new TrieNode(NodeType.Unknown, key.Keccak);
-            }
-
             trieNode = _trieStore.CloneForReadOnly(key, trieNode);
 
             Metrics.LoadedFromCacheNodesCount++;
@@ -176,6 +174,8 @@ internal class TrieStoreDirtyNodesCache
 
     public NodeRecord GetOrAdd(in Key key, NodeRecord record)
     {
+        if (_isForCommitBuffer) return GetOrAddForCommitBuffer(key, record);
+
         return _storeByHash
             ? _byHashObjectCache.AddOrUpdate(key.Keccak, static (key, arg) => arg,
                 RecordReplacementLogic, record)
@@ -196,17 +196,37 @@ internal class TrieStoreDirtyNodesCache
             lastCommit = arg.LastCommit;
         }
 
-        TrieNode node = current.Node;
+        return new NodeRecord(current.Node, lastCommit);
+    }
+
+    internal NodeRecord GetOrAddForCommitBuffer(in Key key, NodeRecord record)
+    {
+        return _storeByHash
+            ? _byHashObjectCache.AddOrUpdate(key.Keccak, static (key, arg) => arg,
+                RecordReplacementLogicForCommitBuffer, record)
+            : _byKeyObjectCache.AddOrUpdate(key, static (key, arg) => arg,
+                RecordReplacementLogicForCommitBuffer, record);
+    }
+
+    private static NodeRecord RecordReplacementLogicForCommitBuffer(Key key, NodeRecord current, NodeRecord arg)
+    {
+        return RecordReplacementLogicForCommitBuffer(null, current, arg);
+    }
+
+    private static NodeRecord RecordReplacementLogicForCommitBuffer(Hash256AsKey keyHash, NodeRecord current, NodeRecord arg)
+    {
+        long lastCommit = current.LastCommit;
+        if (arg.LastCommit > lastCommit)
+        {
+            lastCommit = arg.LastCommit;
+        }
+
+        TrieNode? node = current.Node;
         if (node.IsPersisted && !arg.Node.IsPersisted)
         {
-            // This code path happens around 0.8% of the time at 4GB of dirty cache and 16GB total cache.
-            //
-            // If the cache node is persisted, we replace it completely.
-            // This is because although very rare, it is possible that this node is persisted, but its child is not
-            // persisted. This can happen when a path is not replaced with another node, but its child is and hence,
-            // the child is removed, but the parent is not and remain in the cache as persisted node.
-            // Additionally, it may hold a reference to its child which is marked as persisted eventhough it was
-            // deleted from the cached map.
+            // For commit buffer, always replace persisted node with unpersisted node
+            // This is because in the main trie store, the node may be removed concurrently so we need it
+            // to be re-persisted later.
             node = arg.Node;
         }
 
@@ -327,6 +347,19 @@ internal class TrieStoreDirtyNodesCache
 
                     if (_trieStore.IsNoLongerNeeded(lastCommit))
                     {
+                        if (!_storeByHash && key.Address == null)
+                        {
+                            if (key.Path.Length <= _keyTopLevel)
+                            {
+                                // Do not remove top level persisted node. This is so that it always get
+                                // removed via key removal and not due to memory limitation.
+                                node.PrunePersistedRecursively(1);
+                                totalMemory += node.GetMemorySize(false) + KeyMemoryUsage;
+                                totalNode++;
+                                continue;
+                            }
+                        }
+
                         RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);
                         continue;
                     }
@@ -501,9 +534,12 @@ internal class TrieStoreDirtyNodesCache
         }
     }
 
-    public void CopyTo(TrieStoreDirtyNodesCache otherCache)
+    public void FlushCommitBuffer(TrieStoreDirtyNodesCache otherCache)
     {
-        foreach (var kv in AllNodes) otherCache.GetOrAdd(kv.Key, kv.Value);
+        foreach (var kv in AllNodes)
+        {
+            otherCache.GetOrAddForCommitBuffer(kv.Key, kv.Value);
+        }
         Clear();
     }
 }

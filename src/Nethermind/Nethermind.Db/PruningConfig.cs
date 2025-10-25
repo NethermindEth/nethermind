@@ -49,7 +49,7 @@ namespace Nethermind.Db
             set
             {
                 // 30 because of the 1 << 31 become negative
-                if (value is <= 0 or > 30)
+                if (value is < 0 or > 30)
                 {
                     throw new InvalidOperationException($"Shard bit count must be between 0 and 30.");
                 }

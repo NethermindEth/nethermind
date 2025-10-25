@@ -14,7 +14,7 @@ public static class TestTrieStoreFactory
     private static IPruningConfig _testPruningConfig = new PruningConfig()
     {
         Mode = PruningMode.Full,
-        DirtyNodeShardBit = 1,
+        DirtyNodeShardBit = 4,
     };
 
     public static TestRawTrieStore Build(INodeStorage nodeStorage, ILogManager logManager)
