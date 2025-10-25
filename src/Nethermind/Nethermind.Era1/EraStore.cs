@@ -17,16 +17,16 @@ public class EraStore : IEraStore
 {
     private readonly char[] _eraSeparator = ['-'];
 
-    private readonly ISpecProvider _specProvider;
-    private readonly IBlockValidator _blockValidator;
-    private readonly ISet<ValueHash256>? _trustedAccumulators;
+    protected readonly ISpecProvider _specProvider;
+    protected readonly IBlockValidator _blockValidator;
+    protected readonly ISet<ValueHash256>? _trustedAccumulators;
 
-    private readonly Dictionary<long, string> _epochs;
-    private readonly ValueHash256[] _checksums;
+    protected readonly Dictionary<long, string> _epochs;
+    protected readonly ValueHash256[] _checksums;
 
     // Probably should be persisted in the directory so that on restart we would not verify the epoch again.
     // But that is more relevant when we read directly from the directory
-    private readonly ConcurrentDictionary<long, bool> _verifiedEpochs = new();
+    protected readonly ConcurrentDictionary<long, bool> _verifiedEpochs = new();
 
     /// <summary>
     /// Simple mechanism to limit opened file. Each epoch is sharded to _maxOpenFile. Whenever a reader is to be used
@@ -42,7 +42,7 @@ public class EraStore : IEraStore
     private readonly int _maxEraFile;
 
     private int LastEpoch { get; set; }
-    private int FirstEpoch { get; set; } = int.MaxValue;
+    protected int FirstEpoch { get; set; } = int.MaxValue;
 
     private long? _firstBlock = null;
     public long FirstBlock
@@ -82,7 +82,8 @@ public class EraStore : IEraStore
         int maxEraSize,
         ISet<ValueHash256>? trustedAcccumulators,
         string directory,
-        int verifyConcurrency = 0
+        int verifyConcurrency = 0,
+        string checksumsFileName = EraExporter.ChecksumsFileName
     )
     {
         _specProvider = specProvider;
@@ -94,7 +95,7 @@ public class EraStore : IEraStore
         _verifyConcurrency = verifyConcurrency;
 
         // Geth behaviour seems to be to always read the checksum and fail when its missing.
-        _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName))
+        _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, checksumsFileName))
             .Select(static (chk) => EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry(chk))
             .ToArray();
 
@@ -127,15 +128,15 @@ public class EraStore : IEraStore
         return FirstEpoch + epochOffset;
     }
 
-    private bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);
+    protected bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);
 
-    private EraReader GetReader(long epoch)
+    protected virtual EraReader GetReader(long epoch)
     {
         GuardMissingEpoch(epoch);
         return new EraReader(new E2StoreReader(_epochs[epoch]));
     }
 
-    private async ValueTask EnsureEpochVerified(long epoch, EraReader reader, CancellationToken cancellation)
+    protected virtual async ValueTask EnsureEpochVerified(long epoch, EraReader reader, CancellationToken cancellation)
     {
         if (!(_verifiedEpochs.TryGetValue(epoch, out bool verified) && verified))
         {
@@ -238,7 +239,7 @@ public class EraStore : IEraStore
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void GuardMissingEpoch(long epoch)
+    protected void GuardMissingEpoch(long epoch)
     {
         if (!HasEpoch(epoch))
             throw new ArgumentOutOfRangeException($"Epoch not available.", epoch, nameof(epoch));

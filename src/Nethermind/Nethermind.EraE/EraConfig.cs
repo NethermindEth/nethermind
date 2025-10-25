@@ -1,11 +1,9 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Config;
+namespace Nethermind.EraE;
 
-namespace Nethermind.Era1;
-
-public class EraConfig : IEraConfig
+public class EraConfig: IEraConfig
 {
     public string? ImportDirectory { get; set; }
     public string? ExportDirectory { get; set; }
@@ -13,7 +11,7 @@ public class EraConfig : IEraConfig
     public long To { get; set; }
     public string? TrustedAccumulatorFile { get; set; }
     public string? TrustedHistoricalRootsFile { get; set; }
-    public int MaxEra1Size { get; set; } = EraWriter.MaxEra1Size;
+    public int MaxEraESize { get; set; } = EraWriter.MaxEraESize;
     public string? NetworkName { get; set; }
     public int Concurrency { get; set; }
     public long ImportBlocksBufferSize { get; set; } = 1024 * 4;

@@ -1,0 +1,38 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.IO.Abstractions;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+
+namespace Nethermind.EraE;
+
+
+public class EraStoreFactory(
+    ISpecProvider specProvider,
+    IBlockValidator blockValidator,
+    IFileSystem fileSystem,
+    IEraConfig eraConfig
+) : Era1.EraStoreFactory(specProvider, blockValidator, fileSystem, new Era1.EraConfig { NetworkName = eraConfig.NetworkName, MaxEra1Size = eraConfig.MaxEraESize, Concurrency = eraConfig.Concurrency }), IEraStoreFactory
+{
+    public virtual Era1.IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators, ISet<ValueHash256>? trustedHistoricalRoots)
+    {
+        return new EraStore(
+            specProvider,
+            blockValidator,
+            fileSystem,
+            eraConfig.NetworkName!,
+            eraConfig.MaxEraESize,
+            trustedAccumulators,
+            trustedHistoricalRoots,
+            src,
+            eraConfig.Concurrency);
+    }
+}
+
+public interface IEraStoreFactory: Era1.IEraStoreFactory
+{
+    Era1.IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators, ISet<ValueHash256>? trustedHistoricalRoots);
+}
+
