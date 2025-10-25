@@ -124,12 +124,14 @@ public class NodeStorage(
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
         if (Scheme == INodeStorage.KeyScheme.HalfPath)
         {
-            return _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags)
-                   ?? _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
+            byte[]? result = _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
+            return result ?? _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
         }
-
-        return _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags)
-               ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
+        else
+        {
+            byte[]? result = _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
+            return result ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
+        }
     }
 
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
@@ -173,7 +175,8 @@ public class NodeStorage(
             return;
         }
 
-        _keyValueStore.PutSpan(GetExpectedPath(stackalloc byte[StoragePathLength], address, path, keccak), data, writeFlags);
+        Span<byte> pathSpan = stackalloc byte[StoragePathLength];
+        _keyValueStore.PutSpan(GetExpectedPath(pathSpan, address, path, keccak), data, writeFlags);
     }
 
     public void Flush(bool onlyWal)
@@ -203,7 +206,8 @@ public class NodeStorage(
         {
             if (keccak != Keccak.EmptyTreeHash.ValueHash256)
             {
-                writeBatch.PutSpan(nodeStorage.GetExpectedPath(stackalloc byte[StoragePathLength], address, path, keccak), data, writeFlags);
+                Span<byte> pathSpan = stackalloc byte[StoragePathLength];
+                writeBatch.PutSpan(nodeStorage.GetExpectedPath(pathSpan, address, path, keccak), data, writeFlags);
             }
         }
     }
