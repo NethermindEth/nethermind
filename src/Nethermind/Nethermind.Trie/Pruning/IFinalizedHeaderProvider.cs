@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
 
 public interface IFinalizedHeaderProvider
 {
-    // Note: Finalized header must never be null. It could be very old, or genesis, but it can never be null.
-    BlockHeader FinalizedHeader { get; }
+    long FinalizedBlockNumber { get; }
+    Hash256? GetFinalizedStateRootAt(long blockNumber);
 }

@@ -4,6 +4,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using Autofac.Features.GeneratedFactories;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
@@ -24,15 +25,25 @@ public class CommitSetQueue : IEnumerable<BlockCommitSet>
     }
 
     public bool IsEmpty => Count == 0;
-    public long MinBlockNumber => _queue.Min?.BlockNumber;
-    public long MaxBlockNumber => _queue.Max?.BlockNumber;
+    public long? MinBlockNumber
+    {
+        get
+        {
+            lock (_queue) return _queue.Min?.BlockNumber;
+        }
+    }
+
+    public long? MaxBlockNumber
+    {
+        get
+        {
+            lock (_queue) return _queue.Max?.BlockNumber;
+        }
+    }
 
     public void Enqueue(BlockCommitSet set)
     {
-        lock (_queue)
-        {
-            _queue.Add(set);
-        }
+        lock (_queue) _queue.Add(set);
     }
 
     public bool TryPeek(out BlockCommitSet? blockCommitSet)
@@ -50,7 +61,7 @@ public class CommitSetQueue : IEnumerable<BlockCommitSet>
         }
     }
 
-    public bool TryDequeue(out BlockCommitSet blockCommitSet)
+    public bool TryDequeue(out BlockCommitSet? blockCommitSet)
     {
         lock (_queue)
         {
@@ -77,7 +88,16 @@ public class CommitSetQueue : IEnumerable<BlockCommitSet>
         return GetEnumerator();
     }
 
-    public bool TryFindCommit(long finalizedHeaderNumber, Hash256 finalizedHeaderStateRoot, out BlockCommitSet blockCommitSet)
+    public ArrayPoolListRef<BlockCommitSet> GetCommitSetsAtBlockNumber(long pruningBoundaryBlockNumber)
+    {
+    }
+
+    public ArrayPoolListRef<BlockCommitSet> GetAndDequeueCommitSetsBeforeOrAt(long maxBlockNumber)
+    {
+        throw new System.NotImplementedException();
+    }
+
+    public void Remove(BlockCommitSet blockCommitSet)
     {
         throw new System.NotImplementedException();
     }

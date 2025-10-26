@@ -694,71 +694,86 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (_logger.IsDebug) _logger.Debug($"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {_maxDepth})");
     }
 
-    private ArrayPoolListRef<BlockCommitSet> DetermineCommitSetToPersistInSnapshot(int count)
+    /// <summary>
+    /// Determined the state that will be persisted in a snapshot.
+    /// If:
+    /// - return 0 block commit set, then the exact state to persist is not known.
+    /// - return exactly 1 commit set, then it is the canonical state. Previous keys may be removed if not archive node.
+    /// - return more than 1 commit set, then its an archive node.
+    /// </summary>
+    /// <param name="count"></param>
+    /// <returns></returns>
+    private (ArrayPoolListRef<BlockCommitSet>, long) DetermineCommitSetToPersistInSnapshot(int count)
     {
+        // TODO: persisted block number
         ArrayPoolListRef<BlockCommitSet> candidateSets = new(count);
         try
         {
-            if (_commitSetQueue.IsEmpty) return candidateSets;
-
-            BlockHeader finalizedHeader = _finalizedHeaderProvider.FinalizedHeader;
-
-            if (!_commitSetQueue.TryFindCommit(finalizedHeader.Number, finalizedHeader.StateRoot, out BlockCommitSet? finalizedBlockCommitSet))
+            if (_commitSetQueue.IsEmpty)
             {
-                if (_commitSetQueue.MinBlockNumber > finalizedHeader.Number)
-                {
-                    // could be that it was flushed for full pruning.
-                }
-                else if (_commitSetQueue.MaxBlockNumber < finalizedHeader.Number)
-                {
-                    // Not reached the finalized state yet.
-                }
+                if (_logger.IsDebug) _logger.Debug("Unable to persist commit set due to empty queue");
+                return candidateSets;
+            }
 
+            long finalizedBlockNumber = _finalizedHeaderProvider.FinalizedBlockNumber;
+            long pruningBoundaryBlockNumber = _commitSetQueue.MaxBlockNumber - _maxDepth;
+            long effectiveFinalizedBlockNumber = Math.Min(pruningBoundaryBlockNumber, finalizedBlockNumber);
+            effectiveFinalizedBlockNumber = Math.Max(0, effectiveFinalizedBlockNumber);
+
+            if (_commitSetQueue.MinBlockNumber >= effectiveFinalizedBlockNumber + 1)
+            {
+                using ArrayPoolListRef<BlockCommitSet> commitSet = _commitSetQueue.GetAndDequeueCommitSetsBeforeOrAt(_commitSetQueue.MaxBlockNumber - _maxDepth);
+
+                if (commitSet.Count > 1)
+                {
+                    // TODO: To debug
+                    if (_logger.IsInfo) _logger.Info($"Committing {commitSet.Count} commit sets after finalized block. Effective finalized block: {effectiveFinalizedBlockNumber}, Finalized block number: {finalizedBlockNumber}");
+                    candidateSets.AddRange(commitSet.AsSpan());
+                }
+                else
+                {
+                    // TODO: To debug
+                    if (_logger.IsInfo) _logger.Info($"Block commits are all after finalized block. Min block commit: {_commitSetQueue.MinBlockNumber}, Effective finalized block: {effectiveFinalizedBlockNumber}, Finalized block number: {finalizedBlockNumber}");
+                }
+                return candidateSets;
+            }
+
+            // Not reached the finalized state yet.
+            using ArrayPoolListRef<BlockCommitSet> commitSetsAtFinalizedBlock = _commitSetQueue.GetCommitSetsAtBlockNumber(effectiveFinalizedBlockNumber);
+
+            BlockCommitSet? finalizedBlockCommitSet = null;
+            Hash256? finalizedStateRoot = _finalizedHeaderProvider.GetFinalizedStateRootAt(effectiveFinalizedBlockNumber);
+            if (finalizedStateRoot is not null)
+            {
+                foreach (BlockCommitSet blockCommitSet in commitSetsAtFinalizedBlock)
+                {
+                    if (blockCommitSet.StateRoot == finalizedStateRoot)
+                    {
+                        finalizedBlockCommitSet = blockCommitSet;
+                        break;
+                    }
+                }
+            }
+
+            if (finalizedBlockCommitSet is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Unable to determine finalized state root at block {effectiveFinalizedBlockNumber}. Available state roots {string.Join(", ", commitSetsAtFinalizedBlock.Select(c => c.StateRoot.ToString()).ToArray())}");
+                return candidateSets;
             }
 
             while (_commitSetQueue.TryPeek(out BlockCommitSet? set))
             {
-                if (set.BlockNumber > finalizedHeader.Number) break;
+                if (set.BlockNumber > effectiveFinalizedBlockNumber) break;
 
-                if (candidateSets.Count > 0 && candidateSets[^1].BlockNumber != set.BlockNumber)
+                _commitSetQueue.Remove(set);
+
+                if (_persistenceStrategy.ShouldPersist(set.BlockNumber))
                 {
-                    if (_persistenceStrategy.ShouldPersist(set.BlockNumber))
-                    {
-
-                    }
-                    candidateSets.Clear();
-                }
-
-                candidateSets.Add(set);
-            }
-
-            long lastBlockBeforeRorgBoundary = 0;
-            foreach (BlockCommitSet blockCommitSet in _commitSetQueue)
-            {
-                if (!blockCommitSet.IsSealed) continue;
-                if (blockCommitSet.BlockNumber <= LatestCommittedBlockNumber - _maxDepth && blockCommitSet.BlockNumber > lastBlockBeforeRorgBoundary)
-                {
-                    lastBlockBeforeRorgBoundary = blockCommitSet.BlockNumber;
+                    candidateSets.Add(set);
                 }
             }
 
-            using ArrayPoolListRef<BlockCommitSet> toAddBack = new(count);
-            while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
-            {
-                if (frontSet.BlockNumber == lastBlockBeforeRorgBoundary || (_persistenceStrategy.ShouldPersist(frontSet.BlockNumber) && frontSet.BlockNumber < lastBlockBeforeRorgBoundary))
-                {
-                    candidateSets.Add(frontSet);
-                }
-                else if (frontSet.BlockNumber >= LatestCommittedBlockNumber - _maxDepth)
-                {
-                    toAddBack.Add(frontSet);
-                }
-            }
-
-            for (int index = 0; index < toAddBack.Count; index++)
-            {
-                _commitSetQueue.Enqueue(toAddBack[index]);
-            }
+            candidateSets.Add(finalizedBlockCommitSet);
 
             return candidateSets;
         }

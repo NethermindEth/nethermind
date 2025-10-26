@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -10,6 +11,7 @@ namespace Nethermind.Trie.Pruning
         public long BlockNumber { get; } = blockNumber;
 
         public TrieNode? Root { get; private set; }
+        public Hash256 StateRoot => Root?.Keccak ?? Keccak.EmptyTreeHash;
 
         public bool IsSealed => Root is not null;
 
