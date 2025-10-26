@@ -41,7 +41,7 @@ using NSubstitute;
 namespace Nethermind.JsonRpc.Test.Modules.Proof;
 
 [Parallelizable(ParallelScope.None)]
-// [TestFixture(true, true)] TODO fix or remove test?
+[TestFixture(true, true)]
 [TestFixture(true, false)]
 [TestFixture(false, false)]
 public class ProofRpcModuleTests
