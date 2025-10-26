@@ -211,7 +211,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                 {
                     if (call is { Error: not null } simulateResult && !string.IsNullOrEmpty(simulateResult.Error.Message))
                     {
-                        simulateResult.Error.Code = ErrorCodes.ExecutionError;
+                        simulateResult.Error.Code = ErrorCodes.Default;
                     }
                 }
             }
@@ -219,8 +219,8 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
 
         int? errorCode = results.TransactionResult.TransactionExecuted
             ? null
-            : (int)MapSimulateErrorCode(results.TransactionResult);
-        if (results.IsInvalidOutput) errorCode = ErrorCodes.Default;
+            : MapSimulateErrorCode(results.TransactionResult);
+        if (results.IsInvalidInput) errorCode = ErrorCodes.Default;
         return results.Error is null
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success([.. results.Items])
             : errorCode is not null
