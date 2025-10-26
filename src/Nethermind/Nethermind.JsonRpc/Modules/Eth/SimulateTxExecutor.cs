@@ -10,6 +10,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -216,10 +217,42 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
             }
         }
 
+        int? errorCode = results.TransactionResult.TransactionExecuted
+            ? null
+            : (int)MapSimulateErrorCode(results.TransactionResult);
+        if (results.IsInvalidOutput) errorCode = ErrorCodes.Default;
         return results.Error is null
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success([.. results.Items])
-            : results.ErrorCode is not null
-                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error!, results.ErrorCode!.Value)
+            : errorCode is not null
+                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error!, errorCode.Value)
                 : ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error);
+    }
+
+    private int MapSimulateErrorCode(TransactionResult txResult)
+    {
+        if (txResult.Error != TransactionResult.ErrorType.None)
+        {
+            return txResult.Error switch
+            {
+                TransactionResult.ErrorType.BlockGasLimitExceeded => ErrorCodes.BlockGasLimitReached,
+                TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => ErrorCodes.IntrinsicGas,
+                TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance
+                    or TransactionResult.ErrorType.InsufficientSenderBalance => ErrorCodes.InsufficientFunds,
+                TransactionResult.ErrorType.MalformedTransaction => ErrorCodes.InternalError,
+                TransactionResult.ErrorType.MinerPremiumNegative => ErrorCodes.InvalidParams,
+                TransactionResult.ErrorType.NonceOverflow => ErrorCodes.InternalError,
+                TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.InvalidParams,
+                TransactionResult.ErrorType.SenderNotSpecified => ErrorCodes.InternalError,
+                TransactionResult.ErrorType.TransactionSizeOverMaxInitCodeSize => ErrorCodes.MaxInitCodeSizeExceeded,
+                TransactionResult.ErrorType.WrongTransactionNonce => ErrorCodes.InternalError,
+                _ => ErrorCodes.InternalError
+            };
+        }
+
+        return txResult.EvmExceptionType switch
+        {
+            EvmExceptionType.Revert => ErrorCodes.RevertedSimulate,
+            _ => ErrorCodes.VMError
+        };
     }
 }

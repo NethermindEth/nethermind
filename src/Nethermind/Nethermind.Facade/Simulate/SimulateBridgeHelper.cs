@@ -74,52 +74,24 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         catch (ArgumentException ex)
         {
             result.Error = ex.Message;
-            result.ErrorCode = (int)SimulateErrorCode.Default;
+            result.IsInvalidOutput = true;
         }
         catch (InvalidTransactionException ex)
         {
             result.Error = ex.Reason.ErrorDescription;
-            result.ErrorCode = (int)MapSimulateErrorCode(ex.Reason);
+            result.TransactionResult = ex.Reason;
         }
         catch (InsufficientBalanceException ex)
         {
             result.Error = ex.Message;
-            result.ErrorCode = (int)SimulateErrorCode.InsufficientFunds;
+            result.TransactionResult = TransactionResult.InsufficientSenderBalance;
         }
         catch (Exception ex)
         {
-            result.Error = ex.ToString();
+            result.Error = ex.Message;
         }
 
         return result;
-    }
-
-    private SimulateErrorCode MapSimulateErrorCode(TransactionResult txResult)
-    {
-        if (txResult.Error != TransactionResult.ErrorType.None)
-        {
-            return txResult.Error switch
-            {
-                TransactionResult.ErrorType.BlockGasLimitExceeded => SimulateErrorCode.BlockGasLimitReached,
-                TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => SimulateErrorCode.IntrinsicGas,
-                TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance
-                    or TransactionResult.ErrorType.InsufficientSenderBalance => SimulateErrorCode.InsufficientFunds,
-                TransactionResult.ErrorType.MalformedTransaction => SimulateErrorCode.InternalError,
-                TransactionResult.ErrorType.MinerPremiumNegative => SimulateErrorCode.InvalidParams,
-                TransactionResult.ErrorType.NonceOverflow => SimulateErrorCode.InternalError,
-                TransactionResult.ErrorType.SenderHasDeployedCode => SimulateErrorCode.InvalidParams,
-                TransactionResult.ErrorType.SenderNotSpecified => SimulateErrorCode.InternalError,
-                TransactionResult.ErrorType.TransactionSizeOverMaxInitCodeSize => SimulateErrorCode.MaxInitCodeSizeExceeded,
-                TransactionResult.ErrorType.WrongTransactionNonce => SimulateErrorCode.InternalError,
-                _ => SimulateErrorCode.InternalError
-            };
-        }
-
-        return txResult.EvmExceptionType switch
-        {
-            EvmExceptionType.Revert => SimulateErrorCode.Reverted,
-            _ => SimulateErrorCode.VMError
-        };
     }
 
     private void Simulate<TTrace>(BlockHeader parent,
