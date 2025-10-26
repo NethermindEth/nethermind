@@ -112,7 +112,7 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
-                        args.Set(TxAction.Skip, result.Error!);
+                        args.Set(TxAction.Skip, result.ErrorDescription!);
                     }
                 }
 

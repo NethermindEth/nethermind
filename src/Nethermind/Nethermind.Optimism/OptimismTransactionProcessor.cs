@@ -45,7 +45,7 @@ public class OptimismTransactionProcessor(
 
         TransactionResult result = base.Execute(tx, tracer, opts);
 
-        if (!result && tx.IsDeposit() && result.Error != "block gas limit exceeded")
+        if (!result && tx.IsDeposit() && result.Error != TransactionResult.ErrorType.BlockGasLimitExceeded)
         {
             // deposit tx should be included
             WorldState.Restore(snapshot);
