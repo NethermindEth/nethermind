@@ -107,7 +107,7 @@ public class ParityLikeTxTracer : TxTracer
             EvmExceptionType.BadInstruction => "Bad instruction",
             EvmExceptionType.StackOverflow => "Stack overflow",
             EvmExceptionType.StackUnderflow => "Stack underflow",
-            EvmExceptionType.OutOfGas => "Out of gas",
+            EvmExceptionType.OutOfGas2 => "Out of gas",
             EvmExceptionType.InvalidSubroutineEntry => "Invalid subroutine entry",
             EvmExceptionType.InvalidSubroutineReturn => "Invalid subroutine return",
             EvmExceptionType.InvalidJumpDestination => "Bad jump destination",

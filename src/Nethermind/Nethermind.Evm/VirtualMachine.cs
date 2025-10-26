@@ -416,7 +416,7 @@ public unsafe partial class VirtualMachine(
 
             if (_txTracer.IsTracingActions)
             {
-                _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
+                _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas2);
             }
         }
         else if (_txTracer.IsTracingActions)
@@ -505,7 +505,7 @@ public unsafe partial class VirtualMachine(
             // Report an error via the tracer, indicating whether the failure was due to invalid code or gas exhaustion.
             if (isTracing)
             {
-                _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
+                _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas2);
             }
         }
         // In scenarios where the code deposit does not strictly mandate a failure,
@@ -915,7 +915,7 @@ public unsafe partial class VirtualMachine(
                 // When the spec mandates charging for top-level creation, report an out-of-gas error.
                 if (spec.ChargeForTopLevelCreate)
                 {
-                    _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                    _txTracer.ReportActionError(EvmExceptionType.OutOfGas2);
                 }
                 // Otherwise, report a successful action end with the remaining gas.
                 else
@@ -1003,7 +1003,7 @@ public unsafe partial class VirtualMachine(
 
         if (!UpdateGas(checked(baseGasCost + dataGasCost), ref gasAvailable))
         {
-            return new(default, false, 0, true, EvmExceptionType.OutOfGas);
+            return new(default, false, 0, true, EvmExceptionType.OutOfGas2);
         }
 
         state.GasAvailable = gasAvailable;
@@ -1313,7 +1313,7 @@ public unsafe partial class VirtualMachine(
     OutOfGas:
         gasAvailable = 0;
         // Set the exception type to OutOfGas if gas has been exhausted.
-        exceptionType = EvmExceptionType.OutOfGas;
+        exceptionType = EvmExceptionType.OutOfGas2;
     ReturnFailure:
         // Return a failure CallResult based on the remaining gas and the exception type.
         return GetFailureReturn(gasAvailable, exceptionType);
@@ -1338,7 +1338,7 @@ public unsafe partial class VirtualMachine(
 
         return exceptionType switch
         {
-            EvmExceptionType.OutOfGas => CallResult.OutOfGasException,
+            EvmExceptionType.OutOfGas2 => CallResult.OutOfGasException,
             EvmExceptionType.BadInstruction => CallResult.InvalidInstructionException,
             EvmExceptionType.StaticCallViolation => CallResult.StaticCallViolationException,
             EvmExceptionType.InvalidSubroutineEntry => CallResult.InvalidSubroutineEntry,

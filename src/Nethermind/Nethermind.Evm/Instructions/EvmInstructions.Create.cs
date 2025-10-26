@@ -251,7 +251,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:

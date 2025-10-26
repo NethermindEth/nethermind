@@ -119,7 +119,7 @@ internal static partial class EvmInstructions
         {
             // Update memory cost for expanding memory to accommodate the destination slice.
             if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in destOffset, size))
-                return EvmExceptionType.OutOfGas;
+                return EvmExceptionType.OutOfGas2;
 
             // Get the source slice; if the requested range exceeds the buffer length, it is zero-padded.
             ZeroPaddedSpan slice = returnDataBuffer.Span.SliceWithZeroPadding(sourceOffset, (int)size);
@@ -135,7 +135,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     AccessViolation:
@@ -173,7 +173,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -205,7 +205,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -229,7 +229,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -281,7 +281,7 @@ internal static partial class EvmInstructions
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -307,7 +307,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -341,7 +341,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -381,7 +381,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -437,7 +437,7 @@ internal static partial class EvmInstructions
     StackOverflow:
         return EvmExceptionType.StackOverflow;
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -463,7 +463,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -501,7 +501,7 @@ internal static partial class EvmInstructions
     StackOverflow:
         return EvmExceptionType.StackOverflow;
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -531,7 +531,7 @@ internal static partial class EvmInstructions
         return result;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -560,7 +560,7 @@ internal static partial class EvmInstructions
         return result;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -593,7 +593,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -754,7 +754,7 @@ internal static partial class EvmInstructions
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -803,7 +803,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
@@ -1008,7 +1008,7 @@ internal static partial class EvmInstructions
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     StaticCallViolation:

@@ -569,7 +569,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the log is successfully recorded; otherwise, an appropriate exception type such as
-    /// <see cref="EvmExceptionType.StackUnderflow"/>, <see cref="EvmExceptionType.StaticCallViolation"/>, or <see cref="EvmExceptionType.OutOfGas"/>.
+    /// <see cref="EvmExceptionType.StackUnderflow"/>, <see cref="EvmExceptionType.StaticCallViolation"/>, or <see cref="EvmExceptionType.OutOfGas2"/>.
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionLog<TOpCount>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
@@ -621,7 +621,7 @@ internal static partial class EvmInstructions
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     }
 }
 

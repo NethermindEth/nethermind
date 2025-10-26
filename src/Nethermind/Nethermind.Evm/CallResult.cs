@@ -12,7 +12,7 @@ public unsafe partial class VirtualMachine
     {
         public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
         public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
-        public static CallResult OutOfGasException => new(EvmExceptionType.OutOfGas);
+        public static CallResult OutOfGasException => new(EvmExceptionType.OutOfGas2);
         public static CallResult AccessViolationException => new(EvmExceptionType.AccessViolation);
         public static CallResult InvalidJumpDestination => new(EvmExceptionType.InvalidJumpDestination);
         public static CallResult InvalidInstructionException => new(EvmExceptionType.BadInstruction);

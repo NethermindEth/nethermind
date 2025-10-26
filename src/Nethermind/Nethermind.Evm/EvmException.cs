@@ -17,7 +17,7 @@ namespace Nethermind.Evm
         BadInstruction,
         StackOverflow,
         StackUnderflow,
-        OutOfGas,
+        OutOfGas2,
         GasUInt64Overflow,
         InvalidSubroutineEntry,
         InvalidSubroutineReturn,

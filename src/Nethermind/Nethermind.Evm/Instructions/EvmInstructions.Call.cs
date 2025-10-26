@@ -301,7 +301,7 @@ internal static partial class EvmInstructions
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     }
 
     private static bool ChargeForLargeContractAccess(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref long gasAvailable)
@@ -326,7 +326,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success; otherwise, an error such as <see cref="EvmExceptionType.StackUnderflow"/>,
-    /// <see cref="EvmExceptionType.OutOfGas"/>, or <see cref="EvmExceptionType.BadInstruction"/>.
+    /// <see cref="EvmExceptionType.OutOfGas2"/>, or <see cref="EvmExceptionType.BadInstruction"/>.
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionReturn(
@@ -360,7 +360,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.OutOfGas2;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     BadInstruction:
