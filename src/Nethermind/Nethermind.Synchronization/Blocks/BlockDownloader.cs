@@ -162,6 +162,8 @@ namespace Nethermind.Synchronization.Blocks
                 if (cancellation.IsCancellationRequested) return null; // check before every heavy operation
                 if (headers is null || headers.Count <= 1) return null;
 
+                if (_logger.IsTrace) _logger.Trace($"Prepared request from block {headers[0].Number} to {headers[^1].Number}");
+
                 if (previousStartingHeaderNumber == headers[0].Number)
                 {
                     // When the block is suggested right between a `NewPayload` and `ForkChoiceUpdatedHandler` the block is not added because it was added already
@@ -381,7 +383,7 @@ namespace Nethermind.Synchronization.Blocks
             response.OwnedBodies?.Disown();
 
             SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
-            using ArrayPoolList<Block> blocks = new ArrayPoolList<Block>(response.BodiesRequests?.Count ?? 0);
+            using ArrayPoolListRef<Block> blocks = new(response.BodiesRequests?.Count ?? 0);
             int bodiesCount = 0;
             int receiptsCount = 0;
 

@@ -19,9 +19,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Nethermind.Consensus;
 using Nethermind.Evm.State;
-using Nethermind.Logging;
+using Nethermind.Evm.TransactionProcessing;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
@@ -70,31 +69,38 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         try
         {
-            if (!TrySimulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken, out string? error))
-            {
-                result.Error = error;
-            }
+            Simulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            result.Error = ex.Message;
+            result.IsInvalidOutput = true;
+        }
+        catch (InvalidTransactionException ex)
+        {
+            result.Error = ex.Reason.ErrorDescription;
+            result.TransactionResult = ex.Reason;
         }
         catch (InsufficientBalanceException ex)
         {
             result.Error = ex.Message;
+            result.TransactionResult = TransactionResult.InsufficientSenderBalance;
         }
         catch (Exception ex)
         {
-            result.Error = ex.ToString();
+            result.Error = ex.Message;
         }
 
         return result;
     }
 
-    private bool TrySimulate<TTrace>(BlockHeader parent,
+    private void Simulate<TTrace>(BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
         List<SimulateBlockResult<TTrace>> output,
         long gasCapLimit,
-        CancellationToken cancellationToken,
-        [NotNullWhen(false)] out string? error)
+        CancellationToken cancellationToken)
     {
         IBlockTree blockTree = env.BlockTree;
         IWorldState stateProvider = env.WorldState;
@@ -157,9 +163,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 parent = processedBlock.Header;
             }
         }
-
-        error = null;
-        return true;
     }
 
     private BlockBody AssembleBody(
