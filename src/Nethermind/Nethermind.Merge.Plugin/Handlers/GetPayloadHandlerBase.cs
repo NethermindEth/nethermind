@@ -73,7 +73,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
                 var timestamp = latestBlock.Timestamp;
                 payloadAttributes = new()
                 {
-                    Timestamp = timestamp + 24 * 60 * 60 + 1,
+                    Timestamp = timestamp + 1,
                     ParentBeaconBlockRoot = previousBlock.Hash,
                     PrevRandao = previousBlock.Hash ?? Keccak.Zero,
                     SuggestedFeeRecipient = Address.Zero,
@@ -85,7 +85,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
                 var timestamp2 = previousBlock.Timestamp;
                 payloadAttributes = new()
                 {
-                    Timestamp = timestamp2 + 24 * 60 * 60 + 1,
+                    Timestamp = timestamp2 + 1,
                     ParentBeaconBlockRoot = previousBlock.Hash,
                     PrevRandao = previousBlock.Hash ?? Keccak.Zero,
                     SuggestedFeeRecipient = Address.Zero,
@@ -126,7 +126,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
         else
         {
             return ResultWrapper<TGetPayloadResult?>.Fail("unknown payload", MergeErrorCodes.InvalidPayloadAttributes);
-        }        
+        }
     }
 
     protected bool ShouldOverrideBuilder(Block block)
