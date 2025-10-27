@@ -25,6 +25,22 @@ namespace Nethermind.EraE;
 // which is handled in an appropriate class later.
 public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessageDecoder(skipBloom: true))
 {
+    private readonly IHistoricalSummariesProvider? _historicalSummariesProvider;
+    private readonly ISet<ValueHash256>? _trustedHistoricalRoots;
+    private readonly ISet<ValueHash256>? _trustedAccumulators;
+
+    public EraReader(
+        E2StoreReader e2, 
+        IHistoricalSummariesProvider? historicalSummariesProvider,
+        ISet<ValueHash256>? trustedHistoricalRoots, 
+        ISet<ValueHash256>? trustedAccumulators
+    ) : this(e2) {
+        _historicalSummariesProvider = historicalSummariesProvider;
+        _trustedHistoricalRoots = trustedHistoricalRoots;
+        _trustedAccumulators = trustedAccumulators;
+    }
+
+    
     protected readonly ProofDecoder _proofDecoder = new();
 
     async Task<BlockHeaderProof?> ReadProof(ulong slot, CancellationToken cancellationToken)
@@ -57,18 +73,11 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
     /// </summary>
     /// <param name="cancellation"></param>
     /// <returns>Returns <see cref="true"/> if the expected accumulator matches, and <see cref="false"/> if there is no match.</returns>
-    public new async Task<bool> VerifyContent(
-        ISpecProvider specProvider,
-        IBlockValidator blockValidator,
-        int verifyConcurrency = 0,
-        ISet<ValueHash256>? trustedAccumulators = null,
-        ISet<ValueHash256>? trustedHistoricalRoots = null,
-        CancellationToken cancellation = default
-    )
+    public new async Task<bool> VerifyContent(ISpecProvider specProvider, IBlockValidator blockValidator, int verifyConcurrency = 0, CancellationToken cancellation = default)
     {
         ArgumentNullException.ThrowIfNull(specProvider);
 
-        Validator blockProofValidator = new(specProvider, trustedAccumulators, trustedHistoricalRoots);
+        Validator blockProofValidator = new(specProvider, _trustedAccumulators, _trustedHistoricalRoots, _historicalSummariesProvider);
         SlotTime slotTime = new(
             specProvider.BeaconChainGenesisTimestamp!.Value * 1000,
             new Timestamper(),
@@ -118,7 +127,7 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
                 var slotNumber = err.Block.Header.IsPoS() ? (ulong)blockNumber : slotTime.GetSlot(err.Block.Header.Timestamp);
                 // read proof for this block
 
-                if (await ReadProof(slotNumber, cancellation) is BlockHeaderProof proof) {
+                if (await ReadProof(slotNumber, cancellation) is { } proof) {
                     await blockProofValidator.VerifyContent(err.Block, proof);
                 } else {
                     // proof is not available for this block, skip verification

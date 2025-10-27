@@ -36,4 +36,7 @@ public interface IEraConfig : IConfig
 
     [ConfigItem(Description = "[Technical] Buffer size during full sync when era importing. Lower number reduces memory usage.", DefaultValue = "4096", HiddenFromDocs = true)]
     long ImportBlocksBufferSize { get; set; }
+
+    [ConfigItem(Description = "URL of the Beacon Chain API provider for historical summaries.", DefaultValue = "null", HiddenFromDocs = true)]
+    string? HistoricalSummariesRpcProviderUrl { get; set; }
 }

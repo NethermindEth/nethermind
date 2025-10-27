@@ -15,4 +15,5 @@ public class EraConfig: IEraConfig
     public string? NetworkName { get; set; }
     public int Concurrency { get; set; }
     public long ImportBlocksBufferSize { get; set; } = 1024 * 4;
+    public string? HistoricalSummariesRpcProviderUrl { get; set; }
 }

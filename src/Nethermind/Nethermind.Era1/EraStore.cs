@@ -59,7 +59,7 @@ public class EraStore : IEraStore
     }
 
     private long? _lastBlock = null;
-    private readonly int _verifyConcurrency;
+    protected readonly int _verifyConcurrency;
 
     public long LastBlock
     {

@@ -10,6 +10,7 @@ using Nethermind.Era1.Exceptions;
 namespace Nethermind.EraE;
 public class EraStore: Era1.EraStore {
     private readonly ISet<ValueHash256>? _trustedHistoricalRoots;
+    private readonly IHistoricalSummariesProvider? _historicalSummariesProvider;
 
     public EraStore(
         ISpecProvider specProvider,
@@ -19,6 +20,7 @@ public class EraStore: Era1.EraStore {
         int maxEraSize,
         ISet<ValueHash256>? trustedAcccumulators,
         ISet<ValueHash256>? trustedHistoricalRoots,
+        IHistoricalSummariesProvider? historicalSummariesProvider,
         string directory,
         int verifyConcurrency = 0,
         string checksumsFileName = EraExporter.ChecksumsFileName
@@ -34,12 +36,13 @@ public class EraStore: Era1.EraStore {
         checksumsFileName
     ) {
         _trustedHistoricalRoots = trustedHistoricalRoots;
+        _historicalSummariesProvider = historicalSummariesProvider;
     }
 
     protected override EraReader GetReader(long epoch)
     {
         GuardMissingEpoch(epoch);
-        return new EraReader(new E2StoreReader(_epochs[epoch]));
+        return new EraReader(new E2StoreReader(_epochs[epoch]), _historicalSummariesProvider, _trustedHistoricalRoots, _trustedAccumulators);
     }
 
     protected async ValueTask EnsureEpochVerified(long epoch, EraReader reader, CancellationToken cancellation)
@@ -59,12 +62,7 @@ public class EraStore: Era1.EraStore {
 
             Task accumulatorTask = Task.Run(async () =>
             {
-                // fix
-                ValueHash256 eraAccumulator = await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, cancellation);
-                if (_trustedAccumulators != null && !_trustedAccumulators.Contains(eraAccumulator))
-                {
-                    throw new EraVerificationException($"Unable to verify epoch {epoch}. Accumulator {eraAccumulator} not trusted");
-                }
+                await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, cancellation);
             });
 
             await Task.WhenAll(checksumTask, accumulatorTask);

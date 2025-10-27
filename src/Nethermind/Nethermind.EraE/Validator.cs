@@ -7,17 +7,16 @@ using Nethermind.Era1.Exceptions;
 namespace Nethermind.EraE;
 
 public class Validator {
+    private readonly IHistoricalSummariesProvider? _historicalSummariesProvider;
     private readonly ISet<ValueHash256>? _trustedAccumulators;
     private readonly ISet<ValueHash256>? _trustedHistoricalRoots;
-    private readonly ValueHash256[] _historicalRoots;
-    private readonly ValueHash256[] _summaryRoots;
     private readonly SlotTime _slotTime;
     
     private const int SLOTS_PER_HISTORICAL_ROOT = 8192;
     private const int GEN_INDEX_EXECUTION_BLOCK_PROOF_BELLATRIX = 3228;
     private const int GEN_INDEX_EXECUTION_BLOCK_PROOF_DENEB = 6444;
 
-    public Validator(ISpecProvider specProvider, ISet<ValueHash256>? trustedAccumulators, ISet<ValueHash256>? trustedHistoricalRoots) {
+    public Validator(ISpecProvider specProvider, ISet<ValueHash256>? trustedAccumulators, ISet<ValueHash256>? trustedHistoricalRoots, IHistoricalSummariesProvider? historicalSummariesProvider) {
         _slotTime = new(
             specProvider.BeaconChainGenesisTimestamp!.Value * 1000, 
             new Timestamper(),
@@ -26,29 +25,34 @@ public class Validator {
             TimeSpan.FromSeconds(0));
         _trustedAccumulators = trustedAccumulators;
         _trustedHistoricalRoots = trustedHistoricalRoots;
+        _historicalSummariesProvider = historicalSummariesProvider;
     }
 
     private bool IsDeneb(ulong blockTimestamp) {
         ulong slotNumber = _slotTime.GetSlot(blockTimestamp);
-        if (slotNumber is >= 8_626_176 and < 11_649_024) {
-            return true;
-        }
-        return false;
+        return slotNumber >= 8_626_176;
     }
 
-    private ValueHash256 GetAccumulator(long blockNumber) {
+    private ValueHash256? GetAccumulator(long blockNumber) {
         long epochIdx = blockNumber / SLOTS_PER_HISTORICAL_ROOT;
-        return _trustedAccumulators![epochIdx];
+        if (_trustedAccumulators is not null && _trustedAccumulators.Count > epochIdx){
+            return _trustedAccumulators.ElementAt((int)epochIdx);
+        }
+        return null;
     }
 
-    private ValueHash256 GetHistoricalRoot(long slotNumber) {
+    private ValueHash256? GetHistoricalRoot(long slotNumber) {
         long historicalRootIndex = slotNumber / SLOTS_PER_HISTORICAL_ROOT;
-        return _historicalRoots[historicalRootIndex];
+        if (_trustedHistoricalRoots is not null && _trustedHistoricalRoots.Count > historicalRootIndex){
+            return _trustedHistoricalRoots.ElementAt((int)historicalRootIndex);
+        }
+        return null;
     }
 
-    private ValueHash256 GetSummaryRoot(long slotNumber) {
+    private async Task<ValueHash256?> GetBlockSummaryRoot(long slotNumber) {
         long historicalRootIndex = slotNumber / SLOTS_PER_HISTORICAL_ROOT;
-        return _summaryRoots[historicalRootIndex];
+        HistoricalSummary? summary = await _historicalSummariesProvider?.GetHistoricalSummary((int)historicalRootIndex);
+        return summary?.BlockSummaryRoots;
     }
 
     private static void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target)
@@ -79,8 +83,14 @@ public class Validator {
         // verify block header hash against the accumulator provided in the erae file or trusted accumulator
         long headerIndex = block.Header.Number % SLOTS_PER_HISTORICAL_ROOT;
         long genIndex = (SLOTS_PER_HISTORICAL_ROOT * 2 * 2) + (headerIndex * 2);
-        ValueHash256 accumulatorRoot = root ?? GetAccumulator(block.Header.Number);
-        if (!VerifyProof(block.Header.Hash!, proof.HashesAccumulator!, 15, genIndex, accumulatorRoot.ToHash256())) {
+        ValueHash256? accumulatorRoot = GetAccumulator(block.Header.Number);
+        if (accumulatorRoot is null) {
+            throw new EraVerificationException("Accumulator root not found");
+        }
+        if (root is not null && root != accumulatorRoot) {
+            throw new EraVerificationException("Accumulator root does not match trusted accumulator root");
+        }
+        if (!VerifyProof(block.Header.Hash!, proof.HashesAccumulator!, 15, genIndex, accumulatorRoot.Value)) {
             throw new EraVerificationException("Computed accumulator does not match stored accumulator");
         }
     }
@@ -108,9 +118,12 @@ public class Validator {
         long slotNumber = (long)_slotTime.GetSlot(block.Header.Timestamp);
         long blockRootIndex = slotNumber % SLOTS_PER_HISTORICAL_ROOT;
         long genIndex = 2 * SLOTS_PER_HISTORICAL_ROOT + blockRootIndex;
-        ValueHash256 historicalRoot = GetHistoricalRoot(slotNumber);
+        ValueHash256? historicalRoot = GetHistoricalRoot(slotNumber);
+        if (historicalRoot is null) {
+            throw new EraVerificationException("Historical root not found");
+        }
         // TODO: add beacon block root verification
-        if (!VerifyProof(proof.BeaconBlockRoot!.Value, proof.BeaconBlockProof!, 14, genIndex, historicalRoot)) {
+        if (!VerifyProof(proof.BeaconBlockRoot!.Value, proof.BeaconBlockProof!, 14, genIndex, historicalRoot.Value)) {
             throw new EraVerificationException("Computed historical root does not match stored historical root");
         }
         // verify EL block hash against the proof
@@ -123,13 +136,17 @@ public class Validator {
         
         long slotNumber = (long)_slotTime.GetSlot(block.Header.Timestamp);
         long genIndex = (SLOTS_PER_HISTORICAL_ROOT + (slotNumber % SLOTS_PER_HISTORICAL_ROOT));
+
+        ValueHash256? blockSummaryRoot = await GetBlockSummaryRoot(slotNumber);
+        if (blockSummaryRoot is null) {
+            throw new EraVerificationException("Historical block summary root not found");
+        }
         
         // verify BeaconBlockSummaries root in the proof against the trusted summaries
-        if (!VerifyProof(proof.BeaconBlockRoot!.Value, proof.BeaconBlockProof!, 13, genIndex, GetSummaryRoot(slotNumber))) {
-            throw new EraVerificationException("Computed historical root does not match stored historical root");
+        if (!VerifyProof(proof.BeaconBlockRoot!.Value, proof.BeaconBlockProof!, 13, genIndex, blockSummaryRoot.Value)) {
+            throw new EraVerificationException("Computed block root does not match stored historical block summary root");
         }
         // verify EL block hash against the proof
-        // TODO: check range instead of equality
         if (IsDeneb(block.Header.Timestamp)) {
             if (!VerifyExecutionBlockProofPostDeneb(block, proof))
                 throw new EraVerificationException("Computed execution block root does not match stored execution block root");
@@ -139,12 +156,12 @@ public class Validator {
         }
     }
 
-    public async Task VerifyContent(Block block, BlockHeaderProof proof, ValueHash256? accumulatorRoot = null)
+    public async Task VerifyContent(Block block, BlockHeaderProof proof, ValueHash256? accumulatorRootForEra = null)
     {
         switch (proof.ProofType)
         {
             case BlockHeaderProofType.BlockProofHistoricalHashesAccumulator:
-                await VerifyHashesAccumulator(block, proof, accumulatorRoot);
+                await VerifyHashesAccumulator(block, proof, accumulatorRootForEra);
                 break;
             case BlockHeaderProofType.BlockProofHistoricalRoots:
                 await VerifyRoots(block, proof);

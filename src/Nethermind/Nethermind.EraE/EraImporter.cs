@@ -58,7 +58,13 @@ public class EraImporter(
             trustedAccumulators = (await fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation)).Select(Era1.EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry).ToHashSet();
         }
 
-        Era1.IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators, trustedHistoricalRoots);
+        IHistoricalSummariesProvider? historicalSummariesProvider = null;
+        if (eraConfig.HistoricalSummariesRpcProviderUrl != null)
+        {
+            historicalSummariesProvider = new HistoricalSummariesRpcProvider(new Uri(eraConfig.HistoricalSummariesRpcProviderUrl!));
+        }
+
+        Era1.IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators, trustedHistoricalRoots, historicalSummariesProvider);
 
         long lastBlockInStore = eraStore.LastBlock;
         if (to == 0) to = long.MaxValue;

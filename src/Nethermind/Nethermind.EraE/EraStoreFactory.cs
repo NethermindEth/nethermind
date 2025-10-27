@@ -16,7 +16,7 @@ public class EraStoreFactory(
     IEraConfig eraConfig
 ) : Era1.EraStoreFactory(specProvider, blockValidator, fileSystem, new Era1.EraConfig { NetworkName = eraConfig.NetworkName, MaxEra1Size = eraConfig.MaxEraESize, Concurrency = eraConfig.Concurrency }), IEraStoreFactory
 {
-    public virtual Era1.IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators, ISet<ValueHash256>? trustedHistoricalRoots)
+    public virtual Era1.IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators, ISet<ValueHash256>? trustedHistoricalRoots, IHistoricalSummariesProvider? historicalSummariesProvider)
     {
         return new EraStore(
             specProvider,
@@ -26,6 +26,7 @@ public class EraStoreFactory(
             eraConfig.MaxEraESize,
             trustedAccumulators,
             trustedHistoricalRoots,
+            historicalSummariesProvider,
             src,
             eraConfig.Concurrency);
     }
@@ -33,6 +34,6 @@ public class EraStoreFactory(
 
 public interface IEraStoreFactory: Era1.IEraStoreFactory
 {
-    Era1.IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators, ISet<ValueHash256>? trustedHistoricalRoots);
+    Era1.IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators, ISet<ValueHash256>? trustedHistoricalRoots, IHistoricalSummariesProvider? historicalSummariesProvider);
 }
 
