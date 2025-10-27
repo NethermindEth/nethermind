@@ -118,10 +118,8 @@ namespace Nethermind.Xdc
         {
             try
             {
-                // Bootstrap: wait for initial head
                 await WaitForBlockTreeHead(_cancellationTokenSource!.Token);
 
-                // Subscribe to new head notifications
                 _blockTree.NewHeadBlock += OnNewHeadBlock;
 
                 _xdcContext.NewRoundSetEvent += OnNewRoundSetEvent;
