@@ -122,7 +122,7 @@ namespace Nethermind.Core
             db.PutSpan(blockNumberPrefixedKey, value, writeFlags);
         }
 
-        public static void GetBlockNumPrefixedKey(long blockNumber, ValueHash256 blockHash, Span<byte> output)
+        public static void GetBlockNumPrefixedKey(long blockNumber, in ValueHash256 blockHash, Span<byte> output)
         {
             blockNumber.WriteBigEndian(output);
             blockHash!.Bytes.CopyTo(output[8..]);

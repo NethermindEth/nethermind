@@ -23,7 +23,7 @@ public class HeaderStore : IHeaderStore
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
     private readonly IHeaderDecoder _headerDecoder;
-    private readonly ClockCache<ValueHash256, BlockHeader> _headerCache =
+    private readonly ClockCache<Hash256AsKey, BlockHeader> _headerCache =
         new(CacheSize);
 
     public HeaderStore([KeyFilter(DbNames.Headers)] IDb headerDb, [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb, IHeaderDecoder? decoder = null)
