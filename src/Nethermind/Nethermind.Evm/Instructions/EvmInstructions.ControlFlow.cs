@@ -203,6 +203,10 @@ internal static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
 
+        // SELFDESTRUCT is forbidden during static calls.
+        if (vmState.IsStatic)
+            goto StaticCallViolation;
+
         // If Shanghai DDoS protection is active, charge the appropriate gas cost.
         if (spec.UseShanghaiDDosProtection)
         {
@@ -243,10 +247,6 @@ internal static partial class EvmInstructions
             if (!EvmCalculations.UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
                 goto OutOfGas;
         }
-
-        // SELFDESTRUCT is forbidden during static calls.
-        if (vmState.IsStatic)
-            goto StaticCallViolation;
 
         // Retrieve the current balance for transfer.
         result ??= state.GetBalance(executingAccount);
