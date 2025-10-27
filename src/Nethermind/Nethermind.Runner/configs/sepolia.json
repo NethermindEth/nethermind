@@ -34,7 +34,8 @@
     "Host": "127.0.0.1",
     "Port": 8545,
     "AdditionalRpcUrls": [
-      "http://localhost:8551|http;ws|net;eth;subscribe;engine;web3;client"
+      "http://localhost:8551|http;ws|net;eth;subscribe;engine;web3;client",
+      "http://0.0.0.0:8545|http;ws|net;eth;trace;debug"
     ]
   },
   "Merge": {
