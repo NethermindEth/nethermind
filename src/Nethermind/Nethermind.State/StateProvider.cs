@@ -147,6 +147,7 @@ namespace Nethermind.State
 
         public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
+            Console.WriteLine($"SP InsertCode");
             bool inserted = false;
 
             // Don't reinsert if already inserted. This can be the case when the same
@@ -154,6 +155,7 @@ namespace Nethermind.State
             // or people copy and pasting popular contracts
             if (!_blockCodeInsertFilter.Get(codeHash) && !_persistedCodeInsertFilter.Get(codeHash))
             {
+                Console.WriteLine($"Actually SP InsertCode");
                 if (_codeBatch is null)
                 {
                     _codeBatch = new(Hash256AsKeyComparer.Instance);
