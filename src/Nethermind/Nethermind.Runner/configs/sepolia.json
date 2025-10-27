@@ -29,7 +29,6 @@
     "TargetBlockGasLimit": 60000000
   },
   "JsonRpc": {
-    "EnabledModules": ["Admin","Eth","Subscribe","Engine","Trace","TxPool","Web3","Personal","Proof","Net","Parity","Health","Debug"],
     "Enabled": true,
     "Timeout": 20000,
     "Host": "127.0.0.1",
