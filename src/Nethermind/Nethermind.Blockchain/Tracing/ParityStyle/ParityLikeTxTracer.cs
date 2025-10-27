@@ -209,7 +209,7 @@ public class ParityLikeTxTracer : TxTracer
     }
 
     public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
-        Hash256? stateRoot = null)
+        EvmExceptionType exceptionType, Hash256? stateRoot = null)
     {
         if (_currentAction is not null)
         {

@@ -178,9 +178,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         firstCallFrame.Output = new ArrayPoolList<byte>(output);
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, EvmExceptionType exceptionType, Hash256? stateRoot = null)
     {
-        base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+        base.MarkAsFailed(recipient, gasSpent, output, error, exceptionType, stateRoot);
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
         if (output is not null)

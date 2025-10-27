@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -88,7 +89,7 @@ public class ProofTxTracer(bool treatSystemAccountDifferently) : TxTracer
     }
 
     public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
-        Hash256? stateRoot = null)
+        EvmExceptionType exceptionType, Hash256? stateRoot = null)
     {
         Output = output;
     }

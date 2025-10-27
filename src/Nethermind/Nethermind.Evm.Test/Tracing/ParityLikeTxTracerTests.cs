@@ -771,7 +771,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
         tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.CALL, false);
-        Assert.Throws<InvalidOperationException>(() => tracer.MarkAsFailed(TestItem.AddressA, 21000, [], "Error"));
+        Assert.Throws<InvalidOperationException>(() => tracer.MarkAsFailed(TestItem.AddressA, 21000, [], "Error", EvmExceptionType.Other));
     }
 
     [Test]

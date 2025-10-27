@@ -97,17 +97,15 @@ public sealed class SimulateTxTracer : TxTracer
         };
     }
 
-    private static readonly string SimpleRevertMessage = "execution reverted";
-    private static readonly string RevertMessagePrefix = "execution reverted: ";
-
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, EvmExceptionType exceptionType, Hash256? stateRoot = null)
     {
         TraceResult = new SimulateCallResult
         {
             GasUsed = (ulong)gasSpent.SpentGas,
             Error = new Error
             {
-                Message = error is not TransactionSubstate.Revert ? RevertMessagePrefix + error : SimpleRevertMessage,
+                Message = error,
+                EvmException = exceptionType,
                 Data = output
             },
             ReturnData = [],

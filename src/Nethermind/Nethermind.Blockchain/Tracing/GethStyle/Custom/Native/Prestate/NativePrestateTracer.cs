@@ -87,9 +87,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
             ProcessDiffState();
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, EvmExceptionType exceptionType, Hash256? stateRoot = null)
     {
-        base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+        base.MarkAsFailed(recipient, gasSpent, output, error, exceptionType, stateRoot);
         if (_diffMode)
             ProcessDiffState();
     }

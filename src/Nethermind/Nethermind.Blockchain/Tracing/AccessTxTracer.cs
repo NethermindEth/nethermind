@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -23,7 +24,7 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
     }
 
     public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
-        Hash256? stateRoot = null)
+        EvmExceptionType exceptionType, Hash256? stateRoot = null)
     {
         GasSpent += gasSpent.SpentGas;
     }

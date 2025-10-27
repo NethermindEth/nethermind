@@ -211,7 +211,20 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                 {
                     if (call is { Error: not null } simulateResult && !string.IsNullOrEmpty(simulateResult.Error.Message))
                     {
-                        simulateResult.Error.Code = ErrorCodes.Default;
+                        var exception = simulateResult.Error.EvmException;
+
+                        call.Error.Code = MapEvmExceptionType(exception);
+                        if (exception == EvmExceptionType.Revert)
+                        {
+                            call.Error.Message = string.IsNullOrEmpty(call.Error.Message)
+                                ? "execution reverted"
+                                : "execution reverted: " + call.Error.Message;
+                        }
+                        else
+                        {
+                            call.Error.Data = null;
+                            call.Error.Message = exception.ToString();
+                        }
                     }
                 }
             }
@@ -228,7 +241,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                 : ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error);
     }
 
-    private int MapSimulateErrorCode(TransactionResult txResult)
+    private static int MapSimulateErrorCode(TransactionResult txResult)
     {
         if (txResult.Error != TransactionResult.ErrorType.None)
         {
@@ -249,10 +262,14 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
             };
         }
 
-        return txResult.EvmExceptionType switch
-        {
-            EvmExceptionType.Revert => ErrorCodes.RevertedSimulate,
-            _ => ErrorCodes.VMError
-        };
+        return MapEvmExceptionType(txResult.EvmExceptionType);
     }
+
+
+    private static int MapEvmExceptionType(EvmExceptionType type) => type switch
+    {
+        EvmExceptionType.Revert => ErrorCodes.RevertedSimulate,
+        EvmExceptionType.OutOfGas => ErrorCodes.BlockGasLimitReached,
+        _ => ErrorCodes.VMError
+    };
 }
