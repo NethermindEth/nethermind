@@ -21,7 +21,7 @@ namespace Nethermind.JsonRpc.TraceStore.Tests;
 public class TraceStorePrunerTests
 {
     [Test]
-    public async Task prunes_old_blocks()
+    public void prunes_old_blocks()
     {
         IEnumerable<Hash256> GenerateTraces(MemDb db, BlockTree tree)
         {
