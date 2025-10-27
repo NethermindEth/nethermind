@@ -130,7 +130,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
             ? gasCap
             : Math.Min(gasCap.Value, Gas.Value);
 
-        From ??= Address.SystemUser;
+        From ??= Address.Zero;
     }
 
     public override bool ShouldSetBaseFee() => GasPrice.IsPositive();
