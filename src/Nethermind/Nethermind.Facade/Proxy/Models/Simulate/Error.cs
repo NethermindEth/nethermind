@@ -8,7 +8,7 @@ namespace Nethermind.Facade.Proxy.Models.Simulate;
 
 public class Error
 {
-    public int? Code { get; set; }
+    public int Code { get; set; }
     public string? Message { get; set; }
     [JsonIgnore]
     public EvmExceptionType EvmException { get; set; }

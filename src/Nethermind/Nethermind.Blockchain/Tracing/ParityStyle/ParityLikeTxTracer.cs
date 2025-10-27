@@ -208,7 +208,8 @@ public class ParityLikeTxTracer : TxTracer
         _trace.Action!.Result!.Output = output;
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
+        Hash256? stateRoot = null)
     {
         if (_currentAction is not null)
         {
