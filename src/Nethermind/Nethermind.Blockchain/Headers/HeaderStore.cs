@@ -19,17 +19,20 @@ public class HeaderStore : IHeaderStore
 {
     // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
     public const int CacheSize = 256 + 16;
+    // Go a bit further back for numbers as smaller
+    public const int NumberCacheSize = CacheSize * 4;
 
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
-    private readonly HeaderDecoder _headerDecoder = new();
-    private readonly ClockCache<ValueHash256, BlockHeader> _headerCache =
-        new(CacheSize);
+    private readonly IHeaderDecoder _headerDecoder;
+    private readonly ClockCache<Hash256AsKey, BlockHeader> _headerCache = new(CacheSize);
+    private readonly ClockCache<Hash256AsKey, long> _numberCache = new(NumberCacheSize);
 
-    public HeaderStore([KeyFilter(DbNames.Headers)] IDb headerDb, [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb)
+    public HeaderStore([KeyFilter(DbNames.Headers)] IDb headerDb, [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb, IHeaderDecoder? decoder = null)
     {
         _headerDb = headerDb;
         _blockNumberDb = blockNumberDb;
+        _headerDecoder = decoder ?? new HeaderDecoder();
     }
 
     public void Insert(BlockHeader header)
@@ -45,30 +48,37 @@ public class HeaderStore : IHeaderStore
         using IWriteBatch blockNumberWriteBatch = _blockNumberDb.StartWriteBatch();
 
         Span<byte> blockNumberSpan = stackalloc byte[8];
-        foreach (var header in headers)
+        foreach (BlockHeader header in headers)
         {
             using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
             headerWriteBatch.Set(header.Number, header.Hash, newRlp.AsSpan());
 
             header.Number.WriteBigEndian(blockNumberSpan);
             blockNumberWriteBatch.Set(header.Hash, blockNumberSpan);
+            CacheNumber(header.Hash, header.Number);
         }
     }
 
-    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, out bool fromCache, bool shouldCache = false, long? blockNumber = null)
     {
         blockNumber ??= GetBlockNumberFromBlockNumberDb(blockHash);
 
-        BlockHeader? header = null;
+        BlockHeader? header;
         if (blockNumber is not null)
         {
-            header = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+            header = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, out fromCache, _headerCache, shouldCache: shouldCache);
+            if (header is not null)
+            {
+                return header;
+            }
         }
-        return header ?? _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+
+        return _headerDb.Get(blockHash, _headerDecoder, out fromCache, _headerCache, shouldCache: shouldCache);
     }
 
     public void Cache(BlockHeader header)
     {
+        CacheNumber(header.Hash, header.Number);
         _headerCache.Set(header.Hash, header);
     }
 
@@ -79,6 +89,7 @@ public class HeaderStore : IHeaderStore
         _blockNumberDb.Delete(blockHash);
         _headerDb.Delete(blockHash);
         _headerCache.Delete(blockHash);
+        _numberCache.Delete(blockHash);
     }
 
     public void InsertBlockNumber(Hash256 blockHash, long blockNumber)
@@ -86,19 +97,50 @@ public class HeaderStore : IHeaderStore
         Span<byte> blockNumberSpan = stackalloc byte[8];
         blockNumber.WriteBigEndian(blockNumberSpan);
         _blockNumberDb.Set(blockHash, blockNumberSpan);
+        CacheNumber(blockHash, blockNumber);
     }
+
+    private void CacheNumber(Hash256 blockHash, long blockNumber)
+        => _numberCache.Set(blockHash, blockNumber);
 
     public long? GetBlockNumber(Hash256 blockHash)
     {
+        if (_numberCache.TryGet(blockHash, out long number))
+        {
+            return number;
+        }
+
+        return GetBlockNumberThroughHeaderCache(blockHash);
+    }
+
+    private long? GetBlockNumberThroughHeaderCache(Hash256 blockHash)
+    {
+        if (_headerCache.TryGet(blockHash, out BlockHeader? header))
+        {
+            CacheNumber(blockHash, header.Number);
+            return header.Number;
+        }
+
         long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
         if (blockNumber is not null) return blockNumber.Value;
 
         // Probably still hash based
-        return Get(blockHash)?.Number;
+        blockNumber = Get(blockHash, out _)?.Number;
+        if (blockNumber.HasValue)
+        {
+            CacheNumber(blockHash, blockNumber.Value);
+        }
+        return blockNumber;
     }
 
     private long? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
     {
+        // Double check cache as we have done a fair amount of checks
+        // since the cache check and something else might have populated it.
+        if (_numberCache.TryGet(blockHash, out long number))
+        {
+            return number;
+        }
         Span<byte> numberSpan = _blockNumberDb.GetSpan(blockHash);
         if (numberSpan.IsNullOrEmpty()) return null;
         try
@@ -108,7 +150,9 @@ public class HeaderStore : IHeaderStore
                 throw new InvalidDataException($"Unexpected number span length: {numberSpan.Length}");
             }
 
-            return BinaryPrimitives.ReadInt64BigEndian(numberSpan);
+            number = BinaryPrimitives.ReadInt64BigEndian(numberSpan);
+            CacheNumber(blockHash, number);
+            return number;
         }
         finally
         {

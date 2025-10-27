@@ -1830,11 +1830,13 @@
       "nethermind.txpool": {
         "type": "Project",
         "dependencies": {
+          "Collections.Pooled": "[1.0.82, )",
           "Nethermind.Config": "[1.35.0-unstable, )",
           "Nethermind.Core": "[1.35.0-unstable, )",
           "Nethermind.Crypto": "[1.35.0-unstable, )",
           "Nethermind.Db": "[1.35.0-unstable, )",
           "Nethermind.Evm": "[1.35.0-unstable, )",
+          "Nethermind.Network.Contract": "[1.35.0-unstable, )",
           "Nethermind.State": "[1.35.0-unstable, )",
           "NonBlocking": "[2.1.2, )"
         }
@@ -1915,6 +1917,12 @@
         "requested": "[2.1.5.1529, )",
         "resolved": "2.1.5.1529",
         "contentHash": "PUnwltfxU0V/rIHLlcVyCOmpaFCgYPDfBlp32F33qW5ZldjcWpDt3tEZAmFvX0Rt/Va05djdHkKH/QzXyDhpTg=="
+      },
+      "Collections.Pooled": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.82, )",
+        "resolved": "1.0.82",
+        "contentHash": "o14V0k8bg+EPMwaVJcFbLNrkyDPaqNx6fWTTjJLgVWJLu939kVIAAWKaV5lCwZ7LM/tv59igi65rVWRyjILc0Q=="
       },
       "CommunityToolkit.HighPerformance": {
         "type": "CentralTransitive",

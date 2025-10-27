@@ -106,6 +106,8 @@ namespace Nethermind.Blockchain
 
         private TaskCompletionSource? _taskCompletionSource;
 
+        private readonly long _genesisBlockNumber;
+
         public BlockTree(
             IBlockStore? blockStore,
             IHeaderStore? headerDb,
@@ -116,7 +118,8 @@ namespace Nethermind.Blockchain
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
             ISyncConfig? syncConfig,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            long genesisBlockNumber = 0)
         {
             _logger = logManager?.GetClassLogger<BlockTree>() ?? throw new ArgumentNullException(nameof(logManager));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
@@ -131,6 +134,8 @@ namespace Nethermind.Blockchain
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
             _oldestBlock = syncConfig.AncientBodiesBarrierCalc;
 
+            _genesisBlockNumber = genesisBlockNumber;
+
             LoadSyncPivot();
 
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
@@ -142,7 +147,7 @@ namespace Nethermind.Blockchain
             // Need to be here because it still need to run even if there are no genesis to store the null entry.
             LoadLowestInsertedHeader();
 
-            ChainLevelInfo? genesisLevel = LoadLevel(0);
+            ChainLevelInfo? genesisLevel = LoadLevel(_genesisBlockNumber);
             if (genesisLevel is not null)
             {
                 BlockInfo genesisBlockInfo = genesisLevel.BlockInfos[0];
@@ -203,7 +208,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("An attempt to insert a block header without a known bloom.");
             }
 
-            if (header.Number == 0)
+            if (header.Number == _genesisBlockNumber)
             {
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
@@ -288,8 +293,8 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Cannot accept new blocks at the moment.");
             }
 
-            using ArrayPoolList<(long, Bloom)> bloomToStore = new ArrayPoolList<(long, Bloom)>(headers.Count);
-            foreach (var header in headers)
+            using ArrayPoolList<(long, Bloom)> bloomToStore = new(headers.Count);
+            foreach (BlockHeader? header in headers)
             {
                 if (header.Hash is null)
                 {
@@ -301,7 +306,7 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("An attempt to insert a block header without a known bloom.");
                 }
 
-                if (header.Number == 0)
+                if (header.Number == _genesisBlockNumber)
                 {
                     throw new InvalidOperationException("Genesis block should not be inserted.");
                 }
@@ -325,9 +330,9 @@ namespace Nethermind.Blockchain
 
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
             bool beaconInsert = (headerOptions & BlockTreeInsertHeaderOptions.BeaconHeaderMetadata) != 0;
-            using ArrayPoolList<(long, BlockInfo)> blockInfos = new ArrayPoolList<(long, BlockInfo)>(headers.Count);
+            using ArrayPoolListRef<(long, BlockInfo)> blockInfos = new(headers.Count);
 
-            foreach (var header in headers)
+            foreach (BlockHeader? header in headers)
             {
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
                 if (!beaconInsert)
@@ -405,7 +410,7 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.CannotAccept;
             }
 
-            if (block.Number == 0)
+            if (block.Number == _genesisBlockNumber)
             {
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
@@ -566,7 +571,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            BlockHeader? header = _headerStore.Get(blockHash, shouldCache: false, blockNumber: blockNumber);
+            BlockHeader? header = _headerStore.Get(blockHash, out bool fromCache, shouldCache: false, blockNumber: blockNumber);
             if (header is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
@@ -616,7 +621,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (header is not null && ShouldCache(header.Number))
+            if (header is not null && !fromCache && ShouldCache(header.Number))
             {
                 _headerStore.Cache(header);
             }
@@ -683,7 +688,7 @@ namespace Nethermind.Blockchain
                         return new ArrayPoolList<BlockHeader>(1) { startHeader };
                     }
 
-                    ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(numberOfBlocks, numberOfBlocks);
+                    ArrayPoolList<BlockHeader> result = new(numberOfBlocks, numberOfBlocks);
 
                     BlockHeader current = startHeader;
                     int responseIndex = reverse ? 0 : numberOfBlocks - 1;
@@ -720,7 +725,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(numberOfBlocks, numberOfBlocks);
+            ArrayPoolList<BlockHeader> result = new(numberOfBlocks, numberOfBlocks);
             BlockHeader current = startHeader;
             int directionMultiplier = reverse ? -1 : 1;
             int responseIndex = 0;
@@ -1178,7 +1183,7 @@ namespace Nethermind.Blockchain
 
             if (forceUpdateHeadBlock || block.IsGenesis || HeadImprovementRequirementsSatisfied(block.Header))
             {
-                if (block.Number == 0)
+                if (block.Number == _genesisBlockNumber)
                 {
                     Genesis = block.Header;
                 }
@@ -1340,11 +1345,11 @@ namespace Nethermind.Blockchain
             return level;
         }
 
-        private void UpdateOrCreateLevel(IReadOnlyList<(long number, BlockInfo blockInfo)> blockInfos, bool setAsMain = false)
+        private void UpdateOrCreateLevel(in ArrayPoolListRef<(long number, BlockInfo blockInfo)> blockInfos, bool setAsMain = false)
         {
             using BatchWrite? batch = _chainLevelInfoRepository.StartBatch();
 
-            using ArrayPoolList<long> blockNumbers = blockInfos.Select(b => b.number).ToPooledList(blockInfos.Count);
+            using ArrayPoolListRef<long> blockNumbers = blockInfos.Select(b => b.number);
 
             // Yes, this is measurably faster
             using IOwnedReadOnlyList<ChainLevelInfo?> levels = _chainLevelInfoRepository.MultiLoadLevel(blockNumbers);
@@ -1408,7 +1413,7 @@ namespace Nethermind.Blockchain
         /// <returns></returns>
         private bool ShouldCache(long number)
         {
-            return number == 0L || Head is null || number >= Head.Number - BlockStore.CacheSize;
+            return number == _genesisBlockNumber || Head is null || number >= Head.Number - BlockStore.CacheSize;
         }
 
         public ChainLevelInfo? FindLevel(long number)
@@ -1429,6 +1434,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
+            bool fromCache = false;
             Block? block = null;
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
             if (blockNumber is not null)
@@ -1436,6 +1442,7 @@ namespace Nethermind.Blockchain
                 block = _blockStore.Get(
                     blockNumber.Value,
                     blockHash,
+                    out fromCache,
                     (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
                     shouldCache: false);
             }
@@ -1491,7 +1498,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (block is not null && ShouldCache(block.Number))
+            if (block is not null && !fromCache && ShouldCache(block.Number))
             {
                 _blockStore.Cache(block);
                 _headerStore.Cache(block.Header);
