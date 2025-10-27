@@ -153,7 +153,7 @@ namespace Nethermind.Xdc
 
         private void OnNewRoundSetEvent(ulong round)
         {
-            
+
         }
 
         /// <summary>
@@ -186,7 +186,7 @@ namespace Nethermind.Xdc
         /// Main consensus flow
         /// </summary>
         private async Task MainFlow()
-        {            
+        {
             CancellationToken ct = _cancellationTokenSource!.Token;
 
             await foreach (RoundSignal signal in _newRoundSignals.Reader.ReadAllAsync(ct))
