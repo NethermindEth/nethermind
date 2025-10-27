@@ -1441,7 +1441,7 @@ namespace Nethermind.Blockchain
             {
                 block = _blockStore.Get(
                     blockNumber.Value,
-                    blockHash ,
+                    blockHash,
                     out fromCache,
                     (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
                     shouldCache: false);
