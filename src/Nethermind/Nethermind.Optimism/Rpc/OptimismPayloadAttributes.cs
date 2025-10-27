@@ -120,10 +120,23 @@ public class OptimismPayloadAttributes : PayloadAttributes
             error = $"{nameof(EIP1559Params)} should be null before Holocene";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
-        if (releaseSpec.IsOpHoloceneEnabled && !this.TryDecodeEIP1559Parameters(releaseSpec, out _, out var decodeError))
+        if (releaseSpec.IsOpHoloceneEnabled)
         {
-            error = decodeError;
-            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            if (!this.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out var decodeError))
+            {
+                error = decodeError;
+                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            }
+            if (!releaseSpec.IsOpJovianEnabled && parameters.Version != 0)
+            {
+                error = $"{nameof(EIP1559Params)} version should be 0 before Jovian";
+                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            }
+            if (releaseSpec.IsOpJovianEnabled && parameters.Version != 1)
+            {
+                error = $"{nameof(EIP1559Params)} version should be 1 post Jovian";
+                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            }
         }
 
         try

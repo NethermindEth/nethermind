@@ -4,10 +4,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism;
@@ -70,7 +68,7 @@ public readonly struct EIP1559Parameters
         return true;
     }
 
-    public bool IsZero() => Version == 0 && Denominator == 0 && Elasticity == 0 && MinBaseFee == 0;
+    public bool IsZero() => Denominator == 0 && Elasticity == 0 && MinBaseFee == 0;
 
     public void WriteTo(Span<byte> span)
     {
@@ -78,8 +76,8 @@ public readonly struct EIP1559Parameters
         BinaryPrimitives.WriteUInt32BigEndian(span.Slice(1, sizeof(UInt32)), Denominator);
         BinaryPrimitives.WriteUInt32BigEndian(span.Slice(5, sizeof(UInt32)), Elasticity);
 
-        if (MinBaseFee is { } minBaseFee)
-            BinaryPrimitives.WriteUInt64BigEndian(span.Slice(9, sizeof(UInt64)), minBaseFee);
+        if (Version >= 1)
+            BinaryPrimitives.WriteUInt64BigEndian(span.Slice(9, sizeof(UInt64)), MinBaseFee);
     }
 
     public override string ToString() => Version == 0
@@ -89,15 +87,9 @@ public readonly struct EIP1559Parameters
 
 public static class EIP1559ParametersExtensions
 {
-    public static bool TryDecodeEIP1559Parameters(this BlockHeader header, IReleaseSpec spec, out EIP1559Parameters parameters, [NotNullWhen(false)] out string? error)
+    public static bool TryDecodeEIP1559Parameters(this BlockHeader header, out EIP1559Parameters parameters, [NotNullWhen(false)] out string? error)
     {
         parameters = default;
-
-        if (!spec.IsOpHoloceneEnabled)
-        {
-            error = "Holocene is not enabled yet";
-            return false;
-        }
 
         ReadOnlySpan<byte> data = header.ExtraData;
         var dataLength = data.Length;
@@ -107,11 +99,11 @@ public static class EIP1559ParametersExtensions
             return false;
         }
 
+        var maxVersion = EIP1559Parameters.ByteLengthByVersion.Length - 1;
         var version = data.TakeAndMove(1)[0];
-        var expVersion = (byte)(spec.IsOpJovianEnabled ? 1 : 0);
-        if (version != expVersion)
+        if (version > maxVersion)
         {
-            error = $"{nameof(version)} must be {expVersion}, but was {version}";
+            error = $"{nameof(version)} must be between 0 and {maxVersion}";
             return false;
         }
 
@@ -133,15 +125,9 @@ public static class EIP1559ParametersExtensions
 
     }
 
-    public static bool TryDecodeEIP1559Parameters(this OptimismPayloadAttributes attributes, IReleaseSpec spec, out EIP1559Parameters parameters, [NotNullWhen(false)] out string? error)
+    public static bool TryDecodeEIP1559Parameters(this OptimismPayloadAttributes attributes, out EIP1559Parameters parameters, [NotNullWhen(false)] out string? error)
     {
         parameters = default;
-
-        if (!spec.IsOpHoloceneEnabled)
-        {
-            error = "Holocene is not enabled yet";
-            return false;
-        }
 
         ReadOnlySpan<byte> data = attributes.EIP1559Params;
         var dataLength = data.Length;
@@ -151,18 +137,17 @@ public static class EIP1559ParametersExtensions
             return false;
         }
 
-        var expVersion = (byte)(spec.IsOpJovianEnabled ? 1 : 0);
-        var expLength = EIP1559Parameters.ByteLengthByVersion[expVersion];
-        if (dataLength != expLength)
+        var version = Array.IndexOf(EIP1559Parameters.ByteLengthByVersion, (byte)(dataLength + 1));
+        if (version < 0)
         {
-            error = $"{nameof(attributes.EIP1559Params)} must be {expLength} bytes long";
+            error = $"{nameof(attributes.EIP1559Params)} has invalid length";
             return false;
         }
 
         var denominator = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(sizeof(UInt32)));
         var elasticity = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(sizeof(UInt32)));
 
-        if (expVersion == 0)
+        if (version == 0)
             return EIP1559Parameters.TryCreateV0(denominator, elasticity, out parameters, out error);
 
         var minBaseFee = BinaryPrimitives.ReadUInt64BigEndian(data.TakeAndMove(sizeof(UInt64)));

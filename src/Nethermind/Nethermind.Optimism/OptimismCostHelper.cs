@@ -158,11 +158,10 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
         var daFootprintGasScalar = ReadUInt16BigEndian(span[scalarPosition..]);
 
         UInt256 footprint = UInt256.Zero;
-
         foreach (Transaction tx in block.Transactions)
         {
             if (tx.Type == TxType.DepositTx)
-                return 0;
+                continue;
 
             var daUsageEstimate = UInt256.Max(
                 MinTransactionSizeScaled,

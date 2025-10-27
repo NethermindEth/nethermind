@@ -53,7 +53,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             if (spec.IsOpHoloceneEnabled)
             {
                 // NOTE: This operation should never fail since headers should be valid at this point.
-                if (!optimismPayload.TryDecodeEIP1559Parameters(spec, out EIP1559Parameters eip1559Parameters, out var error))
+                if (!optimismPayload.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Parameters, out var error))
                 {
                     throw new InvalidOperationException($"{nameof(BlockHeader)} was not properly validated: {error}");
                 }
