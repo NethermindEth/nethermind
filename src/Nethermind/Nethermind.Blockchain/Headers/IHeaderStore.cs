@@ -19,4 +19,5 @@ public interface IHeaderStore
     void Delete(Hash256 blockHash);
     void InsertBlockNumber(Hash256 blockHash, long blockNumber);
     long? GetBlockNumber(Hash256 blockHash);
+    Hash256? GetBlockHash(long blockNumber);
 }

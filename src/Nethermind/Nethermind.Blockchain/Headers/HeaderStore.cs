@@ -27,6 +27,7 @@ public class HeaderStore : IHeaderStore
     private readonly IHeaderDecoder _headerDecoder;
     private readonly ClockCache<Hash256AsKey, BlockHeader> _headerCache = new(CacheSize);
     private readonly ClockCache<Hash256AsKey, long> _numberCache = new(NumberCacheSize);
+    private readonly ClockCache<long, Hash256> _hashCache = new(NumberCacheSize);
 
     public HeaderStore([KeyFilter(DbNames.Headers)] IDb headerDb, [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb, IHeaderDecoder? decoder = null)
     {
@@ -84,8 +85,12 @@ public class HeaderStore : IHeaderStore
 
     public void Delete(Hash256 blockHash)
     {
-        long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
-        if (blockNumber is not null) _headerDb.Delete(blockNumber.Value, blockHash);
+        long? blockNumber = GetBlockNumber(blockHash);
+        if (blockNumber is not null)
+        {
+            _headerDb.Delete(blockNumber.Value, blockHash);
+            _hashCache.Delete(blockNumber.Value);
+        }
         _blockNumberDb.Delete(blockHash);
         _headerDb.Delete(blockHash);
         _headerCache.Delete(blockHash);
@@ -101,7 +106,20 @@ public class HeaderStore : IHeaderStore
     }
 
     private void CacheNumber(Hash256 blockHash, long blockNumber)
-        => _numberCache.Set(blockHash, blockNumber);
+    {
+        _numberCache.Set(blockHash, blockNumber);
+        _hashCache.Set(blockNumber, blockHash);
+    }
+
+    public Hash256? GetBlockHash(long blockNumber)
+    {
+        if (_hashCache.TryGet(blockNumber, out Hash256? hash))
+        {
+            return hash;
+        }
+
+        return null;
+    }
 
     public long? GetBlockNumber(Hash256 blockHash)
     {

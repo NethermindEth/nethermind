@@ -752,6 +752,12 @@ namespace Nethermind.Blockchain
                 throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Value must be greater or equal to zero but is {blockNumber}");
             }
 
+            Hash256? blockHash = _headerStore.GetBlockHash(blockNumber);
+            if (blockHash is not null)
+            {
+                return blockHash;
+            }
+
             ChainLevelInfo level = LoadLevel(blockNumber);
             if (level is null)
             {
