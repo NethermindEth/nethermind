@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -30,8 +31,13 @@ using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
 using Autofac;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Consensus;
 using Nethermind.Evm.State;
+using Nethermind.Serialization.Json;
 using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Facade
@@ -125,10 +131,14 @@ namespace Nethermind.Facade
         public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
             using var scope = processingEnv.BuildAndOverride(header, stateOverride);
-
             CallOutputTracer callOutputTracer = new();
+            GethLikeNativeTxTracer gethLikeNativeTxTracer = new NativeCallTracer(tx, GethTraceOptions.Default);
+            CompositeTxTracer txTracer = new CompositeTxTracer(callOutputTracer, gethLikeNativeTxTracer);
             TransactionResult tryCallResult = TryCallAndRestore(scope.Component, header, tx, false,
-                callOutputTracer.WithCancellation(cancellationToken));
+                txTracer.WithCancellation(cancellationToken));
+
+            GethLikeTxTrace? x = gethLikeNativeTxTracer.BuildResult();
+            Console.WriteLine(JsonSerializer.Serialize(x, EthereumJsonSerializer.JsonOptions));
 
             return new CallOutput
             {
