@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc
         /// <summary>
         /// Requested resource not found
         /// </summary>
-        public const int ResourceNotFound = -32001;
+        public const int ResourceNotFound = -32000;
 
         /// <summary>
         /// Requested resource not available
