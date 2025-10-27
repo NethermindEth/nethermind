@@ -104,7 +104,7 @@ public sealed class SimulateTxTracer : TxTracer
             GasUsed = (ulong)gasSpent.SpentGas,
             Error = new Error
             {
-                Message = error,
+                Message = error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error,
                 EvmException = exceptionType,
                 Data = output
             },
