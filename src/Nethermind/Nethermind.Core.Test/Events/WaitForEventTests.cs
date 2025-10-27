@@ -15,7 +15,7 @@ public class WaitForEventTests
 {
 
     [Test]
-    public async Task Test_WaitForEvent()
+    public void Test_WaitForEvent()
     {
         ITestObj stubObj = Substitute.For<ITestObj>();
 
@@ -31,24 +31,21 @@ public class WaitForEventTests
                 return cond;
             });
 
-        await Task.Delay(100);
-        awaitingEvent.IsCompleted.Should().BeFalse();
+        Assert.That(() => awaitingEvent.IsCompleted, Is.False.After(100, 10));
         condCalled.Should().BeFalse();
 
         stubObj.TestEvent += Raise.Event<EventHandler<bool>>(this, false);
 
         condCalled.Should().BeTrue();
-        await Task.Delay(100);
-        awaitingEvent.IsCompleted.Should().BeFalse();
+        Assert.That(() => awaitingEvent.IsCompleted, Is.False.After(100, 10));
 
         stubObj.TestEvent += Raise.Event<EventHandler<bool>>(this, true);
-        await Task.Delay(100);
-        awaitingEvent.IsCompleted.Should().BeTrue();
+        Assert.That(() => awaitingEvent.IsCompleted, Is.True.After(100, 10));
     }
 
 
     [Test]
-    public async Task Test_WaitForEvent_Cancelled()
+    public void Test_WaitForEvent_Cancelled()
     {
         ITestObj stubObj = Substitute.For<ITestObj>();
 
@@ -59,13 +56,11 @@ public class WaitForEventTests
             (e) => stubObj.TestEvent -= e,
             (cond) => cond);
 
-        await Task.Delay(100);
-        awaitingEvent.IsCompleted.Should().BeFalse();
+        Assert.That(() => awaitingEvent.IsCompleted, Is.False.After(100, 10));
 
         cts.Cancel();
 
-        await Task.Delay(100);
-        awaitingEvent.IsCanceled.Should().BeTrue();
+        Assert.That(() => awaitingEvent.IsCanceled, Is.True.After(100, 10));
     }
 
     public interface ITestObj

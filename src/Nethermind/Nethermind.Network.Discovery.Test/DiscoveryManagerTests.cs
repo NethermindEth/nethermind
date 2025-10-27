@@ -85,10 +85,9 @@ namespace Nethermind.Network.Discovery.Test
             //receiving ping
             IPEndPoint address = new(IPAddress.Parse(Host), Port);
             _discoveryManager.OnIncomingMsg(new PingMsg(_publicKey, GetExpirationTime(), address, _nodeTable.MasterNode!.Address, new byte[32]) { FarAddress = address });
-            await Task.Delay(500);
 
             // expecting to send pong
-            await _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(static m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
+            Assert.That(() => _msgSender.ReceivedCalls().Count(c => c.GetMethodInfo().Name == nameof(_msgSender.SendMsg) && c.GetArguments()[0] is PongMsg msg && msg.FarAddress!.Address.ToString() == Host && msg.FarAddress.Port == Port), Is.EqualTo(1).After(500, 10));
 
             // send pings to  new node
             await _msgSender.Received().SendMsg(Arg.Is<PingMsg>(static m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
@@ -179,8 +178,7 @@ namespace Nethermind.Network.Discovery.Test
             _discoveryManager.OnIncomingMsg(msg);
 
             //expecting to send 3 pings to both nodes
-            await Task.Delay(600);
-            await _msgSender.Received(3).SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == _nodes[0].Host && m.FarAddress.Port == _nodes[0].Port));
+            Assert.That(() => _msgSender.ReceivedCalls().Count(c => c.GetMethodInfo().Name == nameof(_msgSender.SendMsg) && c.GetArguments()[0] is PingMsg m && m.FarAddress!.Address.ToString() == _nodes[0].Host && m.FarAddress.Port == _nodes[0].Port), Is.EqualTo(3).After(600, 10));
             await _msgSender.Received(3).SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == _nodes[1].Host && m.FarAddress.Port == _nodes[1].Port));
         }
 

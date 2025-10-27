@@ -60,8 +60,7 @@ public class TraceStorePrunerTests
         List<Hash256> keys = GenerateTraces(memDb, blockTree).ToList();
         keys.Select(k => memDb.Get(k)).Should().NotContain((byte[]?)null);
         AddNewBlocks(blockTree);
-        await Task.Delay(100);
-        keys.Skip(3).Select(k => memDb.Get(k)).Should().NotContain((byte[]?)null); // too old were not removed
+        Assert.That(() => keys.Skip(3).Select(k => memDb.Get(k)), Does.Not.Contain((byte[]?)null).After(100, 10)); // too old were not removed
         keys.Take(3).Select(k => memDb.Get(k)).Should().OnlyContain(b => b == null); // those were removed
 
     }

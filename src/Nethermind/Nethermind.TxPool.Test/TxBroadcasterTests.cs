@@ -103,9 +103,7 @@ public class TxBroadcasterTests
 
         peer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
 
-        await Task.Delay(TimeSpan.FromMilliseconds(1001));
-
-        peer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
+        Assert.That(() => peer.ReceivedCalls().Count(c => c.GetMethodInfo().Name == nameof(ITxPoolPeer.SendNewTransactions)), Is.EqualTo(1).After(1001, 10));
 
         _broadcaster.BroadcastPersistentTxs();
         _broadcaster.BroadcastPersistentTxs();

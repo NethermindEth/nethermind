@@ -1137,8 +1137,7 @@ namespace Nethermind.TxPool.Test
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
             _ = AddTransactionToPool();
-            await Task.Delay(500);
-            txPoolPeer.Received(1).SendNewTransaction(Arg.Any<Transaction>());
+            Assert.That(() => txPoolPeer.ReceivedCalls().Count(c => c.GetMethodInfo().Name == nameof(ITxPoolPeer.SendNewTransaction)), Is.EqualTo(1).After(500, 10));
             txPoolPeer.DidNotReceive().SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
         }
 
@@ -1528,11 +1527,8 @@ namespace Nethermind.TxPool.Test
                 Raise.Event<EventHandler<BlockReplacementEventArgs>>(this,
                     new BlockReplacementEventArgs(Build.A.Block.WithTransactions(expensiveTx1).TestObject));
 
-            // Wait four event processing
-            await Task.Delay(100);
-
-            // Send txA again => should be Accepted
-            _txPool.SubmitTx(txA, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            // Wait for event processing and send txA again => should be Accepted
+            Assert.That(() => _txPool.SubmitTx(txA, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted).After(100, 10));
         }
 
         [TestCase(true, 1, 1, true)]
