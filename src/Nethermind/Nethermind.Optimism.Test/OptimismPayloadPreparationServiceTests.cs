@@ -95,7 +95,7 @@ public class OptimismPayloadPreparationServiceTests
         var currentBestBlock = context?.CurrentBestBlock!;
 
         currentBestBlock.Should().Be(block);
-        currentBestBlock.Header.TryDecodeEIP1559Parameters(out var parameters, out _).Should().BeTrue();
+        currentBestBlock.Header.TryDecodeEIP1559Parameters(releaseSpec, out var parameters, out _).Should().BeTrue();
         parameters.Should().BeEquivalentTo(testCase.ExpectedEIP1559Parameters);
         currentBestBlock.Header.Hash.Should().BeEquivalentTo(currentBestBlock.Header.CalculateHash());
     }

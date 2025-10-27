@@ -120,7 +120,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
             error = $"{nameof(EIP1559Params)} should be null before Holocene";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
-        if (releaseSpec.IsOpHoloceneEnabled && !this.TryDecodeEIP1559Parameters(out _, out var decodeError))
+        if (releaseSpec.IsOpHoloceneEnabled && !this.TryDecodeEIP1559Parameters(releaseSpec, out _, out var decodeError))
         {
             error = decodeError;
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
