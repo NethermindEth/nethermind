@@ -459,7 +459,10 @@ internal static partial class EvmInstructions
     public struct OpOrigin : IOpEnv32Bytes
     {
         public static ref readonly ValueHash256 Operation(VirtualMachine vm)
-            => ref vm.TxExecutionContext.Origin;
+        {
+            Console.WriteLine($"Calling Origin - {vm.TxExecutionContext.Origin}");
+            return ref vm.TxExecutionContext.Origin;
+        }
     }
 
     /// <summary>
