@@ -21,12 +21,16 @@ public static class TestWorldStateFactory
 
     public static IWorldState CreateForTest(IDbProvider dbProvider, ILogManager logManager)
     {
-        IPruningTrieStore trieStore = new TrieStore(
+        PruningConfig pruningConfig = new PruningConfig();
+        FakeFinalizedStateProvider finalizedStateProvider = new FakeFinalizedStateProvider(pruningConfig.PruningBoundary);
+        TrieStore trieStore = new TrieStore(
             new NodeStorage(dbProvider.StateDb),
             No.Pruning,
             Persist.EveryBlock,
-            new PruningConfig(),
+            finalizedStateProvider,
+            pruningConfig,
             LimboLogs.Instance);
+        finalizedStateProvider.TrieStore = trieStore;
         return new WorldState(trieStore, dbProvider.CodeDb, logManager);
     }
 
@@ -34,23 +38,32 @@ public static class TestWorldStateFactory
     {
         if (dbProvider is null) dbProvider = TestMemDbProvider.Init();
         if (logManager is null) logManager = LimboLogs.Instance;
-        IPruningTrieStore trieStore = new TrieStore(
+
+        PruningConfig pruningConfig = new PruningConfig();
+        FakeFinalizedStateProvider finalizedStateProvider = new FakeFinalizedStateProvider(pruningConfig.PruningBoundary);
+        TrieStore trieStore = new TrieStore(
             new NodeStorage(dbProvider.StateDb),
             No.Pruning,
             Persist.EveryBlock,
-            new PruningConfig(),
+            finalizedStateProvider,
+            pruningConfig,
             LimboLogs.Instance);
+        finalizedStateProvider.TrieStore = trieStore;
         return (new WorldState(trieStore, dbProvider.CodeDb, logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
     }
 
     public static WorldStateManager CreateWorldStateManagerForTest(IDbProvider dbProvider, ILogManager logManager)
     {
-        IPruningTrieStore trieStore = new TrieStore(
+        PruningConfig pruningConfig = new PruningConfig();
+        FakeFinalizedStateProvider finalizedStateProvider = new FakeFinalizedStateProvider(pruningConfig.PruningBoundary);
+        TrieStore trieStore = new TrieStore(
             new NodeStorage(dbProvider.StateDb),
             No.Pruning,
             Persist.EveryBlock,
-            new PruningConfig(),
+            finalizedStateProvider,
+            pruningConfig,
             LimboLogs.Instance);
+        finalizedStateProvider.TrieStore = trieStore;
         var worldState = new WorldState(trieStore, dbProvider.CodeDb, logManager);
 
         return new WorldStateManager(worldState, trieStore, dbProvider, logManager);

@@ -66,13 +66,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private long _toBePersistedBlockNumber = -1;
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
-    private readonly IFinalizedHeaderProvider _finalizedHeaderProvider;
+    private readonly IFinalizedStateProvider _finalizedStateProvider;
 
     public TrieStore(
         INodeStorage nodeStorage,
         IPruningStrategy pruningStrategy,
         IPersistenceStrategy persistenceStrategy,
-        IFinalizedHeaderProvider finalizedHeaderProvider,
+        IFinalizedStateProvider finalizedStateProvider,
         IPruningConfig pruningConfig,
         ILogManager logManager)
     {
@@ -80,7 +80,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _nodeStorage = nodeStorage;
         _pruningStrategy = pruningStrategy;
         _persistenceStrategy = persistenceStrategy;
-        _finalizedHeaderProvider = finalizedHeaderProvider;
+        _finalizedStateProvider = finalizedStateProvider;
 
         _publicStore = new TrieKeyValueStore(this);
         _persistedNodeRecorder = PersistedNodeRecorder;
@@ -723,7 +723,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 return (candidateSets, null);
             }
 
-            long finalizedBlockNumber = _finalizedHeaderProvider.FinalizedBlockNumber;
+            long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
             long pruningBoundaryBlockNumber = _commitSetQueue.MaxBlockNumber.Value - _maxDepth;
             long effectiveFinalizedBlockNumber = Math.Min(pruningBoundaryBlockNumber, finalizedBlockNumber);
             effectiveFinalizedBlockNumber = Math.Max(0, effectiveFinalizedBlockNumber);
@@ -751,7 +751,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             using ArrayPoolListRef<BlockCommitSet> commitSetsAtFinalizedBlock = _commitSetQueue.GetCommitSetsAtBlockNumber(effectiveFinalizedBlockNumber);
 
             BlockCommitSet? finalizedBlockCommitSet = null;
-            Hash256? finalizedStateRoot = _finalizedHeaderProvider.GetFinalizedStateRootAt(effectiveFinalizedBlockNumber);
+            Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedStateRootAt(effectiveFinalizedBlockNumber);
             if (finalizedStateRoot is not null)
             {
                 foreach (BlockCommitSet blockCommitSet in commitSetsAtFinalizedBlock)
@@ -971,6 +971,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private readonly ILogger _logger;
 
     private CommitSetQueue _commitSetQueue = new CommitSetQueue();
+    public CommitSetQueue CommitSetQueue => _commitSetQueue;
 
     private BlockCommitSet? _lastCommitSet = null;
 
@@ -987,7 +988,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private BlockCommitter? _currentBlockCommitter = null;
 
-    private long LatestCommittedBlockNumber { get; set; }
+    public long LatestCommittedBlockNumber { get; set; }
     public INodeStorage.KeyScheme Scheme => _nodeStorage.Scheme;
 
     private record StateId(long BlockNumber, Hash256 StateRoot);
@@ -1191,7 +1192,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         if (_commitSetQueue.IsEmpty) return;
 
-        using ArrayPoolListRef<BlockCommitSet> candidateSets = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
+        (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
+        using var _ = candidateSets;
         if (candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommmitSet))
         {
             // No commitset to persist, likely as not enough block was processed to reached prune boundary
@@ -1217,6 +1219,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
         else
         {
+            LastPersistedBlockNumber = finalizedBlockNumber.Value;
             AnnounceReorgBoundaries();
         }
     }

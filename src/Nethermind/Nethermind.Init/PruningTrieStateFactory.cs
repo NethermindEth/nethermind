@@ -181,6 +181,7 @@ public class MainPruningTrieStoreFactory
         IPruningConfig pruningConfig,
         IDbProvider dbProvider,
         INodeStorageFactory nodeStorageFactory,
+        IFinalizedStateProvider finalizedStateProvider,
         IDbConfig dbConfig,
         IHardwareInfo hardwareInfo,
         ILogManager logManager
@@ -236,6 +237,7 @@ public class MainPruningTrieStoreFactory
             mainNodeStorage,
             pruningStrategy,
             persistenceStrategy,
+            finalizedStateProvider,
             pruningConfig,
             logManager);
     }

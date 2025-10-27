@@ -88,17 +88,34 @@ public class CommitSetQueue : IEnumerable<BlockCommitSet>
         return GetEnumerator();
     }
 
-    public ArrayPoolListRef<BlockCommitSet> GetCommitSetsAtBlockNumber(long pruningBoundaryBlockNumber)
+    public ArrayPoolListRef<BlockCommitSet> GetCommitSetsAtBlockNumber(long blockNumber)
     {
+        BlockCommitSet lowerBound = new BlockCommitSet(blockNumber);
+        lowerBound.Seal(new TrieNode(NodeType.Unknown, Hash256.Zero));
+        BlockCommitSet upperBound = new BlockCommitSet(blockNumber);
+        upperBound.Seal(new TrieNode(NodeType.Unknown, Keccak.MaxValue));
+
+        var result = new ArrayPoolListRef<BlockCommitSet>();
+        result.AddRange(_queue.GetViewBetween(lowerBound, upperBound));
+        return result;
     }
 
-    public ArrayPoolListRef<BlockCommitSet> GetAndDequeueCommitSetsBeforeOrAt(long maxBlockNumber)
+    public ArrayPoolListRef<BlockCommitSet> GetAndDequeueCommitSetsBeforeOrAt(long blockNumber)
     {
-        throw new System.NotImplementedException();
+        var result = new ArrayPoolListRef<BlockCommitSet>();
+        while (_queue.Count > 0)
+        {
+            BlockCommitSet min = _queue.Min;
+            if (min.BlockNumber > blockNumber) break;
+            result.Add(min);
+            _queue.Remove(min);
+        }
+
+        return result;
     }
 
     public void Remove(BlockCommitSet blockCommitSet)
     {
-        throw new System.NotImplementedException();
+        _queue.Remove(blockCommitSet);
     }
 }

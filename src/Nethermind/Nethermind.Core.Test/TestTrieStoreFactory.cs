@@ -29,6 +29,9 @@ public static class TestTrieStoreFactory
 
     public static TrieStore Build(IKeyValueStoreWithBatching keyValueStore, IPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy, ILogManager logManager)
     {
-        return new TrieStore(new NodeStorage(keyValueStore), pruningStrategy, persistenceStrategy, _testPruningConfig, logManager);
+        FakeFinalizedStateProvider finalizedStateProvider = new FakeFinalizedStateProvider(_testPruningConfig.PruningBoundary);
+        TrieStore trieStore = new TrieStore(new NodeStorage(keyValueStore), pruningStrategy, persistenceStrategy, finalizedStateProvider, _testPruningConfig, logManager);
+        finalizedStateProvider.TrieStore = trieStore;
+        return trieStore;
     }
 }

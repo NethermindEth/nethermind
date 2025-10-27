@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
 
-public interface IFinalizedHeaderProvider
+public interface IFinalizedStateProvider
 {
     long FinalizedBlockNumber { get; }
     Hash256? GetFinalizedStateRootAt(long blockNumber);
