@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -168,7 +167,7 @@ public unsafe partial class VirtualMachine(
             }
 
             Exception? failure;
-            string? error;
+            string? substateError;
             try
             {
                 CallResult callResult;
@@ -176,7 +175,7 @@ public unsafe partial class VirtualMachine(
                 // If the current state represents a precompiled contract, handle it separately.
                 if (_currentState.IsPrecompile)
                 {
-                    callResult = ExecutePrecompile(_currentState, _txTracer.IsTracingActions, out failure, out error);
+                    callResult = ExecutePrecompile(_currentState, _txTracer.IsTracingActions, out failure, out substateError);
                     if (failure is not null)
                     {
                         // Jump to the failure handler if a precompile error occurred.
@@ -295,7 +294,7 @@ public unsafe partial class VirtualMachine(
             catch (Exception ex) when (ex is EvmException or OverflowException)
             {
                 failure = ex;
-                error = null;
+                substateError = null;
                 goto Failure;
             }
 
@@ -304,7 +303,7 @@ public unsafe partial class VirtualMachine(
 
         // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
-            TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, error, ref previousCallOutput, out bool shouldExit);
+            TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, substateError, ref previousCallOutput, out bool shouldExit);
             if (shouldExit)
             {
                 _currentState = null;
@@ -599,7 +598,7 @@ public unsafe partial class VirtualMachine(
     /// A <see cref="TransactionSubstate"/> if the failure occurs in the top-level call; otherwise, <c>null</c>
     /// to indicate that execution should continue with the parent call frame.
     /// </returns>
-    protected TransactionSubstate HandleFailure<TTracingInst>(Exception failure, string? error, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
+    protected TransactionSubstate HandleFailure<TTracingInst>(Exception failure, string? substateError, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
         where TTracingInst : struct, IFlag
     {
         // Log the exception if trace logging is enabled.
@@ -640,7 +639,7 @@ public unsafe partial class VirtualMachine(
             // For an OverflowException, force the error type to a generic Other error.
             EvmExceptionType finalErrorType = failure is OverflowException ? EvmExceptionType.Other : errorType;
             shouldExit = true;
-            return new TransactionSubstate(finalErrorType, txTracer.IsTracing, error);
+            return new TransactionSubstate(finalErrorType, txTracer.IsTracing, substateError);
         }
 
         // For nested call frames, prepare to revert to the parent frame.
@@ -762,14 +761,14 @@ public unsafe partial class VirtualMachine(
     /// <param name="failure">
     /// An output parameter that is set to the encountered exception if the precompile fails; otherwise, <c>null</c>.
     /// </param>
-    /// <param name="error">
+    /// <param name="substateError">
     /// An output parameter that is set to detailed error if the precompile fails; otherwise, <c>null</c>.
     /// </param>
     /// <returns>
     /// A <see cref="CallResult"/> containing the results of the precompile execution. In case of a failure,
     /// returns the default value of <see cref="CallResult"/>.
     /// </returns>
-    protected virtual CallResult ExecutePrecompile(EvmState currentState, bool isTracingActions, out Exception? failure, out string? error)
+    protected virtual CallResult ExecutePrecompile(EvmState currentState, bool isTracingActions, out Exception? failure, out string? substateError)
     {
         // Report the precompile action if tracing is enabled.
         if (isTracingActions)
@@ -790,7 +789,7 @@ public unsafe partial class VirtualMachine(
         // If the precompile did not succeed, handle the failure conditions.
         if (callResult.PrecompileSuccess == false)
         {
-            error = callResult.Error;
+            substateError = callResult.SubstateError;
 
             // If the failure is due to an exception (e.g., out-of-gas), set the corresponding failure exception.
             if (callResult.IsException)
@@ -812,7 +811,7 @@ public unsafe partial class VirtualMachine(
 
         // If execution reaches here, the precompile operation is considered successful.
         failure = null;
-        error = null;
+        substateError = null;
         return callResult;
 
     Failure:
@@ -1023,7 +1022,7 @@ public unsafe partial class VirtualMachine(
                 exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None
             )
             {
-                Error = $"Precompile {precompile.GetStaticName()} failed with error: {output.Error}"
+                SubstateError = $"Precompile {precompile.GetStaticName()} failed with error: {output.Error}"
             };
         }
         catch (DllNotFoundException exception)

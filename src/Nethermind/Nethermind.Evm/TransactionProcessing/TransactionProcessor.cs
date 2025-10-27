@@ -249,7 +249,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             return substate.EvmExceptionType != EvmExceptionType.None
-                ? TransactionResult.EvmException(substate.EvmExceptionType, substate.Error)
+                ? TransactionResult.EvmException(substate.EvmExceptionType, substate.SubstateError)
                 : TransactionResult.Ok;
         }
 

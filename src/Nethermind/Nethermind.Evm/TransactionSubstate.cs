@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -50,6 +50,7 @@ public readonly ref struct TransactionSubstate
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
+    public string? SubstateError { get; }
     public EvmExceptionType EvmExceptionType { get; }
     public (ICodeInfo DeployCode, ReadOnlyMemory<byte> Bytes) Output { get; }
     public bool ShouldRevert { get; }
@@ -57,9 +58,10 @@ public readonly ref struct TransactionSubstate
     public IToArrayCollection<LogEntry> Logs => _logs ?? _emptyLogs;
     public IHashSetEnumerableCollection<Address> DestroyList => _destroyList ?? _emptyDestroyList;
 
-    public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? error = null)
+    public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
     {
-        Error = error ?? (isTracerConnected ? exceptionType.ToString() : SomeError);
+        Error = isTracerConnected ? exceptionType.ToString() : SomeError;
+        SubstateError = substateError;
         EvmExceptionType = exceptionType;
         Refund = 0;
         _destroyList = _emptyDestroyList;
