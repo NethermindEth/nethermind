@@ -196,7 +196,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportAction(100, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType);
             testEnvironment.tracer.ReportAction(100, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, true);
 
-            Action reportError = () => testEnvironment.tracer.ReportActionError(EvmExceptionType.OutOfGas2);
+            Action reportError = () => testEnvironment.tracer.ReportActionError(EvmExceptionType.OutOfGas);
 
             reportError.Should().NotThrow();
             reportError.Should().NotThrow();
@@ -384,7 +384,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
 
-            testEnvironment.tracer.ReportActionError(EvmExceptionType.OutOfGas2);
+            testEnvironment.tracer.ReportActionError(EvmExceptionType.OutOfGas);
 
             testEnvironment.tracer.MarkAsSuccess(Address.Zero, 500, Array.Empty<byte>(), Array.Empty<LogEntry>());
 
@@ -470,7 +470,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             EstimateGasTracer tracer = new();
             tracer.ReportAction(100000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.TRANSACTION, false);
-            tracer.ReportActionError(EvmExceptionType.OutOfGas2);
+            tracer.ReportActionError(EvmExceptionType.OutOfGas);
             tracer.MarkAsFailed(Address.Zero, 100000, Array.Empty<byte>(), "out of gas");
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);

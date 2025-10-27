@@ -79,7 +79,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
             EvmExceptionType.BadInstruction => "BadInstruction",
             EvmExceptionType.StackOverflow => "StackOverflow",
             EvmExceptionType.StackUnderflow => "StackUnderflow",
-            EvmExceptionType.OutOfGas => "OutOfGas4",
+            EvmExceptionType.OutOfGas => "OutOfGas",
             EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
             EvmExceptionType.AccessViolation => "AccessViolation",
             EvmExceptionType.StaticCallViolation => "StaticCallViolation",

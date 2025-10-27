@@ -816,7 +816,7 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(estimateGasTracer.GasSpent, Is.EqualTo(expectedGas));
         if (shouldRunOutOfGas)
         {
-            Assert.That(estimateGasTracer.Error, Is.EqualTo(EvmExceptionType.OutOfGas2.ToString()));
+            Assert.That(estimateGasTracer.Error, Is.EqualTo(EvmExceptionType.OutOfGas.ToString()));
         }
     }
 

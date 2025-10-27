@@ -490,7 +490,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if gas is available,
-    /// <see cref="EvmExceptionType.OutOfGas2"/> if the gas becomes negative
+    /// <see cref="EvmExceptionType.OutOfGas"/> if the gas becomes negative
     /// or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
@@ -513,7 +513,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas2;
+        return EvmExceptionType.OutOfGas;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -551,7 +551,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if gas is available,
-    /// <see cref="EvmExceptionType.OutOfGas2"/> if the gas becomes negative
+    /// <see cref="EvmExceptionType.OutOfGas"/> if the gas becomes negative
     /// or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
@@ -582,7 +582,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas2;
+        return EvmExceptionType.OutOfGas;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -597,7 +597,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The current program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if gas is available,
-    /// <see cref="EvmExceptionType.OutOfGas2"/> if the gas becomes negative
+    /// <see cref="EvmExceptionType.OutOfGas"/> if the gas becomes negative
     /// or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
@@ -634,7 +634,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas2;
+        return EvmExceptionType.OutOfGas;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -669,7 +669,7 @@ internal static partial class EvmInstructions
     /// <param name="gasAvailable">Reference to the current available gas, which is modified by this operation.</param>
     /// <param name="programCounter">The current program counter.</param>
     /// <returns>
-    /// <see cref="EvmExceptionType.None"/> if gas is available, or <see cref="EvmExceptionType.OutOfGas2"/> if the gas becomes negative.
+    /// <see cref="EvmExceptionType.None"/> if gas is available, or <see cref="EvmExceptionType.OutOfGas"/> if the gas becomes negative.
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionGas<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
@@ -687,7 +687,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas2;
+        return EvmExceptionType.OutOfGas;
     }
 
     /// <summary>

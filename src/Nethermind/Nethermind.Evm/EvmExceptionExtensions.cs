@@ -12,7 +12,7 @@ public static class EvmExceptionExtensions
             EvmExceptionType.BadInstruction => "invalid instruction",
             EvmExceptionType.StackOverflow => "max call depth exceeded",
             EvmExceptionType.StackUnderflow => "stack underflow",
-            EvmExceptionType.OutOfGas2 => "out of gas",
+            EvmExceptionType.OutOfGas => "out of gas",
             EvmExceptionType.GasUInt64Overflow => "gas uint64 overflow",
             EvmExceptionType.InvalidSubroutineEntry => "invalid jump destination",
             EvmExceptionType.InvalidSubroutineReturn => "invalid jump destination",

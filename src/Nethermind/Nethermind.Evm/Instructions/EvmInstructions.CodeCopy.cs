@@ -87,7 +87,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas2;
+        return EvmExceptionType.OutOfGas;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -191,7 +191,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas2;
+        return EvmExceptionType.OutOfGas;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -300,7 +300,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas2;
+        return EvmExceptionType.OutOfGas;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
