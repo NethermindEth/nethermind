@@ -650,11 +650,6 @@ namespace Nethermind.Blockchain
             return null;
         }
 
-        public Hash256? FindHash(long number)
-        {
-            return GetBlockHashOnMainOrBestDifficultyHash(number);
-        }
-
         public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256? blockHash, int numberOfBlocks, int skip, bool reverse)
         {
             if (numberOfBlocks == 0)
