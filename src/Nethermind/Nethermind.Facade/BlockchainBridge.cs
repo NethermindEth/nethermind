@@ -132,13 +132,8 @@ namespace Nethermind.Facade
         {
             using var scope = processingEnv.BuildAndOverride(header, stateOverride);
             CallOutputTracer callOutputTracer = new();
-            GethLikeNativeTxTracer gethLikeNativeTxTracer = new NativeCallTracer(tx, GethTraceOptions.Default);
-            CompositeTxTracer txTracer = new CompositeTxTracer(callOutputTracer, gethLikeNativeTxTracer);
             TransactionResult tryCallResult = TryCallAndRestore(scope.Component, header, tx, false,
-                txTracer.WithCancellation(cancellationToken));
-
-            GethLikeTxTrace? x = gethLikeNativeTxTracer.BuildResult();
-            Console.WriteLine(JsonSerializer.Serialize(x, EthereumJsonSerializer.JsonOptions));
+                callOutputTracer.WithCancellation(cancellationToken));
 
             return new CallOutput
             {
