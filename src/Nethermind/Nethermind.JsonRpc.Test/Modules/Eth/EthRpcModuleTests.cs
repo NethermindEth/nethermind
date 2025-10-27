@@ -1270,6 +1270,16 @@ public partial class EthRpcModuleTests
         Assert.That(rpcTx.Gas, Is.EqualTo(long.MaxValue), "Gas must be set to max if gasCap is null or 0");
     }
 
+    [Test]
+    public static void Should_handle_fromAddress_as_zero_if_null()
+    {
+        LegacyTransactionForRpc rpcTx = new LegacyTransactionForRpc();
+
+        rpcTx.EnsureDefaults(0);
+
+        Assert.That(rpcTx.From, Is.EqualTo(Address.Zero), "From address must be set to zero if tx.from is null");
+    }
+
     [Ignore(reason: "Shows disparity across 'default' methods")]
     [TestCase(null)]
     [TestCase(0)]
