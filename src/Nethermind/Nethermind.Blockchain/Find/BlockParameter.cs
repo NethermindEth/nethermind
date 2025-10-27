@@ -141,7 +141,6 @@ namespace Nethermind.JsonRpc.Data
                 JsonTokenType.Null => BlockParameter.Latest,
                 JsonTokenType.Number when !EthereumJsonSerializer.StrictHexFormat => new BlockParameter(reader.GetInt64()),
                 JsonTokenType.String => ReadStringFormat(ref reader),
-                JsonTokenType.Number => ReadStringFormat(ref reader),
                 _ => throw new FormatException("unknown block parameter type")
             };
         }
@@ -184,23 +183,20 @@ namespace Nethermind.JsonRpc.Data
 
         private BlockParameter ReadStringFormat(ref Utf8JsonReader reader)
         {
-            if (reader.TokenType == JsonTokenType.String)
+            // Check for known string values first (fast path)
+            BlockParameter? knownValue = reader switch
             {
-                // Check for known string values first (fast path)
-                BlockParameter? knownValue = reader switch
-                {
-                    _ when reader.ValueTextEquals(ReadOnlySpan<byte>.Empty) || reader.ValueTextEquals("latest"u8) => BlockParameter.Latest,
-                    _ when reader.ValueTextEquals("earliest"u8) => BlockParameter.Earliest,
-                    _ when reader.ValueTextEquals("pending"u8) => BlockParameter.Pending,
-                    _ when reader.ValueTextEquals("finalized"u8) => BlockParameter.Finalized,
-                    _ when reader.ValueTextEquals("safe"u8) => BlockParameter.Safe,
-                    _ => null
-                };
+                _ when reader.ValueTextEquals(ReadOnlySpan<byte>.Empty) || reader.ValueTextEquals("latest"u8) => BlockParameter.Latest,
+                _ when reader.ValueTextEquals("earliest"u8) => BlockParameter.Earliest,
+                _ when reader.ValueTextEquals("pending"u8) => BlockParameter.Pending,
+                _ when reader.ValueTextEquals("finalized"u8) => BlockParameter.Finalized,
+                _ when reader.ValueTextEquals("safe"u8) => BlockParameter.Safe,
+                _ => null
+            };
 
-                if (knownValue is not null)
-                {
-                    return knownValue;
-                }
+            if (knownValue is not null)
+            {
+                return knownValue;
             }
 
             Span<byte> span = stackalloc byte[66];
