@@ -28,13 +28,15 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         _blockNumDict.Remove(blockNumber);
     }
 
-    public Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true)
+    public Block? Get(long blockNumber, Hash256 blockHash, out bool fromCache, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true)
     {
         if (_blockNumDict.TryGetValue(blockNumber, out Block block))
         {
+            fromCache = true;
             return block;
         }
 
+        fromCache = false;
         block = readonlyBaseBlockStore.Get(blockNumber, blockHash, rlpBehaviors, false);
         if (block is not null && shouldCache)
         {

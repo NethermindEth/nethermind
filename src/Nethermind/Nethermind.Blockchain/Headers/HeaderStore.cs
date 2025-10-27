@@ -56,16 +56,21 @@ public class HeaderStore : IHeaderStore
         }
     }
 
-    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, out bool fromCache, bool shouldCache = false, long? blockNumber = null)
     {
         blockNumber ??= GetBlockNumberFromBlockNumberDb(blockHash);
 
         BlockHeader? header = null;
         if (blockNumber is not null)
         {
-            header = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+            header = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, out fromCache, _headerCache, shouldCache: shouldCache);
+            if (header is not null)
+            {
+                return header;
+            }
         }
-        return header ?? _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+
+        return _headerDb.Get(blockHash, _headerDecoder, out fromCache, _headerCache, shouldCache: shouldCache);
     }
 
     public void Cache(BlockHeader header)
@@ -95,7 +100,7 @@ public class HeaderStore : IHeaderStore
         if (blockNumber is not null) return blockNumber.Value;
 
         // Probably still hash based
-        return Get(blockHash)?.Number;
+        return Get(blockHash, out _)?.Number;
     }
 
     private long? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)

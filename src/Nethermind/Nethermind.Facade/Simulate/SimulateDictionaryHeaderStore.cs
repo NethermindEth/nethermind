@@ -34,19 +34,21 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         }
     }
 
-    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, out bool fromCache, bool shouldCache = false, long? blockNumber = null)
     {
         blockNumber ??= GetBlockNumber(blockHash);
 
         if (blockNumber.HasValue && _headerDict.TryGetValue(blockHash, out BlockHeader? header))
         {
+            fromCache = true;
             if (shouldCache)
             {
-                Cache(header);
+                InsertBlockNumber(header.Hash, header.Number);
             }
             return header;
         }
 
+        fromCache = false;
         header = readonlyBaseHeaderStore.Get(blockHash, false, blockNumber);
         if (header is not null && shouldCache)
         {
