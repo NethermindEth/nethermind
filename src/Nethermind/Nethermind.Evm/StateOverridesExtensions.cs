@@ -62,8 +62,10 @@ public static class StateOverridesExtensions
     {
         void ApplyState(Dictionary<UInt256, Hash256> diff)
         {
+            Console.WriteLine($"applyinog state");
             foreach ((UInt256 index, Hash256 value) in diff)
             {
+                Console.WriteLine($"{index.ToBigEndian().ToHexString()} {index.ToLittleEndian().ToHexString()} - {value.Bytes.ToHexString()}");
                 stateProvider.Set(new StorageCell(address, index), value.Bytes.WithoutLeadingZeros().ToArray());
             }
         }
