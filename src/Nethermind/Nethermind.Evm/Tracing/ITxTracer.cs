@@ -168,7 +168,6 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="gasSpent">Gas spent on transaction execution</param>
     /// <param name="output">Output of transaction</param>
     /// <param name="error">Error that failed the transaction</param>
-    /// <param name="exceptionType">Error type that failed the transaction</param>
     /// <param name="stateRoot">State root after transaction, depends on EIP-658</param>
     /// <remarks>Depends on <see cref="IsTracingReceipt"/></remarks>
     void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null);

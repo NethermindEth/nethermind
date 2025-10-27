@@ -11,6 +11,6 @@ public class Error
     public int? Code { get; set; }
     public string? Message { get; set; }
     [JsonIgnore]
-    public EvmExceptionType EvmException {  get; set; }
+    public EvmExceptionType EvmException { get; set; }
     public byte[]? Data { get; set; }
 }
