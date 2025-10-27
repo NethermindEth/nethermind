@@ -1130,7 +1130,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_notify_peer_only_once()
+        public void should_notify_peer_only_once()
         {
             _txPool = CreatePool();
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
@@ -1488,7 +1488,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_include_transaction_after_removal()
+        public void should_include_transaction_after_removal()
         {
             ISpecProvider specProvider = GetLondonSpecProvider();
             _txPool = CreatePool(new TxPoolConfig { Size = 2 }, specProvider);

@@ -67,7 +67,7 @@ public class TxBroadcasterTests
     public void TearDown() => _broadcaster?.Dispose();
 
     [Test]
-    public async Task should_not_broadcast_persisted_tx_to_peer_too_quickly()
+    public void should_not_broadcast_persisted_tx_to_peer_too_quickly()
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = 100 };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
