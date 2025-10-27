@@ -29,6 +29,8 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
         return ValidateParams(parent, header, out _);
     }
 
+
+
     public bool ValidateParams(BlockHeader parent, BlockHeader header, out string error)
     {
         if (header is not XdcBlockHeader xdcHeader)
@@ -53,7 +55,7 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
 
         Address[] masternodes;
 
-        if (xdcHeader.IsEpochSwitch(xdcSpec))
+        if (epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader))
         {
             if (xdcHeader.Nonce != XdcConstants.NonceDropVoteValue)
             {
@@ -87,18 +89,20 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
         }
         else
         {
-            if (xdcHeader.Validators?.Length != 0)
+            if (xdcHeader.Validators is not null &&
+                xdcHeader.Validators.Length != 0)
             {
                 error = "Validators are not empty in non-epoch switch header.";
                 return false;
             }
-            if (xdcHeader.Penalties?.Length != 0)
+            if (xdcHeader.Penalties is not null &&
+                xdcHeader.Penalties?.Length != 0)
             {
                 error = "Penalties are not empty in non-epoch switch header.";
                 return false;
             }
             //TODO get masternodes from snapshot
-            EpochSwitchInfo epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader, xdcHeader.ParentHash);
+            EpochSwitchInfo epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
             masternodes = epochSwitchInfo.Masternodes;
             if (masternodes is null || masternodes.Length == 0)
                 throw new InvalidOperationException($"Snap shot returned no master nodes for header \n{xdcHeader.ToString()}");

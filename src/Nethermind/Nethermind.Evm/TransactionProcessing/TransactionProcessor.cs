@@ -921,14 +921,34 @@ namespace Nethermind.Evm.TransactionProcessing
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
     }
 
-    public readonly struct TransactionResult(string? error, EvmExceptionType evmException = EvmExceptionType.None) : IEquatable<TransactionResult>
+    public readonly struct TransactionResult : IEquatable<TransactionResult>
     {
-        [MemberNotNullWhen(false, nameof(TransactionExecuted))]
-        public string? Error { get; } = error;
-        public bool TransactionExecuted => Error is null;
-        public EvmExceptionType EvmExceptionType { get; } = evmException;
+        private TransactionResult(ErrorType error = ErrorType.None, EvmExceptionType evmException = EvmExceptionType.None)
+        {
+            Error = error;
+            EvmExceptionType = evmException;
+        }
+        public ErrorType Error { get; }
+        public string? SubstateError { get; private init; }
+        public bool TransactionExecuted => Error is ErrorType.None;
+        public EvmExceptionType EvmExceptionType { get; }
 
-        public static implicit operator TransactionResult(string? error) => new(error);
+        public string ErrorDescription => Error switch
+        {
+            ErrorType.BlockGasLimitExceeded => "Block gas limit exceeded",
+            ErrorType.GasLimitBelowIntrinsicGas => "gas limit below intrinsic gas",
+            ErrorType.InsufficientMaxFeePerGasForSenderBalance => "insufficient MaxFeePerGas for sender balance",
+            ErrorType.InsufficientSenderBalance => "insufficient sender balance",
+            ErrorType.MalformedTransaction => "malformed",
+            ErrorType.MinerPremiumNegative => "miner premium is negative",
+            ErrorType.NonceOverflow => "nonce overflow",
+            ErrorType.SenderHasDeployedCode => "sender has deployed code",
+            ErrorType.SenderNotSpecified => "sender not specified",
+            ErrorType.TransactionSizeOverMaxInitCodeSize => "EIP-3860 - transaction size over max init code size",
+            ErrorType.WrongTransactionNonce => "wrong transaction nonce",
+            _ => ""
+        };
+        public static implicit operator TransactionResult(ErrorType error) => new(error);
         public static implicit operator bool(TransactionResult result) => result.TransactionExecuted;
         public bool Equals(TransactionResult other) => (TransactionExecuted && other.TransactionExecuted) || (Error == other.Error);
         public static bool operator ==(TransactionResult obj1, TransactionResult obj2) => obj1.Equals(obj2);
@@ -936,22 +956,41 @@ namespace Nethermind.Evm.TransactionProcessing
         public override bool Equals(object? obj) => obj is TransactionResult result && Equals(result);
         public override int GetHashCode() => TransactionExecuted ? 1 : Error.GetHashCode();
 
-        public override string ToString() => Error is not null ? $"Fail : {Error}" : "Success";
+        public override string ToString() => Error is not ErrorType.None ? $"Fail : {ErrorDescription}" : "Success";
 
-        public static TransactionResult EvmException(EvmExceptionType evmExceptionType, string? error = null) => new(error, evmExceptionType);
+        public static TransactionResult EvmException(EvmExceptionType evmExceptionType, string? substateError = null)
+        {
+            return new TransactionResult(ErrorType.None, evmExceptionType) { SubstateError = substateError };
+        }
 
         public static readonly TransactionResult Ok = new();
 
-        public static readonly TransactionResult BlockGasLimitExceeded = "Block gas limit exceeded";
-        public static readonly TransactionResult GasLimitBelowIntrinsicGas = "gas limit below intrinsic gas";
-        public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = "insufficient MaxFeePerGas for sender balance";
-        public static readonly TransactionResult InsufficientSenderBalance = "insufficient sender balance";
-        public static readonly TransactionResult MalformedTransaction = "malformed";
-        public static readonly TransactionResult MinerPremiumNegative = "miner premium is negative";
-        public static readonly TransactionResult NonceOverflow = "nonce overflow";
-        public static readonly TransactionResult SenderHasDeployedCode = "sender has deployed code";
-        public static readonly TransactionResult SenderNotSpecified = "sender not specified";
-        public static readonly TransactionResult TransactionSizeOverMaxInitCodeSize = "EIP-3860 - transaction size over max init code size";
-        public static readonly TransactionResult WrongTransactionNonce = "wrong transaction nonce";
+        public static readonly TransactionResult BlockGasLimitExceeded = ErrorType.BlockGasLimitExceeded;
+        public static readonly TransactionResult GasLimitBelowIntrinsicGas = ErrorType.GasLimitBelowIntrinsicGas;
+        public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = ErrorType.InsufficientMaxFeePerGasForSenderBalance;
+        public static readonly TransactionResult InsufficientSenderBalance = ErrorType.InsufficientSenderBalance;
+        public static readonly TransactionResult MalformedTransaction = ErrorType.MalformedTransaction;
+        public static readonly TransactionResult MinerPremiumNegative = ErrorType.MinerPremiumNegative;
+        public static readonly TransactionResult NonceOverflow = ErrorType.NonceOverflow;
+        public static readonly TransactionResult SenderHasDeployedCode = ErrorType.SenderHasDeployedCode;
+        public static readonly TransactionResult SenderNotSpecified = ErrorType.SenderNotSpecified;
+        public static readonly TransactionResult TransactionSizeOverMaxInitCodeSize = ErrorType.TransactionSizeOverMaxInitCodeSize;
+        public static readonly TransactionResult WrongTransactionNonce = ErrorType.WrongTransactionNonce;
+
+        public enum ErrorType
+        {
+            None,
+            BlockGasLimitExceeded,
+            GasLimitBelowIntrinsicGas,
+            InsufficientMaxFeePerGasForSenderBalance,
+            InsufficientSenderBalance,
+            MalformedTransaction,
+            MinerPremiumNegative,
+            NonceOverflow,
+            SenderHasDeployedCode,
+            SenderNotSpecified,
+            TransactionSizeOverMaxInitCodeSize,
+            WrongTransactionNonce,
+        }
     }
 }
