@@ -19,10 +19,11 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
+        Console.WriteLine($"Getting Code: {codeSource}");
         delegationAddress = null;
         var code = _codeOverwrites.TryGetValue(codeSource, out ICodeInfo result);
         if (code)
-        {Console.WriteLine($"Got wanted code: {result.Code.ToHexString()}");
+        {Console.WriteLine($"Got wanted code: {codeSource} {ValueKeccak.Compute(result.Code.Span)}");
             return result;
         }
         return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
