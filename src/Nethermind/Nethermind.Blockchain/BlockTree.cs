@@ -571,7 +571,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            BlockHeader? header = _headerStore.Get(blockHash, shouldCache: false, blockNumber: blockNumber);
+            BlockHeader? header = _headerStore.Get(blockHash, out bool fromCache, shouldCache: false, blockNumber: blockNumber);
             if (header is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
@@ -621,7 +621,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (header is not null && ShouldCache(header.Number))
+            if (header is not null && !fromCache && ShouldCache(header.Number))
             {
                 _headerStore.Cache(header);
             }
@@ -1434,13 +1434,15 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
+            bool fromCache = false;
             Block? block = null;
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
             if (blockNumber is not null)
             {
                 block = _blockStore.Get(
                     blockNumber.Value,
-                    blockHash,
+                    blockHash ,
+                    out fromCache,
                     (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
                     shouldCache: false);
             }
@@ -1496,7 +1498,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (block is not null && ShouldCache(block.Number))
+            if (block is not null && !fromCache && ShouldCache(block.Number))
             {
                 _blockStore.Cache(block);
                 _headerStore.Cache(block.Header);

@@ -12,7 +12,9 @@ public interface IHeaderStore
 {
     void Insert(BlockHeader header);
     void BulkInsert(IReadOnlyList<BlockHeader> headers);
-    BlockHeader? Get(Hash256 blockHash, bool shouldCache, long? blockNumber = null);
+    BlockHeader? Get(Hash256 blockHash, bool shouldCache = true, long? blockNumber = null)
+        => Get(blockHash, out _, shouldCache, blockNumber);
+    BlockHeader? Get(Hash256 blockHash, out bool fromCache, bool shouldCache = true, long? blockNumber = null);
     void Cache(BlockHeader header);
     void Delete(Hash256 blockHash);
     void InsertBlockNumber(Hash256 blockHash, long blockNumber);

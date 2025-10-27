@@ -15,7 +15,9 @@ public interface IBlockStore
 {
     void Insert(Block block, WriteFlags writeFlags = WriteFlags.None);
     void Delete(long blockNumber, Hash256 blockHash);
-    Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true);
+    Block? Get(long blockNumber, Hash256 blockHashout, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true)
+        => Get(blockNumber, blockHashout, out _, rlpBehaviors, shouldCache);
+    Block? Get(long blockNumber, Hash256 blockHashout, out bool fromCache, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true);
     byte[]? GetRlp(long blockNumber, Hash256 blockHash);
     ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash);
     void Cache(Block block);

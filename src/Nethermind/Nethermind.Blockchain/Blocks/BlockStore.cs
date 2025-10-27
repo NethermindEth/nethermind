@@ -67,9 +67,16 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
 
     public Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
-        Block? b = blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
+        Block? b = blockDb.Get(blockNumber, blockHash, _blockDecoder, out _, _blockCache, rlpBehaviors, shouldCache);
         if (b is not null) return b;
-        return blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
+        return blockDb.Get(blockHash, _blockDecoder, out _, _blockCache, rlpBehaviors, shouldCache);
+    }
+
+    public Block? Get(long blockNumber, Hash256 blockHash, out bool fromCache, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
+    {
+        Block? b = blockDb.Get(blockNumber, blockHash, _blockDecoder, out fromCache, _blockCache, rlpBehaviors, shouldCache);
+        if (b is not null) return b;
+        return blockDb.Get(blockHash, _blockDecoder, out fromCache, _blockCache, rlpBehaviors, shouldCache);
     }
 
     public byte[]? GetRlp(long blockNumber, Hash256 blockHash)
