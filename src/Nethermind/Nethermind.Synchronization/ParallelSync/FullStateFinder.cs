@@ -81,7 +81,7 @@ public class FullStateFinder : IFullStateFinder
         long maxLookupBack = MaxLookupBack;
         if (_lastKnownState != 0)
         {
-            maxLookupBack = long.Max(startHeader.Number - _lastKnownState + 1, maxLookupBack);
+            maxLookupBack = long.Max(maxLookupBack, startHeader.Number - _lastKnownState + 1);
         }
 
         for (int i = 0; i < maxLookupBack; i++)
@@ -93,11 +93,9 @@ public class FullStateFinder : IFullStateFinder
 
             if (IsFullySynced(startHeader))
             {
-                Console.Error.WriteLine($"Ok {startHeader.Number}");
                 bestFullState = startHeader.Number;
                 break;
             }
-            Console.Error.WriteLine($"Miss {startHeader.Number}");
 
             startHeader = _blockTree.FindParentHeader(startHeader!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
