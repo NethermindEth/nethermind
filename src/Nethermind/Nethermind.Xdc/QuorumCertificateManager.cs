@@ -15,14 +15,10 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
-using static Nethermind.Core.BlockHeader;
 
 namespace Nethermind.Xdc;
 internal class QuorumCertificateManager : IQuorumCertificateManager
@@ -32,25 +28,23 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         IBlockTree chain,
         IDb qcDb,
         ISpecProvider xdcConfig,
-        IEpochSwitchManager epochSwitchManager,
-        IBlockInfoValidator blockInfoValidator)
+        IEpochSwitchManager epochSwitchManager)
     {
         _context = context;
         _blockTree = chain;
         _qcDb = qcDb;
         _specProvider = xdcConfig;
         _epochSwitchManager = epochSwitchManager;
-        _blockInfoValidator = blockInfoValidator;
     }
 
     private IXdcConsensusContext _context { get; }
     private IBlockTree _blockTree;
     private readonly IDb _qcDb;
-    private IBlockInfoValidator _blockInfoValidator;
     private IEpochSwitchManager _epochSwitchManager { get; }
     private ISpecProvider _specProvider { get; }
     private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
-    private static QuorumCertificateDecoder QuorumCertificateDecoder = new();
+    private static QuorumCertificateDecoder _quorumCertificateDecoder = new();
+    private readonly static VoteDecoder _voteDecoder = new();
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;
     public QuorumCertificate LockCertificate => _context.LockQC;
@@ -83,14 +77,13 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
                 SaveLockQc(parentQc);
             }
 
-            CommitBlock(_blockTree, proposedBlockHeader, proposedBlockHeader.ExtraConsensusData.CurrentRound, qc);
+            CommitBlock(_blockTree, proposedBlockHeader, proposedBlockHeader.ExtraConsensusData.BlockRound, qc);
         }
 
         if (qc.ProposedBlockInfo.Round >= _context.CurrentRound)
         {
-            _context.SetNewRound(_blockTree, qc.ProposedBlockInfo.Round);
+            _context.SetNewRound(qc.ProposedBlockInfo.Round);
         }
-        return false;
     }
 
     private void SaveHighestQc(QuorumCertificate qc)
@@ -104,9 +97,9 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
     private void SaveQc(QuorumCertificate qc, long key)
     {
-        byte[] data = new byte[QuorumCertificateDecoder.GetLength(qc)];
+        byte[] data = new byte[_quorumCertificateDecoder.GetLength(qc)];
         RlpStream rlp = new RlpStream(data);
-        QuorumCertificateDecoder.Encode(rlp, qc);
+        _quorumCertificateDecoder.Encode(rlp, qc);
         _qcDb.Set(key, data);
     }
 
@@ -156,7 +149,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(certificateTarget) ?? _epochSwitchManager.GetEpochSwitchInfo(qc.ProposedBlockInfo.Hash);
         if (epochSwitchInfo is null)
         {
-            error = $"Epoch switch info not found for header {certificateTarget?.ToString(Format.FullHashAndNumber)}";
+            error = $"Epoch switch info not found for header {certificateTarget?.ToString(BlockHeader.Format.FullHashAndNumber)}";
             return false;
         }
 
@@ -203,7 +196,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        if (!_blockInfoValidator.ValidateBlockInfo(qc.ProposedBlockInfo, parentHeader))
+        if (!qc.ProposedBlockInfo.ValidateBlockInfo(certificateTarget))
         {
             error = "QC block data does not match header data.";
             return false;
@@ -211,5 +204,11 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         error = null;
         return true;
+    }
+    private ValueHash256 VoteHash(BlockRoundInfo proposedBlockInfo, ulong gapNumber)
+    {
+        KeccakRlpStream stream = new();
+        _voteDecoder.Encode(stream, new Vote(proposedBlockInfo, gapNumber), RlpBehaviors.ForSealing);
+        return stream.GetValueHash();
     }
 }

@@ -17,7 +17,7 @@ public interface IXdcConsensusContext
     QuorumCertificate? LockQC { get; set; }
     int TimeoutCounter { get; set; }
 
-    event Action<IBlockTree, ulong> NewRoundSetEvent;
+    event Action<ulong> NewRoundSetEvent;
 
-    void SetNewRound(IBlockTree blockTree, ulong round);
+    void SetNewRound(ulong round);
 }

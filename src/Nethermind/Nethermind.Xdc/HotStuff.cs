@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -35,6 +36,7 @@ namespace Nethermind.Xdc
         private readonly ITimeoutCertificateManager _timeoutCertificateManager;
         private readonly IVotesManager _votesManager;
         private readonly ISigner _signer;
+        private readonly IProcessExitSource _processExit;
         private readonly ILogger _logger;
 
         private readonly Channel<RoundSignal> _newRoundSignals;
@@ -58,6 +60,7 @@ namespace Nethermind.Xdc
             ITimeoutCertificateManager timeoutCertificateManager,
             IVotesManager votesManager,
             ISigner signer,
+            IProcessExitSource processExit,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -69,6 +72,7 @@ namespace Nethermind.Xdc
             _timeoutCertificateManager = timeoutCertificateManager ?? throw new ArgumentNullException(nameof(timeoutCertificateManager));
             _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _processExit = processExit;
             _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
 
             _newRoundSignals = Channel.CreateUnbounded<RoundSignal>(new UnboundedChannelOptions
@@ -95,6 +99,13 @@ namespace Nethermind.Xdc
                 }
 
                 _cancellationTokenSource = new CancellationTokenSource();
+
+                _processExit.Token.Register(() =>
+                {
+                    _logger.Info("Process exit detected, stopping XdcHotStuff consensus runner...");
+                    _cancellationTokenSource?.Cancel();
+                });
+
                 _runTask = Run();
                 _logger.Info("XdcHotStuff consensus runner started");
             }
@@ -112,6 +123,8 @@ namespace Nethermind.Xdc
 
                 // Subscribe to new head notifications
                 _blockTree.NewHeadBlock += OnNewHeadBlock;
+
+                _xdcContext.NewRoundSetEvent += OnNewRoundSetEvent;
 
                 // Initialize round from head
                 InitializeRoundFromHead();
@@ -134,7 +147,13 @@ namespace Nethermind.Xdc
             finally
             {
                 _blockTree.NewHeadBlock -= OnNewHeadBlock;
+                _xdcContext.NewRoundSetEvent -= OnNewRoundSetEvent;
             }
+        }
+
+        private void OnNewRoundSetEvent(ulong round)
+        {
+            
         }
 
         /// <summary>
@@ -167,7 +186,7 @@ namespace Nethermind.Xdc
         /// Main consensus flow
         /// </summary>
         private async Task MainFlow()
-        {
+        {            
             CancellationToken ct = _cancellationTokenSource!.Token;
 
             await foreach (RoundSignal signal in _newRoundSignals.Reader.ReadAllAsync(ct))
@@ -209,7 +228,9 @@ namespace Nethermind.Xdc
             }
 
             //TODO Technically we have to apply timeout exponents from spec, but they are always 1
-            TimeSpan timeout = TimeSpan.FromSeconds(spec.TimeoutPeriod);
+            DateTimeOffset timeToTimeout = DateTimeOffset.FromUnixTimeSeconds((long)parent.Timestamp + spec.TimeoutPeriod);
+
+            TimeSpan timeout = DateTimeOffset.UtcNow - timeToTimeout;
             using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(timeout);
 
@@ -233,12 +254,43 @@ namespace Nethermind.Xdc
 
             await ExecuteVoterPath(parent, epochInfo);
 
+            try
+            {
+                // Race between: new round signal OR timeout
+                Task taskDelay = Task.Delay(timeout, timeoutCts.Token);
+                var completedTask = await Task.WhenAny(
+                    WaitForNextRoundOrQC(timeoutCts.Token),
+                    taskDelay
+                );
+
+                if (completedTask == taskDelay)
+                {
+                    // Timeout occurred - trigger timeout protocol
+                    await HandleTimeout(currentRound, ct);
+                }
+            }
+            catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested)
+            {
+                // Round timeout - handle it
+                await HandleTimeout(currentRound, ct);
+            }
+
             TimeSpan roundDuration = DateTime.UtcNow - _roundCount.RoundStarted;
             _logger.Info($"Round {currentRound} completed in {roundDuration.TotalSeconds:F2}s");
         }
 
+
+        private async Task WaitForNextRoundOrQC(CancellationToken ct)
+        {
+            // This returns when _newRoundSignals receives next signal
+            // OR when _xdcContext.NewRoundSetEvent fires
+            // Essentially waiting for the leader to form a QC and advance the round
+            await Task.Delay(-1, ct); // Wait indefinitely until cancelled or round advances
+        }
+
         private XdcBlockHeader GetParentForRound()
         {
+            //TODO this comes from XDC repo?
             BlockHeader parent = _blockTree.FindHeader(_xdcContext.HighestQC.ProposedBlockInfo.Hash, _xdcContext.HighestQC.ProposedBlockInfo.BlockNumber);
             if (parent == null)
                 parent = _blockTree.Head.Header;
@@ -251,8 +303,6 @@ namespace Nethermind.Xdc
         private async Task BuildAndProposeBlock(XdcBlockHeader parent, IXdcReleaseSpec spec, CancellationToken ct)
         {
             ulong currentRound = _roundCount.Current;
-            _logger.Info($"Round {currentRound}: Executing leader path");
-
             DateTime now = DateTime.UtcNow;
 
             try
@@ -264,16 +314,18 @@ namespace Nethermind.Xdc
                 _logger.Debug($"Round {currentRound}: Building proposal block");
 
                 DefaultPayloadAttributes.Timestamp = minTimestamp;
-                Task<Block?> proposedBlockTask =
-                    _blockBuilder.BuildBlock(parent, null, DefaultPayloadAttributes, IBlockProducer.Flags.None, ct);
 
                 if (currentTimestamp < minTimestamp)
                 {
                     TimeSpan delay = TimeSpan.FromSeconds(minTimestamp - currentTimestamp);
                     _logger.Debug($"Round {currentRound}: Waiting {delay.TotalSeconds:F1}s for minimum mining time");
                     // Enforce minimum mining time per XDC rules
+                    // TODO we should probably wait for the vote threshold to be reached here
                     await Task.Delay(delay, ct);
                 }
+
+                Task<Block?> proposedBlockTask =
+                    _blockBuilder.BuildBlock(parent, null, DefaultPayloadAttributes, IBlockProducer.Flags.None, ct);
 
                 Block? proposedBlock = await proposedBlockTask;
 
@@ -288,7 +340,6 @@ namespace Nethermind.Xdc
                 else
                 {
                     _logger.Warn($"Round {currentRound}: Block builder returned null");
-                    // Timeout will trigger below
                 }
             }
             catch (OperationCanceledException)
@@ -322,15 +373,15 @@ namespace Nethermind.Xdc
 
             if (!Array.Exists(epochInfo.Masternodes, (a) => a == _signer.Address))
             {
-                _logger.Debug($"Round {currentRound}: Skipped voting (not in masternode set)");
+                _logger.Info($"Round {currentRound}: Skipped voting (not in masternode set)");
                 return;
             }
 
             // Check voting rule 
-            bool canVote = _quorumCertificateManager.VerifyVotingRule(head);
+            bool canVote = _votesManager.VerifyVotingRules(head);
             if (!canVote)
             {
-                _logger.Debug($"Round {currentRound}: Voting rule not satisfied for block #{head.Hash}");
+                _logger.Info($"Round {currentRound}: Voting rule not satisfied for block #{head.Hash}");
                 return;
             }
 
@@ -343,7 +394,7 @@ namespace Nethermind.Xdc
             }
             catch (Exception ex)
             {
-                _logger.Error($"Round {currentRound}: Failed to cast vote: {ex.Message}");
+                _logger.Error($"Round {currentRound}: Failed to cast vote.", ex);
             }
         }
 

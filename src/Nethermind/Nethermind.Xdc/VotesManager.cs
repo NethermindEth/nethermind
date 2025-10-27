@@ -10,6 +10,7 @@ using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
+using Org.BouncyCastle.Tls;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -19,25 +20,23 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 
 internal class VotesManager(
-    XdcContext context,
+    IXdcConsensusContext context,
     IBlockTree tree,
     IEpochSwitchManager epochSwitchManager,
     ISnapshotManager snapshotManager,
     IQuorumCertificateManager quorumCertificateManager,
     ISpecProvider specProvider,
     ISigner signer,
-    IForensicsProcessor forensicsProcessor,
-    IBlockInfoValidator blockInfoValidator) : IVotesManager
+    IForensicsProcessor forensicsProcessor) : IVotesManager
 {
     private IBlockTree _tree = tree;
     private IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
     private ISnapshotManager _snapshotManager = snapshotManager;
     private IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager;
-    private XdcContext _ctx = context;
+    private IXdcConsensusContext _ctx = context;
     private IForensicsProcessor _forensicsProcessor = forensicsProcessor;
     private ISpecProvider _specProvider = specProvider;
     private ISigner _signer = signer;
-    private IBlockInfoValidator _blockInfoValidator = blockInfoValidator;
 
     private XdcPool<Vote> _votePool = new();
     private static VoteDecoder _voteDecoder = new();
@@ -105,7 +104,7 @@ internal class VotesManager(
         bool thresholdReached = roundVotes.Count >= epochInfo.Masternodes.Length * certThreshold;
         if (thresholdReached)
         {
-            if (!_blockInfoValidator.ValidateBlockInfo(vote.ProposedBlockInfo, proposedHeader))
+            if (!vote.ProposedBlockInfo.ValidateBlockInfo(proposedHeader))
                 return Task.CompletedTask;
 
             Signature[] validSignatures = GetValidSignatures(roundVotes, epochInfo.Masternodes);
@@ -130,14 +129,16 @@ internal class VotesManager(
             if (key <= round) _qcBuildStartedByRound.TryRemove(key, out _);
     }
 
-    public bool VerifyVotingRules(BlockRoundInfo blockInfo, QuorumCertificate qc)
+    public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc) => VerifyVotingRules(roundInfo.Hash, roundInfo.BlockNumber, roundInfo.Round, qc);
+    public bool VerifyVotingRules(XdcBlockHeader header) => VerifyVotingRules(header.Hash, header.Number, header.ExtraConsensusData.BlockRound, header.ExtraConsensusData.QuorumCert);
+    public bool VerifyVotingRules(Hash256 blockHash, long blockNumber, ulong roundNumber, QuorumCertificate qc)
     {
         if (_ctx.CurrentRound <= _ctx.HighestVotedRound)
         {
             return false;
         }
 
-        if (blockInfo.Round != _ctx.CurrentRound)
+        if (roundNumber != _ctx.CurrentRound)
         {
             return false;
         }
@@ -152,7 +153,7 @@ internal class VotesManager(
             return true;
         }
 
-        if (!IsExtendingFromAncestor(blockInfo, _ctx.LockQC.ProposedBlockInfo))
+        if (!IsExtendingFromAncestor(blockHash, blockNumber, _ctx.LockQC.ProposedBlockInfo))
         {
             return false;
         }
@@ -195,10 +196,10 @@ internal class VotesManager(
         _quorumCertificateManager.CommitCertificate(qc);
     }
 
-    private bool IsExtendingFromAncestor(BlockRoundInfo currentBlockInfo, BlockRoundInfo ancestorBlockInfo)
+    private bool IsExtendingFromAncestor(Hash256 blockHash, long blockNumber, BlockRoundInfo ancestorBlockInfo)
     {
-        long blockNumDiff = currentBlockInfo.BlockNumber - ancestorBlockInfo.BlockNumber;
-        var nextBlockHash = currentBlockInfo.Hash;
+        long blockNumDiff = blockNumber - ancestorBlockInfo.BlockNumber;
+        Hash256 nextBlockHash = blockHash;
 
         for (int i = 0; i < blockNumDiff; i++)
         {

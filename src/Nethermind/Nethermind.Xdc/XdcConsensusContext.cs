@@ -15,7 +15,7 @@ namespace Nethermind.Xdc;
 public class XdcConsensusContext : IXdcConsensusContext
 {
     public int TimeoutCounter { get; set; }
-    public ulong CurrentRound { get; private set; }
+    public ulong CurrentRound { get; set; }
     public ulong HighestSelfMinedRound { get; set; }
     public ulong HighestVotedRound { get; set; }
     public QuorumCertificate? HighestQC { get; set; }
@@ -23,13 +23,13 @@ public class XdcConsensusContext : IXdcConsensusContext
     public TimeoutCertificate? HighestTC { get; set; }
     public BlockRoundInfo HighestCommitBlock { get; set; }
 
-    public event Action<IBlockTree, ulong> NewRoundSetEvent;
-    public void SetNewRound(IBlockTree chain, ulong round)
+    public event Action<ulong> NewRoundSetEvent;
+    public void SetNewRound(ulong round)
     {
         CurrentRound = round;
         TimeoutCounter = 0;
 
         // timer should be reset outside
-        NewRoundSetEvent.Invoke(chain, round);
+        NewRoundSetEvent.Invoke(round);
     }
 }

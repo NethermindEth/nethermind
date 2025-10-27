@@ -83,7 +83,7 @@ public class TimeoutCertificateManager(IXdcConsensusContext context, ISnapshotMa
         if (timeoutCertificate.Round >= _ctx.CurrentRound)
         {
             //TODO Check how this new round is set
-            _ctx.SetNewRound(_blockTree, timeoutCertificate.Round + 1);
+            _ctx.SetNewRound(timeoutCertificate.Round + 1);
         }
     }
 

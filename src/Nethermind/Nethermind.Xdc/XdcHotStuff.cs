@@ -106,7 +106,7 @@ internal class XdcHotStuff(
             Task timeoutTask = Task.Delay(TimeSpan.FromSeconds(spec.TimeoutPeriod));
 
             //TODO make sure epoch switch is handled correctly inside the manager
-            EpochSwitchInfo? epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHead, currentHead.ParentHash);
+            EpochSwitchInfo? epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHead);
 
             if (IsMyTurn(currentHead, epochSwitchInfo.Masternodes, newRoundSignal.CurrentRound, spec))
             {
@@ -141,7 +141,7 @@ internal class XdcHotStuff(
                 continue;
             }
 
-            if (!quorumCertificateManager.VerifyVotingRule(currentHead))
+            if (!votesManager.VerifyVotingRules(currentHead))
             {
                 _logger.Info($"Cannot vote on current head {currentHead.ToString(BlockHeader.Format.Short)}");
                 continue;
@@ -166,7 +166,7 @@ internal class XdcHotStuff(
         }
         else
         {
-            epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHead, null);
+            epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHead);
         }
 
         int myIndex = Array.IndexOf(epochSwitchInfo.Masternodes, signer.Address);
