@@ -122,7 +122,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
 
         if (!_blockchainBridge.HasStateForBlock(header!))
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
-                ErrorCodes.ResourceUnavailable);
+                ErrorCodes.Default);
 
         if (call.BlockStateCalls?.Count > _blocksLimit)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
