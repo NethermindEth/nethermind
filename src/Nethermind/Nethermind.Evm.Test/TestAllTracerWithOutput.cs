@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Test
             StatusCode = Evm.StatusCode.Success;
         }
 
-        public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, EvmExceptionType exceptionType, Hash256? stateRoot = null)
+        public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         {
             GasSpent = gasSpent.SpentGas;
             Error = error;

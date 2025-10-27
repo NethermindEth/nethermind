@@ -58,7 +58,7 @@ public class OptimismTransactionProcessor(
                 WorldState.IncrementNonce(tx.SenderAddress!);
             }
             header.GasUsed += tx.GasLimit;
-            tracer.MarkAsFailed(tx.To!, tx.GasLimit, [], $"failed deposit: {result.Error}", EvmExceptionType.None);
+            tracer.MarkAsFailed(tx.To!, tx.GasLimit, [], $"failed deposit: {result.Error}");
             result = TransactionResult.Ok;
         }
 

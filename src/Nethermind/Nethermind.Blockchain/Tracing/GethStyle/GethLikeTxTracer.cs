@@ -37,7 +37,7 @@ public abstract class GethLikeTxTracer : TxTracer
         Trace.ReturnValue = output;
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, EvmExceptionType exceptionType, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         Trace.Failed = true;
         Trace.ReturnValue = output ?? [];

@@ -49,19 +49,19 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         }
     }
 
-    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, EvmExceptionType exceptionType, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent.SpentGas, error, stateRoot));
 
         // hacky way to support nested receipt tracers
         if (_otherTracer is ITxTracer otherTxTracer)
         {
-            otherTxTracer.MarkAsFailed(recipient, gasSpent, output, error, exceptionType, stateRoot);
+            otherTxTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         }
 
         if (_currentTxTracer.IsTracingReceipt)
         {
-            _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error, exceptionType, stateRoot);
+            _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         }
     }
 

@@ -49,7 +49,7 @@ public class EstimateGasTracer : TxTracer
     }
 
     public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
-        EvmExceptionType exceptionType, Hash256? stateRoot = null)
+        Hash256? stateRoot = null)
     {
         GasSpent = gasSpent.SpentGas;
         Error = error;

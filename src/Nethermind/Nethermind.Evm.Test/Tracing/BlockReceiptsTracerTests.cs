@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
-            tracer.MarkAsFailed(TestItem.AddressA, 100, [], "error", EvmExceptionType.Other, TestItem.KeccakF);
+            tracer.MarkAsFailed(TestItem.AddressA, 100, [], "error", TestItem.KeccakF);
 
             Assert.That(tracer.TxReceipts[0].PostTransactionState, Is.EqualTo(TestItem.KeccakF));
         }
@@ -67,9 +67,9 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetOtherTracer(otherTracer);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
-            tracer.MarkAsFailed(TestItem.AddressA, 100, [], "error", EvmExceptionType.Other, TestItem.KeccakF);
+            tracer.MarkAsFailed(TestItem.AddressA, 100, [], "error", TestItem.KeccakF);
 
-            (otherTracer as ITxTracer).Received().MarkAsFailed(TestItem.AddressA, 100, [], "error", EvmExceptionType.Other, TestItem.KeccakF);
+            (otherTracer as ITxTracer).Received().MarkAsFailed(TestItem.AddressA, 100, [], "error", TestItem.KeccakF);
         }
 
         [Test]

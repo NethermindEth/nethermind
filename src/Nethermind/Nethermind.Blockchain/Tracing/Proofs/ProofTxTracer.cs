@@ -89,7 +89,7 @@ public class ProofTxTracer(bool treatSystemAccountDifferently) : TxTracer
     }
 
     public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
-        EvmExceptionType exceptionType, Hash256? stateRoot = null)
+        Hash256? stateRoot = null)
     {
         Output = output;
     }

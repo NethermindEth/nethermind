@@ -405,7 +405,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
 
-            testEnvironment.tracer.MarkAsFailed(Address.Zero, 500, Array.Empty<byte>(), "execution failed", EvmExceptionType.Other);
+            testEnvironment.tracer.MarkAsFailed(Address.Zero, 500, Array.Empty<byte>(), "execution failed");
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
@@ -449,7 +449,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             // Address.Zero has zero balance by default in test environment
             EstimateGasTracer tracer = new();
-            tracer.MarkAsFailed(Address.Zero, 0, Array.Empty<byte>(), "insufficient balance", EvmExceptionType.Other);
+            tracer.MarkAsFailed(Address.Zero, 0, Array.Empty<byte>(), "insufficient balance");
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 
@@ -471,7 +471,7 @@ namespace Nethermind.Evm.Test.Tracing
             EstimateGasTracer tracer = new();
             tracer.ReportAction(100000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.TRANSACTION, false);
             tracer.ReportActionError(EvmExceptionType.OutOfGas);
-            tracer.MarkAsFailed(Address.Zero, 100000, Array.Empty<byte>(), "out of gas", EvmExceptionType.OutOfGas);
+            tracer.MarkAsFailed(Address.Zero, 100000, Array.Empty<byte>(), "out of gas");
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 
@@ -492,7 +492,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             EstimateGasTracer tracer = new();
             tracer.ReportAction(100000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.TRANSACTION, false);
-            tracer.MarkAsFailed(Address.Zero, 50000, Array.Empty<byte>(), "execution reverted", EvmExceptionType.Revert);
+            tracer.MarkAsFailed(Address.Zero, 50000, Array.Empty<byte>(), "execution reverted");
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 

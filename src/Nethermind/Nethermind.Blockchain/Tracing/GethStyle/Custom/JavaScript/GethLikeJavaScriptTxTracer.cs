@@ -178,9 +178,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _depth--;
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, EvmExceptionType exceptionType, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
-        base.MarkAsFailed(recipient, gasSpent, output, error, exceptionType, stateRoot);
+        base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;
         _ctx.Output = output;
         _ctx.error = error;
