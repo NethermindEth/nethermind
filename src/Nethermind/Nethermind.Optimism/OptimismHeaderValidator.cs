@@ -52,6 +52,18 @@ public class OptimismHeaderValidator(
                 error = $"{nameof(EIP1559Parameters)} is zero";
                 return false;
             }
+
+            if (!specHelper.IsJovian(header) && parameters.Version != 0)
+            {
+                error = $"{nameof(EIP1559Parameters)} version should be 0 before Jovian";
+                return false;
+            }
+
+            if (specHelper.IsJovian(header) && parameters.Version != 1)
+            {
+                error = $"{nameof(EIP1559Parameters)} version should be 1 post Jovian";
+                return false;
+            }
         }
 
         return base.Validate<TOrphaned>(header, parent, isUncle, out error);

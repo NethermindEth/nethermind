@@ -17,7 +17,7 @@ public readonly struct EIP1559Parameters
     public byte Version { get; }
     public UInt32 Denominator { get; }
     public UInt32 Elasticity { get; }
-    public UInt64 MinBaseFee { get; } // TODO: tests for when this field is present
+    public UInt64 MinBaseFee { get; }
 
     public int ByteLength => ByteLengthByVersion[Version];
 
