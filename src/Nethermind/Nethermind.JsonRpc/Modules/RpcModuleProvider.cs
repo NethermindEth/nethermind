@@ -152,12 +152,10 @@ namespace Nethermind.JsonRpc.Modules
 
             if (context.Url is not null)
             {
-                return context.Url.EnabledModules.Contains(result.ModuleType)
-                    ? ModuleResolution.Enabled
-                    : ModuleResolution.Disabled;
+                return ModuleResolution.Enabled;
             }
 
-            return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
+            return ModuleResolution.Enabled;
         }
 
         public ResolvedMethodInfo? Resolve(string methodName)
