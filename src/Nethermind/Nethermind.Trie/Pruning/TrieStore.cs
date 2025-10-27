@@ -645,7 +645,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         int count = _commitSetQueue?.Count ?? 0;
         if (count == 0) return;
 
-        using ArrayPoolListRef<BlockCommitSet> candidateSets = DetermineCommitSetToPersistInSnapshot(count);
+        (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(count);
+        using var _ = candidateSets;
 
         bool shouldTrackPastKey =
             // Its disabled
@@ -654,7 +655,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
             // For archice node, it is safe to remove canon key from cache as it will just get re-loaded.
-            (!_deleteOldNodes || candidateSets.Count == 1);
+            (!_deleteOldNodes || finalizedBlockNumber == null);
 
         if (shouldTrackPastKey)
         {
@@ -686,7 +687,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             ParallelPersistBlockCommitSet(blockCommitSet, persistedNodeRecorder);
         }
 
-        AnnounceReorgBoundaries();
+        if (finalizedBlockNumber is not null)
+        {
+            LastPersistedBlockNumber = finalizedBlockNumber.Value;
+            AnnounceReorgBoundaries();
+        }
 
         if (candidateSets.Count > 0)
         {
@@ -706,26 +711,27 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     /// </summary>
     /// <param name="count"></param>
     /// <returns></returns>
-    private (ArrayPoolListRef<BlockCommitSet>, long) DetermineCommitSetToPersistInSnapshot(int count)
+    private (ArrayPoolList<BlockCommitSet>, long?) DetermineCommitSetToPersistInSnapshot(int count)
     {
         // TODO: persisted block number
-        ArrayPoolListRef<BlockCommitSet> candidateSets = new(count);
+        ArrayPoolList<BlockCommitSet> candidateSets = new(count);
         try
         {
             if (_commitSetQueue.IsEmpty)
             {
                 if (_logger.IsDebug) _logger.Debug("Unable to persist commit set due to empty queue");
-                return candidateSets;
+                return (candidateSets, null);
             }
 
             long finalizedBlockNumber = _finalizedHeaderProvider.FinalizedBlockNumber;
-            long pruningBoundaryBlockNumber = _commitSetQueue.MaxBlockNumber - _maxDepth;
+            long pruningBoundaryBlockNumber = _commitSetQueue.MaxBlockNumber.Value - _maxDepth;
             long effectiveFinalizedBlockNumber = Math.Min(pruningBoundaryBlockNumber, finalizedBlockNumber);
             effectiveFinalizedBlockNumber = Math.Max(0, effectiveFinalizedBlockNumber);
 
             if (_commitSetQueue.MinBlockNumber >= effectiveFinalizedBlockNumber + 1)
             {
-                using ArrayPoolListRef<BlockCommitSet> commitSet = _commitSetQueue.GetAndDequeueCommitSetsBeforeOrAt(_commitSetQueue.MaxBlockNumber - _maxDepth);
+                // Finalized block number far ahead. Persist everything so that it can be pruned.
+                using ArrayPoolListRef<BlockCommitSet> commitSet = _commitSetQueue.GetAndDequeueCommitSetsBeforeOrAt(pruningBoundaryBlockNumber);
 
                 if (commitSet.Count > 1)
                 {
@@ -738,7 +744,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                     // TODO: To debug
                     if (_logger.IsInfo) _logger.Info($"Block commits are all after finalized block. Min block commit: {_commitSetQueue.MinBlockNumber}, Effective finalized block: {effectiveFinalizedBlockNumber}, Finalized block number: {finalizedBlockNumber}");
                 }
-                return candidateSets;
+                return (candidateSets, null);
             }
 
             // Not reached the finalized state yet.
@@ -761,7 +767,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             if (finalizedBlockCommitSet is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Unable to determine finalized state root at block {effectiveFinalizedBlockNumber}. Available state roots {string.Join(", ", commitSetsAtFinalizedBlock.Select(c => c.StateRoot.ToString()).ToArray())}");
-                return candidateSets;
+                return (candidateSets, null);
             }
 
             while (_commitSetQueue.TryPeek(out BlockCommitSet? set))
@@ -778,7 +784,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             candidateSets.Add(finalizedBlockCommitSet);
 
-            return candidateSets;
+            return (candidateSets, effectiveFinalizedBlockNumber);
         }
         catch
         {
@@ -1081,8 +1087,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         Metrics.SnapshotPersistenceTime = elapsedMilliseconds;
 
         if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {elapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
-
-        LastPersistedBlockNumber = commitSet.BlockNumber;
     }
 
     private async Task PersistNodeStartingFrom(TrieNode tn, Hash256 address2, TreePath path,
