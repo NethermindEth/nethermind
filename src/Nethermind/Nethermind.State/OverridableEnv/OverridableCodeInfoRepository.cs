@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
@@ -19,9 +20,12 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
-        return _codeOverwrites.TryGetValue(codeSource, out ICodeInfo result)
-            ? result
-            : codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+        var code = _codeOverwrites.TryGetValue(codeSource, out ICodeInfo result);
+        if (code)
+        {Console.WriteLine($"Got wanted code: {result.Code.ToHexString()}");
+            return result;
+        }
+        return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
