@@ -13,7 +13,7 @@ using Nethermind.Core.Test;
 namespace Nethermind.TxPool.Test;
 
 [TestFixture]
-public class SimpleRetryCacheTests
+public class RetryCacheTests
 {
     public readonly struct ResourceRequestMessage : INew<int, ResourceRequestMessage>
     {
@@ -26,13 +26,13 @@ public class SimpleRetryCacheTests
     private CancellationTokenSource _cancellationTokenSource;
     private RetryCache<ResourceRequestMessage, int> cache;
 
-    private readonly int Timeout = 5000;
+    private readonly int Timeout = 1000;
 
     [SetUp]
     public void Setup()
     {
         _cancellationTokenSource = new CancellationTokenSource();
-        cache = new(TestLogManager.Instance, token: _cancellationTokenSource.Token);
+        cache = new(TestLogManager.Instance, timeoutMs: Timeout / 2, token: _cancellationTokenSource.Token);
     }
 
     [TearDown]
