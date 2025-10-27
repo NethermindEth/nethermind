@@ -45,8 +45,36 @@ namespace Nethermind.Blockchain
             {
                 return null;
             }
+            if (_blockTree.HeadHash == currentBlock.Hash)
+            {
+                return _blockTree.FindBlockHash(number);
+            }
 
-            return _blockTree.FindBlockHash(number);
+            return GetNonHeadBasedBlockHash(currentBlock, number);
+        }
+
+        private Hash256 GetNonHeadBasedBlockHash(BlockHeader currentBlock, long number)
+        {
+            BlockHeader header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded) ??
+            throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
+
+            for (var i = 0; i < _maxDepth; i++)
+            {
+                if (number == header.Number)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning {header.Number},{header.Hash} for {currentBlock.Number} -> {number}");
+                    return header.Hash;
+                }
+
+                header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (header is null)
+                {
+                    throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
+                }
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning null for {currentBlock.Number} -> {number}");
+            return null;
         }
     }
 }

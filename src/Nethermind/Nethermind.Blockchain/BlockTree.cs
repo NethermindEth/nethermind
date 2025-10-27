@@ -559,7 +559,15 @@ namespace Nethermind.Blockchain
             return blockHash is null ? null : FindHeader(blockHash, options, blockNumber: number);
         }
 
-        public Hash256? FindBlockHash(long blockNumber) => GetBlockHashOnMainOrBestDifficultyHash(blockNumber);
+        public Hash256? FindBlockHash(long blockNumber)
+        {
+            Hash256? blockHash = _headerStore.GetBlockHash(blockNumber);
+            if (blockHash is not null)
+            {
+                return blockHash;
+            }
+            return GetBlockHashOnMainOrBestDifficultyHash(blockNumber);
+        }
 
         public bool HasBlock(long blockNumber, Hash256 blockHash) => _blockStore.HasBlock(blockNumber, blockHash);
 
@@ -745,12 +753,6 @@ namespace Nethermind.Blockchain
             if (blockNumber < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Value must be greater or equal to zero but is {blockNumber}");
-            }
-
-            Hash256? blockHash = _headerStore.GetBlockHash(blockNumber);
-            if (blockHash is not null)
-            {
-                return blockHash;
             }
 
             ChainLevelInfo level = LoadLevel(blockNumber);
@@ -1017,9 +1019,10 @@ namespace Nethermind.Blockchain
                 if (ShouldCache(block.Number))
                 {
                     _blockStore.Cache(block);
-                    _headerStore.Cache(block.Header);
                 }
 
+                // Header also updates the number <-> hash mapping so always update
+                _headerStore.Cache(block.Header);
                 // we only force update head block for last block in processed blocks
                 bool lastProcessedBlock = i == blocks.Count - 1;
 
