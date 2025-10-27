@@ -14,6 +14,7 @@ public static class WorldStateExtensions
         IReleaseSpec spec, bool isGenesis = false)
     {
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
+        Console.WriteLine($"InsertCode - {address} {codeHash}");
         worldState.InsertCode(address, codeHash, code, spec, isGenesis);
     }
 }

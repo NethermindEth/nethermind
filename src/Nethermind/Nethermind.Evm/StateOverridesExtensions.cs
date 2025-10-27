@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -35,6 +36,7 @@ public static class StateOverridesExtensions
                     state.UpdateNonce(account, accountOverride, address);
                 }
 
+                Console.WriteLine($"AddingCode - {accountOverride.Code}");
                 state.UpdateCode(overridableCodeInfoRepository, spec, accountOverride, address);
                 state.UpdateState(accountOverride, address);
             }
@@ -48,6 +50,7 @@ public static class StateOverridesExtensions
         IReleaseSpec spec,
         long blockNumber)
     {
+        Console.WriteLine($"ApplyStateOverrides");
         state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
 
         state.Commit(spec);
@@ -83,8 +86,10 @@ public static class StateOverridesExtensions
         AccountOverride accountOverride,
         Address address)
     {
+        Console.WriteLine($"UpdateCode - {accountOverride.Code is not null}");
         if (accountOverride.Code is not null)
         {
+            Console.WriteLine($"UpdateCode - {accountOverride.Code}");
             stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
 
             overridableCodeInfoRepository.SetCodeOverwrite(
