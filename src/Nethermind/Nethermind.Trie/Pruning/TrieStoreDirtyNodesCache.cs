@@ -63,9 +63,9 @@ internal class TrieStoreDirtyNodesCache
         KeyMemoryUsage += MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
     }
 
-    public TrieNode FindCachedOrUnknown(in Key key)
+    public TrieNode FindCachedOrUnknown(in Key key, long blockNumber)
     {
-        NodeRecord nodeRecord = GetOrAdd(in key, this);
+        NodeRecord nodeRecord = GetOrAdd(in key, this, blockNumber);
         if (nodeRecord.Node.NodeType != NodeType.Unknown)
         {
             Metrics.LoadedFromCacheNodesCount++;
@@ -155,19 +155,21 @@ internal class TrieStoreDirtyNodesCache
             : _byKeyObjectCache.TryGetValue(key, out nodeRecord);
     }
 
-    private NodeRecord GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash
-        ? _byHashObjectCache.GetOrAdd(key.Keccak, static (keccak, cache) =>
+    private NodeRecord GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache, long blockNumber) => _storeByHash
+        ? _byHashObjectCache.GetOrAdd(key.Keccak, static (keccak, arg) =>
         {
+            (TrieStoreDirtyNodesCache cache, var blockNumber) = arg;
             TrieNode trieNode = new(NodeType.Unknown, keccak);
             cache.IncrementMemory(trieNode);
-            return new NodeRecord(trieNode, -1);
-        }, cache)
-        : _byKeyObjectCache.GetOrAdd(key, static (key, cache) =>
+            return new NodeRecord(trieNode, blockNumber);
+        }, (cache, blockNumber))
+        : _byKeyObjectCache.GetOrAdd(key, static (key, arg) =>
         {
+            (TrieStoreDirtyNodesCache cache, var blockNumber) = arg;
             TrieNode trieNode = new(NodeType.Unknown, key.Keccak);
             cache.IncrementMemory(trieNode);
-            return new NodeRecord(trieNode, -1);
-        }, cache);
+            return new NodeRecord(trieNode, blockNumber);
+        }, (cache, blockNumber));
 
     public NodeRecord GetOrAdd(in Key key, NodeRecord record)
     {

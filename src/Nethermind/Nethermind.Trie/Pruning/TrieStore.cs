@@ -54,6 +54,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     // Only one scope can be active at the same time. Any mutation to trieStore as part of block processing need to
     // acquire _scopeLock.
     private readonly Lock _scopeLock = new Lock();
+    private long _currentBaseBlockNumber;
 
     // Protect _dirtyNodes from mutation. Used during memory pruning or WorldState scope.
     private readonly Lock _pruningLock = new Lock();
@@ -106,7 +107,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
 
-    private IScopedTrieStore GetTrieStoreForPruning(Hash256? address) => new ScopedTrieStore(new InPruningTrieStore(this), address);
+    private IScopedTrieStore GetTrieStoreForPruning(Hash256? address, long blockNumber) => new ScopedTrieStore(new InPruningTrieStore(this, blockNumber), address);
 
     public long LastPersistedBlockNumber
     {
@@ -288,8 +289,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private TrieNode DirtyNodesFromCachedRlpOrUnknown(TrieStoreDirtyNodesCache.Key key) =>
         GetDirtyNodeShard(key).FromCachedRlpOrUnknown(key);
 
-    private TrieNode DirtyNodesFindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key) =>
-        GetDirtyNodeShard(key).FindCachedOrUnknown(key);
+    private TrieNode DirtyNodesFindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, long blockNumber) =>
+        GetDirtyNodeShard(key).FindCachedOrUnknown(key, blockNumber);
 
     private TrieNode SaveOrReplaceInDirtyNodesCache(
         Hash256? address,
@@ -388,6 +389,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             return new Reactive.AnonymousDisposable(() =>
             {
+                _currentBaseBlockNumber = -1;
                 _pruningLock.Exit();
                 _scopeLock.Exit();
             });
@@ -399,6 +401,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             // Try exit and flush async
             Task.Factory.StartNew(TryExitCommitBufferMode);
+            _currentBaseBlockNumber = -1;
         });
     }
 
@@ -543,13 +546,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, hash);
         return _commitBuffer is { } commitBuffer
-            ? commitBuffer.FindCachedOrUnknown(key, isReadOnly)
-            : FindCachedOrUnknown(key, isReadOnly);
+            ? commitBuffer.FindCachedOrUnknown(key, _currentBaseBlockNumber, isReadOnly)
+            : FindCachedOrUnknown(key, _currentBaseBlockNumber, isReadOnly);
     }
 
-    private TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly)
+    private TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, long blockNumber, bool isReadOnly)
     {
-        return isReadOnly ? DirtyNodesFromCachedRlpOrUnknown(key) : DirtyNodesFindCachedOrUnknown(key);
+        return isReadOnly ? DirtyNodesFromCachedRlpOrUnknown(key) : DirtyNodesFindCachedOrUnknown(key, blockNumber);
     }
 
     // Used only in tests
@@ -1034,7 +1037,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         // The first CallRecursive stop at two level, yielding 256 node in parallelStartNodes, which is run concurrently
         TreePath path = TreePath.Empty;
-        commitSet.Root?.CallRecursively(TopLevelPersist, null, ref path, GetTrieStoreForPruning(null), true, _logger, maxPathLength: parallelBoundaryPathLength);
+        commitSet.Root?.CallRecursively(TopLevelPersist, null, ref path, GetTrieStoreForPruning(null, commitSet.BlockNumber), true, _logger, maxPathLength: parallelBoundaryPathLength);
 
         // The amount of change in the subtrees are not balanced at all. So their writes areas buffered here
         // which get disposed in parallel instead of being disposed in `PersistNodeStartingFrom`.
@@ -1103,7 +1106,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
         }
 
-        await tn.CallRecursivelyAsync(DoPersist, address2, ref path, GetTrieStoreForPruning(address2), _logger);
+        await tn.CallRecursivelyAsync(DoPersist, address2, ref path, GetTrieStoreForPruning(address2, blockNumber), _logger);
         await disposeQueue.Writer.WriteAsync(writeBatch);
     }
 
@@ -1599,7 +1602,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             return _trieStore.SaveOrReplaceInDirtyNodesCache(shard, address, ref path, node, blockNumber);
         }
 
-        public TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly)
+        public TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, long blockNumber, bool isReadOnly)
         {
             int shardIdx = _trieStore.GetNodeShardIdx(key.Path, key.Keccak);
             TrieStoreDirtyNodesCache bufferShard = _dirtyNodesBuffer[shardIdx];
@@ -1642,7 +1645,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 return bufferNode;
             }
             else
-                return bufferShard.FindCachedOrUnknown(key);
+                return bufferShard.FindCachedOrUnknown(key, blockNumber);
         }
     }
 
@@ -1666,14 +1669,14 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     /// Specific trie store used during memory pruning so that it does not attempt to get from commit buffer.
     /// </summary>
     /// <param name="baseTrieStore"></param>
-    private class InPruningTrieStore(TrieStore baseTrieStore) : IScopableTrieStore
+    private class InPruningTrieStore(TrieStore baseTrieStore, long blockNumber) : IScopableTrieStore
     {
         public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
         {
             ArgumentNullException.ThrowIfNull(hash);
 
             TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, hash);
-            return baseTrieStore.FindCachedOrUnknown(key, false);
+            return baseTrieStore.FindCachedOrUnknown(key, blockNumber, false);
         }
 
         public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
