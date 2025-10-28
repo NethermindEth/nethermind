@@ -51,15 +51,22 @@ namespace Nethermind.Trie.Test.Pruning
             pruningStrategy ??= No.Pruning;
             kvStore ??= new TestMemDb();
             persistenceStrategy ??= No.Persistence;
-            return new(
+            pruningConfig ??= new PruningConfig()
+            {
+                TrackPastKeys = false // Default disable
+            };
+
+            FakeFinalizedStateProvider finalizedStateProvider = new FakeFinalizedStateProvider(pruningConfig.PruningBoundary);
+            TrieStore trieStore = new(
                 new NodeStorage(kvStore, _scheme, requirePath: _scheme == INodeStorage.KeyScheme.HalfPath),
                 pruningStrategy,
                 persistenceStrategy,
-                pruningConfig ?? new PruningConfig()
-                {
-                    TrackPastKeys = false // Default disable
-                },
+                finalizedStateProvider,
+                pruningConfig,
                 _logManager);
+            finalizedStateProvider.TrieStore = trieStore;
+
+            return trieStore;
         }
 
         [SetUp]

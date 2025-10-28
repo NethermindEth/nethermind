@@ -1219,8 +1219,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
         else
         {
-            LastPersistedBlockNumber = finalizedBlockNumber.Value;
-            AnnounceReorgBoundaries();
+            if (finalizedBlockNumber.HasValue)
+            {
+                LastPersistedBlockNumber = finalizedBlockNumber.Value;
+                AnnounceReorgBoundaries();
+            }
         }
     }
 

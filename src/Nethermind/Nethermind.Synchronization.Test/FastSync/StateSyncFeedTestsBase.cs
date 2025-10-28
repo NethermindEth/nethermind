@@ -293,8 +293,10 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
 
             IStateReader alwaysAvailableRootTracker = Substitute.For<IStateReader>();
             alwaysAvailableRootTracker.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+            PruningConfig pruningConfig = new PruningConfig();
+            FakeFinalizedStateProvider fakeFinalizedStateProvider = new FakeFinalizedStateProvider(pruningConfig.PruningBoundary);
             TrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
-                Persist.EveryBlock, new PruningConfig(), LimboLogs.Instance);
+                Persist.EveryBlock, fakeFinalizedStateProvider, pruningConfig, LimboLogs.Instance);
             _stateDb = trieStore.TrieNodeRlpStore;
             _snapServer = new SnapServer(
                 trieStore.AsReadOnly(),

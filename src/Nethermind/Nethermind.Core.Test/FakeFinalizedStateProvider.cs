@@ -6,6 +6,12 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Core.Test;
 
+/// <summary>
+/// Fake <see cref="IFinalizedStateProvider"/> that simulate previous behaviour where it just check the
+/// LatestCommittedBlockNumber minute depth. Not for prod use.
+/// TrieStore must be set later.
+/// </summary>
+/// <param name="depth"></param>
 public class FakeFinalizedStateProvider(long depth): IFinalizedStateProvider
 {
     public TrieStore TrieStore { get; set; } = null!;

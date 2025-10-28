@@ -6,6 +6,7 @@ using System.Threading;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -15,6 +16,7 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Modules;
 
@@ -83,6 +85,8 @@ public class WorldStateModule(IInitConfig initConfig) : Module
 
             // Prevent multiple concurrent verify trie.
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
+
+            .AddSingleton<IFinalizedStateProvider, ReorgDepthFinalizedStateProvvider>()
             ;
 
         if (initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)

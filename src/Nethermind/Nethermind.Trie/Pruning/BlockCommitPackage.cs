@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class BlockCommitSet(long blockNumber)
+    public class BlockCommitSet(long blockNumber): IComparable<BlockCommitSet>
     {
         public long BlockNumber { get; } = blockNumber;
 
@@ -39,5 +40,13 @@ namespace Nethermind.Trie.Pruning
             Metrics.DeepPruningTime = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         }
 
+        public int CompareTo(BlockCommitSet? other)
+        {
+            if (ReferenceEquals(this, other)) return 0;
+            if (other is null) return 1;
+            int comp = BlockNumber.CompareTo(other.BlockNumber);
+            if (comp != 0) return comp;
+            return StateRoot.CompareTo(other.StateRoot);
+        }
     }
 }
