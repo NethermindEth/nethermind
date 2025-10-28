@@ -48,7 +48,6 @@ namespace Nethermind.Core.Extensions
             }
             else
             {
-                // TODO: Add fields
                 if (memberExpression.Member is FieldInfo field)
                 {
                     if (field.IsStatic)
