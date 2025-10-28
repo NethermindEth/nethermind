@@ -323,6 +323,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         _scopeLock.Enter();
 
+        SpinWait spinWait = new SpinWait();
         while (true)
         {
             if (_pruningLock.TryEnter())
@@ -345,7 +346,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 {
                     // This can happen in the tiny time in between pruningLock was acquired but the exact block to
                     // persist was not determined yet.
-                    Thread.Sleep(1);
+                    spinWait.SpinOnce();
                     continue;
                 }
 
