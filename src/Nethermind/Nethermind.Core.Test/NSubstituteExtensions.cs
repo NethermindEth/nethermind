@@ -5,8 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using NSubstitute;
 using NSubstitute.Core;
+using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
@@ -16,7 +18,12 @@ public static class NSubstituteExtensions
     /// Checks if a substitute received matching calls without throwing exceptions.
     /// Suitable for polling scenarios with Is.True.After().
     /// </summary>
-    public static bool ReceivedCallsMatching<T>(this T substitute, Action<T> action, int requiredNumberOfCalls = 1, int? maxNumberOfCalls = null) where T : class
+    public static bool ReceivedCallsMatching<T>(
+        this T substitute,
+        Action<T> action,
+        int requiredNumberOfCalls = 1,
+        int? maxNumberOfCalls = null,
+        [CallerArgumentExpression(nameof(action))] string? expression = null) where T : class
     {
         if (maxNumberOfCalls < requiredNumberOfCalls) throw new ArgumentException($"{nameof(maxNumberOfCalls)} must be greater than or equal to {nameof(requiredNumberOfCalls)}", nameof(maxNumberOfCalls));
         maxNumberOfCalls ??= requiredNumberOfCalls;
@@ -38,7 +45,14 @@ public static class NSubstituteExtensions
             // Lambda 2: Handle matching with concrete argument values
             GetMatchCount);
 
-        return matchCount.HasValue && CheckMatchCount(matchCount.Value);
+        bool check = matchCount.HasValue && CheckMatchCount(matchCount.Value);
+        if (!check)
+        {
+            TestContext.Out.WriteLine(requiredNumberOfCalls == maxNumberOfCalls
+                ? $"Expected ({expression}) to receive calls matching {requiredNumberOfCalls} calls, but actually got {matchCount} calls."
+                : $"Expected ({expression}) to receive calls matching between {requiredNumberOfCalls} and {maxNumberOfCalls} calls, but actually got {matchCount} calls.");
+        }
+        return check;
 
         bool CheckMatchCount(int count) => count >= requiredNumberOfCalls && count <= maxNumberOfCalls;
 
