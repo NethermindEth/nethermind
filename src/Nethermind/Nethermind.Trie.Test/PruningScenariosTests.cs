@@ -51,6 +51,7 @@ namespace Nethermind.Trie.Test
             private readonly TestPruningStrategy _pruningStrategy;
             private readonly IPruningConfig _pruningConfig;
             private readonly TestFinalizedStateProvider _finalizedStateProvider;
+            private readonly Random _random = new Random(0);
 
             [DebuggerStepThrough]
             private PruningContext(TestPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy, IPruningConfig? pruningConfig = null)
@@ -297,6 +298,12 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public PruningContext VerifyStateDbSize(int i)
+            {
+                _stateDb.Count.Should().Be(i);
+                return this;
+            }
+
             public PruningContext VerifyAccountBalance(int account, int balance)
             {
                 _stateProvider.GetBalance(Address.FromNumber((UInt256)account))
@@ -418,6 +425,22 @@ namespace Nethermind.Trie.Test
             {
                 _finalizedStateProvider.SetFinalizedPoint(_baseBlock);
                 return this;
+            }
+
+            public PruningContext CommitRandomDataWorthNBlocks(int n)
+            {
+                for (int i = 0; i < n; i++)
+                {
+                    CommitRandomData();
+                }
+
+                return this;
+            }
+
+            public PruningContext CommitRandomData()
+            {
+                return SetAccountBalance(1, (UInt256)_random.NextInt64())
+                    .CommitAndWaitForPruning();
             }
         }
 
@@ -748,6 +771,28 @@ namespace Nethermind.Trie.Test
                 .VerifyBranchingPointDoesNotExists("branch_1")
                 .VerifyBranchingPointExist("branch_2")
                 .VerifyBranchingPointDoesNotExists("branch_3");
+        }
+
+        [Test]
+        public void Should_persist_all_block_when_finalized_state_is_behind_then_remove_them_on_finalized()
+        {
+            PruningContext.InMemoryWithPastKeyTracking
+                .WithMaxDepth(4)
+                .TurnOnPrune()
+
+                .CommitRandomData()
+                .SetFinalizedPoint()
+
+                .CommitRandomDataWorthNBlocks(10)
+                .VerifyPersisted(7)
+                .VerifyStateDbSize(7)
+
+                .SetFinalizedPoint()
+                .CommitRandomData()
+
+                .VerifyPersisted(8)
+                .VerifyStateDbSize(1)
+                ;
         }
 
         [Test]

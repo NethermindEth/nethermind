@@ -733,19 +733,18 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             if (_commitSetQueue.MinBlockNumber >= effectiveFinalizedBlockNumber + 1)
             {
-                // Finalized block number far ahead. Persist everything so that it can be pruned.
+                // Finalized block number far ahead. Persist everything so that it can be pruned, but not before
+                // pruning boundary point as snap sync need it.
                 using ArrayPoolListRef<BlockCommitSet> commitSet = _commitSetQueue.GetAndDequeueCommitSetsBeforeOrAt(pruningBoundaryBlockNumber);
 
-                if (commitSet.Count > 1)
+                if (commitSet.Count > 0)
                 {
-                    // TODO: To debug
-                    if (_logger.IsInfo) _logger.Info($"Committing {commitSet.Count} commit sets after finalized block. Effective finalized block: {effectiveFinalizedBlockNumber}, Finalized block number: {finalizedBlockNumber}");
+                    if (_logger.IsDebug) _logger.Debug($"Committing {commitSet.Count} commit sets after finalized block. Effective finalized block: {effectiveFinalizedBlockNumber}, Finalized block number: {finalizedBlockNumber}");
                     candidateSets.AddRange(commitSet.AsSpan());
                 }
                 else
                 {
-                    // TODO: To debug
-                    if (_logger.IsInfo) _logger.Info($"Block commits are all after finalized block. Min block commit: {_commitSetQueue.MinBlockNumber}, Effective finalized block: {effectiveFinalizedBlockNumber}, Finalized block number: {finalizedBlockNumber}");
+                    if (_logger.IsDebug) _logger.Debug($"Block commits are all after finalized block. Min block commit: {_commitSetQueue.MinBlockNumber}, Effective finalized block: {effectiveFinalizedBlockNumber}, Finalized block number: {finalizedBlockNumber}");
                 }
                 return (candidateSets, null);
             }
