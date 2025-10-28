@@ -215,7 +215,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                         call.Error.Code = MapEvmExceptionType(exception);
                         if (exception != EvmExceptionType.Revert)
                         {
-                            call.Error.Message = MapEvmExceptionTypeToMessage(call.Error.EvmException);
+                            call.Error.Message = call.Error.EvmException.GetEvmExceptionDescription();
                             call.Error.Data = null;
                         }
                     }
@@ -263,26 +263,5 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
     {
         EvmExceptionType.Revert => ErrorCodes.RevertedSimulate,
         _ => ErrorCodes.VMError
-    };
-
-    private static string MapEvmExceptionTypeToMessage(EvmExceptionType type) => type switch
-    {
-        EvmExceptionType.BadInstruction => "bad instruction",
-        EvmExceptionType.StackOverflow => "stack overflow",
-        EvmExceptionType.StackUnderflow => "stack underflow",
-        EvmExceptionType.OutOfGas => "out of gas",
-        EvmExceptionType.GasUInt64Overflow => "gas overflow",
-        EvmExceptionType.InvalidSubroutineEntry => "invalid subroutine entry",
-        EvmExceptionType.InvalidSubroutineReturn => "invalid subroutine return",
-        EvmExceptionType.InvalidJumpDestination => "invalid jump destination",
-        EvmExceptionType.AccessViolation => "access violation",
-        EvmExceptionType.AddressOutOfRange => "address out of range",
-        EvmExceptionType.StaticCallViolation => "static call violation",
-        EvmExceptionType.PrecompileFailure => "precompile failure",
-        EvmExceptionType.TransactionCollision => "transaction collision",
-        EvmExceptionType.NotEnoughBalance => "not enough balance",
-        EvmExceptionType.Revert => "execution reverted",
-        EvmExceptionType.InvalidCode => "invalid code",
-        _ => ""
     };
 }
