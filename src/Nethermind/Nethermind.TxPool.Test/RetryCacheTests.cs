@@ -61,8 +61,8 @@ public class RetryCacheTests
         cache.Announced(1, request1);
         cache.Announced(1, request2);
 
-        Assert.That(() => request1.DidNotReceiveBool(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
-        Assert.That(() => request2.ReceivedBool(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
+        Assert.That(() => request1.DidNotReceivedCallMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
+        Assert.That(() => request2.ReceivedCallMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
     }
 
     [Test]
@@ -78,10 +78,10 @@ public class RetryCacheTests
         cache.Announced(2, request3);
         cache.Announced(2, request4);
 
-        Assert.That(() => request1.DidNotReceiveBool(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
-        Assert.That(() => request2.ReceivedBool(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
-        Assert.That(() => request3.DidNotReceiveBool(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
-        Assert.That(() => request4.ReceivedBool(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
+        Assert.That(() => request1.DidNotReceivedCallMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
+        Assert.That(() => request2.ReceivedCallMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
+        Assert.That(() => request3.DidNotReceivedCallMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
+        Assert.That(() => request4.ReceivedCallMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
     }
 
     [Test]
@@ -103,7 +103,7 @@ public class RetryCacheTests
         cache.Announced(1, request);
         cache.Received(1);
 
-        Assert.That(() => request.DidNotReceiveBool(r => r.HandleMessage(ResourceRequestMessage.New(1))), Is.True.After(Timeout, 100));
+        Assert.That(() => request.DidNotReceivedCallMatching(r => r.HandleMessage(ResourceRequestMessage.New(1))), Is.True.After(Timeout, 100));
     }
 
     [Test]
@@ -118,7 +118,7 @@ public class RetryCacheTests
         cache.Announced(1, faultyRequest);
         cache.Announced(1, normalRequest);
 
-        Assert.That(() => normalRequest.ReceivedBool(r => r.HandleMessage(ResourceRequestMessage.New(1))), Is.True.After(Timeout, 100));
+        Assert.That(() => normalRequest.ReceivedCallMatching(r => r.HandleMessage(ResourceRequestMessage.New(1))), Is.True.After(Timeout, 100));
     }
 
     [Test]
@@ -128,7 +128,7 @@ public class RetryCacheTests
 
         cache.Announced(1, request);
         _cancellationTokenSource.Cancel();
-        Assert.That(() => request.DidNotReceiveBool(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
+        Assert.That(() => request.DidNotReceivedCallMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
     }
 
     [Test]
