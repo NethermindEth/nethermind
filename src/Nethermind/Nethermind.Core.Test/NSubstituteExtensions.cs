@@ -13,13 +13,13 @@ namespace Nethermind.Core.Test;
 public static class NSubstituteExtensions
 {
     public static bool DidNotReceivedCallMatching<T>(this T substitute, Action<T> action) where T : class =>
-        !substitute.ReceivedCallMatching(action, 1, int.MaxValue);
+        !substitute.ReceivedCallsMatching(action, 1, int.MaxValue);
 
     /// <summary>
     /// Checks if a substitute received matching calls without throwing exceptions.
     /// Suitable for polling scenarios with Is.True.After().
     /// </summary>
-    public static bool ReceivedCallMatching<T>(this T substitute, Action<T> action, int requiredNumberOfCalls = 1, int maxNumberOfCalls = 1) where T : class
+    public static bool ReceivedCallsMatching<T>(this T substitute, Action<T> action, int requiredNumberOfCalls = 1, int maxNumberOfCalls = 1) where T : class
     {
         ISubstitutionContext context = SubstitutionContext.Current;
         ICallRouter callRouter = context.GetCallRouterFor(substitute);
