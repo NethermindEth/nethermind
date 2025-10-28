@@ -116,7 +116,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         searchResult ??= _blockFinder.SearchForHeader(blockParameter);
 
         if (searchResult.Value.IsError || searchResult.Value.Object is null)
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(searchResult.Value.Error, ErrorCodes.Default);
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(searchResult.Value);
 
         BlockHeader header = searchResult.Value.Object;
 
