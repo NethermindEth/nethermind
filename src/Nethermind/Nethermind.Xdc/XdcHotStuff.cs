@@ -25,7 +25,7 @@ namespace Nethermind.Xdc
     /// This runner orchestrates the consensus loop: leader block proposal, voting, QC aggregation,
     /// timeout handling, and 3-chain finalization
     /// </summary>
-    internal partial class XdcHotStuff : IBlockProducerRunner
+    internal class XdcHotStuff : IBlockProducerRunner
     {
         private readonly IBlockTree _blockTree;
         private readonly IXdcConsensusContext _xdcContext;

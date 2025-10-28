@@ -23,7 +23,7 @@ public class Tests
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
-        XdcHeaderValidator validator = new(Substitute.For<IBlockTree>(), Substitute.For<ISealValidator>(), Substitute.For<ISpecProvider>(), Substitute.For<ILogManager>());
+        XdcHeaderValidator validator = new(Substitute.For<IBlockTree>(), Substitute.For<IQuorumCertificateManager>(), Substitute.For<ISealValidator>(), Substitute.For<ISpecProvider>(), Substitute.For<ILogManager>());
 
         Assert.That(() => validator.Validate(header, parent, false, out _), Throws.TypeOf<ArgumentException>());
     }
@@ -90,7 +90,7 @@ public class Tests
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
         releaseSpec.GasLimitBoundDivisor.Returns(1);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-        XdcHeaderValidator validator = new(Substitute.For<IBlockTree>(), sealValidator, specProvider, Substitute.For<ILogManager>());
+        XdcHeaderValidator validator = new(Substitute.For<IBlockTree>(), Substitute.For<IQuorumCertificateManager>(), sealValidator, specProvider, Substitute.For<ILogManager>());
 
         Assert.That(validator.Validate(headerBuilder.TestObject, headerParent, false, out _), Is.EqualTo(expected));
     }
