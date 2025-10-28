@@ -328,6 +328,12 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public PruningContext VerifyCachedPersistedNode(int i)
+            {
+                (_trieStore.CachedNodesCount - _trieStore.DirtyCachedNodesCount).Should().Be(i);
+                return this;
+            }
+
             public PruningContext AssertThatCachedNodeCountIs(long cachedNodeCount)
             {
                 _trieStore.CachedNodesCount.Should().Be(cachedNodeCount);
@@ -786,12 +792,14 @@ namespace Nethermind.Trie.Test
                 .CommitRandomDataWorthNBlocks(10)
                 .VerifyPersisted(7)
                 .VerifyStateDbSize(7)
+                .VerifyCachedPersistedNode(0)
 
                 .SetFinalizedPoint()
                 .CommitRandomData()
 
+                .VerifyCachedPersistedNode(1)
                 .VerifyPersisted(8)
-                .VerifyStateDbSize(1)
+                .VerifyStateDbSize(8) // Does not get removed as the persisted node not in are cached
                 ;
         }
 

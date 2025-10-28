@@ -64,6 +64,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private bool _lastPersistedReachedReorgBoundary;
     private long _toBePersistedBlockNumber = -1;
+
+    // Set to true when last snapshot state has a known finalized state. This flag is used to determine
+    // if persisted node after `LastPersistedState` can be pruned or not. Pruning them means lower key deletion rate
+    // which increase db growth, but its needed under long non-finalization to reduce memory usage.
+    private bool _isFinalizedStateKnown = true;
+
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
     private readonly IFinalizedStateProvider _finalizedStateProvider;
@@ -660,6 +666,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (_logger.IsDebug) _logger.Debug($"Persisting {candidateSets.Count} commitsets. Finalized block number {finalizedBlockNumber}. Should track past keys {shouldTrackPastKey}");
 
+        _isFinalizedStateKnown = finalizedBlockNumber.HasValue;
+
         if (shouldTrackPastKey)
         {
             for (int i = 0; i < _shardedDirtyNodeCount; i++)
@@ -899,7 +907,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[_lastPrunedShardIdx];
                 pruneTask.Add(Task.Run(() =>
                 {
-                    dirtyNode.PruneCache(prunePersisted: true);
+                    dirtyNode.PruneCache(prunePersisted: true, forceRemovePersistedNodes: !_isFinalizedStateKnown);
                 }));
                 _lastPrunedShardIdx = (_lastPrunedShardIdx + 1) % _shardedDirtyNodeCount;
             }

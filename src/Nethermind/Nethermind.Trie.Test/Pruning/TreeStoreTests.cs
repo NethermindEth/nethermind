@@ -1103,7 +1103,7 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             memDb.Count.Should().Be(1);
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 12032 : 15360);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 11844 : 15120);
 
             fullTrieStore.PersistCache(default);
             memDb.Count.Should().Be(64);
@@ -1213,7 +1213,7 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.WaitForPruning();
 
             fullTrieStore.PrunePersistedNodes();
-            fullTrieStore.CachedNodesCount.Should().Be(65);
+            fullTrieStore.CachedNodesCount.Should().Be(57);
 
             fullTrieStore.PersistAndPruneDirtyCache();
             fullTrieStore.PrunePersistedNodes();

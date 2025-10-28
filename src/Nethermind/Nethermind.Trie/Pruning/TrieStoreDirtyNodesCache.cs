@@ -261,6 +261,7 @@ internal class TrieStoreDirtyNodesCache
     public void PruneCache(
         bool prunePersisted = false,
         bool forceRemovePersistedNodes = false,
+        bool removeStillNeededPersistedNode = false,
         ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes = null,
         INodeStorage? nodeStorage = null)
     {
@@ -269,7 +270,12 @@ internal class TrieStoreDirtyNodesCache
             ? new ConcurrentNodeWriteBatcher(nodeStorage, 256) : null;
 
         long totalMemory, dirtyMemory, totalNode, dirtyNode;
-        (totalMemory, dirtyMemory, totalNode, dirtyNode) = PruneCacheUnlocked(prunePersisted, forceRemovePersistedNodes, persistedHashes, writeBatcher);
+        (totalMemory, dirtyMemory, totalNode, dirtyNode) = PruneCacheUnlocked(
+            prunePersisted,
+            forceRemovePersistedNodes,
+            removeStillNeededPersistedNode,
+            persistedHashes,
+            writeBatcher);
 
         writeBatcher?.Dispose();
 
@@ -282,6 +288,7 @@ internal class TrieStoreDirtyNodesCache
     private (long totalMemory, long dirtyMemory, long totalNode, long dirtyNode) PruneCacheUnlocked(
         bool prunePersisted,
         bool forceRemovePersistedNodes,
+        bool removeStillNeededPersistedNode,
         ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes,
         ConcurrentNodeWriteBatcher? writeBatcher)
     {
@@ -322,7 +329,10 @@ internal class TrieStoreDirtyNodesCache
                         continue;
                     }
 
-                    if (_trieStore.IsNoLongerNeeded(lastCommit) && !(_keepRoot && key.Path.Length == 0))
+                    bool shouldRemove = removeStillNeededPersistedNode
+                                        || _trieStore.IsNoLongerNeeded(lastCommit);
+                    if (_keepRoot && key.Path.Length == 0) shouldRemove = false;
+                    if (shouldRemove)
                     {
                         RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);
                         continue;
