@@ -82,7 +82,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         if (qc.ProposedBlockInfo.Round >= _context.CurrentRound)
         {
-            _context.SetNewRound(qc.ProposedBlockInfo.Round);
+            _context.SetNewRound(qc.ProposedBlockInfo.Round + 1);
         }
     }
 

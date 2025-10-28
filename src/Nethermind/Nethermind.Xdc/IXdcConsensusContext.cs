@@ -4,6 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Xdc.Types;
 using System;
+using System.Threading;
 
 namespace Nethermind.Xdc;
 public interface IXdcConsensusContext
@@ -16,8 +17,16 @@ public interface IXdcConsensusContext
     ulong HighestVotedRound { get; set; }
     QuorumCertificate? LockQC { get; set; }
     int TimeoutCounter { get; set; }
+    DateTime RoundStarted { get; }
 
-    event Action<ulong> NewRoundSetEvent;
+    event Action<NewRoundEventArgs> NewRoundSetEvent;
 
+    void SetNewRound();
     void SetNewRound(ulong round);
+}
+
+public class NewRoundEventArgs(ulong round, int previousRoundTimeouts)
+{
+    public ulong NewRound { get; } = round;
+    public int PreviousRoundTimeouts { get; } = previousRoundTimeouts;
 }

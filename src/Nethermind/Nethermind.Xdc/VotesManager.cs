@@ -121,7 +121,7 @@ internal class VotesManager(
         return Task.CompletedTask;
     }
 
-    public void EndRound(ulong round)
+    private void EndRound(ulong round)
     {
         _votePool.EndRound(round);
 
@@ -194,6 +194,7 @@ internal class VotesManager(
     {
         QuorumCertificate qc = new(currVote.ProposedBlockInfo, validSignatures, currVote.GapNumber);
         _quorumCertificateManager.CommitCertificate(qc);
+        EndRound(currVote.ProposedBlockInfo.Round);
     }
 
     private bool IsExtendingFromAncestor(Hash256 blockHash, long blockNumber, BlockRoundInfo ancestorBlockInfo)
