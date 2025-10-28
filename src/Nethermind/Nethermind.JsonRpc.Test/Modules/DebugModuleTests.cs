@@ -179,7 +179,7 @@ public class DebugModuleTests
         DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", 1) as JsonRpcErrorResponse;
 
-        Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
+        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
     }
 
     [Test]
@@ -190,7 +190,7 @@ public class DebugModuleTests
         DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "0x1") as JsonRpcErrorResponse;
 
-        Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
+        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
     }
 
     [Test]
@@ -203,7 +203,7 @@ public class DebugModuleTests
         DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", Keccak.Zero) as JsonRpcErrorResponse;
 
-        Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
+        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
     }
 
     private BlockTree BuildBlockTree(Func<BlockTreeBuilder, BlockTreeBuilder>? builderOptions = null)

@@ -10,7 +10,7 @@ namespace Nethermind.Facade.Simulate;
 public class SimulateOutput<TTrace>
 {
     public string? Error { get; set; }
-    public bool IsInvalidOutput { get; set; }
+    public bool IsInvalidInput { get; set; }
     public TransactionResult TransactionResult { get; set; }
 
     public IReadOnlyList<SimulateBlockResult<TTrace>> Items { get; init; }
