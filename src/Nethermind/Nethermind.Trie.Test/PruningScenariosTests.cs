@@ -595,12 +595,12 @@ namespace Nethermind.Trie.Test
                 .Commit()
                 .SaveBranchingPoint("main")
 
-                    // We need this to get persisted
-                    // Storage is not set here, but commit set will commit this instead of previous block 3
-                    .RestoreBranchingPoint("revert_main")
-                    .SetManyAccountWithSameBalance(100, 20, 1)
-                    .Commit()
-                    .RestoreBranchingPoint("main")
+                // We need this to get persisted
+                // Storage is not set here, but commit set will commit this instead of previous block 3
+                .RestoreBranchingPoint("revert_main")
+                .SetManyAccountWithSameBalance(100, 20, 1)
+                .Commit()
+                .RestoreBranchingPoint("main")
 
                 .Commit()
                 .Commit()
@@ -663,14 +663,14 @@ namespace Nethermind.Trie.Test
                 .Commit()
                 .SaveBranchingPoint("main")
 
-                    // Block 3 - 2
-                    .RestoreBranchingPoint("revert_main")
-                    .Commit()
+                // Block 3 - 2
+                .RestoreBranchingPoint("revert_main")
+                .Commit()
 
-                    // Block 4 - 2
-                    .SetManyAccountWithSameBalance(100, 20, 1)
-                    .Commit()
-                    .RestoreBranchingPoint("main")
+                // Block 4 - 2
+                .SetManyAccountWithSameBalance(100, 20, 1)
+                .Commit()
+                .RestoreBranchingPoint("main")
 
                 .Commit()
                 .Commit()
@@ -749,22 +749,22 @@ namespace Nethermind.Trie.Test
                 .Commit()
                 .SaveBranchingPoint("main")
 
-                    // Block 3 - 2
-                    .RestoreBranchingPoint("revert_main")
-                    .Commit()
+                // Block 3 - 2
+                .RestoreBranchingPoint("revert_main")
+                .Commit()
 
-                    .RestoreBranchingPoint("main")
+                .RestoreBranchingPoint("main")
 
                 // Block 4
                 .SaveBranchingPoint("revert_main")
                 .Commit()
                 .SaveBranchingPoint("main")
 
-                    .RestoreBranchingPoint("revert_main") // Go back to block 3
-                                                          // Block 4 - 2
-                    .SetStorage(3, 1, 1)
-                    .Commit()
-                    .RestoreBranchingPoint("main") // Go back to block 4 on main
+                .RestoreBranchingPoint("revert_main") // Go back to block 3
+                // Block 4 - 2
+                .SetStorage(3, 1, 1)
+                .Commit()
+                .RestoreBranchingPoint("main") // Go back to block 4 on main
 
                 .TurnOnPrune()
                 .Commit()
@@ -1068,13 +1068,13 @@ namespace Nethermind.Trie.Test
         public async Task Can_ContinueEvenWhenPruningIsBlocked(int maxBufferedCommit, int blockCount, bool isBlocked)
         {
             PruningContext ctx = PruningContext.InMemory
-                .TurnOnPrune()
-                .WithPruningConfig((cfg) =>
-                {
-                    cfg.PruningBoundary = 0;
-                    cfg.MaxBufferedCommitCount = maxBufferedCommit;
-                })
-                .BlockDatabase()
+                    .TurnOnPrune()
+                    .WithPruningConfig((cfg) =>
+                    {
+                        cfg.PruningBoundary = 0;
+                        cfg.MaxBufferedCommitCount = maxBufferedCommit;
+                    })
+                    .BlockDatabase()
                 ;
 
             for (int i = 0; i < 3; i++) // PruningBoundary + 1

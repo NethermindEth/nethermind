@@ -655,7 +655,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
             // For archice node, it is safe to remove canon key from cache as it will just get re-loaded.
-            (!_deleteOldNodes || finalizedBlockNumber == null);
+            _deleteOldNodes &&
+            finalizedBlockNumber.HasValue;
+
+        if (_logger.IsDebug) _logger.Debug($"Persisting {candidateSets.Count} commitsets. Finalized block number {finalizedBlockNumber}. Should track past keys {shouldTrackPastKey}");
 
         if (shouldTrackPastKey)
         {
@@ -770,6 +773,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 return (candidateSets, null);
             }
 
+            bool finalizedWasAdded = false;
             while (_commitSetQueue.TryPeek(out BlockCommitSet? set))
             {
                 if (set.BlockNumber > effectiveFinalizedBlockNumber) break;
@@ -779,10 +783,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 if (_persistenceStrategy.ShouldPersist(set.BlockNumber))
                 {
                     candidateSets.Add(set);
+                    if (ReferenceEquals(set, finalizedBlockCommitSet)) finalizedWasAdded = true;
                 }
             }
 
-            candidateSets.Add(finalizedBlockCommitSet);
+            if (!finalizedWasAdded) candidateSets.Add(finalizedBlockCommitSet);
 
             return (candidateSets, effectiveFinalizedBlockNumber);
         }
@@ -1201,7 +1206,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             // we need to persist at least something or in case of fresh sync or the best persisted state will not be set
             // at all. This come at a risk that this commitset is not canon though.
             candidateSets.Add(anyCommmitSet);
+            if (_logger.IsDebug) _logger.Debug($"Force persisting commitset {anyCommmitSet} on shutdown.");
         }
+
+        if (_logger.IsDebug) _logger.Debug($"On shutdown persisting {candidateSets.Count} commit sets. Finalized block is {finalizedBlockNumber}.");
 
         INodeStorage.IWriteBatch writeBatch = _nodeStorage.StartWriteBatch();
         for (int index = 0; index < candidateSets.Count; index++)

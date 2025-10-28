@@ -907,7 +907,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true),
+                pruningStrategy: new TestPruningStrategy(shouldPrune: true, deleteObsoleteKeys: true),
                 persistenceStrategy: No.Persistence,
                 pruningConfig: new PruningConfig()
                 {
