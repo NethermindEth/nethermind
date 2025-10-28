@@ -33,7 +33,6 @@ namespace Nethermind.Xdc
         private readonly IBlockProducer _blockBuilder;
         private readonly IEpochSwitchManager _epochSwitchManager;
         private readonly IQuorumCertificateManager _quorumCertificateManager;
-        private readonly ITimeoutCertificateManager _timeoutCertificateManager;
         private readonly IVotesManager _votesManager;
         private readonly ISigner _signer;
         private readonly ITimeoutTimer _timeoutTimer;
@@ -56,7 +55,6 @@ namespace Nethermind.Xdc
             IBlockProducer blockBuilder,
             IEpochSwitchManager epochSwitchManager,
             IQuorumCertificateManager quorumCertificateManager,
-            ITimeoutCertificateManager timeoutCertificateManager,
             IVotesManager votesManager,
             ISigner signer,
             ITimeoutTimer timeoutTimer,
@@ -69,7 +67,6 @@ namespace Nethermind.Xdc
             _blockBuilder = blockBuilder ?? throw new ArgumentNullException(nameof(blockBuilder));
             _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
             _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
-            _timeoutCertificateManager = timeoutCertificateManager ?? throw new ArgumentNullException(nameof(timeoutCertificateManager));
             _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _timeoutTimer = timeoutTimer;
