@@ -12,7 +12,7 @@ public class ReorgDepthFinalizedStateProvider(IBlockTree blockTree): IFinalizedS
     public long FinalizedBlockNumber => blockTree.BestKnownNumber - Reorganization.MaxDepth;
     public Hash256? GetFinalizedStateRootAt(long blockNumber)
     {
-        BlockHeader? header = blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-        return header?.StateRoot;
+        if (FinalizedBlockNumber < blockNumber) return null;
+        return blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical)?.StateRoot;
     }
 }

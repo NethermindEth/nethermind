@@ -86,7 +86,7 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             // Prevent multiple concurrent verify trie.
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
 
-            .AddSingleton<IFinalizedStateProvider, ReorgDepthFinalizedStateProvvider>()
+            .AddSingleton<IFinalizedStateProvider, ReorgDepthFinalizedStateProvider>()
             ;
 
         if (initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)
