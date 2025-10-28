@@ -19,8 +19,10 @@ public static class NSubstituteExtensions
     /// Checks if a substitute received matching calls without throwing exceptions.
     /// Suitable for polling scenarios with Is.True.After().
     /// </summary>
-    public static bool ReceivedCallsMatching<T>(this T substitute, Action<T> action, int requiredNumberOfCalls = 1, int maxNumberOfCalls = 1) where T : class
+    public static bool ReceivedCallsMatching<T>(this T substitute, Action<T> action, int requiredNumberOfCalls = 1, int? maxNumberOfCalls = null) where T : class
     {
+        if (maxNumberOfCalls < requiredNumberOfCalls) throw new ArgumentException($"{nameof(maxNumberOfCalls)} must be greater than or equal to {nameof(requiredNumberOfCalls)}",  nameof(maxNumberOfCalls));
+        maxNumberOfCalls ??= requiredNumberOfCalls;
         ISubstitutionContext context = SubstitutionContext.Current;
         ICallRouter callRouter = context.GetCallRouterFor(substitute);
 
@@ -33,13 +35,15 @@ public static class NSubstituteExtensions
 
         // Use a query to check if the call was received
         PendingSpecificationInfo? callSpecInfo = context.ThreadContext.PendingSpecification.UseCallSpecInfo();
-        return callSpecInfo?.Handle(
+        int? matchCount = callSpecInfo?.Handle(
             // Lambda 1: Handle call specification with Arg matchers
-            callSpec => CheckMatchCount(callRouter.ReceivedCalls().Where(callSpec.IsSatisfiedBy).Count()),
+            callSpec => callRouter.ReceivedCalls().Where(callSpec.IsSatisfiedBy).Count(),
             // Lambda 2: Handle matching with concrete argument values
-            expectedCall => CheckMatchCount(GetMatchCount(expectedCall))) == true;
+            GetMatchCount);
 
-        bool CheckMatchCount(int matchCount) => matchCount >= requiredNumberOfCalls && matchCount <= maxNumberOfCalls;
+        return matchCount.HasValue && CheckMatchCount(matchCount.Value);
+
+        bool CheckMatchCount(int count) => count >= requiredNumberOfCalls && count <= maxNumberOfCalls;
 
         int GetMatchCount(ICall expectedCall)
         {
