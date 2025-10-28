@@ -61,8 +61,8 @@ public class RetryCacheTests
         _cache.Announced(1, request1);
         _cache.Announced(1, request2);
 
-        Assert.That(() => request1.DidNotReceivedCallMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
         Assert.That(() => request2.ReceivedCallsMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
+        request1.DidNotReceive().HandleMessage(Arg.Any<ResourceRequestMessage>());
     }
 
     [Test]
@@ -78,10 +78,10 @@ public class RetryCacheTests
         _cache.Announced(2, request3);
         _cache.Announced(2, request4);
 
-        Assert.That(() => request1.DidNotReceivedCallMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
         Assert.That(() => request2.ReceivedCallsMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
-        Assert.That(() => request3.DidNotReceivedCallMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
         Assert.That(() => request4.ReceivedCallsMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
+        request1.DidNotReceive().HandleMessage(Arg.Any<ResourceRequestMessage>());
+        request3.DidNotReceive().HandleMessage(Arg.Any<ResourceRequestMessage>());
     }
 
     [Test]
@@ -95,7 +95,7 @@ public class RetryCacheTests
     }
 
     [Test]
-    public void Received_BeforeTimeout_PreventsRetryExecution()
+    public async Task Received_BeforeTimeout_PreventsRetryExecution()
     {
         ITestHandler request = Substitute.For<ITestHandler>();
 
@@ -103,7 +103,10 @@ public class RetryCacheTests
         _cache.Announced(1, request);
         _cache.Received(1);
 
-        Assert.That(() => request.DidNotReceivedCallMatching(r => r.HandleMessage(ResourceRequestMessage.New(1))), Is.True.After(Timeout, 100));
+
+        await Task.Delay(Timeout, _cancellationTokenSource.Token);
+
+        request.DidNotReceive().HandleMessage(ResourceRequestMessage.New(1));
     }
 
     [Test]
@@ -122,13 +125,15 @@ public class RetryCacheTests
     }
 
     [Test]
-    public void CancellationToken_StopsProcessing()
+    public async Task CancellationToken_StopsProcessing()
     {
         ITestHandler request = Substitute.For<ITestHandler>();
 
         _cache.Announced(1, request);
-        _cancellationTokenSource.Cancel();
-        Assert.That(() => request.DidNotReceivedCallMatching(r => r.HandleMessage(Arg.Any<ResourceRequestMessage>())), Is.True.After(Timeout, 100));
+        await _cancellationTokenSource.CancelAsync();
+        await Task.Delay(Timeout);
+
+        request.DidNotReceive().HandleMessage(Arg.Any<ResourceRequestMessage>());
     }
 
     [Test]
