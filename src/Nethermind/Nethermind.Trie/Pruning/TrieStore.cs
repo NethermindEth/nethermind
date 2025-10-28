@@ -1584,12 +1584,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 }
             }
 
-            if (hasInBuffer)
-            {
-                return bufferNode;
-            }
-            else
-                return bufferShard.FindCachedOrUnknown(key);
+            return hasInBuffer ? bufferNode : bufferShard.FindCachedOrUnknown(key);
         }
     }
 
