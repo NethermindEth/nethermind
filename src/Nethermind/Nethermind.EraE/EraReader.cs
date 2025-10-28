@@ -87,11 +87,18 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
 
         if (verifyConcurrency == 0) verifyConcurrency = Environment.ProcessorCount;
 
-        ValueHash256? accumulator = ReadAccumulator();
-
         long startBlock = _fileReader.First;
-        int blockCount = (int)_fileReader.BlockCount;
-        using ArrayPoolList<(Hash256, UInt256)> blockHashes = new(blockCount, blockCount);
+
+        ValueHash256? accumulator = ReadAccumulator();
+        if (accumulator is not null) {
+            if (!blockProofValidator.VerifyAccumulator(startBlock, accumulator.Value)) {
+                throw new EraVerificationException("Computed accumulator does not match provided accumulator");
+            }
+        }
+        
+        // read first block to get the starting block's timestamp. We don't validate here
+        EntryReadResult? res = await ReadBlockAndReceipts(startBlock, true, cancellation);
+        BlocksRootContext blocksRootContext = new(startBlock, res.Value.Block.Header.Timestamp);
 
         var blockNumbers = new ConcurrentQueue<long>(EnumerateBlockNumber());
 
@@ -118,11 +125,7 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
                     throw new EraVerificationException($"Mismatched receipt root. Block number {blockNumber}.");
                 }
 
-                if (accumulator.HasValue && !err.Block.Header.IsPoS()) {
-                    // for pre-merge blocks, we can use the accumulator to verify the block (if it's available in erae file)
-                    // this is useful for quick verification of the file in case the proof is not available for some blocks
-                    blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
-                }
+                blocksRootContext.ProcessBlock(err.Block);
 
                 var slotNumber = err.Block.Header.IsPoS() ? (ulong)blockNumber : slotTime.GetSlot(err.Block.Header.Timestamp);
                 // read proof for this block
@@ -131,16 +134,20 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
                     await blockProofValidator.VerifyContent(err.Block, proof);
                 } else {
                     // proof is not available for this block, skip verification
-                    // TODO: allow user to specify if they want to skip verification for blocks without proof
+                    // TODO: allow user to specify if they want to skip verification for blocks without proof.
+                    // if skipping is allowed, we need to verify the blocks root context against the trusted blocks root context
+                    // later in the code.
                     continue;
                 }
             }
         }, cancellation)).ToPooledList(verifyConcurrency);
         await Task.WhenAll(workers.AsSpan());
 
-        if (accumulator.HasValue && !VerifyEpochAccumulator(blockHashes, accumulator.Value)) {
-            throw new EraVerificationException("Computed accumulator does not match stored accumulator");
-        }
+        // finalize the blocks root context to compute the accumulator root, historical root, and historical summary.
+        blocksRootContext.Finalize();
+        // verify the blocks root context against the trusted blocks root context in case when individual block proofs are not provided in EraE file.
+        await blockProofValidator.VerifyBlocksRootContext(blocksRootContext);
+        
         return true;
     }
 

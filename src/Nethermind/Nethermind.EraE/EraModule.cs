@@ -11,7 +11,7 @@ namespace Nethermind.EraE;
 
 public class EraModule: Module
 {
-    protected void Load(ContainerBuilder builder)
+    protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
         builder

@@ -3,8 +3,6 @@
   <PropertyGroup>
     <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
-    <CompilerGeneratedFilesOutputPath>dir</CompilerGeneratedFilesOutputPath>
   </PropertyGroup>
 
   <ItemGroup>

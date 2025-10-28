@@ -10,19 +10,19 @@ namespace Nethermind.EraE;
 /// <summary>
 /// Represents a historical summary of a beacon state.
 /// </summary>
-public record HistoricalSummary
+public struct HistoricalSummary
 {
-    public ValueHash256 BlockSummaryRoots { get; set; }
+    public ValueHash256 BlockSummaryRoot { get; set; }
     public ValueHash256 StateSummaryRoot { get; set; }
 
 
-    public HistoricalSummary(ValueHash256 blockSummaryRoots, ValueHash256 stateSummaryRoot) {
-        BlockSummaryRoots = blockSummaryRoots;
+    public HistoricalSummary(ValueHash256 blockSummaryRoot, ValueHash256 stateSummaryRoot) {
+        BlockSummaryRoot = blockSummaryRoot;
         StateSummaryRoot = stateSummaryRoot;
     }
 
-    public static HistoricalSummary From(string blockSummaryRootsHex, string stateSummaryRootHex) {
-        return new HistoricalSummary(new ValueHash256(blockSummaryRootsHex), new ValueHash256(stateSummaryRootHex));
+    public static HistoricalSummary From(string blockSummaryRootHex, string stateSummaryRootHex) {
+        return new HistoricalSummary(new ValueHash256(blockSummaryRootHex), new ValueHash256(stateSummaryRootHex));
     }
 }
 

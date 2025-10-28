@@ -24,20 +24,20 @@ public class EraImporter(
     [KeyFilter(DbNames.Blocks)] ITunableDb blocksDb,
     [KeyFilter(DbNames.Receipts)] ITunableDb receiptsDb)
     : Era1.EraImporter(
-        fileSystem, 
-        blockTree, 
-        receiptStorage, 
-        blockValidator, 
-        logManager, 
-        new Era1.EraConfig { MaxEra1Size = eraConfig.MaxEraESize, NetworkName = eraConfig.NetworkName, Concurrency = eraConfig.Concurrency, ImportBlocksBufferSize = eraConfig.ImportBlocksBufferSize, TrustedAccumulatorFile = eraConfig.TrustedAccumulatorFile, From = eraConfig.From, To = eraConfig.To, ImportDirectory = eraConfig.ImportDirectory }, 
-        syncConfig, 
-        eraStoreFactory, 
-        blocksDb, 
+        fileSystem,
+        blockTree,
+        receiptStorage,
+        blockValidator,
+        logManager,
+        new Era1.EraConfig { MaxEra1Size = eraConfig.MaxEraESize, NetworkName = eraConfig.NetworkName, Concurrency = eraConfig.Concurrency, ImportBlocksBufferSize = eraConfig.ImportBlocksBufferSize, TrustedAccumulatorFile = eraConfig.TrustedAccumulatorFile, From = eraConfig.From, To = eraConfig.To, ImportDirectory = eraConfig.ImportDirectory },
+        syncConfig,
+        eraStoreFactory,
+        blocksDb,
         receiptsDb
-    ), 
+    ),
     IEraImporter
 {
-    public new async Task Import(string src, long from, long to, string? accumulatorFile, string? historicalRootsFile, CancellationToken cancellation = default)
+    public async Task Import(string src, long from, long to, string? accumulatorFile, string? historicalRootsFile, CancellationToken cancellation = default)
     {
         if (!fileSystem.Directory.Exists(src))
             throw new ArgumentException($"Import directory {src} does not exist");
