@@ -2,23 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 
-using Microsoft.Extensions.Logging;
 using Nethermind.Blockchain;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc;
 using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -33,18 +26,21 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         IBlockTree chain,
         IDb qcDb,
         ISpecProvider xdcConfig,
-        IEpochSwitchManager epochSwitchManager)
+        IEpochSwitchManager epochSwitchManager,
+        IBlockInfoValidator blockInfoValidator)
     {
         _context = context;
         _blockTree = chain;
         _qcDb = qcDb;
         _specProvider = xdcConfig;
         _epochSwitchManager = epochSwitchManager;
+        _blockInfoValidator = blockInfoValidator;
     }
 
     private XdcContext _context { get; }
     private IBlockTree _blockTree;
     private readonly IDb _qcDb;
+    private IBlockInfoValidator _blockInfoValidator;
     private IEpochSwitchManager _epochSwitchManager { get; }
     private ISpecProvider _specProvider { get; }
     private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
@@ -62,8 +58,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         if (proposedBlockHeader is null)
             throw new InvalidBlockException(proposedBlockHeader, "Proposed block header not found in chain");
 
-        //TODO this could be wrong way of fetching spec if a release spec is defined on a round basis 
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader, _context.CurrentRound);
 
         //Can only look for a QC in proposed block after the switch block
         if (proposedBlockHeader.Number > spec.SwitchBlock)
@@ -84,7 +79,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         if (qc.ProposedBlockInfo.Round >= _context.CurrentRound)
         {
-            _context.SetNewRound(_blockTree, qc.ProposedBlockInfo.Round);
+            _context.SetNewRound(_blockTree, qc.ProposedBlockInfo.Round + 1);
         }
     }
 
@@ -108,7 +103,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     private bool CommitBlock(IBlockTree chain, XdcBlockHeader proposedBlockHeader, ulong proposedRound, QuorumCertificate proposedQuorumCert)
     {
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
-        //Can only commit a QC if the proposed block is at least 2 blocks after the switch block, since we want to check grand parent of proposed QC
+        //Can only commit a QC if the proposed block is at least 2 blocks after the switch block, since we want to check grandparent of proposed QC
         if ((proposedBlockHeader.Number - 2) <= spec.SwitchBlock)
             return false;
 
@@ -197,24 +192,13 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        if (!ValidateBlockInfo(qc, parentHeader))
+        if (!_blockInfoValidator.ValidateBlockInfo(qc.ProposedBlockInfo, parentHeader))
         {
             error = "QC block data does not match header data.";
             return false;
         }
 
         error = null;
-        return true;
-    }
-
-    private bool ValidateBlockInfo(QuorumCertificate qc, XdcBlockHeader parentHeader)
-    {
-        if (qc.ProposedBlockInfo.BlockNumber != parentHeader.Number)
-            return false;
-        if (qc.ProposedBlockInfo.Hash != parentHeader.Hash)
-            return false;
-        if (qc.ProposedBlockInfo.Round != parentHeader.ExtraConsensusData.CurrentRound)
-            return false;
         return true;
     }
 }

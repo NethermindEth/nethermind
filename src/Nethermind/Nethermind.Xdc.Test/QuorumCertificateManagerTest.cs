@@ -31,7 +31,8 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             Substitute.For<IDb>(),
             Substitute.For<ISpecProvider>(),
-            Substitute.For<IEpochSwitchManager>());
+            Substitute.For<IEpochSwitchManager>(),
+            new BlockInfoValidator());
 
         Assert.That(() => quorumCertificateManager.VerifyCertificate(null!, Build.A.XdcBlockHeader().TestObject, out _), Throws.ArgumentNullException);
     }
@@ -44,7 +45,8 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             Substitute.For<IDb>(),
             Substitute.For<ISpecProvider>(),
-            Substitute.For<IEpochSwitchManager>());
+            Substitute.For<IEpochSwitchManager>(),
+            new BlockInfoValidator());
 
         Assert.That(() => quorumCertificateManager.VerifyCertificate(Build.A.QuorumCertificate().TestObject, null!, out _), Throws.ArgumentNullException);
     }
@@ -98,7 +100,8 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             Substitute.For<IDb>(),
             specProvider,
-            epochSwitchManager);
+            epochSwitchManager,
+            new BlockInfoValidator());
 
         Assert.That(quorumCertificateManager.VerifyCertificate(quorumCert, xdcBlockHeaderBuilder.TestObject, out _), Is.EqualTo(expected));
     }

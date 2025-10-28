@@ -45,14 +45,14 @@ namespace Nethermind.Consensus.Processing
             protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
-                if (!result) ThrowInvalidBlockException(result, block.Header, currentTx, index);
+                if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
                 transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
             }
 
             [DoesNotReturn, StackTraceHidden]
-            private void ThrowInvalidBlockException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
+            private void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
             {
-                throw new InvalidBlockException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.Error}");
+                throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.Error}", result);
             }
 
             /// <summary>
