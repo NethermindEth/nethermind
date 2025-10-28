@@ -21,7 +21,7 @@ public static class NSubstituteExtensions
     /// </summary>
     public static bool ReceivedCallsMatching<T>(this T substitute, Action<T> action, int requiredNumberOfCalls = 1, int? maxNumberOfCalls = null) where T : class
     {
-        if (maxNumberOfCalls < requiredNumberOfCalls) throw new ArgumentException($"{nameof(maxNumberOfCalls)} must be greater than or equal to {nameof(requiredNumberOfCalls)}",  nameof(maxNumberOfCalls));
+        if (maxNumberOfCalls < requiredNumberOfCalls) throw new ArgumentException($"{nameof(maxNumberOfCalls)} must be greater than or equal to {nameof(requiredNumberOfCalls)}", nameof(maxNumberOfCalls));
         maxNumberOfCalls ??= requiredNumberOfCalls;
         ISubstitutionContext context = SubstitutionContext.Current;
         ICallRouter callRouter = context.GetCallRouterFor(substitute);
