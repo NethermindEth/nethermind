@@ -136,7 +136,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
 
         if (!_blockchainBridge.HasStateForBlock(header!))
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
-                ErrorCodes.ResourceUnavailable);
+                ErrorCodes.ResourceNotFound);
 
         if (call.BlockStateCalls?.Count > _blocksLimit)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
@@ -225,7 +225,13 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                 {
                     if (call is { Error: not null } simulateResult && !string.IsNullOrEmpty(simulateResult.Error.Message))
                     {
-                        simulateResult.Error.Code = ErrorCodes.ExecutionError;
+                        var exception = simulateResult.Error.EvmException;
+                        call.Error.Code = MapEvmExceptionType(exception);
+                        if (exception != EvmExceptionType.Revert)
+                        {
+                            call.Error.Message = call.Error.EvmException.GetEvmExceptionDescription();
+                            call.Error.Data = null;
+                        }
                     }
                 }
             }
@@ -233,8 +239,8 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
 
         int? errorCode = results.TransactionResult.TransactionExecuted
             ? null
-            : (int)MapSimulateErrorCode(results.TransactionResult);
-        if (results.IsInvalidOutput) errorCode = ErrorCodes.Default;
+            : MapSimulateErrorCode(results.TransactionResult);
+        if (results.IsInvalidInput) errorCode = ErrorCodes.Default;
         return results.Error is null
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success([.. results.Items])
             : errorCode is not null
@@ -242,7 +248,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                 : ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error);
     }
 
-    private int MapSimulateErrorCode(TransactionResult txResult)
+    private static int MapSimulateErrorCode(TransactionResult txResult)
     {
         if (txResult.Error != TransactionResult.ErrorType.None)
         {
@@ -263,10 +269,13 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
             };
         }
 
-        return txResult.EvmExceptionType switch
-        {
-            EvmExceptionType.Revert => ErrorCodes.RevertedSimulate,
-            _ => ErrorCodes.VMError
-        };
+        return MapEvmExceptionType(txResult.EvmExceptionType);
     }
+
+
+    private static int MapEvmExceptionType(EvmExceptionType type) => type switch
+    {
+        EvmExceptionType.Revert => ErrorCodes.RevertedSimulate,
+        _ => ErrorCodes.VMError
+    };
 }

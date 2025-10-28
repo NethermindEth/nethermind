@@ -1,7 +1,6 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -52,7 +51,7 @@ namespace Nethermind.Consensus.Processing
             [DoesNotReturn, StackTraceHidden]
             private void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
             {
-                throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.Error}", result);
+                throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
             }
 
             /// <summary>
