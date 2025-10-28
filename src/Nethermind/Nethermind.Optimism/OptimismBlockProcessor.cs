@@ -68,7 +68,6 @@ public class OptimismBlockProcessor : BlockProcessor
 
         if (_opSpecHelper.IsJovian(block.Header))
         {
-            // TODO: handle overflow differently or calculate footprint as long?
             var (ulongValue, hasOverflow) = _costHelper.ComputeDAFootprint(block, _stateProvider).UlongWithOverflow;
             if (hasOverflow || ulongValue > long.MaxValue)
                 throw new InvalidOperationException("DA Footprint overflow");

@@ -163,10 +163,10 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
             if (tx.Type == TxType.DepositTx)
                 continue;
 
-            var daUsageEstimate = UInt256.Max(
+            UInt256 daUsageEstimate = UInt256.Max(
                 MinTransactionSizeScaled,
-                L1CostInterceptNeg + L1CostFastlzCoef * ComputeFlzCompressLen(tx)
-            );
+                L1CostFastlzCoef * ComputeFlzCompressLen(tx) - L1CostInterceptNeg
+            ) / 1_000_000;
 
             footprint += daUsageEstimate * daFootprintGasScalar;
         }
