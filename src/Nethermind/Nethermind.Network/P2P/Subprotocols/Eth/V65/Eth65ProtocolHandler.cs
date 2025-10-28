@@ -223,6 +223,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         private ArrayPoolList<Hash256> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes)
         {
             ArrayPoolList<Hash256> discoveredTxHashesAndSizes = new(hashes.Length);
+
             for (int i = 0; i < hashes.Length; i++)
             {
                 Hash256 hash = hashes[i];
@@ -240,7 +241,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         public virtual void HandleMessage(PooledTransactionRequestMessage message)
         {
-            ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
+            using ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
             RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
         }
     }

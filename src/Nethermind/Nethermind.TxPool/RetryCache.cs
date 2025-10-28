@@ -18,7 +18,6 @@ public class RetryCache<TMessage, TResourceId>
 {
     private readonly int _timeoutMs;
     private readonly int _checkMs;
-    private readonly int _requestingCacheSize;
 
     private readonly ConcurrentDictionary<TResourceId, PooledSet<IMessageHandler<TMessage>>> _retryRequests = new();
     private readonly ConcurrentQueue<(TResourceId ResourceId, DateTimeOffset ExpiresAfter)> _expiringQueue = new();
@@ -31,8 +30,7 @@ public class RetryCache<TMessage, TResourceId>
 
         _timeoutMs = timeoutMs;
         _checkMs = _timeoutMs / 5;
-        _requestingCacheSize = requestingCacheSize;
-        _requestingResources = new(_requestingCacheSize);
+        _requestingResources = new(requestingCacheSize);
 
         Task.Run(async () =>
         {
@@ -46,23 +44,26 @@ public class RetryCache<TMessage, TResourceId>
 
                     if (_retryRequests.TryRemove(item.ResourceId, out PooledSet<IMessageHandler<TMessage>>? requests))
                     {
-                        if (requests.Count > 0)
+                        using (requests)
                         {
-                            _requestingResources.Set(item.ResourceId);
-                        }
-
-                        if (_logger.IsTrace) _logger.Trace($"Sending retry requests for {item.ResourceId} after timeout");
-
-
-                        foreach (IMessageHandler<TMessage> retryHandler in requests)
-                        {
-                            try
+                            if (requests.Count > 0)
                             {
-                                retryHandler.HandleMessage(TMessage.New(item.ResourceId));
+                                _requestingResources.Set(item.ResourceId);
                             }
-                            catch (Exception ex)
+
+                            if (_logger.IsTrace) _logger.Trace($"Sending retry requests for {item.ResourceId} after timeout");
+
+
+                            foreach (IMessageHandler<TMessage> retryHandler in requests)
                             {
-                                if (_logger.IsTrace) _logger.Error($"Failed to send retry request to {retryHandler} for {item.ResourceId}", ex);
+                                try
+                                {
+                                    retryHandler.HandleMessage(TMessage.New(item.ResourceId));
+                                }
+                                catch (Exception ex)
+                                {
+                                    if (_logger.IsTrace) _logger.Error($"Failed to send retry request to {retryHandler} for {item.ResourceId}", ex);
+                                }
                             }
                         }
                     }
@@ -106,6 +107,7 @@ public class RetryCache<TMessage, TResourceId>
         if (_logger.IsTrace) _logger.Trace($"Received {resourceId}");
 
         _retryRequests.TryRemove(resourceId, out PooledSet<IMessageHandler<TMessage>>? _);
+        _requestingResources.Delete(resourceId);
     }
 }
 
