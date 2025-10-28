@@ -88,12 +88,6 @@ internal static partial class EvmInstructions
         ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         IWorldState state = vm.WorldState;
 
-        // Ensure the executing account exists in the world state. If not, create it with a zero balance.
-        if (!state.AccountExists(env.ExecutingAccount))
-        {
-            state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
-        }
-
         // Pop parameters off the stack: value to transfer, memory position for the initialization code,
         // and the length of the initialization code.
         if (!stack.PopUInt256(out UInt256 value) ||
@@ -144,8 +138,17 @@ internal static partial class EvmInstructions
         // Load the initialization code from memory based on the specified position and length.
         ReadOnlyMemory<byte> initCode = vm.EvmState.Memory.Load(in memoryPositionOfInitCode, in initCodeLength);
 
+        UInt256? balance = null;
+
+        // Ensure the executing account exists in the world state. If not, create it with a zero balance.
+        if (!state.AccountExists(env.ExecutingAccount))
+        {
+            state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
+            balance = UInt256.Zero;
+        }
+
         // Check that the executing account has sufficient balance to transfer the specified value.
-        UInt256 balance = state.GetBalance(env.ExecutingAccount);
+        balance ??= state.GetBalance(env.ExecutingAccount);
         if (value > balance)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
