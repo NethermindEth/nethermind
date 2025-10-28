@@ -320,7 +320,7 @@ internal class TrieStoreDirtyNodesCache
                         continue;
                     }
 
-                    if (_trieStore.IsNoLongerNeeded(lastCommit) && !(_keepRoot && key.Path.Length == 0))
+                    if (_trieStore.IsNoLongerNeeded(lastCommit) && !(_keepRoot && key.IsRoot()))
                     {
                         RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);
                         continue;
