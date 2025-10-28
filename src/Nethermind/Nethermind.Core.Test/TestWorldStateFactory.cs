@@ -22,7 +22,7 @@ public static class TestWorldStateFactory
     public static IWorldState CreateForTest(IDbProvider dbProvider, ILogManager logManager)
     {
         PruningConfig pruningConfig = new PruningConfig();
-        FakeFinalizedStateProvider finalizedStateProvider = new FakeFinalizedStateProvider(pruningConfig.PruningBoundary);
+        TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
         TrieStore trieStore = new TrieStore(
             new NodeStorage(dbProvider.StateDb),
             No.Pruning,
@@ -40,7 +40,7 @@ public static class TestWorldStateFactory
         if (logManager is null) logManager = LimboLogs.Instance;
 
         PruningConfig pruningConfig = new PruningConfig();
-        FakeFinalizedStateProvider finalizedStateProvider = new FakeFinalizedStateProvider(pruningConfig.PruningBoundary);
+        TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
         TrieStore trieStore = new TrieStore(
             new NodeStorage(dbProvider.StateDb),
             No.Pruning,
@@ -55,7 +55,7 @@ public static class TestWorldStateFactory
     public static WorldStateManager CreateWorldStateManagerForTest(IDbProvider dbProvider, ILogManager logManager)
     {
         PruningConfig pruningConfig = new PruningConfig();
-        FakeFinalizedStateProvider finalizedStateProvider = new FakeFinalizedStateProvider(pruningConfig.PruningBoundary);
+        TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
         TrieStore trieStore = new TrieStore(
             new NodeStorage(dbProvider.StateDb),
             No.Pruning,

@@ -56,7 +56,7 @@ namespace Nethermind.Trie.Test.Pruning
                 TrackPastKeys = false // Default disable
             };
 
-            FakeFinalizedStateProvider finalizedStateProvider = new FakeFinalizedStateProvider(pruningConfig.PruningBoundary);
+            TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
             TrieStore trieStore = new(
                 new NodeStorage(kvStore, _scheme, requirePath: _scheme == INodeStorage.KeyScheme.HalfPath),
                 pruningStrategy,
@@ -765,7 +765,7 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.WaitForPruning();
             storage.Get(null, TreePath.FromNibble(new byte[] { 0 }), a.Keccak).Should().NotBeNull();
             storage.Get(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak).Should().NotBeNull();
-            fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak).Should().BeTrue();
+            fullTrieStore.IsNodeCached(null, TreePath.FromNibble(new byte[] { 0 }), a.Keccak).Should().BeTrue();
             fullTrieStore.IsNodeCached(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak).Should().BeTrue();
         }
 
@@ -1213,11 +1213,11 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.WaitForPruning();
 
             fullTrieStore.PrunePersistedNodes();
-            fullTrieStore.CachedNodesCount.Should().Be(52);
+            fullTrieStore.CachedNodesCount.Should().Be(65);
 
             fullTrieStore.PersistAndPruneDirtyCache();
             fullTrieStore.PrunePersistedNodes();
-            fullTrieStore.CachedNodesCount.Should().Be(20);
+            fullTrieStore.CachedNodesCount.Should().Be(36);
         }
 
         [TestCase(27, 1000, 31, 7)]

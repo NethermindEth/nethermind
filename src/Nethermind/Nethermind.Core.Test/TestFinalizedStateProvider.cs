@@ -12,15 +12,36 @@ namespace Nethermind.Core.Test;
 /// TrieStore must be set later.
 /// </summary>
 /// <param name="depth"></param>
-public class FakeFinalizedStateProvider(long depth): IFinalizedStateProvider
+public class TestFinalizedStateProvider(long depth): IFinalizedStateProvider
 {
     public TrieStore TrieStore { get; set; } = null!;
+    private BlockHeader? _manualFinalizedPoint = null;
 
-    public long FinalizedBlockNumber => TrieStore.LatestCommittedBlockNumber - depth;
+    public long FinalizedBlockNumber
+    {
+        get
+        {
+            if (_manualFinalizedPoint is not null)
+            {
+                return _manualFinalizedPoint.Number;
+            }
+            return TrieStore.LatestCommittedBlockNumber - depth;
+        }
+    }
+
     public Hash256? GetFinalizedStateRootAt(long blockNumber)
     {
+        if (_manualFinalizedPoint is not null && _manualFinalizedPoint.Number == blockNumber)
+        {
+            return _manualFinalizedPoint.StateRoot;
+        }
         using var commitSets = TrieStore.CommitSetQueue.GetCommitSetsAtBlockNumber(blockNumber);
         if (commitSets.Count != 1) return null;
         return commitSets[0].StateRoot;
+    }
+
+    public void SetFinalizedPoint(BlockHeader baseBlock)
+    {
+        _manualFinalizedPoint = baseBlock;
     }
 }

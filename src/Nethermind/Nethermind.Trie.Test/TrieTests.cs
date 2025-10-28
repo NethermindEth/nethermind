@@ -758,7 +758,7 @@ namespace Nethermind.Trie.Test
                     TrackPastKeys = TrackPastKeys,
                     PruningBoundary = LookupLimit,
                 };
-                FakeFinalizedStateProvider finalizedStateProvider = new FakeFinalizedStateProvider(pruningConfig.PruningBoundary);
+                TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
                 TrieStore trieStore = new TrieStore(
                     new NodeStorage(new MemDb()),
                     pruneStrategy,
@@ -1236,7 +1236,7 @@ namespace Nethermind.Trie.Test
             int repetition = 100;
 
             PruningConfig pruningConfig = new PruningConfig();
-            FakeFinalizedStateProvider finalizedStateProvider = new FakeFinalizedStateProvider(pruningConfig.PruningBoundary);
+            TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
             using TrieStore trieStore = new TrieStore(
                 new NodeStorage(new MemDb()),
                 new TestPruningStrategy(shouldPrune: true),

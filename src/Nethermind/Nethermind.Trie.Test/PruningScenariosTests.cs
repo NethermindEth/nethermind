@@ -50,6 +50,7 @@ namespace Nethermind.Trie.Test
             private readonly IPersistenceStrategy _persistenceStrategy;
             private readonly TestPruningStrategy _pruningStrategy;
             private readonly IPruningConfig _pruningConfig;
+            private readonly TestFinalizedStateProvider _finalizedStateProvider;
 
             [DebuggerStepThrough]
             private PruningContext(TestPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy, IPruningConfig? pruningConfig = null)
@@ -68,11 +69,11 @@ namespace Nethermind.Trie.Test
                 _pruningStrategy = pruningStrategy;
 
                 _pruningConfig = pruningConfig ?? new PruningConfig() { TrackPastKeys = false };
-                FakeFinalizedStateProvider finalizedStateProvider = new FakeFinalizedStateProvider(_pruningConfig.PruningBoundary);
+                _finalizedStateProvider = new TestFinalizedStateProvider(_pruningConfig.PruningBoundary);
 
                 _trieStore = new TrieStore(
-                    new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, finalizedStateProvider, _pruningConfig, _logManager);
-                finalizedStateProvider.TrieStore = _trieStore;
+                    new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, _finalizedStateProvider, _pruningConfig, _logManager);
+                _finalizedStateProvider.TrieStore = _trieStore;
                 _stateProvider = new WorldState(_trieStore, _codeDb, _logManager);
                 _stateReader = new StateReader(_trieStore, _codeDb, _logManager);
                 _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
@@ -180,6 +181,13 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public PruningContext TurnOffPrune()
+            {
+                _pruningStrategy.ShouldPruneEnabled = false;
+                _pruningStrategy.ShouldPrunePersistedEnabled = false;
+                return this;
+            }
+
             public PruningContext TurnOffAlwaysPrunePersistedNode()
             {
                 _pruningStrategy.ShouldPrunePersistedEnabled = false;
@@ -269,7 +277,7 @@ namespace Nethermind.Trie.Test
                 _worldStateCloser!.Dispose();
                 _trieStore.Dispose();
 
-                FakeFinalizedStateProvider finalizedStateProvider = new FakeFinalizedStateProvider(_pruningConfig.PruningBoundary);
+                TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(_pruningConfig.PruningBoundary);
                 _trieStore = new TrieStore(new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, finalizedStateProvider, _pruningConfig, _logManager);
                 finalizedStateProvider.TrieStore = _trieStore;
                 _stateProvider = new WorldState(_trieStore, _codeDb, _logManager);
@@ -391,6 +399,24 @@ namespace Nethermind.Trie.Test
             public PruningContext UnblockDatabase()
             {
                 _stateDbBlocker.Set();
+                return this;
+            }
+
+            public PruningContext VerifyBranchingPointExist(string branch)
+            {
+                _trieStore.HasRoot(_branchingPoints[branch].StateRoot).Should().BeTrue();
+                return this;
+            }
+
+            public PruningContext VerifyBranchingPointDoesNotExists(string branch)
+            {
+                _trieStore.HasRoot(_branchingPoints[branch].StateRoot).Should().BeFalse();
+                return this;
+            }
+
+            public PruningContext SetFinalizedPoint()
+            {
+                _finalizedStateProvider.SetFinalizedPoint(_baseBlock);
                 return this;
             }
         }
@@ -683,10 +709,11 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
-        public void Should_persist_reorg_depth_block_on_dispose()
+        public void Should_persist_finalized_block_only_on_dispose()
         {
             PruningContext.InMemory
                 .WithMaxDepth(4)
+                .TurnOffPrune()
                 .SetAccountBalance(1, 100)
                 .Commit()
                 .SetAccountBalance(2, 10)
@@ -703,6 +730,7 @@ namespace Nethermind.Trie.Test
                 .SetStorage(3, 1, 2)
                 .Commit()
                 .SaveBranchingPoint("branch_2")
+                .SetFinalizedPoint()
 
                 .RestoreBranchingPoint("revert_main")
                 .SetStorage(3, 1, 3)
@@ -715,20 +743,11 @@ namespace Nethermind.Trie.Test
                 .Commit()
                 .Commit()
 
-                // The `TrieStoreBoundaryWatcher` only reports the block number, but previously TrieStore only persist one of the
-                // multiple possible block of the same number. So if the persisted block is not the same as main,
-                // you'll get trie exception on restart.
                 .DisposeAndRecreate()
 
-                // This should pass because the last committed branch is branch 3.
-                .RestoreBranchingPoint("branch_3")
-                .VerifyStorageValue(3, 1, 3)
-
-                // Previously this does not.
-                .RestoreBranchingPoint("branch_1")
-                .VerifyStorageValue(3, 1, 1)
-                .RestoreBranchingPoint("branch_2")
-                .VerifyStorageValue(3, 1, 2);
+                .VerifyBranchingPointDoesNotExists("branch_1")
+                .VerifyBranchingPointExist("branch_2")
+                .VerifyBranchingPointDoesNotExists("branch_3");
         }
 
         [Test]
