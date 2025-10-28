@@ -239,6 +239,12 @@ namespace Nethermind.Synchronization.SnapSync
                     _logger.Trace(
                         $"SNAP - AddStorageRange failed, slots are out of bounds, startingHash:{request.StartingHash}");
             }
+            else if (result == AddRangeResult.EmptySlots)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"SNAP - AddStorageRange failed, slots list is empty, startingHash:{request.StartingHash}");
+            }
 
             _progressTracker.EnqueueAccountRefresh(pathWithAccount, request.StartingHash, request.LimitHash);
             return result;
@@ -268,7 +274,7 @@ namespace Nethermind.Synchronization.SnapSync
                         TreePath emptyTreePath = TreePath.Empty;
                         TrieNode node = new(NodeType.Unknown, nodeData, isDirty: true);
                         node.ResolveNode(stateStore, emptyTreePath);
-                        node.ResolveKey(stateStore, ref emptyTreePath, true);
+                        node.ResolveKey(stateStore, ref emptyTreePath);
 
                         requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(node.Keccak);
 

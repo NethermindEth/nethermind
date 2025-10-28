@@ -22,7 +22,7 @@ Option<bool> metricsOption = new("--metrics") { Description = "Generate metrics 
 
 dbSizeOption.Validators.Add(optionResult =>
 {
-    if (optionResult.Parent?.GetValue(dbSizeSourceOption) is null)
+    if (optionResult.GetValueOrDefault<bool>() && optionResult.Parent?.GetValue(dbSizeSourceOption) is null)
         optionResult.AddError($"{dbSizeSourceOption.Name} must be specified when {dbSizeOption.Name} is set");
 });
 
@@ -60,6 +60,4 @@ rootCommand.SetAction(parseResult =>
     return 0;
 });
 
-CommandLineConfiguration cli = new(rootCommand);
-
-return cli.Invoke(args);
+return rootCommand.Parse(args).Invoke();

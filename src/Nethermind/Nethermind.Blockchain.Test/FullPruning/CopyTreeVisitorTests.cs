@@ -12,6 +12,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -90,8 +91,7 @@ public class CopyTreeVisitorTests
         dbProvider.CodeDb.Returns(new MemDb());
 
         // Use TestWorldStateFactory.CreateForTest() with the custom DbProvider
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, logManager);
-        IStateReader stateReader = worldStateManager.GlobalStateReader;
+        (IWorldState worldState, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, logManager);
 
         if (_keyScheme == INodeStorage.KeyScheme.Hash)
         {

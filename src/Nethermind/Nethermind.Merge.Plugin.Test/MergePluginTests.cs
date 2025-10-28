@@ -76,9 +76,6 @@ public class MergePluginTests
             .Build();
     }
 
-    [TearDown]
-    public void TearDown() => _plugin.DisposeAsync().GetAwaiter().GetResult();
-
     [Test]
     public void SlotPerSeconds_has_different_value_in_mergeConfig_and_blocksConfig()
     {
@@ -105,7 +102,6 @@ public class MergePluginTests
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(api));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
         Assert.DoesNotThrow(() => _plugin.InitBlockProducer(_consensusPlugin!));
-        Assert.DoesNotThrowAsync(async () => await _plugin.DisposeAsync());
     }
 
     [Test]
@@ -121,7 +117,6 @@ public class MergePluginTests
         Assert.That(api.GossipPolicy.CanGossipBlocks, Is.True);
         _plugin.InitBlockProducer(_consensusPlugin!);
         Assert.That(api.BlockProducer, Is.InstanceOf<MergeBlockProducer>());
-        await _plugin.DisposeAsync();
     }
 
     [TestCase(true, true)]

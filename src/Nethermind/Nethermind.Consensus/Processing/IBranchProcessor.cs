@@ -41,9 +41,4 @@ public interface IBranchProcessor
     /// Fired when a block is being processed.
     /// </summary>
     event EventHandler<BlockEventArgs> BlockProcessing;
-
-    /// <summary>
-    /// Fired after a transaction has been processed (even if inside the block).
-    /// </summary>
-    event EventHandler<TxProcessedEventArgs> TransactionProcessed;
 }

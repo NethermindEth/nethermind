@@ -291,7 +291,7 @@ public class SyncDispatcherTests
     public async Task When_ConcurrentHandleResponseIsRunning_Then_BlockDispose()
     {
         using CancellationTokenSource cts = new();
-        cts.CancelAfter(TimeSpan.FromSeconds(10));
+        cts.CancelAfter(TimeSpan.FromSeconds(15));
 
         TestSyncFeed syncFeed = new(isMultiFeed: true);
         syncFeed.LockResponse();
@@ -315,7 +315,7 @@ public class SyncDispatcherTests
         {
             await dispatcher.DisposeAsync();
         });
-        await Task.Delay(100, cts.Token);
+        await Task.Delay(200, cts.Token);
 
         disposeTask.IsCompletedSuccessfully.Should().BeFalse();
 

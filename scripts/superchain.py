@@ -16,7 +16,7 @@ from urllib.request import urlopen
 from zipfile import ZipFile
 
 SUPERCHAIN_REPOSITORY = "https://github.com/ethereum-optimism/superchain-registry/archive/refs/heads/main.zip"
-IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet", "rehearsal-0-bn-0", "rehearsal-0-bn-1", "celo", "radius_testnet"]
+IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet", "rehearsal-0-bn-0", "rehearsal-0-bn-1", "celo", "radius_testnet", "silent-data-mainnet"]
 IGNORED_L1S = ["sepolia-dev-0"]
 
 
@@ -305,7 +305,7 @@ def to_nethermind_runner(chain_name, l1, chain):
         "Sync": {"FastSync": True, "SnapSync": True, "FastSyncCatchUpHeightDelta": "10000000000"},
         "Discovery": {"DiscoveryVersion": "V5"},
         "JsonRpc": {"Enabled": True, "Port": 8545, "EnginePort": 8551},
-        "Pruning": {"PruningBoundary": 192},
+        "Pruning": {"PruningBoundary": 256},
         "Blocks": {"SecondsPerSlot": lookup(chain, ["block_time"])},
         "Merge": {"Enabled": True},
         "Optimism": {"SequencerUrl": lookup(chain, ["sequencer_rpc"])},

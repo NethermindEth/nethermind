@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -142,11 +143,11 @@ namespace Nethermind.Serialization.Rlp
 
             decoderContext.ReadSequenceLength();
             decoderContext.DecodeAddressStructRef(out var address);
-            var (PrefixLength, ContentLength) = decoderContext.PeekPrefixAndContentLength();
-            var sequenceLength = PrefixLength + ContentLength;
-            var topics = decoderContext.Data.Slice(decoderContext.Position, sequenceLength);
+            var (prefixLength, contentLength) = decoderContext.PeekPrefixAndContentLength();
+            int sequenceLength = prefixLength + contentLength;
+            ReadOnlySpan<byte> topics = decoderContext.Data.Slice(decoderContext.Position, sequenceLength);
             decoderContext.SkipItem();
-            var data = decoderContext.DecodeByteArraySpan();
+            ReadOnlySpan<byte> data = decoderContext.DecodeByteArraySpan();
 
             item = new LogEntryStructRef(address, data, topics);
         }

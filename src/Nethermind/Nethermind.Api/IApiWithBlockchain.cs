@@ -17,14 +17,13 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Api
 {
-    public interface IApiWithBlockchain : IApiWithStores, IBlockchainBridgeFactory
+    public interface IApiWithBlockchain : IApiWithStores
     {
         (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForInit => (this, this);
         (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForBlockchain => (this, this);
         (IApiWithBlockchain GetFromApi, IApiWithBlockchain SetInApi) ForProducer => (this, this);
 
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
-        IGenesisPostProcessor GenesisPostProcessor { get; set; }
         IBlockProcessingQueue BlockProcessingQueue { get; }
         IBlockProducer? BlockProducer { get; set; }
         IBlockProducerRunner BlockProducerRunner { get; set; }

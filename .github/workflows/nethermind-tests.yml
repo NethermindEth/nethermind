@@ -56,6 +56,7 @@ jobs:
           - Nethermind.Consensus.Test
           - Nethermind.Core.Test
           - Nethermind.Db.Test
+          - Nethermind.Era1.Test
           - Nethermind.Ethash.Test
           - Nethermind.EthStats.Test
           - Nethermind.Evm.Test
@@ -77,7 +78,6 @@ jobs:
           - Nethermind.Network.Enr.Test
           - Nethermind.Network.Test
           - Nethermind.Optimism.Test
-          # - Nethermind.Overseer.Test
           - Nethermind.Runner.Test
           - Nethermind.Serialization.Ssz.Test
           - Nethermind.Shutter.Test
@@ -90,13 +90,14 @@ jobs:
           - Nethermind.Trie.Test
           - Nethermind.TxPool.Test
           - Nethermind.Wallet.Test
+          - Nethermind.Xdc.Test
     steps:
     - name: Check out repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         submodules: ${{ startsWith(matrix.project, 'Ethereum.') && 'recursive' || 'false' }}
     - name: Set up .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
     - name: ${{ matrix.project }}
       id: test
       run: |

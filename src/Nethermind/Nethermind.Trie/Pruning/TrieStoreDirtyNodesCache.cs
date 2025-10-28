@@ -35,14 +35,21 @@ internal class TrieStoreDirtyNodesCache
     public long TotalDirtyMemory => _totalDirtyMemory;
 
     public readonly long KeyMemoryUsage;
+    private readonly bool _keepRoot;
 
-    public TrieStoreDirtyNodesCache(TrieStore trieStore, bool storeByHash, ILogger logger)
+    public TrieStoreDirtyNodesCache(TrieStore trieStore, bool storeByHash, bool keepRoot, ILogger logger)
     {
         _trieStore = trieStore;
         _logger = logger;
         // If the nodestore indicated that path is not required,
         // we will use a map with hash as its key instead of the full Key to reduce memory usage.
         _storeByHash = storeByHash;
+
+        // Keep root causes persisted root nodes to not get pruned out of the cache. This ensure that it will
+        // be deleted when another canonical state is persisted which prevent having incomplete state which can happen
+        // when inner nodes get deleted but the root does not.
+        _keepRoot = keepRoot;
+
         // NOTE: DirtyNodesCache is already sharded.
         int concurrencyLevel = Math.Min(Environment.ProcessorCount * 4, 32);
         int initialBuckets = TrieStore.HashHelpers.GetPrime(Math.Max(31, concurrencyLevel));
@@ -87,17 +94,7 @@ internal class TrieStoreDirtyNodesCache
         // ReSharper disable once ConditionIsAlwaysTrueOrFalse
         if (TryGetValue(key, out TrieNode trieNode))
         {
-            if (trieNode!.FullRlp.IsNull)
-            {
-                // // this happens in SyncProgressResolver
-                // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
-                return new TrieNode(NodeType.Unknown, key.Keccak);
-            }
-
-            // we returning a copy to avoid multithreaded access
-            trieNode = new TrieNode(NodeType.Unknown, key.Keccak, trieNode.FullRlp);
-            trieNode.ResolveNode(_trieStore.GetTrieStore(key.Address), key.Path);
-            trieNode.Keccak = key.Keccak;
+            trieNode = _trieStore.CloneForReadOnly(key, trieNode);
 
             Metrics.LoadedFromCacheNodesCount++;
         }
@@ -144,10 +141,7 @@ internal class TrieStoreDirtyNodesCache
 
     public bool TryGetValue(in Key key, out TrieNode node)
     {
-        NodeRecord nodeRecord;
-        bool ok = _storeByHash
-            ? _byHashObjectCache.TryGetValue(key.Keccak, out nodeRecord)
-            : _byKeyObjectCache.TryGetValue(key, out nodeRecord);
+        bool ok = TryGetRecord(key, out NodeRecord nodeRecord);
 
         if (ok)
         {
@@ -157,6 +151,13 @@ internal class TrieStoreDirtyNodesCache
 
         node = null;
         return false;
+    }
+
+    public bool TryGetRecord(Key key, out NodeRecord nodeRecord)
+    {
+        return _storeByHash
+            ? _byHashObjectCache.TryGetValue(key.Keccak, out nodeRecord)
+            : _byKeyObjectCache.TryGetValue(key, out nodeRecord);
     }
 
     private NodeRecord GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash
@@ -324,7 +325,7 @@ internal class TrieStoreDirtyNodesCache
                         continue;
                     }
 
-                    if (_trieStore.IsNoLongerNeeded(lastCommit))
+                    if (_trieStore.IsNoLongerNeeded(lastCommit) && !(_keepRoot && key.IsRoot()))
                     {
                         RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);
                         continue;
@@ -355,7 +356,7 @@ internal class TrieStoreDirtyNodesCache
         {
             Hash256 keccak;
             TreePath path2 = key.Path;
-            keccak = node.GenerateKey(_trieStore.GetTrieStore(key.Address), ref path2, isRoot: true);
+            keccak = node.GenerateKey(_trieStore.GetTrieStore(key.Address), ref path2);
             if (keccak != key.Keccak)
             {
                 ThrowPersistedNodeDoesNotMatch(key, node, keccak);
@@ -497,6 +498,11 @@ internal class TrieStoreDirtyNodesCache
         public override string ToString()
         {
             return $"A:{Address} P:{Path} K:{Keccak}";
+        }
+
+        public bool IsRoot()
+        {
+            return Path.Length == 0;
         }
     }
 

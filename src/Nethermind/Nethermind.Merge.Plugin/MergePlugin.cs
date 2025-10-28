@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -239,8 +240,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     {
         return new MergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(), _api.FinalizationManager, _poSSwitcher);
     }
-
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize { get => true; }
 

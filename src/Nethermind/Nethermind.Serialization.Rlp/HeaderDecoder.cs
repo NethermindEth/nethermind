@@ -8,7 +8,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class HeaderDecoder : IRlpValueDecoder<BlockHeader>, IRlpStreamDecoder<BlockHeader>
+    public interface IHeaderDecoder : IBlockHeaderDecoder<BlockHeader> { }
+    public interface IBlockHeaderDecoder<T> : IRlpValueDecoder<T>, IRlpStreamDecoder<T> where T : BlockHeader { }
+
+    public class HeaderDecoder : IHeaderDecoder
     {
         public const int NonceLength = 8;
 

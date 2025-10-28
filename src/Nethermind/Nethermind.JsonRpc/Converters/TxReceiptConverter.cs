@@ -23,7 +23,7 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
     public override void Write(Utf8JsonWriter writer, TxReceipt value, JsonSerializerOptions options)
     {
         writer.WriteStartObject();
-        var receipt = new ReceiptForRpc(value.TxHash!, value, default);
+        var receipt = new ReceiptForRpc(value.TxHash!, value, 0, default);
         if (receipt.Type != TxType.Legacy)
         {
             writer.WritePropertyName("type");

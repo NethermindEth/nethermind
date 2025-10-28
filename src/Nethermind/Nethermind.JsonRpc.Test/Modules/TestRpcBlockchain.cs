@@ -1,10 +1,9 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
@@ -39,8 +38,8 @@ using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Json;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -112,12 +111,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public Builder<T> WithGenesisBlockBuilder(BlockBuilder blockBuilder)
-            {
-                _blockchain.GenesisBlockBuilder = blockBuilder;
-                return this;
-            }
-
             public Builder<T> WithGasPriceOracle(IGasPriceOracle gasPriceOracle)
             {
                 _blockchain.GasPriceOracle = gasPriceOracle;
@@ -172,10 +165,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                     // TODO: Double check if block production have the same reward calculator
                     builder.UpdateSingleton<IRpcModuleFactory<ITraceRpcModule>>(builder => builder.AddSingleton<IRewardCalculatorSource, RewardCalculator>());
 
-                    // Filter manager need the block processor, but the block processor is currently not completely DI, so need to patch it in.
-                    builder.AddSingleton<IFilterManager, IFilterStore, ITxPool, ILogManager>((store, txPool, logManager) =>
-                            new FilterManager(store, _blockchain.BranchProcessor, txPool, logManager));
-
                     if (_blockFinderOverride is not null) builder.AddSingleton(_blockFinderOverride);
                     if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
                     if (_blockchainBridgeOverride is not null) builder.AddSingleton(_blockchainBridgeOverride);
@@ -208,6 +197,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
+            @EthereumJsonSerializer.StrictHexFormat = RpcConfig.StrictHexFormat;
             await base.Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
@@ -227,7 +217,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ISyncServer>(),
                 Substitute.For<IBackgroundTaskScheduler>(),
                 TxPool,
-                Substitute.For<IPooledTxsRequestor>(),
                 Substitute.For<IDiscoveryApp>(),
                 Substitute.For<IMessageSerializationService>(),
                 Substitute.For<IRlpxHost>(),
@@ -238,6 +227,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IGossipPolicy>(),
                 WorldStateManager,
                 LimboLogs.Instance,
+                Substitute.For<ITxPoolConfig>(),
+                Substitute.For<ISpecProvider>(),
                 Substitute.For<ITxGossipPolicy>()
             );
 

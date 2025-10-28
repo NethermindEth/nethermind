@@ -15,35 +15,29 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Merge.Plugin.BlockProduction
 {
-    public class PostMergeBlockProducer : BlockProducerBase
+    public class PostMergeBlockProducer(
+        ITxSource txSource,
+        IBlockchainProcessor processor,
+        IBlockTree blockTree,
+        IWorldState stateProvider,
+        IGasLimitCalculator gasLimitCalculator,
+        ISealEngine sealEngine,
+        ITimestamper timestamper,
+        ISpecProvider specProvider,
+        ILogManager logManager,
+        IBlocksConfig? blocksConfig)
+        : BlockProducerBase(txSource,
+            processor,
+            sealEngine,
+            blockTree,
+            stateProvider,
+            gasLimitCalculator,
+            timestamper,
+            specProvider,
+            logManager,
+            ConstantDifficulty.Zero,
+            blocksConfig)
     {
-        public PostMergeBlockProducer(
-            ITxSource txSource,
-            IBlockchainProcessor processor,
-            IBlockTree blockTree,
-            IWorldState stateProvider,
-            IGasLimitCalculator gasLimitCalculator,
-            ISealEngine sealEngine,
-            ITimestamper timestamper,
-            ISpecProvider specProvider,
-            ILogManager logManager,
-            IBlocksConfig? miningConfig)
-            : base(
-                txSource,
-                processor,
-                sealEngine,
-                blockTree,
-                stateProvider,
-                gasLimitCalculator,
-                timestamper,
-                specProvider,
-                logManager,
-                ConstantDifficulty.Zero,
-                miningConfig
-            )
-        {
-        }
-
         protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             BlockHeader blockHeader = base.PrepareBlockHeader(parent, payloadAttributes);

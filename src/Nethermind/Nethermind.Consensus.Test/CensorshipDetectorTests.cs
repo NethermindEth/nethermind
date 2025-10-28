@@ -262,8 +262,7 @@ public class CensorshipDetectorTests
             new ChainHeadInfoProvider(
                 new ChainHeadSpecProvider(_specProvider, _blockTree),
                 _blockTree,
-                _stateProvider,
-                new EthereumCodeInfoRepository()),
+                _stateProvider),
             new TxPoolConfig(),
             new TxValidator(_specProvider.ChainId),
             _logManager,

@@ -73,6 +73,7 @@ namespace Nethermind.Stats.Model
 
         public string EthDetails { get; set; }
         public long CurrentReputation { get; set; }
+        public string Enr { get; set; }
 
         public Node(NetworkNode networkNode, bool isStatic = false)
             : this(networkNode.NodeId, networkNode.Host, networkNode.Port, isStatic)

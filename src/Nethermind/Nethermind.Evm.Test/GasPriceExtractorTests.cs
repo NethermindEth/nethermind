@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 

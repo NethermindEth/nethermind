@@ -73,7 +73,7 @@ namespace Nethermind.Core.Extensions
             }
             if (bytes.Length == 0) return "";
 
-            int leadingZeros = skipLeadingZeros ? Bytes.CountLeadingNibbleZeros(bytes) : 0;
+            int leadingZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros;
 
             if (skipLeadingZeros && length == (withZeroX ? 2 : 0))
@@ -106,7 +106,7 @@ namespace Nethermind.Core.Extensions
         {
             string hashHex = Keccak.Compute(bytes.ToHexString(false)).ToString(false);
 
-            int leadingZeros = skipLeadingZeros ? Bytes.CountLeadingNibbleZeros(bytes) : 0;
+            int leadingZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros;
             if (leadingZeros >= 2)
             {
@@ -185,7 +185,14 @@ namespace Nethermind.Core.Extensions
 
         public static ArrayPoolList<T> ToPooledList<T>(this in ReadOnlySpan<T> span)
         {
-            ArrayPoolList<T> newList = new ArrayPoolList<T>(span.Length);
+            ArrayPoolList<T> newList = new(span.Length);
+            newList.AddRange(span);
+            return newList;
+        }
+
+        public static ArrayPoolListRef<T> ToPooledListRef<T>(this in ReadOnlySpan<T> span)
+        {
+            ArrayPoolListRef<T> newList = new(span.Length);
             newList.AddRange(span);
             return newList;
         }

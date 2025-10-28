@@ -135,9 +135,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     {
         if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
-        int currentRecoveryQueueSize = Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
         Hash256? blockHash = block.Hash!;
-        BlockRef blockRef = currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx
+        BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx
             ? new BlockRef(blockHash, processingOptions)
             : new BlockRef(block, processingOptions);
 
@@ -152,6 +151,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
                     if (_queueCount > 1)
                     {
+                        Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
                         _recoveryQueue.Writer.TryWrite(blockRef);
                     }
                     else

@@ -44,12 +44,19 @@ namespace Nethermind.Db
 
                 public void Dispose() => _wrapped.Dispose();
 
+                public void Clear() => _wrapped.Clear();
+
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
                     => _wrapped.Set(key, Compress(value), flags);
 
                 public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
                 {
                     _wrapped.PutSpan(key, Compress(value, stackalloc byte[value.Length]), flags);
+                }
+
+                public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+                {
+                    throw new InvalidOperationException("EOA compressing DB does not support merging");
                 }
 
                 public bool PreferWriteByArray => _wrapped.PreferWriteByArray;
@@ -128,7 +135,7 @@ namespace Nethermind.Db
                 .Select(static kvp => new KeyValuePair<byte[], byte[]>(kvp.Key, Decompress(kvp.Value)));
 
             public IEnumerable<byte[]> GetAllKeys(bool ordered = false) =>
-                _wrapped.GetAllKeys(ordered).Select(Decompress);
+                _wrapped.GetAllKeys(ordered);
 
             public IEnumerable<byte[]> GetAllValues(bool ordered = false) =>
                 _wrapped.GetAllValues(ordered).Select(Decompress);

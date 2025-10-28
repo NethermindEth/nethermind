@@ -9,7 +9,7 @@ public sealed class MemoryMetricsReporter
     : IMetricsReporter
     , IMetricsReportProvider
 {
-    private readonly ConcurrentDictionary<string, TimeSpan> _singles = new();
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, TimeSpan>> _singles = new();
     private readonly ConcurrentDictionary<string, TimeSpan> _batches = new();
 
     private TimeSpan _totalRunningTime;
@@ -24,9 +24,10 @@ public sealed class MemoryMetricsReporter
     public Task Succeeded(CancellationToken token = default) => Task.FromResult(Interlocked.Increment(ref _succeeded));
     public Task Failed(CancellationToken token = default) => Task.FromResult(Interlocked.Increment(ref _failed));
     public Task Ignored(CancellationToken token = default) => Task.FromResult(Interlocked.Increment(ref _ignored));
+
     public Task Batch(JsonRpc.Request.Batch batch, TimeSpan elapsed, CancellationToken token = default)
     {
-        var id = batch.Id?.ToString();
+        var id = batch.Id;
         if (id is not null)
         {
             _batches[id] = elapsed;
@@ -34,12 +35,25 @@ public sealed class MemoryMetricsReporter
 
         return Task.CompletedTask;
     }
+
     public Task Single(JsonRpc.Request.Single single, TimeSpan elapsed, CancellationToken token = default)
     {
-        var id = single.Id?.ToString();
-        if (id is not null)
+        var id = single.Id;
+        var methodName = single.MethodName;
+        if (id is not null && methodName is not null)
         {
-            _singles[id] = elapsed;
+            var newMethodDict = new ConcurrentDictionary<string, TimeSpan>
+            {
+                [id] = elapsed,
+            };
+            _singles.AddOrUpdate(
+                methodName,
+                newMethodDict,
+                (_, dict) =>
+                {
+                    dict[id] = elapsed;
+                    return dict;
+                });
         }
 
         return Task.CompletedTask;
@@ -60,7 +74,11 @@ public sealed class MemoryMetricsReporter
             Ignored = _ignored,
             Responses = _responses,
             TotalTime = _totalRunningTime,
-            Singles = _singles.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+            Singles = _singles.ToDictionary(
+                kvp => kvp.Key,
+                IReadOnlyDictionary<string, TimeSpan> (kvp) => kvp.Value.ToDictionary(
+                    ikvp => ikvp.Key,
+                    ikvp => ikvp.Value)),
             Batches = _batches.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
         };
     }

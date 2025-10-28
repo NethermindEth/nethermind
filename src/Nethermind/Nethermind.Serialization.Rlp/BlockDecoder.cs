@@ -7,10 +7,12 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class BlockDecoder : IRlpValueDecoder<Block>, IRlpStreamDecoder<Block>
+    public class BlockDecoder(IHeaderDecoder headerDecoder) : IRlpValueDecoder<Block>, IRlpStreamDecoder<Block>
     {
-        private readonly HeaderDecoder _headerDecoder = new();
-        private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
+        private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? throw new ArgumentNullException(nameof(headerDecoder));
+        private readonly BlockBodyDecoder _blockBodyDecoder = new BlockBodyDecoder(headerDecoder);
+
+        public BlockDecoder() : this(new HeaderDecoder()) { }
 
         public Block? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -67,7 +69,7 @@ namespace Nethermind.Serialization.Rlp
             int sequenceLength = decoderContext.ReadSequenceLength();
             int blockCheck = decoderContext.Position + sequenceLength;
 
-            BlockHeader header = Rlp.Decode<BlockHeader>(ref decoderContext);
+            BlockHeader header = _headerDecoder.Decode(ref decoderContext);
             BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck);
 
             Block block = new(header, body)
@@ -100,7 +102,7 @@ namespace Nethermind.Serialization.Rlp
 
             (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength) = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
-            stream.Encode(item.Header);
+            _headerDecoder.Encode(stream, item.Header);
             stream.StartSequence(txsLength);
             for (int i = 0; i < item.Transactions.Length; i++)
             {
@@ -124,7 +126,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public static ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
+        public ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
         {
             Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory, true);
 
@@ -137,7 +139,7 @@ namespace Nethermind.Serialization.Rlp
             int sequenceLength = decoderContext.ReadSequenceLength();
             int blockCheck = decoderContext.Position + sequenceLength;
 
-            BlockHeader header = Rlp.Decode<BlockHeader>(ref decoderContext);
+            BlockHeader header = _headerDecoder.Decode(ref decoderContext);
 
             int contentLength = decoderContext.ReadSequenceLength();
             int transactionCount = decoderContext.PeekNumberOfItemsRemaining(decoderContext.Position + contentLength);

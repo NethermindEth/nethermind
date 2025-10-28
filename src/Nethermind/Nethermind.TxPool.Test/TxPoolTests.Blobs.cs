@@ -132,17 +132,22 @@ namespace Nethermind.TxPool.Test
             };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-            for (int nonce = 0; nonce < txPoolConfig.Size; nonce++)
+
+            Transaction[] txs = new Transaction[txPoolConfig.Size];
+            Parallel.For(0, txPoolConfig.Size, (nonce) =>
             {
-                Transaction tx = Build.A.Transaction
+                txs[nonce] = Build.A.Transaction
                     .WithNonce((UInt256)nonce)
                     .WithType(txType)
                     .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(1.GWei())
                     .WithMaxPriorityFeePerGas(1.GWei())
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            });
 
-                _txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(nonce > expectedNumberOfAcceptedTxs
+            for (int nonce = 0; nonce < txPoolConfig.Size; nonce++)
+            {
+                _txPool.SubmitTx(txs[nonce], TxHandlingOptions.None).Should().Be(nonce > expectedNumberOfAcceptedTxs
                     ? AcceptTxResult.NonceTooFarInFuture
                     : AcceptTxResult.Accepted);
             }
@@ -465,7 +470,7 @@ namespace Nethermind.TxPool.Test
             IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
             specProvider.GetCurrentHeadSpec().Returns(releaseSpec);
 
-            ChainHeadInfoProvider chainHeadInfoProvider = new(specProvider, _blockTree, _stateProvider, new EthereumCodeInfoRepository());
+            ChainHeadInfoProvider chainHeadInfoProvider = new(specProvider, _blockTree, _stateProvider);
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 },
                 specProvider: specProvider, chainHeadInfoProvider: chainHeadInfoProvider);
 
@@ -775,7 +780,8 @@ namespace Nethermind.TxPool.Test
         public void should_handle_indexing_blobs_when_adding_txs_in_parallel([Values(true, false)] bool isPersistentStorage)
         {
             const int txsPerSender = 10;
-            int poolSize = TestItem.PrivateKeys.Length * txsPerSender;
+            PrivateKey[] testPrivateKeys = TestItem.PrivateKeys[..64];
+            int poolSize = testPrivateKeys.Length * txsPerSender;
             TxPoolConfig txPoolConfig = new()
             {
                 BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
@@ -791,13 +797,13 @@ namespace Nethermind.TxPool.Test
 
             byte[] expectedBlobVersionedHash = null;
 
-            foreach (PrivateKey privateKey in TestItem.PrivateKeys)
+            foreach (PrivateKey privateKey in testPrivateKeys)
             {
                 EnsureSenderBalance(privateKey.Address, UInt256.MaxValue);
             }
 
             // adding, getting and removing txs in parallel
-            Parallel.ForEach(TestItem.PrivateKeys, privateKey =>
+            Parallel.ForEach(testPrivateKeys, privateKey =>
             {
                 for (int i = 0; i < txsPerSender; i++)
                 {

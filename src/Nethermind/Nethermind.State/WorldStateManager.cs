@@ -56,14 +56,6 @@ public class WorldStateManager : IWorldStateManager
         remove => _trieStore.ReorgBoundaryReached -= value;
     }
 
-    public void InitializeNetwork(IPathRecovery pathRecovery)
-    {
-        if (_worldState is HealingWorldState healingWorldState)
-        {
-            healingWorldState.InitializeNetwork(pathRecovery);
-        }
-    }
-
     public IStateReader GlobalStateReader { get; }
 
     public ISnapServer? SnapServer => _trieStore.Scheme == INodeStorage.KeyScheme.Hash ? null : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, GlobalStateReader, _logManager, _lastNStateRootTracker);

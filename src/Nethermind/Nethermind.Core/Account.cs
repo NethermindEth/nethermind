@@ -165,9 +165,10 @@ namespace Nethermind.Core
         public UInt256 Nonce => _nonce;
         public UInt256 Balance => _balance;
         public ValueHash256 StorageRoot => _storageRoot;
-        public bool IsTotallyEmpty => IsEmpty && _storageRoot == Keccak.EmptyTreeHash.ValueHash256;
+        public bool IsTotallyEmpty => IsEmpty && IsStorageEmpty;
         public bool IsEmpty => Balance.IsZero && Nonce.IsZero && CodeHash == Keccak.OfAnEmptyString.ValueHash256;
         public bool IsContract => CodeHash != Keccak.OfAnEmptyString.ValueHash256;
+        public bool IsStorageEmpty => _storageRoot == Keccak.EmptyTreeHash.ValueHash256;
         public bool IsNull
         {
             get
@@ -204,7 +205,7 @@ namespace Nethermind.Core
             return _nonce == other.Nonce &&
                    _balance == other.Balance &&
                    CodeHash == other.CodeHash &&
-                   StorageRoot == other.StorageRoot;
+                   _storageRoot == other._storageRoot;
         }
     }
 }

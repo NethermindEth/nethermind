@@ -16,7 +16,6 @@ public class EthStatsPlugin(IEthStatsConfig ethStatsConfig) : INethermindPlugin
     public string Name => "EthStats";
     public string Description => "Ethereum Statistics";
     public string Author => "Nethermind";
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     public IModule Module => new EthStatsModule();
 }
 

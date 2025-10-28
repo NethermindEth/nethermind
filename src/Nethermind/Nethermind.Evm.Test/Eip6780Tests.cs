@@ -26,6 +26,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Core.Crypto;
 using System;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Evm.Test
 {

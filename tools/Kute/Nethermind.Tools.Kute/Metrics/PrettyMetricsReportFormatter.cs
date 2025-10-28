@@ -7,7 +7,7 @@ public sealed class PrettyMetricsReportFormatter : IMetricsReportFormatter
 {
     public async Task WriteAsync(Stream stream, MetricsReport report, CancellationToken token = default)
     {
-        using var writer = new StreamWriter(stream);
+        await using var writer = new StreamWriter(stream);
         await writer.WriteLineAsync("=== Report ===", token);
         await writer.WriteLineAsync($"Total Time: {report.TotalTime.TotalSeconds} s", token);
         await writer.WriteLineAsync($"Total Messages: {report.TotalMessages}\n", token);
@@ -16,11 +16,16 @@ public sealed class PrettyMetricsReportFormatter : IMetricsReportFormatter
         await writer.WriteLineAsync($"Ignored: {report.Ignored}", token);
         await writer.WriteLineAsync($"Responses: {report.Responses}\n", token);
         await writer.WriteLineAsync("Singles:", token);
-        await writer.WriteLineAsync($"  Count: {report.Singles.Count}", token);
-        await writer.WriteLineAsync($"  Max: {report.SinglesMetrics.Max.TotalMilliseconds} ms", token);
-        await writer.WriteLineAsync($"  Average: {report.SinglesMetrics.Average.TotalMilliseconds} ms", token);
-        await writer.WriteLineAsync($"  Min: {report.SinglesMetrics.Min.TotalMilliseconds} ms", token);
-        await writer.WriteLineAsync($"  Stddev: {report.SinglesMetrics.StandardDeviation.TotalMilliseconds} ms", token);
+        foreach ((var methodName, var metrics) in report.SinglesMetrics)
+        {
+            await writer.WriteLineAsync($"  {methodName}:", token);
+            await writer.WriteLineAsync($"    Count: {report.Singles[methodName].Count}", token);
+            await writer.WriteLineAsync($"    Max: {metrics.Max.TotalMilliseconds} ms", token);
+            await writer.WriteLineAsync($"    Average: {metrics.Average.TotalMilliseconds} ms", token);
+            await writer.WriteLineAsync($"    Min: {metrics.Min.TotalMilliseconds} ms", token);
+            await writer.WriteLineAsync($"    Stddev: {metrics.StandardDeviation.TotalMilliseconds} ms", token);
+        }
+
         await writer.WriteLineAsync("Batches:", token);
         await writer.WriteLineAsync($"  Count: {report.Batches.Count}", token);
         await writer.WriteLineAsync($"  Max: {report.BatchesMetrics.Max.TotalMilliseconds} ms", token);
@@ -34,6 +39,6 @@ internal static class StreamWriterExt
 {
     public static async Task WriteLineAsync(this StreamWriter writer, string value, CancellationToken token)
     {
-        await writer.WriteLineAsync(MemoryExtensions.AsMemory(value), token);
+        await writer.WriteLineAsync(value.AsMemory(), token);
     }
 }

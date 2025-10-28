@@ -475,9 +475,7 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(BlobTransactionOrderingTestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
-            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-            IWorldState stateProvider = worldStateManager.GlobalWorldState;
-            IStateReader _ = worldStateManager.GlobalStateReader;
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             Hash256 SetAccountStates(IEnumerable<Address> missingAddresses)

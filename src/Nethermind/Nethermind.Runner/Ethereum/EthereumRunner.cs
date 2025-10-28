@@ -35,11 +35,6 @@ public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManage
     {
         await serviceStopper.StopAllServices();
 
-        foreach (INethermindPlugin plugin in api.Plugins)
-        {
-            await Stop(async () => await plugin.DisposeAsync(), $"Disposing plugin {plugin.Name}");
-        }
-
         await lifetimeScope.DisposeAsync();
         if (_logger.IsInfo)
         {

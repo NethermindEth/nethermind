@@ -62,14 +62,14 @@ internal static partial class EvmInstructions
 
         // Deduct gas for the operation plus the cost for memory expansion.
         // Gas cost is calculated as a fixed "VeryLow" cost plus a per-32-bytes cost.
-        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * Div32Ceiling(in result, out bool outOfGas);
+        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
 
         // Only perform the copy if length (result) is non-zero.
         if (!result.IsZero)
         {
             // Check and update memory expansion cost.
-            if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result))
+            if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result))
                 goto OutOfGas;
 
             // Obtain the code slice with zero-padding if needed.
@@ -144,21 +144,21 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
-        gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * Div32Ceiling(in result, out bool outOfGas);
+        gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
 
         // Charge gas for account access (considering hot/cold storage costs).
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address))
+        if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address))
             goto OutOfGas;
 
         if (!result.IsZero)
         {
             // Update memory cost if the destination region requires expansion.
-            if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result))
+            if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result))
                 goto OutOfGas;
 
             ICodeInfo codeInfo = vm.CodeInfoRepository
-                .GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _);
+                .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
 
             // Get the external code from the repository.
             ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
@@ -228,7 +228,7 @@ internal static partial class EvmInstructions
         if (address is null) goto StackUnderflow;
 
         // Charge gas for accessing the account's state.
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address))
+        if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address))
             goto OutOfGas;
 
         // Attempt a peephole optimization when tracing is not active and code is available.
@@ -285,7 +285,7 @@ internal static partial class EvmInstructions
 
         // No optimization applied: load the account's code from storage.
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
-            .GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _)
+            .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
             .CodeSpan;
         // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
         if (spec.IsEofEnabled && EofValidator.IsEof(accountCode, out _))

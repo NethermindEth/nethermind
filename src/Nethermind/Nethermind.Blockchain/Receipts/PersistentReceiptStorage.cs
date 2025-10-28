@@ -38,7 +38,8 @@ namespace Nethermind.Blockchain.Receipts
         private const int CacheSize = 64;
         private readonly LruCache<ValueHash256, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
-        public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+        public event EventHandler<BlockReplacementEventArgs>? NewCanonicalReceipts;
+        public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted;
 
         public PersistentReceiptStorage(
             IColumnsDb<ReceiptsColumns> receiptsDb,
@@ -73,7 +74,7 @@ namespace Nethermind.Blockchain.Receipts
         private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
             EnsureCanonical(e.Block);
-            ReceiptsInserted?.Invoke(this, e);
+            NewCanonicalReceipts?.Invoke(this, e);
 
             // Dont block main loop
             Task.Run(() =>
@@ -86,7 +87,7 @@ namespace Nethermind.Blockchain.Receipts
                     Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
                     if (newOldTx is not null)
                     {
-                        RemoveReceipts(newOldTx);
+                        RemoveBlockTx(newOldTx);
                     }
                 }
             });
@@ -288,6 +289,8 @@ namespace Nethermind.Blockchain.Receipts
             {
                 EnsureCanonical(block, lastBlockNumber);
             }
+
+            ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
         }
 
         public long MigratedBlockNumber
@@ -338,6 +341,11 @@ namespace Nethermind.Blockchain.Receipts
             GetBlockNumPrefixedKey(block.Number, block.Hash, blockNumPrefixed);
             _receiptsDb.Remove(blockNumPrefixed);
 
+            RemoveBlockTx(block);
+        }
+
+        private void RemoveBlockTx(Block block)
+        {
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
             foreach (Transaction tx in block.Transactions)
             {

@@ -25,9 +25,6 @@
     "Enabled": false,
     "IntervalSeconds": 5
   },
-  "Mining": {
-    "MinGasPrice": 1
-  },
   "Receipt": {
     "TxLookupLimit": 0
   },

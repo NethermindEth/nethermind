@@ -89,7 +89,7 @@ namespace Nethermind.Evm.Test
                 ContractDeployment.CREATE2 => Prepare.EvmCode.Create2(byteCode, salt, UInt256.Zero).Done,
                 _ => byteCode,
             };
-            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+            _processor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
             long blockNumber = eip3541Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, createContract);
 

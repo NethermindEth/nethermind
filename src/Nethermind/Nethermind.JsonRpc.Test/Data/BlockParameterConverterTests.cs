@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Json;
-
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
@@ -27,6 +29,27 @@ namespace Nethermind.JsonRpc.Test.Data
             BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(input)!;
 
             Assert.That(blockParameter.BlockNumber, Is.EqualTo(output));
+        }
+
+        [TestCase("0", true)]
+        [TestCase("100", true)]
+        [TestCase("\"0x\"", false)]
+        [TestCase("\"0x0\"", false)]
+        [TestCase("\"0xA\"", false)]
+        [TestCase("\"0xa\"", false)]
+        [TestCase("\"0\"", true)]
+        [TestCase("\"100\"", true)]
+        public void Cant_read_block_number_when_strict_hex_format_is_enabled(string input, bool throws)
+        {
+            EthereumJsonSerializer.StrictHexFormat = true;
+            IJsonSerializer serializer = new EthereumJsonSerializer();
+
+            Func<BlockParameter> action = () => serializer.Deserialize<BlockParameter>(input);
+
+            if (throws)
+                action.Should().Throw<FormatException>();
+            else
+                action.Should().NotThrow();
         }
 
         [TestCase("null", BlockParameterType.Latest)]

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -56,6 +57,7 @@ namespace Nethermind.Synchronization.SnapSync
             List<ValueHash256> codeHashes = new();
             bool hasExtraStorage = false;
 
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(accounts.Count);
             for (var index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
@@ -76,13 +78,16 @@ namespace Nethermind.Synchronization.SnapSync
                     codeHashes.Add(account.Account.CodeHash);
                 }
 
-                Rlp rlp = tree.Set(account.Path, account.Account);
-                if (rlp is not null)
+                var account_ = account.Account;
+                Rlp rlp = account_ is null ? null : account_.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account_);
+                entries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp?.Bytes));
+                if (account is not null)
                 {
                     Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
                 }
             }
 
+            tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
             tree.UpdateRootHash();
 
             if (tree.RootHash.ValueHash256 != expectedRootHash)
@@ -130,7 +135,7 @@ namespace Nethermind.Synchronization.SnapSync
         )
         {
             if (slots.Count == 0)
-                throw new ArgumentException("Cannot be empty.", nameof(slots));
+                return (AddRangeResult.EmptySlots, false);
 
             // Validate sorting order
             for (int i = 1; i < slots.Count; i++)
@@ -151,13 +156,15 @@ namespace Nethermind.Synchronization.SnapSync
                 return (result, true);
             }
 
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(slots.Count);
             for (var index = 0; index < slots.Count; index++)
             {
                 PathWithStorageSlot slot = slots[index];
                 Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
-                tree.Set(in slot.Path, slot.SlotRlpValue, rlpEncode: false);
+                entries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
             }
 
+            tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
             tree.UpdateRootHash();
 
             if (tree.RootHash.ValueHash256 != account.Account.StorageRoot)
@@ -165,9 +172,9 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.DifferentRootHash, true);
             }
 
-            // This will work if all StorageRange requests share the same AccountWithPath object which seems to be the case.
-            // If this is not true, StorageRange request should be extended with a lock object.
-            // That lock object should be shared between all other StorageRange requests for same account.
+            // This will work if all StorageRange requests share the same AccountWithPath object, which seems to be the case.
+            // If this is not true, the StorageRange request should be extended with a lock object.
+            // That lock object should be shared between all other StorageRange requests for the same account.
             lock (account.Account)
             {
                 StitchBoundaries(sortedBoundaryList, tree.TrieStore);
@@ -326,7 +333,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 TreePath emptyPath = TreePath.Empty;
                 node.ResolveNode(store, emptyPath);
-                node.ResolveKey(store, ref emptyPath, isRoot: i == 0);
+                node.ResolveKey(store, ref emptyPath);
 
                 dict[node.Keccak] = node;
             }

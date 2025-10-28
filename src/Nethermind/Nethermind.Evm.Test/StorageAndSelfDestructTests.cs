@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test

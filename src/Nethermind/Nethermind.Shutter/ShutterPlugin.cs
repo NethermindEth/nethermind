@@ -60,8 +60,6 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
         return consensusPlugin.InitBlockProducer();
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
     public IModule? Module => new ShutterPluginModule();
 }
 

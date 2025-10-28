@@ -11,7 +11,7 @@ jobs:
     if: ${{ !github.event.release.prerelease }}
     steps:
       - name: Check out Nethermind repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.release.tag_name }}
       - name: Set up GPG
@@ -43,7 +43,7 @@ jobs:
           awk -i inplace -v n=1 '/hash/ { if (++count == n) sub(/hash.*/, "hash='$arm64_hash'"); } 1' debian/postinst
           awk -i inplace -v n=2 '/hash/ { if (++count == n) sub(/hash.*/, "hash='$x64_hash'"); } 1' debian/postinst
 
-          changelog="nethermind ($version) focal; urgency=high\n"
+          changelog="nethermind ($version) jammy; urgency=high\n"
           changelog+="  * Nethermind v$version\n"
           changelog+=" -- Nethermind <devops@nethermind.io>  $(date -R)"
           echo -e "$changelog" > debian/changelog
@@ -67,7 +67,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install debhelper devscripts ubuntu-dev-tools -y
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
       - name: Install launchpadlib
         run: pip install launchpadlib --upgrade
       - name: Copy to other series
@@ -77,8 +77,8 @@ jobs:
           echo ${{ secrets.PPA_COPY_TOKEN }} | base64 --decode > /tmp/lp_credentials
           git clone https://git.launchpad.net/ubuntu-archive-tools
           cd ubuntu-archive-tools
-          for release in "jammy" "noble"; do
-            python3 copy-package -y -b -p nethermindeth --ppa-name=nethermind -s focal --to-suite=$release nethermind
+          for release in "noble"; do
+            python3 copy-package -y -b -p nethermindeth --ppa-name=nethermind -s jammy --to-suite=$release nethermind
           done
           rm -f /tmp/lp_credentials
 
@@ -105,14 +105,14 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           repositories: "homebrew-nethermind"
 
       - name: Check out homebrew-nethermind repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: NethermindEth/homebrew-nethermind
           token: ${{ steps.gh-app.outputs.token }}

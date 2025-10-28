@@ -110,6 +110,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                                     logIndex,
                                     receipt,
                                     receiptLog,
+                                    blockHeader.Timestamp,
                                     removed);
                             }
 

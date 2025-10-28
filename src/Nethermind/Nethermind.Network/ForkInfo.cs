@@ -141,6 +141,8 @@ namespace Nethermind.Network
 
         public ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head)
         {
+            EnsureInitialized();
+
             ForkActivation headActivation = new(head?.Number ?? 0, head?.Number == 0 ? 0 : head?.Timestamp ?? 0);
 
             int indexOfActive = Forks.Length - 1;

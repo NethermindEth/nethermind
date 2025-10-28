@@ -11,6 +11,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -38,7 +39,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync;
 
-public abstract class StateSyncFeedTestsBase
+public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defaultPeerMaxRandomLatency = 0)
 {
     public const int TimeoutLength = 20000;
 
@@ -47,15 +48,6 @@ public abstract class StateSyncFeedTestsBase
 
     protected ILogger _logger;
     protected ILogManager _logManager = null!;
-
-    private readonly int _defaultPeerCount;
-    private readonly int _defaultPeerMaxRandomLatency;
-
-    public StateSyncFeedTestsBase(int defaultPeerCount = 1, int defaultPeerMaxRandomLatency = 0)
-    {
-        _defaultPeerCount = defaultPeerCount;
-        _defaultPeerMaxRandomLatency = defaultPeerMaxRandomLatency;
-    }
 
     public static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] Scenarios => TrieScenarios.Scenarios;
 
@@ -84,14 +76,14 @@ public abstract class StateSyncFeedTestsBase
 
     protected IContainer PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null, int syncDispatcherAllocateTimeoutMs = 10)
     {
-        SyncPeerMock[] syncPeers = new SyncPeerMock[_defaultPeerCount];
-        for (int i = 0; i < _defaultPeerCount; i++)
+        SyncPeerMock[] syncPeers = new SyncPeerMock[defaultPeerCount];
+        for (int i = 0; i < defaultPeerCount; i++)
         {
             Node node = new Node(TestItem.PublicKeys[i], $"127.0.0.{i}", 30302, true)
             {
                 EthDetails = "eth66",
             };
-            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb, node: node, maxRandomizedLatencyMs: _defaultPeerMaxRandomLatency);
+            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb, node: node, maxRandomizedLatencyMs: defaultPeerMaxRandomLatency);
             mockMutator?.Invoke(mock);
             syncPeers[i] = mock;
         }
@@ -170,6 +162,7 @@ public abstract class StateSyncFeedTestsBase
         Lazy<TreeSync> treeSync,
         Lazy<StateSyncFeed> stateSyncFeed,
         Lazy<SyncDispatcher<StateSyncBatch>> syncDispatcher,
+        Lazy<IBlockProcessingQueue> blockProcessingQueue,
         IBlockTree blockTree
     ) : IDisposable
     {
@@ -177,20 +170,21 @@ public abstract class StateSyncFeedTestsBase
         public ISyncPeerPool Pool => syncPeerPool.Value;
         public TreeSync TreeFeed => treeSync.Value;
         public StateSyncFeed Feed => stateSyncFeed.Value;
+        public IBlockProcessingQueue BlockProcessingQueue => blockProcessingQueue.Value;
 
-        private readonly AutoCancelTokenSource _autoCancelTokenSource = new AutoCancelTokenSource();
+        private readonly AutoCancelTokenSource _autoCancelTokenSource = new();
         public CancellationToken CancellationToken => _autoCancelTokenSource.Token;
 
         private bool _isDisposed;
 
-        public void SuggestBlocksWithUpdatedRootHash(Hash256 newRootHash)
+        public async Task SuggestBlocksWithUpdatedRootHash(Hash256 newRootHash)
         {
             Block newBlock = Build.A.Block
                 .WithParent(blockTree.BestSuggestedHeader!)
                 .WithStateRoot(newRootHash)
                 .TestObject;
 
-            blockTree.SuggestBlock(newBlock).Should().Be(AddBlockResult.Added);
+            (await blockTree.SuggestBlockAsync(newBlock)).Should().Be(AddBlockResult.Added);
             blockTree.UpdateMainChain([newBlock], false, true);
         }
 

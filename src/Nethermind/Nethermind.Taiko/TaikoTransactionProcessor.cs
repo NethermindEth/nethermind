@@ -15,12 +15,13 @@ using Nethermind.Taiko.TaikoSpec;
 namespace Nethermind.Taiko;
 
 public class TaikoTransactionProcessor(
+    ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
     ISpecProvider specProvider,
     IWorldState worldState,
     IVirtualMachine virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
     ILogManager? logManager
-    ) : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ) : TransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in IntrinsicGas intrinsicGas)
@@ -37,35 +38,42 @@ public class TaikoTransactionProcessor(
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
         in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
     {
+        UInt256 tipFees = (UInt256)spentGas * premiumPerGas;
+        UInt256 baseFees = (UInt256)spentGas * header.BaseFeePerGas;
+
+        // If the account has been destroyed during the execution, the balance is already set
+        // as zero. So there is no need to create the account and pay the fees to the beneficiary,
+        // except for the case when a restore is required due to a failure.
         bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
         if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
         {
-            UInt256 tipFees = (UInt256)spentGas * premiumPerGas;
-            UInt256 baseFees = (UInt256)spentGas * header.BaseFeePerGas;
-
             WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, tipFees, spec);
-
-            if (!tx.IsAnchorTx && !baseFees.IsZero && spec.FeeCollector is not null)
-            {
-                if (((ITaikoReleaseSpec)spec).IsOntakeEnabled)
-                {
-                    byte basefeeSharingPctg = header.DecodeOntakeExtraData() ?? 0;
-
-                    UInt256 feeCoinbase = baseFees * basefeeSharingPctg / 100;
-                    WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, feeCoinbase, spec);
-
-                    UInt256 feeTreasury = baseFees - feeCoinbase;
-                    WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, feeTreasury, spec);
-                }
-                else
-                {
-                    WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, baseFees, spec);
-                }
-            }
-
-            if (tracer.IsTracingFees)
-                tracer.ReportFees(tipFees, baseFees);
         }
+
+        if (!tx.IsAnchorTx && !baseFees.IsZero && spec.FeeCollector is not null)
+        {
+            if (((ITaikoReleaseSpec)spec).IsOntakeEnabled)
+            {
+                byte basefeeSharingPctg = header.DecodeOntakeExtraData() ?? 0;
+
+                UInt256 feeCoinbase = baseFees * basefeeSharingPctg / 100;
+
+                if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
+                {
+                    WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, feeCoinbase, spec);
+                }
+
+                UInt256 feeTreasury = baseFees - feeCoinbase;
+                WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, feeTreasury, spec);
+            }
+            else
+            {
+                WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, baseFees, spec);
+            }
+        }
+
+        if (tracer.IsTracingFees)
+            tracer.ReportFees(tipFees, baseFees);
     }
 
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)

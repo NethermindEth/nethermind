@@ -5,6 +5,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs;
 using NUnit.Framework;
 

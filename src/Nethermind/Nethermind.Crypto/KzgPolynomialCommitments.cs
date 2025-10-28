@@ -6,6 +6,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 using CkzgLib;
+using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -19,7 +20,6 @@ public static class KzgPolynomialCommitments
             System.Globalization.NumberStyles.Integer);
 
     public const byte KzgBlobHashVersionV1 = 1;
-    public const byte BytesPerBlobVersionedHash = 32;
 
     private static IntPtr _ckzgSetup = IntPtr.Zero;
     internal static IntPtr CkzgSetup => _ckzgSetup;
@@ -60,9 +60,9 @@ public static class KzgPolynomialCommitments
             return false;
         }
 
-        if (hashBuffer.Length != BytesPerBlobVersionedHash)
+        if (hashBuffer.Length != Eip4844Constants.BytesPerBlobVersionedHash)
         {
-            throw new ArgumentException($"{nameof(hashBuffer)} should be {BytesPerBlobVersionedHash} bytes", nameof(hashBuffer));
+            throw new ArgumentException($"{nameof(hashBuffer)} should be {Eip4844Constants.BytesPerBlobVersionedHash} bytes", nameof(hashBuffer));
         }
 
         if (SHA256.TryHashData(commitment, hashBuffer, out _))
