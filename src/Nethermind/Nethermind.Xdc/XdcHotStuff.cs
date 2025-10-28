@@ -139,7 +139,7 @@ namespace Nethermind.Xdc
 
         private void OnNewRound(NewRoundEventArgs args)
         {
-            XdcBlockHeader head = _blockTree.Head.Header as XdcBlockHeader 
+            XdcBlockHeader head = _blockTree.Head.Header as XdcBlockHeader
                 ?? throw new InvalidOperationException("BlockTree head is not XdcBlockHeader.");
             //TODO Should this use be previous round ?
             IXdcReleaseSpec spec = _specProvider.GetXdcSpec(head, args.NewRound);
@@ -183,12 +183,12 @@ namespace Nethermind.Xdc
         {
             CancellationToken ct = _cancellationTokenSource!.Token;
 
-            while(!ct.IsCancellationRequested)
+            while (!ct.IsCancellationRequested)
             {
                 try
                 {
                     await RunRoundChecks(ct);
-                    await Task.Delay(50, ct); 
+                    await Task.Delay(50, ct);
                 }
                 catch (OperationCanceledException)
                 {
@@ -196,7 +196,7 @@ namespace Nethermind.Xdc
                 }
                 catch (InvalidOperationException ex)
                 {
-                    _logger.Error("",ex);
+                    _logger.Error("", ex);
                     throw;
                 }
                 catch (Exception ex)
@@ -331,7 +331,7 @@ namespace Nethermind.Xdc
                 return;
 
             _xdcContext.HighestVotedRound = currentRound;
-            
+
             // Check if we are in the masternode set
             if (!Array.Exists(epochInfo.Masternodes, (a) => a == _signer.Address))
             {
