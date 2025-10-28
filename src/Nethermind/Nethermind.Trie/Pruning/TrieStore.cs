@@ -1199,7 +1199,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
         using var _ = candidateSets;
-        if (candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommmitSet))
+        if (LastPersistedBlockNumber == 0 && candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommmitSet))
         {
             // No commitset to persist, likely as not enough block was processed to reached prune boundary
             // This happens when node is shutdown right after sync.
