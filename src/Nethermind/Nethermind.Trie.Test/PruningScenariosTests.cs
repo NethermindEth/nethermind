@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Common.Utilities;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -601,6 +602,7 @@ namespace Nethermind.Trie.Test
             public PruningContext CommitRandomData()
             {
                 return SetAccountBalance(1, (UInt256)_random.NextInt64())
+                    .SetAccountBalance(_random.Next(0, 1024), (UInt256)_random.NextInt64())
                     .CommitAndWaitForPruning();
             }
         }
@@ -945,17 +947,17 @@ namespace Nethermind.Trie.Test
                 .SetFinalizedPoint()
 
                 .CommitRandomDataWorthNBlocks(10)
-                .VerifyPersisted(7)
-                .VerifyStateDbSize(7)
-                .VerifyCachedPersistedNode(0)
+                .VerifyPersisted(27)
+                .VerifyStateDbSize(27)
+                .VerifyCachedPersistedNode(7)
 
                 .SetFinalizedPoint()
                 .CommitRandomData()
 
-                .VerifyCachedPersistedNode(1)
-                .VerifyPersisted(8)
-                .VerifyStateDbSize(8)
-                // Does not get removed as the persisted node not in are cache so it does not know if it is safe to remove
+                .VerifyCachedPersistedNode(9)
+                .VerifyPersisted(31)
+                .VerifyStateDbSize(24)
+                // Only some get removed as the persisted node not in are cache so it does not know if it is safe to remove
                 ;
         }
 

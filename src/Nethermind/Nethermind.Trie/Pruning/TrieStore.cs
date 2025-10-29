@@ -96,7 +96,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _prunePersistedNodeMinimumTarget = pruningConfig.PrunePersistedNodeMinimumTarget;
         _maxBufferedCommitCount = pruningConfig.MaxBufferedCommitCount;
 
-        _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys;
+        _pastKeyTrackingEnabled = pruningConfig.TrackPastKeys && nodeStorage.RequirePath;
+        _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys && _pastKeyTrackingEnabled;
         _shardBit = pruningConfig.DirtyNodeShardBit;
         _shardedDirtyNodeCount = 1 << _shardBit;
         _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];
@@ -107,8 +108,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, keepRoot: _deleteOldNodes, _logger);
             _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
         }
-
-        _pastKeyTrackingEnabled = pruningConfig.TrackPastKeys && nodeStorage.RequirePath;
     }
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
@@ -333,6 +332,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     public IDisposable BeginScope(BlockHeader? baseBlock)
     {
         _scopeLock.Enter();
+        _currentBaseBlockNumber = baseBlock?.Number ?? 0;
 
         SpinWait spinWait = new SpinWait();
         while (true)
@@ -716,16 +716,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     /// <summary>
     /// Determined the state that will be persisted in a snapshot.
-    /// If:
-    /// - return 0 block commit set, then the exact state to persist is not known.
-    /// - return exactly 1 commit set, then it is the canonical state. Previous keys may be removed if not archive node.
-    /// - return more than 1 commit set, then its an archive node.
+    /// Ifore than 1 commit set, then its an archive node.
     /// </summary>
     /// <param name="count"></param>
-    /// <returns></returns>
+    /// <returns>A tuple of the block to be committed and the canonical block number if known.</returns>
     private (ArrayPoolList<BlockCommitSet>, long?) DetermineCommitSetToPersistInSnapshot(int count)
     {
-        // TODO: persisted block number
         ArrayPoolList<BlockCommitSet> candidateSets = new(count);
         try
         {
@@ -740,9 +736,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             long effectiveFinalizedBlockNumber = Math.Min(pruningBoundaryBlockNumber, finalizedBlockNumber);
             effectiveFinalizedBlockNumber = Math.Max(0, effectiveFinalizedBlockNumber);
 
-            if (_commitSetQueue.MinBlockNumber >= effectiveFinalizedBlockNumber + 1)
+            if (effectiveFinalizedBlockNumber < _commitSetQueue.MinBlockNumber)
             {
-                // Finalized block number far ahead. Persist everything so that it can be pruned, but not before
+                // Finalized block number far behind any commit. Persist everything so that it can be pruned, but not after
                 // pruning boundary point as snap sync need it.
                 using ArrayPoolListRef<BlockCommitSet> commitSet = _commitSetQueue.GetAndDequeueCommitSetsBeforeOrAt(pruningBoundaryBlockNumber);
 
@@ -753,12 +749,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 }
                 else
                 {
+                    // This can happen if the Max-Min of the commitsetqueue is less than pruning boundary
                     if (_logger.IsDebug) _logger.Debug($"Block commits are all after finalized block. Min block commit: {_commitSetQueue.MinBlockNumber}, Effective finalized block: {effectiveFinalizedBlockNumber}, Finalized block number: {finalizedBlockNumber}");
                 }
                 return (candidateSets, null);
             }
 
-            // Not reached the finalized state yet.
             using ArrayPoolListRef<BlockCommitSet> commitSetsAtFinalizedBlock = _commitSetQueue.GetCommitSetsAtBlockNumber(effectiveFinalizedBlockNumber);
 
             BlockCommitSet? finalizedBlockCommitSet = null;
@@ -777,6 +773,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             if (finalizedBlockCommitSet is null)
             {
+                // This is a hang. It should recover itself as new finalized block is set. But it will hang if we for some reason
+                // does not process in the finalized branch at all.
                 if (_logger.IsWarn) _logger.Warn($"Unable to determine finalized state root at block {effectiveFinalizedBlockNumber}. Available state roots {string.Join(", ", commitSetsAtFinalizedBlock.Select(c => c.StateRoot.ToString()).ToArray())}");
                 return (candidateSets, null);
             }
@@ -795,7 +793,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 }
             }
 
-            if (!finalizedWasAdded) candidateSets.Add(finalizedBlockCommitSet);
+            if (!finalizedWasAdded)
+            {
+                _commitSetQueue.Remove(finalizedBlockCommitSet);
+                candidateSets.Add(finalizedBlockCommitSet);
+            }
 
             return (candidateSets, effectiveFinalizedBlockNumber);
         }
@@ -908,7 +910,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[_lastPrunedShardIdx];
                 pruneTask.Add(Task.Run(() =>
                 {
-                    dirtyNode.PruneCache(prunePersisted: true, forceRemovePersistedNodes: !_isFinalizedStateKnown);
+                    dirtyNode.PruneCache(prunePersisted: true, removeStillNeededPersistedNode: !_isFinalizedStateKnown);
                 }));
                 _lastPrunedShardIdx = (_lastPrunedShardIdx + 1) % _shardedDirtyNodeCount;
             }

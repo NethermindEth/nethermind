@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Console;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -1104,7 +1105,7 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             memDb.Count.Should().Be(1);
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 11844 : 15120);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 11844 : 15360);
 
             fullTrieStore.PersistCache(default);
             memDb.Count.Should().Be(64);
@@ -1214,7 +1215,7 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.WaitForPruning();
 
             fullTrieStore.PrunePersistedNodes();
-            fullTrieStore.CachedNodesCount.Should().Be(57);
+            fullTrieStore.CachedNodesCount.Should().Be(58);
 
             fullTrieStore.PersistAndPruneDirtyCache();
             fullTrieStore.PrunePersistedNodes();
@@ -1444,9 +1445,10 @@ namespace Nethermind.Trie.Test.Pruning
                 deleteObsoleteKeys: true
             );
 
+            int pruningBoundary = 4;
             IPruningConfig pruningConfig = new PruningConfig()
             {
-                PruningBoundary = 4,
+                PruningBoundary = pruningBoundary,
                 DirtyNodeShardBit = 4,
                 MaxBufferedCommitCount = 20,
                 TrackPastKeys = true
@@ -1460,6 +1462,8 @@ namespace Nethermind.Trie.Test.Pruning
                 persistenceStrategy: No.Persistence,
                 pruningConfig: pruningConfig,
                 finalizedStateProvider: finalizedStateProvider);
+            testPruningStrategy.ShouldPruneEnabled = false;
+            testPruningStrategy.ShouldPrunePersistedEnabled = false;
 
             PatriciaTree ptree = new PatriciaTree(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
 
@@ -1489,11 +1493,13 @@ namespace Nethermind.Trie.Test.Pruning
                 }
             }
 
+            // Start from genesis for simplicty
             BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(Keccak.EmptyTreeHash).TestObject;
-            int blockNum = 1000;
-            for (int i = 0; i < blockNum; i++)
+            int blockNum = 100;
+            int lastNRoots = 0;
+            for (int i = 1; i < blockNum; i++)
             {
-                int seed = i % 37;
+                int seed = i;
                 Hash256 parentRoot = ptree.RootHash ?? Keccak.EmptyTreeHash;
                 using (fullTrieStore.BeginScope(baseBlock))
                 {
@@ -1502,6 +1508,7 @@ namespace Nethermind.Trie.Test.Pruning
                         ptree.RootHash = parentRoot;
                         WriteRandomData(seed);
                         rootsToTests.Add(ptree.RootHash);
+                        if (i >= blockNum - pruningBoundary) lastNRoots++;
                     }
                 }
 
@@ -1513,22 +1520,39 @@ namespace Nethermind.Trie.Test.Pruning
                         using (fullTrieStore.BeginBlockCommit(i))
                         {
                             ptree.RootHash = parentRoot;
-                            WriteRandomData(seed * 10);
+                            WriteRandomData(seed * 1000);
                             rootsToTests.Add(ptree.RootHash);
+                            if (i >= blockNum - pruningBoundary) lastNRoots++;
                         }
                     }
                 }
 
-                if (i % 10 == 0) fullTrieStore.SyncPruneCheck();
-                if (i == blockNum - 1)
+                baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(ptree.RootHash).TestObject;
+                if (i == 1)
                 {
-                    fullTrieStore.SyncPruneCheck();
-                    (fullTrieStore.CachedNodesCount - fullTrieStore.DirtyCachedNodesCount).Should().Be(0);
-                    VerifyAllTrie();
+                    finalizedStateProvider.SetFinalizedPoint(baseBlock);
                 }
 
-                baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(ptree.RootHash).TestObject;
-                if (i == 0) finalizedStateProvider.SetFinalizedPoint(baseBlock);
+                if (i % 10 == 0)
+                {
+                    fullTrieStore.PersistAndPruneDirtyCache();
+                }
+                if (i == blockNum - 1)
+                {
+                    fullTrieStore.PersistAndPruneDirtyCache();
+                    fullTrieStore.PrunePersistedNodes();
+
+                    long cachedPersistedNode = fullTrieStore.CachedNodesCount - fullTrieStore.DirtyCachedNodesCount;
+                    if (_scheme == INodeStorage.KeyScheme.Hash)
+                    {
+                        cachedPersistedNode.Should().Be(0);
+                    }
+                    else
+                    {
+                        cachedPersistedNode.Should().Be(rootsToTests.Count - lastNRoots - 1); // The root is still kept
+                    }
+                    VerifyAllTrie();
+                }
             }
         }
     }
