@@ -81,24 +81,20 @@ public class BlockhashProviderTests
 
         BlockHeader notCanonParent = tree.FindHeader(chainLength - 4, BlockTreeLookupOptions.None)!;
         Block expected = tree.FindBlock(chainLength - 3, BlockTreeLookupOptions.None)!;
-        BlockHeader expectedHeader = expected.Header;
 
         Block headParent = tree.FindBlock(chainLength - 2, BlockTreeLookupOptions.None)!;
         Block head = tree.FindBlock(chainLength - 1, BlockTreeLookupOptions.None)!;
 
         Block branch = Build.A.Block.WithParent(notCanonParent).WithTransactions(Build.A.Transaction.TestObject).TestObject;
         tree.Insert(branch, BlockTreeInsertBlockOptions.SaveHeader).Should().Be(AddBlockResult.Added);
-
         tree.UpdateMainChain(branch); // Update branch
 
-        // Update back to original again, but skipping the branch block.
-        tree.UpdateMainChain([expected, headParent, head], true);
+        tree.UpdateMainChain([expected, headParent, head], true); // Update back to original again, but skipping the branch block.
 
         Block current = Build.A.Block.WithParent(head).TestObject; // At chainLength
 
-        // Hash should have restored from updating chain
         Hash256? result = provider.GetBlockhash(current.Header, chainLength - 3);
-        Assert.That(result, Is.EqualTo(expectedHeader.Hash));
+        Assert.That(result, Is.EqualTo(expected.Header.Hash));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
