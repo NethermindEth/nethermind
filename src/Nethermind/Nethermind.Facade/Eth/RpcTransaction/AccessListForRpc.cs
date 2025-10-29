@@ -18,7 +18,7 @@ public class AccessListForRpc
 {
     private readonly IEnumerable<Item> _items;
 
-    private AccessListForRpc()
+    public AccessListForRpc()
     {
         _items = Array.Empty<Item>();
     }
