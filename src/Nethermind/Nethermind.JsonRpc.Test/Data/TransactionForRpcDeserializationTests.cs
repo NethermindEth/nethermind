@@ -36,11 +36,13 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.Legacy, """{"nonce":"0x0","to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null}""");
             yield return Make(TxType.Legacy, """{"nonce":"0x0","to":null,"gasPrice":"0x0","gas":"0x0","input":null}""");
             yield return Make(TxType.Legacy, """{"nonce":"0x0","to":null,"gasPrice":"0x0","gas":"0x0","input":null}""");
-            yield return Make(TxType.Legacy, """{"nonce":"0x0","input":null}""");
-            yield return Make(TxType.Legacy, """{}""");
-            yield return Make(TxType.Legacy, """{"type":null}""");
-            yield return Make(TxType.Legacy, """{"additionalField":""}""");
-            yield return Make(TxType.Legacy, """{"MaxFeePerBlobGas":"0x0"}""");
+            yield return Make(TxType.EIP1559, """{"nonce":"0x0","input":null}""");
+            yield return Make(TxType.EIP1559, """{}""");
+            yield return Make(TxType.EIP1559, """{"type":null}""");
+            yield return Make(TxType.EIP1559, """{"additionalField":""}""");
+            yield return Make(TxType.EIP1559, """{"MaxFeePerBlobGas":"0x0"}""");
+            yield return Make(TxType.Legacy,
+                """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x1","gas":"0x0","input":null,"maxPriorityFeePerGas":"0x1"}""");
 
             yield return Make(TxType.AccessList, """{"type":null,"accessList":[]}""");
             yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[]}""");

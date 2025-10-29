@@ -142,8 +142,11 @@ public abstract class TransactionForRpc
             if (untyped.TryGetPropertyValue(typeFieldKey, out JsonNode? node))
             {
                 TxType? setType = node.Deserialize<TxType?>(options);
-                return _txTypes.FirstOrDefault(p => p.TxType == setType)?.Type ??
-                       throw new JsonException("Unknown transaction type");
+                if (setType is not null)
+                {
+                    return _txTypes.FirstOrDefault(p => p.TxType == setType)?.Type ??
+                           throw new JsonException("Unknown transaction type");
+                }
             }
 
             if (untyped.ContainsKey(gasPriceFieldKey))
