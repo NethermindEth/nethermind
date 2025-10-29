@@ -623,7 +623,7 @@ namespace Nethermind.Blockchain
                     SetTotalDifficultyFromBlockInfo(header, blockInfo);
                 }
 
-                isMainChain = level.MainChainBlock?.BlockHash?.Equals(blockHash) == true;
+                isMainChain = level?.MainChainBlock?.BlockHash?.Equals(blockHash) == true;
                 if (requiresCanonical)
                 {
                     header = isMainChain ? header : null;
@@ -1493,7 +1493,7 @@ namespace Nethermind.Blockchain
                     SetTotalDifficultyFromBlockInfo(block.Header, blockInfo);
                 }
 
-                isMainChain = level.MainChainBlock?.BlockHash.Equals(blockHash) == true;
+                isMainChain = level?.MainChainBlock?.BlockHash.Equals(blockHash) == true;
                 if (requiresCanonical)
                 {
                     block = isMainChain ? block : null;
