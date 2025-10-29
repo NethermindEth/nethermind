@@ -100,4 +100,7 @@ public interface IPruningConfig : IConfig
 
     [ConfigItem(Description = "Maximum number of block in commit buffer before blocking.", DefaultValue = "128", HiddenFromDocs = true)]
     int MaxBufferedCommitCount { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] Simulate long finalization by not moving finalized block pointer until this after this.", DefaultValue = "0", HiddenFromDocs = true)]
+    int SimulateLongFinalizationDepth { get; set; }
 }

@@ -12,7 +12,7 @@ namespace Nethermind.Core.Test;
 /// TrieStore must be set later.
 /// </summary>
 /// <param name="depth"></param>
-public class TestFinalizedStateProvider(long depth): IFinalizedStateProvider
+public class TestFinalizedStateProvider(long depth) : IFinalizedStateProvider
 {
     public TrieStore TrieStore { get; set; } = null!;
     private BlockHeader? _manualFinalizedPoint = null;

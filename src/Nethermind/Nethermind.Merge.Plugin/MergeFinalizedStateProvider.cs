@@ -11,7 +11,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin;
 
-public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheService blockCacheService, IBlockTree blockTree, IFinalizedStateProvider baseFinalizedStateProvider): IFinalizedStateProvider
+public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheService blockCacheService, IBlockTree blockTree, IFinalizedStateProvider baseFinalizedStateProvider) : IFinalizedStateProvider
 {
     public long FinalizedBlockNumber
     {
@@ -20,7 +20,7 @@ public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheSe
             if (poSSwitcher.TransitionFinished)
             {
                 BlockHeader? currentFinalized = null;
-                if (blockTree.FinalizedHash is {} blockTreeFinalizedHash)
+                if (blockTree.FinalizedHash is { } blockTreeFinalizedHash)
                 {
                     currentFinalized = blockTree.FindHeader(blockTreeFinalizedHash, BlockTreeLookupOptions.None);
                 }

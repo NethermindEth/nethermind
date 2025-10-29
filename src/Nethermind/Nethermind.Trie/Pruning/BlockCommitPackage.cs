@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class BlockCommitSet(long blockNumber): IComparable<BlockCommitSet>
+    public class BlockCommitSet(long blockNumber) : IComparable<BlockCommitSet>
     {
         public long BlockNumber { get; } = blockNumber;
 

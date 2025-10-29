@@ -991,7 +991,7 @@ namespace Nethermind.Trie.Test
                 .SaveBranchingPoint("main")
 
                     .RestoreBranchingPoint("revert_main") // Go back to block 3
-                    // Block 4 - 2
+                                                          // Block 4 - 2
                     .SetStorage(3, 1, 1)
                     .Commit()
                     .RestoreBranchingPoint("main") // Go back to block 4 on main

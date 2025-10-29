@@ -7,7 +7,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain;
 
-public class ReorgDepthFinalizedStateProvider(IBlockTree blockTree): IFinalizedStateProvider
+public class ReorgDepthFinalizedStateProvider(IBlockTree blockTree) : IFinalizedStateProvider
 {
     public long FinalizedBlockNumber => blockTree.BestKnownNumber - Reorganization.MaxDepth;
     public Hash256? GetFinalizedStateRootAt(long blockNumber)
