@@ -38,7 +38,6 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
         public UInt256 S { get; set; }
         public UInt256 R { get; set; }
 
-        [JsonConstructor]
         public RpcAuthTuple() { }
 
         public RpcAuthTuple(UInt256 chainId, ulong nonce, Address address, ulong yParity, UInt256 s, UInt256 r)
