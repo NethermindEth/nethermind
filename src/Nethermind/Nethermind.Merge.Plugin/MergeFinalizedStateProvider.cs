@@ -15,11 +15,6 @@ public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockTree bl
     {
         get
         {
-            if (poSSwitcher.TransitionFinished)
-            {
-                return blockTree.FindHeader(BlockParameter.Finalized)?.Number ??
-                       baseFinalizedStateProvider.FinalizedBlockNumber;
-            };
             return poSSwitcher.TransitionFinished
                 ? blockTree.FindHeader(BlockParameter.Finalized)?.Number ??
                   baseFinalizedStateProvider.FinalizedBlockNumber
