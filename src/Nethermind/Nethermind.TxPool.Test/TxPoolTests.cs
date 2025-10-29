@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -72,6 +72,14 @@ namespace Nethermind.TxPool.Test
             {
                 _txPool.AddPeer(peer);
             }
+        }
+
+
+        [Test]
+        public void should_add_peers2()
+        {
+            _txPool = CreatePool();
+            _txPool.SubmitTx(Build.A.Transaction.WithShardBlobTxTypeAndFields(isMempoolTx: false).TestObject, TxHandlingOptions.PersistentBroadcast);
         }
 
         [Test]

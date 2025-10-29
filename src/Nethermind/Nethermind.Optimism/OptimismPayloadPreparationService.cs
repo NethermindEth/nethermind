@@ -1,9 +1,8 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
@@ -38,7 +37,8 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             blockImprovementContextFactory,
             timerFactory,
             logManager,
-            blocksConfig)
+            blocksConfig,
+            null!)
     {
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();

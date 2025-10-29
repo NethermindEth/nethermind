@@ -1,11 +1,13 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -18,7 +20,8 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using static System.Runtime.InteropServices.JavaScript.JSType;
+using Nethermind.Consensus.Transactions;
+using CkzgLib;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
@@ -51,6 +54,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
     protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
+    private readonly ISpecProvider specProvider;
+    private readonly IBlocksConfig blocksConfig;
 
     public PayloadPreparationService(
         IBlockProducer blockProducer,
@@ -58,13 +63,17 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         IBlockImprovementContextFactory blockImprovementContextFactory,
         ITimerFactory timerFactory,
         ILogManager logManager,
-        IBlocksConfig blockConfig) : this(
+        IBlocksConfig blockConfig,
+        ISpecProvider specProvider
+        ) : this(
         blockProducer,
         txPool,
         blockImprovementContextFactory,
         timerFactory,
         logManager,
-        TimeSpan.FromSeconds(blockConfig.SecondsPerSlot))
+        TimeSpan.FromSeconds(blockConfig.SecondsPerSlot),
+        specProvider,
+        blockConfig)
     {
     }
 
@@ -75,6 +84,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         ITimerFactory timerFactory,
         ILogManager logManager,
         TimeSpan timePerSlot,
+        ISpecProvider specProvider,
+        IBlocksConfig blocksConfig,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
         TimeSpan? improvementDelay = null)
     {
@@ -89,8 +100,17 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         _timer.Elapsed += CleanupOldPayloads;
         _timer.Start();
 
+        this.specProvider = specProvider;
+        this.blocksConfig = blocksConfig;
         _logger = logManager.GetClassLogger();
+        _emptyBlobs = new byte[72][];
+        for (int i = 0; i < 72; i++)
+        {
+            _emptyBlobs[i] = new byte[Ckzg.BytesPerBlob];
+        }
     }
+
+    byte[][] _emptyBlobs;
 
     public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
@@ -140,6 +160,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         return payloadId;
     }
 
+
     private Block ProduceBlockWithInitTx(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, List<byte[]> txRlp)
     {
         bool isTrace = _logger.IsTrace;
@@ -150,8 +171,16 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         {
             Transaction? tx = TxDecoder.Instance.Decode(new RlpStream(txr), RlpBehaviors.SkipTypedWrapping);
 
+
             if (tx != null)
             {
+                if (tx.SupportsBlobs is true)
+                {
+                    ShardBlobNetworkWrapper stubWrapper = IBlobProofsManager.For(
+                        NextBlockSpecHelper.GetSpec(specProvider, parentHeader, payloadAttributes, blocksConfig).BlobProofVersion
+                        ).AllocateWrapper(_emptyBlobs[0..tx.BlobVersionedHashes!.Length]);
+                }
+
                 var status = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
                 submitted++;
             }

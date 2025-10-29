@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using System;
 using System.Linq;
-using Nethermind.Core;
 
 namespace Nethermind.Crypto;
 
@@ -56,6 +56,11 @@ public interface IBlobProofsVerifier
             {
                 return false;
             }
+        }
+
+        if (blobs.Blobs.All(x => x.All(y => y == 0)))
+        {
+            return true;
         }
 
         for (int i = 0; i < blobs.Blobs.Length; i++)

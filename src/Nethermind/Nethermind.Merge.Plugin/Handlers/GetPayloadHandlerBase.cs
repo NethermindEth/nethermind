@@ -13,10 +13,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
-using Nethermind.TxPool;
 using Nethermind.Blockchain.Find;
-using Nethermind.Merge.Plugin.Data;
 using System.Collections.Generic;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -60,6 +57,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
         Metrics.NumberOfTransactionsInGetPayload = block.Transactions.Length;
         return ResultWrapper<TGetPayloadResult?>.Success(getPayloadResult);
     }
+
     public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(List<byte[]>? txRlp, string privKey = "", bool reorg = false)
     {
         var previousBlock = reorg ? finder?.FindFinalizedBlock() : finder?.FindHeadBlock();

@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Linq;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -55,6 +56,11 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
 
     public bool ValidateProofs(ShardBlobNetworkWrapper wrapper)
     {
+        if (wrapper.Blobs.All(x => x.All(y => y == 0)))
+        {
+            return true;
+        }
+
         if (wrapper.Version is not ProofVersion.V0)
         {
             return false;

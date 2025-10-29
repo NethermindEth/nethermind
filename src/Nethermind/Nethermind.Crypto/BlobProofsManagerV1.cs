@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Buffers;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using System;
+using System.Buffers;
+using System.Linq;
 
 namespace Nethermind.Crypto;
 
@@ -78,6 +79,11 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
         if (wrapper.Version is not ProofVersion.V1)
         {
             return false;
+        }
+
+        if (wrapper.Blobs.All(x => x.All(y => y == 0)))
+        {
+            return true;
         }
 
         using ArrayPoolSpan<byte> cells = new(wrapper.Blobs.Length * Ckzg.BytesPerBlob * 2);

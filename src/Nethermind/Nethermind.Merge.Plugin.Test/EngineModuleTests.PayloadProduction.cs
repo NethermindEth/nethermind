@@ -1,10 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -17,7 +17,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
@@ -30,7 +29,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.TxPool;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
@@ -778,18 +776,20 @@ public partial class EngineModuleTests
         return chain;
     }
 
-    private Func<IBlockProducer, ITxPool, IBlockImprovementContextFactory, ITimerFactory, ILogManager, IPayloadPreparationService> ConfigurePayloadPreparationService(
+    private Func<IBlockProducer, ITxPool, IBlockImprovementContextFactory, ITimerFactory, ILogManager, ISpecProvider, IBlocksConfig, IPayloadPreparationService> ConfigurePayloadPreparationService(
         TimeSpan timePerSlot,
         TimeSpan? delay = null
     )
     {
-        return (producer, txPool, ctxFactory, timer, logManager) => new PayloadPreparationService(
+        return (producer, txPool, ctxFactory, timer, logManager, specProvider, blocksConfig) => new PayloadPreparationService(
             producer,
             txPool,
             ctxFactory,
             timer,
             logManager,
             timePerSlot,
+            specProvider,
+            blocksConfig,
             improvementDelay: delay);
     }
 
