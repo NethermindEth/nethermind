@@ -32,6 +32,7 @@ namespace Nethermind.Xdc
         private readonly ISpecProvider _specProvider;
         private readonly IBlockProducer _blockBuilder;
         private readonly IEpochSwitchManager _epochSwitchManager;
+        private readonly ISnapshotManager _snapshotManager;
         private readonly IQuorumCertificateManager _quorumCertificateManager;
         private readonly IVotesManager _votesManager;
         private readonly ISigner _signer;
@@ -47,6 +48,8 @@ namespace Nethermind.Xdc
         public event EventHandler<BlockEventArgs>? BlockProduced;
 
         private static readonly PayloadAttributes DefaultPayloadAttributes = new PayloadAttributes();
+        private ulong _highestSelfMinedRound;
+        private ulong _highestVotedRound;
 
         public XdcHotStuff(
             IBlockTree blockTree,
@@ -54,6 +57,7 @@ namespace Nethermind.Xdc
             ISpecProvider specProvider,
             IBlockProducer blockBuilder,
             IEpochSwitchManager epochSwitchManager,
+            ISnapshotManager snapshotManager,
             IQuorumCertificateManager quorumCertificateManager,
             IVotesManager votesManager,
             ISigner signer,
@@ -66,6 +70,7 @@ namespace Nethermind.Xdc
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockBuilder = blockBuilder ?? throw new ArgumentNullException(nameof(blockBuilder));
             _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
+            _snapshotManager = snapshotManager;
             _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
             _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
@@ -137,7 +142,7 @@ namespace Nethermind.Xdc
             }
         }
 
-        private void OnNewRound(NewRoundEventArgs args)
+        private void OnNewRound(object sender, NewRoundEventArgs args)
         {
             XdcBlockHeader head = _blockTree.Head.Header as XdcBlockHeader
                 ?? throw new InvalidOperationException("BlockTree head is not XdcBlockHeader.");
@@ -172,7 +177,7 @@ namespace Nethermind.Xdc
             if (_blockTree.Head.Header is not XdcBlockHeader xdcHead)
                 throw new InvalidBlockException(_blockTree.Head, "Head is not XdcBlockHeader.");
 
-            ulong initialRound = xdcHead.ExtraConsensusData?.BlockRound ?? 0;
+            ulong initialRound = xdcHead.ExtraConsensusData?.BlockRound + 1 ?? 0;
             _logger.Info($"Initialized round counter from head: round {initialRound}");
         }
 
@@ -227,7 +232,6 @@ namespace Nethermind.Xdc
                 return;
             }
 
-
             // Get epoch info and check for epoch switch
             EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(parent);
             if (epochInfo?.Masternodes == null || epochInfo.Masternodes.Length == 0)
@@ -237,31 +241,20 @@ namespace Nethermind.Xdc
             }
 
             bool isMyTurn = IsMyTurnAndTime(parent, currentRound, epochInfo.Masternodes, spec);
-            Address? myAddress = _signer.Address;
-
             _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(parent, currentRound, epochInfo.Masternodes, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
 
             if (isMyTurn)
             {
-                _xdcContext.HighestSelfMinedRound = currentRound;
+                _highestSelfMinedRound = currentRound;
                 Task blockBuilder = BuildAndProposeBlock(parent, currentRound, spec, ct);
             }
 
             await CommitCertificateAndVote(parent, epochInfo, currentRound);
         }
 
-
-        private async Task WaitForNextRoundOrQC(CancellationToken ct)
-        {
-            // This returns when _newRoundSignals receives next signal
-            // OR when _xdcContext.NewRoundSetEvent fires
-            // Essentially waiting for the leader to form a QC and advance the round
-            await Task.Delay(-1, ct); // Wait indefinitely until cancelled or round advances
-        }
-
         private XdcBlockHeader GetParentForRound()
         {
-            BlockHeader parent = _blockTree.FindHeader(_xdcContext.HighestQC.ProposedBlockInfo.Hash, _xdcContext.HighestQC.ProposedBlockInfo.BlockNumber);
+            BlockHeader parent = _blockTree.FindHeader(_xdcContext.HighestQC?.ProposedBlockInfo.Hash, _xdcContext.HighestQC?.ProposedBlockInfo.BlockNumber);
             if (parent == null)
                 parent = _blockTree.Head.Header;
             return parent as XdcBlockHeader;
@@ -327,10 +320,10 @@ namespace Nethermind.Xdc
             // Commit/record the header's QC
             _quorumCertificateManager.CommitCertificate(head.ExtraConsensusData.QuorumCert);
 
-            if (_xdcContext.HighestVotedRound >= _xdcContext.CurrentRound)
+            if (_highestVotedRound >= _xdcContext.CurrentRound)
                 return;
 
-            _xdcContext.HighestVotedRound = currentRound;
+            _highestVotedRound = currentRound;
 
             // Check if we are in the masternode set
             if (!Array.Exists(epochInfo.Masternodes, (a) => a == _signer.Address))
@@ -376,7 +369,7 @@ namespace Nethermind.Xdc
             ulong headRound = xdcHead.ExtraConsensusData.BlockRound;
             if (headRound > _xdcContext.CurrentRound)
             {
-                _logger.Warn($"New head block round is ahead of us. Advancing to round {headRound + 1}");
+                _logger.Warn($"New head block round is ahead of us.");
                 //TODO This should probably trigger a sync
             }
 
@@ -390,7 +383,7 @@ namespace Nethermind.Xdc
         /// </summary>
         private bool IsMyTurnAndTime(XdcBlockHeader parent, ulong round, Address[] masternodes, IXdcReleaseSpec spec)
         {
-            if (_xdcContext.HighestSelfMinedRound <= round)
+            if (_highestSelfMinedRound <= round)
             {
                 //Already produced block for this round
                 return false;
@@ -430,6 +423,7 @@ namespace Nethermind.Xdc
             if (_epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
             {
                 //TODO calculate master nodes based on the current round
+                (masternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead, spec);
             }
             else
             {

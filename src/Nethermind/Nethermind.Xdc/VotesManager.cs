@@ -10,7 +10,6 @@ using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
-using Org.BouncyCastle.Tls;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -43,6 +42,7 @@ internal class VotesManager(
     private static EthereumEcdsa _ethereumEcdsa = new(0);
     private readonly ConcurrentDictionary<ulong, byte> _qcBuildStartedByRound = new();
     private const int _maxBlockDistance = 7; // Maximum allowed backward distance from the chain head
+    private long _highestVotedRound = -1;
 
     public Task CastVote(BlockRoundInfo blockInfo)
     {
@@ -51,16 +51,19 @@ internal class VotesManager(
             throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(EpochSwitchInfo));
         //Optimize this by fetching with block number and round only
 
-        var header = _tree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
+        XdcBlockHeader header = _tree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
+        if (header is null)
+            throw new ArgumentException($"Cannot find block header for block {blockInfo.Hash}");
+
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(header, blockInfo.Round);
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-        long gapNumber = Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
+        long gapNumber = epochSwitchNumber == 0 ? 0 : Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
 
         var vote = new Vote(blockInfo, (ulong)gapNumber);
         // Sets signature and signer for the vote
         Sign(vote);
 
-        _ctx.HighestVotedRound = blockInfo.Round;
+        _highestVotedRound = (long)blockInfo.Round;
 
         HandleVote(vote);
         //TODO Broadcast vote to peers
@@ -133,7 +136,7 @@ internal class VotesManager(
     public bool VerifyVotingRules(XdcBlockHeader header) => VerifyVotingRules(header.Hash, header.Number, header.ExtraConsensusData.BlockRound, header.ExtraConsensusData.QuorumCert);
     public bool VerifyVotingRules(Hash256 blockHash, long blockNumber, ulong roundNumber, QuorumCertificate qc)
     {
-        if (_ctx.CurrentRound <= _ctx.HighestVotedRound)
+        if ((long)_ctx.CurrentRound <= _highestVotedRound)
         {
             return false;
         }

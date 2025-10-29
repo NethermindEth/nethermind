@@ -12,21 +12,13 @@ public interface IXdcConsensusContext
     ulong CurrentRound { get; }
     BlockRoundInfo HighestCommitBlock { get; set; }
     QuorumCertificate? HighestQC { get; set; }
-    ulong HighestSelfMinedRound { get; set; }
     TimeoutCertificate? HighestTC { get; set; }
-    ulong HighestVotedRound { get; set; }
     QuorumCertificate? LockQC { get; set; }
     int TimeoutCounter { get; set; }
     DateTime RoundStarted { get; }
 
-    event Action<NewRoundEventArgs> NewRoundSetEvent;
+    event EventHandler<NewRoundEventArgs> NewRoundSetEvent;
 
     void SetNewRound();
     void SetNewRound(ulong round);
-}
-
-public class NewRoundEventArgs(ulong round, int previousRoundTimeouts)
-{
-    public ulong NewRound { get; } = round;
-    public int PreviousRoundTimeouts { get; } = previousRoundTimeouts;
 }
