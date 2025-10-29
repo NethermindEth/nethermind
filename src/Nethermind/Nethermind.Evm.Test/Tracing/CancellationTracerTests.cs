@@ -25,7 +25,6 @@ namespace Nethermind.Evm.Test.Tracing
             CancellationToken cancellationToken = cancellationTokenSource.Token;
             CancellationTxTracer tracer = new(Substitute.For<ITxTracer>(), cancellationToken) { IsTracingActions = true };
 
-            // ReSharper disable once MethodSupportsCancellation
             Assert.That(() => tracer.ReportActionError(EvmExceptionType.None), Throws.TypeOf<OperationCanceledException>().After(100, 10));
         }
 
