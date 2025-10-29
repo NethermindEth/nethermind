@@ -19,7 +19,7 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
 {
     private readonly IEnumerable<RpcAuthTuple> _tuples;
 
-    private AuthorizationListForRpc()
+    public AuthorizationListForRpc()
     {
         _tuples = Array.Empty<RpcAuthTuple>();
     }
