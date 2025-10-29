@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -104,17 +105,15 @@ public partial class BlockProcessor(
         _stateProvider.Commit(spec, commitRoots: false);
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        Task backGroundCalculations = Task.Run(() =>
+        {
+            CalculateBlooms(receipts);
+            header.BlobGasUsed = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateBlobGas(block.Transactions) : null;
+            header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+
+        }, token);
 
         _stateProvider.Commit(spec, commitRoots: false);
-
-        CalculateBlooms(receipts);
-
-        if (spec.IsEip4844Enabled)
-        {
-            header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
-        }
-
-        header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
@@ -141,6 +140,7 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
+        backGroundCalculations.Wait(token);
         header.Hash = header.CalculateHash();
 
         return receipts;
