@@ -22,7 +22,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install xmlstarlet -y --no-install-recommends
           version_prefix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" Directory.Build.props)
-          version_suffix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionSuffix" Directory.Build.props)
+          version_suffix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionSuffix" -n Directory.Build.props)
           version=$([[ -n "$version_suffix" ]] && echo "$version_prefix-$version_suffix" || echo "$version_prefix")
           echo "Detected version $version"
           echo "PACKAGE_PREFIX=nethermind-$version-${GITHUB_SHA:0:8}" >> $GITHUB_ENV

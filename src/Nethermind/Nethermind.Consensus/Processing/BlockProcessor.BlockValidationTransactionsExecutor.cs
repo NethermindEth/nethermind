@@ -1,7 +1,6 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -45,14 +44,22 @@ namespace Nethermind.Consensus.Processing
             protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
-                if (!result) ThrowInvalidBlockException(result, block.Header, currentTx, index);
+                if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
                 transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
             }
 
             [DoesNotReturn, StackTraceHidden]
-            private void ThrowInvalidBlockException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
+            private void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
             {
-                throw new InvalidBlockException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.Error}");
+                throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
+            }
+
+            /// <summary>
+            /// Used by <see cref="FilterManager"/> through <see cref="IMainProcessingContext"/>
+            /// </summary>
+            public interface ITransactionProcessedEventHandler
+            {
+                void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs);
             }
 
             /// <summary>

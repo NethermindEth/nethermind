@@ -21,7 +21,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Consensus;
 using Nethermind.Evm.State;
-using Nethermind.Logging;
+using Nethermind.Evm.TransactionProcessing;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
@@ -38,6 +38,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
         IWorldState stateProvider,
         IOverridableCodeInfoRepository codeInfoRepository,
+        long blockNumber,
         IReleaseSpec releaseSpec)
     {
         stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec);
@@ -49,7 +50,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             stateProvider.CreateAccountIfNotExists(address, 0, 0);
         }
 
-        stateProvider.Commit(releaseSpec, commitRoots: false);
+        stateProvider.Commit(releaseSpec, commitRoots: true);
+        stateProvider.CommitTree(blockNumber);
     }
 
     public SimulateOutput<TTrace> TrySimulate<TTrace>(
@@ -68,31 +70,38 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         try
         {
-            if (!TrySimulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken, out string? error))
-            {
-                result.Error = error;
-            }
+            Simulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            result.Error = ex.Message;
+            result.IsInvalidInput = true;
+        }
+        catch (InvalidTransactionException ex)
+        {
+            result.Error = ex.Reason.ErrorDescription;
+            result.TransactionResult = ex.Reason;
         }
         catch (InsufficientBalanceException ex)
         {
             result.Error = ex.Message;
+            result.TransactionResult = TransactionResult.InsufficientSenderBalance;
         }
         catch (Exception ex)
         {
-            result.Error = ex.ToString();
+            result.Error = ex.Message;
         }
 
         return result;
     }
 
-    private bool TrySimulate<TTrace>(BlockHeader parent,
+    private void Simulate<TTrace>(BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
         List<SimulateBlockResult<TTrace>> output,
         long gasCapLimit,
-        CancellationToken cancellationToken,
-        [NotNullWhen(false)] out string? error)
+        CancellationToken cancellationToken)
     {
         IBlockTree blockTree = env.BlockTree;
         IWorldState stateProvider = env.WorldState;
@@ -102,7 +111,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         if (payload.BlockStateCalls is not null)
         {
-            Dictionary<Address, UInt256> nonceCache = new();
+            Dictionary<Address, ulong> nonceCache = new();
             IBlockTracer cancellationBlockTracer = tracer.WithCancellation(cancellationToken);
 
             foreach (BlockStateCall<TransactionWithSourceDetails> blockCall in payload.BlockStateCalls)
@@ -118,10 +127,10 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     .Select((c) => c.HadGasLimitInRequest)
                     .ToArray();
 
+                PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
+
                 BlockBody body = AssembleBody(calls, stateProvider, nonceCache, spec);
                 Block callBlock = new Block(callHeader, body);
-
-                PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, spec);
 
                 ProcessingOptions processingFlags = payload.Validation
                     ? SimulateProcessingOptions
@@ -155,15 +164,12 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 parent = processedBlock.Header;
             }
         }
-
-        error = null;
-        return true;
     }
 
     private BlockBody AssembleBody(
         TransactionWithSourceDetails[] calls,
         IWorldState stateProvider,
-        Dictionary<Address, UInt256> nonceCache,
+        Dictionary<Address, ulong> nonceCache,
         IReleaseSpec spec)
     {
         Transaction[] transactions = calls
@@ -208,19 +214,19 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private Transaction CreateTransaction(
         TransactionWithSourceDetails transactionDetails,
         IWorldState stateProvider,
-        Dictionary<Address, UInt256> nonceCache)
+        Dictionary<Address, ulong> nonceCache)
     {
         Transaction? transaction = transactionDetails.Transaction;
         transaction.SenderAddress ??= Address.Zero;
 
         if (!transactionDetails.HadNonceInRequest)
         {
-            ref UInt256 cachedNonce = ref CollectionsMarshal.GetValueRefOrAddDefault(nonceCache, transaction.SenderAddress, out bool exist);
+            ref ulong cachedNonce = ref CollectionsMarshal.GetValueRefOrAddDefault(nonceCache, transaction.SenderAddress, out bool exist);
             if (!exist)
             {
                 if (stateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
                 {
-                    cachedNonce = test.Nonce;
+                    cachedNonce = test.Nonce.ToUInt64(null);
                 }
                 // else // Todo think if we shall create account here
             }
@@ -256,7 +262,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             [],
             requestsHash: parent.RequestsHash)
         {
-            MixHash = parent.MixHash,
+            MixHash = Hash256.Zero,
             RequestsHash = parent.RequestsHash,
         };
 

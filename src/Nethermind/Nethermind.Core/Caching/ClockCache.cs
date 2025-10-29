@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -58,8 +58,12 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
 
         if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
         {
-            // Fast path: atomic update using TryUpdate
-            if (_cacheMap.TryUpdate(key, new(val, ov.Offset), comparisonValue: ov))
+            bool needsUpdate = !(typeof(TValue).IsValueType ?
+                EqualityComparer<TValue>.Default.Equals(ov.Value, val) :
+                ReferenceEquals(ov.Value, val));
+
+            // Fast path: no update or atomic update using TryUpdate
+            if (!needsUpdate || _cacheMap.TryUpdate(key, new(val, ov.Offset), comparisonValue: ov))
             {
                 MarkAccessed(ov.Offset);
                 return false;
@@ -136,9 +140,15 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
         }
     }
 
-    public bool Delete(TKey key)
+    public bool Delete(TKey key) => Delete(key, out _);
+
+    public bool Delete(TKey key, [NotNullWhen(true)] out TValue? value)
     {
-        if (MaxCapacity == 0) return false;
+        if (MaxCapacity == 0)
+        {
+            value = default;
+            return false;
+        }
 
         using var lockRelease = _lock.Acquire();
 
@@ -148,9 +158,11 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
             KeyToOffset[ov.Offset] = default;
             ClearAccessed(ov.Offset);
             FreeOffsets.Enqueue(ov.Offset);
-            return true;
+            value = ov.Value;
+            return ov.Value != null;
         }
 
+        value = default;
         return false;
     }
 
