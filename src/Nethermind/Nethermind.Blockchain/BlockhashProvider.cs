@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            return (currentBlock.ParentHash == _blockTree.HeadHash || currentBlock.ParentHash == _blockTree.Head.ParentHash) ?
+            return (currentBlock.ParentHash == _blockTree.HeadHash || currentBlock.ParentHash == _blockTree.Head?.ParentHash) ?
                 _blockTree.FindBlockHash(number) :
                 GetBlockHashFromNonHeadParent(currentBlock, number);
         }
