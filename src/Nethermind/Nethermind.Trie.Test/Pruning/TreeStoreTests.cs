@@ -1523,6 +1523,7 @@ namespace Nethermind.Trie.Test.Pruning
                 if (i == blockNum - 1)
                 {
                     fullTrieStore.SyncPruneCheck();
+                    (fullTrieStore.CachedNodesCount - fullTrieStore.DirtyCachedNodesCount).Should().Be(0);
                     VerifyAllTrie();
                 }
 
