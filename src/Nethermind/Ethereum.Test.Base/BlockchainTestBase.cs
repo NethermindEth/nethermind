@@ -169,7 +169,7 @@ public abstract class BlockchainTestBase
                 };
 
                 blockTree.SuggestBlock(genesisBlock);
-                genesisProcessed.WaitOne();
+                genesisProcessed.WaitOne(10000);
                 parentHeader = genesisBlock.Header;
 
                 // Dispose genesis block's AccountChanges
