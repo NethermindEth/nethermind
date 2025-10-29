@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
 
-public class CommitSetQueue : IEnumerable<BlockCommitSet>
+public class CommitSetQueue
 {
     private SortedSet<BlockCommitSet> _queue = new();
 
@@ -78,45 +78,40 @@ public class CommitSetQueue : IEnumerable<BlockCommitSet>
         }
     }
 
-    // TODO: Not concurrent safe
-    public IEnumerator<BlockCommitSet> GetEnumerator()
-    {
-        return _queue.GetEnumerator();
-    }
-
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return GetEnumerator();
-    }
-
     public ArrayPoolListRef<BlockCommitSet> GetCommitSetsAtBlockNumber(long blockNumber)
     {
-        BlockCommitSet lowerBound = new BlockCommitSet(blockNumber);
-        lowerBound.Seal(new TrieNode(NodeType.Unknown, Hash256.Zero));
-        BlockCommitSet upperBound = new BlockCommitSet(blockNumber);
-        upperBound.Seal(new TrieNode(NodeType.Unknown, Keccak.MaxValue));
+        lock (_queue)
+        {
+            BlockCommitSet lowerBound = new BlockCommitSet(blockNumber);
+            lowerBound.Seal(new TrieNode(NodeType.Unknown, Hash256.Zero));
+            BlockCommitSet upperBound = new BlockCommitSet(blockNumber);
+            upperBound.Seal(new TrieNode(NodeType.Unknown, Keccak.MaxValue));
 
-        var result = new ArrayPoolListRef<BlockCommitSet>();
-        result.AddRange(_queue.GetViewBetween(lowerBound, upperBound));
-        return result;
+            var result = new ArrayPoolListRef<BlockCommitSet>();
+            result.AddRange(_queue.GetViewBetween(lowerBound, upperBound));
+            return result;
+        }
     }
 
     public ArrayPoolListRef<BlockCommitSet> GetAndDequeueCommitSetsBeforeOrAt(long blockNumber)
     {
-        var result = new ArrayPoolListRef<BlockCommitSet>();
-        while (_queue.Count > 0)
+        lock (_queue)
         {
-            BlockCommitSet min = _queue.Min;
-            if (min.BlockNumber > blockNumber) break;
-            result.Add(min);
-            _queue.Remove(min);
-        }
+            var result = new ArrayPoolListRef<BlockCommitSet>();
+            while (_queue.Count > 0)
+            {
+                BlockCommitSet min = _queue.Min;
+                if (min.BlockNumber > blockNumber) break;
+                result.Add(min);
+                _queue.Remove(min);
+            }
 
-        return result;
+            return result;
+        }
     }
 
     public void Remove(BlockCommitSet blockCommitSet)
     {
-        _queue.Remove(blockCommitSet);
+        lock (_queue) _queue.Remove(blockCommitSet);
     }
 }
