@@ -20,7 +20,8 @@ public class ConcurrentDictionaryTests
         using (dictionary.AcquireLock())
         {
             updateTask = Task.Run(() => dictionary[3] = 3);
-            Assert.That(() => updateTask.IsCompleted, Is.False.After(100, 10));
+            Task.WaitAny(updateTask, Task.Delay(100));
+            updateTask.IsCompleted.Should().BeFalse();
             dictionary.ContainsKey(3).Should().BeFalse();
         }
 

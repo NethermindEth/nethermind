@@ -21,7 +21,7 @@ namespace Nethermind.JsonRpc.TraceStore.Tests;
 public class TraceStorePrunerTests
 {
     [Test]
-    public void prunes_old_blocks()
+    public async Task prunes_old_blocks()
     {
         IEnumerable<Hash256> GenerateTraces(MemDb db, BlockTree tree)
         {
@@ -60,7 +60,8 @@ public class TraceStorePrunerTests
         List<Hash256> keys = GenerateTraces(memDb, blockTree).ToList();
         keys.Select(k => memDb.Get(k)).Should().NotContain((byte[]?)null);
         AddNewBlocks(blockTree);
-        Assert.That(() => keys.Skip(3).Select(k => memDb.Get(k)), Does.Not.Contain((byte[]?)null).After(100, 10)); // too old were not removed
+        await Task.Delay(100);
+        keys.Skip(3).Select(k => memDb.Get(k)).Should().NotContain((byte[]?)null); // too old were not removed
         keys.Take(3).Select(k => memDb.Get(k)).Should().OnlyContain(b => b == null); // those were removed
 
     }

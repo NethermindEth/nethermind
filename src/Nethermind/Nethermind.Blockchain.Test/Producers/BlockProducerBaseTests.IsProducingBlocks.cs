@@ -188,7 +188,8 @@ public partial class BlockProducerBaseTests
         Assert.That(blockProducer.IsProducingBlocks(null), Is.EqualTo(false));
         blockProducer.Start();
         Assert.That(blockProducer.IsProducingBlocks(null), Is.EqualTo(true));
-        Assert.That(() => blockProducer.IsProducingBlocks(1), Is.EqualTo(false).After(5000, 100));
+        Thread.Sleep(5000);
+        Assert.That(blockProducer.IsProducingBlocks(1), Is.EqualTo(false));
         Assert.That(blockProducer.IsProducingBlocks(1000), Is.EqualTo(true));
         Assert.That(blockProducer.IsProducingBlocks(null), Is.EqualTo(true));
         await blockProducer.StopAsync();
