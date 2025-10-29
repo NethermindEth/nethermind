@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -14,6 +15,8 @@ namespace Nethermind.Core.Test;
 
 public static class NSubstituteExtensions
 {
+    private static readonly ConcurrentDictionary<string, bool> _loggedMessages = new();
+
     /// <summary>
     /// Checks if a substitute received matching calls without throwing exceptions.
     /// Suitable for polling scenarios with Is.True.After().
@@ -45,7 +48,21 @@ public static class NSubstituteExtensions
             // Lambda 2: Handle matching with concrete argument values
             GetMatchCount);
 
-        return matchCount.HasValue && CheckMatchCount(matchCount.Value);
+        bool check = matchCount.HasValue && CheckMatchCount(matchCount.Value);
+        
+        // Log diagnostic message only once per unique check when it fails
+        if (!check)
+        {
+            string logKey = $"{TestContext.CurrentContext.Test.ID}_{expression}_{requiredNumberOfCalls}_{maxNumberOfCalls}";
+            if (_loggedMessages.TryAdd(logKey, true))
+            {
+                TestContext.Out.WriteLine(requiredNumberOfCalls == maxNumberOfCalls
+                    ? $"Expected ({expression}) to receive calls matching {requiredNumberOfCalls} calls, but actually got {matchCount} calls."
+                    : $"Expected ({expression}) to receive calls matching between {requiredNumberOfCalls} and {maxNumberOfCalls} calls, but actually got {matchCount} calls.");
+            }
+        }
+        
+        return check;
 
         bool CheckMatchCount(int count) => count >= requiredNumberOfCalls && count <= maxNumberOfCalls;
 
