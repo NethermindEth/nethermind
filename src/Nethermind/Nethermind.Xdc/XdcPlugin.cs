@@ -11,6 +11,8 @@ using Nethermind.Specs.ChainSpecStyle;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Xdc.Spec;
+using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.Blocks;
 
 namespace Nethermind.Xdc;
 
@@ -47,9 +49,36 @@ public class XdcModule : Module
             .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>())
 
+            .AddSingleton<XdcContext>(new XdcContext())
+
+            // stores
+            .AddSingleton<IHeaderStore, XdcHeaderStore>()
+            .AddSingleton<IXdcHeaderStore, XdcHeaderStore>()
+            .AddSingleton<IBlockStore, XdcBlockStore>()
+
+            // sealer
+            .AddSingleton<ISealer, XdcSealer>()
+
+            // penalty handler
+
+            // reward handler
+
+            // forensics handler
+
             // Validators
             .AddSingleton<IHeaderValidator, XdcHeaderValidator>()
+            .AddSingleton<IBlockInfoValidator, BlockInfoValidator>()
+            .AddSingleton<ISealValidator, XdcSealValidator>()
 
+            // managers
+            .AddSingleton<IVotesManager, VotesManager>()
+            .AddSingleton<IQuorumCertificateManager, QuorumCertificateManager>()
+            .AddSingleton<ITimeoutCertificateManager, TimeoutCertificateManager>()
+            .AddSingleton<IEpochSwitchManager, EpochSwitchManager>()
+            .AddSingleton<ISnapshotManager, SnapshotManager>()
+
+            // miscellaneous
+            .AddSingleton<IDifficultyCalculator, Xdc.DifficultyCalculator>()
             ;
     }
 
