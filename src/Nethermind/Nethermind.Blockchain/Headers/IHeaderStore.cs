@@ -21,4 +21,5 @@ public interface IHeaderStore
     long? GetBlockNumber(Hash256 blockHash);
     Hash256? GetBlockHash(long blockNumber);
     void CacheBlockHash(long blockNumber, Hash256 blockHash);
+    BlockHeader? GetFromCache(Hash256 blockHash);
 }

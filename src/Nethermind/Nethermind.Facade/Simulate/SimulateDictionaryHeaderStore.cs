@@ -80,5 +80,7 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
 
     public Hash256? GetBlockHash(long blockNumber) => null;
 
+    public BlockHeader? GetFromCache(Hash256 blockHash) => null;
+
     public void CacheBlockHash(long blockNumber, Hash256 blockHash) { }
 }

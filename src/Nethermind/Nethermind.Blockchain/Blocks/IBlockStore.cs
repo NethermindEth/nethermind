@@ -21,5 +21,6 @@ public interface IBlockStore
     byte[]? GetRlp(long blockNumber, Hash256 blockHash);
     ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash);
     void Cache(Block block);
+    Block? GetFromCache(Hash256 blockHash);
     bool HasBlock(long blockNumber, Hash256 blockHash);
 }

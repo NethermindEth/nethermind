@@ -86,6 +86,9 @@ public class HeaderStore : IHeaderStore
         _headerCache.Set(header.Hash, header);
     }
 
+    public BlockHeader? GetFromCache(Hash256 blockHash)
+        => _headerCache.Get(blockHash);
+
     public void Delete(Hash256 blockHash)
     {
         long? blockNumber = GetBlockNumber(blockHash);

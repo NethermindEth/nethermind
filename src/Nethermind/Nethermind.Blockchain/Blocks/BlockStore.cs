@@ -102,4 +102,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
     {
         _blockCache.Set(block.Hash, block);
     }
+
+    public Block? GetFromCache(Hash256 blockHash)
+        => _blockCache.Get(blockHash);
 }

@@ -69,6 +69,8 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     public void Cache(Block block)
         => Insert(block);
 
+    public Block? GetFromCache(Hash256 blockHash) => null;
+
     public bool HasBlock(long blockNumber, Hash256 blockHash)
         => _blockNumDict.ContainsKey(blockNumber);
 }

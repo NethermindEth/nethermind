@@ -579,7 +579,17 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            BlockHeader? header = _headerStore.Get(blockHash, out bool fromCache, shouldCache: false, blockNumber: blockNumber);
+            BlockHeader? header = null;
+            if ((options & BlockTreeLookupOptions.RequireCanonical) == 0)
+            {
+                header = _headerStore.GetFromCache(blockHash);
+                if (header is not null && (!blockNumber.HasValue || header.Number == blockNumber.Value))
+                {
+                    return header;
+                }
+            }
+
+            header = _headerStore.Get(blockHash, out bool fromCache, shouldCache: false, blockNumber: blockNumber);
             if (header is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
@@ -1435,8 +1445,17 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            bool fromCache = false;
             Block? block = null;
+            if ((options & BlockTreeLookupOptions.RequireCanonical) == 0)
+            {
+                block = _blockStore.GetFromCache(blockHash);
+                if (block is not null && block.TotalDifficulty.HasValue && (!blockNumber.HasValue || block.Number == blockNumber.Value))
+                {
+                    return block;
+                }
+            }
+
+            bool fromCache = false;
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
             if (blockNumber is not null)
             {
