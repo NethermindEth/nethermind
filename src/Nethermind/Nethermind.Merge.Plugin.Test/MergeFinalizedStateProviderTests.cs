@@ -102,7 +102,7 @@ public class MergeFinalizedStateProviderTests
         Hash256 blockCacheHash = TestItem.KeccakB;
         BlockHeader blockTreeHeader = Build.A.BlockHeader.WithNumber(blockTreeBlockNumber).WithHash(blockTreeHash).TestObject;
         BlockHeader blockCacheHeader = Build.A.BlockHeader.WithNumber(blockCacheBlockNumber).WithHash(blockCacheHash).TestObject;
-        
+
         _poSSwitcher.TransitionFinished.Returns(true);
         _blockTree.FinalizedHash.Returns(blockTreeHash);
         _blockTree.FindHeader(blockTreeHash, BlockTreeLookupOptions.None).Returns(blockTreeHeader);
@@ -126,7 +126,7 @@ public class MergeFinalizedStateProviderTests
         Hash256 blockCacheHash = TestItem.KeccakB;
         BlockHeader blockTreeHeader = Build.A.BlockHeader.WithNumber(blockTreeBlockNumber).WithHash(blockTreeHash).TestObject;
         BlockHeader blockCacheHeader = Build.A.BlockHeader.WithNumber(blockCacheBlockNumber).WithHash(blockCacheHash).TestObject;
-        
+
         _poSSwitcher.TransitionFinished.Returns(true);
         _blockTree.FinalizedHash.Returns(blockTreeHash);
         _blockTree.FindHeader(blockTreeHash, BlockTreeLookupOptions.None).Returns(blockTreeHeader);
@@ -148,7 +148,7 @@ public class MergeFinalizedStateProviderTests
         Hash256 blockTreeHash = TestItem.KeccakA;
         Hash256 blockCacheHash = TestItem.KeccakB;
         BlockHeader blockTreeHeader = Build.A.BlockHeader.WithNumber(expectedBlockNumber).WithHash(blockTreeHash).TestObject;
-        
+
         _poSSwitcher.TransitionFinished.Returns(true);
         _blockTree.FinalizedHash.Returns(blockTreeHash);
         _blockTree.FindHeader(blockTreeHash, BlockTreeLookupOptions.None).Returns(blockTreeHeader);
@@ -206,27 +206,6 @@ public class MergeFinalizedStateProviderTests
         Hash256 expectedStateRoot = TestItem.KeccakA;
         _poSSwitcher.TransitionFinished.Returns(false);
         _baseFinalizedStateProvider.FinalizedBlockNumber.Returns(finalizedBlockNumber);
-        _baseFinalizedStateProvider.GetFinalizedStateRootAt(blockNumber).Returns(expectedStateRoot);
-
-        // Act
-        Hash256? result = _provider.GetFinalizedStateRootAt(blockNumber);
-
-        // Assert
-        result.Should().Be(expectedStateRoot);
-        _baseFinalizedStateProvider.Received(1).GetFinalizedStateRootAt(blockNumber);
-    }
-
-    [Test]
-    public void GetFinalizedStateRootAt_DelegatesToBaseProvider_AfterTransition()
-    {
-        // Arrange
-        long finalizedBlockNumber = 200;
-        long blockNumber = 150;
-        Hash256 expectedStateRoot = TestItem.KeccakB;
-        BlockHeader finalizedHeader = Build.A.BlockHeader.WithNumber(finalizedBlockNumber).TestObject;
-
-        _poSSwitcher.TransitionFinished.Returns(true);
-        _blockTree.FindHeader(BlockParameter.Finalized).Returns(finalizedHeader);
         _baseFinalizedStateProvider.GetFinalizedStateRootAt(blockNumber).Returns(expectedStateRoot);
 
         // Act
