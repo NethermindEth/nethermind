@@ -4,7 +4,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using Autofac.Features.GeneratedFactories;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 

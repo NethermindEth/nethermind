@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Common.Utilities;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
