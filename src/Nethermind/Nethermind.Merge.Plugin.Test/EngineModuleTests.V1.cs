@@ -677,7 +677,9 @@ public partial class EngineModuleTests
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be("SYNCING");
 
-        AssertExecutionStatusNotChangedV1(chain.BlockFinder, block.Hash!, startingHead, startingHead);
+        Assert.That(chain.BlockFinder.HeadHash, Is.Not.EqualTo(block.Hash));
+        Assert.That(chain.BlockFinder.FinalizedHash, Is.EqualTo(startingHead));
+        Assert.That(chain.BlockFinder.SafeHash, Is.EqualTo(startingHead));
     }
 
     [Test, NonParallelizable]

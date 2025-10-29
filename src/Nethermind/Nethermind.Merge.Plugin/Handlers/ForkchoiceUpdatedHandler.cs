@@ -119,8 +119,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
         }
 
-        _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
-
         if (isDefinitelySyncing)
         {
             string simpleRequestStr = payloadAttributes is null ? forkchoiceState.ToString() : $"{forkchoiceState} {payloadAttributes}";
@@ -214,6 +212,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 if (_logger.IsInfo) _logger.Info($"Processing {_processingQueue.Count} blocks, Request: {requestStr}");
             }
 
+            _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
             _beaconPivot.ProcessDestination ??= newHeadBlock!.Header;
             return ForkchoiceUpdatedV1Result.Syncing;
         }
@@ -286,6 +285,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             if (_logger.IsInfo) _logger.Info($"Synced Chain Head to {newHeadBlock.ToString(Block.Format.Short)}");
         }
 
+        _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
         return null;
     }
 
