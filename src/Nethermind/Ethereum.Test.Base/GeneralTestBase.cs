@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Autofac;
-using Nethermind.Api;
 using NUnit.Framework;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -23,10 +22,8 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 
 namespace Ethereum.Test.Base
 {
