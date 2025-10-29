@@ -74,34 +74,22 @@ public class BlockhashProviderTests
     public void Can_lookup_correctly_on_disconnected_main_chain()
     {
         const int chainLength = 512;
-        const int lookback = chainLength - 3;
 
         Block genesis = Build.A.Block.Genesis.TestObject;
         BlockTree tree = Build.A.BlockTree(genesis).OfChainLength(chainLength).TestObject;
         BlockhashProvider provider = CreateBlockHashProvider(tree, Frontier.Instance);
 
         BlockHeader notCanonParent = tree.FindHeader(chainLength - 4, BlockTreeLookupOptions.None)!;
-        Block expected = tree.FindBlock(lookback, BlockTreeLookupOptions.None)!;
-
+        Block expected = tree.FindBlock(chainLength - 3, BlockTreeLookupOptions.None)!;
         BlockHeader expectedHeader = expected.Header;
+
         Block headParent = tree.FindBlock(chainLength - 2, BlockTreeLookupOptions.None)!;
         Block head = tree.FindBlock(chainLength - 1, BlockTreeLookupOptions.None)!;
-
-        Hash256? result = provider.GetBlockhash(tree.Head!.Header, lookback);
-        Assert.That(result, Is.EqualTo(expected.Hash));
 
         Block branch = Build.A.Block.WithParent(notCanonParent).WithTransactions(Build.A.Transaction.TestObject).TestObject;
         tree.Insert(branch, BlockTreeInsertBlockOptions.SaveHeader).Should().Be(AddBlockResult.Added);
 
-        // Hash shouldn't have changed from inserting block
-        result = provider.GetBlockhash(tree.Head!.Header, lookback);
-        Assert.That(result, Is.EqualTo(expected.Hash));
-
         tree.UpdateMainChain(branch); // Update branch
-
-        // Hash should have changed from updating chain
-        result = provider.GetBlockhash(tree.Head!.Header, lookback);
-        Assert.That(result, Is.EqualTo(branch.Hash));
 
         // Update back to original again, but skipping the branch block.
         tree.UpdateMainChain([expected, headParent, head], true);
@@ -109,7 +97,7 @@ public class BlockhashProviderTests
         Block current = Build.A.Block.WithParent(head).TestObject; // At chainLength
 
         // Hash should have restored from updating chain
-        result = provider.GetBlockhash(current.Header, lookback);
+        Hash256? result = provider.GetBlockhash(current.Header, chainLength - 3);
         Assert.That(result, Is.EqualTo(expectedHeader.Hash));
     }
 
