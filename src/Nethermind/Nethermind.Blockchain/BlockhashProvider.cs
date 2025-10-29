@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -45,7 +46,33 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            return _blockTree.FindBlockHash(number);
+            return (currentBlock.ParentHash == _blockTree.HeadHash) ?
+                _blockTree.FindBlockHash(number) :
+                GetBlockHashFromNonHeadParent(currentBlock, number);
+        }
+
+        private Hash256 GetBlockHashFromNonHeadParent(BlockHeader currentBlock, long number)
+        {
+            BlockHeader header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded) ??
+                throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
+
+            for (var i = 0; i < _maxDepth; i++)
+            {
+                if (number == header.Number)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning {header.Number},{header.Hash} for {currentBlock.Number} -> {number}");
+                    return header.Hash;
+                }
+
+                header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (header is null)
+                {
+                    throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
+                }
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning null for {currentBlock.Number} -> {number}");
+            return null;
         }
     }
 }
