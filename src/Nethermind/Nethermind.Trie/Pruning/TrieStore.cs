@@ -669,6 +669,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         _isFinalizedStateKnown = finalizedBlockNumber.HasValue;
 
+        if (!_isFinalizedStateKnown)
+        {
+            if (_logger.IsInfo) _logger.Info($"Finalized block unknown. Persisting {candidateSets.Count} states.");
+        }
+
         if (shouldTrackPastKey)
         {
             for (int i = 0; i < _shardedDirtyNodeCount; i++)
