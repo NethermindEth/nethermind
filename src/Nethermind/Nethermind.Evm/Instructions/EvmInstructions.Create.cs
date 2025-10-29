@@ -138,18 +138,8 @@ internal static partial class EvmInstructions
         // Load the initialization code from memory based on the specified position and length.
         ReadOnlyMemory<byte> initCode = vm.EvmState.Memory.Load(in memoryPositionOfInitCode, in initCodeLength);
 
-        UInt256? balance = null;
-        UInt256? accountNonce = null;
-
-        // Ensure the executing account exists in the world state. If not, create it with a zero balance.
-        if (!state.AccountExists(env.ExecutingAccount))
-        {
-            state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
-            balance = accountNonce = UInt256.Zero;
-        }
-
         // Check that the executing account has sufficient balance to transfer the specified value.
-        balance ??= state.GetBalance(env.ExecutingAccount);
+        UInt256 balance = state.GetBalance(env.ExecutingAccount);
         if (value > balance)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
@@ -158,7 +148,7 @@ internal static partial class EvmInstructions
         }
 
         // Retrieve the nonce of the executing account to ensure it hasn't reached the maximum.
-        accountNonce ??= state.GetNonce(env.ExecutingAccount);
+        UInt256 accountNonce = state.GetNonce(env.ExecutingAccount);
         UInt256 maxNonce = ulong.MaxValue;
         if (accountNonce >= maxNonce)
         {
