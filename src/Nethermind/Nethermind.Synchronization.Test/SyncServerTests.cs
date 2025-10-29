@@ -48,7 +48,7 @@ public class SyncServerTests
     public void When_finding_hash_it_does_not_load_headers()
     {
         Context ctx = new();
-        ctx.BlockTree.FindHash(123).Returns(TestItem.KeccakA);
+        ctx.BlockTree.FindBlockHash(123).Returns(TestItem.KeccakA);
         Hash256 result = ctx.SyncServer.FindHash(123)!;
 
         ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
