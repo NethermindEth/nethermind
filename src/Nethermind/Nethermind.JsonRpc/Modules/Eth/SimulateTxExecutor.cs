@@ -46,7 +46,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                     StateOverrides = blockStateCall.StateOverrides,
                     Calls = blockStateCall.Calls?.Select(callTransactionModel =>
                     {
-                        callTransactionModel = UpdateTxType(callTransactionModel);
                         LegacyTransactionForRpc asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
@@ -74,44 +73,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         };
 
         return result;
-    }
-
-    private static TransactionForRpc UpdateTxType(TransactionForRpc rpcTransaction)
-    {
-        // If transaction is Legacy or AccessList update to Eip1559
-        // If gas price is not null it's a legacy tx. No metter what
-        if (rpcTransaction is LegacyTransactionForRpc legacy)
-        {
-            LegacyTransactionForRpc result = legacy;
-            if (legacy.GasPrice is not null)
-            {
-                result = new LegacyTransactionForRpc();
-            }
-            else if (rpcTransaction is not EIP1559TransactionForRpc)
-            {
-                result = new EIP1559TransactionForRpc
-                {
-                    AccessList = rpcTransaction is AccessListTransactionForRpc accessListTx
-                        ? accessListTx.AccessList
-                        : null
-                };
-            }
-            result.Nonce = legacy.Nonce;
-            result.To = legacy.To;
-            result.From = legacy.From;
-            result.Gas = legacy.Gas;
-            result.Value = legacy.Value;
-            result.Input = legacy.Input;
-            result.GasPrice = legacy.GasPrice;
-            result.ChainId = legacy.ChainId;
-            result.V = legacy.V;
-            result.R = legacy.R;
-            result.S = legacy.S;
-
-            return result;
-        }
-
-        return rpcTransaction;
     }
 
     public override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
