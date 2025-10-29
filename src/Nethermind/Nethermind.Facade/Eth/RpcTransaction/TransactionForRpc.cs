@@ -135,8 +135,16 @@ public abstract class TransactionForRpc
 
         private Type DeriveTxType(JsonObject untyped, JsonSerializerOptions options)
         {
-            const TxType defaultTxType = TxType.EIP1559;
+            Type defaultTxType = typeof(EIP1559TransactionForRpc);
             const string gasPriceFieldKey = nameof(LegacyTransactionForRpc.GasPrice);
+            const string typeFieldKey = nameof(TransactionForRpc.Type);
+
+            if (untyped.TryGetPropertyValue(typeFieldKey, out JsonNode? node))
+            {
+                TxType? setType = node.Deserialize<TxType?>(options);
+                return _txTypes.FirstOrDefault(p => p.TxType == setType)?.Type ??
+                       throw new JsonException("Unknown transaction type");
+            }
 
             if (untyped.ContainsKey(gasPriceFieldKey))
             {
@@ -144,8 +152,7 @@ public abstract class TransactionForRpc
             }
 
             return _txTypes
-                .FirstOrDefault(p => p.TxType == defaultTxType || p.DiscriminatorProperties.Any(untyped.ContainsKey),
-                    _txTypes[^1]).Type;
+                .FirstOrDefault(p => p.DiscriminatorProperties.Any(untyped.ContainsKey))?.Type ?? defaultTxType;
         }
 
         public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options)
