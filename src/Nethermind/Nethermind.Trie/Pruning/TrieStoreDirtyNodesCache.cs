@@ -44,7 +44,12 @@ internal class TrieStoreDirtyNodesCache
         // If the nodestore indicated that path is not required,
         // we will use a map with hash as its key instead of the full Key to reduce memory usage.
         _storeByHash = storeByHash;
+
+        // Keep root causes persisted root nodes to not get pruned out of the cache. This ensure that it will
+        // be deleted when another canonical state is persisted which prevent having incomplete state which can happen
+        // when inner nodes get deleted but the root does not.
         _keepRoot = keepRoot;
+
         // NOTE: DirtyNodesCache is already sharded.
         int concurrencyLevel = Math.Min(Environment.ProcessorCount * 4, 32);
         int initialBuckets = TrieStore.HashHelpers.GetPrime(Math.Max(31, concurrencyLevel));
@@ -331,7 +336,7 @@ internal class TrieStoreDirtyNodesCache
 
                     bool shouldRemove = removeStillNeededPersistedNode
                                         || _trieStore.IsNoLongerNeeded(lastCommit);
-                    if (_keepRoot && key.Path.Length == 0) shouldRemove = false;
+                    if (_keepRoot && key.IsRoot()) shouldRemove = false;
                     if (shouldRemove)
                     {
                         RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);
@@ -505,6 +510,11 @@ internal class TrieStoreDirtyNodesCache
         public override string ToString()
         {
             return $"A:{Address} P:{Path} K:{Keccak}";
+        }
+
+        public bool IsRoot()
+        {
+            return Path.Length == 0;
         }
     }
 

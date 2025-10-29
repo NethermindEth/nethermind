@@ -334,6 +334,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         _scopeLock.Enter();
 
+        SpinWait spinWait = new SpinWait();
         while (true)
         {
             if (_pruningLock.TryEnter())
@@ -356,7 +357,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 {
                     // This can happen in the tiny time in between pruningLock was acquired but the exact block to
                     // persist was not determined yet.
-                    Thread.Sleep(1);
+                    spinWait.SpinOnce();
                     continue;
                 }
 
@@ -1652,7 +1653,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                     // in disk, or a node that will be deleted. We must never get a node that will be deleted.
                     if (nodeRecord.LastCommit >= _minCommitBlockNumber)
                     {
-                        bufferShard.GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(nodeRecord.Node, -1));
+                        bufferShard.GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(nodeRecord.Node, blockNumber));
                         return nodeRecord.Node;
                     }
                 }
@@ -1660,17 +1661,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 {
                     // If it is not persisted, then its child is still referred directly.
                     // The child will not get unreferred until after later it and all its children was persisted.
-                    bufferShard.GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(nodeRecord.Node, -1));
+                    bufferShard.GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(nodeRecord.Node, blockNumber));
                     return nodeRecord.Node;
                 }
             }
 
-            if (hasInBuffer)
-            {
-                return bufferNode;
-            }
-            else
-                return bufferShard.FindCachedOrUnknown(key, blockNumber);
+            return hasInBuffer ? bufferNode : bufferShard.FindCachedOrUnknown(key, blockNumber);
         }
     }
 
