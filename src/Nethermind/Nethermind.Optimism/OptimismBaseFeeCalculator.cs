@@ -38,11 +38,8 @@ public sealed class OptimismBaseFeeCalculator(
 
         UInt256 baseFee = baseFeeCalculator.Calculate(parent, spec);
 
-        // TODO: use jovianTimestamp check instead?
-        if (eip1559Params.MinBaseFee is { } minBaseFee)
-        {
-            baseFee = UInt256.Max(baseFee, minBaseFee);
-        }
+        if (eip1559Params.MinBaseFee > 0)
+            baseFee = UInt256.Max(baseFee, eip1559Params.MinBaseFee);
 
         return baseFee;
     }
