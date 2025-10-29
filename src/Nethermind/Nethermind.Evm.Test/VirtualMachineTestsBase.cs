@@ -118,14 +118,13 @@ public abstract class VirtualMachineTestsBase
     /// <summary>
     /// deprecated. Please use activation instead of blockNumber.
     /// </summary>
-    protected TestAllTracerWithOutput Execute(long blockNumber, params byte[] code)
-    {
-        return Execute((blockNumber, Timestamp), code);
-    }
+    protected TestAllTracerWithOutput Execute(long blockNumber, params byte[] code) => Execute((blockNumber, Timestamp), code);
 
-    protected TestAllTracerWithOutput Execute(ForkActivation activation, params byte[] code)
+    protected TestAllTracerWithOutput Execute(ForkActivation activation, params byte[] code) => Execute(activation, 100000, code);
+
+    protected TestAllTracerWithOutput Execute(ForkActivation activation, long gasLimit, params byte[] code)
     {
-        (Block block, Transaction transaction) = PrepareTx(activation, 100000, code);
+        (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code);
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
@@ -139,14 +138,9 @@ public abstract class VirtualMachineTestsBase
         return tracer;
     }
 
-    protected TestAllTracerWithOutput Execute(params byte[] code)
-    {
-        return Execute(Activation, code);
-    }
-    protected TestAllTracerWithOutput Execute(Transaction tx)
-    {
-        return Execute(Activation, tx);
-    }
+    protected TestAllTracerWithOutput Execute(params byte[] code) => Execute(Activation, code);
+
+    protected TestAllTracerWithOutput Execute(Transaction tx) => Execute(Activation, tx);
 
     protected virtual TestAllTracerWithOutput CreateTracer() => new();
 
