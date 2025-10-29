@@ -35,7 +35,6 @@ public class AccessListForRpc
         [JsonConverter(typeof(StorageCellIndexConverter))]
         public IEnumerable<UInt256>? StorageKeys { get; set; }
 
-        [JsonConstructor]
         public Item() { }
 
         public Item(Address address, IEnumerable<UInt256>? storageKeys)
