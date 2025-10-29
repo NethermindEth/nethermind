@@ -27,18 +27,7 @@ internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>, IRlpValueDecoder<S
 
         return new Snapshot(number, hash256, candidates);
     }
-
-    public Rlp Encode(Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (item is null)
-            return Rlp.OfEmptySequence;
-
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
-        return new Rlp(rlpStream.Data.ToArray());
-    }
-
-    private Address[] DecodeAddressArray(ref Rlp.ValueDecoderContext decoderContext)
+    public static Address[] DecodeAddressArray(ref Rlp.ValueDecoderContext decoderContext)
     {
         if (decoderContext.IsNextItemNull())
         {
@@ -58,6 +47,16 @@ internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>, IRlpValueDecoder<S
         }
 
         return addresses;
+    }
+
+    public Rlp Encode(Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (item is null)
+            return Rlp.OfEmptySequence;
+
+        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
+        Encode(rlpStream, item, rlpBehaviors);
+        return new Rlp(rlpStream.Data.ToArray());
     }
 
     public Snapshot Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

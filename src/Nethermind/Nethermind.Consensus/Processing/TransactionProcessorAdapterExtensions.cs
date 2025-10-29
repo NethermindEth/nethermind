@@ -17,7 +17,7 @@ internal static class TransactionProcessorAdapterExtensions
         ProcessingOptions processingOptions,
         IWorldState stateProvider)
     {
-        if (processingOptions.ContainsFlag(ProcessingOptions.DoNotVerifyNonce) && currentTx.SenderAddress != Address.SystemUser)
+        if (processingOptions.ContainsFlag(ProcessingOptions.LoadNonceFromState) && currentTx.SenderAddress != Address.SystemUser)
         {
             currentTx.Nonce = stateProvider.GetNonce(currentTx.SenderAddress!);
         }

@@ -749,10 +749,10 @@ namespace Nethermind.State
             int writes = 0;
             int skipped = 0;
 
-            using ArrayPoolList<PatriciaTree.BulkSetEntry> bulkWrite = new(_blockChanges.Count);
-            foreach (var key in _blockChanges.Keys)
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkWrite = new(_blockChanges.Count);
+            foreach (AddressAsKey key in _blockChanges.Keys)
             {
-                ref var change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
+                ref ChangeTrace change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
                 if (change.Before != change.After)
                 {
                     change.Before = change.After;
