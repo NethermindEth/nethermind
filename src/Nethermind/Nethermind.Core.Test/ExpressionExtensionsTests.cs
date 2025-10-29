@@ -13,7 +13,7 @@ public class ExpressionExtensionsTests
     private class Dummy
     {
         public int ValueProperty { get; set; }
-        public int ValueField;
+        public int ValueField = 0;
     }
 
     [Test]
