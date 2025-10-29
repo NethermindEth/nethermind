@@ -45,14 +45,7 @@ public static class NSubstituteExtensions
             // Lambda 2: Handle matching with concrete argument values
             GetMatchCount);
 
-        bool check = matchCount.HasValue && CheckMatchCount(matchCount.Value);
-        if (!check)
-        {
-            TestContext.Out.WriteLine(requiredNumberOfCalls == maxNumberOfCalls
-                ? $"Expected ({expression}) to receive calls matching {requiredNumberOfCalls} calls, but actually got {matchCount} calls."
-                : $"Expected ({expression}) to receive calls matching between {requiredNumberOfCalls} and {maxNumberOfCalls} calls, but actually got {matchCount} calls.");
-        }
-        return check;
+        return matchCount.HasValue && CheckMatchCount(matchCount.Value);
 
         bool CheckMatchCount(int count) => count >= requiredNumberOfCalls && count <= maxNumberOfCalls;
 
