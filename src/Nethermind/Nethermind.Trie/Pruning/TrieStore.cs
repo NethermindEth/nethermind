@@ -721,7 +721,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     /// <summary>
     /// Determined the state that will be persisted in a snapshot.
-    /// Ifore than 1 commit set, then its an archive node.
+    /// If more than 1 commit set, then its an archive node.
     /// </summary>
     /// <param name="count"></param>
     /// <returns>A tuple of the block to be committed and the canonical block number if known.</returns>

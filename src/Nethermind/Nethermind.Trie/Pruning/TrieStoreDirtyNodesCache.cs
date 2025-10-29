@@ -264,7 +264,7 @@ internal class TrieStoreDirtyNodesCache
     /// </summary>
     /// <param name="prunePersisted">Also prune persisted node. Persisted node can still be deleted</param>
     /// <param name="forceRemovePersistedNodes">Force prune persisted node. This is used for full pruning to clear the cache.</param>
-    /// <param name="removeStillNeededPersistedNode">Unlike <see cref="forceRemovePersistedNodes"/>, this still keep root node if <see cref="_keepRoot" /> is true. Used for long finalization.</param>
+    /// <param name="removeStillNeededPersistedNode">Unlike <paramref name="forceRemovePersistedNodes"/>, this still keeps the root node if <c>_keepRoot</c> is true. Used for long finalization.</param>
     /// <exception cref="InvalidOperationException"></exception>
     public void PruneCache(
         bool prunePersisted = false,
