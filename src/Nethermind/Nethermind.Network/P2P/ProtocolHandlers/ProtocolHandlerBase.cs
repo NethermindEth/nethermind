@@ -16,7 +16,6 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
@@ -90,6 +89,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 int originalReaderIndex = data.ReaderIndex;
                 T result = _serializer.Deserialize<T>(data);
                 if (data.IsReadable()) ThrowIncompleteDeserializationException(data, originalReaderIndex);
+                if (Logger.IsTrace) Logger.Trace($"{Counter} Got {typeof(T).Name}");
+
                 return result;
             }
             catch (RlpLimitException e)
