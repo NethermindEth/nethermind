@@ -57,7 +57,7 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         return header;
     }
 
-    public void Cache(BlockHeader header)
+    public void Cache(BlockHeader header, bool isCanonical = false)
     {
         Insert(header);
     }
@@ -79,4 +79,6 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
     }
 
     public Hash256? GetBlockHash(long blockNumber) => null;
+
+    public void CacheBlockHash(long blockNumber, Hash256 blockHash) { }
 }

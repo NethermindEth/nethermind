@@ -15,9 +15,10 @@ public interface IHeaderStore
     BlockHeader? Get(Hash256 blockHash, bool shouldCache = true, long? blockNumber = null)
         => Get(blockHash, out _, shouldCache, blockNumber);
     BlockHeader? Get(Hash256 blockHash, out bool fromCache, bool shouldCache = true, long? blockNumber = null);
-    void Cache(BlockHeader header);
+    void Cache(BlockHeader header, bool isMainChain = false);
     void Delete(Hash256 blockHash);
     void InsertBlockNumber(Hash256 blockHash, long blockNumber);
     long? GetBlockNumber(Hash256 blockHash);
     Hash256? GetBlockHash(long blockNumber);
+    void CacheBlockHash(long blockNumber, Hash256 blockHash);
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -9,12 +10,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.Evm.State;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
@@ -74,25 +74,42 @@ public class BlockhashProviderTests
     public void Can_lookup_correctly_on_disconnected_main_chain()
     {
         const int chainLength = 512;
+        const int lookback = chainLength - 3;
 
         Block genesis = Build.A.Block.Genesis.TestObject;
         BlockTree tree = Build.A.BlockTree(genesis).OfChainLength(chainLength).TestObject;
         BlockhashProvider provider = CreateBlockHashProvider(tree, Frontier.Instance);
 
         BlockHeader notCanonParent = tree.FindHeader(chainLength - 4, BlockTreeLookupOptions.None)!;
-        BlockHeader expectedHeader = tree.FindHeader(chainLength - 3, BlockTreeLookupOptions.None)!;
+        Block expected = tree.FindBlock(lookback, BlockTreeLookupOptions.None)!;
+
+        BlockHeader expectedHeader = expected.Header;
         Block headParent = tree.FindBlock(chainLength - 2, BlockTreeLookupOptions.None)!;
         Block head = tree.FindBlock(chainLength - 1, BlockTreeLookupOptions.None)!;
 
+        Hash256? result = provider.GetBlockhash(tree.Head!.Header, lookback);
+        Assert.That(result, Is.EqualTo(expected.Hash));
+
         Block branch = Build.A.Block.WithParent(notCanonParent).WithTransactions(Build.A.Transaction.TestObject).TestObject;
         tree.Insert(branch, BlockTreeInsertBlockOptions.SaveHeader).Should().Be(AddBlockResult.Added);
+
+        // Hash shouldn't have changed from inserting block
+        result = provider.GetBlockhash(tree.Head!.Header, lookback);
+        Assert.That(result, Is.EqualTo(expected.Hash));
+
         tree.UpdateMainChain(branch); // Update branch
 
-        tree.UpdateMainChain([headParent, head], true); // Update back to original again, but skipping the branch block.
+        // Hash should have changed from updating chain
+        result = provider.GetBlockhash(tree.Head!.Header, lookback);
+        Assert.That(result, Is.EqualTo(branch.Hash));
+
+        // Update back to original again, but skipping the branch block.
+        tree.UpdateMainChain([expected, headParent, head], true);
 
         Block current = Build.A.Block.WithParent(head).TestObject; // At chainLength
 
-        Hash256? result = provider.GetBlockhash(current.Header, chainLength - 3);
+        // Hash should have restored from updating chain
+        result = provider.GetBlockhash(current.Header, lookback);
         Assert.That(result, Is.EqualTo(expectedHeader.Hash));
     }
 

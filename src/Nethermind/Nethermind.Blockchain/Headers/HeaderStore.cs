@@ -56,7 +56,7 @@ public class HeaderStore : IHeaderStore
 
             header.Number.WriteBigEndian(blockNumberSpan);
             blockNumberWriteBatch.Set(header.Hash, blockNumberSpan);
-            CacheNumber(header.Hash, header.Number);
+            CacheNumber(header.Hash, header.Number, isMainChain: false);
         }
     }
 
@@ -77,9 +77,12 @@ public class HeaderStore : IHeaderStore
         return _headerDb.Get(blockHash, _headerDecoder, out fromCache, _headerCache, shouldCache: shouldCache);
     }
 
-    public void Cache(BlockHeader header)
+    public void CacheBlockHash(long blockNumber, Hash256 blockHash)
+        => CacheNumber(blockHash, blockNumber, isMainChain: true);
+
+    public void Cache(BlockHeader header, bool isMainChain)
     {
-        CacheNumber(header.Hash, header.Number);
+        CacheNumber(header.Hash, header.Number, isMainChain);
         _headerCache.Set(header.Hash, header);
     }
 
@@ -102,13 +105,16 @@ public class HeaderStore : IHeaderStore
         Span<byte> blockNumberSpan = stackalloc byte[8];
         blockNumber.WriteBigEndian(blockNumberSpan);
         _blockNumberDb.Set(blockHash, blockNumberSpan);
-        CacheNumber(blockHash, blockNumber);
+        CacheNumber(blockHash, blockNumber, isMainChain: false);
     }
 
-    private void CacheNumber(Hash256 blockHash, long blockNumber)
+    private void CacheNumber(Hash256 blockHash, long blockNumber, bool isMainChain)
     {
         _numberCache.Set(blockHash, blockNumber);
-        _hashCache.Set(blockNumber, blockHash);
+        if (isMainChain)
+        {
+            _hashCache.Set(blockNumber, blockHash);
+        }
     }
 
     public Hash256? GetBlockHash(long blockNumber)
@@ -135,7 +141,7 @@ public class HeaderStore : IHeaderStore
     {
         if (_headerCache.TryGet(blockHash, out BlockHeader? header))
         {
-            CacheNumber(blockHash, header.Number);
+            CacheNumber(blockHash, header.Number, isMainChain: false);
             return header.Number;
         }
 
@@ -146,7 +152,7 @@ public class HeaderStore : IHeaderStore
         blockNumber = Get(blockHash, out _)?.Number;
         if (blockNumber.HasValue)
         {
-            CacheNumber(blockHash, blockNumber.Value);
+            CacheNumber(blockHash, blockNumber.Value, isMainChain: false);
         }
         return blockNumber;
     }
@@ -169,7 +175,7 @@ public class HeaderStore : IHeaderStore
             }
 
             number = BinaryPrimitives.ReadInt64BigEndian(numberSpan);
-            CacheNumber(blockHash, number);
+            CacheNumber(blockHash, number, isMainChain: false);
             return number;
         }
         finally

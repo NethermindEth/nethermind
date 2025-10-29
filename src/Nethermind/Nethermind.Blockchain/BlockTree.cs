@@ -596,6 +596,7 @@ namespace Nethermind.Blockchain
             bool createLevelIfMissing = (options & BlockTreeLookupOptions.DoNotCreateLevelIfMissing) == BlockTreeLookupOptions.None;
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) == BlockTreeLookupOptions.RequireCanonical;
 
+            bool isMainChain = false;
             if ((totalDifficultyNeeded && header.TotalDifficulty is null) || requiresCanonical)
             {
                 (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(header.Number, header.Hash, true);
@@ -622,16 +623,16 @@ namespace Nethermind.Blockchain
                     SetTotalDifficultyFromBlockInfo(header, blockInfo);
                 }
 
+                isMainChain = level.MainChainBlock?.BlockHash?.Equals(blockHash) == true;
                 if (requiresCanonical)
                 {
-                    bool isMain = level.MainChainBlock?.BlockHash?.Equals(blockHash) == true;
-                    header = isMain ? header : null;
+                    header = isMainChain ? header : null;
                 }
             }
 
             if (header is not null && !fromCache && ShouldCache(header.Number))
             {
-                _headerStore.Cache(header);
+                _headerStore.Cache(header, isMainChain);
             }
 
             return header;
@@ -763,7 +764,9 @@ namespace Nethermind.Blockchain
 
             if (level.HasBlockOnMainChain)
             {
-                return level.BlockInfos[0].BlockHash;
+                Hash256 blockHash = level.BlockInfos[0].BlockHash;
+                _headerStore.CacheBlockHash(blockNumber, blockHash);
+                return blockHash;
             }
 
             UInt256 bestDifficultySoFar = UInt256.Zero;
@@ -947,11 +950,9 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
-                if (ShouldCache(block.Number))
-                {
-                    _blockStore.Cache(block);
-                    _headerStore.Cache(block.Header);
-                }
+                // Header also updates the number <-> hash mapping so always update
+                _blockStore.Cache(block);
+                _headerStore.Cache(block.Header, isMainChain: true);
 
                 ChainLevelInfo? level = LoadLevel(block.Number);
                 int? index = (level?.FindIndex(block.Hash)) ?? throw new InvalidOperationException($"Cannot mark unknown block {block.ToString(Block.Format.FullHashAndNumber)} as processed");
@@ -1016,13 +1017,9 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
-                if (ShouldCache(block.Number))
-                {
-                    _blockStore.Cache(block);
-                }
-
+                _blockStore.Cache(block);
                 // Header also updates the number <-> hash mapping so always update
-                _headerStore.Cache(block.Header);
+                _headerStore.Cache(block.Header, wereProcessed);
                 // we only force update head block for last block in processed blocks
                 bool lastProcessedBlock = i == blocks.Count - 1;
 
@@ -1469,6 +1466,7 @@ namespace Nethermind.Blockchain
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) ==
                                      BlockTreeLookupOptions.RequireCanonical;
 
+            bool isMainChain = false;
             if ((totalDifficultyNeeded && block.TotalDifficulty is null) || requiresCanonical)
             {
                 (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(block.Number, block.Hash, true);
@@ -1495,17 +1493,17 @@ namespace Nethermind.Blockchain
                     SetTotalDifficultyFromBlockInfo(block.Header, blockInfo);
                 }
 
+                isMainChain = level.MainChainBlock?.BlockHash.Equals(blockHash) == true;
                 if (requiresCanonical)
                 {
-                    bool isMain = level.MainChainBlock?.BlockHash.Equals(blockHash) == true;
-                    block = isMain ? block : null;
+                    block = isMainChain ? block : null;
                 }
             }
 
             if (block is not null && !fromCache && ShouldCache(block.Number))
             {
                 _blockStore.Cache(block);
-                _headerStore.Cache(block.Header);
+                _headerStore.Cache(block.Header, isMainChain);
             }
 
             return block;
