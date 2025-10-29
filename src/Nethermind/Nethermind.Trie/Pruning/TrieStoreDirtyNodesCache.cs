@@ -68,9 +68,9 @@ internal class TrieStoreDirtyNodesCache
         KeyMemoryUsage += MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
     }
 
-    public TrieNode FindCachedOrUnknown(in Key key, long blockNumber)
+    public TrieNode FindCachedOrUnknown(in Key key)
     {
-        NodeRecord nodeRecord = GetOrAdd(in key, this, blockNumber);
+        NodeRecord nodeRecord = GetOrAdd(in key, this);
         if (nodeRecord.Node.NodeType != NodeType.Unknown)
         {
             Metrics.LoadedFromCacheNodesCount++;
@@ -160,21 +160,19 @@ internal class TrieStoreDirtyNodesCache
             : _byKeyObjectCache.TryGetValue(key, out nodeRecord);
     }
 
-    private NodeRecord GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache, long blockNumber) => _storeByHash
-        ? _byHashObjectCache.GetOrAdd(key.Keccak, static (keccak, arg) =>
+    private NodeRecord GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash
+        ? _byHashObjectCache.GetOrAdd(key.Keccak, static (keccak, cache) =>
         {
-            (TrieStoreDirtyNodesCache cache, var blockNumber) = arg;
             TrieNode trieNode = new(NodeType.Unknown, keccak);
             cache.IncrementMemory(trieNode);
-            return new NodeRecord(trieNode, blockNumber);
-        }, (cache, blockNumber))
-        : _byKeyObjectCache.GetOrAdd(key, static (key, arg) =>
+            return new NodeRecord(trieNode, -1);
+        }, cache)
+        : _byKeyObjectCache.GetOrAdd(key, static (key, cache) =>
         {
-            (TrieStoreDirtyNodesCache cache, var blockNumber) = arg;
             TrieNode trieNode = new(NodeType.Unknown, key.Keccak);
             cache.IncrementMemory(trieNode);
-            return new NodeRecord(trieNode, blockNumber);
-        }, (cache, blockNumber));
+            return new NodeRecord(trieNode, -1);
+        }, cache);
 
     public NodeRecord GetOrAdd(in Key key, NodeRecord record)
     {
@@ -264,12 +262,10 @@ internal class TrieStoreDirtyNodesCache
     /// </summary>
     /// <param name="prunePersisted">Also prune persisted node. Persisted node can still be deleted</param>
     /// <param name="forceRemovePersistedNodes">Force prune persisted node. This is used for full pruning to clear the cache.</param>
-    /// <param name="removeStillNeededPersistedNode">Unlike <see cref="forceRemovePersistedNodes"/>, this still keep root node if <see cref="_keepRoot" /> is true. Used for long finalization.</param>
     /// <exception cref="InvalidOperationException"></exception>
     public void PruneCache(
         bool prunePersisted = false,
         bool forceRemovePersistedNodes = false,
-        bool removeStillNeededPersistedNode = false,
         ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes = null,
         INodeStorage? nodeStorage = null)
     {
@@ -281,7 +277,6 @@ internal class TrieStoreDirtyNodesCache
         (totalMemory, dirtyMemory, totalNode, dirtyNode) = PruneCacheUnlocked(
             prunePersisted,
             forceRemovePersistedNodes,
-            removeStillNeededPersistedNode,
             persistedHashes,
             writeBatcher);
 
@@ -296,7 +291,6 @@ internal class TrieStoreDirtyNodesCache
     private (long totalMemory, long dirtyMemory, long totalNode, long dirtyNode) PruneCacheUnlocked(
         bool prunePersisted,
         bool forceRemovePersistedNodes,
-        bool removeStillNeededPersistedNode,
         ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes,
         ConcurrentNodeWriteBatcher? writeBatcher)
     {
@@ -337,13 +331,7 @@ internal class TrieStoreDirtyNodesCache
                         continue;
                     }
 
-                    bool shouldRemove = removeStillNeededPersistedNode
-                                        || _trieStore.IsNoLongerNeeded(lastCommit);
-                    if (_keepRoot && key.IsRoot())
-                    {
-                        shouldRemove = false;
-                    }
-                    if (shouldRemove)
+                    if (_trieStore.IsNoLongerNeeded(lastCommit) && !(_keepRoot && key.IsRoot()))
                     {
                         RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);
                         continue;

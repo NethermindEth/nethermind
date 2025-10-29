@@ -949,14 +949,14 @@ namespace Nethermind.Trie.Test
                 .CommitRandomDataWorthNBlocks(10)
                 .VerifyPersisted(27)
                 .VerifyStateDbSize(27)
-                .VerifyCachedPersistedNode(7)
+                .VerifyCachedPersistedNode(11)
 
                 .SetFinalizedPoint()
                 .CommitRandomData()
 
-                .VerifyCachedPersistedNode(9)
+                .VerifyCachedPersistedNode(4)
                 .VerifyPersisted(31)
-                .VerifyStateDbSize(24)
+                .VerifyStateDbSize(23)
                 // Only some get removed as the persisted node not in are cache so it does not know if it is safe to remove
                 ;
         }

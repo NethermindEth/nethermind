@@ -1105,7 +1105,7 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             memDb.Count.Should().Be(1);
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 11844 : 15360);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 12032 : 15360);
 
             fullTrieStore.PersistCache(default);
             memDb.Count.Should().Be(64);
@@ -1215,7 +1215,7 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.WaitForPruning();
 
             fullTrieStore.PrunePersistedNodes();
-            fullTrieStore.CachedNodesCount.Should().Be(58);
+            fullTrieStore.CachedNodesCount.Should().Be(65);
 
             fullTrieStore.PersistAndPruneDirtyCache();
             fullTrieStore.PrunePersistedNodes();
@@ -1476,12 +1476,13 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             List<Hash256> rootsToTests = new List<Hash256>();
-            void VerifyAllTrie()
+            void VerifyAllTrieExceptGenesis()
             {
                 PatriciaTree readOnlyPTree = new PatriciaTree(fullTrieStore.AsReadOnly().GetTrieStore(null), LimboLogs.Instance);
                 MemDb stubCodeDb = new MemDb();
-                for (int i = 0; i < rootsToTests.Count; i++)
+                for (int i = 1; i < rootsToTests.Count; i++)
                 {
+                    Console.Error.WriteLine($"Verify {i}");
                     var rootsToTest = rootsToTests[i];
                     TrieStatsCollector collector = new TrieStatsCollector(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
                     ptree.Accept(collector, rootHash: rootsToTest);
@@ -1543,15 +1544,16 @@ namespace Nethermind.Trie.Test.Pruning
                     fullTrieStore.PrunePersistedNodes();
 
                     long cachedPersistedNode = fullTrieStore.CachedNodesCount - fullTrieStore.DirtyCachedNodesCount;
+                    long perStatePersistedNode = 20;
                     if (_scheme == INodeStorage.KeyScheme.Hash)
                     {
-                        cachedPersistedNode.Should().Be(0);
+                        cachedPersistedNode.Should().Be(perStatePersistedNode + 3);
                     }
                     else
                     {
-                        cachedPersistedNode.Should().Be(rootsToTests.Count - lastNRoots - 1); // The root is still kept
+                        cachedPersistedNode.Should().Be(rootsToTests.Count - lastNRoots + perStatePersistedNode); // The root is still kept
                     }
-                    VerifyAllTrie();
+                    VerifyAllTrieExceptGenesis();
                 }
             }
         }
