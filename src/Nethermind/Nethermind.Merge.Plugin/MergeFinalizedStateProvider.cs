@@ -4,21 +4,45 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin;
 
-public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockTree blockTree, IFinalizedStateProvider baseFinalizedStateProvider): IFinalizedStateProvider
+public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheService blockCacheService, IBlockTree blockTree, IFinalizedStateProvider baseFinalizedStateProvider): IFinalizedStateProvider
 {
     public long FinalizedBlockNumber
     {
         get
         {
-            return poSSwitcher.TransitionFinished
-                ? blockTree.FindHeader(BlockParameter.Finalized)?.Number ??
-                  baseFinalizedStateProvider.FinalizedBlockNumber
-                : baseFinalizedStateProvider.FinalizedBlockNumber;
+            if (poSSwitcher.TransitionFinished)
+            {
+                BlockHeader? currentFinalized = null;
+                if (blockTree.FinalizedHash is {} blockTreeFinalizedHash)
+                {
+                    currentFinalized = blockTree.FindHeader(blockTreeFinalizedHash, BlockTreeLookupOptions.None);
+                }
+
+                // Finalized hash from blocktree is not updated until it is processed, which is a problem for long
+                // catchup. So we use from blockCacheService as a backup.
+                if (blockCacheService.FinalizedHash is { } blockCacheFinalizedHash)
+                {
+                    BlockHeader? fromBlockCache = blockTree.FindHeader(blockCacheFinalizedHash);
+                    if (fromBlockCache != null)
+                    {
+                        if (currentFinalized is null || fromBlockCache.Number > currentFinalized.Number)
+                        {
+                            currentFinalized = fromBlockCache;
+                        }
+                    }
+                }
+
+                return currentFinalized?.Number ?? baseFinalizedStateProvider.FinalizedBlockNumber;
+            }
+
+            return baseFinalizedStateProvider.FinalizedBlockNumber;
         }
     }
 

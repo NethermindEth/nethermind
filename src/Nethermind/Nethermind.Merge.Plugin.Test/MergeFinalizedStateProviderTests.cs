@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -23,6 +24,7 @@ public class MergeFinalizedStateProviderTests
     private IBlockTree _blockTree = null!;
     private IFinalizedStateProvider _baseFinalizedStateProvider = null!;
     private MergeFinalizedStateProvider _provider = null!;
+    private IBlockCacheService _blockCacheService;
 
     [SetUp]
     public void Setup()
@@ -30,7 +32,8 @@ public class MergeFinalizedStateProviderTests
         _poSSwitcher = Substitute.For<IPoSSwitcher>();
         _blockTree = Substitute.For<IBlockTree>();
         _baseFinalizedStateProvider = Substitute.For<IFinalizedStateProvider>();
-        _provider = new MergeFinalizedStateProvider(_poSSwitcher, _blockTree, _baseFinalizedStateProvider);
+        _blockCacheService = Substitute.For<IBlockCacheService>();
+        _provider = new MergeFinalizedStateProvider(_poSSwitcher, _blockCacheService, _blockTree, _baseFinalizedStateProvider);
     }
 
     [Test]
