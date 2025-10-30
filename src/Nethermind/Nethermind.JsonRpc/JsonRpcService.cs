@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -26,6 +27,8 @@ namespace Nethermind.JsonRpc;
 
 public class JsonRpcService : IJsonRpcService
 {
+    private readonly static ConcurrentDictionary<TypeAsKey, bool> _reparseReflectionCache = new();
+
     private readonly ILogger _logger;
     private readonly IRpcModuleProvider _rpcModuleProvider;
     private readonly HashSet<string> _methodsLoggingFiltering;
@@ -390,8 +393,13 @@ public class JsonRpcService : IJsonRpcService
         {
             if (providedParameter.ValueKind == JsonValueKind.String)
             {
-                JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
-                executionParam = converter.GetType().Namespace.StartsWith("System.", StringComparison.Ordinal)
+                bool reparseString = _reparseReflectionCache.GetOrAdd(paramType, static type =>
+                {
+                    JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(type);
+                    return converter.GetType().Namespace.StartsWith("System.", StringComparison.Ordinal);
+                });
+
+                executionParam = reparseString
                     ? JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions)
                     : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
             }
