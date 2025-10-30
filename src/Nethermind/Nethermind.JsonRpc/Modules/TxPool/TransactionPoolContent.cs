@@ -6,6 +6,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.TxPool;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.JsonRpc.Modules.TxPool
 {
@@ -17,7 +18,7 @@ namespace Nethermind.JsonRpc.Modules.TxPool
             Queued = info.Queued.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => TransactionForRpc.FromTransaction(v.Value, chainId: chainId)));
         }
 
-        public Dictionary<AddressAsKey, Dictionary<ulong, TransactionForRpc>> Pending { get; set; }
-        public Dictionary<AddressAsKey, Dictionary<ulong, TransactionForRpc>> Queued { get; set; }
+        public Dictionary<Box<Address>, Dictionary<ulong, TransactionForRpc>> Pending { get; set; }
+        public Dictionary<Box<Address>, Dictionary<ulong, TransactionForRpc>> Queued { get; set; }
     }
 }

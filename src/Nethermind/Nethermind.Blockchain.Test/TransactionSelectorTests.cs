@@ -26,6 +26,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.State;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -510,17 +511,17 @@ namespace Nethermind.Blockchain.Test
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
 
-            Dictionary<AddressAsKey, Transaction[]> GroupTransactions(bool supportBlobs) =>
+            Dictionary<Box<Address>, Transaction[]> GroupTransactions(bool supportBlobs) =>
                 testCase.Transactions
                     .Where(t => t.SenderAddress is not null)
                     .Where(t => t.SupportsBlobs == supportBlobs)
                     .GroupBy(t => t.SenderAddress)
                     .ToDictionary(
-                        g => new AddressAsKey(g.Key!),
+                        g => new Box<Address>(g.Key!),
                         g => g.OrderBy(t => t, comparer).ToArray());
 
-            Dictionary<AddressAsKey, Transaction[]> transactions = GroupTransactions(false);
-            Dictionary<AddressAsKey, Transaction[]> blobTransactions = GroupTransactions(true);
+            Dictionary<Box<Address>, Transaction[]> transactions = GroupTransactions(false);
+            Dictionary<Box<Address>, Transaction[]> blobTransactions = GroupTransactions(true);
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
             transactionPool.GetPendingLightBlobTransactionsBySender().Returns(blobTransactions);
             foreach (Transaction blobTx in blobTransactions.SelectMany(kvp => kvp.Value))

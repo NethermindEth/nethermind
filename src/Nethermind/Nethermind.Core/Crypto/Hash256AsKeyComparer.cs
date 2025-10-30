@@ -2,22 +2,23 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Core.Crypto;
 
-public class Hash256AsKeyComparer : IEqualityComparer<Hash256AsKey>, IAlternateEqualityComparer<ValueHash256, Hash256AsKey>
+public class Hash256AsKeyComparer : IEqualityComparer<ComparableBox<Hash256>>, IAlternateEqualityComparer<ValueHash256, ComparableBox<Hash256>>
 {
     public static Hash256AsKeyComparer Instance { get; } = new();
 
     private Hash256AsKeyComparer() { }
 
-    public bool Equals(Hash256AsKey x, Hash256AsKey y) => x.Equals(y);
+    public bool Equals(ComparableBox<Hash256> x, ComparableBox<Hash256> y) => x.Equals(y);
 
-    public int GetHashCode(Hash256AsKey obj) => obj.GetHashCode();
+    public int GetHashCode(ComparableBox<Hash256> obj) => obj.GetHashCode();
 
-    public bool Equals(ValueHash256 alternate, Hash256AsKey other) => other.Value is not null && alternate.Equals(in other.Value.ValueHash256);
+    public bool Equals(ValueHash256 alternate, ComparableBox<Hash256> other) => other.Value is not null && alternate.Equals(in other.Value.ValueHash256);
 
     public int GetHashCode(ValueHash256 alternate) => alternate.GetHashCode();
 
-    public Hash256AsKey Create(ValueHash256 alternate) => alternate.ToCommitment();
+    public ComparableBox<Hash256> Create(ValueHash256 alternate) => alternate.ToCommitment();
 }

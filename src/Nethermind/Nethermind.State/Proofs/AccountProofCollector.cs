@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.State.Proofs
 {
@@ -29,10 +30,10 @@ namespace Nethermind.State.Proofs
         private readonly List<byte[]> _accountProofItems = new();
         private readonly List<byte[]>[] _storageProofItems;
 
-        private readonly Dictionary<Hash256AsKey, StorageNodeInfo> _storageNodeInfos = new(Hash256AsKeyComparer.Instance);
-        private readonly Dictionary<Hash256AsKey, StorageNodeInfo>.AlternateLookup<ValueHash256> _storageNodeInfosLookup;
-        private readonly HashSet<Hash256AsKey> _nodeToVisitFilter = new(Hash256AsKeyComparer.Instance);
-        private readonly HashSet<Hash256AsKey>.AlternateLookup<ValueHash256> _nodeToVisitFilterLookup;
+        private readonly Dictionary<ComparableBox<Hash256>, StorageNodeInfo> _storageNodeInfos = new(Hash256AsKeyComparer.Instance);
+        private readonly Dictionary<ComparableBox<Hash256>, StorageNodeInfo>.AlternateLookup<ValueHash256> _storageNodeInfosLookup;
+        private readonly HashSet<ComparableBox<Hash256>> _nodeToVisitFilter = new(Hash256AsKeyComparer.Instance);
+        private readonly HashSet<ComparableBox<Hash256>>.AlternateLookup<ValueHash256> _nodeToVisitFilterLookup;
         private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
         private class StorageNodeInfo

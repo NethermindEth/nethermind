@@ -140,7 +140,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="blockNumber"></param>
     void CommitTree(long blockNumber);
 
-    ArrayPoolList<AddressAsKey>? GetAccountChanges();
+    ArrayPoolList<Box<Address>>? GetAccountChanges();
 
     void ResetTransient();
 }

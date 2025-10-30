@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Blockchain.Headers;
 
@@ -25,8 +26,8 @@ public class HeaderStore : IHeaderStore
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
     private readonly IHeaderDecoder _headerDecoder;
-    private readonly ClockCache<Hash256AsKey, BlockHeader> _headerCache = new(CacheSize);
-    private readonly ClockCache<Hash256AsKey, long> _numberCache = new(NumberCacheSize);
+    private readonly ClockCache<ComparableBox<Hash256>, BlockHeader> _headerCache = new(CacheSize);
+    private readonly ClockCache<ComparableBox<Hash256>, long> _numberCache = new(NumberCacheSize);
     private readonly ClockCache<long, Hash256> _hashCache = new(NumberCacheSize);
 
     public HeaderStore([KeyFilter(DbNames.Headers)] IDb headerDb, [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb, IHeaderDecoder? decoder = null)

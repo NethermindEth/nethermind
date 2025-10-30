@@ -8,14 +8,15 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Analytics
 {
     public class SupplyVerifier : ITreeVisitor<OldStyleTrieVisitContext>
     {
         private readonly ILogger _logger;
-        private readonly HashSet<Hash256AsKey> _ignoreThisOne = new(Hash256AsKeyComparer.Instance);
-        private readonly HashSet<Hash256AsKey>.AlternateLookup<ValueHash256> _ignoreThisOneLookup;
+        private readonly HashSet<ComparableBox<Hash256>> _ignoreThisOne = new(Hash256AsKeyComparer.Instance);
+        private readonly HashSet<ComparableBox<Hash256>>.AlternateLookup<ValueHash256> _ignoreThisOneLookup;
         private int _accountsVisited;
         private int _nodesVisited;
 

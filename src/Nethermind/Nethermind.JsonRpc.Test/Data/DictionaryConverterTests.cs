@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using System.Collections.Generic;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.JsonRpc.Test.Data
 {
@@ -28,7 +29,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void Can_do_roundtrip_as_key()
         {
-            var dictionary = new Dictionary<AddressAsKey, string>
+            var dictionary = new Dictionary<Box<Address>, string>
             {
                 {TestItem.AddressA, "A"},
                 {TestItem.AddressB, "B"},

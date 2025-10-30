@@ -107,7 +107,7 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
         StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
     }
 
-    public ArrayPoolList<AddressAsKey>? GetAccountChanges() => innerState.GetAccountChanges();
+    public ArrayPoolList<Box<Address>>? GetAccountChanges() => innerState.GetAccountChanges();
 
     public void ResetTransient() => innerState.ResetTransient();
 

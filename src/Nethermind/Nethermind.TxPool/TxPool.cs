@@ -197,12 +197,12 @@ namespace Nethermind.TxPool
 
         public int GetPendingTransactionsCount() => _transactions.Count;
 
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default) =>
+        public IDictionary<Box<Address>, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default) =>
             _transactions.GetBucketSnapshot(filterToReadyTx ?
                 (data => data.first.CanPayBaseFee(baseFee) && data.first.Nonce == _accounts.GetNonce(data.key.Value!)) :
                 null);
 
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
+        public IDictionary<Box<Address>, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
             _blobTransactions.GetBucketSnapshot();
 
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
@@ -228,7 +228,7 @@ namespace Nethermind.TxPool
         public int GetBlobCounts(byte[][] blobVersionedHashes)
             => _blobTransactions.GetBlobCounts(blobVersionedHashes);
 
-        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
+        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, Box<Address>>.SortedPoolRemovedEventArgs args)
         {
             RemovePendingDelegations(args.Value);
         }
@@ -278,7 +278,7 @@ namespace Nethermind.TxPool
                     _newHeadLock.EnterWriteLock();
                     try
                     {
-                        ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
+                        ArrayPoolList<Box<Address>>? accountChanges = args.Block.AccountChanges;
                         if (args.PreviousBlock is not null || !CanUseCache(args.Block, accountChanges))
                         {
                             // Non-sequential block or reorganization detected, reset cache
@@ -319,7 +319,7 @@ namespace Nethermind.TxPool
                 }
             }
 
-            bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges)
+            bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<Box<Address>>? accountChanges)
             {
                 return accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
             }
@@ -982,7 +982,7 @@ namespace Nethermind.TxPool
 
         internal void ResetAddress(Address address)
         {
-            using ArrayPoolList<AddressAsKey> arrayPoolList = new(1);
+            using ArrayPoolList<Box<Address>> arrayPoolList = new(1);
             arrayPoolList.Add(address);
             _accountCache.RemoveAccounts(arrayPoolList);
         }
@@ -991,23 +991,23 @@ namespace Nethermind.TxPool
         private sealed class AccountCache : IAccountStateProvider
         {
             private readonly IAccountStateProvider _provider;
-            private readonly ClockCache<AddressAsKey, AccountStruct>[] _caches;
+            private readonly ClockCache<Box<Address>, AccountStruct>[] _caches;
 
             public AccountCache(IAccountStateProvider provider)
             {
                 _provider = provider;
-                _caches = new ClockCache<AddressAsKey, AccountStruct>[16];
+                _caches = new ClockCache<Box<Address>, AccountStruct>[16];
                 for (int i = 0; i < _caches.Length; i++)
                 {
                     // Cache per nibble to reduce contention as TxPool is very parallel
-                    _caches[i] = new ClockCache<AddressAsKey, AccountStruct>(1_024);
+                    _caches[i] = new ClockCache<Box<Address>, AccountStruct>(1_024);
                 }
             }
 
             public bool TryGetAccount(Address address, out AccountStruct account)
             {
                 var cache = _caches[GetCacheIndex(address)];
-                if (!cache.TryGet(new AddressAsKey(address), out account))
+                if (!cache.TryGet(new Box<Address>(address), out account))
                 {
                     if (!_provider.TryGetAccount(address, out account))
                     {
@@ -1024,13 +1024,13 @@ namespace Nethermind.TxPool
                 return true;
             }
 
-            public void RemoveAccounts(ArrayPoolList<AddressAsKey> address)
+            public void RemoveAccounts(ArrayPoolList<Box<Address>> address)
             {
                 Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value!)),
                     n =>
                     {
-                        ClockCache<AddressAsKey, AccountStruct> cache = _caches[n.Key];
-                        foreach (AddressAsKey a in n)
+                        ClockCache<Box<Address>, AccountStruct> cache = _caches[n.Key];
+                        foreach (Box<Address> a in n)
                         {
                             cache.Delete(a);
                         }

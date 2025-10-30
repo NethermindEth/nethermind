@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.State.Proofs
 {
@@ -18,8 +19,8 @@ namespace Nethermind.State.Proofs
 
         private Nibble[] Prefix => Nibbles.FromBytes(_key);
 
-        private readonly HashSet<Hash256AsKey> _visitingFilter = new(Hash256AsKeyComparer.Instance);
-        private readonly HashSet<Hash256AsKey>.AlternateLookup<ValueHash256> _visitingFilterLookup;
+        private readonly HashSet<ComparableBox<Hash256>> _visitingFilter = new(Hash256AsKeyComparer.Instance);
+        private readonly HashSet<ComparableBox<Hash256>>.AlternateLookup<ValueHash256> _visitingFilterLookup;
 
         private readonly List<byte[]> _proofBits = new();
         private readonly byte[] _key;

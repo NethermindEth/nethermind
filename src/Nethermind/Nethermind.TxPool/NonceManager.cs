@@ -7,11 +7,13 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Int256;
 
+using Nethermind.Core.Collections;
+
 namespace Nethermind.TxPool;
 
 public class NonceManager : INonceManager
 {
-    private readonly ConcurrentDictionary<AddressAsKey, AddressNonceManager> _addressNonceManagers = new();
+    private readonly ConcurrentDictionary<Box<Address>, AddressNonceManager> _addressNonceManagers = new();
     private readonly IAccountStateProvider _accounts;
 
     public NonceManager(IAccountStateProvider accounts)

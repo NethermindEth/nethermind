@@ -3,16 +3,17 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.TxPool
 {
     public class TxPoolInfo
     {
-        public Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> Pending { get; }
-        public Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> Queued { get; }
+        public Dictionary<Box<Address>, IDictionary<ulong, Transaction>> Pending { get; }
+        public Dictionary<Box<Address>, IDictionary<ulong, Transaction>> Queued { get; }
 
-        public TxPoolInfo(Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> pending,
-            Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> queued)
+        public TxPoolInfo(Dictionary<Box<Address>, IDictionary<ulong, Transaction>> pending,
+            Dictionary<Box<Address>, IDictionary<ulong, Transaction>> queued)
         {
             Pending = pending;
             Queued = queued;

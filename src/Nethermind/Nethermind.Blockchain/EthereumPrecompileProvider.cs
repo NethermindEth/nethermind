@@ -8,14 +8,15 @@ using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Blockchain;
 
 public class EthereumPrecompileProvider() : IPrecompileProvider
 {
-    private static FrozenDictionary<AddressAsKey, PrecompileInfo> Precompiles
+    private static FrozenDictionary<Box<Address>, PrecompileInfo> Precompiles
     {
-        get => new Dictionary<AddressAsKey, PrecompileInfo>
+        get => new Dictionary<Box<Address>, PrecompileInfo>
         {
             [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
             [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
@@ -45,7 +46,7 @@ public class EthereumPrecompileProvider() : IPrecompileProvider
         }.ToFrozenDictionary();
     }
 
-    public FrozenDictionary<AddressAsKey, PrecompileInfo> GetPrecompiles()
+    public FrozenDictionary<Box<Address>, PrecompileInfo> GetPrecompiles()
     {
         return Precompiles;
     }

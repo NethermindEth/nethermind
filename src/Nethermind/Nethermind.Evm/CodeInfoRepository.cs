@@ -13,13 +13,14 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.State;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Evm;
 
 public class CodeInfoRepository : ICodeInfoRepository
 {
     private static readonly CodeLruCache _codeCache = new();
-    private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _localPrecompiles;
+    private readonly FrozenDictionary<Box<Address>, PrecompileInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)

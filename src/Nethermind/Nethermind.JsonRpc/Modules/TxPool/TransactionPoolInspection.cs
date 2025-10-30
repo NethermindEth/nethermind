@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.TxPool;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.JsonRpc.Modules.TxPool
 {
@@ -16,8 +17,8 @@ namespace Nethermind.JsonRpc.Modules.TxPool
             Queued = info.Queued.ToDictionary(static k => k.Key, static k => k.Value.ToDictionary(static v => v.Key, static v => GetTransactionSummary(v.Value)));
         }
 
-        public Dictionary<AddressAsKey, Dictionary<ulong, string>> Pending { get; set; }
-        public Dictionary<AddressAsKey, Dictionary<ulong, string>> Queued { get; set; }
+        public Dictionary<Box<Address>, Dictionary<ulong, string>> Pending { get; set; }
+        public Dictionary<Box<Address>, Dictionary<ulong, string>> Queued { get; set; }
 
         private static string GetTransactionSummary(Transaction tx)
             => $"{tx.SenderAddress}: {tx.Value} wei + {tx.GasLimit} × {tx.GasPrice} gas";

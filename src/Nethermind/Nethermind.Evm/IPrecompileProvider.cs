@@ -4,10 +4,11 @@
 using System.Collections.Frozen;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Evm;
 
 public interface IPrecompileProvider
 {
-    public FrozenDictionary<AddressAsKey, PrecompileInfo> GetPrecompiles();
+    public FrozenDictionary<Box<Address>, PrecompileInfo> GetPrecompiles();
 }

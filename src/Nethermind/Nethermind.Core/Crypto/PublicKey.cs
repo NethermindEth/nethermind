@@ -104,21 +104,4 @@ namespace Nethermind.Core.Crypto
 
         public static bool operator !=(PublicKey? a, PublicKey? b) => !(a == b);
     }
-
-    /// <summary>
-    /// Type alias for Box containing a PublicKey. Used as dictionary key.
-    /// </summary>
-    public readonly struct PublicKeyAsKey(PublicKey? key) : IEquatable<PublicKeyAsKey>
-    {
-        private readonly Box<PublicKey> _box = key;
-
-        public PublicKey? Value => _box.Value;
-
-        public static implicit operator PublicKey?(PublicKeyAsKey key) => key._box;
-        public static implicit operator PublicKeyAsKey(PublicKey? key) => new(key);
-
-        public bool Equals(PublicKeyAsKey other) => _box.Equals(other._box);
-        public override bool Equals(object? obj) => obj is PublicKeyAsKey key && Equals(key);
-        public override int GetHashCode() => _box.GetHashCode();
-    }
 }

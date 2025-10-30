@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -41,7 +42,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public override string ToString() => $"{nameof(TxPriorityTxSource)}";
 
-        protected override IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, long gasLimit)
+        protected override IEnumerable<Transaction> GetOrderedTransactions(IDictionary<Box<Address>, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, long gasLimit)
         {
             if (_logger.IsTrace)
             {

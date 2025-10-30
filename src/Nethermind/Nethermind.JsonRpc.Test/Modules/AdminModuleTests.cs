@@ -31,6 +31,7 @@ using NUnit.Framework;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.State;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -70,7 +71,7 @@ public class AdminModuleTests
         _stateReader = Substitute.For<IStateReader>();
         _networkConfig = new NetworkConfig();
         IPeerPool peerPool = Substitute.For<IPeerPool>();
-        ConcurrentDictionary<PublicKeyAsKey, Peer> dict = new();
+        ConcurrentDictionary<Box<PublicKey>, Peer> dict = new();
 
         // Create a peer with a validated session
         Peer testPeer = new Peer(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, true));
@@ -574,7 +575,7 @@ public class AdminModuleTests
 
     private static IPeerPool CreatePeerPool(Peer peer)
     {
-        var peers = new ConcurrentDictionary<PublicKeyAsKey, Peer>();
+        var peers = new ConcurrentDictionary<Box<PublicKey>, Peer>();
         peers.TryAdd(TestItem.PublicKeyA, peer);
 
         var peerPool = Substitute.For<IPeerPool>();

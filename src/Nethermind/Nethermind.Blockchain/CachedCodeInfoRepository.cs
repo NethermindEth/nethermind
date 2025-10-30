@@ -14,6 +14,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.State;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Blockchain;
 
@@ -22,7 +23,7 @@ public class CachedCodeInfoRepository(
     ICodeInfoRepository baseCodeInfoRepository,
     ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache) : ICodeInfoRepository
 {
-    private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _cachedPrecompile = precompileCache is null
+    private readonly FrozenDictionary<Box<Address>, PrecompileInfo> _cachedPrecompile = precompileCache is null
         ? precompileProvider.GetPrecompiles()
         : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
 
@@ -59,7 +60,7 @@ public class CachedCodeInfoRepository(
     }
 
     private static PrecompileInfo CreateCachedPrecompile(
-        in KeyValuePair<AddressAsKey, PrecompileInfo> originalPrecompile,
+        in KeyValuePair<Box<Address>, PrecompileInfo> originalPrecompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) =>
         new PrecompileInfo(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
 

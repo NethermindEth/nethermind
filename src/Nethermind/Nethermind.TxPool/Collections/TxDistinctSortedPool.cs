@@ -15,7 +15,7 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.TxPool.Collections
 {
-    public class TxDistinctSortedPool : DistinctValueSortedPool<ValueHash256, Transaction, AddressAsKey>
+    public class TxDistinctSortedPool : DistinctValueSortedPool<ValueHash256, Transaction, Box<Address>>
     {
         public delegate void UpdateGroupDelegate(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx);
         public delegate void UpdateTransactionDelegate(EnhancedSortedSet<Transaction> bucket, Transaction tx, in UInt256? changedGasBottleneck, Transaction? lastElement);
@@ -35,10 +35,10 @@ namespace Nethermind.TxPool.Collections
         protected override IComparer<Transaction> GetGroupComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparerByNonce();
         protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer) => comparer.GetReplacementComparer();
 
-        protected override AddressAsKey MapToGroup(Transaction value) => value.MapTxToGroup() ?? throw new ArgumentException("MapTxToGroup() returned null!");
+        protected override Box<Address> MapToGroup(Transaction value) => value.MapTxToGroup() ?? throw new ArgumentException("MapTxToGroup() returned null!");
         protected override ValueHash256 GetKey(Transaction value) => value.Hash!;
 
-        protected override void UpdateGroup(AddressAsKey groupKey, EnhancedSortedSet<Transaction> bucket, Func<AddressAsKey, IReadOnlySortedSet<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
+        protected override void UpdateGroup(Box<Address> groupKey, EnhancedSortedSet<Transaction> bucket, Func<Box<Address>, IReadOnlySortedSet<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
         {
             _transactionsToRemove.Clear();
             Transaction? lastElement = bucket.Max;
@@ -77,7 +77,7 @@ namespace Nethermind.TxPool.Collections
             using McsLock.Disposable lockRelease = Lock.Acquire();
 
             EnsureCapacity();
-            foreach ((AddressAsKey address, EnhancedSortedSet<Transaction> bucket) in _buckets)
+            foreach ((Box<Address> address, EnhancedSortedSet<Transaction> bucket) in _buckets)
             {
                 Debug.Assert(bucket.Count > 0);
 

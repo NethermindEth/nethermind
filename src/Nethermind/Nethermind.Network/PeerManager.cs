@@ -312,7 +312,7 @@ namespace Nethermind.Network
 
                     if (_logger.IsTrace || (_logger.IsDebug && _logCounter % 5 == 0))
                     {
-                        KeyValuePair<PublicKeyAsKey, Peer>[] activePeers = _peerPool.ActivePeers.ToArray();
+                        KeyValuePair<Box<PublicKey>, Peer>[] activePeers = _peerPool.ActivePeers.ToArray();
                         int activePeersCount = activePeers.Length;
                         if (activePeersCount != previousActivePeersCount)
                         {

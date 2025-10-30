@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -17,8 +18,8 @@ namespace Nethermind.Facade.Simulate;
 /// <param name="readonlyBaseHeaderStore"></param>
 public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore) : IHeaderStore
 {
-    private readonly Dictionary<Hash256AsKey, BlockHeader> _headerDict = new();
-    private readonly Dictionary<Hash256AsKey, long> _blockNumberDict = new();
+    private readonly Dictionary<ComparableBox<Hash256>, BlockHeader> _headerDict = new();
+    private readonly Dictionary<ComparableBox<Hash256>, long> _blockNumberDict = new();
 
     public void Insert(BlockHeader header)
     {

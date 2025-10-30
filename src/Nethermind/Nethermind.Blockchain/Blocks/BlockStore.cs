@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Blockchain.Blocks;
 
@@ -18,7 +19,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
     private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
     public const int CacheSize = 128 + 32;
 
-    private readonly ClockCache<Hash256AsKey, Block> _blockCache = new(CacheSize);
+    private readonly ClockCache<ComparableBox<Hash256>, Block> _blockCache = new(CacheSize);
 
     public void SetMetadata(byte[] key, byte[] value)
     {

@@ -7,12 +7,13 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Facade.Simulate;
 
 public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : IBlockStore
 {
-    private readonly Dictionary<Hash256AsKey, Block> _blockDict = [];
+    private readonly Dictionary<ComparableBox<Hash256>, Block> _blockDict = [];
     private readonly Dictionary<long, Block> _blockNumDict = [];
     private readonly BlockDecoder _blockDecoder = new();
 

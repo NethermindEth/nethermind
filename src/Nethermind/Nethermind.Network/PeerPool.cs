@@ -18,6 +18,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Network
 {
@@ -33,9 +34,9 @@ namespace Nethermind.Network
         private readonly ILogger _logger;
         private readonly ITrustedNodesManager _trustedNodesManager;
 
-        public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
-        public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
-        private readonly ConcurrentDictionary<PublicKeyAsKey, Peer> _staticPeers = new();
+        public ConcurrentDictionary<Box<PublicKey>, Peer> ActivePeers { get; } = new();
+        public ConcurrentDictionary<Box<PublicKey>, Peer> Peers { get; } = new();
+        private readonly ConcurrentDictionary<Box<PublicKey>, Peer> _staticPeers = new();
 
         public IEnumerable<Peer> NonStaticPeers => Peers.Values.Where(static p => !p.Node.IsStatic);
         public IEnumerable<Peer> StaticPeers => _staticPeers.Values;
@@ -46,8 +47,8 @@ namespace Nethermind.Network
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
 
-        readonly Func<PublicKeyAsKey, (Node Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics), Peer> _createNewNodePeer;
-        readonly Func<PublicKeyAsKey, (NetworkNode Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics), Peer> _createNewNetworkNodePeer;
+        readonly Func<Box<PublicKey>, (Node Node, ConcurrentDictionary<Box<PublicKey>, Peer> Statics), Peer> _createNewNodePeer;
+        readonly Func<Box<PublicKey>, (NetworkNode Node, ConcurrentDictionary<Box<PublicKey>, Peer> Statics), Peer> _createNewNetworkNodePeer;
 
         public PeerPool(
             INodeSource nodeSource,
@@ -88,7 +89,7 @@ namespace Nethermind.Network
             return Peers.GetOrAdd(node.NodeId, valueFactory: _createNewNetworkNodePeer, (node, _staticPeers));
         }
 
-        private Peer CreateNew(PublicKeyAsKey key, (Node Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
+        private Peer CreateNew(Box<PublicKey> key, (Node Node, ConcurrentDictionary<Box<PublicKey>, Peer> Statics) arg)
         {
             if (arg.Node.IsBootnode || arg.Node.IsStatic)
             {
@@ -105,7 +106,7 @@ namespace Nethermind.Network
             return peer;
         }
 
-        private Peer CreateNew(PublicKeyAsKey key, (NetworkNode Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
+        private Peer CreateNew(Box<PublicKey> key, (NetworkNode Node, ConcurrentDictionary<Box<PublicKey>, Peer> Statics) arg)
         {
             Node node = new(arg.Node) { IsTrusted = _trustedNodesManager.IsTrusted(arg.Node.Enode) };
 

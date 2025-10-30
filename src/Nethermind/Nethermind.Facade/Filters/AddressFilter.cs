@@ -4,12 +4,13 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Blockchain.Filters
 {
     public class AddressFilter
     {
-        public static readonly AddressFilter AnyAddress = new(addresses: new HashSet<AddressAsKey>());
+        public static readonly AddressFilter AnyAddress = new(addresses: new HashSet<Box<Address>>());
 
         private Bloom.BloomExtract[]? _addressesBloomIndexes;
         private Bloom.BloomExtract? _addressBloomExtract;
@@ -19,13 +20,13 @@ namespace Nethermind.Blockchain.Filters
             Address = address;
         }
 
-        public AddressFilter(HashSet<AddressAsKey> addresses)
+        public AddressFilter(HashSet<Box<Address>> addresses)
         {
             Addresses = addresses;
         }
 
         public Address? Address { get; }
-        public HashSet<AddressAsKey>? Addresses { get; }
+        public HashSet<Box<Address>>? Addresses { get; }
         private Bloom.BloomExtract[] AddressesBloomExtracts => _addressesBloomIndexes ??= CalculateBloomExtracts();
         private Bloom.BloomExtract AddressBloomExtract => _addressBloomExtract ??= Bloom.GetExtract(Address);
 

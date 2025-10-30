@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Network.Contract.Messages;
@@ -31,11 +32,11 @@ namespace Nethermind.TxPool
 
         public Transaction[] GetPendingTransactionsBySender(Address address) => [];
 
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default)
-            => new Dictionary<AddressAsKey, Transaction[]>();
+        public IDictionary<Box<Address>, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default)
+            => new Dictionary<Box<Address>, Transaction[]>();
 
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()
-            => new Dictionary<AddressAsKey, Transaction[]>();
+        public IDictionary<Box<Address>, Transaction[]> GetPendingLightBlobTransactionsBySender()
+            => new Dictionary<Box<Address>, Transaction[]>();
 
         public void AddPeer(ITxPoolPeer peer) { }
 

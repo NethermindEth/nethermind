@@ -27,7 +27,7 @@ internal class TrieStoreDirtyNodesCache
     private readonly ILogger _logger;
     private readonly bool _storeByHash;
     private readonly ConcurrentDictionary<Key, NodeRecord> _byKeyObjectCache;
-    private readonly ConcurrentDictionary<Hash256AsKey, NodeRecord> _byHashObjectCache;
+    private readonly ConcurrentDictionary<ComparableBox<Hash256>, NodeRecord> _byHashObjectCache;
 
     public long Count => _count;
     public long DirtyCount => _dirtyCount;
@@ -188,7 +188,7 @@ internal class TrieStoreDirtyNodesCache
         return RecordReplacementLogic(null, current, arg);
     }
 
-    private static NodeRecord RecordReplacementLogic(Hash256AsKey keyHash, NodeRecord current, NodeRecord arg)
+    private static NodeRecord RecordReplacementLogic(ComparableBox<Hash256> keyHash, NodeRecord current, NodeRecord arg)
     {
         long lastCommit = current.LastCommit;
         if (arg.LastCommit > lastCommit)

@@ -17,7 +17,7 @@ public struct StackAccessTracker : IDisposable
     public readonly JournalSet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
     public readonly JournalCollection<LogEntry> Logs => _trackingState.Logs;
     public readonly JournalSet<Address> DestroyList => _trackingState.DestroyList;
-    public readonly HashSet<AddressAsKey> CreateList => _trackingState.CreateList;
+    public readonly HashSet<Box<Address>> CreateList => _trackingState.CreateList;
 
     private TrackingState _trackingState;
 
@@ -109,8 +109,8 @@ public struct StackAccessTracker : IDisposable
         public JournalSet<StorageCell> AccessedStorageCells { get; } = new();
         public JournalCollection<LogEntry> Logs { get; } = new();
         public JournalSet<Address> DestroyList { get; } = new();
-        public HashSet<AddressAsKey> CreateList { get; } = new();
-        public JournalSet<AddressAsKey> LargeContractList { get; } = new();
+        public HashSet<Box<Address>> CreateList { get; } = new();
+        public JournalSet<Box<Address>> LargeContractList { get; } = new();
 
         private void Clear()
         {

@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Specs
 {
@@ -164,12 +165,12 @@ namespace Nethermind.Specs
         public bool IsEip7939Enabled { get; set; }
         public bool IsRip7728Enabled { get; set; }
 
-        private FrozenSet<AddressAsKey>? _precompiles;
-        FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
+        private FrozenSet<Box<Address>>? _precompiles;
+        FrozenSet<Box<Address>> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
 
-        public virtual FrozenSet<AddressAsKey> BuildPrecompilesCache()
+        public virtual FrozenSet<Box<Address>> BuildPrecompilesCache()
         {
-            HashSet<AddressAsKey> cache = new();
+            HashSet<Box<Address>> cache = new();
 
             cache.Add(PrecompiledAddresses.EcRecover);
             cache.Add(PrecompiledAddresses.Sha256);

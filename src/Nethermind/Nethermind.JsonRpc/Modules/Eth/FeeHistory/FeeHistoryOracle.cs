@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         private readonly int _oldestBlockDistanceFromHeadAllowedInCache;
         private long _lastCleanupHeadBlockNumber = 0;
         private Task? _cleanupTask = null;
-        private readonly ConcurrentDictionary<Hash256AsKey, BlockFeeHistorySearchInfo> _feeHistoryCache = new();
+        private readonly ConcurrentDictionary<ComparableBox<Hash256>, BlockFeeHistorySearchInfo> _feeHistoryCache = new();
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
@@ -222,7 +222,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private void CleanupCache()
         {
-            foreach (KeyValuePair<Hash256AsKey, BlockFeeHistorySearchInfo> historyInfo in _feeHistoryCache)
+            foreach (KeyValuePair<ComparableBox<Hash256>, BlockFeeHistorySearchInfo> historyInfo in _feeHistoryCache)
             {
                 if (historyInfo.Value.BlockNumber < _lastCleanupHeadBlockNumber - _oldestBlockDistanceFromHeadAllowedInCache)
                 {

@@ -3,10 +3,11 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 
 public class NativePrestateTracerDiffMode
 {
-    public Dictionary<AddressAsKey, NativePrestateTracerAccount> pre { get; init; }
-    public Dictionary<AddressAsKey, NativePrestateTracerAccount> post { get; init; }
+    public Dictionary<Box<Address>, NativePrestateTracerAccount> pre { get; init; }
+    public Dictionary<Box<Address>, NativePrestateTracerAccount> post { get; init; }
 }

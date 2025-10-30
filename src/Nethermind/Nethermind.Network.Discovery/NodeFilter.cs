@@ -23,7 +23,7 @@ public class NodeFilter(int size)
     /// A clock-based cache that stores the timestamps for IP addresses.
     /// It is initialized with the specified size limit.
     /// </summary>
-    private readonly ClockCache<IpAddressAsKey, DateTime> _nodesFilter = new(size);
+    private readonly ClockCache<SimpleBox<IPAddress>, DateTime> _nodesFilter = new(size);
 
     /// <summary>
     /// Attempts to set (or update) the specified IP address in the filter. If the IP address has been seen 
@@ -59,21 +59,5 @@ public class NodeFilter(int size)
                 return true;
             }
         }
-    }
-
-    /// <summary>
-    /// Type alias for SimpleBox containing an IPAddress. Used as dictionary key.
-    /// </summary>
-    private readonly struct IpAddressAsKey(IPAddress? ipAddress) : IEquatable<IpAddressAsKey>
-    {
-        private readonly SimpleBox<IPAddress> _box = ipAddress;
-
-        public IPAddress? Value => _box.Value;
-
-        public static implicit operator IpAddressAsKey(IPAddress? ip) => new(ip);
-
-        public bool Equals(IpAddressAsKey other) => _box.Equals(other._box);
-        public override bool Equals(object? obj) => obj is IpAddressAsKey key && Equals(key);
-        public override int GetHashCode() => _box.GetHashCode();
     }
 }

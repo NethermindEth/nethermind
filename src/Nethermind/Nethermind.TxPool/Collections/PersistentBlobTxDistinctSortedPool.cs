@@ -10,6 +10,8 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
+using Nethermind.Core.Collections;
+
 namespace Nethermind.TxPool.Collections;
 
 public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
@@ -52,7 +54,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         }
     }
 
-    protected override bool InsertCore(ValueHash256 hash, Transaction fullBlobTx, AddressAsKey groupKey)
+    protected override bool InsertCore(ValueHash256 hash, Transaction fullBlobTx, Box<Address> groupKey)
     {
         if (base.InsertCore(hash, new LightTransaction(fullBlobTx), groupKey))
         {

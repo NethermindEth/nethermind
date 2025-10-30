@@ -35,8 +35,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     private readonly StateProvider _stateProvider;
     private readonly ILogManager? _logManager;
     internal readonly IStorageTreeFactory _storageTreeFactory;
-    private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
-    private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = new();
+    private readonly Dictionary<Box<Address>, PerContractState> _storages = new(4_096);
+    private readonly Dictionary<Box<Address>, bool> _toUpdateRoots = new();
 
     /// <summary>
     /// EIP-1283
@@ -117,7 +117,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         return value;
     }
 
-    private HashSet<AddressAsKey>? _tempToUpdateRoots;
+    private HashSet<Box<Address>>? _tempToUpdateRoots;
     /// <summary>
     /// Called by Commit
     /// Used for persistent storage specific logic
@@ -137,7 +137,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(PartialStorageProviderBase)}");
         }
 
-        HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= new());
+        HashSet<Box<Address>> toUpdateRoots = (_tempToUpdateRoots ??= new());
 
         bool isTracing = tracer.IsTracingStorage;
         Dictionary<StorageCell, ChangeTrace>? trace = null;
@@ -209,7 +209,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
         }
 
-        foreach (AddressAsKey address in toUpdateRoots)
+        foreach (Box<Address> address in toUpdateRoots)
         {
             // since the accounts could be empty accounts that are removing (EIP-158)
             if (_stateProvider.AccountExists(address))
@@ -262,7 +262,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         void UpdateRootHashesSingleThread()
         {
-            foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
+            foreach (KeyValuePair<Box<Address>, PerContractState> kvp in _storages)
             {
                 if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
                 {
@@ -353,7 +353,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         // may make it worse. Always check on mainnet.
 
         using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
-        foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
+        foreach (KeyValuePair<Box<Address>, PerContractState> storage in _storages)
         {
             storage.Value.EnsureStorageTree(); // Cannot be called concurrently
             if (blockCommitter.TryRequestConcurrencyQuota())

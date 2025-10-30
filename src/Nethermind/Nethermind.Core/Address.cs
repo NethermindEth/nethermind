@@ -276,24 +276,6 @@ namespace Nethermind.Core
         }
     }
 
-    /// <summary>
-    /// Type alias for Box containing an Address. Used as dictionary key.
-    /// </summary>
-    public readonly struct AddressAsKey(Address? key) : IEquatable<AddressAsKey>
-    {
-        private readonly Box<Address> _box = key;
-
-        public Address? Value => _box.Value;
-
-        public static implicit operator Address?(AddressAsKey key) => key._box;
-        public static implicit operator AddressAsKey(Address? key) => new(key);
-
-        public bool Equals(AddressAsKey other) => _box.Equals(other._box);
-        public override bool Equals(object? obj) => obj is AddressAsKey key && Equals(key);
-        public override int GetHashCode() => _box.GetHashCode();
-        public override string ToString() => _box.ToString();
-    }
-
     public ref struct AddressStructRef
     {
         public const int ByteLength = 20;

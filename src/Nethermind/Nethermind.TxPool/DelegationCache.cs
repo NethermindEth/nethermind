@@ -11,26 +11,28 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 
+using Nethermind.Core.Collections;
+
 namespace Nethermind.TxPool;
 internal sealed class DelegationCache
 {
-    private readonly ConcurrentDictionary<AddressAsKey, int> _pendingDelegations = new();
+    private readonly ConcurrentDictionary<Box<Address>, int> _pendingDelegations = new();
 
-    public bool HasPending(AddressAsKey key)
+    public bool HasPending(Box<Address> key)
     {
         return _pendingDelegations.ContainsKey(key);
     }
 
-    public void DecrementDelegationCount(AddressAsKey key)
+    public void DecrementDelegationCount(Box<Address> key)
     {
         InternalIncrement(key, false);
     }
-    public void IncrementDelegationCount(AddressAsKey key)
+    public void IncrementDelegationCount(Box<Address> key)
     {
         InternalIncrement(key, true);
     }
 
-    private void InternalIncrement(AddressAsKey key, bool increment)
+    private void InternalIncrement(Box<Address> key, bool increment)
     {
         int value = increment ? 1 : -1;
         var lastCount = _pendingDelegations.AddOrUpdate(key,
@@ -45,8 +47,8 @@ internal sealed class DelegationCache
         if (lastCount == 0)
         {
             //Remove() is threadsafe and only removes if the count is the same as the updated one
-            ((ICollection<KeyValuePair<AddressAsKey, int>>)_pendingDelegations).Remove(
-                new KeyValuePair<AddressAsKey, int>(key, lastCount));
+            ((ICollection<KeyValuePair<Box<Address>, int>>)_pendingDelegations).Remove(
+                new KeyValuePair<Box<Address>, int>(key, lastCount));
         }
     }
 }

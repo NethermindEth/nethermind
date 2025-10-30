@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.StateSync
         {
             GetTrieNodesRequest request = new() { RootHash = batch.StateRoot };
 
-            Dictionary<Hash256AsKey?, List<(TreePath path, StateSyncItem syncItem)>> itemsGroupedByAccount = new();
+            Dictionary<ComparableBox<Hash256>?, List<(TreePath path, StateSyncItem syncItem)>> itemsGroupedByAccount = new();
             List<(TreePath path, StateSyncItem syncItem)> accountTreePaths = new();
 
             foreach (StateSyncItem? item in batch.RequestedNodes)

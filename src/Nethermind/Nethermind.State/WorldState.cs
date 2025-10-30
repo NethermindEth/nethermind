@@ -373,7 +373,7 @@ namespace Nethermind.State
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
         }
 
-        ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges()
+        ArrayPoolList<Box<Address>>? IWorldState.GetAccountChanges()
         {
             DebugGuardInScope();
             return _stateProvider.ChangedAddresses();

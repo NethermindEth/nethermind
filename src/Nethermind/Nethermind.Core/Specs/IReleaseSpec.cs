@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using Nethermind.Int256;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Core.Specs
 {
@@ -508,7 +509,7 @@ namespace Nethermind.Core.Specs
         /// Gets a cached set of all precompiled contract addresses for this release specification.
         /// Chain-specific implementations can override this to include their own precompiled contracts.
         /// </summary>
-        FrozenSet<AddressAsKey> Precompiles { get; }
+        FrozenSet<Box<Address>> Precompiles { get; }
 
         public ProofVersion BlobProofVersion => IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
 

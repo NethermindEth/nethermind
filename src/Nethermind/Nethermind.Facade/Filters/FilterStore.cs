@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using Nethermind.Core.Collections;
 
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
@@ -199,7 +200,7 @@ namespace Nethermind.Blockchain.Filters
             {
                 null => AddressFilter.AnyAddress,
                 string s => new AddressFilter(new Address(s)),
-                IEnumerable<string> e => new AddressFilter(e.Select(static a => new AddressAsKey(new Address(a))).ToHashSet()),
+                IEnumerable<string> e => new AddressFilter(e.Select(static a => new Box<Address>(new Address(a))).ToHashSet()),
                 _ => throw new InvalidDataException("Invalid address filter format")
             };
 

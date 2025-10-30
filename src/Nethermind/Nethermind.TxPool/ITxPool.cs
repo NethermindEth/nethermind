@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Network.Contract.Messages;
@@ -23,13 +24,13 @@ namespace Nethermind.TxPool
         /// Non-blob txs grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
         /// <returns></returns>
-        IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default);
+        IDictionary<Box<Address>, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default);
 
         /// <summary>
         /// Blob txs light equivalences grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
         /// <returns></returns>
-        IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender();
+        IDictionary<Box<Address>, Transaction[]> GetPendingLightBlobTransactionsBySender();
 
         /// <summary>
         /// from a specific sender, sorted by nonce and later tx pool sorting

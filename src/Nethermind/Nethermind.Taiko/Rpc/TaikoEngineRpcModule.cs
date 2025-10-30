@@ -111,7 +111,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     public ResultWrapper<PreBuiltTxList[]?> taikoAuth_txPoolContentWithMinTip(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit,
        ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists, ulong minTip)
     {
-        IEnumerable<KeyValuePair<AddressAsKey, Transaction[]>> pendingTxs = txPool.GetPendingTransactionsBySender();
+        IEnumerable<KeyValuePair<Box<Address>, Transaction[]>> pendingTxs = txPool.GetPendingTransactionsBySender();
 
         if (localAccounts is not null)
         {

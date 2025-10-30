@@ -26,6 +26,7 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.State;
 using Nethermind.Synchronization;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -50,7 +51,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
     private readonly ILogger _logger;
-    private readonly LruCache<Hash256AsKey, (bool valid, string? message)>? _latestBlocks;
+    private readonly LruCache<ComparableBox<Hash256>, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
 

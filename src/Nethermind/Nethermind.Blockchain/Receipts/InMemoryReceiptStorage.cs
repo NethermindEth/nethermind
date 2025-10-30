@@ -6,6 +6,7 @@ using NonBlocking;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -13,9 +14,9 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly bool _allowReceiptIterator;
         private readonly IBlockTree? _blockTree;
-        private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt[]> _receipts = new();
+        private readonly ConcurrentDictionary<ComparableBox<Hash256>, TxReceipt[]> _receipts = new();
 
-        private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt> _transactions = new();
+        private readonly ConcurrentDictionary<ComparableBox<Hash256>, TxReceipt> _transactions = new();
 
 #pragma warning disable CS0067
         public event EventHandler<BlockReplacementEventArgs>? NewCanonicalReceipts;

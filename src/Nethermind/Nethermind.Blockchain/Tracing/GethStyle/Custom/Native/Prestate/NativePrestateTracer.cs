@@ -13,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 
@@ -26,10 +27,10 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
     private Instruction _op;
     private Address? _executingAccount;
     private EvmExceptionType? _error;
-    private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate = new();
-    private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _poststate;
-    private readonly HashSet<AddressAsKey> _createdAccounts;
-    private readonly HashSet<AddressAsKey> _deletedAccounts;
+    private readonly Dictionary<Box<Address>, NativePrestateTracerAccount> _prestate = new();
+    private readonly Dictionary<Box<Address>, NativePrestateTracerAccount> _poststate;
+    private readonly HashSet<Box<Address>> _createdAccounts;
+    private readonly HashSet<Box<Address>> _deletedAccounts;
     private readonly bool _diffMode;
 
     public NativePrestateTracer(
@@ -53,9 +54,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
         _diffMode = config.DiffMode;
         if (_diffMode)
         {
-            _poststate = new Dictionary<AddressAsKey, NativePrestateTracerAccount>();
-            _deletedAccounts = new HashSet<AddressAsKey>();
-            _createdAccounts = new HashSet<AddressAsKey>();
+            _poststate = new Dictionary<Box<Address>, NativePrestateTracerAccount>();
+            _deletedAccounts = new HashSet<Box<Address>>();
+            _createdAccounts = new HashSet<Box<Address>>();
         }
 
         LookupAccount(from!);
@@ -223,7 +224,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
 
     private void ProcessDiffState()
     {
-        foreach ((AddressAsKey addr, NativePrestateTracerAccount prestateAccount) in _prestate)
+        foreach ((Box<Address> addr, NativePrestateTracerAccount prestateAccount) in _prestate)
         {
             // If an account was deleted then don't show it in the postState trace
             if (_deletedAccounts.Contains(addr))

@@ -28,7 +28,7 @@ internal class BlockTests
     public void DisposeAccountChanges_should_dispose_and_null_account_changes()
     {
         Block block = new(new BlockHeader());
-        block.AccountChanges = new ArrayPoolList<AddressAsKey>(10);
+        block.AccountChanges = new ArrayPoolList<Box<Address>>(10);
         block.AccountChanges.Add(TestItem.AddressA);
 
         block.DisposeAccountChanges();

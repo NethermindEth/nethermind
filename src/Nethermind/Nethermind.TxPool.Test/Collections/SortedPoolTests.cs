@@ -16,6 +16,7 @@ using Nethermind.Specs;
 using Nethermind.TxPool.Collections;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.TxPool.Test.Collections
 {
@@ -24,7 +25,7 @@ namespace Nethermind.TxPool.Test.Collections
     {
         private const int Capacity = 16;
 
-        private SortedPool<ValueHash256, Transaction, AddressAsKey> _sortedPool;
+        private SortedPool<ValueHash256, Transaction, Box<Address>> _sortedPool;
 
         private readonly Transaction[] _transactions = new Transaction[Capacity * 8];
 

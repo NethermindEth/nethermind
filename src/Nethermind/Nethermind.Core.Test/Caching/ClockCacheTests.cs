@@ -5,11 +5,12 @@ using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
 
-using Cache = Nethermind.Core.Caching.ClockCache<Nethermind.Core.AddressAsKey, Nethermind.Core.Account>;
+using Cache = Nethermind.Core.Caching.ClockCache<Nethermind.Core.Collections.Box<Nethermind.Core.Address>, Nethermind.Core.Account>;
 
 namespace Nethermind.Core.Test.Caching
 {
@@ -315,7 +316,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Capacity_zero()
         {
-            ClockCache<AddressAsKey, int> cache = new(0);
+            ClockCache<Box<Address>, int> cache = new(0);
             for (int i = 0; i < Capacity * 2; i++)
             {
                 cache.Set(_addresses[i], 0).Should().BeTrue();

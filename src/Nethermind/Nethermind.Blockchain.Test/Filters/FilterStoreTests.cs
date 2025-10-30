@@ -15,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Blockchain.Test.Filters;
 
@@ -104,7 +105,7 @@ public class FilterStoreTests
             yield return new TestCaseData(null, AddressFilter.AnyAddress);
             yield return new TestCaseData(TestItem.AddressA.ToString(), new AddressFilter(TestItem.AddressA));
             yield return new TestCaseData(new[] { TestItem.AddressA.ToString(), TestItem.AddressB.ToString() },
-                new AddressFilter(new HashSet<AddressAsKey>() { TestItem.AddressA, TestItem.AddressB }));
+                new AddressFilter(new HashSet<Box<Address>>() { TestItem.AddressA, TestItem.AddressB }));
         }
     }
 

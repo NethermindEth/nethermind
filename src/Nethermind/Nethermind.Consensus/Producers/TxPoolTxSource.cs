@@ -44,10 +44,10 @@ namespace Nethermind.Consensus.Producers
             long blockNumber = parent.Number + 1;
             IReleaseSpec spec = NextBlockSpecHelper.GetSpec(_specProvider, parent, payloadAttributes, blocksConfig);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
-            IDictionary<AddressAsKey, Transaction[]> pendingTransactions = filterSource ?
+            IDictionary<Box<Address>, Transaction[]> pendingTransactions = filterSource ?
                 _transactionPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee) :
                 _transactionPool.GetPendingTransactionsBySender();
-            IDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = _transactionPool.GetPendingLightBlobTransactionsBySender();
+            IDictionary<Box<Address>, Transaction[]> pendingBlobTransactionsEquivalences = _transactionPool.GetPendingLightBlobTransactionsBySender();
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
@@ -367,27 +367,27 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, long gasLimit) =>
+        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<Box<Address>, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, long gasLimit) =>
             Order(pendingTransactions, comparer, filter, gasLimit);
 
-        private static IEnumerable<(Transaction tx, long blobChain)> GetOrderedBlobTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, int maxBlobs = 0) =>
+        private static IEnumerable<(Transaction tx, long blobChain)> GetOrderedBlobTransactions(IDictionary<Box<Address>, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, int maxBlobs = 0) =>
             OrderCore(pendingTransactions, comparer, static tx => tx.GetBlobCount(), filter, maxBlobs);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
-        internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, long gasLimit) =>
+        internal static IEnumerable<Transaction> Order(IDictionary<Box<Address>, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, long gasLimit) =>
             OrderCore(pendingTransactions, comparer, static tx => tx.SpentGas, filter, gasLimit).Select(static tx => tx.tx);
 
         private static IEnumerable<(Transaction tx, long resource)> OrderCore(
-            IDictionary<AddressAsKey, Transaction[]> pendingTransactions,
+            IDictionary<Box<Address>, Transaction[]> pendingTransactions,
             IComparer<Transaction> comparer,
             Func<Transaction, long> resourceSelector,
             Func<Transaction, bool> filter,
             long resourceLimit)
         {
             using ArrayPoolList<IEnumerator<Transaction>> bySenderEnumerators = pendingTransactions
-                .Select<KeyValuePair<AddressAsKey, Transaction[]>, IEnumerable<Transaction>>(static g => g.Value)
+                .Select<KeyValuePair<Box<Address>, Transaction[]>, IEnumerable<Transaction>>(static g => g.Value)
                 .Select(static g => g.GetEnumerator())
                 .ToPooledList(pendingTransactions.Count);
 

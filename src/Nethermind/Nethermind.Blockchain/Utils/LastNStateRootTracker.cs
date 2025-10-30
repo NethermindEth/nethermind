@@ -20,7 +20,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
 
     private Hash256? _lastQueuedStateRoot = null;
     private Queue<Hash256> _stateRootQueue = new Queue<Hash256>();
-    private NonBlocking.ConcurrentDictionary<Hash256AsKey, int> _availableStateRoots = new();
+    private NonBlocking.ConcurrentDictionary<ComparableBox<Hash256>, int> _availableStateRoots = new();
 
     public LastNStateRootTracker(IBlockTree blockTree, int lastN)
     {
@@ -64,7 +64,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         }
 
         using ArrayPoolList<Hash256> stateRoots = new(128);
-        NonBlocking.ConcurrentDictionary<Hash256AsKey, int> newStateRootSet = new();
+        NonBlocking.ConcurrentDictionary<ComparableBox<Hash256>, int> newStateRootSet = new();
         newStateRootSet.TryAdd(newHead.StateRoot, 1);
         stateRoots.Add(newHead.StateRoot);
 

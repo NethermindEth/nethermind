@@ -14,6 +14,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Consensus.Processing.CensorshipDetector;
 
@@ -43,7 +44,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
     private readonly IComparer<Transaction> _betterTxComparer;
     private readonly IBranchProcessor _blockProcessor;
     private readonly ILogger _logger;
-    private readonly Dictionary<AddressAsKey, Transaction?>? _bestTxPerObservedAddresses;
+    private readonly Dictionary<Box<Address>, Transaction?>? _bestTxPerObservedAddresses;
     private readonly LruCache<BlockNumberHash, BlockCensorshipInfo> _potentiallyCensoredBlocks;
     private readonly WrapAroundArray<BlockNumberHash> _censoredBlocks;
     private readonly uint _blockCensorshipThreshold;
@@ -71,7 +72,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
             {
                 if (Address.TryParse(hexString, out Address address))
                 {
-                    _bestTxPerObservedAddresses ??= new Dictionary<AddressAsKey, Transaction>();
+                    _bestTxPerObservedAddresses ??= new Dictionary<Box<Address>, Transaction>();
                     _bestTxPerObservedAddresses[address!] = null;
                 }
                 else
@@ -141,7 +142,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
 
                 Transaction bestTxInBlock = block.Transactions[0];
                 Transaction worstTxInBlock = block.Transactions[0];
-                HashSet<AddressAsKey> trackedAddressesInBlock = [];
+                HashSet<Box<Address>> trackedAddressesInBlock = [];
 
                 foreach (Transaction tx in block.Transactions)
                 {
@@ -205,7 +206,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         {
             if (tracksPerAddressCensorship)
             {
-                foreach (AddressAsKey key in _bestTxPerObservedAddresses.Keys)
+                foreach (Box<Address> key in _bestTxPerObservedAddresses.Keys)
                 {
                     _bestTxPerObservedAddresses[key] = null;
                 }

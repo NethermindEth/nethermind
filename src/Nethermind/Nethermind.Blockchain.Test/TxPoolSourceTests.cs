@@ -15,6 +15,7 @@ using System.Collections.Generic;
 using Nethermind.Config;
 using NSubstitute;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Consensus.Producers.Test;
 
@@ -27,10 +28,10 @@ public class TxPoolSourceTests
         TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
 
         ITxPool txPool = Substitute.For<ITxPool>();
-        Dictionary<AddressAsKey, Transaction[]> transactionsWithBlobs = blobCountPerTx
+        Dictionary<Box<Address>, Transaction[]> transactionsWithBlobs = blobCountPerTx
             .Select((blobsCount, index) => (blobCount: blobsCount, index))
             .ToDictionary(
-                pair => new AddressAsKey(new Address((new byte[19]).Concat(new byte[] { (byte)pair.index }).ToArray())),
+                pair => new Box<Address>(new Address((new byte[19]).Concat(new byte[] { (byte)pair.index }).ToArray())),
                 pair => new Transaction[] { Build.A.Transaction.WithShardBlobTxTypeAndFields(pair.blobCount).TestObject });
         txPool.GetPendingTransactions().Returns([]);
         txPool.GetPendingLightBlobTransactionsBySender().Returns(transactionsWithBlobs);

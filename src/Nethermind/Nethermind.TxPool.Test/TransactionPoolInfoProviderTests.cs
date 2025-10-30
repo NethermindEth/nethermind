@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.TxPool.Test
 {
@@ -37,7 +38,7 @@ namespace Nethermind.TxPool.Test
             var transactions = GetTransactions();
 
             _txPool.GetPendingTransactionsBySender()
-                .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, transactions } });
+                .Returns(new Dictionary<Box<Address>, Transaction[]> { { _address, transactions } });
             var info = _infoProvider.GetInfo();
 
             info.Pending.Count.Should().Be(1);

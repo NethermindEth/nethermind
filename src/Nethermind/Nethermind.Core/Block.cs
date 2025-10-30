@@ -121,7 +121,7 @@ public class Block
     public byte[][]? ExecutionRequests { get; set; }
 
     [JsonIgnore]
-    public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
+    public ArrayPoolList<Box<Address>>? AccountChanges { get; set; }
 
     [JsonIgnore]
     public int? EncodedSize { get; set; }

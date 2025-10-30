@@ -10,13 +10,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Network;
 
 public interface IPeerPool : IStoppableService
 {
-    ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; }
-    ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; }
+    ConcurrentDictionary<Box<PublicKey>, Peer> Peers { get; }
+    ConcurrentDictionary<Box<PublicKey>, Peer> ActivePeers { get; }
 
     IEnumerable<Peer> StaticPeers { get; }
     IEnumerable<Peer> NonStaticPeers { get; }

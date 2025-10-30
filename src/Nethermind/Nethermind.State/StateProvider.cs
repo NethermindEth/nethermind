@@ -33,27 +33,27 @@ namespace Nethermind.State
     {
         private static readonly UInt256 _zero = UInt256.Zero;
 
-        private readonly Dictionary<AddressAsKey, Stack<int>> _intraTxCache = new();
-        private readonly HashSet<AddressAsKey> _committedThisRound = new();
-        private readonly HashSet<AddressAsKey> _nullAccountReads = new();
+        private readonly Dictionary<Box<Address>, Stack<int>> _intraTxCache = new();
+        private readonly HashSet<Box<Address>> _committedThisRound = new();
+        private readonly HashSet<Box<Address>> _nullAccountReads = new();
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
         private readonly ClockKeyCacheNonConcurrent<ValueHash256> _persistedCodeInsertFilter = new(1_024);
         private readonly ClockKeyCacheNonConcurrent<ValueHash256> _blockCodeInsertFilter = new(256);
-        private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
-        private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
+        private readonly Dictionary<Box<Address>, ChangeTrace> _blockChanges = new(4_096);
+        private readonly ConcurrentDictionary<Box<Address>, Account>? _preBlockCache;
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
         private readonly IKeyValueStoreWithBatching _codeDb;
-        private Dictionary<Hash256AsKey, byte[]> _codeBatch;
-        private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
+        private Dictionary<ComparableBox<Hash256>, byte[]> _codeBatch;
+        private Dictionary<ComparableBox<Hash256>, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
 
         private readonly List<Change> _changes = new(Resettable.StartCapacity);
         internal readonly StateTree _tree;
-        private readonly Func<AddressAsKey, Account> _getStateFromTrie;
+        private readonly Func<Box<Address>, Account> _getStateFromTrie;
 
         private readonly bool _populatePreBlockCache;
         private bool _needsStateRootUpdate;
@@ -62,7 +62,7 @@ namespace Nethermind.State
             IKeyValueStoreWithBatching codeDb,
             ILogManager logManager,
             StateTree? stateTree = null,
-            ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null,
+            ConcurrentDictionary<Box<Address>, Account>? preBlockCache = null,
             bool populatePreBlockCache = true)
         {
             _preBlockCache = preBlockCache;
@@ -559,7 +559,7 @@ namespace Nethermind.State
                 ThrowStartOfCommitIsNull(stepsBack);
             }
 
-            Dictionary<AddressAsKey, ChangeTrace>? trace = !stateTracer.IsTracingState ? null : [];
+            Dictionary<Box<Address>, ChangeTrace>? trace = !stateTracer.IsTracingState ? null : [];
 
             ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
             for (int i = 0; i <= stepsBack; i++)
@@ -681,7 +681,7 @@ namespace Nethermind.State
 
             Task CommitCodeAsync()
             {
-                Dictionary<Hash256AsKey, byte[]> dict = Interlocked.Exchange(ref _codeBatch, null);
+                Dictionary<ComparableBox<Hash256>, byte[]> dict = Interlocked.Exchange(ref _codeBatch, null);
                 if (dict is null) return Task.CompletedTask;
                 _codeBatchAlternate = default;
 
@@ -750,7 +750,7 @@ namespace Nethermind.State
             int skipped = 0;
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkWrite = new(_blockChanges.Count);
-            foreach (AddressAsKey key in _blockChanges.Keys)
+            foreach (Box<Address> key in _blockChanges.Keys)
             {
                 ref ChangeTrace change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
                 if (change.Before != change.After)
@@ -784,7 +784,7 @@ namespace Nethermind.State
 
         private Account? GetState(Address address)
         {
-            AddressAsKey addressAsKey = address;
+            Box<Address> addressAsKey = address;
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
             if (!exists)
             {
@@ -801,7 +801,7 @@ namespace Nethermind.State
             return accountChanges.After;
         }
 
-        private Account? GetStatePopulatePrewarmCache(AddressAsKey addressAsKey)
+        private Account? GetStatePopulatePrewarmCache(Box<Address> addressAsKey)
         {
             long priorReads = Metrics.ThreadLocalStateTreeReads;
             Account? account = _preBlockCache is not null
@@ -815,7 +815,7 @@ namespace Nethermind.State
             return account;
         }
 
-        private Account? GetStateReadPreWarmCache(AddressAsKey addressAsKey)
+        private Account? GetStateReadPreWarmCache(Box<Address> addressAsKey)
         {
             if (_preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
             {
@@ -916,7 +916,7 @@ namespace Nethermind.State
             return value;
         }
 
-        public ArrayPoolList<AddressAsKey>? ChangedAddresses()
+        public ArrayPoolList<Box<Address>>? ChangedAddresses()
         {
             int count = _blockChanges.Count;
             if (count == 0)
@@ -925,8 +925,8 @@ namespace Nethermind.State
             }
             else
             {
-                ArrayPoolList<AddressAsKey> addresses = new(count);
-                foreach (AddressAsKey address in _blockChanges.Keys)
+                ArrayPoolList<Box<Address>> addresses = new(count);
+                foreach (Box<Address> address in _blockChanges.Keys)
                 {
                     addresses.Add(address);
                 }
@@ -1016,19 +1016,19 @@ namespace Nethermind.State
     internal static class Extensions
     {
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void AddToTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change)
+        public static void AddToTrace(this Dictionary<Box<Address>, ChangeTrace> trace, Address address, Account? change)
         {
             trace.Add(address, new ChangeTrace(change));
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void UpdateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change)
+        public static void UpdateTrace(this Dictionary<Box<Address>, ChangeTrace> trace, Address address, Account? change)
         {
             trace[address] = new ChangeTrace(change, trace[address].After);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void ReportStateTrace(this Dictionary<AddressAsKey, ChangeTrace>? trace, IWorldStateTracer stateTracer, HashSet<AddressAsKey> nullAccountReads, StateProvider stateProvider)
+        public static void ReportStateTrace(this Dictionary<Box<Address>, ChangeTrace>? trace, IWorldStateTracer stateTracer, HashSet<Box<Address>> nullAccountReads, StateProvider stateProvider)
         {
             foreach (Address nullRead in nullAccountReads)
             {
@@ -1038,7 +1038,7 @@ namespace Nethermind.State
             ReportChanges(trace, stateTracer, stateProvider);
         }
 
-        private static void ReportChanges(Dictionary<AddressAsKey, ChangeTrace> trace, IStateTracer stateTracer, StateProvider stateProvider)
+        private static void ReportChanges(Dictionary<Box<Address>, ChangeTrace> trace, IStateTracer stateTracer, StateProvider stateProvider)
         {
             foreach ((Address address, ChangeTrace change) in trace)
             {

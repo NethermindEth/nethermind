@@ -93,7 +93,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return count;
     }
 
-    protected override bool InsertCore(ValueHash256 key, Transaction value, AddressAsKey groupKey)
+    protected override bool InsertCore(ValueHash256 key, Transaction value, Box<Address> groupKey)
     {
         if (base.InsertCore(key, value, groupKey))
         {

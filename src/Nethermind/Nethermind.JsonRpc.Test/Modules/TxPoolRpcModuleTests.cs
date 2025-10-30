@@ -14,6 +14,7 @@ using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -38,7 +39,7 @@ public class TxPoolRpcModuleTests
             pending: new()
             {
                 {
-                    new AddressAsKey(TestItem.AddressA), new Dictionary<ulong, Transaction>
+                    new Box<Address>(TestItem.AddressA), new Dictionary<ulong, Transaction>
                     {
                         { 1, txA }
                     }
@@ -47,7 +48,7 @@ public class TxPoolRpcModuleTests
             queued: new()
             {
                 {
-                    new AddressAsKey(TestItem.AddressB), new Dictionary<ulong, Transaction>
+                    new Box<Address>(TestItem.AddressB), new Dictionary<ulong, Transaction>
                     {
                         { 2, txB }
                     }
@@ -62,8 +63,8 @@ public class TxPoolRpcModuleTests
 
         var txpoolContent = txPoolRpcModule.txpool_content().Data;
 
-        var rpcTxA = txpoolContent.Pending[new AddressAsKey(TestItem.AddressA)][1] as LegacyTransactionForRpc;
-        var rpcTxB = txpoolContent.Queued[new AddressAsKey(TestItem.AddressB)][2] as AccessListTransactionForRpc;
+        var rpcTxA = txpoolContent.Pending[new Box<Address>(TestItem.AddressA)][1] as LegacyTransactionForRpc;
+        var rpcTxB = txpoolContent.Queued[new Box<Address>(TestItem.AddressB)][2] as AccessListTransactionForRpc;
 
         rpcTxA!.ChainId.Should().BeNull();
         rpcTxB!.ChainId.Should().Be(SomeChainId);

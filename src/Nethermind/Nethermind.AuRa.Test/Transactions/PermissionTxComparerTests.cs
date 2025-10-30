@@ -22,6 +22,7 @@ using Nethermind.Specs;
 using Nethermind.TxPool.Collections;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.AuRa.Test.Transactions
 {
@@ -268,9 +269,9 @@ namespace Nethermind.AuRa.Test.Transactions
                 .ThenBy(defaultComparer);
 
 
-            Dictionary<AddressAsKey, Transaction[]> txBySender = transactions.GroupBy(t => t.SenderAddress)
+            Dictionary<Box<Address>, Transaction[]> txBySender = transactions.GroupBy(t => t.SenderAddress)
                 .ToDictionary(
-                    g => (AddressAsKey)g.Key,
+                    g => (Box<Address>)g.Key,
                     g => g.OrderBy(t => t,
                         // to simulate order coming from TxPool
                         comparer.GetPoolUniqueTxComparerByNonce()).ToArray());

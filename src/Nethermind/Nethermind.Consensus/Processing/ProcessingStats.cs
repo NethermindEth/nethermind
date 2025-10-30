@@ -14,6 +14,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -423,7 +424,7 @@ namespace Nethermind.Consensus.Processing
         }
 
         // Help identify mev blocks when doesn't follow regular pattern
-        private static readonly HashSet<AddressAsKey> _alternateMevPayees = new()
+        private static readonly HashSet<Box<Address>> _alternateMevPayees = new()
         {
             new Address("0xa83114A443dA1CecEFC50368531cACE9F37fCCcb"), // Extra data as: beaverbuild.org
             new Address("0x9FC3da866e7DF3a1c57adE1a97c9f00a70f010c8"), // Extra data as: Titan (titanbuilder.xyz)

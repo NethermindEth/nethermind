@@ -31,8 +31,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ITxGossipPolicy _txGossipPolicy;
-        private LruKeyCache<Hash256AsKey>? _lastBlockNotificationCache;
-        private LruKeyCache<Hash256AsKey> LastBlockNotificationCache => _lastBlockNotificationCache ??= new(10, "LastBlockNotificationCache");
+        private LruKeyCache<ComparableBox<Hash256>>? _lastBlockNotificationCache;
+        private LruKeyCache<ComparableBox<Hash256>> LastBlockNotificationCache => _lastBlockNotificationCache ??= new(10, "LastBlockNotificationCache");
         private readonly Func<(IOwnedReadOnlyList<Transaction> txs, int startIndex), CancellationToken, ValueTask> _handleSlow;
 
         public Eth62ProtocolHandler(ISession session,

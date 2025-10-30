@@ -8,6 +8,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Core.Test.Caching
 {
@@ -91,7 +92,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Beyond_capacity_lru()
         {
-            LruKeyCache<AddressAsKey> cache = new(Capacity, "test");
+            LruKeyCache<Box<Address>> cache = new(Capacity, "test");
             for (int i = 0; i < Capacity * 2; i++)
             {
                 for (int ii = 0; ii < Capacity / 2; ii++)
@@ -106,7 +107,7 @@ namespace Nethermind.Core.Test.Caching
         public void Beyond_capacity_lru_check()
         {
             Random random = new();
-            LruKeyCache<AddressAsKey> cache = new(Capacity, "test");
+            LruKeyCache<Box<Address>> cache = new(Capacity, "test");
             for (var iter = 0; iter < Capacity; iter++)
             {
                 for (int ii = 0; ii < Capacity; ii++)
@@ -173,7 +174,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Beyond_capacity_lru_parallel()
         {
-            LruKeyCache<AddressAsKey> cache = new(Capacity, Capacity / 2, "test");
+            LruKeyCache<Box<Address>> cache = new(Capacity, Capacity / 2, "test");
             int processorCount = Math.Min(Environment.ProcessorCount, 32);
             Parallel.For(0, processorCount * 8, (iter) =>
             {

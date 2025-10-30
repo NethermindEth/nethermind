@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Blockchain.Test.Builders
 {
@@ -125,7 +126,7 @@ namespace Nethermind.Blockchain.Test.Builders
 
         public FilterBuilder WithAddresses(params Address[] addresses)
         {
-            _address = new AddressFilter(addresses.Select(static a => new AddressAsKey(a)).ToHashSet());
+            _address = new AddressFilter(addresses.Select(static a => new Box<Address>(a)).ToHashSet());
 
             return this;
         }

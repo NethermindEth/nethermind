@@ -6,6 +6,7 @@ using System.Collections.Frozen;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Specs.Test
 {
@@ -199,6 +200,6 @@ namespace Nethermind.Specs.Test
         public bool IsEip7939Enabled => spec.IsEip7939Enabled;
         public bool IsEip7907Enabled => spec.IsEip7907Enabled;
         public bool IsRip7728Enabled => spec.IsRip7728Enabled;
-        FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
+        FrozenSet<Box<Address>> IReleaseSpec.Precompiles => spec.Precompiles;
     }
 }

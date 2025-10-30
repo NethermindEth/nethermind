@@ -25,6 +25,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Taiko.Test;
 
@@ -32,7 +33,7 @@ public class TxPoolContentListsTests
 {
     [TestCaseSource(nameof(FinalizingTests))]
     public int[][] Test_TxLists_AreConstructed(
-        Dictionary<AddressAsKey, Transaction[]> transactions,
+        Dictionary<Box<Address>, Transaction[]> transactions,
         Address[]? localAccounts,
         ulong blockGasLimit,
         ulong maxBytesPerTxList,
@@ -117,7 +118,7 @@ public class TxPoolContentListsTests
             {
                 return [
                     txs.ToDictionary(
-                        static kv => (AddressAsKey)Build.An.Address.FromNumber(kv.Key).TestObject,
+                        static kv => (Box<Address>)Build.An.Address.FromNumber(kv.Key).TestObject,
                         static kv => kv.Value.Select(static txId =>
                             Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(7).WithNonce(1).WithValue(1).WithGasPrice(20).WithData([(byte)txId]).SignedAndResolved().TestObject
                         ).ToArray()),

@@ -103,24 +103,6 @@ namespace Nethermind.Core.Crypto
         private bool IsZero => _bytes == default;
     }
 
-    /// <summary>
-    /// Type alias for ComparableBox containing a Hash256. Used as dictionary key with comparison support.
-    /// </summary>
-    public readonly struct Hash256AsKey(Hash256? key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>
-    {
-        private readonly ComparableBox<Hash256> _box = key;
-
-        public Hash256? Value => _box.Value;
-
-        public static implicit operator Hash256?(Hash256AsKey key) => key._box;
-        public static implicit operator Hash256AsKey(Hash256? key) => new(key);
-
-        public bool Equals(Hash256AsKey other) => _box.Equals(other._box);
-        public override bool Equals(object? obj) => obj is Hash256AsKey key && Equals(key);
-        public override int GetHashCode() => _box.GetHashCode();
-        public int CompareTo(Hash256AsKey other) => _box.CompareTo(other._box);
-    }
-
     [DebuggerStepThrough]
     public sealed class Hash256 : IEquatable<Hash256>, IComparable<Hash256>
     {
