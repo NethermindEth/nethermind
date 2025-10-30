@@ -327,7 +327,7 @@ public class ProofRpcModuleTests
         Assert.That(response.Contains("-32000"), Is.True);
 
         response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", tx, new { blockHash = TestItem.KeccakG, requireCanonical = true });
-        Assert.That(response.Contains("-32001"), Is.True);
+        Assert.That(response.Contains(ErrorCodes.ResourceNotFound.ToString()), Is.True);
     }
 
     [TestCase]

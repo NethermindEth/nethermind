@@ -638,7 +638,7 @@ public partial class EthRpcModuleTests
         serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32016,\"message\":\"eth_getLogs request was canceled due to enabled timeout.\"},\"id\":67}");
     }
 
-    [TestCase("{\"fromBlock\":\"earliest\",\"toBlock\":\"latest\"}", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"resource not found message\"},\"id\":67}")]
+    [TestCase("{\"fromBlock\":\"earliest\",\"toBlock\":\"latest\"}", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"resource not found message\"},\"id\":67}")]
     public async Task Eth_get_logs_with_resourceNotFound(string parameter, string expected)
     {
         using Context ctx = await Context.Create();
@@ -864,7 +864,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_getAccount", account_address, "0xffff");
 
-        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"65535 could not be found\"},\"id\":67}");
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"65535 could not be found\"},\"id\":67}");
     }
 
     [Test]
@@ -907,7 +907,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_getAccountInfo", account_address, "0xffff");
 
-        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"65535 could not be found\"},\"id\":67}");
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"65535 could not be found\"},\"id\":67}");
     }
 
     [Test]
