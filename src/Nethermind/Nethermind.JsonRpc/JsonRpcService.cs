@@ -108,7 +108,7 @@ public class JsonRpcService : IJsonRpcService
     {
         const string GetLogsMethodName = "eth_getLogs";
 
-        JsonRpcErrorResponse? value = PrepareParameters(request, methodName, method, out object[] parameters, out bool hasMissing);
+        JsonRpcErrorResponse? value = PrepareParameters(request, methodName, method, out object[]? parameters, out bool hasMissing);
         if (value is not null)
         {
             return value;
@@ -121,7 +121,7 @@ public class JsonRpcService : IJsonRpcService
         }
         bool returnImmediately = methodName != GetLogsMethodName;
         Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(methodName, rpcModule);
-        IResultWrapper resultWrapper = null;
+        IResultWrapper? resultWrapper = null;
         try
         {
             // Execute method
@@ -171,7 +171,7 @@ public class JsonRpcService : IJsonRpcService
         }
     }
 
-    private JsonRpcErrorResponse? PrepareParameters(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, out object[] parameters, out bool hasMissing)
+    private JsonRpcErrorResponse? PrepareParameters(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, out object[]? parameters, out bool hasMissing)
     {
         parameters = null;
         hasMissing = false;
