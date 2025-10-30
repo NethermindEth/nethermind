@@ -260,8 +260,6 @@ internal class TrieStoreDirtyNodesCache
     /// This method is responsible for reviewing the nodes that are directly in the cache and
     /// removing ones that are either no longer referenced or already persisted.
     /// </summary>
-    /// <param name="prunePersisted">Also prune persisted node. Persisted node can still be deleted</param>
-    /// <param name="forceRemovePersistedNodes">Force prune persisted node. This is used for full pruning to clear the cache.</param>
     /// <exception cref="InvalidOperationException"></exception>
     public void PruneCache(
         bool prunePersisted = false,
@@ -274,11 +272,7 @@ internal class TrieStoreDirtyNodesCache
             ? new ConcurrentNodeWriteBatcher(nodeStorage, 256) : null;
 
         long totalMemory, dirtyMemory, totalNode, dirtyNode;
-        (totalMemory, dirtyMemory, totalNode, dirtyNode) = PruneCacheUnlocked(
-            prunePersisted,
-            forceRemovePersistedNodes,
-            persistedHashes,
-            writeBatcher);
+        (totalMemory, dirtyMemory, totalNode, dirtyNode) = PruneCacheUnlocked(prunePersisted, forceRemovePersistedNodes, persistedHashes, writeBatcher);
 
         writeBatcher?.Dispose();
 
