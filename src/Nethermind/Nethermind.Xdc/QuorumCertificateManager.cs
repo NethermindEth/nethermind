@@ -26,20 +26,17 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     public QuorumCertificateManager(
         IXdcConsensusContext context,
         IBlockTree chain,
-        IDb qcDb,
         ISpecProvider xdcConfig,
         IEpochSwitchManager epochSwitchManager)
     {
         _context = context;
         _blockTree = chain;
-        _qcDb = qcDb;
         _specProvider = xdcConfig;
         _epochSwitchManager = epochSwitchManager;
     }
 
     private IXdcConsensusContext _context { get; }
     private IBlockTree _blockTree;
-    private readonly IDb _qcDb;
     private IEpochSwitchManager _epochSwitchManager { get; }
     private ISpecProvider _specProvider { get; }
     private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
@@ -54,7 +51,6 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         if (qc.ProposedBlockInfo.Round > _context.HighestQC.ProposedBlockInfo.Round)
         {
             _context.HighestQC = qc;
-            SaveHighestQc(qc);
         }
 
         var proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
@@ -74,7 +70,6 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             {
                 //Basically finalize parent QC
                 _context.LockQC = parentQc;
-                SaveLockQc(parentQc);
             }
 
             CommitBlock(_blockTree, proposedBlockHeader, proposedBlockHeader.ExtraConsensusData.BlockRound, qc);
@@ -84,23 +79,6 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         {
             _context.SetNewRound(qc.ProposedBlockInfo.Round + 1);
         }
-    }
-
-    private void SaveHighestQc(QuorumCertificate qc)
-    {
-        SaveQc(qc, XdcDbNames.HighestQcKey);
-    }
-    private void SaveLockQc(QuorumCertificate qc)
-    {
-        SaveQc(qc, XdcDbNames.LockQcKey);
-    }
-
-    private void SaveQc(QuorumCertificate qc, long key)
-    {
-        byte[] data = new byte[_quorumCertificateDecoder.GetLength(qc)];
-        RlpStream rlp = new RlpStream(data);
-        _quorumCertificateDecoder.Encode(rlp, qc);
-        _qcDb.Set(key, data);
     }
 
     private bool CommitBlock(IBlockTree chain, XdcBlockHeader proposedBlockHeader, ulong proposedRound, QuorumCertificate proposedQuorumCert)

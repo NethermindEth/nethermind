@@ -28,7 +28,6 @@ public class QuorumCertificateManagerTest
         var quorumCertificateManager = new QuorumCertificateManager(
             new XdcConsensusContext(),
             Substitute.For<IBlockTree>(),
-            Substitute.For<IDb>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IEpochSwitchManager>());
 
@@ -41,7 +40,6 @@ public class QuorumCertificateManagerTest
         var quorumCertificateManager = new QuorumCertificateManager(
             new XdcConsensusContext(),
             Substitute.For<IBlockTree>(),
-            Substitute.For<IDb>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IEpochSwitchManager>());
 
@@ -95,7 +93,6 @@ public class QuorumCertificateManagerTest
         var quorumCertificateManager = new QuorumCertificateManager(
             new XdcConsensusContext(),
             Substitute.For<IBlockTree>(),
-            Substitute.For<IDb>(),
             specProvider,
             epochSwitchManager);
 
