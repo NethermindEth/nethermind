@@ -865,7 +865,6 @@ public class CliqueBlockProducerTests
         await goerli.StopNode(TestItem.PrivateKeyA, dontDispose: true);
 
         goerli.ProcessGenesis();
-        await Task.Delay(1000);
         goerli.AssertHeadBlockIs(TestItem.PrivateKeyA, 0);
 
         await goerli.StopNode(TestItem.PrivateKeyA);
