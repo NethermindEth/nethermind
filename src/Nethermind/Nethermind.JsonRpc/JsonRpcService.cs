@@ -241,10 +241,13 @@ public class JsonRpcService : IJsonRpcService
         // Prepare parameters
         if (method.ExpectedParameters.Length > 0)
         {
-            (parameters, hasMissing) = DeserializeParameters(method.ExpectedParameters, providedParametersLength, providedParameters, missingParamsCount);
-            if (parameters is null)
+            try
             {
-                if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters)}]");
+                (parameters, hasMissing) = DeserializeParameters(method.ExpectedParameters, providedParametersLength, providedParameters, missingParamsCount);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters)}] {e}");
                 return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id);
             }
         }
@@ -418,38 +421,30 @@ public class JsonRpcService : IJsonRpcService
         JsonElement providedParameters,
         int missingParamsCount)
     {
-        try
+        int totalLength = providedParametersLength + missingParamsCount;
+        if (totalLength == 0) return (Array.Empty<object>(), false);
+
+        object[] executionParameters = new object[totalLength];
+
+        bool hasMissing = missingParamsCount != 0;
+        int i = 0;
+        var enumerator = providedParameters.EnumerateArray();
+        while (enumerator.MoveNext())
         {
-            bool hasMissing = false;
-            int totalLength = providedParametersLength + missingParamsCount;
+            ExpectedParameter expectedParameter = expectedParameters[i];
 
-            if (totalLength == 0) return (Array.Empty<object>(), false);
-
-            object[] executionParameters = new object[totalLength];
-
-            int i = 0;
-            foreach (JsonElement providedParameter in providedParameters.EnumerateArray())
-            {
-                ExpectedParameter expectedParameter = expectedParameters[i];
-
-                object? parameter = DeserializeParameter(providedParameter, expectedParameter);
-                executionParameters[i] = parameter;
-                hasMissing |= ReferenceEquals(parameter, Type.Missing);
-                i++;
-            }
-
-            for (i = providedParametersLength; i < totalLength; i++)
-            {
-                executionParameters[i] = Type.Missing;
-            }
-            hasMissing |= providedParametersLength < totalLength;
-            return (executionParameters, hasMissing);
+            object? parameter = DeserializeParameter(enumerator.Current, expectedParameter);
+            executionParameters[i] = parameter;
+            hasMissing |= ReferenceEquals(parameter, Type.Missing);
+            i++;
         }
-        catch (Exception e)
+
+        for (i = providedParametersLength; i < totalLength; i++)
         {
-            if (_logger.IsWarn) _logger.Warn("Error while parsing JSON RPC request parameters " + e);
-            return (null, false);
+            executionParameters[i] = Type.Missing;
         }
+
+        return (executionParameters, hasMissing);
     }
 
     private static JsonRpcResponse GetSuccessResponse(string methodName, object result, object id, Action? disposableAction)
