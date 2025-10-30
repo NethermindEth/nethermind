@@ -21,7 +21,7 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
         if (header is not XdcBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
         if (parent is not XdcBlockHeader parentXdcHeader)
-            throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(parent));
+            throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {parent.GetType().Name}.", nameof(parent));
 
         if (xdcHeader.Validator is null || xdcHeader.Validator.Length == 0)
         {

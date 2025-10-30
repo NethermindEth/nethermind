@@ -9,6 +9,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
 using System;
@@ -90,8 +91,10 @@ public class Tests
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
         releaseSpec.GasLimitBoundDivisor.Returns(1);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-        XdcHeaderValidator validator = new(Substitute.For<IBlockTree>(), Substitute.For<IQuorumCertificateManager>(), sealValidator, specProvider, Substitute.For<ILogManager>());
+        IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
+        quorumCertificateManager.VerifyCertificate(Arg.Any<QuorumCertificate>(), Arg.Any<XdcBlockHeader>(), out _).Returns(true);
+        XdcHeaderValidator validator = new(Substitute.For<IBlockTree>(), quorumCertificateManager, sealValidator, specProvider, Substitute.For<ILogManager>());
 
-        Assert.That(validator.Validate(headerBuilder.TestObject, headerParent, false, out _), Is.EqualTo(expected));
+        Assert.That(validator.Validate(headerBuilder.TestObject, headerParent, false, out string? error), Is.EqualTo(expected), "Error was: " + error);
     }
 }
