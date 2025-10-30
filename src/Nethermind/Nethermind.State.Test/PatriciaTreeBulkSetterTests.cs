@@ -690,7 +690,7 @@ public class PatriciaTreeBulkSetterTests
         {
             items.Add(new PatriciaTree.BulkSetEntry(hash256, Array.Empty<byte>()));
         }
-        items.AsSpan().Sort((a, b) => a.GetPathNibbble(nibIndex).CompareTo(b.GetPathNibbble(nibIndex)));
+        items.AsSpan().Sort((a, b) => a.GetPathNibble(nibIndex).CompareTo(b.GetPathNibble(nibIndex)));
 
         Span<int> result = stackalloc int[TrieNode.BranchesCount];
         int resultMask = PatriciaTree.HexarySearchAlreadySortedSmall(items.AsSpan(), nibIndex, result);
