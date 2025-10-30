@@ -844,7 +844,6 @@ namespace Nethermind.Synchronization.FastSync
 
         private void HandleTrieNode(StateSyncItem currentStateSyncItem, byte[] currentResponseItem, ref int invalidNodes)
         {
-            // TODO: Cacche current response here
             NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
             TreePath path = currentStateSyncItem.Path;
 
