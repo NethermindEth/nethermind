@@ -74,7 +74,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         catch (ArgumentException ex)
         {
             result.Error = ex.Message;
-            result.IsInvalidOutput = true;
+            result.IsInvalidInput = true;
         }
         catch (InvalidTransactionException ex)
         {
