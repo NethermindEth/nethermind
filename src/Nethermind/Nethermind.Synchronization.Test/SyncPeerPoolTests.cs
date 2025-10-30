@@ -450,7 +450,7 @@ public class SyncPeerPoolTests
         Assert.That(allocation2.HasPeer, Is.True);
         // With 2 awake peers and max 2 allocations per peer, we can have up to 4 allocations, so third allocation succeeds
         Assert.That(allocation3.HasPeer, Is.True);
-        
+
         // Verify none of the allocations used the sleeping peer
         PeerInfo sleepingPeer = ctx.Pool.InitializedPeers.First();
         Assert.That(allocation1.Current, Is.Not.SameAs(sleepingPeer));

@@ -135,7 +135,7 @@ namespace Nethermind.Synchronization.Peers
                 if ((contexts & allocationIndex.Key) == allocationIndex.Key)
                 {
                     _allocationCounts.AddOrUpdate(allocationIndex.Key, 0, (_, count) => Math.Max(0, count - 1));
-                    
+
                     // If count reaches 0, clear the allocated flag for this context
                     if (_allocationCounts.GetOrAdd(allocationIndex.Key, 0) == 0)
                     {
