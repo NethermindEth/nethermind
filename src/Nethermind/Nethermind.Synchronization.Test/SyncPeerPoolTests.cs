@@ -417,19 +417,31 @@ public class SyncPeerPoolTests
 
         SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        // With multiple allocations per peer, both may point to same PeerInfo or different - both are valid
+        SyncPeerAllocation allocation3 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        SyncPeerAllocation allocation4 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        // With 2 peers and max 2 allocations per peer, all 4 allocations should succeed
         Assert.That(allocation1.Current, Is.Not.Null, "first A");
         Assert.That(allocation2.Current, Is.Not.Null, "first B");
+        Assert.That(allocation3.Current, Is.Not.Null, "first C");
+        Assert.That(allocation4.Current, Is.Not.Null, "first D");
 
         ctx.Pool.Free(allocation1);
         ctx.Pool.Free(allocation2);
+        ctx.Pool.Free(allocation3);
+        ctx.Pool.Free(allocation4);
         Assert.That(allocation1.Current, Is.Null, "null A");
         Assert.That(allocation2.Current, Is.Null, "null B");
+        Assert.That(allocation3.Current, Is.Null, "null C");
+        Assert.That(allocation4.Current, Is.Null, "null D");
 
         allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        allocation3 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        allocation4 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         Assert.That(allocation1.Current, Is.Not.Null, "second A");
         Assert.That(allocation2.Current, Is.Not.Null, "second B");
+        Assert.That(allocation3.Current, Is.Not.Null, "second C");
+        Assert.That(allocation4.Current, Is.Not.Null, "second D");
     }
 
     [Test]
@@ -442,20 +454,26 @@ public class SyncPeerPoolTests
             ctx.Pool.ReportNoSyncProgress(ctx.Pool.InitializedPeers.First(), AllocationContexts.All);
         }
 
+        // With 1 sleeping peer and 2 awake peers, max 2 allocations per peer = 4 total allocations possible
         SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         SyncPeerAllocation allocation3 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        SyncPeerAllocation allocation4 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        // Fifth allocation should fail as we've maxed out the 2 awake peers (2 slots each)
+        SyncPeerAllocation allocation5 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.Headers, 50);
 
         Assert.That(allocation1.HasPeer, Is.True);
         Assert.That(allocation2.HasPeer, Is.True);
-        // With 2 awake peers and max 2 allocations per peer, we can have up to 4 allocations, so third allocation succeeds
         Assert.That(allocation3.HasPeer, Is.True);
+        Assert.That(allocation4.HasPeer, Is.True);
+        Assert.That(allocation5.HasPeer, Is.False, "Fifth allocation should fail as all slots on awake peers are full");
 
         // Verify none of the allocations used the sleeping peer
         PeerInfo sleepingPeer = ctx.Pool.InitializedPeers.First();
         Assert.That(allocation1.Current, Is.Not.SameAs(sleepingPeer));
         Assert.That(allocation2.Current, Is.Not.SameAs(sleepingPeer));
         Assert.That(allocation3.Current, Is.Not.SameAs(sleepingPeer));
+        Assert.That(allocation4.Current, Is.Not.SameAs(sleepingPeer));
     }
 
     [Test]
