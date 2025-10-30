@@ -10,10 +10,10 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.RLP;
-internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlpStreamDecoder<ExtraFieldsV2>
+internal class ExtraConsensusDataDecoder : RlpValueDecoder<ExtraFieldsV2>
 {
     private QuorumCertificateDecoder _quorumCertificateDecoder = new();
-    public ExtraFieldsV2 Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override ExtraFieldsV2 DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
             return null;
@@ -28,7 +28,7 @@ internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlp
         return new ExtraFieldsV2(round, quorumCert);
     }
 
-    public ExtraFieldsV2 Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override ExtraFieldsV2 DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
             return null;
@@ -52,7 +52,7 @@ internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlp
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public void Encode(RlpStream stream, ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -65,7 +65,7 @@ internal class ExtraConsensusDataDecoder : IRlpValueDecoder<ExtraFieldsV2>, IRlp
         _quorumCertificateDecoder.Encode(stream, item.QuorumCert, rlpBehaviors);
     }
 
-    public int GetLength(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int GetLength(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }

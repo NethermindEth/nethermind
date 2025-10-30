@@ -9,9 +9,9 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
 
-public class TimeoutCertificateDecoder : IRlpValueDecoder<TimeoutCertificate>, IRlpStreamDecoder<TimeoutCertificate>
+public class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertificate>
 {
-    public TimeoutCertificate Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TimeoutCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
             return null;
@@ -43,7 +43,7 @@ public class TimeoutCertificateDecoder : IRlpValueDecoder<TimeoutCertificate>, I
         return new TimeoutCertificate(round, signatures, gapNumber);
     }
 
-    public TimeoutCertificate Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TimeoutCertificate DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
             return null;
@@ -86,7 +86,7 @@ public class TimeoutCertificateDecoder : IRlpValueDecoder<TimeoutCertificate>, I
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public void Encode(RlpStream stream, TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -110,7 +110,7 @@ public class TimeoutCertificateDecoder : IRlpValueDecoder<TimeoutCertificate>, I
         stream.Encode(item.GapNumber);
     }
 
-    public int GetLength(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int GetLength(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }

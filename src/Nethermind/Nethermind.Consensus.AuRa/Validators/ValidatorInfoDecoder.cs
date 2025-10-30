@@ -6,9 +6,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    internal class ValidatorInfoDecoder : IRlpStreamDecoder<ValidatorInfo>, IRlpObjectDecoder<ValidatorInfo>
+    internal class ValidatorInfoDecoder : RlpStreamDecoder<ValidatorInfo>, IRlpObjectDecoder<ValidatorInfo>
     {
-        public ValidatorInfo? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override ValidatorInfo? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -49,7 +49,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             return new Rlp(rlpStream.Data.ToArray());
         }
 
-        public void Encode(RlpStream stream, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream stream, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        public int GetLength(ValidatorInfo? item, RlpBehaviors rlpBehaviors) => item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
+        public override int GetLength(ValidatorInfo? item, RlpBehaviors rlpBehaviors) => item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
 
         private static (int Total, int Validators) GetContentLength(ValidatorInfo item, RlpBehaviors rlpBehaviors)
         {

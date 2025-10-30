@@ -9,9 +9,9 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
 
-public class TimeoutDecoder : IRlpValueDecoder<Timeout>, IRlpStreamDecoder<Timeout>
+public class TimeoutDecoder : RlpValueDecoder<Timeout>
 {
-    public Timeout Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Timeout DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
             return null;
@@ -38,7 +38,7 @@ public class TimeoutDecoder : IRlpValueDecoder<Timeout>, IRlpStreamDecoder<Timeo
         return new Timeout(round, signature, gapNumber);
     }
 
-    public Timeout Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Timeout DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
             return null;
@@ -76,7 +76,7 @@ public class TimeoutDecoder : IRlpValueDecoder<Timeout>, IRlpStreamDecoder<Timeo
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public void Encode(RlpStream stream, Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -100,7 +100,7 @@ public class TimeoutDecoder : IRlpValueDecoder<Timeout>, IRlpStreamDecoder<Timeo
         stream.Encode(item.GapNumber);
     }
 
-    public int GetLength(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int GetLength(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }
