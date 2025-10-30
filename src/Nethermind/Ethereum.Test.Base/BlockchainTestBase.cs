@@ -134,7 +134,7 @@ public abstract class BlockchainTestBase
 
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
         IWorldState stateProvider = mainBlockProcessingContext.WorldState;
-        IBlockchainProcessor blockchainProcessor = mainBlockProcessingContext.BlockchainProcessor;
+        BlockchainProcessor blockchainProcessor = (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
         IEngineRpcModule engineRpcModule = container.Resolve<IEngineRpcModule>();
@@ -168,6 +168,15 @@ public abstract class BlockchainTestBase
                     if (args.Block.Number == 0)
                     {
                         Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.True);
+                        genesisProcessed.Set();
+                    }
+                };
+
+                blockchainProcessor.BlockRemoved += (_, args) =>
+                {
+                    if (args.BlockHash == genesisBlock.Header.Hash)
+                    {
+                        Assert.Fail($"Failed to process genesis block: {args.Exception}");
                         genesisProcessed.Set();
                     }
                 };
