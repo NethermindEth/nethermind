@@ -129,22 +129,26 @@ public abstract class BlockchainTestBase
 
         IConfigProvider configProvider = new ConfigProvider();
         // configProvider.GetConfig<IBlocksConfig>().PreWarmStateOnBlockProcessing = false;
-        await using IContainer container = new ContainerBuilder()
+        ContainerBuilder containerBuilder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddModule(new TestMergeModule(configProvider))
             .AddSingleton(specProvider)
             .AddSingleton(_logManager)
             .AddSingleton(rewardCalculator)
-            .AddSingleton<IDifficultyCalculator>(DifficultyCalculator)
-            .AddSingleton<ITxPool>(NullTxPool.Instance)
-            .Build();
+            .AddSingleton<IDifficultyCalculator>(DifficultyCalculator);
+        
+        if (isEngineTest)
+        {
+            containerBuilder.AddModule(new TestMergeModule(configProvider));
+        }
+
+        await using IContainer container = containerBuilder.Build();
 
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
         IWorldState stateProvider = mainBlockProcessingContext.WorldState;
         BlockchainProcessor blockchainProcessor = (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
-        IEngineRpcModule engineRpcModule = container.Resolve<IEngineRpcModule>();
         blockchainProcessor.Start();
 
         // Register tracer if provided for blocktest tracing
@@ -204,6 +208,7 @@ public abstract class BlockchainTestBase
             else if (test.EngineNewPayloads is not null)
             {
                 // engine test
+                IEngineRpcModule engineRpcModule = container.Resolve<IEngineRpcModule>();
                 RunNewPayloads(test.EngineNewPayloads, engineRpcModule);
             }
             else
@@ -246,7 +251,7 @@ public abstract class BlockchainTestBase
             }
 
             Assert.That(differences, Is.Empty, "differences");
-            return new EthereumTestResult(test.Name, null, differences.Count == 0);
+            return new EthereumTestResult(test.Name, null, testPassed);
         }
         catch (Exception)
         {
