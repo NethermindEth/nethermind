@@ -169,7 +169,7 @@ public abstract class BlockchainTestBase
                 };
 
                 blockTree.SuggestBlock(genesisBlock);
-                genesisProcessed.WaitOne(10000);
+                genesisProcessed.WaitOne(5000);
                 parentHeader = genesisBlock.Header;
 
                 // Dispose genesis block's AccountChanges
@@ -201,6 +201,13 @@ public abstract class BlockchainTestBase
             preWarmer?.ClearCaches();
 
             Block? headBlock = blockTree.RetrieveHeadBlock();
+
+            Assert.That(headBlock, Is.Not.Null);
+            if (headBlock is null)
+            {
+                return new EthereumTestResult(test.Name, null, false);
+            }
+
             List<string> differences;
             using (stateProvider.BeginScope(headBlock.Header))
             {
@@ -218,13 +225,7 @@ public abstract class BlockchainTestBase
             }
 
             Assert.That(differences, Is.Empty, "differences");
-
-            return new EthereumTestResult
-            (
-                test.Name,
-                null,
-                differences.Count == 0
-            );
+            return new EthereumTestResult(test.Name, null, differences.Count == 0);
         }
         catch (Exception)
         {
