@@ -26,7 +26,8 @@ namespace Nethermind.JsonRpc;
 
 public class JsonRpcService : IJsonRpcService
 {
-    private readonly static ConcurrentDictionary<TypeAsKey, bool> _reparseReflectionCache = new();
+    private readonly static Lock _reparseLock = new();
+    private static Dictionary<TypeAsKey, bool> _reparseReflectionCache = new();
 
     private readonly ILogger _logger;
     private readonly IRpcModuleProvider _rpcModuleProvider;
@@ -395,11 +396,10 @@ public class JsonRpcService : IJsonRpcService
         {
             if (providedParameter.ValueKind == JsonValueKind.String)
             {
-                bool reparseString = _reparseReflectionCache.GetOrAdd(paramType, static type =>
+                if (!_reparseReflectionCache.TryGetValue(paramType, out bool reparseString))
                 {
-                    JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(type);
-                    return converter.GetType().Namespace.StartsWith("System.", StringComparison.Ordinal);
-                });
+                    reparseString = CreateNewCacheEntry(paramType); 
+                }
 
                 executionParam = reparseString
                     ? JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions)
@@ -412,6 +412,31 @@ public class JsonRpcService : IJsonRpcService
         }
 
         return executionParam;
+    }
+
+    private static bool CreateNewCacheEntry(Type paramType)
+    {
+        lock (_reparseLock)
+        {
+            // Re-check inside the lock in case another thread already added it
+            if (_reparseReflectionCache.TryGetValue(paramType, out bool reparseString))
+            {
+                return reparseString;
+            }
+
+            JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
+            reparseString = converter.GetType().Namespace.StartsWith("System.", StringComparison.Ordinal);
+
+            // Copy-on-write: create a new dictionary so we don't mutate
+            Dictionary<TypeAsKey, bool> reparseReflectionCache = new Dictionary<TypeAsKey, bool>(_reparseReflectionCache)
+            {
+                [paramType] = reparseString
+            };
+
+            // Publish the new cache instance atomically by swapping the reference.
+            _reparseReflectionCache = reparseReflectionCache;
+            return reparseString;
+        }
     }
 
     private static (object[]? parameters, bool hasMissing) DeserializeParameters(
