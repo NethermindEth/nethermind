@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip2930
 {
-    public class AccessListDecoder : RlpValueDecoder<AccessList?>
+    public sealed class AccessListDecoder : RlpValueDecoder<AccessList?>
     {
         private const int IndexLength = 32;
 

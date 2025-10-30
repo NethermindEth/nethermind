@@ -5,7 +5,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp;
 
-public class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
+public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
 {
     protected override Withdrawal? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

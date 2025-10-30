@@ -6,7 +6,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp;
 
-public class BlockBodyDecoder : RlpValueDecoder<BlockBody>
+public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
 {
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly IHeaderDecoder _headerDecoder;

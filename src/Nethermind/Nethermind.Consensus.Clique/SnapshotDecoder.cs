@@ -9,7 +9,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Clique
 {
-    internal class SnapshotDecoder : RlpStreamDecoder<Snapshot>
+    internal sealed class SnapshotDecoder : RlpStreamDecoder<Snapshot>
     {
         protected override Snapshot DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

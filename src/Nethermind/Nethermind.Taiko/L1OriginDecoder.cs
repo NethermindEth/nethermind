@@ -8,7 +8,7 @@ using System;
 
 namespace Nethermind.Taiko;
 
-public class L1OriginDecoder : RlpStreamDecoder<L1Origin>
+public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
 {
     const int BuildPayloadArgsIdLength = 8;
 

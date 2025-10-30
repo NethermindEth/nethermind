@@ -10,7 +10,7 @@ namespace Nethermind.Serialization.Rlp
 {
     [Rlp.Decoder(RlpDecoderKey.Default)]
     [Rlp.Decoder(RlpDecoderKey.Trie)]
-    public class ReceiptMessageDecoder : RlpValueDecoder<TxReceipt>
+    public sealed class ReceiptMessageDecoder : RlpValueDecoder<TxReceipt>
     {
         private readonly bool _skipStateAndStatus;
 

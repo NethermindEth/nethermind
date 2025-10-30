@@ -10,7 +10,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
-    public class NetworkNodeDecoder : RlpStreamDecoder<NetworkNode>, IRlpObjectDecoder<NetworkNode>
+    public sealed class NetworkNodeDecoder : RlpStreamDecoder<NetworkNode>, IRlpObjectDecoder<NetworkNode>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB(), nameof(NetworkNode.HostIp));
 

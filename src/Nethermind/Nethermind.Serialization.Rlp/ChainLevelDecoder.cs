@@ -10,7 +10,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class ChainLevelDecoder : RlpValueDecoder<ChainLevelInfo>
+    public sealed class ChainLevelDecoder : RlpValueDecoder<ChainLevelInfo>
     {
         protected override ChainLevelInfo? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

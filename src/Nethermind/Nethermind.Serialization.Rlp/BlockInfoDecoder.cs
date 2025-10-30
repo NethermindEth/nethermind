@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class BlockInfoDecoder : RlpValueDecoder<BlockInfo>
+    public sealed class BlockInfoDecoder : RlpValueDecoder<BlockInfo>
     {
         public static BlockInfoDecoder Instance { get; } = new();
 

@@ -7,7 +7,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    internal class PendingValidatorsDecoder : RlpStreamDecoder<PendingValidators>, IRlpObjectDecoder<PendingValidators>
+    internal sealed class PendingValidatorsDecoder : RlpStreamDecoder<PendingValidators>, IRlpObjectDecoder<PendingValidators>
     {
         protected override PendingValidators DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

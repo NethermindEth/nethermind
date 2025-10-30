@@ -9,7 +9,7 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
 
-public class TimeoutDecoder : RlpValueDecoder<Timeout>
+public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
 {
     protected override Timeout DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

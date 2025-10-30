@@ -11,7 +11,7 @@ namespace Nethermind.Serialization.Rlp
     public interface IHeaderDecoder : IBlockHeaderDecoder<BlockHeader> { }
     public interface IBlockHeaderDecoder<T> : IRlpValueDecoder<T>, IRlpStreamDecoder<T> where T : BlockHeader { }
 
-    public class HeaderDecoder : RlpValueDecoder<BlockHeader>, IHeaderDecoder
+    public sealed class HeaderDecoder : RlpValueDecoder<BlockHeader>, IHeaderDecoder
     {
         public const int NonceLength = 8;
 

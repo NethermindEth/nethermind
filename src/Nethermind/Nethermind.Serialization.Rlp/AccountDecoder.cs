@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class AccountDecoder : RlpValueDecoder<Account?>, IRlpObjectDecoder<Account?>
+    public sealed class AccountDecoder : RlpValueDecoder<Account?>, IRlpObjectDecoder<Account?>
     {
         private readonly bool _slimFormat;
 

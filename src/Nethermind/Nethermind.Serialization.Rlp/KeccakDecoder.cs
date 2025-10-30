@@ -5,7 +5,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class KeccakDecoder : RlpValueDecoder<Hash256>
+    public sealed class KeccakDecoder : RlpValueDecoder<Hash256>
     {
         public static readonly KeccakDecoder Instance = new();
 

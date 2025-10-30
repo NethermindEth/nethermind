@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class LogEntryDecoder : RlpValueDecoder<LogEntry>
+    public sealed class LogEntryDecoder : RlpValueDecoder<LogEntry>
     {
         public static LogEntryDecoder Instance { get; } = new();
 

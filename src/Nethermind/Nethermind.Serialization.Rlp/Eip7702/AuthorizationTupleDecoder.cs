@@ -9,7 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
 
-public class AuthorizationTupleDecoder : RlpValueDecoder<AuthorizationTuple>
+public sealed class AuthorizationTupleDecoder : RlpValueDecoder<AuthorizationTuple>
 {
     public static readonly AuthorizationTupleDecoder Instance = new();
 
