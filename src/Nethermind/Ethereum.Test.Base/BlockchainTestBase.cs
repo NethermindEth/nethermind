@@ -131,12 +131,11 @@ public abstract class BlockchainTestBase
         // configProvider.GetConfig<IBlocksConfig>().PreWarmStateOnBlockProcessing = false;
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
-            .AddModule(new TestMergeModule(configProvider))
             .AddSingleton(specProvider)
             .AddSingleton(_logManager)
             .AddSingleton(rewardCalculator)
             .AddSingleton<IDifficultyCalculator>(DifficultyCalculator);
-        
+
         if (isEngineTest)
         {
             containerBuilder.AddModule(new TestMergeModule(configProvider));
