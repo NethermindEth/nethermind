@@ -417,7 +417,7 @@ public class SyncPeerPoolTests
 
         SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        Assert.That(allocation2.Current, Is.Not.SameAs(allocation1.Current), "first");
+        // With multiple allocations per peer, both may point to same PeerInfo or different - both are valid
         Assert.That(allocation1.Current, Is.Not.Null, "first A");
         Assert.That(allocation2.Current, Is.Not.Null, "first B");
 
@@ -428,7 +428,6 @@ public class SyncPeerPoolTests
 
         allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        Assert.That(allocation2.Current, Is.Not.SameAs(allocation1.Current));
         Assert.That(allocation1.Current, Is.Not.Null, "second A");
         Assert.That(allocation2.Current, Is.Not.Null, "second B");
     }
@@ -449,7 +448,14 @@ public class SyncPeerPoolTests
 
         Assert.That(allocation1.HasPeer, Is.True);
         Assert.That(allocation2.HasPeer, Is.True);
-        Assert.That(allocation3.HasPeer, Is.False);
+        // With 2 awake peers and max 2 allocations per peer, we can have up to 4 allocations, so third allocation succeeds
+        Assert.That(allocation3.HasPeer, Is.True);
+        
+        // Verify none of the allocations used the sleeping peer
+        PeerInfo sleepingPeer = ctx.Pool.InitializedPeers.First();
+        Assert.That(allocation1.Current, Is.Not.SameAs(sleepingPeer));
+        Assert.That(allocation2.Current, Is.Not.SameAs(sleepingPeer));
+        Assert.That(allocation3.Current, Is.Not.SameAs(sleepingPeer));
     }
 
     [Test]
@@ -491,16 +497,94 @@ public class SyncPeerPoolTests
     }
 
     [Test]
-    public async Task Will_not_allocate_same_peer_to_two_allocations()
+    public async Task Will_not_allocate_same_peer_to_two_allocations_when_max_is_one()
+    {
+        await using Context ctx = new();
+        // Set maxAllocationsPerPeerPerContext to 1 to restore old behavior
+        ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, 25, 50, SyncPeerPool.DefaultUpgradeIntervalInMs, 1);
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+
+        SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.Headers, 50);
+
+        Assert.That(allocation1.Current?.SyncPeer, Is.SameAs(peers[0]));
+        Assert.That(allocation2.Current, Is.Null);
+    }
+
+    [Test]
+    public async Task Can_allocate_same_peer_multiple_times_with_default_config()
     {
         await using Context ctx = new();
         SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
 
+        // With default config (maxAllocationsPerPeerPerContext = 2), we should be able to allocate the same peer twice
         SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
 
-        Assert.That(allocation1.Current?.SyncPeer, Is.SameAs(peers[0]));
-        Assert.That(allocation2.Current, Is.Null);
+        Assert.That(allocation1.Current?.SyncPeer, Is.SameAs(peers[0]), "First allocation should succeed");
+        Assert.That(allocation2.Current?.SyncPeer, Is.SameAs(peers[0]), "Second allocation should also succeed with same peer");
+        // Both allocations point to the same PeerInfo
+        Assert.That(allocation1.Current, Is.SameAs(allocation2.Current), "Both allocations should point to same PeerInfo");
+    }
+
+    [Test]
+    public async Task Cannot_allocate_same_peer_beyond_max_limit()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+
+        // Allocate the peer twice (reaches the limit of 2)
+        SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+
+        // Third allocation should fail as we've reached the limit
+        SyncPeerAllocation allocation3 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.Headers, 50);
+
+        Assert.That(allocation1.Current?.SyncPeer, Is.SameAs(peers[0]), "First allocation should succeed");
+        Assert.That(allocation2.Current?.SyncPeer, Is.SameAs(peers[0]), "Second allocation should succeed");
+        Assert.That(allocation3.Current, Is.Null, "Third allocation should fail");
+    }
+
+    [Test]
+    public async Task Can_allocate_again_after_freeing()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+
+        // Allocate the peer twice (reaches the limit of 2)
+        SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+
+        // Third allocation should fail
+        SyncPeerAllocation allocation3 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.Headers, 50);
+        Assert.That(allocation3.Current, Is.Null, "Third allocation should fail before freeing");
+
+        // Free one allocation
+        ctx.Pool.Free(allocation1);
+
+        // Now we should be able to allocate again
+        SyncPeerAllocation allocation4 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        Assert.That(allocation4.Current?.SyncPeer, Is.SameAs(peers[0]), "Fourth allocation should succeed after freeing one");
+    }
+
+    [Test]
+    public async Task Multiple_allocations_work_with_different_contexts()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+
+        // Allocate for Headers context twice
+        SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.Headers);
+        SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.Headers);
+
+        // Allocate for Bodies context twice
+        SyncPeerAllocation allocation3 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Bodies, true), AllocationContexts.Bodies);
+        SyncPeerAllocation allocation4 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Bodies, true), AllocationContexts.Bodies);
+
+        Assert.That(allocation1.Current?.SyncPeer, Is.SameAs(peers[0]), "First Headers allocation should succeed");
+        Assert.That(allocation2.Current?.SyncPeer, Is.SameAs(peers[0]), "Second Headers allocation should succeed");
+        Assert.That(allocation3.Current?.SyncPeer, Is.SameAs(peers[0]), "First Bodies allocation should succeed");
+        Assert.That(allocation4.Current?.SyncPeer, Is.SameAs(peers[0]), "Second Bodies allocation should succeed");
     }
 
     [Test]
@@ -572,8 +656,8 @@ public class SyncPeerPoolTests
         SyncPeerAllocation[] allocations = allocationTasks.Select(static t => t.Result).ToArray();
         SyncPeerAllocation[] successfulAllocations = allocations.Where(static r => r.Current is not null).ToArray();
 
-        // we had only two peers and 3 borrow calls so only two are successful
-        Assert.That(successfulAllocations.Length, Is.EqualTo(2));
+        // With 2 peers and max 2 allocations per peer, all 3 borrow calls can succeed
+        Assert.That(successfulAllocations.Length, Is.EqualTo(3));
 
         foreach (SyncPeerAllocation allocation in successfulAllocations)
         {

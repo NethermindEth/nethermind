@@ -20,9 +20,16 @@ namespace Nethermind.Synchronization.Peers
 {
     public class PeerInfo
     {
+        private int _maxAllocationsPerContext = 2;
+
         public PeerInfo(ISyncPeer syncPeer)
         {
             SyncPeer = syncPeer;
+        }
+
+        public void SetMaxAllocationsPerContext(int max)
+        {
+            _maxAllocationsPerContext = max;
         }
 
         public NodeClientType PeerClientType => SyncPeer?.ClientType ?? NodeClientType.Unknown;
@@ -32,6 +39,8 @@ namespace Nethermind.Synchronization.Peers
         public AllocationContexts SleepingContexts { get; private set; }
 
         private ConcurrentDictionary<AllocationContexts, DateTime?> SleepingSince { get; } = new();
+
+        private readonly ConcurrentDictionary<AllocationContexts, int> _allocationCounts = new();
 
         public ISyncPeer SyncPeer { get; }
 
@@ -63,9 +72,25 @@ namespace Nethermind.Synchronization.Peers
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool CanBeAllocated(AllocationContexts contexts)
         {
-            return !IsAsleep(contexts) &&
-                   !IsAllocated(contexts) &&
-                   this.SupportsAllocation(contexts);
+            if (IsAsleep(contexts) || !this.SupportsAllocation(contexts))
+            {
+                return false;
+            }
+
+            // Check each single context flag
+            foreach (KeyValuePair<AllocationContexts, int> allocationIndex in AllocationIndexes)
+            {
+                if ((contexts & allocationIndex.Key) == allocationIndex.Key)
+                {
+                    int currentCount = _allocationCounts.GetOrAdd(allocationIndex.Key, 0);
+                    if (currentCount >= _maxAllocationsPerContext)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -83,19 +108,41 @@ namespace Nethermind.Synchronization.Peers
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryAllocate(AllocationContexts contexts)
         {
-            if (CanBeAllocated(contexts))
+            if (!CanBeAllocated(contexts))
             {
-                AllocatedContexts |= contexts;
-                return true;
+                return false;
             }
 
-            return false;
+            // Increment allocation count for each context
+            foreach (KeyValuePair<AllocationContexts, int> allocationIndex in AllocationIndexes)
+            {
+                if ((contexts & allocationIndex.Key) == allocationIndex.Key)
+                {
+                    _allocationCounts.AddOrUpdate(allocationIndex.Key, 1, (_, count) => count + 1);
+                }
+            }
+
+            AllocatedContexts |= contexts;
+            return true;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Free(AllocationContexts contexts)
         {
-            AllocatedContexts ^= contexts;
+            // Decrement allocation count for each context
+            foreach (KeyValuePair<AllocationContexts, int> allocationIndex in AllocationIndexes)
+            {
+                if ((contexts & allocationIndex.Key) == allocationIndex.Key)
+                {
+                    _allocationCounts.AddOrUpdate(allocationIndex.Key, 0, (_, count) => Math.Max(0, count - 1));
+                    
+                    // If count reaches 0, clear the allocated flag for this context
+                    if (_allocationCounts.GetOrAdd(allocationIndex.Key, 0) == 0)
+                    {
+                        AllocatedContexts &= ~allocationIndex.Key;
+                    }
+                }
+            }
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]

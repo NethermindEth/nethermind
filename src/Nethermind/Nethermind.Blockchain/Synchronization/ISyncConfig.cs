@@ -176,4 +176,7 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ Estimated max size of blocks in block processing queue before stop downloading.", DefaultValue = "200000000", HiddenFromDocs = true)]
     long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; }
+
+    [ConfigItem(Description = "The maximum number of concurrent allocations per peer per allocation context. Allows a peer to serve multiple requests simultaneously during request latency periods.", DefaultValue = "2")]
+    int MaxAllocationsPerPeerPerContext { get; set; }
 }
