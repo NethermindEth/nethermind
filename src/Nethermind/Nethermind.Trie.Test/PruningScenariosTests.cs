@@ -1050,7 +1050,7 @@ namespace Nethermind.Trie.Test
         public void StateRoot_reset_at_lower_level_and_accessed_at_just_the_right_time()
         {
             PruningContext.InMemory
-                .WithMaxDepth(2)
+                .WithMaxDepth(3)
                 .SetAccountBalance(1, 100)
                 .SetAccountBalance(2, 100)
                 .Commit()
@@ -1062,7 +1062,7 @@ namespace Nethermind.Trie.Test
                 .SetAccountBalance(2, 101)
                 .Commit()
                 .SetAccountBalance(3, 101)
-                .Commit()
+                .CommitAndWaitForPruning()
                 .SaveBranchingPoint("main")
 
                 // This will result in the same state root, but it's `LastCommit` reduced.
