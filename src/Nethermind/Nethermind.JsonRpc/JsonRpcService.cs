@@ -106,6 +106,75 @@ public class JsonRpcService : IJsonRpcService
 
     private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
+        const string GetLogsMethodName = "eth_getLogs";
+
+        JsonRpcErrorResponse? value = PrepareParameters(request, methodName, method, out object[] parameters, out bool hasMissing);
+        if (value is not null)
+        {
+            return value;
+        }
+
+        IRpcModule rpcModule = await _rpcModuleProvider.Rent(methodName, method.ReadOnly);
+        if (rpcModule is IContextAwareRpcModule contextAwareModule)
+        {
+            contextAwareModule.Context = context;
+        }
+        bool returnImmediately = methodName != GetLogsMethodName;
+        Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(methodName, rpcModule);
+        IResultWrapper resultWrapper = null;
+        try
+        {
+            // Execute method
+            object invocationResult = hasMissing ?
+                method.MethodInfo.Invoke(rpcModule, parameters) :
+                method.Invoker.Invoke(rpcModule, new Span<object?>(parameters));
+
+            switch (invocationResult)
+            {
+                case IResultWrapper wrapper:
+                    resultWrapper = wrapper;
+                    break;
+                case Task task:
+                    await task;
+                    resultWrapper = GetResultProperty(task)?.GetValue(task) as IResultWrapper;
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            return HandleInvocationException(ex, methodName, request, returnAction);
+        }
+        finally
+        {
+            if (returnImmediately)
+            {
+                _rpcModuleProvider.Return(methodName, rpcModule);
+            }
+        }
+
+        if (resultWrapper is null)
+        {
+            return HandleMissingResultWrapper(request, methodName, returnAction);
+        }
+
+        Result result = resultWrapper.Result;
+        return result.ResultType != ResultType.Success
+            ? GetErrorResponse(methodName, resultWrapper.ErrorCode, result.Error, resultWrapper.Data, request.Id, returnAction, resultWrapper.IsTemporary)
+            : GetSuccessResponse(methodName, resultWrapper.Data, request.Id, returnAction);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        JsonRpcResponse HandleMissingResultWrapper(JsonRpcRequest request, string methodName, Action returnAction)
+        {
+            string errorMessage = $"Method {methodName} execution result does not implement IResultWrapper";
+            if (_logger.IsError) _logger.Error(errorMessage);
+            return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, request.Id, returnAction);
+        }
+    }
+
+    private JsonRpcErrorResponse? PrepareParameters(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, out object[] parameters, out bool hasMissing)
+    {
+        parameters = null;
+        hasMissing = false;
         JsonElement providedParameters = request.Params;
 
         if (_logger.IsTrace) LogRequest(methodName, providedParameters, method.ExpectedParameters);
@@ -166,9 +235,7 @@ public class JsonRpcService : IJsonRpcService
 
         missingParamsCount -= explicitNullableParamsCount;
 
-        //prepare parameters
-        object[]? parameters = null;
-        bool hasMissing = false;
+        // Prepare parameters
         if (method.ExpectedParameters.Length > 0)
         {
             (parameters, hasMissing) = DeserializeParameters(method.ExpectedParameters, providedParametersLength, providedParameters, missingParamsCount);
@@ -179,74 +246,34 @@ public class JsonRpcService : IJsonRpcService
             }
         }
 
-        //execute method
-        IResultWrapper resultWrapper = null;
-        IRpcModule rpcModule = await _rpcModuleProvider.Rent(methodName, method.ReadOnly);
-        if (rpcModule is IContextAwareRpcModule contextAwareModule)
-        {
-            contextAwareModule.Context = context;
-        }
-        bool returnImmediately = methodName != "eth_getLogs";
-        Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(methodName, rpcModule);
-        try
-        {
-            object invocationResult = hasMissing ?
-                method.MethodInfo.Invoke(rpcModule, parameters) :
-                method.Invoker.Invoke(rpcModule, new Span<object?>(parameters));
+        return null;
+    }
 
-            switch (invocationResult)
-            {
-                case IResultWrapper wrapper:
-                    resultWrapper = wrapper;
-                    break;
-                case Task task:
-                    await task;
-                    resultWrapper = GetResultProperty(task)?.GetValue(task) as IResultWrapper;
-                    break;
-            }
-        }
-        catch (Exception e) when (e is TargetParameterCountException || e is ArgumentException)
+    private JsonRpcErrorResponse HandleInvocationException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
+    {
+        return ex switch
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.ToString(), request.Id, returnAction);
-        }
-        catch (TargetInvocationException e) when (e.InnerException is JsonException)
-        {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", e.InnerException?.ToString(), request.Id, returnAction);
-        }
-        catch (Exception e) when (e is OperationCanceledException || e.InnerException is OperationCanceledException)
-        {
-            string errorMessage = $"{methodName} request was canceled due to enabled timeout.";
-            return GetErrorResponse(methodName, ErrorCodes.Timeout, errorMessage, null, request.Id, returnAction);
-        }
-        catch (Exception e) when (e.InnerException is InsufficientBalanceException)
-        {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidInput, e.InnerException.Message, e.ToString(), request.Id, returnAction);
-        }
-        catch (Exception ex)
+            TargetParameterCountException or ArgumentException =>
+                GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, ex.ToString(), request.Id, returnAction),
+
+            TargetInvocationException and { InnerException: JsonException } =>
+                GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", ex.InnerException?.ToString(), request.Id, returnAction),
+
+            OperationCanceledException or { InnerException: OperationCanceledException } =>
+                GetErrorResponse(methodName, ErrorCodes.Timeout,
+                    $"{methodName} request was canceled due to enabled timeout.", null, request.Id, returnAction),
+
+            { InnerException: InsufficientBalanceException } =>
+                GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.InnerException.Message, ex.ToString(), request.Id, returnAction),
+
+            _ => HandleException(ex, methodName, request, returnAction)
+        };
+
+        JsonRpcErrorResponse HandleException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
         {
             if (_logger.IsError) _logger.Error($"Error during method execution, request: {request}", ex);
             return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", ex.ToString(), request.Id, returnAction);
         }
-        finally
-        {
-            if (returnImmediately)
-            {
-                _rpcModuleProvider.Return(methodName, rpcModule);
-            }
-        }
-
-        if (resultWrapper is null)
-        {
-            string errorMessage = $"Method {methodName} execution result does not implement IResultWrapper";
-            if (_logger.IsError) _logger.Error(errorMessage);
-            return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, request.Id, returnAction);
-        }
-
-        Result? result = resultWrapper.Result;
-
-        return result.ResultType != ResultType.Success
-            ? GetErrorResponse(methodName, resultWrapper.ErrorCode, result.Error, resultWrapper.Data, request.Id, returnAction, resultWrapper.IsTemporary)
-            : GetSuccessResponse(methodName, resultWrapper.Data, request.Id, returnAction);
     }
 
     private PropertyInfo? GetResultProperty(Task task)
