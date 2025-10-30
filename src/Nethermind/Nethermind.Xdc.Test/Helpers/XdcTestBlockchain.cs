@@ -68,10 +68,10 @@ public class XdcTestBlockchain : TestBlockchain
     public TestMasternodeSmartContaractEmulator MasterNodesRotator = TestMasternodeSmartContaractEmulator.Instance;
     public XdcContext XdcContext => Container.Resolve<XdcContext>();
 
-    public IEpochSwitchManager EpochSwitchManager => _fromContainer.EpochSwitchManager;
-    public IQuorumCertificateManager QuorumCertificateManager => _fromContainer.QuorumCertificateManager;
-    public ITimeoutCertificateManager TimeoutCertificateManager => _fromContainer.TimeoutCertificateManager;
-    public ISnapshotManager SnapshotManager => _fromContainer.SnapshotManager;
+    public IEpochSwitchManager EpochSwitchManager => _fromXdcContainer.EpochSwitchManager;
+    public IQuorumCertificateManager QuorumCertificateManager => _fromXdcContainer.QuorumCertificateManager;
+    public ITimeoutCertificateManager TimeoutCertificateManager => _fromXdcContainer.TimeoutCertificateManager;
+    public ISnapshotManager SnapshotManager => _fromXdcContainer.SnapshotManager;
 
     protected XdcTestBlockchain()
     {
@@ -81,9 +81,9 @@ public class XdcTestBlockchain : TestBlockchain
     const int MAX_EPOCH_COUNT = 10;
     const int EPOCH_LENGTH = 5;
 
-    protected ISigner Signer => _fromContainer.Signer;
+    protected ISigner Signer => _fromXdcContainer.Signer;
 
-    private FromXdcContainer _fromContainer = null!;
+    private FromXdcContainer _fromXdcContainer = null!;
     public class FromXdcContainer(
         Lazy<IStateReader> stateReader,
         Lazy<IEthereumEcdsa> ethereumEcdsa,
@@ -142,7 +142,9 @@ public class XdcTestBlockchain : TestBlockchain
         configurer?.Invoke(builder);
 
         Container = builder.Build();
-        _fromContainer = Container.Resolve<FromXdcContainer>();
+
+        _fromXdcContainer = Container.Resolve<FromXdcContainer>();
+        _fromContainer = (FromContainer)_fromXdcContainer;
 
         Configuration testConfiguration = _fromContainer.Configuration;
 
@@ -178,6 +180,7 @@ public class XdcTestBlockchain : TestBlockchain
             .AddDecorator<ISpecProvider>((ctx, specProvider) => WrapSpecProvider(specProvider))
             .AddSingleton(new ManualTimestamper(InitialTimestamp))
             .AddSingleton<Configuration>()
+            .AddSingleton<FromContainer>()
             .AddSingleton<FromXdcContainer>()
             .AddScoped<IGenesisBuilder, TestGenesisBuilder>()
 
