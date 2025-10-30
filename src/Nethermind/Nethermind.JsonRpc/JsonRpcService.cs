@@ -418,7 +418,6 @@ public class JsonRpcService : IJsonRpcService
         JsonElement providedParameters,
         int missingParamsCount)
     {
-        const int parallelThreshold = 4;
         try
         {
             bool hasMissing = false;
@@ -428,45 +427,18 @@ public class JsonRpcService : IJsonRpcService
 
             object[] executionParameters = new object[totalLength];
 
-            if (providedParametersLength <= parallelThreshold)
+            int i = 0;
+            foreach (JsonElement providedParameter in providedParameters.EnumerateArray())
             {
-                for (int i = 0; i < providedParametersLength; i++)
-                {
-                    JsonElement providedParameter = providedParameters[i];
-                    ExpectedParameter expectedParameter = expectedParameters[i];
+                ExpectedParameter expectedParameter = expectedParameters[i];
 
-                    object? parameter = DeserializeParameter(providedParameter, expectedParameter);
-                    executionParameters[i] = parameter;
-                    if (!hasMissing && ReferenceEquals(parameter, Type.Missing))
-                    {
-                        hasMissing = true;
-                    }
-                }
-            }
-            else if (providedParametersLength > parallelThreshold)
-            {
-                ParallelUnbalancedWork.For(
-                    0,
-                    providedParametersLength,
-                    ParallelUnbalancedWork.DefaultOptions,
-                    (providedParameters, expectedParameters, executionParameters, hasMissing),
-                    static (i, state) =>
-                {
-                    JsonElement providedParameter = state.providedParameters[i];
-                    ExpectedParameter expectedParameter = state.expectedParameters[i];
-
-                    object? parameter = DeserializeParameter(providedParameter, expectedParameter);
-                    state.executionParameters[i] = parameter;
-                    if (!state.hasMissing && ReferenceEquals(parameter, Type.Missing))
-                    {
-                        state.hasMissing = true;
-                    }
-
-                    return state;
-                });
+                object? parameter = DeserializeParameter(providedParameter, expectedParameter);
+                executionParameters[i] = parameter;
+                hasMissing |= ReferenceEquals(parameter, Type.Missing);
+                i++;
             }
 
-            for (int i = providedParametersLength; i < totalLength; i++)
+            for (i = providedParametersLength; i < totalLength; i++)
             {
                 executionParameters[i] = Type.Missing;
             }
