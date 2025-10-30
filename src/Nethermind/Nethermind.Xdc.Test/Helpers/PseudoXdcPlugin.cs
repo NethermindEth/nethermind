@@ -29,7 +29,7 @@ using Nethermind.Xdc.Types;
 using NSubstitute;
 using Module = Autofac.Module;
 
-namespace Nethermind.Xdc.Test.Modules;
+namespace Nethermind.Xdc.Test.Helpers;
 
 /// <summary>
 /// Create a reasonably complete nethermind configuration.
@@ -68,9 +68,9 @@ public class PseudoXdcModule(IConfigProvider configProvider, ILogManager logMana
 
             // Crypto
             .AddSingleton<ISignerStore>(NullSigner.Instance)
-            .AddSingleton<IKeyStore>(Substitute.For<IKeyStore>())
+            .AddSingleton(Substitute.For<IKeyStore>())
             .AddSingleton<IWallet, DevWallet>()
-            .AddSingleton<ITxSender>(Substitute.For<ITxSender>())
+            .AddSingleton(Substitute.For<ITxSender>())
 
             // Rpc
             .AddSingleton<IJsonRpcService, JsonRpcService>()
@@ -80,11 +80,9 @@ public class PseudoXdcModule(IConfigProvider configProvider, ILogManager logMana
         // Yep... this global thing need to work.
         builder.RegisterBuildCallback((_) =>
         {
-            Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
+            var assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
             if (assembly is not null)
-            {
                 Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: true);
-            }
         });
     }
 
@@ -92,7 +90,7 @@ public class PseudoXdcModule(IConfigProvider configProvider, ILogManager logMana
     {
         public Address[] Penalize(Address[] candidates, int count = 2)
         {
-            int nodesCount = candidates.Length;
+            var nodesCount = candidates.Length;
             List<Address> penalized = new();
 
             Random rand = new();
@@ -100,9 +98,7 @@ public class PseudoXdcModule(IConfigProvider configProvider, ILogManager logMana
             {
                 Address candidate = candidates[rand.Next(nodesCount)];
                 if (!penalized.Contains(candidate))
-                {
                     penalized.Add(candidate);
-                }
             }
 
             return penalized.ToArray();
