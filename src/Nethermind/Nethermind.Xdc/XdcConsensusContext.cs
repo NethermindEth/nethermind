@@ -41,6 +41,6 @@ public class XdcConsensusContext : IXdcConsensusContext
         RoundStarted = DateTime.UtcNow;
 
         // timer should be reset outside
-        NewRoundSetEvent.Invoke(this, new NewRoundEventArgs(round, previousTimeoutCounter));
+        NewRoundSetEvent?.Invoke(this, new NewRoundEventArgs(round, previousTimeoutCounter));
     }
 }
