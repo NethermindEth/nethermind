@@ -22,6 +22,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 
@@ -41,7 +42,7 @@ namespace Ethereum.Test.Base
         }
 
         [SetUp]
-        public static void Setup()
+        public void Setup()
         {
         }
 
@@ -65,11 +66,15 @@ namespace Ethereum.Test.Base
 
             test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
 
-            // ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, ((ForkActivation)0, test.Fork));
             ISpecProvider specProvider =
                 new CustomSpecProvider(test.ChainId, test.ChainId,
                     ((ForkActivation)0, test.GenesisSpec), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
                     ((ForkActivation)1, test.Fork));
+
+            if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)
+            {
+                Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
+            }
 
             IConfigProvider configProvider = new ConfigProvider();
             using IContainer container = new ContainerBuilder()

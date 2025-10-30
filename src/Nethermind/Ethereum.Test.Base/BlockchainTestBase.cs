@@ -26,6 +26,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
@@ -84,15 +85,21 @@ public abstract class BlockchainTestBase
         test.Network = ChainUtils.ResolveSpec(test.Network, test.ChainId);
         test.NetworkAfterTransition = ChainUtils.ResolveSpec(test.NetworkAfterTransition, test.ChainId);
 
-        // List<(ForkActivation Activation, IReleaseSpec Spec)> transitions = [((ForkActivation)0, test.Network)];
+        bool isEngineTest = test.Blocks is null && test.EngineNewPayloads is not null;
+
         List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
+            isEngineTest ?
+            [((ForkActivation)0, test.Network)] :
             [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+
         if (test.NetworkAfterTransition is not null)
         {
             transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
         }
 
         ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
+
+        Assert.That(!isEngineTest && (test.ChainId == GnosisSpecProvider.Instance.ChainId || specProvider.GenesisSpec == Frontier.Instance), "Expected genesis spec to be Frontier for blockchain tests");
 
         if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
         {
@@ -196,6 +203,7 @@ public abstract class BlockchainTestBase
             }
             else if (test.EngineNewPayloads is not null)
             {
+                // engine test
                 RunNewPayloads(test.EngineNewPayloads, engineRpcModule);
             }
             else
