@@ -12,7 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
-public class TestMasternodeSmartContaractEmulator
+public class TestMasternodeSmartContractEmulator
 {
     private int MasternodeCount = 100;
 
@@ -23,7 +23,7 @@ public class TestMasternodeSmartContaractEmulator
     public PrivateKey CurrentLeaderPvKey => MasternodesPvKeys[CurrentLeaderIndex];
     public Address CurrentLeaderAddress => CurrentLeaderPvKey.Address;
 
-    private TestMasternodeSmartContaractEmulator(int count = 100)
+    private TestMasternodeSmartContractEmulator(int count = 100)
     {
         var pvKeyBuilder = new PrivateKeyGenerator();
 
@@ -37,7 +37,7 @@ public class TestMasternodeSmartContaractEmulator
         CurrentLeaderIndex = (CurrentLeaderIndex + 1) % MasternodeCount;
     }
 
-    private static TestMasternodeSmartContaractEmulator? _instance;
+    private static TestMasternodeSmartContractEmulator? _instance;
 
-    public static TestMasternodeSmartContaractEmulator Instance => _instance ??= new TestMasternodeSmartContaractEmulator(100);
+    public static TestMasternodeSmartContractEmulator Instance => _instance ??= new TestMasternodeSmartContractEmulator(100);
 }

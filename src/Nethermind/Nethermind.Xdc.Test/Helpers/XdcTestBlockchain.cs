@@ -65,7 +65,7 @@ public class XdcTestBlockchain : TestBlockchain
         return chain;
     }
 
-    public TestMasternodeSmartContaractEmulator MasterNodesRotator = TestMasternodeSmartContaractEmulator.Instance;
+    public TestMasternodeSmartContractEmulator MasterNodesRotator = TestMasternodeSmartContractEmulator.Instance;
     public XdcContext XdcContext => Container.Resolve<XdcContext>();
 
     public IEpochSwitchManager EpochSwitchManager => _fromXdcContainer.EpochSwitchManager;
@@ -338,12 +338,13 @@ public class XdcTestBlockchain : TestBlockchain
         UInt256 nonce = 0;
         for (var i = 0; i < MAX_EPOCH_COUNT; i++)
         {
+            ((Signer)Signer).SetSigner(MasterNodesRotator.CurrentLeaderPvKey);  
             for(var j = 0; j < EPOCH_LENGTH; j++)
             {
                 await AddBlock(CreateTransactionBuilder().WithNonce(nonce++).TestObject);
             }
 
-            
+            MasterNodesRotator.RotateLeader();
         }
 
         while (true)
