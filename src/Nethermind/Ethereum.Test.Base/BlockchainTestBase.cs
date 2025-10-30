@@ -31,7 +31,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
-using Nethermind.TxPool;
 using NUnit.Framework;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin;
@@ -43,13 +42,12 @@ public abstract class BlockchainTestBase
 {
     private static readonly ILogger _logger;
     private static readonly ILogManager _logManager = new TestLogManager();
-    private static ISealValidator Sealer { get; }
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
+    private const int _genesisProcessingTimeoutMs = 5000;
 
     static BlockchainTestBase()
     {
         DifficultyCalculator = new DifficultyCalculatorWrapper();
-        Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new CryptoRandom(), new Ethash(_logManager), Timestamper.Default); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
         _logManager ??= LimboLogs.Instance;
         _logger = _logManager.GetClassLogger();
     }
@@ -192,7 +190,7 @@ public abstract class BlockchainTestBase
                 };
 
                 blockTree.SuggestBlock(genesisBlock);
-                genesisProcessed.WaitOne();
+                genesisProcessed.WaitOne(_genesisProcessingTimeoutMs);
                 parentHeader = genesisBlock.Header;
 
                 // Dispose genesis block's AccountChanges
