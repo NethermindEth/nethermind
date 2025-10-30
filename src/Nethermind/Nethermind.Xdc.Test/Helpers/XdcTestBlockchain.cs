@@ -178,7 +178,7 @@ public class XdcTestBlockchain : TestBlockchain
             .AddDecorator<ISpecProvider>((ctx, specProvider) => WrapSpecProvider(specProvider))
             .AddSingleton(new ManualTimestamper(InitialTimestamp))
             .AddSingleton<Configuration>()
-            .AddSingleton<FromContainer>()
+            .AddSingleton<FromXdcContainer>()
             .AddScoped<IGenesisBuilder, TestGenesisBuilder>()
 
             // Some validator configurations
