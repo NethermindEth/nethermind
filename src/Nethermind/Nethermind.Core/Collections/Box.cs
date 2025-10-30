@@ -74,7 +74,7 @@ public readonly struct SimpleBox<T>(T? key) : IEquatable<SimpleBox<T>> where T :
     public static implicit operator T?(SimpleBox<T> box) => box._key;
     public static implicit operator SimpleBox<T>(T? key) => new(key);
 
-    public bool Equals(SimpleBox<T> other) => 
+    public bool Equals(SimpleBox<T> other) =>
         _key is null ? other._key is null : _key.Equals(other._key);
 
     public override bool Equals(object? obj) => obj is SimpleBox<T> box && Equals(box);
