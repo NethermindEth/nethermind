@@ -136,6 +136,13 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
         EncodeTx(stream, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
     }
 
+    public Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
+        Encode(rlpStream, item, rlpBehaviors);
+        return new Rlp(rlpStream.Data.ToArray() ?? []);
+    }
+
     public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors, forSigning, isEip155Enabled, chainId));
