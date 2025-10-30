@@ -415,7 +415,7 @@ public class JsonRpcService : IJsonRpcService
         return executionParam;
     }
 
-    private (object[]? parameters, bool hasMissing) DeserializeParameters(
+    private static (object[]? parameters, bool hasMissing) DeserializeParameters(
         ExpectedParameter[] expectedParameters,
         int providedParametersLength,
         JsonElement providedParameters,
