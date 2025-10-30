@@ -141,7 +141,9 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         if (version == DepositEvent.Version0)
         {
             var depositLogEventV0 = DepositLogEventV0.FromBytes(log.Data);
-            var sourceHash = ComputeSourceHash(log.BlockHash, (ulong)(log.LogIndex ?? 0)); // TODO: Unsafe cast with possible null;
+            if (log.LogIndex is null) throw new ArgumentException("Expected non-null log index");
+            if (log.LogIndex < 0) throw new ArgumentException($"Expected non-negative log index, got {log.LogIndex}");
+            var sourceHash = ComputeSourceHash(log.BlockHash, (ulong)log.LogIndex.Value);
 
             return new()
             {
