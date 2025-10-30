@@ -35,7 +35,7 @@ public static class XdcExtensions
 
     public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, XdcBlockHeader xdcBlockHeader, ulong round = 0)
     {
-        IXdcReleaseSpec spec = specProvider.GetSpec(xdcBlockHeader) as IXdcReleaseSpec;
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcBlockHeader);
         if (spec is null)
             throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
         spec.ApplyV2Config(round);

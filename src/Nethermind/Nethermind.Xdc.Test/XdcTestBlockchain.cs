@@ -419,18 +419,6 @@ public class XdcTestBlockchain : IDisposable
     {
         public Block Build()
         {
-            // Eip4788 precompile state account
-            if (specProvider.GenesisSpec.IsBeaconBlockRootAvailable)
-            {
-                state.CreateAccount(specProvider.GenesisSpec.Eip4788ContractAddress!, 1);
-            }
-
-            // Eip2935
-            if (specProvider.GenesisSpec.IsBlockHashInStateAvailable)
-            {
-                state.CreateAccount(specProvider.GenesisSpec.Eip2935ContractAddress, 1);
-            }
-
             state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
             state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
             state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
@@ -441,22 +429,11 @@ public class XdcTestBlockchain : IDisposable
 
             IReleaseSpec? finalSpec = specProvider.GetFinalSpec();
 
-            if (finalSpec?.WithdrawalsEnabled is true)
-            {
-                state.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-                state.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, specProvider.GenesisSpec!);
-            }
-
-            if (finalSpec?.ConsolidationRequestsEnabled is true)
-            {
-                state.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-                state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, specProvider.GenesisSpec!);
-            }
-
             XdcBlockHeaderBuilder xdcBlockHeaderBuilder = new();
 
             Block genesisBlock = new Block(xdcBlockHeaderBuilder
                 .WithNumber(0)
+                .WithGasUsed(0)
                 .TestObject);
 
             foreach (IGenesisPostProcessor genesisPostProcessor in postProcessors)
