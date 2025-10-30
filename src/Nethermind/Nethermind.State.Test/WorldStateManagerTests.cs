@@ -76,7 +76,7 @@ public class WorldStateManagerTests
     public void ShouldAnnounceReorgOnDispose()
     {
         int lastBlock = 256;
-        int reorgDepth = 128; // Default reorg depth with snap serving
+        int reorgDepth = 128; // Default value of ISyncConfig.SnapServingMaxDepth
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IConfigProvider configProvider = new ConfigProvider();
