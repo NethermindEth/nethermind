@@ -42,11 +42,13 @@ public abstract class BlockchainTestBase
 {
     private static readonly ILogger _logger;
     private static readonly ILogManager _logManager = new TestLogManager();
+    private static ISealValidator Sealer { get; }
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 
     static BlockchainTestBase()
     {
         DifficultyCalculator = new DifficultyCalculatorWrapper();
+        Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new CryptoRandom(), new Ethash(_logManager), Timestamper.Default); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
         _logManager ??= LimboLogs.Instance;
         _logger = _logManager.GetClassLogger();
     }
@@ -82,7 +84,9 @@ public abstract class BlockchainTestBase
         test.Network = ChainUtils.ResolveSpec(test.Network, test.ChainId);
         test.NetworkAfterTransition = ChainUtils.ResolveSpec(test.NetworkAfterTransition, test.ChainId);
 
-        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions = [((ForkActivation)0, test.Network)];
+        // List<(ForkActivation Activation, IReleaseSpec Spec)> transitions = [((ForkActivation)0, test.Network)];
+        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
+            [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
         if (test.NetworkAfterTransition is not null)
         {
             transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));

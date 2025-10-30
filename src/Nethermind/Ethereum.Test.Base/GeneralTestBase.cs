@@ -65,7 +65,11 @@ namespace Ethereum.Test.Base
 
             test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
 
-            ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, ((ForkActivation)0, test.Fork));
+            // ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, ((ForkActivation)0, test.Fork));
+            ISpecProvider specProvider =
+                new CustomSpecProvider(test.ChainId, test.ChainId,
+                    ((ForkActivation)0, test.GenesisSpec), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+                    ((ForkActivation)1, test.Fork));
 
             IConfigProvider configProvider = new ConfigProvider();
             using IContainer container = new ContainerBuilder()
