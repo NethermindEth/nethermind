@@ -174,7 +174,7 @@ public abstract class BlockchainTestBase
 
                 blockchainProcessor.BlockRemoved += (_, args) =>
                 {
-                    if (args.BlockHash == genesisBlock.Header.Hash)
+                    if (args.ProcessingResult != ProcessingResult.Success && args.BlockHash == genesisBlock.Header.Hash)
                     {
                         Assert.Fail($"Failed to process genesis block: {args.Exception}");
                         genesisProcessed.Set();
