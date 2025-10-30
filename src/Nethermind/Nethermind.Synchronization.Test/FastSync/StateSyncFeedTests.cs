@@ -39,6 +39,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         [TestCaseSource(nameof(Scenarios))]
         [Repeat(TestRepeatCount)]
+        [Explicit("This test is not stable, especially on slow Github Actions machines")]
         public async Task Big_test((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager)
