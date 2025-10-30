@@ -25,6 +25,7 @@ jobs:
           # - SchemaGenerator/SchemaGenerator.slnx
           - SendBlobs/SendBlobs.slnx
           - TxParser/TxParser.slnx
+          - StatelessExecution/StatelessExecution.slnx
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
