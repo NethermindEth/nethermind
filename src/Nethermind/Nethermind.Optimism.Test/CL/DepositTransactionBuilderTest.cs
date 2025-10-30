@@ -145,6 +145,50 @@ public class DepositTransactionBuilderTest
             LogIndex = 0,
             BlockHash = SomeHash,
         };
+
+        yield return new LogEntryForRpc
+        {
+            Address = DepositAddress,
+            Topics =
+            [
+                DepositEvent.ABIHash,
+                new Hash256(SomeAddressA.Bytes.PadLeft(32)),
+                new Hash256(SomeAddressB.Bytes.PadLeft(32)),
+                DepositEvent.Version0,
+            ],
+            Data = new DepositLogEventV0
+            {
+                Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
+                Mint = 0,
+                Value = UInt256.Zero,
+                Gas = 1,
+                IsCreation = false,
+            }.ToBytes(),
+            LogIndex = null,
+            BlockHash = SomeHash,
+        };
+
+        yield return new LogEntryForRpc
+        {
+            Address = DepositAddress,
+            Topics =
+            [
+                DepositEvent.ABIHash,
+                new Hash256(SomeAddressA.Bytes.PadLeft(32)),
+                new Hash256(SomeAddressB.Bytes.PadLeft(32)),
+                DepositEvent.Version0,
+            ],
+            Data = new DepositLogEventV0
+            {
+                Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
+                Mint = 0,
+                Value = UInt256.Zero,
+                Gas = 1,
+                IsCreation = false,
+            }.ToBytes(),
+            LogIndex = -1,
+            BlockHash = SomeHash,
+        };
     }
     [TestCaseSource(nameof(InvalidLogFormatTestCases))]
     public void DeriveUserDeposits_ThrowsOnInvalidLogFormat(LogEntryForRpc log)
