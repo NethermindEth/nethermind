@@ -61,14 +61,6 @@ namespace Nethermind.Consensus.Processing
             {
                 void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs);
             }
-
-            /// <summary>
-            /// Used by <see cref="FilterManager"/> through <see cref="IMainProcessingContext"/>
-            /// </summary>
-            public interface ITransactionProcessedEventHandler
-            {
-                void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs);
-            }
         }
     }
 }

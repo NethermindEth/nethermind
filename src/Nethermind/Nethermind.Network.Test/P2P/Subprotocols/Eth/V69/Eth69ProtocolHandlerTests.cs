@@ -52,7 +52,6 @@ public class Eth69ProtocolHandlerTests
     private Eth69ProtocolHandler _handler = null!;
     private ITxGossipPolicy _txGossipPolicy = null!;
     private ITimerFactory _timerFactory = null!;
-    private IBlockFinder _blockFinder = null!;
 
     [SetUp]
     public void Setup()
@@ -75,8 +74,6 @@ public class Eth69ProtocolHandlerTests
         _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
         _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
         _svc = Build.A.SerializationService().WithEth69(_specProvider).TestObject;
-        _blockFinder = Substitute.For<IBlockFinder>();
-        _blockFinder.GetLowestBlock().Returns(3);
         _handler = new Eth69ProtocolHandler(
             _session,
             _svc,
@@ -86,7 +83,6 @@ public class Eth69ProtocolHandlerTests
             _transactionPool,
             _gossipPolicy,
             new ForkInfo(_specProvider, _syncManager),
-            _blockFinder,
             LimboLogs.Instance,
             Substitute.For<ITxPoolConfig>(),
             _specProvider,

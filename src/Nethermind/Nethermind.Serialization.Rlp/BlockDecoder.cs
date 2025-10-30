@@ -14,8 +14,6 @@ namespace Nethermind.Serialization.Rlp
 
         public BlockDecoder() : this(new HeaderDecoder()) { }
 
-        public BlockDecoder() : this(new HeaderDecoder()) { }
-
         public Block? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.Length == 0)
