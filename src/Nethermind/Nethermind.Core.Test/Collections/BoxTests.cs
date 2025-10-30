@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Collections;
@@ -254,6 +255,103 @@ public class BoxTests
     public void ComparableBox_hashcode_null_is_zero()
     {
         ComparableBox<Hash256> box = new(null);
+        box.GetHashCode().Should().Be(0);
+    }
+
+    [Test]
+    public void SimpleBox_can_wrap_null()
+    {
+        SimpleBox<Type> box = new(null);
+        box.Value.Should().BeNull();
+    }
+
+    [Test]
+    public void SimpleBox_can_wrap_value()
+    {
+        Type type = typeof(string);
+        SimpleBox<Type> box = new(type);
+        box.Value.Should().Be(type);
+    }
+
+    [Test]
+    public void SimpleBox_implicit_conversion_from_value()
+    {
+        Type type = typeof(string);
+        SimpleBox<Type> box = type;
+        box.Value.Should().Be(type);
+    }
+
+    [Test]
+    public void SimpleBox_implicit_conversion_to_value()
+    {
+        Type type = typeof(string);
+        SimpleBox<Type> box = new(type);
+        Type? result = box;
+        result.Should().Be(type);
+    }
+
+    [Test]
+    public void SimpleBox_equality_with_same_value()
+    {
+        Type type = typeof(string);
+        SimpleBox<Type> box1 = type;
+        SimpleBox<Type> box2 = type;
+        box1.Equals(box2).Should().BeTrue();
+    }
+
+    [Test]
+    public void SimpleBox_inequality_with_different_values()
+    {
+        SimpleBox<Type> box1 = typeof(string);
+        SimpleBox<Type> box2 = typeof(int);
+        box1.Equals(box2).Should().BeFalse();
+    }
+
+    [Test]
+    public void SimpleBox_equality_with_both_null()
+    {
+        SimpleBox<Type> box1 = new(null);
+        SimpleBox<Type> box2 = new(null);
+        box1.Equals(box2).Should().BeTrue();
+    }
+
+    [Test]
+    public void SimpleBox_inequality_one_null_one_value()
+    {
+        SimpleBox<Type> box1 = new(null);
+        SimpleBox<Type> box2 = typeof(string);
+        box1.Equals(box2).Should().BeFalse();
+        box2.Equals(box1).Should().BeFalse();
+    }
+
+    [Test]
+    public void SimpleBox_can_be_used_as_dictionary_key()
+    {
+        Dictionary<SimpleBox<Type>, string> dictionary = new()
+        {
+            { typeof(string), "String" },
+            { typeof(int), "Int" },
+            { typeof(bool), "Bool" }
+        };
+
+        dictionary.ContainsKey(typeof(string)).Should().BeTrue();
+        dictionary[typeof(string)].Should().Be("String");
+        dictionary[typeof(int)].Should().Be("Int");
+        dictionary[typeof(bool)].Should().Be("Bool");
+    }
+
+    [Test]
+    public void SimpleBox_hashcode_consistency()
+    {
+        Type type = typeof(string);
+        SimpleBox<Type> box = type;
+        box.GetHashCode().Should().Be(type.GetHashCode());
+    }
+
+    [Test]
+    public void SimpleBox_hashcode_null_is_zero()
+    {
+        SimpleBox<Type> box = new(null);
         box.GetHashCode().Should().Be(0);
     }
 }

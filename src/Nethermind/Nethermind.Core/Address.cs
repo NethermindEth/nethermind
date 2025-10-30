@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Text.Json.Serialization;
 
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -275,20 +276,22 @@ namespace Nethermind.Core
         }
     }
 
-    public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>
+    /// <summary>
+    /// Type alias for Box containing an Address. Used as dictionary key.
+    /// </summary>
+    public readonly struct AddressAsKey(Address? key) : IEquatable<AddressAsKey>
     {
-        private readonly Address _key = key;
-        public Address Value => _key;
+        private readonly Box<Address> _box = key;
 
-        public static implicit operator Address(AddressAsKey key) => key._key;
-        public static implicit operator AddressAsKey(Address key) => new(key);
+        public Address? Value => _box.Value;
 
-        public bool Equals(AddressAsKey other) => _key == other._key;
-        public override int GetHashCode() => _key?.GetHashCode() ?? 0;
-        public override string ToString()
-        {
-            return _key?.ToString() ?? "<null>";
-        }
+        public static implicit operator Address?(AddressAsKey key) => key._box;
+        public static implicit operator AddressAsKey(Address? key) => new(key);
+
+        public bool Equals(AddressAsKey other) => _box.Equals(other._box);
+        public override bool Equals(object? obj) => obj is AddressAsKey key && Equals(key);
+        public override int GetHashCode() => _box.GetHashCode();
+        public override string ToString() => _box.ToString();
     }
 
     public ref struct AddressStructRef

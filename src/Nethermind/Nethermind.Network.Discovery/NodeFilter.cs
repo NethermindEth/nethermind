@@ -3,6 +3,7 @@
 
 using System.Net;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Network.Discovery;
 
@@ -60,12 +61,19 @@ public class NodeFilter(int size)
         }
     }
 
-    private readonly struct IpAddressAsKey(IPAddress ipAddress) : IEquatable<IpAddressAsKey>
+    /// <summary>
+    /// Type alias for SimpleBox containing an IPAddress. Used as dictionary key.
+    /// </summary>
+    private readonly struct IpAddressAsKey(IPAddress? ipAddress) : IEquatable<IpAddressAsKey>
     {
-        private readonly IPAddress _ipAddress = ipAddress;
-        public static implicit operator IpAddressAsKey(IPAddress ip) => new(ip);
-        public bool Equals(IpAddressAsKey other) => _ipAddress.Equals(other._ipAddress);
-        public override bool Equals(object? obj) => obj is IpAddressAsKey ip && _ipAddress.Equals(ip._ipAddress);
-        public override int GetHashCode() => _ipAddress.GetHashCode();
+        private readonly SimpleBox<IPAddress> _box = ipAddress;
+
+        public IPAddress? Value => _box.Value;
+
+        public static implicit operator IpAddressAsKey(IPAddress? ip) => new(ip);
+
+        public bool Equals(IpAddressAsKey other) => _box.Equals(other._box);
+        public override bool Equals(object? obj) => obj is IpAddressAsKey key && Equals(key);
+        public override int GetHashCode() => _box.GetHashCode();
     }
 }

@@ -199,7 +199,7 @@ namespace Nethermind.TxPool
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default) =>
             _transactions.GetBucketSnapshot(filterToReadyTx ?
-                (data => data.first.CanPayBaseFee(baseFee) && data.first.Nonce == _accounts.GetNonce(data.key)) :
+                (data => data.first.CanPayBaseFee(baseFee) && data.first.Nonce == _accounts.GetNonce(data.key.Value!)) :
                 null);
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
@@ -1026,7 +1026,7 @@ namespace Nethermind.TxPool
 
             public void RemoveAccounts(ArrayPoolList<AddressAsKey> address)
             {
-                Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value)),
+                Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value!)),
                     n =>
                     {
                         ClockCache<AddressAsKey, AccountStruct> cache = _caches[n.Key];

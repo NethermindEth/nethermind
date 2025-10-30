@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Text.Json.Serialization;
 
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -102,18 +103,22 @@ namespace Nethermind.Core.Crypto
         private bool IsZero => _bytes == default;
     }
 
-    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>
+    /// <summary>
+    /// Type alias for ComparableBox containing a Hash256. Used as dictionary key with comparison support.
+    /// </summary>
+    public readonly struct Hash256AsKey(Hash256? key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>
     {
-        private readonly Hash256 _key = key;
-        public Hash256 Value => _key;
+        private readonly ComparableBox<Hash256> _box = key;
 
-        public static implicit operator Hash256(Hash256AsKey key) => key._key;
-        public static implicit operator Hash256AsKey(Hash256 key) => new(key);
+        public Hash256? Value => _box.Value;
 
-        public bool Equals(Hash256AsKey other) => Equals(_key, other._key);
-        public override int GetHashCode() => _key?.GetHashCode() ?? 0;
+        public static implicit operator Hash256?(Hash256AsKey key) => key._box;
+        public static implicit operator Hash256AsKey(Hash256? key) => new(key);
 
-        public int CompareTo(Hash256AsKey other) => _key.CompareTo(other._key);
+        public bool Equals(Hash256AsKey other) => _box.Equals(other._box);
+        public override bool Equals(object? obj) => obj is Hash256AsKey key && Equals(key);
+        public override int GetHashCode() => _box.GetHashCode();
+        public int CompareTo(Hash256AsKey other) => _box.CompareTo(other._box);
     }
 
     [DebuggerStepThrough]

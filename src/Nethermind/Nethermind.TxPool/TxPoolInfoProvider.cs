@@ -24,8 +24,8 @@ namespace Nethermind.TxPool
             var queuedTransactions = new Dictionary<AddressAsKey, IDictionary<ulong, Transaction>>();
             foreach (KeyValuePair<AddressAsKey, Transaction[]> group in groupedTransactions)
             {
-                Address address = group.Key;
-                var accountNonce = accountStateProvider.GetNonce(address);
+                Address? address = group.Key;
+                var accountNonce = accountStateProvider.GetNonce(address!);
                 var expectedNonce = accountNonce;
                 var pending = new Dictionary<ulong, Transaction>();
                 var queued = new Dictionary<ulong, Transaction>();

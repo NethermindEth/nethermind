@@ -114,11 +114,11 @@ namespace Nethermind.Serialization.Json
 
                 foreach ((TKey key, TValue value) in dictionary)
                 {
-                    Address address = (typeof(TKey) == typeof(AddressAsKey)) ?
-                        (Address)(AddressAsKey)(object)key :
-                        (Address)(object)key;
+                    Address? address = (typeof(TKey) == typeof(AddressAsKey)) ?
+                        (Address?)(AddressAsKey)(object)key :
+                        (Address?)(object)key;
 
-                    string propertyName = address.ToString();
+                    string propertyName = address?.ToString() ?? string.Empty;
                     writer.WritePropertyName
                         (options.PropertyNamingPolicy?.ConvertName(propertyName) ?? propertyName);
 

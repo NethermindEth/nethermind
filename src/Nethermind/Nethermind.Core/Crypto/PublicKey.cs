@@ -5,6 +5,7 @@ using System;
 using System.Text.Json.Serialization;
 using System.Threading;
 
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Json;
 
@@ -104,15 +105,20 @@ namespace Nethermind.Core.Crypto
         public static bool operator !=(PublicKey? a, PublicKey? b) => !(a == b);
     }
 
-    public readonly struct PublicKeyAsKey(PublicKey key) : IEquatable<PublicKeyAsKey>
+    /// <summary>
+    /// Type alias for Box containing a PublicKey. Used as dictionary key.
+    /// </summary>
+    public readonly struct PublicKeyAsKey(PublicKey? key) : IEquatable<PublicKeyAsKey>
     {
-        private readonly PublicKey _key = key;
-        public PublicKey Value => _key;
+        private readonly Box<PublicKey> _box = key;
 
-        public static implicit operator PublicKey(PublicKeyAsKey key) => key._key;
-        public static implicit operator PublicKeyAsKey(PublicKey key) => new(key);
+        public PublicKey? Value => _box.Value;
 
-        public bool Equals(PublicKeyAsKey other) => _key.Equals(other._key);
-        public override int GetHashCode() => _key.GetHashCode();
+        public static implicit operator PublicKey?(PublicKeyAsKey key) => key._box;
+        public static implicit operator PublicKeyAsKey(PublicKey? key) => new(key);
+
+        public bool Equals(PublicKeyAsKey other) => _box.Equals(other._box);
+        public override bool Equals(object? obj) => obj is PublicKeyAsKey key && Equals(key);
+        public override int GetHashCode() => _box.GetHashCode();
     }
 }
