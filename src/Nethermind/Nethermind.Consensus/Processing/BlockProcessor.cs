@@ -69,6 +69,7 @@ public partial class BlockProcessor(
         {
             if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
             {
+                // block is invalid and we already stored receipts in background, remove them
                 receiptStorage.RemoveReceipts(suggestedBlock);
             }
 
