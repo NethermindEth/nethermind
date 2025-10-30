@@ -38,10 +38,10 @@ namespace Nethermind.Synchronization.StateSync
 
             ISyncPeer peer = peerInfo.SyncPeer;
 
-            // Try NODEDATA protocol first if available
-            if (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler))
+            // Try SNAP protocol first if available (newest and most served)
+            if (peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapHandler))
             {
-                if (await TryGetNodeDataViaNodeDataProtocol(nodeDataHandler, batch, cancellationToken, peer))
+                if (await TryGetNodeDataViaSnapProtocol(snapHandler, batch, cancellationToken, peer))
                 {
                     return;
                 }
@@ -56,10 +56,10 @@ namespace Nethermind.Synchronization.StateSync
                 }
             }
 
-            // Try SNAP protocol if available
-            if (peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapHandler))
+            // Try NODEDATA protocol as fallback
+            if (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler))
             {
-                if (await TryGetNodeDataViaSnapProtocol(snapHandler, batch, cancellationToken, peer))
+                if (await TryGetNodeDataViaNodeDataProtocol(nodeDataHandler, batch, cancellationToken, peer))
                 {
                     return;
                 }
