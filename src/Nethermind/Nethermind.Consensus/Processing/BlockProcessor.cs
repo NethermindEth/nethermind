@@ -111,7 +111,7 @@ public partial class BlockProcessor(
             header.BlobGasUsed = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateBlobGas(block.Transactions) : null;
             header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
 
-        }, token);
+        });
 
         _stateProvider.Commit(spec, commitRoots: false);
         ApplyMinerRewards(block, blockTracer, spec);
@@ -140,7 +140,7 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        backGroundCalculations.Wait(token);
+        backGroundCalculations.Wait();
         header.Hash = header.CalculateHash();
 
         return receipts;
