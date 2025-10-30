@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -398,7 +397,7 @@ public class JsonRpcService : IJsonRpcService
             {
                 if (!_reparseReflectionCache.TryGetValue(paramType, out bool reparseString))
                 {
-                    reparseString = CreateNewCacheEntry(paramType); 
+                    reparseString = CreateNewCacheEntry(paramType);
                 }
 
                 executionParam = reparseString
