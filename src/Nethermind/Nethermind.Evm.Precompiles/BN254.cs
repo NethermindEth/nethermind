@@ -119,7 +119,7 @@ internal static unsafe class BN254
         if (data.IndexOfAnyExcept((byte)0) == -1)
             return true;
 
-        Span<byte> x = data[0..32];
+        Span<byte> x = data[..32];
         x.Reverse(); // To little-endian
 
         fixed (byte* ptr = &MemoryMarshal.GetReference(x))
@@ -187,7 +187,7 @@ internal static unsafe class BN254
 
     private static bool SerializeG1(in mclBnG1 point, Span<byte> output)
     {
-        Span<byte> x = output[0..32];
+        Span<byte> x = output[..32];
 
         fixed (byte* ptr = &MemoryMarshal.GetReference(x))
         {
