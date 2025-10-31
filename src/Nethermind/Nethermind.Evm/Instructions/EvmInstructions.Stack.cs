@@ -118,7 +118,7 @@ internal static partial class EvmInstructions
     {
         const int Size = sizeof(ushort);
         // Deduct a very low gas cost for the push operation.
-        gasAvailable -= GasCostOf.VeryLow;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
         // Retrieve the code segment containing immediate data.
         ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSpan;
 
@@ -488,7 +488,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionPush0<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.Base;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         stack.PushZero<TTracingInst>();
         return EvmExceptionType.None;
     }
@@ -509,7 +509,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct a very low gas cost for the push operation.
-        gasAvailable -= GasCostOf.VeryLow;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
         // Retrieve the code segment containing immediate data.
         ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSpan;
         // Use the push method defined by the specific push operation.
