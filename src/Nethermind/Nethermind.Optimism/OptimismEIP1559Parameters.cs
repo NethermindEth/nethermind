@@ -62,7 +62,6 @@ public readonly struct EIP1559Parameters
             return false;
         }
 
-        // TODO: ensure checks for minBaseFee
         parameters = new EIP1559Parameters(1, denominator, elasticity, minBaseFee);
 
         return true;
