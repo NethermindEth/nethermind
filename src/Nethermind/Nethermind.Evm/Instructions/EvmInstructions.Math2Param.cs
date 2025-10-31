@@ -265,7 +265,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Charge the fixed gas cost for exponentiation.
-        gasAvailable -= GasCostOf.Exp;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.ExpBase : GasCostOf.Exp;
 
         // Pop the base value from the stack.
         if (!stack.PopUInt256(out UInt256 a))
