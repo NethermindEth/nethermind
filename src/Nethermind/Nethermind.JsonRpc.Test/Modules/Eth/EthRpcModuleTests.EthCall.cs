@@ -70,7 +70,7 @@ public partial class EthRpcModuleTests
             "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"value\": 500, \"gas\": 100000000}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for transfer: address 0x0001020304050607080910111213141516171819\"},\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient sender balance\"},\"id\":67}"));
         ctx.Test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
     }
 
@@ -179,7 +179,7 @@ public partial class EthRpcModuleTests
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "{\"blockHash\":\"0xf0b3f69cbd4e1e8d9b0ef02ff5d1384d18e19d251a4052f5f90bab190c5e8937\"}");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"0xf0b3f69cbd4e1e8d9b0ef02ff5d1384d18e19d251a4052f5f90bab190c5e8937 could not be found\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"0xf0b3f69cbd4e1e8d9b0ef02ff5d1384d18e19d251a4052f5f90bab190c5e8937 could not be found\"},\"id\":67}"));
     }
 
     [Test]
