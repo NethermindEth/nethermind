@@ -15,13 +15,10 @@ namespace Nethermind.Xdc.Test;
 public class TestMasternodeSmartContractEmulator
 {
     private int MasternodeCount = 100;
-
-    private PrivateKey[] MasternodesPvKeys;
-
     private int CurrentLeaderIndex;
 
+    public PrivateKey[] MasternodesPvKeys;
     public PrivateKey CurrentLeaderPvKey => MasternodesPvKeys[CurrentLeaderIndex];
-    public Address CurrentLeaderAddress => CurrentLeaderPvKey.Address;
 
     private TestMasternodeSmartContractEmulator(int count = 100)
     {
@@ -40,4 +37,5 @@ public class TestMasternodeSmartContractEmulator
     private static TestMasternodeSmartContractEmulator? _instance;
 
     public static TestMasternodeSmartContractEmulator Instance => _instance ??= new TestMasternodeSmartContractEmulator(100);
+
 }
