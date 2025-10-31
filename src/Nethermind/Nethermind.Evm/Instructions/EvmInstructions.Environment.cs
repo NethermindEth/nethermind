@@ -341,6 +341,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCodeSize : IOpEnvUInt32
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static uint Operation(EvmState vmState)
             => (uint)vmState.Env.CodeInfo.CodeSpan.Length;
     }
