@@ -151,7 +151,7 @@ internal static partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionSignExtend<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        gasAvailable -= GasCostOf.Low;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Low;
 
         // Pop the index to determine which byte to use for sign extension.
         if (!stack.PopUInt256(out UInt256 a))
