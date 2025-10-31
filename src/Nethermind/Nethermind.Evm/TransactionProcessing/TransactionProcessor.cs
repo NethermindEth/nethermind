@@ -734,12 +734,18 @@ namespace Nethermind.Evm.TransactionProcessing
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
+            gasConsumed = RefundOnFailContractCreation(tx, spec, opts, in VirtualMachine.TxExecutionContext.GasPrice);
 
         Complete:
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
                 header.GasUsed += gasConsumed.SpentGas;
 
             return statusCode;
+        }
+
+        protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 gasPrice)
+        {
+            return tx.GasLimit;
         }
 
         protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref long unspentGas)

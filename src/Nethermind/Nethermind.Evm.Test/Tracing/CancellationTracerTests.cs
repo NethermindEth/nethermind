@@ -18,17 +18,14 @@ namespace Nethermind.Evm.Test.Tracing
     {
         [Test]
         [Retry(3)]
-        public async Task Throw_operation_canceled_after_given_timeout()
+        public void Throw_operation_canceled_after_given_timeout()
         {
             TimeSpan timeout = TimeSpan.FromMilliseconds(10);
             using CancellationTokenSource cancellationTokenSource = new(timeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
             CancellationTxTracer tracer = new(Substitute.For<ITxTracer>(), cancellationToken) { IsTracingActions = true };
 
-            // ReSharper disable once MethodSupportsCancellation
-            await Task.Delay(100);
-
-            Assert.Throws<OperationCanceledException>(() => tracer.ReportActionError(EvmExceptionType.None));
+            Assert.That(() => tracer.ReportActionError(EvmExceptionType.None), Throws.TypeOf<OperationCanceledException>().After(100, 10));
         }
 
         [Test]
