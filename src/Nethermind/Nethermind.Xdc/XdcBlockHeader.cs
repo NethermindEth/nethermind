@@ -44,7 +44,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         {
             if (_validatorsAddress is not null)
                 return _validatorsAddress;
-            _validatorsAddress = ExtractAddresses(Validators);
+            _validatorsAddress = XdcExtensions.ExtractAddresses(Validators);
             return _validatorsAddress;
         }
         set { _validatorsAddress = value; }
@@ -59,27 +59,15 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         {
             if (_penaltiesAddress is not null)
                 return _penaltiesAddress;
-            _penaltiesAddress = ExtractAddresses(Penalties);
+            _penaltiesAddress = XdcExtensions.ExtractAddresses(Penalties);
             return _penaltiesAddress;
         }
         set { _penaltiesAddress = value; }
     }
 
-    internal Address[] GetMasterNodesFromEpochSwitchHeader()
-    {
-        if (Validators == null)
-            throw new InvalidOperationException("Header has no validators.");
-        Address[] masterNodes = new Address[Validators.Length / 20];
-        for (int i = 0; i < masterNodes.Length; i++)
-        {
-            masterNodes[i] = new Address(Validators.AsSpan(i * 20, 20));
-        }
-        return masterNodes;
-    }
-
     private ExtraFieldsV2 _extraFieldsV2;
     /// <summary>
-    /// Consensus data that must be included in a V2 block, which contains the quorum certificate and round information. 
+    /// Consensus data that must be included in a V2 block, which contains the quorum certificate and round information.
     /// </summary>
     public ExtraFieldsV2? ExtraConsensusData
     {
@@ -91,7 +79,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
             if (_extraFieldsV2 == null)
             {
                 //Check V2 consensus version in ExtraData field.
-                if (ExtraData.Length < 3 || ExtraData[0] != 2)
+                if (ExtraData.Length < 3 || ExtraData[0] != XdcConstants.ConsensusVersion)
                     return null;
                 Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(ExtraData.AsSpan(1));
                 _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref valueDecoderContext);
@@ -99,37 +87,6 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
             return _extraFieldsV2;
         }
         set { _extraFieldsV2 = value; }
-    }
-
-    public bool IsEpochSwitch(IXdcReleaseSpec spec)
-    {
-        if (spec.SwitchBlock == this.Number)
-        {
-            return true;
-        }
-        ExtraFieldsV2? extraFields = ExtraConsensusData;
-        if (extraFields is null)
-        {
-            //Should this throw instead?
-            return false;
-        }
-        ulong parentRound = extraFields.QuorumCert.ProposedBlockInfo.Round;
-        ulong epochStart = extraFields.CurrentRound - extraFields.CurrentRound % (ulong)spec.EpochLength;
-
-        return parentRound < epochStart;
-    }
-
-    private static ImmutableArray<Address>? ExtractAddresses(byte[]? data)
-    {
-        if (data is null || data.Length % Address.Size != 0)
-            return null;
-
-        Address[] addresses = new Address[data.Length / Address.Size];
-        for (int i = 0; i < addresses.Length; i++)
-        {
-            addresses[i] = new Address(data.AsSpan(i * Address.Size, Address.Size));
-        }
-        return addresses.ToImmutableArray();
     }
 
     public ValueHash256 CalculateHash()

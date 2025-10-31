@@ -81,11 +81,6 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
             return false;
         }
 
-        if (wrapper.Blobs.All(x => x.All(y => y == 0)))
-        {
-            return true;
-        }
-
         using ArrayPoolSpan<byte> cells = new(wrapper.Blobs.Length * Ckzg.BytesPerBlob * 2);
         using ArrayPoolSpan<byte> flatCommitments = new(wrapper.Blobs.Length * Ckzg.BytesPerCommitment * Ckzg.CellsPerExtBlob);
         using ArrayPoolSpan<byte> flatProofs = new(wrapper.Blobs.Length * Ckzg.BytesPerProof * Ckzg.CellsPerExtBlob);

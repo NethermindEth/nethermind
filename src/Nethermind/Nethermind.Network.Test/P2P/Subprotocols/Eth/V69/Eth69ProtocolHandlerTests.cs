@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -23,7 +23,6 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
@@ -47,7 +46,6 @@ public class Eth69ProtocolHandlerTests
     private IMessageSerializationService _svc = null!;
     private ISyncServer _syncManager = null!;
     private ITxPool _transactionPool = null!;
-    private IPooledTxsRequestor _pooledTxsRequestor = null!;
     private IGossipPolicy _gossipPolicy = null!;
     private ISpecProvider _specProvider = null!;
     private Block _genesisBlock = null!;
@@ -66,12 +64,12 @@ public class Eth69ProtocolHandlerTests
         _session.Node.Returns(node);
         _syncManager = Substitute.For<ISyncServer>();
         _transactionPool = Substitute.For<ITxPool>();
-        _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
         _specProvider = Substitute.For<ISpecProvider>();
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
+        _syncManager.LowestBlock.Returns(0);
         _timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
         _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
@@ -86,11 +84,12 @@ public class Eth69ProtocolHandlerTests
             _syncManager,
             RunImmediatelyScheduler.Instance,
             _transactionPool,
-            _pooledTxsRequestor,
             _gossipPolicy,
             new ForkInfo(_specProvider, _syncManager),
             _blockFinder,
             LimboLogs.Instance,
+            Substitute.For<ITxPoolConfig>(),
+            _specProvider,
             _txGossipPolicy);
         _handler.Init();
     }
@@ -280,7 +279,7 @@ public class Eth69ProtocolHandlerTests
             && m.Protocol == Protocol.Eth
             && m.GenesisHash == _genesisBlock.Hash
             && m.LatestBlockHash == _genesisBlock.Hash
-            && m.EarliestBlock == 3));
+            && m.EarliestBlock == 0));
     }
 
     private void HandleIncomingStatusMessage()

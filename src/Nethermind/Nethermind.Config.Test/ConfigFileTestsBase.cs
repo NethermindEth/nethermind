@@ -77,9 +77,9 @@ public abstract class ConfigFileTestsBase
     protected IEnumerable<string> ChiadoConfigs
         => Configs.Where(static config => config.Contains("chiado"));
 
-    [ConfigFileGroup("holesky")]
+    [ConfigFileGroup("hoodi")]
     protected IEnumerable<string> HoleskyConfigs
-        => Configs.Where(static config => config.Contains("holesky"));
+        => Configs.Where(static config => config.Contains("hoodi"));
 
     [ConfigFileGroup("spaceneth")]
     protected IEnumerable<string> SpacenethConfigs

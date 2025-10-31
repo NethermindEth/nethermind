@@ -1138,15 +1138,14 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_notify_peer_only_once()
+        public void should_notify_peer_only_once()
         {
             _txPool = CreatePool();
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
             _ = AddTransactionToPool();
-            await Task.Delay(500);
-            txPoolPeer.Received(1).SendNewTransaction(Arg.Any<Transaction>());
+            Assert.That(() => txPoolPeer.ReceivedCallsMatching(p => p.SendNewTransaction(Arg.Any<Transaction>())), Is.True.After(500, 10));
             txPoolPeer.DidNotReceive().SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
         }
 
@@ -1497,7 +1496,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_include_transaction_after_removal()
+        public void should_include_transaction_after_removal()
         {
             ISpecProvider specProvider = GetLondonSpecProvider();
             _txPool = CreatePool(new TxPoolConfig { Size = 2 }, specProvider);
@@ -1536,11 +1535,8 @@ namespace Nethermind.TxPool.Test
                 Raise.Event<EventHandler<BlockReplacementEventArgs>>(this,
                     new BlockReplacementEventArgs(Build.A.Block.WithTransactions(expensiveTx1).TestObject));
 
-            // Wait four event processing
-            await Task.Delay(100);
-
-            // Send txA again => should be Accepted
-            _txPool.SubmitTx(txA, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            // Wait for event processing and send txA again => should be Accepted
+            Assert.That(() => _txPool.SubmitTx(txA, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted).After(100, 10));
         }
 
         [TestCase(true, 1, 1, true)]

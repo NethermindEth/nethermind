@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -16,7 +16,6 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Discovery;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -275,14 +274,12 @@ public class InitializeNetwork : IStep
             _api.PeerManager!,
             _networkConfig,
             _api.LogManager);
-        PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>(), _api.SpecProvider);
 
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
             syncServer,
             _api.BackgroundTaskScheduler,
             _api.TxPool,
-            pooledTxsRequestor,
             _discoveryApp,
             _api.MessageSerializationService,
             _api.RlpxPeer,
@@ -294,6 +291,8 @@ public class InitializeNetwork : IStep
             _api.WorldStateManager!,
             _api.BlockTree,
             _api.LogManager,
+            _api.Config<ITxPoolConfig>(),
+            _api.SpecProvider,
             _api.TxGossipPolicy);
 
         if (_syncConfig.SnapServingEnabled == true)
