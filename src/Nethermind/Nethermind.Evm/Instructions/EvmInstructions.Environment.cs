@@ -544,7 +544,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionSelfBalance<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.SelfBalance;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.SelfBalance;
 
         // Get balance for currently executing account.
         ref readonly UInt256 result = ref vm.WorldState.GetBalance(vm.EvmState.Env.ExecutingAccount);
