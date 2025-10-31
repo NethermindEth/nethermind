@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
@@ -12,8 +11,10 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using NSubstitute;
@@ -25,7 +26,7 @@ using Nethermind.Evm;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
-using NSubstitute.Core;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Facade.Test;
 
@@ -36,6 +37,8 @@ public class BlockchainBridgeTests
     private IReceiptStorage _receiptStorage;
     private ITransactionProcessor _transactionProcessor;
     private ManualTimestamper _timestamper;
+    private IPruningConfig _pruningConfig;
+    private IEthSyncingInfo _ethSyncingInfo;
     private IContainer _container;
 
     [SetUp]
@@ -45,6 +48,8 @@ public class BlockchainBridgeTests
         _blockTree = Substitute.For<IBlockTree>();
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
+        _pruningConfig = Substitute.For<IPruningConfig>();
+        _ethSyncingInfo = Substitute.For<IEthSyncingInfo>();
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
@@ -53,6 +58,8 @@ public class BlockchainBridgeTests
             .AddSingleton(_timestamper)
             .AddSingleton(Substitute.For<ILogFinder>())
             .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
+            .AddSingleton(_pruningConfig)
+            .AddSingleton(_ethSyncingInfo)
             .AddScoped(_transactionProcessor)
             .Build();
 
@@ -640,5 +647,288 @@ public class BlockchainBridgeTests
         }
 
         testFactory.Received().Create();
+    }
+
+    [Test]
+    public void HasStateForBlock_archive_node_requested_block_below_head_returns_true()
+    {
+        // Archive node, block 100 < head 1000
+        _pruningConfig.Mode.Returns(PruningMode.None);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        var header = Build.A.BlockHeader.WithNumber(100).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_archive_node_requested_block_at_head_returns_true()
+    {
+        // Archive node, block 1000 == head 1000
+        _pruningConfig.Mode.Returns(PruningMode.None);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        var header = Build.A.BlockHeader.WithNumber(1000).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_archive_node_requested_block_above_head_returns_false()
+    {
+        // Archive node, block 1001 > head 1000
+        _pruningConfig.Mode.Returns(PruningMode.None);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        var header = Build.A.BlockHeader.WithNumber(1001).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeFalse();
+    }
+
+    [Test]
+    public void HasStateForBlock_pruning_node_still_syncing_state_returns_false()
+    {
+        _pruningConfig.Mode.Returns(PruningMode.Hybrid);
+        _pruningConfig.PruningBoundary.Returns(64);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.StateNodes);
+        var header = Build.A.BlockHeader.WithNumber(100).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeFalse();
+    }
+
+    [Test]
+    public void HasStateForBlock_pruning_node_block_within_window_returns_true()
+    {
+        // Pruning node: 937 >= (1000 - 64 + 1)
+        _pruningConfig.Mode.Returns(PruningMode.Hybrid);
+        _pruningConfig.PruningBoundary.Returns(64);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        var header = Build.A.BlockHeader.WithNumber(937).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_pruning_node_block_outside_window_returns_false()
+    {
+        // Pruning node: 936 < (1000 - 64 + 1)
+        _pruningConfig.Mode.Returns(PruningMode.Hybrid);
+        _pruningConfig.PruningBoundary.Returns(64);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        var header = Build.A.BlockHeader.WithNumber(936).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeFalse();
+    }
+
+    [Test]
+    public void HasStateForBlock_pruning_node_block_at_boundary_returns_true()
+    {
+        // Pruning node: 937 == (1000 - 64 + 1)
+        _pruningConfig.Mode.Returns(PruningMode.Hybrid);
+        _pruningConfig.PruningBoundary.Returns(64);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        var header = Build.A.BlockHeader.WithNumber(937).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_pruning_node_syncing_old_bodies_returns_true()
+    {
+        // Pruning node, state sync complete, downloading old bodies
+        _pruningConfig.Mode.Returns(PruningMode.Hybrid);
+        _pruningConfig.PruningBoundary.Returns(64);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.FastBodies);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        var header = Build.A.BlockHeader.WithNumber(937).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_archive_node_during_state_sync_returns_false()
+    {
+        // Archive node still syncing state
+        _pruningConfig.Mode.Returns(PruningMode.None);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.SnapSync);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        var header = Build.A.BlockHeader.WithNumber(950).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeFalse();
+    }
+
+    [Test]
+    public void HasStateForBlock_full_pruning_respects_pruning_boundary()
+    {
+        // Full pruning: 1_000_936 < (1_001_000 - 64 + 1)
+        _pruningConfig.Mode.Returns(PruningMode.Full);
+        _pruningConfig.PruningBoundary.Returns(64);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
+        var headBlock = Build.A.Block.WithNumber(1_001_000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        var header = Build.A.BlockHeader.WithNumber(1_000_936).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeFalse();
+    }
+
+    [Test]
+    public void HasStateForBlock_full_pruning_state_available_within_boundary()
+    {
+        // Full pruning: 999_987 >= (1_000_050 - 64 + 1)
+        _pruningConfig.Mode.Returns(PruningMode.Full);
+        _pruningConfig.PruningBoundary.Returns(64);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
+        Block headBlock = Build.A.Block.WithNumber(1_000_050).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(999_987).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_memory_pruning_only_uses_pruning_boundary()
+    {
+        // Memory pruning: 873 >= (1000 - 128 + 1)
+        _pruningConfig.Mode.Returns(PruningMode.Memory);
+        _pruningConfig.PruningBoundary.Returns(128);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        var header = Build.A.BlockHeader.WithNumber(873).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_memory_pruning_outside_boundary_returns_false()
+    {
+        // Memory pruning: 872 < (1000 - 128 + 1)
+        _pruningConfig.Mode.Returns(PruningMode.Memory);
+        _pruningConfig.PruningBoundary.Returns(128);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
+        var headBlock = Build.A.Block.WithNumber(1000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        var header = Build.A.BlockHeader.WithNumber(872).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeFalse();
+    }
+
+    [Test]
+    public void HasStateForBlock_archive_node_snap_synced_before_pivot_returns_false()
+    {
+        // Archive node snap synced: 17_999_999 < LowestInsertedHeader 18_000_000
+        _pruningConfig.Mode.Returns(PruningMode.None);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
+        var headBlock = Build.A.Block.WithNumber(20_000_000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(18_000_000).TestObject);
+        var header = Build.A.BlockHeader.WithNumber(17_999_999).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeFalse();
+    }
+
+    [Test]
+    public void HasStateForBlock_archive_node_snap_synced_at_pivot_returns_true()
+    {
+        // Archive node snap synced: 18_000_000 >= LowestInsertedHeader 18_000_000
+        _pruningConfig.Mode.Returns(PruningMode.None);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
+        var headBlock = Build.A.Block.WithNumber(20_000_000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(18_000_000).TestObject);
+        var header = Build.A.BlockHeader.WithNumber(18_000_000).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_archive_node_snap_synced_after_pivot_returns_true()
+    {
+        // Archive node snap synced: 19_000_000 >= LowestInsertedHeader 18_000_000
+        _pruningConfig.Mode.Returns(PruningMode.None);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
+        var headBlock = Build.A.Block.WithNumber(20_000_000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(18_000_000).TestObject);
+        var header = Build.A.BlockHeader.WithNumber(19_000_000).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_pruning_node_snap_synced_respects_pruning_boundary()
+    {
+        // Pruning node snap synced: 19_999_937 >= (20_000_000 - 64 + 1)
+        _pruningConfig.Mode.Returns(PruningMode.Hybrid);
+        _pruningConfig.PruningBoundary.Returns(64);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
+        var headBlock = Build.A.Block.WithNumber(20_000_000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        var header = Build.A.BlockHeader.WithNumber(19_999_937).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_archive_node_snap_synced_after_pivot_updates_still_correct()
+    {
+        // Archive node snap synced: tests that SyncPivot can update but LowestInsertedHeader doesn't
+        // 19_500_000 >= LowestInsertedHeader 18_000_000 (not checking SyncPivot which is 19_900_000)
+        _pruningConfig.Mode.Returns(PruningMode.None);
+        _ethSyncingInfo.SyncMode.Returns(SyncMode.Full);
+        var headBlock = Build.A.Block.WithNumber(20_000_000).TestObject;
+        _blockTree.Head.Returns(headBlock);
+        _blockTree.SyncPivot.Returns((BlockNumber: 19_900_000L, BlockHash: TestItem.KeccakB));
+        _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(18_000_000).TestObject);
+        var header = Build.A.BlockHeader.WithNumber(19_500_000).TestObject;
+
+        bool result = _blockchainBridge.HasStateForBlock(header);
+
+        result.Should().BeTrue();
     }
 }
