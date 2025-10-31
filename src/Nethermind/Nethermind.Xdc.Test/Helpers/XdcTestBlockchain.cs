@@ -72,6 +72,8 @@ public class XdcTestBlockchain : TestBlockchain
     public IQuorumCertificateManager QuorumCertificateManager => _fromXdcContainer.QuorumCertificateManager;
     public ITimeoutCertificateManager TimeoutCertificateManager => _fromXdcContainer.TimeoutCertificateManager;
     public ISnapshotManager SnapshotManager => _fromXdcContainer.SnapshotManager;
+    public ISigner Signer => _fromXdcContainer.Signer;
+    public IHeaderValidator HeaderValidator => _fromXdcContainer.HeaderValidator;
 
     protected XdcTestBlockchain()
     {
@@ -81,7 +83,6 @@ public class XdcTestBlockchain : TestBlockchain
     const int MAX_EPOCH_COUNT = 10;
     const int EPOCH_LENGTH = 5;
 
-    protected ISigner Signer => _fromXdcContainer.Signer;
 
     private FromXdcContainer _fromXdcContainer = null!;
     public class FromXdcContainer(
@@ -117,16 +118,16 @@ public class XdcTestBlockchain : TestBlockchain
         Lazy<IQuorumCertificateManager> quorumCertificateManager,
         Lazy<ITimeoutCertificateManager> timeoutCertificateManager,
         Lazy<ISnapshotManager> snapshotManager,
-        Lazy<ISigner> signer
+        Lazy<ISigner> signer,
+        Lazy<IHeaderValidator> headerValidator
     ) : FromContainer(stateReader, ethereumEcdsa, nonceManager, receiptStorage, txPool, worldStateManager, blockPreprocessorStep, blockTree, blockFinder, logFinder, chainHeadInfoProvider, dbProvider, specProvider, sealEngine, transactionComparerProvider, poSSwitcher, chainLevelInfoRepository, mainProcessingContext, readOnlyTxProcessingEnvFactory, blockProducerEnvFactory, configuration, testBlockchainUtil, poWTestBlockchainUtil, manualTimestamper, blockProductionTrigger, shareableTxProcessorSource, sealer, forkInfo)
     {
         public IEpochSwitchManager EpochSwitchManager => epochSwitchManager.Value;
         public IQuorumCertificateManager QuorumCertificateManager => quorumCertificateManager.Value;
         public ITimeoutCertificateManager TimeoutCertificateManager => timeoutCertificateManager.Value;
-
         public ISnapshotManager SnapshotManager => snapshotManager.Value;
-
         public ISigner Signer => signer.Value;
+        public IHeaderValidator HeaderValidator => headerValidator.Value;
     }
     // Please don't add any new parameter to this method. Pass any customization via autofac's configuration
     // or override method or a utility function that wrap around the autofac configuration.
