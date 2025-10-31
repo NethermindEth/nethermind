@@ -62,12 +62,12 @@ public class OptimismCostHelperTests
                 Build.A.Transaction
                     .To(Build.An.Address.TestObject)
                     .WithNonce(1)
-                    .WithData("0102030405060708")
+                    .WithDataHex("0102030405060708")
                     .TestObject,
                 Build.A.Transaction
                     .To(Build.An.Address.TestObject)
                     .WithNonce(2)
-                    .WithData("0102030405060708090A0B0C0D0E0F10")
+                    .WithDataHex("0102030405060708090A0B0C0D0E0F10")
                     .TestObject
             ]
         )
@@ -77,7 +77,7 @@ public class OptimismCostHelperTests
                 Build.A.Transaction
                     .To(Build.An.Address.TestObject)
                     .WithNonce(1)
-                    .WithData("0102030405060708")
+                    .WithDataHex("0102030405060708")
                     .TestObject,
                 Build.A.Transaction
                     .To(Build.An.Address.TestObject)

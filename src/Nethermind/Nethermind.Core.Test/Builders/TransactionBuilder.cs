@@ -53,13 +53,13 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithData(byte[] data)
+        public TransactionBuilder<T> WithData(byte[]? data)
         {
             TestObjectInternal.Data = data;
             return this;
         }
 
-        public TransactionBuilder<T> WithData(string dataHex) => WithData(Bytes.FromHexString(dataHex));
+        public TransactionBuilder<T> WithDataHex(string dataHex) => WithData(Bytes.FromHexString(dataHex));
 
         public TransactionBuilder<T> WithCode(byte[] data)
         {
