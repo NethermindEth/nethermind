@@ -18,10 +18,10 @@ using BlockRoundInfo = Nethermind.Xdc.Types.BlockRoundInfo;
 
 namespace Nethermind.Xdc;
 
-internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, IRlpStreamDecoder<QuorumCertificate>
+internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertificate>
 {
     private XdcBlockInfoDecoder _blockInfoDecoder = new XdcBlockInfoDecoder();
-    public QuorumCertificate Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override QuorumCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
             return null;
@@ -47,7 +47,7 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, I
         return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
-    public QuorumCertificate Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override QuorumCertificate DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
             return null;
@@ -84,7 +84,7 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, I
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public void Encode(RlpStream stream, QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -114,7 +114,7 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, I
         stream.Encode(item.GapNumber);
     }
 
-    public int GetLength(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int GetLength(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }

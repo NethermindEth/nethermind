@@ -5,9 +5,9 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp;
 
-public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder<Withdrawal>
+public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
 {
-    public Withdrawal? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Withdrawal? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
         {
@@ -27,7 +27,7 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
         };
     }
 
-    public Withdrawal? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Withdrawal? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
         {
@@ -47,7 +47,7 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
         };
     }
 
-    public void Encode(RlpStream stream, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -79,5 +79,5 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
         Rlp.LengthOfAddressRlp +
         Rlp.LengthOf(item.AmountInGwei);
 
-    public int GetLength(Withdrawal item, RlpBehaviors _) => Rlp.LengthOfSequence(GetContentLength(item));
+    public override int GetLength(Withdrawal item, RlpBehaviors _) => Rlp.LengthOfSequence(GetContentLength(item));
 }
