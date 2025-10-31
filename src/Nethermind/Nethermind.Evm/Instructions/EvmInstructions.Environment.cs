@@ -42,7 +42,7 @@ internal static partial class EvmInstructions
         /// <summary>
         /// The gas cost for the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static long GasCost(IReleaseSpec spec) => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as ref to big endian word.
         /// </summary>
@@ -317,7 +317,7 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpEnv32Bytes
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpEnv.GasCost;
+        gasAvailable -= TOpEnv.GasCost(vm.Spec);
 
         ref readonly ValueHash256 result = ref TOpEnv.Operation(vm);
 
@@ -460,6 +460,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpOrigin : IOpEnv32Bytes
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static ref readonly ValueHash256 Operation(VirtualMachine vm)
             => ref vm.TxExecutionContext.Origin;
     }
