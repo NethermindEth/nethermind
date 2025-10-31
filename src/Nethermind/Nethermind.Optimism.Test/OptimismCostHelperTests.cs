@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -38,12 +38,14 @@ public class OptimismCostHelperTests
     {
         yield return new(
             []
-        ){ExpectedResult = 0, TestName = "No txs"};
+        )
+        { ExpectedResult = 0, TestName = "No txs" };
 
         yield return new([
                 Build.A.Transaction.WithType(TxType.DepositTx).TestObject
             ]
-        ) { ExpectedResult = 0, TestName = "Deposit txs only" };
+        )
+        { ExpectedResult = 0, TestName = "Deposit txs only" };
 
         yield return new([
                 Build.A.Transaction.WithType(TxType.DepositTx).TestObject,
@@ -53,7 +55,8 @@ public class OptimismCostHelperTests
                     .TestObject,
                 Build.A.Transaction.WithType(TxType.DepositTx).TestObject
             ]
-        ) { ExpectedResult = MinTxSize * DefaultDaFootprintGasScalar, TestName = "Deposit and legacy txs" };
+        )
+        { ExpectedResult = MinTxSize * DefaultDaFootprintGasScalar, TestName = "Deposit and legacy txs" };
 
         yield return new([
                 Build.A.Transaction
@@ -67,7 +70,8 @@ public class OptimismCostHelperTests
                     .WithData("0102030405060708090A0B0C0D0E0F10")
                     .TestObject
             ]
-        ) { ExpectedResult = 2 * MinTxSize * DefaultDaFootprintGasScalar, TestName = "Txs with small data"};
+        )
+        { ExpectedResult = 2 * MinTxSize * DefaultDaFootprintGasScalar, TestName = "Txs with small data" };
 
         yield return new([
                 Build.A.Transaction
@@ -81,7 +85,8 @@ public class OptimismCostHelperTests
                     .WithData(new Random(42).NextBytes(512))
                     .TestObject
             ]
-        ) { ExpectedResult = 172000 + MinTxSize * DefaultDaFootprintGasScalar, TestName = "Txs with small and large data"};
+        )
+        { ExpectedResult = 172000 + MinTxSize * DefaultDaFootprintGasScalar, TestName = "Txs with small and large data" };
     }
 
     [TestCaseSource(nameof(DaFootprintTestCases))]
