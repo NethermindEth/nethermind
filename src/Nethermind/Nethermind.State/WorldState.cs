@@ -52,15 +52,15 @@ namespace Nethermind.State
             }
         }
 
-        public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager)
+        public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager)
             : this(trieStore, codeDb, logManager, null, null)
         {
         }
 
         internal WorldState(
             ITrieStore trieStore,
-            IKeyValueStoreWithBatching? codeDb,
-            ILogManager? logManager,
+            IKeyValueStoreWithBatching codeDb,
+            ILogManager logManager,
             StateTree? stateTree = null,
             IStorageTreeFactory? storageTreeFactory = null,
             PreBlockCaches? preBlockCaches = null,
@@ -75,7 +75,7 @@ namespace Nethermind.State
             _logger = logManager.GetClassLogger<WorldState>();
         }
 
-        public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
+        public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
             : this(trieStore, codeDb, logManager, null, preBlockCaches: preBlockCaches, populatePreBlockCache: populatePreBlockCache)
         {
         }
