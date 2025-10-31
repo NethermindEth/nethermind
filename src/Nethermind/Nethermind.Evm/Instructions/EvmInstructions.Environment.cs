@@ -59,7 +59,7 @@ internal static partial class EvmInstructions
         /// <summary>
         /// The gas cost for the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static long GasCost(IReleaseSpec spec) => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as address.
         /// </summary>
@@ -150,7 +150,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost as defined by the operation implementation.
-        gasAvailable -= TOpEnv.GasCost;
+        gasAvailable -= TOpEnv.GasCost(vm.Spec);
 
         // Execute the operation and retrieve the result.
         Address result = TOpEnv.Operation(vm.EvmState);
@@ -440,6 +440,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpAddress : IOpEnvAddress
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static Address Operation(EvmState vmState)
             => vmState.Env.ExecutingAccount;
     }
@@ -449,6 +450,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCaller : IOpEnvAddress
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static Address Operation(EvmState vmState)
             => vmState.Env.Caller;
     }
