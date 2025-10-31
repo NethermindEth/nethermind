@@ -51,7 +51,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJumpDest(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         // Deduct the gas cost specific for a jump destination marker.
-        gasAvailable -= GasCostOf.JumpDest;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.JumpDest;
 
         return EvmExceptionType.None;
     }
