@@ -16,6 +16,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Optimism;
@@ -68,12 +69,13 @@ public class OptimismBlockProcessor : BlockProcessor
 
         if (_opSpecHelper.IsJovian(block.Header))
         {
-            var (ulongValue, hasOverflow) = _costHelper.ComputeDAFootprint(block, _stateProvider).UlongWithOverflow;
-            if (hasOverflow || ulongValue > long.MaxValue)
-                throw new InvalidOperationException("DA Footprint overflow");
+            UInt256 daFootprintBig = _costHelper.ComputeDaFootprint(block, _stateProvider);
+            var (daFootprint, hasOverflow) = daFootprintBig.UlongWithOverflow;
+            if (hasOverflow || daFootprint > long.MaxValue)
+                throw new InvalidOperationException($"DA Footprint overflow ({daFootprintBig}) at block {block.Header.Number}");
 
-            var daFootprint = (long)ulongValue;
-            block.Header.GasUsed = Math.Max(block.GasUsed, daFootprint);
+            // TODO: validate gasUsed < daFootprint
+            block.Header.BlobGasUsed = daFootprint;
             block.Header.Hash = block.Header.CalculateHash();
         }
 

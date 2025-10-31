@@ -6,6 +6,7 @@ using System.Linq;
 using CkzgLib;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -57,6 +58,8 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Data = data;
             return this;
         }
+
+        public TransactionBuilder<T> WithData(string dataHex) => WithData(Bytes.FromHexString(dataHex));
 
         public TransactionBuilder<T> WithCode(byte[] data)
         {
