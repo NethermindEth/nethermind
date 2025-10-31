@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using CkzgLib;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
@@ -20,8 +22,6 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Consensus.Transactions;
-using CkzgLib;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
@@ -170,14 +170,17 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         foreach (var txr in txRlp)
         {
             Transaction? tx = TxDecoder.Instance.Decode(new RlpStream(txr), RlpBehaviors.SkipTypedWrapping);
-
+            IReleaseSpec spec = NextBlockSpecHelper.GetSpec(specProvider, parentHeader, payloadAttributes, blocksConfig);
 
             if (tx != null)
             {
+                tx.SenderAddress ??= new EthereumEcdsa(specProvider.ChainId).RecoverAddress(tx);
+                tx.Hash ??= tx.CalculateHash();
+
                 if (tx.SupportsBlobs is true)
                 {
-                    ShardBlobNetworkWrapper stubWrapper = IBlobProofsManager.For(
-                        NextBlockSpecHelper.GetSpec(specProvider, parentHeader, payloadAttributes, blocksConfig).BlobProofVersion
+                    tx.NetworkWrapper = IBlobProofsManager.For(
+                        spec.BlobProofVersion
                         ).AllocateWrapper(_emptyBlobs[0..tx.BlobVersionedHashes!.Length]);
                 }
 
