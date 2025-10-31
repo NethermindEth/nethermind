@@ -689,7 +689,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct the base gas cost for reading gas.
-        gasAvailable -= GasCostOf.Base;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
 
         // If gas falls below zero after cost deduction, signal out-of-gas error.
         if (gasAvailable < 0) goto OutOfGas;
