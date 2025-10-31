@@ -141,10 +141,11 @@ public class EthSimulateTestsBlocksAndTransactions
         };
     }
 
-    public static Transaction GetTransferTxData(UInt256 nonce, IEthereumEcdsa ethereumEcdsa, PrivateKey from, Address to, UInt256 amount)
+    public static Transaction GetTransferTxData(UInt256 nonce, IEthereumEcdsa ethereumEcdsa, PrivateKey from, Address to, UInt256 amount, TxType type = TxType.EIP1559)
     {
         Transaction tx = new()
         {
+            Type = type,
             Value = amount,
             Nonce = nonce,
             GasLimit = 50_000,
@@ -192,7 +193,7 @@ public class EthSimulateTestsBlocksAndTransactions
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
-        Transaction txMainnetAtoB = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+        Transaction txMainnetAtoB = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
 
         SimulatePayload<TransactionForRpc> payload = CreateEthMovedPayload(chain, nonceA);
 
@@ -233,7 +234,7 @@ public class EthSimulateTestsBlocksAndTransactions
         UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
 
         Transaction txMainnetAtoB =
-            GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+            GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
 
         SimulatePayload<TransactionForRpc> payload = CreateTransactionsForcedFail(chain, nonceA);
 
@@ -276,6 +277,7 @@ public class EthSimulateTestsBlocksAndTransactions
                             },
                             "calls": [
                               {
+                                "type": "0x3",
                                 "from": "0xc000000000000000000000000000000000000000",
                                 "to": "0xc100000000000000000000000000000000000000",
                                 "gas": "0x5208",
