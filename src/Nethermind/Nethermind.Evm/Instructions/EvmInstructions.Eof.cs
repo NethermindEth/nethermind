@@ -69,7 +69,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct base gas cost for this instruction.
-        gasAvailable -= GasCostOf.Base;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
 
         // Push the length of the return data buffer (as a 32-bit unsigned integer) onto the stack.
         stack.PushUInt32<TTracingInst>((uint)vm.ReturnDataBuffer.Length);
