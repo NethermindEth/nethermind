@@ -103,7 +103,8 @@ internal static partial class EvmInstructions
         }
 
         // Deduct the fixed gas cost and the memory cost based on the size (rounded up to 32-byte words).
-        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
+        gasAvailable -= (vm.Spec.IsEip7904Enabled ? GasCostOf.CopyPerWord : GasCostOf.Memory) * EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
