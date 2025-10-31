@@ -7,6 +7,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
@@ -24,7 +25,7 @@ public class BlockAncestorTrackerTests
             .OfChainLength(chainLength)
             .TestObject;
 
-        using BlockAncestorTracker tracker = new BlockAncestorTracker(tree, maxDepth: depth, keptBlocks: lastNBlock);
+        using BlockAncestorTracker tracker = new BlockAncestorTracker(tree, LimboLogs.Instance, maxDepth: depth, keptBlocks: lastNBlock);
 
         for (int blockNumber = chainLength - lastNBlock; blockNumber < chainLength; blockNumber++)
         {
@@ -50,6 +51,7 @@ public class BlockAncestorTrackerTests
 
         using BlockAncestorTracker tracker = new BlockAncestorTracker(
             tree,
+            LimboLogs.Instance,
             maxDepth: depth,
             keptBlocks: lastNBlock,
             ingestSynchronously: ingestSynchronously);
@@ -89,6 +91,7 @@ public class BlockAncestorTrackerTests
 
         using BlockAncestorTracker tracker = new BlockAncestorTracker(
             tree,
+            LimboLogs.Instance,
             maxDepth: depth,
             keptBlocks: lastNBlock,
             ingestSynchronously: ingestSynchronously);

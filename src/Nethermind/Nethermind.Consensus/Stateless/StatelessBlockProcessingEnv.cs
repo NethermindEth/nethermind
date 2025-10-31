@@ -76,7 +76,7 @@ public class StatelessBlockProcessingEnv(
 
     private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockTree blockFinder)
     {
-        BlockAncestorTracker ancestorTracker = new BlockAncestorTracker(blockFinder);
+        BlockAncestorTracker ancestorTracker = new BlockAncestorTracker(blockFinder, logManager);
         var blockhashProvider = new BlockhashProvider(blockFinder, specProvider, state, ancestorTracker, logManager);
         var vm = new VirtualMachine(blockhashProvider, specProvider, logManager);
         return new TransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);

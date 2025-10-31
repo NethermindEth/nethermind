@@ -3,16 +3,14 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 using NonBlocking;
-using Prometheus;
 
 namespace Nethermind.Blockchain;
 
@@ -38,7 +36,7 @@ public sealed class BlockAncestorTracker: IBlockAncestorTracker, IDisposable
     private readonly int _keptBlocks;
 
     // What is the N-th ancestor of a hash. The N is the index-1 of the array and the key is the current block.
-    // EG: _ancestor[0][block] is the pparent, while _ancestor[1][block] is the grandparent.
+    // EG: _ancestor[0][block] is the parent, while _ancestor[1][block] is the grandparent.
     private ConcurrentDictionary<Hash256, Hash256>[] _ancestors;
 
     // There is potentially a slight delay when ingest channel is published and when it will actually be processed
@@ -50,13 +48,12 @@ public sealed class BlockAncestorTracker: IBlockAncestorTracker, IDisposable
     private ChannelWriter<BlockHeader>? _ingestChannel;
     private bool _isDisposed = false;
 
-    private Counter _hitMiss = Prometheus.Metrics.CreateCounter("blockhash_populate_hit_miss", "populate_time", "hit");
-    private Counter _time = Prometheus.Metrics.CreateCounter("blockhash_populate_time", "populate_time");
-    private Counter _count = Prometheus.Metrics.CreateCounter("blockhash_populate_count", "populate_time");
     private readonly IBlockTree _blockTree;
+    private ILogger _logger;
 
     public BlockAncestorTracker(
         IBlockTree blockTree,
+        ILogManager logManager,
         bool ingestSynchronously = false,
         int maxDepth = DEFAULT_MAX_DEPTH,
         int keptBlocks = DEFAULT_LAST_N_BLOCK_TO_KEEP
@@ -66,6 +63,7 @@ public sealed class BlockAncestorTracker: IBlockAncestorTracker, IDisposable
         _keptBlocks = keptBlocks;
 
         _blockTree = blockTree;
+        _logger = logManager.GetClassLogger<BlockAncestorTracker>();
 
         _ancestors = new ConcurrentDictionary<Hash256, Hash256>[_maxDepth];
         for (int i = 0; i < _maxDepth; i++)
@@ -97,7 +95,14 @@ public sealed class BlockAncestorTracker: IBlockAncestorTracker, IDisposable
             {
                 await foreach (BlockHeader blockHeader in channel.Reader.ReadAllAsync())
                 {
-                    PopulateBasedOnBlockHeader(blockHeader);
+                    try
+                    {
+                        PopulateBasedOnBlockHeader(blockHeader);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Error("Error populating block ancestor", ex);
+                    }
                 }
             });
         }
@@ -127,8 +132,6 @@ public sealed class BlockAncestorTracker: IBlockAncestorTracker, IDisposable
 
     private void PopulateBasedOnBlockHeader(BlockHeader header)
     {
-        long sw = Stopwatch.GetTimestamp();
-
         Hash256 currentHash = header.Hash;
         Hash256 parentHash = header.ParentHash;
         if (parentHash is null) return; // genesis
@@ -205,9 +208,6 @@ public sealed class BlockAncestorTracker: IBlockAncestorTracker, IDisposable
                 }
             }
         }
-
-        _time.Inc(Stopwatch.GetTimestamp() - sw);
-        _count.Inc();
     }
 
     public Hash256? GetAncestor(Hash256 hash, long depth)
@@ -217,7 +217,6 @@ public sealed class BlockAncestorTracker: IBlockAncestorTracker, IDisposable
         // Node: lookback == 0 is parent.
         if (_ancestors[depth].TryGetValue(hash, out var hash256))
         {
-            _hitMiss.WithLabels("hit").Inc();
             return hash256;
         }
 
@@ -231,7 +230,6 @@ public sealed class BlockAncestorTracker: IBlockAncestorTracker, IDisposable
             return GetAncestor(lastBlockHeader.ParentHash, depth - 1);
         }
 
-        _hitMiss.WithLabels("miss").Inc();
         return null;
     }
 

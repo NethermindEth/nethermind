@@ -87,7 +87,7 @@ public class ReorgTests
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
             transactionComparerProvider.GetDefaultComparer());
-        BlockAncestorTracker ancestorTracker = new BlockAncestorTracker(_blockTree);
+        BlockAncestorTracker ancestorTracker = new BlockAncestorTracker(_blockTree, LimboLogs.Instance);
         BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, ancestorTracker, LimboLogs.Instance);
         VirtualMachine virtualMachine = new(
             blockhashProvider,

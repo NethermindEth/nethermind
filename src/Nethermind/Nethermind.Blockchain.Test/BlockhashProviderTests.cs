@@ -44,7 +44,7 @@ public class BlockhashProviderTests
     private BlockhashProvider CreateBlockHashProvider(IBlockTree tree, IReleaseSpec spec)
     {
         (IWorldState worldState, Hash256 _) = CreateWorldState();
-        BlockAncestorTracker ancestorTracker = new BlockAncestorTracker(tree);
+        BlockAncestorTracker ancestorTracker = new BlockAncestorTracker(tree, LimboLogs.Instance);
         BlockhashProvider provider = new(tree, new TestSpecProvider(spec), worldState, ancestorTracker, LimboLogs.Instance, disableFallback: _disableFallback);
         return provider;
     }
@@ -345,7 +345,7 @@ public class BlockhashProviderTests
         var specProvider = new CustomSpecProvider(
             (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
             (new ForkActivation(0, current.Timestamp), Prague.Instance));
-        BlockAncestorTracker ancestorTracker = new BlockAncestorTracker(tree);
+        BlockAncestorTracker ancestorTracker = new BlockAncestorTracker(tree, LimboLogs.Instance);
         BlockhashProvider provider = new(tree, specProvider, worldState, ancestorTracker, LimboLogs.Instance);
         BlockhashStore store = new(specProvider, worldState);
 
