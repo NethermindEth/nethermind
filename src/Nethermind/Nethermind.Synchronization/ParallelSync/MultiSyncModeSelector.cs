@@ -201,7 +201,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             best.IsInFullSync = ShouldBeInFullSyncMode(best);
                             best.IsInDisconnected = ShouldBeInDisconnectedMode(best);
                             best.IsInWaitingForBlock = ShouldBeInWaitingForBlockMode(best);
-                            if (_logger.IsTrace) LogSnapshot(best);
+                            if (_logger.IsTrace) _logger.Trace($"Snapshot: {BuildStateStringDebug(best)}");
 
                             newModes = SyncMode.None;
                             CheckAddFlag(best.IsInUpdatingPivot, SyncMode.UpdatingPivot, ref newModes);
@@ -239,22 +239,6 @@ namespace Nethermind.Synchronization.ParallelSync
             }
 
             UpdateSyncModes(newModes, reason);
-        }
-
-        private void LogSnapshot(Snapshot snapshot)
-        {
-            _logger.Trace($@"Snapshot:
-{nameof(Snapshot.Processed)}:           {snapshot.Processed}
-{nameof(Snapshot.Block)}:              {snapshot.Block}
-{nameof(Snapshot.Header)}:             {snapshot.Header}
-{nameof(Snapshot.ChainDifficulty)}:    {snapshot.ChainDifficulty}
-{nameof(Snapshot.IsInBeaconControl)}:  {snapshot.IsInBeaconControl}
-{nameof(Snapshot.TargetBlock)}:        {snapshot.TargetBlock}
-{nameof(Snapshot.PivotNumber)}:        {snapshot.PivotNumber}
-{nameof(Snapshot.Peer)}:
-  {nameof(Snapshot.Peer.Block)}:       {snapshot.Peer.Block}
-  {nameof(Snapshot.Peer.TotalDifficulty)}: {snapshot.Peer.TotalDifficulty}
-");
         }
 
         private static void CheckAddFlag(in bool flag, SyncMode mode, ref SyncMode resultMode)
