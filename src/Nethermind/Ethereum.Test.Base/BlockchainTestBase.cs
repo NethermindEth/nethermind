@@ -35,6 +35,7 @@ using NUnit.Framework;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin;
 using Nethermind.JsonRpc;
+using System.Reflection;
 
 namespace Ethereum.Test.Base;
 
@@ -311,40 +312,32 @@ public abstract class BlockchainTestBase
 
     private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IEngineRpcModule engineRpcModule)
     {
-        (ExecutionPayload, string[]?, string[]?, string?)[] payloads = [.. JsonToEthereumTest.Convert(newPayloads)];
+        (ExecutionPayloadV3, string[]?, string[]?, int, int)[] payloads = [.. JsonToEthereumTest.Convert(newPayloads)];
 
         // blockchain test engine
-        foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string[]? validationError, string? newPayloadVersion) in payloads)
+        foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string[]? validationError, int newPayloadVersion, int fcuVersion) in payloads)
         {
             ResultWrapper<PayloadStatusV1> res;
-            byte[]?[] hashes = blobVersionedHashes is null ? null : [.. blobVersionedHashes.Select(x => Bytes.FromHexString(x))];
+            byte[]?[] hashes = blobVersionedHashes is null ? [] : [.. blobVersionedHashes.Select(x => Bytes.FromHexString(x))];
 
-            switch (newPayloadVersion ?? "4")
+            MethodInfo newPayloadMethod = engineRpcModule.GetType().GetMethod($"engine_newPayloadV{newPayloadVersion}");
+            List<object?> newPayloadParams = [executionPayload];
+            if (newPayloadVersion >= 3)
             {
-                case "1":
-                    res = await engineRpcModule.engine_newPayloadV1(executionPayload);
-                    break;
-                case "2":
-                    res = await engineRpcModule.engine_newPayloadV2(executionPayload);
-                    break;
-                case "3":
-                    res = await engineRpcModule.engine_newPayloadV3((ExecutionPayloadV3)executionPayload, [], executionPayload.ParentBeaconBlockRoot);
-                    break;
-                case "4":
-                    res = await engineRpcModule.engine_newPayloadV4((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
-                    break;
-                // case "5":
-                //     res = await engineRpcModule.engine_newPayloadV5((ExecutionPayloadV3)executionPayload, hashes, executionPayload.ParentBeaconBlockRoot, []);
-                //     break;
-                default:
-                    Assert.Fail("Invalid blockchain engine test, version not recognised.");
-                    continue;
+                newPayloadParams.AddRange([hashes, executionPayload.ParentBeaconBlockRoot]);
             }
+            if (newPayloadVersion >= 4)
+            {
+                newPayloadParams.Add(executionPayload.ExecutionRequests);
+            }
+
+            res = await (Task<ResultWrapper<PayloadStatusV1>>)newPayloadMethod.Invoke(engineRpcModule, [.. newPayloadParams]);
 
             if (res.Result.ResultType == ResultType.Success)
             {
                 ForkchoiceStateV1 fcuState = new(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash);
-                await engineRpcModule.engine_forkchoiceUpdatedV3(fcuState);
+                MethodInfo fcuMethod = engineRpcModule.GetType().GetMethod($"engine_forkchoiceUpdatedV{fcuVersion}");
+                await (Task<ResultWrapper<ForkchoiceUpdatedV1Result>>)fcuMethod.Invoke(engineRpcModule, [fcuState, null]);
             }
         }
     }

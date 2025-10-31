@@ -85,7 +85,7 @@ namespace Ethereum.Test.Base
             return header;
         }
 
-        public static IEnumerable<(ExecutionPayload, string[]?, string[]?, string?)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
+        public static IEnumerable<(ExecutionPayloadV3, string[]?, string[]?, int, int)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
         {
             if (executionPayloadsJson is null)
             {
@@ -120,7 +120,7 @@ namespace Ethereum.Test.Base
                     Withdrawals = executionPayload.Withdrawals is null ? null : [.. executionPayload.Withdrawals.Select(x => Rlp.Decode<Withdrawal>(Bytes.FromHexString(x)))],
                     Transactions = [.. executionPayload.Transactions.Select(x => Bytes.FromHexString(x))],
                     ExecutionRequests = []
-                }, blobVersionedHashes, validationError, engineNewPayload.NewPayloadVersion);
+                }, blobVersionedHashes, validationError, int.Parse(engineNewPayload.NewPayloadVersion ?? "4"), int.Parse(engineNewPayload.ForkChoiceUpdatedVersion ?? "3"));
             }
         }
 
