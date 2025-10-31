@@ -552,7 +552,7 @@ internal static partial class EvmInstructions
         where TOpCount : IOpCount
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.VeryLow;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
         // Swap the top element with the (n+1)th element; ensure adequate stack depth.
         return stack.Swap<TTracingInst>(TOpCount.Count + 1);
     }
