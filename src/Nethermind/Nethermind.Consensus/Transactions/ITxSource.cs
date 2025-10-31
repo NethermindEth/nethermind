@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -11,5 +11,8 @@ namespace Nethermind.Consensus.Transactions
     {
         IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false);
         bool SupportsBlobs { get; }
+
+
+        public static Queue<Transaction[]> NewTxs { get; } = new();
     }
 }

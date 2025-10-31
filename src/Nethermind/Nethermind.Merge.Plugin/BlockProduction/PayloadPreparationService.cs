@@ -19,6 +19,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -167,6 +168,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         if (isTrace) TraceBefore(payloadId, parentHeader);
 
         int submitted = 0;
+        var txList = new List<Transaction>();
         foreach (var txr in txRlp)
         {
             Transaction? tx = TxDecoder.Instance.Decode(new RlpStream(txr), RlpBehaviors.SkipTypedWrapping);
@@ -184,9 +186,11 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                         ).AllocateWrapper(_emptyBlobs[0..tx.BlobVersionedHashes!.Length]);
                 }
 
-                var status = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+                txList.Add(tx);
                 submitted++;
             }
+
+            ITxSource.NewTxs.Enqueue(txList.ToArray());
         }
 
         if (submitted == 0)
@@ -234,6 +238,10 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts),
             (id, currentContext) =>
             {
+                if (currentContext.CurrentBestBlock?.Transactions.Any() ?? false)
+                {
+                    return currentContext;
+                }
                 if (cts.IsCancellationRequested)
                 {
                     // If cancelled, return previous
