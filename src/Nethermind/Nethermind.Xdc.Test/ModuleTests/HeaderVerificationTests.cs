@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
@@ -43,22 +44,12 @@ internal class HeaderVerificationTests
 
         var proposedBlockInfo = new BlockRoundInfo(invalidRoundBlockParent.Hash!, invalidRoundBlockParent.ExtraConsensusData!.CurrentRound, invalidRoundBlockParent.Number);
 
-        var voteForSign = new Vote(proposedBlockInfo, 450);
+        var voteForSign = new Vote(proposedBlockInfo, 1);
         
         var validSigners = xdcTestBlockchain.MasterNodesRotator.MasternodesPvKeys
             .Where(pvkey => invalidRoundBlockParent.ValidatorsAddress!.Value.Contains(pvkey.Address))
             .Select(pvkey => new Signer(0, pvkey, xdcTestBlockchain.LogManager))
             .ToList();
-
-        void Sign(Vote vote, Consensus.ISigner signer)
-        {
-            var voteEncoder = new VoteDecoder();
-
-            KeccakRlpStream stream = new();
-            voteEncoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-            vote.Signature = signer.Sign(stream.GetValueHash());
-            vote.Signer = signer.Address;
-        }
 
         List<Signature> signatures = [];
         foreach (var signer in validSigners)
@@ -67,8 +58,7 @@ internal class HeaderVerificationTests
             signatures.Add(voteForSign.Signature!);
         }
 
-
-        var quorumCert = new QuorumCertificate(proposedBlockInfo, signatures.ToArray(), 450);
+        var quorumCert = new QuorumCertificate(proposedBlockInfo, signatures.ToArray(), 1);
 
         var extra = new ExtraFieldsV2(proposedBlockInfo.Round, quorumCert);
         var extraInBytes = Rlp.Encode(extra).Bytes;
@@ -85,7 +75,6 @@ internal class HeaderVerificationTests
 
         var coinbaseValidatorMismatchBlock = GetLastBlock(false);
         var coinbaseValidatorMismatchBlockParent = xdcTestBlockchain.BlockTree.FindHeader(coinbaseValidatorMismatchBlock.ParentHash!);
-
 
         var notQualifiedSigner = TestItem.PrivateKeyA; // private key
         ((Signer)xdcTestBlockchain.Signer).SetSigner(notQualifiedSigner);
@@ -254,6 +243,45 @@ internal class HeaderVerificationTests
         Assert.That(result, Is.True);
     }
 
+    [Test]
+    public void Block_With_QcSignature_Below_Threshold_Fails()
+    {
+        var invalidQcSignatureBlock = GetLastHeader(false);
+        var invalidQcSignatureBlockParent = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(invalidQcSignatureBlock.ParentHash!)!;
+        var proposedBlockInfo = new BlockRoundInfo(invalidQcSignatureBlockParent!.Hash!, invalidQcSignatureBlockParent.ExtraConsensusData!.CurrentRound, invalidQcSignatureBlockParent.Number);
+        var voteForSign = new Vote(proposedBlockInfo, 1);
+        var validSigners = xdcTestBlockchain.MasterNodesRotator.MasternodesPvKeys
+            .Where(pvkey => invalidQcSignatureBlockParent.ValidatorsAddress!.Value.Contains(pvkey.Address))
+            .Select(pvkey => new Signer(0, pvkey, xdcTestBlockchain.LogManager))
+            .ToList();
+        List<Signature> signatures = [];
+
+        double threshold = xdcTestBlockchain.SpecProvider.GetXdcSpec(invalidQcSignatureBlock).CertThreshold;
+
+        // Sign with only half of the valid signers to be below threshold
+        foreach (var signer in validSigners.Take((int)threshold - 1))
+        {
+            Sign(voteForSign, signer);
+            signatures.Add(voteForSign.Signature!);
+        }
+
+        var quorumCert = new QuorumCertificate(proposedBlockInfo, signatures.ToArray(), 1);
+        var extra = new ExtraFieldsV2(proposedBlockInfo.Round, quorumCert);
+        var extraInBytes = Rlp.Encode(extra).Bytes;
+        invalidQcSignatureBlock.ExtraData = extraInBytes;
+        var result = xdcHeaderValidator.Validate(invalidQcSignatureBlock, invalidQcSignatureBlockParent);
+        Assert.That(result, Is.False);
+    }
+
+    private void Sign(Vote vote, Consensus.ISigner signer)
+    {
+        var voteEncoder = new VoteDecoder();
+        KeccakRlpStream stream = new();
+        voteEncoder.Encode(stream, vote, RlpBehaviors.ForSealing);
+        vote.Signature = signer.Sign(stream.GetValueHash());
+        vote.Signer = signer.Address;
+    }
+
     private XdcBlockHeader GetLastHeader(bool isEpochSwitch)
     {
         if (!isEpochSwitch)
@@ -279,23 +307,13 @@ internal class HeaderVerificationTests
 
     private Block GetLastBlock(bool isEpochSwitch)
     {
-        if (!isEpochSwitch)
+        var header = GetLastHeader(isEpochSwitch);
+        var block = xdcTestBlockchain.BlockTree.FindBlock(header.Hash!);
+        if (block is null)
         {
-            return xdcTestBlockchain.BlockTree.Head!;
+            throw new InvalidOperationException("Block not found in the chain.");
         }
-        else
-        {
-            var currentHeader = (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header;
-            while (currentHeader is not null)
-            {
-                if (xdcTestBlockchain.EpochSwitchManager.IsEpochSwitchAtBlock(currentHeader))
-                {
-                    return xdcTestBlockchain.BlockTree.FindBlock(currentHeader.Hash!)!;
-                }
-                currentHeader = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(currentHeader.ParentHash!)!;
-            }
 
-            throw new InvalidOperationException("No epoch switch block found in the chain.");
-        }
+        return block;
     }
 }
