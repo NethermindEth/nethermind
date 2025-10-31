@@ -969,11 +969,6 @@ namespace Nethermind.Evm.TransactionProcessing
             return new TransactionResult(ErrorType.None, evmExceptionType);
         }
 
-        public static TransactionResult EvmException(EvmExceptionType evmExceptionType)
-        {
-            return new TransactionResult(null, evmExceptionType);
-        }
-
         public static readonly TransactionResult Ok = new();
 
         public static readonly TransactionResult BlockGasLimitExceeded = ErrorType.BlockGasLimitExceeded;

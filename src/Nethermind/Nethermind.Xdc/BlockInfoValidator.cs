@@ -5,11 +5,6 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
-public interface IBlockInfoValidator
-{
-    bool ValidateBlockInfo(BlockRoundInfo blockInfo, XdcBlockHeader blockHeader);
-}
-
 public class BlockInfoValidator : IBlockInfoValidator
 {
     public bool ValidateBlockInfo(BlockRoundInfo blockInfo, XdcBlockHeader blockHeader) =>
