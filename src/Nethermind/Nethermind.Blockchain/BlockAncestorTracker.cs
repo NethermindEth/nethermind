@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -20,14 +21,24 @@ public interface IBlockAncestorTracker
     Hash256? GetAncestor(Hash256 hash, long depth);
 }
 
+/// <summary>
+/// Track ancestor of a block using event from blocktree. It works by keeping a 256*128 mapping of the possible answer
+/// populated in background, effectively trading of memory for latency.
+/// </summary>
 public sealed class BlockAncestorTracker: IBlockAncestorTracker, IDisposable
 {
+    // Default should consume 1MB of ram.
+    public const int DEFAULT_MAX_DEPTH = 256;
+    public const int DEFAULT_LAST_N_BLOCK_TO_KEEP = 128;
+
     // How many block back to keep track of. 256 is the query range of `BlockHashProvider`.
-    private static readonly int _maxDepth = 256;
+    private readonly int _maxDepth;
 
     // How many number of block can query for their ancestor. Mainly to limit RAM.
-    private static readonly int _keptBlocks = 128;
+    private readonly int _keptBlocks;
 
+    // What is the N-th ancestor of a hash. The N is the index-1 of the array and the key is the current block.
+    // EG: _ancestor[0][block] is the pparent, while _ancestor[1][block] is the grandparent.
     private ConcurrentDictionary<Hash256, Hash256>[] _ancestors;
 
     // There is potentially a slight delay when ingest channel is published and when it will actually be processed
@@ -37,19 +48,23 @@ public sealed class BlockAncestorTracker: IBlockAncestorTracker, IDisposable
 
     // Channel to run ingestion in background.
     private ChannelWriter<BlockHeader>? _ingestChannel;
+    private bool _isDisposed = false;
 
     private Counter _hitMiss = Prometheus.Metrics.CreateCounter("blockhash_populate_hit_miss", "populate_time", "hit");
     private Counter _time = Prometheus.Metrics.CreateCounter("blockhash_populate_time", "populate_time");
     private Counter _count = Prometheus.Metrics.CreateCounter("blockhash_populate_count", "populate_time");
     private readonly IBlockTree _blockTree;
 
-    [UseConstructorForDependencyInjection]
-    public BlockAncestorTracker(IBlockTree blockTree): this(blockTree, false)
+    public BlockAncestorTracker(
+        IBlockTree blockTree,
+        bool ingestSynchronously = false,
+        int maxDepth = DEFAULT_MAX_DEPTH,
+        int keptBlocks = DEFAULT_LAST_N_BLOCK_TO_KEEP
+        )
     {
-    }
+        _maxDepth = maxDepth;
+        _keptBlocks = keptBlocks;
 
-    public BlockAncestorTracker(IBlockTree blockTree, bool ingestSynchronously = false)
-    {
         _blockTree = blockTree;
 
         _ancestors = new ConcurrentDictionary<Hash256, Hash256>[_maxDepth];
@@ -96,7 +111,12 @@ public sealed class BlockAncestorTracker: IBlockAncestorTracker, IDisposable
         if (_ingestChannel is not null)
         {
             _lastBlockHeader = e.Block.Header;
-            _ingestChannel.TryWrite(e.Block.Header);
+            SpinWait sw = new SpinWait();
+            while(!_ingestChannel.TryWrite(e.Block.Header))
+            {
+                if (_isDisposed) break;
+                sw.SpinOnce();
+            }
         }
         else
         {
@@ -192,7 +212,7 @@ public sealed class BlockAncestorTracker: IBlockAncestorTracker, IDisposable
 
     public Hash256? GetAncestor(Hash256 hash, long depth)
     {
-        Debug.Assert(depth <= _maxDepth);
+        if (depth >= _maxDepth || depth < 0) return null;
 
         // Node: lookback == 0 is parent.
         if (_ancestors[depth].TryGetValue(hash, out var hash256))
@@ -204,6 +224,10 @@ public sealed class BlockAncestorTracker: IBlockAncestorTracker, IDisposable
         BlockHeader? lastBlockHeader = _lastBlockHeader;
         if (lastBlockHeader?.Hash == hash)
         {
+            if (depth == 0)
+            {
+                return lastBlockHeader.ParentHash;
+            }
             return GetAncestor(lastBlockHeader.ParentHash, depth - 1);
         }
 
@@ -215,5 +239,6 @@ public sealed class BlockAncestorTracker: IBlockAncestorTracker, IDisposable
     {
         _blockTree.BlockAddedToMain -= BlockTreeOnBlockAddedToMain;
         _ingestChannel?.TryComplete();
+        _isDisposed = true;
     }
 }
