@@ -50,6 +50,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
                 .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
             .AddScoped<IVirtualMachine, VirtualMachine>()
+            .AddSingleton<IBlockAncestorTracker, BlockAncestorTracker>()
             .AddScoped<IBlockhashProvider, BlockhashProvider>()
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
             .AddScoped<IBlockhashStore, BlockhashStore>()

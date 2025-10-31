@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -20,8 +20,17 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test;
 
 [Parallelizable(ParallelScope.All)]
+[TestFixture(true)]
+[TestFixture(false)]
 public class BlockhashProviderTests
 {
+    private readonly bool _disableFallback;
+
+    public BlockhashProviderTests(bool disableFallback)
+    {
+        _disableFallback = disableFallback;
+    }
+
     private static (IWorldState, Hash256) CreateWorldState()
     {
         IWorldState worldState = TestWorldStateFactory.CreateForTest();
@@ -32,10 +41,11 @@ public class BlockhashProviderTests
         return (worldState, worldState.StateRoot);
     }
 
-    private static BlockhashProvider CreateBlockHashProvider(IBlockFinder tree, IReleaseSpec spec)
+    private BlockhashProvider CreateBlockHashProvider(IBlockTree tree, IReleaseSpec spec)
     {
         (IWorldState worldState, Hash256 _) = CreateWorldState();
-        BlockhashProvider provider = new(tree, new TestSpecProvider(spec), worldState, LimboLogs.Instance);
+        BlockAncestorTracker ancestorTracker = new BlockAncestorTracker(tree);
+        BlockhashProvider provider = new(tree, new TestSpecProvider(spec), worldState, ancestorTracker, LimboLogs.Instance, disableFallback: _disableFallback);
         return provider;
     }
 
@@ -58,6 +68,8 @@ public class BlockhashProviderTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_lookup_up_to_256_before_with_headers_only()
     {
+        if (_disableFallback) Assert.Ignore("Need head to be set for initialization");
+
         const int chainLength = 512;
 
         Block genesis = Build.A.Block.Genesis.TestObject;
@@ -100,6 +112,7 @@ public class BlockhashProviderTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_lookup_up_to_256_before_with_headers_only_and_competing_branches()
     {
+        if (_disableFallback) Assert.Ignore("Need head to be set for initialization");
         const int chainLength = 512;
 
         Block genesis = Build.A.Block.Genesis.TestObject;
@@ -116,6 +129,7 @@ public class BlockhashProviderTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_lookup_up_to_256_before_soon_after_fast_sync()
     {
+        if (_disableFallback) Assert.Ignore("Need head to be set for initialization");
         const int chainLength = 512;
 
         Block genesis = Build.A.Block.Genesis.TestObject;
@@ -239,6 +253,48 @@ public class BlockhashProviderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_lookup_on_reorg()
+    {
+        const int chainLength = 512;
+
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTree tree = Build.A.BlockTree(genesis).OfChainLength(chainLength).TestObject;
+        BlockhashProvider provider = CreateBlockHashProvider(tree, Frontier.Instance);
+
+        Hash256[] originalBranch = Enumerable.Range(chainLength - 128, 127)
+            .Select((blockNumber) => tree.FindHeader(blockNumber, BlockTreeLookupOptions.None)?.Hash!)
+            .ToArray();
+        BlockHeader originalBranchHead = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
+
+        BlockHeader branch = tree.FindHeader(chainLength - 128, BlockTreeLookupOptions.None)!;
+        for (int i = 0; i < 127; i++)
+        {
+            Block newBlock = Build.A.Block.WithParent(branch).WithNonce((ulong)(i + 10000)).TestObject;
+            tree.SuggestBlock(newBlock);
+            tree.UpdateMainChain(newBlock);
+            branch = newBlock.Header;
+        }
+
+        Hash256[] newBranch = Enumerable.Range(chainLength - 128, 127)
+            .Select((blockNumber) => tree.FindHeader(blockNumber, BlockTreeLookupOptions.None)?.Hash!)
+            .ToArray();
+        BlockHeader newBranchHead = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
+
+        Assert.That(newBranch, Is.Not.EquivalentTo(originalBranch));
+
+        for (int i = 1; i < 127; i++)
+        {
+            Hash256 blockHashAnswer = provider.GetBlockhash(newBranchHead, newBranchHead.Number - i)!;
+            Assert.That(blockHashAnswer, Is.Not.EqualTo(originalBranch[^i]));
+            Assert.That(blockHashAnswer, Is.EqualTo(newBranch[^i]));
+
+            blockHashAnswer = provider.GetBlockhash(originalBranchHead, originalBranchHead.Number - i)!;
+            Assert.That(blockHashAnswer, Is.EqualTo(originalBranch[^i]));
+            Assert.That(blockHashAnswer, Is.Not.EqualTo(newBranch[^i]));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void No_lookup_more_than_256_before()
     {
         const int chainLength = 512;
@@ -289,7 +345,8 @@ public class BlockhashProviderTests
         var specProvider = new CustomSpecProvider(
             (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
             (new ForkActivation(0, current.Timestamp), Prague.Instance));
-        BlockhashProvider provider = new(tree, specProvider, worldState, LimboLogs.Instance);
+        BlockAncestorTracker ancestorTracker = new BlockAncestorTracker(tree);
+        BlockhashProvider provider = new(tree, specProvider, worldState, ancestorTracker, LimboLogs.Instance);
         BlockhashStore store = new(specProvider, worldState);
 
         using var _ = worldState.BeginScope(current.Header);

@@ -19,15 +19,22 @@ namespace Nethermind.Blockchain
         private static readonly int _maxDepth = 256;
         private readonly IBlockFinder _blockTree;
         private readonly ISpecProvider _specProvider;
+        private readonly IBlockAncestorTracker _ancestorTracker;
         private readonly IBlockhashStore _blockhashStore;
         private readonly ILogger _logger;
 
-        public BlockhashProvider(IBlockFinder blockTree, ISpecProvider specProvider, IWorldState worldState, ILogManager? logManager)
+        private readonly bool _disableFallback;
+
+        public BlockhashProvider(IBlockFinder blockTree, ISpecProvider specProvider, IWorldState worldState, IBlockAncestorTracker ancestorTracker, ILogManager? logManager, bool disableFallback = false)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _ancestorTracker = ancestorTracker ?? throw new ArgumentNullException(nameof(ancestorTracker));
             _specProvider = specProvider;
             _blockhashStore = new BlockhashStore(specProvider, worldState);
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            // Used for testing to make sure ancestors are valid. Will definitely fail on processing block head-_maxDepth
+            _disableFallback = disableFallback;
         }
 
         public Hash256? GetBlockhash(BlockHeader currentBlock, long number)
@@ -41,14 +48,31 @@ namespace Nethermind.Blockchain
             }
 
             long current = currentBlock.Number;
-            if (number >= current || number < current - Math.Min(current, _maxDepth))
+            if (number >= current || number < current - Math.Min(current, _maxDepth) || number < 0)
             {
                 return null;
             }
 
-            return (currentBlock.ParentHash == _blockTree.HeadHash || currentBlock.ParentHash == _blockTree.Head?.ParentHash) ?
-                _blockTree.FindBlockHash(number) :
-                GetBlockHashFromNonHeadParent(currentBlock, number);
+            long depth = currentBlock.Number - number - 1;
+            if (depth == 0)
+            {
+                return currentBlock.ParentHash;
+            }
+
+            // Note: current block hash is not gonna be in the ancestor tracker, so we use the parent hash
+            Hash256? blockHash = _ancestorTracker.GetAncestor(currentBlock.ParentHash, depth - 1);
+            if (blockHash != null)
+            {
+                return blockHash;
+            }
+
+            if (_disableFallback)
+            {
+                throw new InvalidDataException(
+                    $"Ancestor not processed for {number}. Current block {currentBlock.ToString(BlockHeader.Format.Short)}. Fallback disabled.");
+            }
+
+            return GetBlockHashFromNonHeadParent(currentBlock, number);
         }
 
         private Hash256 GetBlockHashFromNonHeadParent(BlockHeader currentBlock, long number)
