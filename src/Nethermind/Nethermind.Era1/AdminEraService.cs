@@ -7,12 +7,12 @@ using Nethermind.Logging;
 namespace Nethermind.Era1;
 public class AdminEraService : IAdminEraService
 {
-    private readonly ILogger _logger;
-    private readonly IEraImporter _eraImporter;
+    protected readonly ILogger _logger;
+    protected readonly IEraImporter _eraImporter;
     private readonly IEraExporter _eraExporter;
-    private readonly IProcessExitSource _processExit;
-    private int _canEnterImport = 1;
-    private int _canEnterExport = 1;
+    protected readonly IProcessExitSource _processExit;
+    protected int _canEnterImport = 1;
+    protected int _canEnterExport = 1;
 
     public AdminEraService(
         IEraImporter eraImporter,

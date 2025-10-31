@@ -14,19 +14,19 @@ public class EraWriter : IDisposable
 {
     public const int MaxEra1Size = 8192;
 
-    private long _startNumber;
-    private bool _firstBlock = true;
-    private long _totalWritten;
+    protected long _startNumber;
+    protected bool _firstBlock = true;
+    protected long _totalWritten;
     private readonly ArrayPoolList<long> _entryIndexes;
 
-    private readonly HeaderDecoder _headerDecoder = new();
-    private readonly BlockBodyDecoder _blockBodyDecoder = new();
-    private readonly ReceiptMessageDecoder _receiptDecoder = new();
+    protected readonly HeaderDecoder _headerDecoder = new();
+    protected readonly BlockBodyDecoder _blockBodyDecoder = new();
+    protected readonly ReceiptMessageDecoder _receiptDecoder;
 
-    private readonly E2StoreWriter _e2StoreWriter;
-    private readonly AccumulatorCalculator _accumulatorCalculator;
-    private readonly ISpecProvider _specProvider;
-    private bool _finalized;
+    protected readonly E2StoreWriter _e2StoreWriter;
+    protected readonly AccumulatorCalculator _accumulatorCalculator;
+    protected readonly ISpecProvider _specProvider;
+    protected bool _finalized;
 
     public EraWriter(string path, ISpecProvider specProvider)
         : this(new E2StoreWriter(new FileStream(path, FileMode.Create)), specProvider)
@@ -38,15 +38,16 @@ public class EraWriter : IDisposable
     {
     }
 
-    private EraWriter(E2StoreWriter e2StoreWriter, ISpecProvider specProvider)
+    protected EraWriter(E2StoreWriter e2StoreWriter, ISpecProvider specProvider, ReceiptMessageDecoder? receiptDecoder = null)
     {
         _e2StoreWriter = e2StoreWriter;
         _accumulatorCalculator = new();
         _specProvider = specProvider;
         _entryIndexes = new(MaxEra1Size);
+        _receiptDecoder = receiptDecoder ?? new();
     }
 
-    public async Task Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
+    public virtual async Task Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
     {
         if (_finalized)
             throw new EraException($"Finalized() has been called on this {nameof(EraWriter)}, and no more blocks can be added. ");
@@ -92,7 +93,7 @@ public class EraWriter : IDisposable
         _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, block.TotalDifficulty!.Value.ToLittleEndian(), cancellation);
     }
 
-    public async Task<(ValueHash256, ValueHash256)> Finalize(CancellationToken cancellation = default)
+    public virtual async Task<(ValueHash256, ValueHash256)> Finalize(CancellationToken cancellation = default)
     {
         if (_firstBlock)
             throw new EraException("Finalize was called, but no blocks have been added yet.");
@@ -130,12 +131,12 @@ public class EraWriter : IDisposable
         return (root, _e2StoreWriter.FinalizeChecksum());
     }
 
-    private static void WriteInt64(Span<byte> destination, int off, long value)
+    protected static void WriteInt64(Span<byte> destination, int off, long value)
     {
         BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, 8), value);
     }
 
-    private Task<int> WriteVersion()
+    protected Task<int> WriteVersion()
     {
         return _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>());
     }
