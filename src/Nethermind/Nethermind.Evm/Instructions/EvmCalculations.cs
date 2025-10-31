@@ -66,7 +66,7 @@ public static class EvmCalculations
             else if (chargeForWarm)
             {
                 // Otherwise, if warm access should be charged, apply the warm read cost.
-                result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
+                result = UpdateGas(spec.IsEip7904Enabled ? GasCostOf.WarmStorageRead : GasCostOf.WarmStateRead, ref gasAvailable);
             }
         }
 
