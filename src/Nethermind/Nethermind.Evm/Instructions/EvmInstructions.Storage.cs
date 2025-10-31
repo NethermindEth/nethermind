@@ -643,7 +643,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionCallDataLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.VeryLow;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
 
         // Pop the offset from which to load call data.
         if (!stack.PopUInt256(out UInt256 result))
