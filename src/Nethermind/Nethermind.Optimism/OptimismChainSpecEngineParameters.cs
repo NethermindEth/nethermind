@@ -54,7 +54,7 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
         if (HoloceneTimestamp is not null)
         {
-            spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp.Value, new DefaultBaseFeeCalculator());
+            spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp.Value, JovianTimestamp, new DefaultBaseFeeCalculator());
         }
     }
 }
