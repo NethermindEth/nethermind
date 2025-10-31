@@ -91,5 +91,14 @@ namespace Nethermind.Evm
         public const long Callf = 5;
         public const long Jumpf = 5;
         public const long Retf = 3;
+
+        // EIP-7904
+        public const long WarmStorageRead = 5;
+        public const long BaseOpcode = 1;
+        public const long FastOpcode = 2;
+        public const long MidOpcode = 3;
+        public const long ExpBase = 2;
+        public const long ExpPerByte = 4;
+        public const long CopyPerWord = 1;
     }
 }
