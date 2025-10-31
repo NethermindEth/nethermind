@@ -72,7 +72,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public interface IOpEnvUInt256
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static long GasCost(IReleaseSpec spec) => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt256.
         /// </summary>
@@ -202,7 +202,7 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpEnvUInt256
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpEnv.GasCost;
+        gasAvailable -= TOpEnv.GasCost(vm.Spec);
 
         ref readonly UInt256 result = ref TOpEnv.Operation(vm.EvmState);
 
@@ -431,6 +431,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCallValue : IOpEnvUInt256
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static ref readonly UInt256 Operation(EvmState vmState)
             => ref vmState.Env.Value;
     }
