@@ -39,7 +39,7 @@ namespace Ethereum.Test.Base;
 public abstract class BlockchainTestBase
 {
     private static readonly ILogger _logger;
-    private static readonly ILogManager _logManager = new TestLogManager();
+    private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static ISealValidator Sealer { get; }
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 
@@ -320,7 +320,7 @@ public abstract class BlockchainTestBase
         return correctRlp;
     }
 
-    private void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
+    private static void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
     {
         foreach (KeyValuePair<Address, AccountState> accountState in
             ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
@@ -335,9 +335,7 @@ public abstract class BlockchainTestBase
         }
 
         stateProvider.Commit(specProvider.GenesisSpec);
-
         stateProvider.CommitTree(0);
-
         stateProvider.Reset();
     }
 
