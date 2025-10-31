@@ -218,29 +218,29 @@ internal static partial class EvmInstructions
         if (inheritor is null)
             goto StackUnderflow;
 
+        (vm.WorldState as TracedAccessWorldState)?.AddAccountRead(inheritor);
+
+        Address executingAccount = vmState.Env.ExecutingAccount;
+        UInt256? result = null;
+
+        // Post EIP-158 charge gas if transferring non-zero value to a dead account.
+        if (spec.ClearEmptyAccountWhenTouched && state.IsDeadAccount(inheritor))
+        {
+            // Retrieve the current balance for transfer.
+            // Add executing account to BAL
+            result = state.GetBalance(executingAccount);
+            if (!result.Value.IsZero)
+            {
+                if (!EvmCalculations.UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
+                    goto OutOfGas;
+            }
+        }
+
         // Charge gas for account access; if insufficient, signal out-of-gas.
         if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, inheritor, chargeForWarm: false))
             goto OutOfGas;
 
-        Address executingAccount = vmState.Env.ExecutingAccount;
-        bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
-        // Mark the executing account for destruction if allowed.
-        if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
-            vmState.AccessTracker.ToBeDestroyed(executingAccount);
-
-        // Retrieve the current balance for transfer.
-        UInt256 result = state.GetBalance(executingAccount);
-        if (vm.TxTracer.IsTracingActions)
-            vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
-
-        // For certain specs, charge gas if transferring to a dead account.
-        if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor))
-        {
-            if (!EvmCalculations.UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
-                goto OutOfGas;
-        }
-
-        // If account creation rules apply, ensure gas is charged for new accounts.
+        // Pre EIP-158 charge gas if transferring to a non-existent account.
         bool inheritorAccountExists = state.AccountExists(inheritor);
         if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
         {
@@ -248,14 +248,24 @@ internal static partial class EvmInstructions
                 goto OutOfGas;
         }
 
+        // Retrieve the current balance for transfer.
+        result ??= state.GetBalance(executingAccount);
+        if (vm.TxTracer.IsTracingActions)
+            vm.TxTracer.ReportSelfDestruct(executingAccount, result.Value, inheritor);
+
+        bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
+        // Mark the executing account for destruction if allowed.
+        if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
+            vmState.AccessTracker.ToBeDestroyed(executingAccount);
+
         // Create or update the inheritor account with the transferred balance.
         if (!inheritorAccountExists)
         {
-            state.CreateAccount(inheritor, result);
+            state.CreateAccount(inheritor, result.Value);
         }
         else if (!inheritor.Equals(executingAccount))
         {
-            state.AddToBalance(inheritor, result, spec);
+            state.AddToBalance(inheritor, result.Value, spec);
         }
 
         // Special handling when SELFDESTRUCT is limited to the same transaction.
@@ -263,7 +273,7 @@ internal static partial class EvmInstructions
             goto Stop; // Avoid burning ETH if contract is not destroyed per EIP clarification
 
         // Subtract the balance from the executing account.
-        state.SubtractFromBalance(executingAccount, result, spec);
+        state.SubtractFromBalance(executingAccount, result.Value, spec);
 
     // Jump forward to be unpredicted by the branch predictor.
     Stop:

@@ -88,12 +88,6 @@ internal static partial class EvmInstructions
         ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         IWorldState state = vm.WorldState;
 
-        // Ensure the executing account exists in the world state. If not, create it with a zero balance.
-        if (!state.AccountExists(env.ExecutingAccount))
-        {
-            state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
-        }
-
         // Pop parameters off the stack: value to transfer, memory position for the initialization code,
         // and the length of the initialization code.
         if (!stack.PopUInt256(out UInt256 value) ||
@@ -106,13 +100,6 @@ internal static partial class EvmInstructions
         if (typeof(TOpCreate) == typeof(OpCreate2))
         {
             salt = stack.PopWord256();
-        }
-
-        // EIP-3860: Limit the maximum size of the initialization code.
-        if (spec.IsEip3860Enabled)
-        {
-            if (initCodeLength > spec.MaxInitCodeSize)
-                goto OutOfGas;
         }
 
         bool outOfGas = false;
@@ -132,6 +119,31 @@ internal static partial class EvmInstructions
         if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in memoryPositionOfInitCode, in initCodeLength))
             goto OutOfGas;
 
+        // executing account read here to check nonce
+        if (typeof(TOpCreate) == typeof(OpCreate))
+        {
+            (vm.WorldState as TracedAccessWorldState)?.AddAccountRead(env.ExecutingAccount);
+        }
+
+        // EIP-3860: Limit the maximum size of the initialization code.
+        if (spec.IsEip3860Enabled)
+        {
+            if (initCodeLength > spec.MaxInitCodeSize)
+                goto OutOfGas;
+        }
+
+        // Calculate gas available for the contract creation call.
+        // Use the 63/64 gas rule if specified in the current EVM specification.
+        long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
+        if (!EvmCalculations.UpdateGas(callGas, ref gasAvailable))
+            goto OutOfGas;
+
+        // Ensure the executing account exists in the world state. If not, create it with a zero balance.
+        if (!state.AccountExists(env.ExecutingAccount))
+        {
+            state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
+        }
+
         // Verify call depth does not exceed the maximum allowed. If exceeded, return early with empty data.
         // This guard ensures we do not create nested contract calls beyond EVM limits.
         if (env.CallDepth >= MaxCallDepth)
@@ -140,9 +152,6 @@ internal static partial class EvmInstructions
             stack.PushZero<TTracingInst>();
             goto None;
         }
-
-        // Load the initialization code from memory based on the specified position and length.
-        ReadOnlyMemory<byte> initCode = vm.EvmState.Memory.Load(in memoryPositionOfInitCode, in initCodeLength);
 
         // Check that the executing account has sufficient balance to transfer the specified value.
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
@@ -167,11 +176,8 @@ internal static partial class EvmInstructions
         if (TTracingInst.IsActive)
             vm.EndInstructionTrace(gasAvailable);
 
-        // Calculate gas available for the contract creation call.
-        // Use the 63/64 gas rule if specified in the current EVM specification.
-        long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-        if (!EvmCalculations.UpdateGas(callGas, ref gasAvailable))
-            goto OutOfGas;
+        // Load the initialization code from memory based on the specified position and length.
+        ReadOnlyMemory<byte> initCode = vm.EvmState.Memory.Load(in memoryPositionOfInitCode, in initCodeLength);
 
         // Compute the contract address:
         // - For CREATE: based on the executing account and its current nonce.
@@ -186,6 +192,7 @@ internal static partial class EvmInstructions
             vm.EvmState.AccessTracker.WarmUp(contractAddress);
         }
 
+        // todo: need to move for BALs?
         // Special case: if EOF code format is enabled and the init code starts with the EOF marker,
         // the creation is not executed. This ensures that a special marker is not mistakenly executed as code.
         if (spec.IsEofEnabled && initCode.Span.StartsWith(EofValidator.MAGIC))
