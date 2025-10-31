@@ -147,7 +147,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
-        gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
+        gasAvailable -= spec.GetExtCodeCost() + (spec.IsEip7904Enabled ? GasCostOf.CopyPerWord : GasCostOf.Memory) * EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
 
         // Charge gas for account access (considering hot/cold storage costs).
