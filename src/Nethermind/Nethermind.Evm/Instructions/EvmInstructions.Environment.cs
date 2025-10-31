@@ -487,6 +487,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpChainId : IOpEnv32Bytes
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static ref readonly ValueHash256 Operation(VirtualMachine vm)
             => ref vm.ChainId;
     }
