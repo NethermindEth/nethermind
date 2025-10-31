@@ -33,11 +33,12 @@ namespace Ethereum.Test.Base
             return testJsons;
         }
 
-        private string GetLegacyGeneralStateTestsDirectory()
+        private static string GetLegacyGeneralStateTestsDirectory()
         {
             string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            string rootDirectory = currentDirectory.Remove(currentDirectory.LastIndexOf("src"));
 
-            return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src")), "src", "tests", "LegacyTests", "Constantinople", "GeneralStateTests");
+            return Path.Combine(rootDirectory, "src", "tests", "LegacyTests", "Cancun", "GeneralStateTests");
         }
 
         private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard)

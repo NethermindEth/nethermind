@@ -42,7 +42,7 @@ namespace Ethereum.Test.Base;
 public abstract class BlockchainTestBase
 {
     private static readonly ILogger _logger;
-    private static readonly ILogManager _logManager = new TestLogManager();
+    private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
     private const int _genesisProcessingTimeoutMs = 5000;
 
@@ -409,9 +409,7 @@ public abstract class BlockchainTestBase
         }
 
         stateProvider.Commit(specProvider.GenesisSpec);
-
         stateProvider.CommitTree(0);
-
         stateProvider.Reset();
     }
 
