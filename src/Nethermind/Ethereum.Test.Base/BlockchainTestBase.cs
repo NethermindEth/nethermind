@@ -97,7 +97,7 @@ public abstract class BlockchainTestBase
 
         ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
 
-        Assert.That(!isEngineTest && (test.ChainId == GnosisSpecProvider.Instance.ChainId || specProvider.GenesisSpec == Frontier.Instance), "Expected genesis spec to be Frontier for blockchain tests");
+        Assert.That(isEngineTest || test.ChainId == GnosisSpecProvider.Instance.ChainId || specProvider.GenesisSpec == Frontier.Instance, "Expected genesis spec to be Frontier for blockchain tests");
 
         if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
         {
@@ -206,7 +206,7 @@ public abstract class BlockchainTestBase
             {
                 // engine test
                 IEngineRpcModule engineRpcModule = container.Resolve<IEngineRpcModule>();
-                RunNewPayloads(test.EngineNewPayloads, engineRpcModule);
+                await RunNewPayloads(test.EngineNewPayloads, engineRpcModule);
             }
             else
             {
@@ -309,7 +309,7 @@ public abstract class BlockchainTestBase
         return parentHeader;
     }
 
-    private async static void RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IEngineRpcModule engineRpcModule)
+    private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IEngineRpcModule engineRpcModule)
     {
         (ExecutionPayload, string[]?, string[]?, string?)[] payloads = [.. JsonToEthereumTest.Convert(newPayloads)];
 
@@ -319,7 +319,7 @@ public abstract class BlockchainTestBase
             ResultWrapper<PayloadStatusV1> res;
             byte[]?[] hashes = blobVersionedHashes is null ? null : [.. blobVersionedHashes.Select(x => Bytes.FromHexString(x))];
 
-            switch (newPayloadVersion ?? "5")
+            switch (newPayloadVersion ?? "4")
             {
                 case "1":
                     res = await engineRpcModule.engine_newPayloadV1(executionPayload);
