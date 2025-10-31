@@ -126,7 +126,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public interface IOpBlkUInt64
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static long GasCost(IReleaseSpec spec) => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt64.
         /// </summary>
@@ -294,7 +294,7 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpBlkUInt64
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpEnv.GasCost;
+        gasAvailable -= TOpEnv.GasCost(vm.Spec);
 
         ulong result = TOpEnv.Operation(vm);
 
@@ -351,6 +351,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpTimestamp : IOpBlkUInt64
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static ulong Operation(VirtualMachine vm)
             => vm.BlockExecutionContext.Header.Timestamp;
     }
@@ -360,6 +361,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpNumber : IOpBlkUInt64
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static ulong Operation(VirtualMachine vm)
             => vm.BlockExecutionContext.Number;
     }
@@ -369,6 +371,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpGasLimit : IOpBlkUInt64
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static ulong Operation(VirtualMachine vm)
             => vm.BlockExecutionContext.GasLimit;
     }
