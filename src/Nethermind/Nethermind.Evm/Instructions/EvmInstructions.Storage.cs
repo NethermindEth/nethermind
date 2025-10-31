@@ -37,7 +37,7 @@ internal static partial class EvmInstructions
         Metrics.TloadOpcode++;
 
         // Deduct the fixed gas cost for TLOAD.
-        gasAvailable -= GasCostOf.TLoad;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.WarmStorageRead : GasCostOf.TLoad;
 
         // Attempt to pop the key (offset) from the stack; if unavailable, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -90,7 +90,7 @@ internal static partial class EvmInstructions
         if (vmState.IsStatic) goto StaticCallViolation;
 
         // Deduct the gas cost for TSTORE.
-        gasAvailable -= GasCostOf.TStore;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.WarmStorageRead : GasCostOf.TStore;
 
         // Pop the key (offset) from the stack; if unavailable, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
