@@ -40,7 +40,6 @@ public class PseudoNetworkModule() : Module
             {
                 cfg
                     .As<IProtocolsManager>()
-                    .WithAttributeFiltering()
                     .SingleInstance()
                     .OnActivating((m) =>
                     {
