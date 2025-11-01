@@ -127,7 +127,7 @@ public class TestBlockchain : IDisposable
     protected ChainSpec ChainSpec => _chainSpec ??= CreateChainSpec();
 
     // Resolving all these component at once is faster.
-    private FromContainer _fromContainer = null!;
+    protected FromContainer _fromContainer = null!;
     public class FromContainer(
         Lazy<IStateReader> stateReader,
         Lazy<IEthereumEcdsa> ethereumEcdsa,

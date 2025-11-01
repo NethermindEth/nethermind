@@ -53,6 +53,24 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
         }
         return list[lo];
     }
+
+    public static XdcReleaseSpec FromReleaseSpec(IReleaseSpec spec)
+    {
+        var xdcSpec = new XdcReleaseSpec();
+
+        var baseType = typeof(ReleaseSpec);
+        var properties = baseType.GetProperties();
+        foreach (var property in properties)
+        {
+            if (property.CanRead && property.CanWrite)
+            {
+                var value = property.GetValue(spec);
+                property.SetValue(xdcSpec, value);
+            }
+        }
+
+        return xdcSpec;
+    }
 }
 
 public interface IXdcReleaseSpec : IReleaseSpec
