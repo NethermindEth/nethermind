@@ -22,7 +22,7 @@ public class OptimismHeaderValidatorTests
     private static readonly Hash256 PostCanyonWithdrawalsRoot = Keccak.OfAnEmptySequenceRlp;
 
     [TestCaseSource(nameof(EIP1559ParametersExtraData))]
-    public void Validates_EIP1559Parameters_InExtraData_AfterHolocene((string HexString, bool validHolocene, bool validJovian) testCase)
+    public void Validates_EIP1559Parameters_InExtraData_AfterHolocene_OrJovian((string HexString, bool validHolocene, bool validJovian) testCase)
     {
         var genesis = Build.A.BlockHeader
             .WithNumber(0)
@@ -57,10 +57,11 @@ public class OptimismHeaderValidatorTests
                 .WithExcessBlobGas(0)
                 .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
                 .WithWithdrawalsRoot(PostCanyonWithdrawalsRoot)
-                .WithExtraData(Bytes.FromHexString(testCase.HexString));
-
-            if (timestamp >= Spec.IsthmusTimeStamp)
-                builder = builder.WithRequestsHash(OptimismPostMergeBlockProducer.PostIsthmusRequestHash);
+                .WithExtraData(Bytes.FromHexString(testCase.HexString))
+                .WithRequestsHash(timestamp >= Spec.IsthmusTimeStamp
+                    ? OptimismPostMergeBlockProducer.PostIsthmusRequestHash
+                    : null
+                );
 
             return builder.TestObject;
         }
@@ -176,5 +177,60 @@ public class OptimismHeaderValidatorTests
         yield return ("0x000000000000000001", false, false);
         yield return ("0x01ffffffff000001bc00000000000000", false, false);
         yield return ("0x01ffffffff000001bc000000000000000000", false, false);
+    }
+
+    [TestCaseSource(nameof(GasLimitTestCases))]
+    public void ValidateGasLimit_AfterHolocene_OrJovian((long gasLimit, long gasUsed, long? blobGasUsed, ulong timestamp, bool valid) testCase)
+    {
+        BlockHeader genesis = Build.A.BlockHeader
+            .WithNumber(0)
+            .WithTimestamp(Spec.GenesisTimestamp)
+            .TestObject;
+
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithTimestamp(testCase.timestamp)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .WithGasLimit(testCase.gasLimit)
+            .WithBlobGasUsed((ulong?)testCase.blobGasUsed)
+            .WithGasUsed(testCase.gasUsed)
+            .WithExcessBlobGas(0)
+            .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
+            .WithExtraDataHex(testCase.timestamp >= Spec.JovianTimeStamp
+                ? "0x01ffffffffffffffffffffffffffffffff"
+                : "0x00ffffffffffffffff"
+            )
+            .WithRequestsHash(testCase.timestamp >= Spec.IsthmusTimeStamp
+                ? OptimismPostMergeBlockProducer.PostIsthmusRequestHash
+                : null
+            )
+            .TestObject;
+
+        var validator = new OptimismHeaderValidator(
+            AlwaysPoS.Instance,
+            Substitute.For<IBlockTree>(),
+            Always.Valid, Spec.Instance,
+            Spec.BuildFor(header),
+            TestLogManager.Instance);
+
+        string? error = null;
+        Assert.That(() => validator.Validate(header, genesis, false, out error), Is.EqualTo(testCase.valid), () => error!);
+    }
+
+    private static IEnumerable<(long gasLimit, long gasUsed, long? blobGasUsed, ulong timestamp, bool valid)> GasLimitTestCases()
+    {
+        yield return (1_000_000, 1_000, null, Spec.HoloceneTimeStamp, false); // blobGasUsed missing
+        yield return (1_000_000, 1_000, null, Spec.JovianTimeStamp, false); // blobGasUsed missing
+        yield return (1_000_000, 1_000, 0, Spec.HoloceneTimeStamp, true);
+        yield return (1_000_000, 1_000, 1_000, Spec.HoloceneTimeStamp, true); // blobGasUsed != 0
+        yield return (1_000_000, 1_000, 0, Spec.JovianTimeStamp, true);
+        yield return (1_000_000, 1_000, 1_000, Spec.JovianTimeStamp, true);
+        yield return (1_000_000, 1_000_000, 1_000_000, Spec.JovianTimeStamp, true);
+        yield return (1_000_000, 1_000_000 + 1, 0, Spec.HoloceneTimeStamp, false); // gasUsed > gasLimit
+        yield return (1_000_000, 1_000_000 + 1, 1_000, Spec.JovianTimeStamp, false); // gasUsed > gasLimit
+        yield return (1_000_000, 1_000, 1_000_000 + 1, Spec.JovianTimeStamp, false); // blobGasUsed > gasLimit
+        yield return (1_000_000, 1_000_000 + 1, 1_000_000 + 1, Spec.JovianTimeStamp, false); // blobGasUsed & gasUsed > gasLimit
     }
 }

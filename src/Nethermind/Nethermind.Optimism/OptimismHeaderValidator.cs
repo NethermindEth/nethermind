@@ -85,7 +85,6 @@ public class OptimismHeaderValidator(
 
     protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 
-    // TODO: tests
     protected override bool ValidateGasUsed(BlockHeader header, ref string? error)
     {
         if (!base.ValidateGasUsed(header, ref error))
