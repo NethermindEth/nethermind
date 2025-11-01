@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -139,14 +138,15 @@ internal static unsafe class BN254
 
         // Input is big-endian; MCL call below expects little-endian byte order for Fp
         Span<byte> tmp = stackalloc byte[32];
+        ref var d = ref MemoryMarshal.GetReference(data);
         fixed (byte* p = &MemoryMarshal.GetReference(tmp))
         {
             // x
-            CopyReverse32(data.Slice(0, 32), tmp);
+            CopyReverse32(ref d, ref Unsafe.AsRef<byte>(p));
             if (mclBnFp_deserialize(ref point.x, (nint)p, 32) == nuint.Zero)
                 return false;
             // y
-            CopyReverse32(data.Slice(32, 32), tmp);
+            CopyReverse32(ref Unsafe.Add(ref d, 32), ref Unsafe.AsRef<byte>(p));
             if (mclBnFp_deserialize(ref point.y, (nint)p, 32) == nuint.Zero)
                 return false;
         }
@@ -167,26 +167,27 @@ internal static unsafe class BN254
         // Input layout: x_im, x_re, y_im, y_re (each 32 bytes, big-endian)
         // MCL Fp2 layout: d0 = re, d1 = im
         Span<byte> tmp = stackalloc byte[32];
+        ref var d = ref MemoryMarshal.GetReference(data);
         fixed (byte* p = &MemoryMarshal.GetReference(tmp))
         {
-            // x.re
-            CopyReverse32(data.Slice(32, 32), tmp);
-            if (mclBnFp_deserialize(ref point.x.d0, (nint)p, 32) == nuint.Zero)
-                return false;
-
             // x.im
-            CopyReverse32(data.Slice(0, 32), tmp);
+            CopyReverse32(ref d, ref Unsafe.AsRef<byte>(p));
             if (mclBnFp_deserialize(ref point.x.d1, (nint)p, 32) == nuint.Zero)
                 return false;
 
-            // y.re
-            CopyReverse32(data.Slice(96, 32), tmp);
-            if (mclBnFp_deserialize(ref point.y.d0, (nint)p, 32) == nuint.Zero)
+            // x.re
+            CopyReverse32(ref Unsafe.Add(ref d, 32), ref Unsafe.AsRef<byte>(p));
+            if (mclBnFp_deserialize(ref point.x.d0, (nint)p, 32) == nuint.Zero)
                 return false;
 
             // y.im
-            CopyReverse32(data.Slice(64, 32), tmp);
+            CopyReverse32(ref Unsafe.Add(ref d, 64), ref Unsafe.AsRef<byte>(p));
             if (mclBnFp_deserialize(ref point.y.d1, (nint)p, 32) == nuint.Zero)
+                return false;
+
+            // y.re
+            CopyReverse32(ref Unsafe.Add(ref d, 96), ref Unsafe.AsRef<byte>(p));
+            if (mclBnFp_deserialize(ref point.y.d0, (nint)p, 32) == nuint.Zero)
                 return false;
         }
 
@@ -205,41 +206,34 @@ internal static unsafe class BN254
             if (mclBnFp_getLittleEndian((nint)ptr + 32, 32, point.y) == nuint.Zero)
                 return false;
 
-            new Span<byte>(ptr, 32).Reverse(); // To big-endian
-            new Span<byte>(ptr + 32, 32).Reverse(); // To big-endian
+            CopyReverse32(ref Unsafe.AsRef<byte>(ptr), ref Unsafe.AsRef<byte>(ptr)); // To big-endian
+            CopyReverse32(ref Unsafe.AsRef<byte>(ptr + 32), ref Unsafe.AsRef<byte>(ptr + 32)); // To big-endian
         }
 
         return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static void CopyReverse32(ReadOnlySpan<byte> src, Span<byte> dst)
+    static void CopyReverse32(ref byte srcRef, ref byte dstRef)
     {
-        Debug.Assert(src.Length == 32);
-        Debug.Assert(dst.Length == 32);
-
         if (Avx2.IsSupported)
         {
-            Reverse32BytesAvx2(src, dst);
+            Reverse32BytesAvx2(ref srcRef, ref dstRef);
         }
-        else
-        if (Sse2.IsSupported && Ssse3.IsSupported)
+        else if (Vector128.IsHardwareAccelerated)
         {
-            Reverse32BytesSse2(src, dst);
+            Reverse32Bytes128(ref srcRef, ref dstRef);
         }
         else
         {
             // Fallback scalar path
-            Reverse32BytesScalar(src, dst);
+            Reverse32BytesScalar(ref srcRef, ref dstRef);
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static void Reverse32BytesAvx2(ReadOnlySpan<byte> src, Span<byte> dst)
+    static void Reverse32BytesAvx2(ref byte srcRef, ref byte dstRef)
     {
-        ref byte srcRef = ref MemoryMarshal.GetReference(src);
-        ref byte dstRef = ref MemoryMarshal.GetReference(dst);
-
         // Load 32 bytes as one 256-bit vector
         Vector256<byte> vec = Unsafe.ReadUnaligned<Vector256<byte>>(ref srcRef);
 
@@ -260,23 +254,16 @@ internal static unsafe class BN254
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static void Reverse32BytesSse2(ReadOnlySpan<byte> src, Span<byte> dst)
+    static void Reverse32Bytes128(ref byte srcRef, ref byte dstRef)
     {
-        ref byte srcRef = ref MemoryMarshal.GetReference(src);
-        ref byte dstRef = ref MemoryMarshal.GetReference(dst);
-
         // Two 16-byte halves: reverse each then swap them
         Vector128<byte> lo = Unsafe.ReadUnaligned<Vector128<byte>>(ref srcRef);
         Vector128<byte> hi = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref srcRef, 16));
 
-        Vector128<byte> revMask = Vector128.Create(
-            (byte)15, (byte)14, (byte)13, (byte)12,
-            (byte)11, (byte)10, (byte)9, (byte)8,
-            (byte)7, (byte)6, (byte)5, (byte)4,
-            (byte)3, (byte)2, (byte)1, (byte)0);
-
-        lo = Ssse3.Shuffle(lo, revMask);
-        hi = Ssse3.Shuffle(hi, revMask);
+        lo = Vector128.Shuffle(lo, Vector128.Create(
+            (byte)15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0));
+        hi = Vector128.Shuffle(hi, Vector128.Create(
+            (byte)15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0));
 
         // Store swapped halves reversed
         Unsafe.WriteUnaligned(ref dstRef, hi);
@@ -284,19 +271,19 @@ internal static unsafe class BN254
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static void Reverse32BytesScalar(ReadOnlySpan<byte> src, Span<byte> dst)
+    static void Reverse32BytesScalar(ref byte srcRef, ref byte dstRef)
     {
-        ref ulong srcRef = ref Unsafe.As<byte, ulong>(ref MemoryMarshal.GetReference(src));
-        ref ulong dstRef = ref Unsafe.As<byte, ulong>(ref MemoryMarshal.GetReference(dst));
+        ref ulong src = ref Unsafe.As<byte, ulong>(ref srcRef);
+        ref ulong dst = ref Unsafe.As<byte, ulong>(ref dstRef);
 
-        ulong a = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref srcRef, 3));
-        ulong b = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref srcRef, 2));
-        ulong c = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref srcRef, 1));
-        ulong d = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref srcRef, 0));
+        ulong a = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref src, 0));
+        ulong b = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref src, 1));
+        ulong c = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref src, 2));
+        ulong d = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref src, 3));
 
-        Unsafe.Add(ref dstRef, 0) = a;
-        Unsafe.Add(ref dstRef, 1) = b;
-        Unsafe.Add(ref dstRef, 2) = c;
-        Unsafe.Add(ref dstRef, 3) = d;
+        Unsafe.Add(ref dst, 0) = d;
+        Unsafe.Add(ref dst, 1) = c;
+        Unsafe.Add(ref dst, 2) = b;
+        Unsafe.Add(ref dst, 3) = a;
     }
 }
