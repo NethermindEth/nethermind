@@ -224,7 +224,7 @@ namespace Nethermind.Facade
             ITxTracer tracer,
             BlockProcessingComponents components)
         {
-            transaction.SenderAddress ??= Address.SystemUser;
+            transaction.SenderAddress ??= Address.Zero;
 
             //Ignore nonce on all CallAndRestore calls
             transaction.Nonce = components.StateReader.GetNonce(blockHeader, transaction.SenderAddress);
