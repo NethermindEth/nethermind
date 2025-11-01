@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -11,6 +10,9 @@ namespace Nethermind.Evm.Precompiles;
 /// <see href="https://eips.ethereum.org/EIPS/eip-196" />
 public class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
 {
+    private const int InputLength = 128;
+    private const int OutputLength = 64;
+
     public static readonly BN254AddPrecompile Instance = new();
 
     public static Address Address { get; } = Address.FromNumber(6);
@@ -23,30 +25,29 @@ public class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    [SkipLocalsInit]
     public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254AddPrecompile++;
 
-        Span<byte> inputWritable = stackalloc byte[128];
-        ReadOnlySpan<byte> input = inputWritable;
+        ReadOnlySpan<byte> src = inputData.Span;
 
-        ReadOnlySpan<byte> orignalInput = inputData.Span;
-        if (orignalInput.Length == 128)
+        scoped ReadOnlySpan<byte> input;
+        if (src.Length == InputLength)
         {
-            input = orignalInput;
+            input = src;
         }
-        else if (orignalInput.Length < 128)
+        else if (src.Length > InputLength)
         {
-            orignalInput.CopyTo(inputWritable);
-            inputWritable[orignalInput.Length..].Clear();
+            input = src[..InputLength];
         }
         else
         {
-            orignalInput[0..inputWritable.Length].CopyTo(inputWritable);
+            Span<byte> padded = stackalloc byte[InputLength];
+            src.CopyTo(padded);
+            input = padded;
         }
 
-        byte[] output = new byte[64];
+        byte[] output = new byte[OutputLength];
         return BN254.Add(input, output) ? (output, true) : IPrecompile.Failure;
     }
 }

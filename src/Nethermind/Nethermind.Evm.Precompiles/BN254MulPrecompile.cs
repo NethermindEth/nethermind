@@ -10,6 +10,9 @@ namespace Nethermind.Evm.Precompiles;
 /// <see href="https://eips.ethereum.org/EIPS/eip-196" />
 public class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
 {
+    private const int InputLength = 96;
+    private const int OutputLength = 64;
+
     public static readonly BN254MulPrecompile Instance = new();
 
     public static Address Address { get; } = Address.FromNumber(7);
@@ -26,12 +29,12 @@ public class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
     {
         Metrics.Bn254MulPrecompile++;
 
-        Span<byte> input = stackalloc byte[96];
+        Span<byte> input = stackalloc byte[InputLength];
 
         ReadOnlySpan<byte> inputSpan = inputData.Span;
         inputSpan[0..Math.Min(inputSpan.Length, input.Length)].CopyTo(input);
 
-        byte[] output = new byte[64];
+        byte[] output = new byte[OutputLength];
         return BN254.Mul(input, output) ? (output, true) : IPrecompile.Failure;
     }
 }
