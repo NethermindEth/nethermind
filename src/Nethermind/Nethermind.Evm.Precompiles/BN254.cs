@@ -87,7 +87,7 @@ internal static unsafe class BN254
 
         mclBnGT acc = default;
         bool hasMl = false;
-        
+
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
             for (int i = 0; i < input.Length; i += PairSize)
@@ -228,7 +228,7 @@ internal static unsafe class BN254
 
         if (Vector256.IsHardwareAccelerated)
         {
-            Vector256<byte> a = Unsafe.ReadUnaligned<Vector256<byte>>(p +  0);
+            Vector256<byte> a = Unsafe.ReadUnaligned<Vector256<byte>>(p + 0);
             Vector256<byte> b = Unsafe.ReadUnaligned<Vector256<byte>>(p + 32);
             Vector256<byte> o = Vector256.BitwiseOr(a, b);
             return Vector256.EqualsAll(o, Vector256<byte>.Zero);
@@ -265,7 +265,7 @@ internal static unsafe class BN254
         if (Vector512.IsHardwareAccelerated)
         {
             // 2x512 -> OR‑reduce -> EqualsAll
-            Vector512<byte> a = Unsafe.ReadUnaligned<Vector512<byte>>(p +  0);
+            Vector512<byte> a = Unsafe.ReadUnaligned<Vector512<byte>>(p + 0);
             Vector512<byte> b = Unsafe.ReadUnaligned<Vector512<byte>>(p + 64);
             Vector512<byte> o = Vector512.BitwiseOr(a, b);
             return Vector512.EqualsAll(o, Vector512<byte>.Zero);
