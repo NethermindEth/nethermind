@@ -37,7 +37,10 @@ public class AbiDefinitionConverter : JsonConverter<AbiDefinition>
         JsonElement topLevelToken = document.RootElement;
         if (topLevelToken.ValueKind == JsonValueKind.Object)
         {
-            abiToken = topLevelToken.GetProperty("abi"u8);
+            if (!topLevelToken.TryGetProperty("abi"u8, out abiToken))
+            {
+                throw new JsonException("Contract JSON object must contain an 'abi' property.");
+            }
             if (topLevelToken.TryGetProperty("bytecode"u8, out JsonElement bytecodeBase64))
             {
                 value.SetBytecode(Bytes.FromHexString(bytecodeBase64.GetString()!));
