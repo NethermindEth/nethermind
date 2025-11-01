@@ -1,26 +1,30 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Synchronization;
+using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
+using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.StateSync;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Crypto;
-using System.Net;
-using FluentAssertions;
-using Nethermind.Consensus;
-using Nethermind.Core.Test;
-using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests;
 
@@ -74,6 +78,11 @@ public class StateSyncDispatcherTests
         peer.IsInitialized.Returns(true);
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
         peer.HeadNumber.Returns(ChainLength - 1);
+
+        using ArrayPoolList<byte[]> response = new(1) { new byte[] { 1, 2, 3 } };
+        peer.GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(response);
+
         _pool.AddPeer(peer);
 
         using StateSyncBatch batch = new(
@@ -96,6 +105,11 @@ public class StateSyncDispatcherTests
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
         peer.HeadNumber.Returns(ChainLength - 1);
         ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
+
+        using ArrayPoolList<byte[]> snapResponse = new(6, Enumerable.Range(0, 6).Select(i => new byte[] { (byte)i }));
+        snapPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
+            .Returns(snapResponse);
+
         peer.TryGetSatelliteProtocol("snap", out Arg.Any<ISnapSyncPeer>()).Returns(
             x =>
             {
@@ -126,5 +140,95 @@ public class StateSyncDispatcherTests
         batch.RequestedNodes[3].Should().Be(item05);
         batch.RequestedNodes[4].Should().Be(item04);
         batch.RequestedNodes[5].Should().Be(item06);
+    }
+
+    [Test]
+    public async Task SnapPeer_FallbackToNodeDataWhenEmpty()
+    {
+        ISyncPeer peer = Substitute.For<ISyncPeer>();
+        peer.Node.Returns(new Stats.Model.Node(_publicKey, new IPEndPoint(IPAddress.Broadcast, 30303)));
+        peer.ProtocolVersion.Returns((byte)67);
+        peer.IsInitialized.Returns(true);
+        peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
+        peer.HeadNumber.Returns(ChainLength - 1);
+
+        ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
+        using ArrayPoolList<byte[]> emptyResponse = new(0);
+        snapPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
+            .Returns(emptyResponse);
+
+        peer.TryGetSatelliteProtocol("snap", out Arg.Any<ISnapSyncPeer>()).Returns(
+            x =>
+            {
+                x[1] = snapPeer;
+                return true;
+            });
+
+        INodeDataPeer nodeDataHandler = Substitute.For<INodeDataPeer>();
+        using ArrayPoolList<byte[]> nodeDataResponse = new(1) { new byte[] { 1, 2, 3 } };
+        nodeDataHandler.GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(nodeDataResponse);
+
+        peer.TryGetSatelliteProtocol("nodedata", out Arg.Any<INodeDataPeer>()).Returns(
+            x =>
+            {
+                x[1] = nodeDataHandler;
+                return true;
+            });
+
+        _pool.AddPeer(peer);
+
+        using StateSyncBatch batch = new(
+            Keccak.OfAnEmptyString,
+            NodeDataType.State,
+            new[] { new StateSyncItem(Keccak.EmptyTreeHash, null, TreePath.Empty, NodeDataType.State) });
+
+        await _dispatcher.ExecuteDispatch(batch, 1);
+
+        await snapPeer.Received(1).GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>());
+        await nodeDataHandler.Received(1).GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>());
+        batch.Responses.Should().NotBeNull();
+        batch.Responses!.Count.Should().Be(1);
+    }
+
+    [Test]
+    public async Task SnapPeer_FallbackToEth66WhenEmpty()
+    {
+        ISyncPeer peer = Substitute.For<ISyncPeer>();
+        peer.Node.Returns(new Stats.Model.Node(_publicKey, new IPEndPoint(IPAddress.Broadcast, 30303)));
+        peer.ProtocolVersion.Returns((byte)66);
+        peer.IsInitialized.Returns(true);
+        peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
+        peer.HeadNumber.Returns(ChainLength - 1);
+
+        ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
+        using ArrayPoolList<byte[]> emptyResponse = new(0);
+        snapPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
+            .Returns(emptyResponse);
+
+        peer.TryGetSatelliteProtocol("snap", out Arg.Any<ISnapSyncPeer>()).Returns(
+            x =>
+            {
+                x[1] = snapPeer;
+                return true;
+            });
+
+        using ArrayPoolList<byte[]> eth66Response = new(1) { new byte[] { 1, 2, 3 } };
+        peer.GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(eth66Response);
+
+        _pool.AddPeer(peer);
+
+        using StateSyncBatch batch = new(
+            Keccak.OfAnEmptyString,
+            NodeDataType.State,
+            new[] { new StateSyncItem(Keccak.EmptyTreeHash, null, TreePath.Empty, NodeDataType.State) });
+
+        await _dispatcher.ExecuteDispatch(batch, 1);
+
+        await snapPeer.Received(1).GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>());
+        using var _ = await peer.Received(1).GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>());
+        batch.Responses.Should().NotBeNull();
+        batch.Responses!.Count.Should().Be(1);
     }
 }
