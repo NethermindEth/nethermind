@@ -66,7 +66,7 @@ public static class EvmCalculations
             else if (chargeForWarm)
             {
                 // Otherwise, if warm access should be charged, apply the warm read cost.
-                result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
+                result = UpdateGas(spec.IsEip7904Enabled ? GasCostOf.WarmStorageRead : GasCostOf.WarmStateRead, ref gasAvailable);
             }
         }
 
@@ -114,7 +114,7 @@ public static class EvmCalculations
             // For SLOAD operations on already warmed-up storage, apply a lower warm-read cost.
             else if (storageAccessType == StorageAccessType.SLOAD)
             {
-                result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
+                result = UpdateGas(spec.IsEip7904Enabled ? GasCostOf.WarmStorageRead : GasCostOf.WarmStateRead, ref gasAvailable);
             }
         }
 

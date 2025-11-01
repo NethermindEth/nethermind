@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 
@@ -22,7 +23,7 @@ internal static partial class EvmInstructions
         /// <summary>
         /// The gas cost for executing this math operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.VeryLow;
+        virtual static long GasCost(IReleaseSpec spec) => GasCostOf.VeryLow;
         /// <summary>
         /// Executes the math operation on two 256-bit operands.
         /// </summary>
@@ -52,7 +53,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost for the specific math operation.
-        gasAvailable -= TOpMath.GasCost;
+        gasAvailable -= TOpMath.GasCost(vm.Spec);
 
         // Pop two operands from the stack. If either pop fails, jump to the underflow handler.
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
@@ -74,6 +75,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpAdd : IOpMath2Param
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Add(in a, in b, out result);
     }
@@ -83,6 +85,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpSub : IOpMath2Param
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Subtract(in a, in b, out result);
     }
@@ -93,7 +96,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpMul : IOpMath2Param
     {
-        public static long GasCost => GasCostOf.Low;
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Multiply(in a, in b, out result);
     }
@@ -104,7 +107,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpDiv : IOpMath2Param
     {
-        public static long GasCost => GasCostOf.Low;
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZero)
@@ -128,7 +131,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpSDiv : IOpMath2Param
     {
-        public static long GasCost => GasCostOf.Low;
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZero)
@@ -159,7 +162,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpMod : IOpMath2Param
     {
-        public static long GasCost => GasCostOf.Low;
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Mod(in a, in b, out result);
     }
@@ -171,7 +174,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpSMod : IOpMath2Param
     {
-        public static long GasCost => GasCostOf.Low;
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZeroOrOne)
@@ -198,6 +201,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpLt : IOpMath2Param
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             result = a < b ? UInt256.One : default;
@@ -210,6 +214,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpGt : IOpMath2Param
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             result = a > b ? UInt256.One : default;
@@ -222,6 +227,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpSLt : IOpMath2Param
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             result = As<UInt256, Int256>(ref AsRef(in a))
@@ -237,6 +243,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpSGt : IOpMath2Param
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             result = As<UInt256, Int256>(ref AsRef(in a))
@@ -262,7 +269,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Charge the fixed gas cost for exponentiation.
-        gasAvailable -= GasCostOf.Exp;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.ExpBase : GasCostOf.Exp;
 
         // Pop the base value from the stack.
         if (!stack.PopUInt256(out UInt256 a))

@@ -21,6 +21,7 @@ public class Osaka : Prague
         IsEip7934Enabled = true;
         IsEip7939Enabled = true;
         IsEip7951Enabled = true;
+        IsEip7904Enabled = true;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Osaka());

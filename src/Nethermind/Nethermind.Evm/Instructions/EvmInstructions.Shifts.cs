@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;
@@ -20,7 +21,7 @@ internal static partial class EvmInstructions
         /// <summary>
         /// The gas cost for executing a shift operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.VeryLow;
+        virtual static long GasCost(IReleaseSpec spec) => GasCostOf.VeryLow;
 
         /// <summary>
         /// Performs the shift operation.
@@ -52,7 +53,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct gas cost specific to the shift operation.
-        gasAvailable -= TOpShift.GasCost;
+        gasAvailable -= TOpShift.GasCost(vm.Spec);
 
         // Pop the shift amount from the stack.
         if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
@@ -97,7 +98,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost for the arithmetic shift operation.
-        gasAvailable -= GasCostOf.VeryLow;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
 
         // Pop the shift amount and the value to be shifted.
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
@@ -137,6 +138,8 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpShl : IOpShift
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
+
         /// <summary>
         /// Performs a left shift: shifts <paramref name="b"/> left by the number of bits specified in <paramref name="a"/>.
         /// </summary>
@@ -153,6 +156,8 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpShr : IOpShift
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
+
         /// <summary>
         /// Performs a logical right shift: shifts <paramref name="b"/> right by the number of bits specified in <paramref name="a"/>.
         /// </summary>

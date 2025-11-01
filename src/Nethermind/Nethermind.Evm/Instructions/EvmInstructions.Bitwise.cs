@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using Nethermind.Core.Specs;
 using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;
@@ -20,7 +21,7 @@ internal static partial class EvmInstructions
         /// <summary>
         /// The gas cost for executing the bitwise operation.
         /// </summary>
-        static virtual long GasCost => GasCostOf.VeryLow;
+        static virtual long GasCost(IReleaseSpec spec) => GasCostOf.VeryLow;
         /// <summary>
         /// Executes the bitwise operation.
         /// </summary>
@@ -35,17 +36,17 @@ internal static partial class EvmInstructions
     /// This method reads the operands as 256-bit vectors from unaligned memory and writes the result back directly.
     /// </summary>
     /// <typeparam name="TOpBitwise">The specific bitwise operation to execute.</typeparam>
-    /// <param name="_">An unused virtual machine instance parameter.</param>
+    /// <param name="vm">An unused virtual machine instance parameter.</param>
     /// <param name="stack">The EVM stack from which operands are retrieved and where the result is stored.</param>
     /// <param name="gasAvailable">The remaining gas, reduced by the operation’s cost.</param>
     /// <param name="programCounter">The program counter (unused in this operation).</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or a stack underflow error.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBitwise<TOpBitwise>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBitwise<TOpBitwise>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpBitwise : struct, IOpBitwise
     {
         // Deduct the operation's gas cost.
-        gasAvailable -= TOpBitwise.GasCost;
+        gasAvailable -= TOpBitwise.GasCost(vm.Spec);
 
         // Pop the first operand from the stack by reference to minimize copying.
         ref byte bytesRef = ref stack.PopBytesByRef();
@@ -72,6 +73,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseAnd : IOpBitwise
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
         public static Word Operation(in Word a, in Word b) => Vector256.BitwiseAnd(a, b);
     }
 
@@ -80,6 +82,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseOr : IOpBitwise
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
         public static Word Operation(in Word a, in Word b) => Vector256.BitwiseOr(a, b);
     }
 
@@ -88,6 +91,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseXor : IOpBitwise
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
         public static Word Operation(in Word a, in Word b) => Vector256.Xor(a, b);
     }
 
@@ -98,6 +102,8 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseEq : IOpBitwise
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
+
         // Precomputed vector used as a marker for equality (only the last byte is set to 1).
         public static Word One = Vector256.Create(
             (byte)
