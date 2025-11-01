@@ -78,7 +78,7 @@ public class XdcModule : Module
             .AddSingleton<ISnapshotManager, SnapshotManager>()
 
             // miscellaneous
-            .AddSingleton<IDifficultyCalculator, Xdc.DifficultyCalculator>()
+            .AddSingleton<IDifficultyCalculator, DifficultyCalculator>()
             ;
     }
 

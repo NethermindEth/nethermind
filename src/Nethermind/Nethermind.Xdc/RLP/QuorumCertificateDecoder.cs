@@ -22,9 +22,9 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, I
     private XdcBlockInfoDecoder _blockInfoDecoder = new XdcBlockInfoDecoder();
     public QuorumCertificate Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
-            return null;
         int sequenceLength = decoderContext.ReadSequenceLength();
+        if (sequenceLength == 0)
+            return null;
         int endPosition = decoderContext.Position + sequenceLength;
 
         BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(ref decoderContext, rlpBehaviors);
@@ -48,11 +48,10 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCertificate>, I
 
     public QuorumCertificate Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (rlpStream.IsNextItemNull())
-            return null;
         int sequenceLength = rlpStream.ReadSequenceLength();
+        if (sequenceLength == 0)
+            return null;
         int endPosition = rlpStream.Position + sequenceLength;
-
         BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(rlpStream, rlpBehaviors);
 
         byte[][]? signatureBytes = rlpStream.DecodeByteArrays();

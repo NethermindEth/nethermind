@@ -31,7 +31,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
             1,
             XdcConstants.TargetGasLimit,
             1_700_000_000,
-            new byte[] { 1, 2, 3 })
+            [])
         {
             StateRoot = Keccak.EmptyTreeHash,
             TxRoot = Keccak.EmptyTreeHash,
