@@ -128,6 +128,7 @@ internal static unsafe class BN254
         return true;
     }
 
+    [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool DeserializeG1(ReadOnlySpan<byte> data, out mclBnG1 point)
     {
@@ -160,6 +161,7 @@ internal static unsafe class BN254
         return mclBnG1_isValid(point) == 1;
     }
 
+    [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool DeserializeG2(ReadOnlySpan<byte> data, out mclBnG2 point)
     {
