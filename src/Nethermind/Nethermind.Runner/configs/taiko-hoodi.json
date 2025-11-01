@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/taiko-hekla.json",
-    "GenesisHash": "0x1f5554042aa50dc0712936ae234d8803b80b84251f85d074756a2f391896e109",
-    "BaseDbPath": "nethermind_db/taiko-hekla",
-    "LogFileName": "taiko-hekla.log"
+    "ChainSpecPath": "chainspec/taiko-hoodi.json",
+    "GenesisHash": "0x8e3d16acf3ecc1fbe80309b04e010b90c9ccb3da14e98536cfe66bb93407d228",
+    "BaseDbPath": "nethermind_db/taiko-hoodi",
+    "LogFileName": "taiko-hoodi.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
