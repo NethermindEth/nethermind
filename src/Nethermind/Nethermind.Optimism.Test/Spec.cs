@@ -28,17 +28,23 @@ public static class Spec
             JovianTimestamp = JovianTimeStamp,
         });
 
-    public static ISpecProvider BuildFor(BlockHeader header)
+    public static ISpecProvider BuildFor(params BlockHeader[] headers)
     {
-        var spec = Substitute.For<ReleaseSpec>();
-
-        spec.IsOpHoloceneEnabled = Instance.IsHolocene(header);
-        spec.IsOpGraniteEnabled = Instance.IsGranite(header);
-        spec.IsOpIsthmusEnabled = Instance.IsIsthmus(header);
-        spec.IsOpJovianEnabled = Instance.IsJovian(header);
-
         var specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(header).Returns(spec);
+
+        foreach (BlockHeader header in headers)
+        {
+            var spec = Substitute.For<ReleaseSpec>();
+
+            spec.IsEip4844Enabled = true;
+            spec.IsOpHoloceneEnabled = Instance.IsHolocene(header);
+            spec.IsOpGraniteEnabled = Instance.IsGranite(header);
+            spec.IsOpIsthmusEnabled = Instance.IsIsthmus(header);
+            spec.IsOpJovianEnabled = Instance.IsJovian(header);
+
+            specProvider.GetSpec(header).Returns(spec);
+        }
+
         return specProvider;
     }
 }

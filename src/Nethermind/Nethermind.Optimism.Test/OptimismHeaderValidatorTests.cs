@@ -36,7 +36,7 @@ public class OptimismHeaderValidatorTests
             AlwaysPoS.Instance,
             Substitute.For<IBlockTree>(),
             Always.Valid, Spec.Instance,
-            Spec.BuildFor(headerJovian),
+            Spec.BuildFor(headerHolocene, headerJovian),
             TestLogManager.Instance);
 
         using (Assert.EnterMultipleScope())
@@ -53,6 +53,8 @@ public class OptimismHeaderValidatorTests
                 .WithTimestamp(timestamp)
                 .WithDifficulty(0)
                 .WithNonce(0)
+                .WithBlobGasUsed(0)
+                .WithExcessBlobGas(0)
                 .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
                 .WithWithdrawalsRoot(PostCanyonWithdrawalsRoot)
                 .WithExtraData(Bytes.FromHexString(testCase.HexString));
@@ -77,9 +79,12 @@ public class OptimismHeaderValidatorTests
             .WithTimestamp(Spec.HoloceneTimeStamp - 1)
             .WithDifficulty(0)
             .WithNonce(0)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
             .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
             .WithWithdrawalsRoot(PostCanyonWithdrawalsRoot)
-            .WithExtraData(Bytes.FromHexString(testCase.HexString)).TestObject;
+            .WithExtraData(Bytes.FromHexString(testCase.HexString))
+            .TestObject;
 
         var validator = new OptimismHeaderValidator(
             AlwaysPoS.Instance,
@@ -125,6 +130,8 @@ public class OptimismHeaderValidatorTests
             .WithTimestamp(timestamp)
             .WithDifficulty(0)
             .WithNonce(0)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
             .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
             .WithExtraData(Bytes.FromHexString("0x00ffffffffffffffff"))
             .WithRequestsHash(requestHash)
