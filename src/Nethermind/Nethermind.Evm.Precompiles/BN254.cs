@@ -139,20 +139,15 @@ internal static unsafe class BN254
 
         // Input is big-endian; MCL call below expects little-endian byte order for Fp
         Span<byte> tmp = stackalloc byte[32];
-
-        // x
-        CopyReverse32(data.Slice(0, 32), tmp);
-        fixed (byte* px = &MemoryMarshal.GetReference(tmp))
+        fixed (byte* p = &MemoryMarshal.GetReference(tmp))
         {
-            if (mclBnFp_deserialize(ref point.x, (nint)px, 32) == nuint.Zero)
+            // x
+            CopyReverse32(data.Slice(0, 32), tmp);
+            if (mclBnFp_deserialize(ref point.x, (nint)p, 32) == nuint.Zero)
                 return false;
-        }
-
-        // y
-        CopyReverse32(data.Slice(32, 32), tmp);
-        fixed (byte* py = &MemoryMarshal.GetReference(tmp))
-        {
-            if (mclBnFp_deserialize(ref point.y, (nint)py, 32) == nuint.Zero)
+            // y
+            CopyReverse32(data.Slice(32, 32), tmp);
+            if (mclBnFp_deserialize(ref point.y, (nint)p, 32) == nuint.Zero)
                 return false;
         }
 
@@ -172,35 +167,25 @@ internal static unsafe class BN254
         // Input layout: x_im, x_re, y_im, y_re (each 32 bytes, big-endian)
         // MCL Fp2 layout: d0 = re, d1 = im
         Span<byte> tmp = stackalloc byte[32];
-
-        // x.re
-        CopyReverse32(data.Slice(32, 32), tmp);
         fixed (byte* p = &MemoryMarshal.GetReference(tmp))
         {
+            // x.re
+            CopyReverse32(data.Slice(32, 32), tmp);
             if (mclBnFp_deserialize(ref point.x.d0, (nint)p, 32) == nuint.Zero)
                 return false;
-        }
 
-        // x.im
-        CopyReverse32(data.Slice(0, 32), tmp);
-        fixed (byte* p = &MemoryMarshal.GetReference(tmp))
-        {
+            // x.im
+            CopyReverse32(data.Slice(0, 32), tmp);
             if (mclBnFp_deserialize(ref point.x.d1, (nint)p, 32) == nuint.Zero)
                 return false;
-        }
 
-        // y.re
-        CopyReverse32(data.Slice(96, 32), tmp);
-        fixed (byte* p = &MemoryMarshal.GetReference(tmp))
-        {
+            // y.re
+            CopyReverse32(data.Slice(96, 32), tmp);
             if (mclBnFp_deserialize(ref point.y.d0, (nint)p, 32) == nuint.Zero)
                 return false;
-        }
 
-        // y.im
-        CopyReverse32(data.Slice(64, 32), tmp);
-        fixed (byte* p = &MemoryMarshal.GetReference(tmp))
-        {
+            // y.im
+            CopyReverse32(data.Slice(64, 32), tmp);
             if (mclBnFp_deserialize(ref point.y.d1, (nint)p, 32) == nuint.Zero)
                 return false;
         }
@@ -212,24 +197,17 @@ internal static unsafe class BN254
 
     private static bool SerializeG1(in mclBnG1 point, Span<byte> output)
     {
-        Span<byte> x = output[0..32];
-
-        fixed (byte* ptr = &MemoryMarshal.GetReference(x))
+        fixed (byte* ptr = &MemoryMarshal.GetReference(output))
         {
             if (mclBnFp_getLittleEndian((nint)ptr, 32, point.x) == nuint.Zero)
                 return false;
-        }
 
-        Span<byte> y = output[32..64];
-
-        fixed (byte* ptr = &MemoryMarshal.GetReference(y))
-        {
-            if (mclBnFp_getLittleEndian((nint)ptr, 32, point.y) == nuint.Zero)
+            if (mclBnFp_getLittleEndian((nint)ptr + 32, 32, point.y) == nuint.Zero)
                 return false;
-        }
 
-        CopyReverse32(x, x); // To big-endian
-        CopyReverse32(y, y); // To big-endian
+            new Span<byte>(ptr, 32).Reverse(); // To big-endian
+            new Span<byte>(ptr + 32, 32).Reverse(); // To big-endian
+        }
 
         return true;
     }
