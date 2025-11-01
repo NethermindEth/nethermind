@@ -253,6 +253,7 @@ public class Eth68ProtocolHandler(ISession session,
         {
             if (!ValidateSizeAndType(request.txs[i]))
             {
+                request.txs.Dispose();
                 throw new SubprotocolException("invalid pooled tx type or size");
             }
         }

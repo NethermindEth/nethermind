@@ -10,9 +10,9 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
 [Rlp.SkipGlobalRegistration] // Created explicitly
-public class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
+public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : RlpValueDecoder<TxReceipt>
 {
-    public TxReceipt? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TxReceipt? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         Span<byte> span = rlpStream.PeekNextItem();
         Rlp.ValueDecoderContext ctx = new(span);
@@ -22,7 +22,7 @@ public class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : IRlpStre
         return response;
     }
 
-    public TxReceipt? Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (ctx.IsNextItemNull())
         {
@@ -104,13 +104,13 @@ public class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : IRlpStre
         return logsLength;
     }
 
-    public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         (int total, _) = GetContentLength(item, rlpBehaviors);
         return Rlp.LengthOfSequence(total);
     }
 
-    public void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
