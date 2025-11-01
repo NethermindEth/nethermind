@@ -218,68 +218,66 @@ internal static unsafe class BN254
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe bool IsZero64(byte* p)
+    private static unsafe bool IsZero64(byte* ptr)
     {
         if (Vector512.IsHardwareAccelerated)
         {
-            Vector512<byte> v = Unsafe.ReadUnaligned<Vector512<byte>>(p);
-            return Vector512.EqualsAll(v, Vector512<byte>.Zero);
+            Vector512<byte> a = Unsafe.ReadUnaligned<Vector512<byte>>(ptr);
+            return a == default;
         }
-
-        if (Vector256.IsHardwareAccelerated)
+        else if (Vector256.IsHardwareAccelerated)
         {
-            Vector256<byte> a = Unsafe.ReadUnaligned<Vector256<byte>>(p + 0);
-            Vector256<byte> b = Unsafe.ReadUnaligned<Vector256<byte>>(p + 32);
+            Vector256<byte> a = Unsafe.ReadUnaligned<Vector256<byte>>(ptr + 0);
+            Vector256<byte> b = Unsafe.ReadUnaligned<Vector256<byte>>(ptr + 32);
             Vector256<byte> o = Vector256.BitwiseOr(a, b);
-            return Vector256.EqualsAll(o, Vector256<byte>.Zero);
+            return o == default;
         }
-
-        if (Vector128.IsHardwareAccelerated)
+        else if (Vector128.IsHardwareAccelerated)
         {
             // 4x16-byte blocks, coalesced in pairs
             for (nuint offset = 0; offset < 64; offset += 32)
             {
-                Vector128<byte> v0 = Unsafe.ReadUnaligned<Vector128<byte>>(p + offset);
-                Vector128<byte> v1 = Unsafe.ReadUnaligned<Vector128<byte>>(p + offset + 16);
-                Vector128<byte> v = Vector128.BitwiseOr(v0, v1);
-                if (!Vector128.EqualsAll(v, Vector128<byte>.Zero))
+                Vector128<byte> a = Unsafe.ReadUnaligned<Vector128<byte>>(ptr + offset);
+                Vector128<byte> b = Unsafe.ReadUnaligned<Vector128<byte>>(ptr + offset + 16);
+                Vector128<byte> o = Vector128.BitwiseOr(a, b);
+                if (o != default) return false;
+            }
+            return true;
+        }
+        else
+        {
+            // scalar fallback
+            ulong* x = (ulong*)ptr;
+            for (int i = 0; i < 8; i++)
+            {
+                if (x[i] != 0)
                     return false;
             }
             return true;
         }
-
-        // scalar fallback
-        ulong* x = (ulong*)p;
-        for (int i = 0; i < 8; i++)
-        {
-            if (x[i] != 0)
-                return false;
-        }
-        return true;
     }
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe bool IsZero128(byte* p)
+    private static unsafe bool IsZero128(byte* ptr)
     {
         if (Vector512.IsHardwareAccelerated)
         {
             // 2x512 -> OR‑reduce -> EqualsAll
-            Vector512<byte> a = Unsafe.ReadUnaligned<Vector512<byte>>(p + 0);
-            Vector512<byte> b = Unsafe.ReadUnaligned<Vector512<byte>>(p + 64);
+            Vector512<byte> a = Unsafe.ReadUnaligned<Vector512<byte>>(ptr + 0);
+            Vector512<byte> b = Unsafe.ReadUnaligned<Vector512<byte>>(ptr + 64);
             Vector512<byte> o = Vector512.BitwiseOr(a, b);
-            return Vector512.EqualsAll(o, Vector512<byte>.Zero);
+            return o == default;
         }
         else if (Vector256.IsHardwareAccelerated)
         {
             // 4x32-byte blocks, coalesced in pairs (2 loads per iteration)
             for (nuint offset = 0; offset < 128; offset += 64)
             {
-                Vector256<byte> v0 = Unsafe.ReadUnaligned<Vector256<byte>>(p + offset);
-                Vector256<byte> v1 = Unsafe.ReadUnaligned<Vector256<byte>>(p + offset + 32);
-                Vector256<byte> v = Vector256.BitwiseOr(v0, v1);
-                if (!Vector256.EqualsAll(v, Vector256<byte>.Zero))
-                    return false;
+                Vector256<byte> a = Unsafe.ReadUnaligned<Vector256<byte>>(ptr + offset);
+                Vector256<byte> b = Unsafe.ReadUnaligned<Vector256<byte>>(ptr + offset + 32);
+                Vector256<byte> o = Vector256.BitwiseOr(a, b);
+                if (o != default) return false;
             }
             return true;
         }
@@ -288,26 +286,28 @@ internal static unsafe class BN254
             // 8x16-byte blocks, coalesced in pairs
             for (nuint offset = 0; offset < 128; offset += 32)
             {
-                Vector128<byte> v0 = Unsafe.ReadUnaligned<Vector128<byte>>(p + offset);
-                Vector128<byte> v1 = Unsafe.ReadUnaligned<Vector128<byte>>(p + offset + 16);
-                Vector128<byte> v = Vector128.BitwiseOr(v0, v1);
-                if (!Vector128.EqualsAll(v, Vector128<byte>.Zero))
+                Vector128<byte> a = Unsafe.ReadUnaligned<Vector128<byte>>(ptr + offset);
+                Vector128<byte> b = Unsafe.ReadUnaligned<Vector128<byte>>(ptr + offset + 16);
+                Vector128<byte> o = Vector128.BitwiseOr(a, b);
+                if (o != default) return false;
+            }
+            return true;
+        }
+        else
+        {
+            // scalar fallback
+            ulong* x = (ulong*)ptr;
+            for (int i = 0; i < 16; i++)
+            {
+                if (x[i] != 0)
                     return false;
             }
             return true;
         }
-
-        ulong* x = (ulong*)p;
-        for (int i = 0; i < 16; i++)
-        {
-            if (x[i] != 0)
-                return false;
-        }
-        return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static void CopyReverse32(byte* srcRef, byte* dstRef)
+    private static void CopyReverse32(byte* srcRef, byte* dstRef)
     {
         if (Avx2.IsSupported)
         {
@@ -325,7 +325,7 @@ internal static unsafe class BN254
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static void Reverse32BytesAvx2(byte* srcRef, byte* dstRef)
+    private static void Reverse32BytesAvx2(byte* srcRef, byte* dstRef)
     {
         // Load 32 bytes as one 256-bit vector
         Vector256<byte> vec = Unsafe.ReadUnaligned<Vector256<byte>>(srcRef);
@@ -347,7 +347,7 @@ internal static unsafe class BN254
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static void Reverse32Bytes128(byte* srcRef, byte* dstRef)
+    private static void Reverse32Bytes128(byte* srcRef, byte* dstRef)
     {
         // Two 16-byte halves: reverse each then swap them
         Vector128<byte> lo = Unsafe.ReadUnaligned<Vector128<byte>>(srcRef);
@@ -364,7 +364,7 @@ internal static unsafe class BN254
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static void Reverse32BytesScalar(byte* srcRef, byte* dstRef)
+    private static void Reverse32BytesScalar(byte* srcRef, byte* dstRef)
     {
         ulong* src = (ulong*)srcRef;
         ulong* dst = (ulong*)dstRef;
