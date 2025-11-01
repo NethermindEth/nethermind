@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -77,8 +79,7 @@ public class StateSyncDispatcherTests
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
         peer.HeadNumber.Returns(ChainLength - 1);
 
-        using Nethermind.Core.Collections.ArrayPoolList<byte[]> response = new(1);
-        response.Add(new byte[] { 1, 2, 3 });
+        using ArrayPoolList<byte[]> response = new(1) { new byte[] { 1, 2, 3 } };
         peer.GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(response);
 
@@ -105,11 +106,7 @@ public class StateSyncDispatcherTests
         peer.HeadNumber.Returns(ChainLength - 1);
         ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
 
-        using Nethermind.Core.Collections.ArrayPoolList<byte[]> snapResponse = new(6);
-        for (int i = 0; i < 6; i++)
-        {
-            snapResponse.Add(new byte[] { (byte)i });
-        }
+        using ArrayPoolList<byte[]> snapResponse = new(6, Enumerable.Range(0, 6).Select(i => new byte[] { (byte)i }));
         snapPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
             .Returns(snapResponse);
 
@@ -156,7 +153,7 @@ public class StateSyncDispatcherTests
         peer.HeadNumber.Returns(ChainLength - 1);
 
         ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
-        using Nethermind.Core.Collections.ArrayPoolList<byte[]> emptyResponse = new(0);
+        using ArrayPoolList<byte[]> emptyResponse = new(0);
         snapPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
             .Returns(emptyResponse);
 
@@ -168,8 +165,7 @@ public class StateSyncDispatcherTests
             });
 
         INodeDataPeer nodeDataHandler = Substitute.For<INodeDataPeer>();
-        using Nethermind.Core.Collections.ArrayPoolList<byte[]> nodeDataResponse = new(1);
-        nodeDataResponse.Add(new byte[] { 1, 2, 3 });
+        using ArrayPoolList<byte[]> nodeDataResponse = new(1) { new byte[] { 1, 2, 3 } };
         nodeDataHandler.GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(nodeDataResponse);
 
@@ -206,7 +202,7 @@ public class StateSyncDispatcherTests
         peer.HeadNumber.Returns(ChainLength - 1);
 
         ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
-        using Nethermind.Core.Collections.ArrayPoolList<byte[]> emptyResponse = new(0);
+        using ArrayPoolList<byte[]> emptyResponse = new(0);
         snapPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
             .Returns(emptyResponse);
 
@@ -217,8 +213,7 @@ public class StateSyncDispatcherTests
                 return true;
             });
 
-        using Nethermind.Core.Collections.ArrayPoolList<byte[]> eth66Response = new(1);
-        eth66Response.Add(new byte[] { 1, 2, 3 });
+        using ArrayPoolList<byte[]> eth66Response = new(1) { new byte[] { 1, 2, 3 } };
         peer.GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(eth66Response);
 

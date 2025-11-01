@@ -72,7 +72,7 @@ namespace Nethermind.Synchronization.StateSync
         private async Task<bool> TryGetNodeDataViaNodeDataProtocol(INodeDataPeer nodeDataHandler, StateSyncBatch batch, CancellationToken cancellationToken, ISyncPeer peer)
         {
             if (Logger.IsTrace) Logger.Trace($"Requested NodeData via NodeDataProtocol from peer {peer}");
-            HashList? hashList = HashList.Rent(batch.RequestedNodes);
+            HashList hashList = HashList.Rent(batch.RequestedNodes);
             try
             {
                 batch.Responses = await nodeDataHandler.GetNodeData(hashList, cancellationToken);
@@ -95,14 +95,14 @@ namespace Nethermind.Synchronization.StateSync
             }
             finally
             {
-                if (hashList is not null) HashList.Return(hashList);
+                HashList.Return(hashList);
             }
         }
 
         private async Task<bool> TryGetNodeDataViaEthProtocol(ISyncPeer peer, StateSyncBatch batch, CancellationToken cancellationToken)
         {
             if (Logger.IsTrace) Logger.Trace($"Requested NodeData via EthProtocol from peer {peer}");
-            HashList? hashList = HashList.Rent(batch.RequestedNodes);
+            HashList hashList = HashList.Rent(batch.RequestedNodes);
             try
             {
                 batch.Responses = await peer.GetNodeData(hashList, cancellationToken);
@@ -125,7 +125,7 @@ namespace Nethermind.Synchronization.StateSync
             }
             finally
             {
-                if (hashList is not null) HashList.Return(hashList);
+                HashList.Return(hashList);
             }
         }
 
