@@ -146,7 +146,7 @@ public class StateSyncDispatcherTests
     }
 
     [Test]
-    public async Task NodeDataPeer_FallbackToSnapWhenEmpty()
+    public async Task SnapPeer_FallbackToNodeDataWhenEmpty()
     {
         ISyncPeer peer = Substitute.For<ISyncPeer>();
         peer.Node.Returns(new Stats.Model.Node(_publicKey, new IPEndPoint(IPAddress.Broadcast, 30303)));
@@ -155,10 +155,23 @@ public class StateSyncDispatcherTests
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
         peer.HeadNumber.Returns(ChainLength - 1);
 
-        INodeDataPeer nodeDataHandler = Substitute.For<INodeDataPeer>();
+        ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
         using Nethermind.Core.Collections.ArrayPoolList<byte[]> emptyResponse = new(0);
-        nodeDataHandler.GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+        snapPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
             .Returns(emptyResponse);
+
+        peer.TryGetSatelliteProtocol("snap", out Arg.Any<ISnapSyncPeer>()).Returns(
+            x =>
+            {
+                x[1] = snapPeer;
+                return true;
+            });
+
+        INodeDataPeer nodeDataHandler = Substitute.For<INodeDataPeer>();
+        using Nethermind.Core.Collections.ArrayPoolList<byte[]> nodeDataResponse = new(1);
+        nodeDataResponse.Add(new byte[] { 1, 2, 3 });
+        nodeDataHandler.GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(nodeDataResponse);
 
         peer.TryGetSatelliteProtocol("nodedata", out Arg.Any<INodeDataPeer>()).Returns(
             x =>
@@ -167,19 +180,6 @@ public class StateSyncDispatcherTests
                 return true;
             });
 
-        ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
-        using Nethermind.Core.Collections.ArrayPoolList<byte[]> snapResponse = new(1);
-        snapResponse.Add(new byte[] { 1, 2, 3 });
-        snapPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
-            .Returns(snapResponse);
-
-        peer.TryGetSatelliteProtocol("snap", out Arg.Any<ISnapSyncPeer>()).Returns(
-            x =>
-            {
-                x[1] = snapPeer;
-                return true;
-            });
-
         _pool.AddPeer(peer);
 
         using StateSyncBatch batch = new(
@@ -189,14 +189,14 @@ public class StateSyncDispatcherTests
 
         await _dispatcher.ExecuteDispatch(batch, 1);
 
-        await nodeDataHandler.Received(1).GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>());
         await snapPeer.Received(1).GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>());
+        await nodeDataHandler.Received(1).GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>());
         batch.Responses.Should().NotBeNull();
         batch.Responses!.Count.Should().Be(1);
     }
 
     [Test]
-    public async Task Eth66Peer_FallbackToSnapWhenEmpty()
+    public async Task SnapPeer_FallbackToEth66WhenEmpty()
     {
         ISyncPeer peer = Substitute.For<ISyncPeer>();
         peer.Node.Returns(new Stats.Model.Node(_publicKey, new IPEndPoint(IPAddress.Broadcast, 30303)));
@@ -205,15 +205,10 @@ public class StateSyncDispatcherTests
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
         peer.HeadNumber.Returns(ChainLength - 1);
 
-        using Nethermind.Core.Collections.ArrayPoolList<byte[]> emptyResponse = new(0);
-        peer.GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
-            .Returns(emptyResponse);
-
         ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
-        using Nethermind.Core.Collections.ArrayPoolList<byte[]> snapResponse = new(1);
-        snapResponse.Add(new byte[] { 1, 2, 3 });
+        using Nethermind.Core.Collections.ArrayPoolList<byte[]> emptyResponse = new(0);
         snapPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
-            .Returns(snapResponse);
+            .Returns(emptyResponse);
 
         peer.TryGetSatelliteProtocol("snap", out Arg.Any<ISnapSyncPeer>()).Returns(
             x =>
@@ -221,6 +216,11 @@ public class StateSyncDispatcherTests
                 x[1] = snapPeer;
                 return true;
             });
+
+        using Nethermind.Core.Collections.ArrayPoolList<byte[]> eth66Response = new(1);
+        eth66Response.Add(new byte[] { 1, 2, 3 });
+        peer.GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(eth66Response);
 
         _pool.AddPeer(peer);
 
@@ -231,8 +231,8 @@ public class StateSyncDispatcherTests
 
         await _dispatcher.ExecuteDispatch(batch, 1);
 
-        using var _ = await peer.Received(1).GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>());
         await snapPeer.Received(1).GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>());
+        using var _ = await peer.Received(1).GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>());
         batch.Responses.Should().NotBeNull();
         batch.Responses!.Count.Should().Be(1);
     }
