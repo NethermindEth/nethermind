@@ -123,7 +123,7 @@ internal static unsafe class BN254
         // Single final exponentiation for the product
         mclBn_finalExp(ref acc, acc);
 
-        // True iff the product of pairings equals 1 in GT
+        // True if the product of pairings equals 1 in GT
         output[31] = (byte)(mclBnGT_isOne(acc) == 1 ? 1 : 0);
         return true;
     }
