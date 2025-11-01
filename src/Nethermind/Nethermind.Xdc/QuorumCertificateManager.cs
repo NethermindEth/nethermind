@@ -18,6 +18,7 @@ using Nethermind.Xdc.Types;
 using static Nethermind.Core.BlockHeader;
 
 namespace Nethermind.Xdc;
+
 internal class QuorumCertificateManager : IQuorumCertificateManager
 {
     public QuorumCertificateManager(

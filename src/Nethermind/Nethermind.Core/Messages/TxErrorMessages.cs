@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.Core.Messages;
+
 public static class TxErrorMessages
 {
     public static string InvalidTxType(string name) =>

@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/nethermindeth/nethermind/assets/337518/3e3b3c06-9cf3-4364-a774-158e649588cc">
-    <source media="(prefers-color-scheme: light)" srcset="https://github.com/nethermindeth/nethermind/assets/337518/d1cc365c-6045-409f-a961-18d22ddb2535">
-    <img alt="Nethermind" src="https://github.com/nethermindeth/nethermind/assets/337518/d1cc365c-6045-409f-a961-18d22ddb2535" height="64">
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/307367c4-415f-4d0f-8d87-49eac88ffebc">
+    <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/ce071b5b-c50b-4f30-95f8-b5f35695140e">
+    <img alt="Nethermind" src="https://github.com/user-attachments/assets/ce071b5b-c50b-4f30-95f8-b5f35695140e" height="64">
   </picture>
 </p>
 
@@ -94,7 +94,7 @@ For more info, see [Building Docker image](https://docs.nethermind.io/developers
 
 **Prerequisites**
 
-Install the [.NET SDK](https://aka.ms/dotnet/download).
+Install [.NET SDK](https://aka.ms/dotnet/download) 10 or later.
 
 **Clone the repository**
 
@@ -115,10 +115,10 @@ dotnet run -c release -- -c mainnet
 cd nethermind/src/Nethermind
 
 # Run Nethermind tests
-dotnet test Nethermind.slnx -c release
+dotnet test --solution Nethermind.slnx -c release
 
 # Run Ethereum Foundation tests
-dotnet test EthereumTests.slnx -c release
+dotnet test --solution EthereumTests.slnx -c release
 ```
 
 For more info, see [Building standalone binaries](https://docs.nethermind.io/developers/building-from-source#building-standalone-binaries).

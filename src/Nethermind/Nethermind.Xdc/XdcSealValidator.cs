@@ -19,6 +19,7 @@ using System.Linq;
 using static Nethermind.Xdc.XdcExtensions;
 
 namespace Nethermind.Xdc;
+
 internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider) : ISealValidator
 {
     private EthereumEcdsa _ethereumEcdsa = new(0); //Ignore chainId since we don't sign transactions here

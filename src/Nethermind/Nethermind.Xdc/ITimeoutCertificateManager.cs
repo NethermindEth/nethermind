@@ -6,6 +6,7 @@ using Nethermind.Xdc.Types;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 public interface ITimeoutCertificateManager
 {
     Task OnReceiveTimeout(Timeout timeout);

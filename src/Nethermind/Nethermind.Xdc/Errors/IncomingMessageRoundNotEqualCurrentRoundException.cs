@@ -4,6 +4,7 @@
 using System;
 
 namespace Nethermind.Xdc.Errors;
+
 public class IncomingMessageRoundNotEqualCurrentRoundException(ulong incomingRound, ulong currentRound, Exception? innerException = null)
     : Exception($"message round number: {incomingRound} does not match currentRound: {currentRound}", innerException)
 {

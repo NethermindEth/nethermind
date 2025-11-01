@@ -12,6 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
+
 internal class XdcTestHelper
 {
     public static PrivateKey[] GeneratePrivateKeys(int count)

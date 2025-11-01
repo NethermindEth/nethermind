@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.RLP;
+
 internal sealed class ExtraConsensusDataDecoder : RlpValueDecoder<ExtraFieldsV2>
 {
     private QuorumCertificateDecoder _quorumCertificateDecoder = new();

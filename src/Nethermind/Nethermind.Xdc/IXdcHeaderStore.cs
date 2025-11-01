@@ -11,6 +11,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 internal interface IXdcHeaderStore : IHeaderStore
 {
     void Insert(XdcBlockHeader header) => ((IHeaderStore)this).Insert(header);

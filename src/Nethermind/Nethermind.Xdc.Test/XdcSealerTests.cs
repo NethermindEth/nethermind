@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
+
 internal class XdcSealerTests
 {
     [Test]

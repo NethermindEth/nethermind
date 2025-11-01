@@ -6,6 +6,7 @@ using Nethermind.Core.Extensions;
 using Snappier;
 
 namespace Nethermind.Era1.Test;
+
 internal class E2StoreWriterTests
 {
     byte[] TestBytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
