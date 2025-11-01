@@ -129,7 +129,6 @@ internal static unsafe class BN254
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool DeserializeG1(ReadOnlySpan<byte> data, out mclBnG1 point)
     {
         point = default;
@@ -142,7 +141,7 @@ internal static unsafe class BN254
         Span<byte> tmp = stackalloc byte[32];
 
         // x
-        Reverse32Bytes(data.Slice(0, 32), tmp);
+        CopyReverse32(data.Slice(0, 32), tmp);
         fixed (byte* px = &MemoryMarshal.GetReference(tmp))
         {
             if (mclBnFp_deserialize(ref point.x, (nint)px, 32) == nuint.Zero)
@@ -150,7 +149,7 @@ internal static unsafe class BN254
         }
 
         // y
-        Reverse32Bytes(data.Slice(32, 32), tmp);
+        CopyReverse32(data.Slice(32, 32), tmp);
         fixed (byte* py = &MemoryMarshal.GetReference(tmp))
         {
             if (mclBnFp_deserialize(ref point.y, (nint)py, 32) == nuint.Zero)
@@ -162,7 +161,6 @@ internal static unsafe class BN254
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool DeserializeG2(ReadOnlySpan<byte> data, out mclBnG2 point)
     {
         point = default;
@@ -176,7 +174,7 @@ internal static unsafe class BN254
         Span<byte> tmp = stackalloc byte[32];
 
         // x.re
-        Reverse32Bytes(data.Slice(32, 32), tmp);
+        CopyReverse32(data.Slice(32, 32), tmp);
         fixed (byte* p = &MemoryMarshal.GetReference(tmp))
         {
             if (mclBnFp_deserialize(ref point.x.d0, (nint)p, 32) == nuint.Zero)
@@ -184,7 +182,7 @@ internal static unsafe class BN254
         }
 
         // x.im
-        Reverse32Bytes(data.Slice(0, 32), tmp);
+        CopyReverse32(data.Slice(0, 32), tmp);
         fixed (byte* p = &MemoryMarshal.GetReference(tmp))
         {
             if (mclBnFp_deserialize(ref point.x.d1, (nint)p, 32) == nuint.Zero)
@@ -192,7 +190,7 @@ internal static unsafe class BN254
         }
 
         // y.re
-        Reverse32Bytes(data.Slice(96, 32), tmp);
+        CopyReverse32(data.Slice(96, 32), tmp);
         fixed (byte* p = &MemoryMarshal.GetReference(tmp))
         {
             if (mclBnFp_deserialize(ref point.y.d0, (nint)p, 32) == nuint.Zero)
@@ -200,7 +198,7 @@ internal static unsafe class BN254
         }
 
         // y.im
-        Reverse32Bytes(data.Slice(64, 32), tmp);
+        CopyReverse32(data.Slice(64, 32), tmp);
         fixed (byte* p = &MemoryMarshal.GetReference(tmp))
         {
             if (mclBnFp_deserialize(ref point.y.d1, (nint)p, 32) == nuint.Zero)
@@ -230,14 +228,14 @@ internal static unsafe class BN254
                 return false;
         }
 
-        Reverse32Bytes(x, x); // To big-endian
-        Reverse32Bytes(y, y); // To big-endian
+        CopyReverse32(x, x); // To big-endian
+        CopyReverse32(y, y); // To big-endian
 
         return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static void Reverse32Bytes(ReadOnlySpan<byte> src, Span<byte> dst)
+    static void CopyReverse32(ReadOnlySpan<byte> src, Span<byte> dst)
     {
         Debug.Assert(src.Length == 32);
         Debug.Assert(dst.Length == 32);
