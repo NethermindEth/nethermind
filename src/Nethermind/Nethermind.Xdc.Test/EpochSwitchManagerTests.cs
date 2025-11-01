@@ -43,7 +43,7 @@ internal class EpochSwitchManagerTests
                 block = GenNormalBlock(spec, block!);
             }
 
-            if ((block.ExtraConsensusData?.CurrentRound ?? 0ul) % (ulong)spec.EpochLength == 0)
+            if ((block.ExtraConsensusData?.BlockRound ?? 0ul) % (ulong)spec.EpochLength == 0)
             {
                 snapManager.GetSnapshot(block.Hash!).Returns(new Snapshot(block.Number, block.Hash!, [.. StandbyAddresses, .. SignerAddresses]));
             }
@@ -64,9 +64,9 @@ internal class EpochSwitchManagerTests
         long blockNumber = 0;
         if (parent is not null)
         {
-            newRound = 1 + (parent.ExtraConsensusData?.CurrentRound ?? 0);
+            newRound = 1 + (parent.ExtraConsensusData?.BlockRound ?? 0);
             blockNumber = 1 + parent.Number;
-            prevRound = parent.ExtraConsensusData?.CurrentRound ?? 0;
+            prevRound = parent.ExtraConsensusData?.BlockRound ?? 0;
             parentHash = parent.Hash;
 
         }
@@ -205,8 +205,8 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)releaseSpec.SwitchBlock;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.CurrentRound, chainHead.Number), SignerSignatures.ToArray(), gapNumber);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.CurrentRound + 1, qc);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), gapNumber);
+        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
 
         // Act
@@ -236,13 +236,13 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.CurrentRound, chainHead.Number), SignerSignatures.ToArray(), 1);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.CurrentRound + 1, qc);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
         // Act
         bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader);
         // Assert
-        Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.LessThan(extraFieldsV2.CurrentRound));
+        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.LessThan(extraFieldsV2.BlockRound));
 
         Assert.That(result, Is.True);
     }
@@ -268,13 +268,13 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.CurrentRound, chainHead.Number), SignerSignatures.ToArray(), 1);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.CurrentRound - 1, qc);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound - 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
         // Act
         bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader);
         // Assert
-        Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.GreaterThan(extraFieldsV2.CurrentRound));
+        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.GreaterThan(extraFieldsV2.BlockRound));
 
         Assert.That(result, Is.False);
     }
@@ -300,13 +300,13 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.CurrentRound, chainHead.Number), SignerSignatures.ToArray(), 1);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.CurrentRound, qc);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
         // Act
         bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader);
         // Assert
-        Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.EqualTo(extraFieldsV2.CurrentRound));
+        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.EqualTo(extraFieldsV2.BlockRound));
 
         Assert.That(result, Is.False);
     }
@@ -363,7 +363,7 @@ internal class EpochSwitchManagerTests
     }
 
     [Test]
-    public void IsEpochSwitchAtRound_ShouldReturnFalse_WhenParentRoundIsGreaterThanCurrentRound()
+    public void IsEpochSwitchAtRound_ShouldReturnFalse_WhenParentRoundIsGreaterThanBlockRound()
     {
         // Arrange
         var currRound = 42ul;
@@ -379,7 +379,7 @@ internal class EpochSwitchManagerTests
         bool result = _epochSwitchManager.IsEpochSwitchAtRound(currRound, chainHead);
         // Assert
         Assert.That(result, Is.False);
-        Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.GreaterThan(currRound));
+        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.GreaterThan(currRound));
     }
 
     [Test]
@@ -405,19 +405,19 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.CurrentRound, chainHead.Number), SignerSignatures.ToArray(), 1);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.CurrentRound + 1, qc);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
 
-        ulong currentEpochNumber = (ulong)releaseSpec.SwitchEpoch + extraFieldsV2.CurrentRound / (ulong)releaseSpec.EpochLength;
+        ulong currentEpochNumber = (ulong)releaseSpec.SwitchEpoch + extraFieldsV2.BlockRound / (ulong)releaseSpec.EpochLength;
         ulong currentEpochStartRound = currentEpochNumber * (ulong)releaseSpec.EpochLength;
 
-        bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.CurrentRound, chainHead);
+        bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.BlockRound, chainHead);
 
         // Assert
-        Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.EqualTo(extraFieldsV2.CurrentRound - 1));
-        Assert.That(currentEpochStartRound, Is.GreaterThan(chainHead.ExtraConsensusData!.CurrentRound));
-        Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.LessThan(extraFieldsV2.CurrentRound));
+        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.EqualTo(extraFieldsV2.BlockRound - 1));
+        Assert.That(currentEpochStartRound, Is.GreaterThan(chainHead.ExtraConsensusData!.BlockRound));
+        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.LessThan(extraFieldsV2.BlockRound));
         Assert.That(result, Is.True);
     }
 
@@ -444,19 +444,19 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.CurrentRound, chainHead.Number), SignerSignatures.ToArray(), 1);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.CurrentRound + 1, qc);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
 
-        ulong currentEpochNumber = ((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.CurrentRound) / (ulong)releaseSpec.EpochLength;
+        ulong currentEpochNumber = ((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.BlockRound) / (ulong)releaseSpec.EpochLength;
         ulong currentEpochStartRound = currentEpochNumber * (ulong)releaseSpec.EpochLength;
 
-        bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.CurrentRound, chainHead);
+        bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.BlockRound, chainHead);
 
         // Assert
-        Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.EqualTo(extraFieldsV2.CurrentRound - 1));
-        Assert.That(currentEpochStartRound, Is.EqualTo(chainHead.ExtraConsensusData!.CurrentRound));
-        Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.LessThan(extraFieldsV2.CurrentRound));
+        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.EqualTo(extraFieldsV2.BlockRound - 1));
+        Assert.That(currentEpochStartRound, Is.EqualTo(chainHead.ExtraConsensusData!.BlockRound));
+        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.LessThan(extraFieldsV2.BlockRound));
         Assert.That(result, Is.False);
     }
 
@@ -483,19 +483,19 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.CurrentRound, chainHead.Number), SignerSignatures.ToArray(), 1);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.CurrentRound + 1, qc);
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
 
-        ulong currentEpochNumber = ((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.CurrentRound) / (ulong)releaseSpec.EpochLength;
+        ulong currentEpochNumber = ((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.BlockRound) / (ulong)releaseSpec.EpochLength;
         ulong currentEpochStartRound = currentEpochNumber * (ulong)releaseSpec.EpochLength;
 
-        bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.CurrentRound, chainHead);
+        bool result = _epochSwitchManager.IsEpochSwitchAtRound(extraFieldsV2.BlockRound, chainHead);
 
         // Assert
-        Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.EqualTo(extraFieldsV2.CurrentRound - 1));
-        Assert.That(currentEpochStartRound, Is.LessThan(chainHead.ExtraConsensusData!.CurrentRound));
-        Assert.That(chainHead.ExtraConsensusData!.CurrentRound, Is.LessThan(extraFieldsV2.CurrentRound));
+        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.EqualTo(extraFieldsV2.BlockRound - 1));
+        Assert.That(currentEpochStartRound, Is.LessThan(chainHead.ExtraConsensusData!.BlockRound));
+        Assert.That(chainHead.ExtraConsensusData!.BlockRound, Is.LessThan(extraFieldsV2.BlockRound));
         Assert.That(result, Is.False);
     }
 
@@ -567,8 +567,8 @@ internal class EpochSwitchManagerTests
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 100);
         var parentHeader = (XdcBlockHeader)_tree.FindHeader(chainHead.ParentHash!)!;
 
-        EpochSwitchInfo expected = new(SignerAddresses.ToArray(), StandbyAddresses.ToArray(), PenalizedAddresses.ToArray(), new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.CurrentRound, chainHead.Number));
-        expected.EpochSwitchParentBlockInfo = new(parentHeader.Hash!, parentHeader.ExtraConsensusData!.CurrentRound, parentHeader.Number);
+        EpochSwitchInfo expected = new(SignerAddresses.ToArray(), StandbyAddresses.ToArray(), PenalizedAddresses.ToArray(), new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number));
+        expected.EpochSwitchParentBlockInfo = new(parentHeader.Hash!, parentHeader.ExtraConsensusData!.BlockRound, parentHeader.Number);
 
         var result = _epochSwitchManager.GetEpochSwitchInfo(chainHead.Hash!);
 
@@ -600,9 +600,9 @@ internal class EpochSwitchManagerTests
             parentHeader.ValidatorsAddress!.Value.ToArray(),
             StandbyAddresses.ToArray(),
             parentHeader.PenaltiesAddress!.Value.ToArray(),
-            new BlockRoundInfo(parentHeader.Hash!, parentHeader.ExtraConsensusData!.CurrentRound, (long)blockNumber));
+            new BlockRoundInfo(parentHeader.Hash!, parentHeader.ExtraConsensusData!.BlockRound, (long)blockNumber));
 
-        expected.EpochSwitchParentBlockInfo = new(parentHeader.ParentHash!, parentHeader.ExtraConsensusData.CurrentRound - (ulong)1, parentHeader.Number - 1);
+        expected.EpochSwitchParentBlockInfo = new(parentHeader.ParentHash!, parentHeader.ExtraConsensusData.BlockRound - (ulong)1, parentHeader.Number - 1);
 
         var result = _epochSwitchManager.GetEpochSwitchInfo(chainHead.Hash!);
         Assert.That(result, Is.Not.Null);

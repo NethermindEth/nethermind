@@ -47,7 +47,7 @@ public class TimeoutCertificateManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
         var tcManager = new TimeoutCertificateManager(
-            new XdcContext(),
+            new XdcConsensusContext(),
             snapshotManager,
             Substitute.For<IEpochSwitchManager>(),
             Substitute.For<ISpecProvider>(),
@@ -71,7 +71,7 @@ public class TimeoutCertificateManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
         var tcManager = new TimeoutCertificateManager(
-            new XdcContext(),
+            new XdcConsensusContext(),
             snapshotManager,
             Substitute.For<IEpochSwitchManager>(),
             Substitute.For<ISpecProvider>(),
@@ -137,7 +137,7 @@ public class TimeoutCertificateManagerTests
         blockTree.Head.Returns(new Block(header, new BlockBody()));
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
 
-        var context = new XdcContext();
+        var context = new XdcConsensusContext();
         ISyncInfoManager syncInfoManager = Substitute.For<ISyncInfoManager>();
         ISigner signer = Substitute.For<ISigner>();
 
@@ -150,7 +150,7 @@ public class TimeoutCertificateManagerTests
     private TimeoutCertificateManager BuildTimeoutCertificateManager()
     {
         return new TimeoutCertificateManager(
-            new XdcContext(),
+            new XdcConsensusContext(),
             Substitute.For<ISnapshotManager>(),
             Substitute.For<IEpochSwitchManager>(),
             Substitute.For<ISpecProvider>(),
