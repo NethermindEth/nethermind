@@ -56,8 +56,14 @@ public class ForkInfoTests
     [TestCase(15_051_000, 1_710_338_134ul, "0xdce96c2d", 1_710_338_135ul, "Future Shanghai timestamp")]
     [TestCase(15_051_000, 1_710_338_135ul, "0x9f3d2254", 1_746_612_311ul, "First Cancun timestamp")]
     [TestCase(15_051_000, 1_746_612_310ul, "0x9f3d2254", 1_746_612_311ul, "Future Cancun timestamp")]
-    [TestCase(15_051_000, 1_746_612_311ul, "0xc376cf8b", 0ul, "First Prague timestamp")]
-    [TestCase(15_051_000, 1_846_612_311ul, "0xc376cf8b", 0ul, "Future Prague timestamp")]
+    [TestCase(15_051_000, 1_746_612_311ul, "0xc376cf8b", 1_764_798_551ul, "First Prague timestamp")]
+    [TestCase(15_051_000, 1_764_798_550ul, "0xc376cf8b", 1_764_798_551ul, "Future Prague timestamp")]
+    [TestCase(15_051_000, 1_764_798_551ul, "0x5167e2a6", 1_765_290_071ul, "First Osaka timestamp")]
+    [TestCase(15_051_000, 1_765_290_070ul, "0x5167e2a6", 1_765_290_071ul, "Future Osaka timestamp")]
+    [TestCase(15_051_000, 1_765_290_071ul, "0xcba2a1c0", 1_767_747_671ul, "First BPO1 timestamp")]
+    [TestCase(15_051_000, 1_767_747_670ul, "0xcba2a1c0", 1_767_747_671ul, "Future BPO1 timestamp")]
+    [TestCase(15_051_000, 1_767_747_671ul, "0x07c9462e", 0ul, "First BPO2 timestamp")]
+    [TestCase(15_051_000, 1_867_747_671ul, "0x07c9462e", 0ul, "Future BPO2 timestamp")]
     public void Fork_id_and_hash_as_expected(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         Test(head, headTimestamp, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "foundation.json");

@@ -27,7 +27,9 @@ public class MainnetSpecProvider : ISpecProvider
     public const ulong ShanghaiBlockTimestamp = 0x64373057;
     public const ulong CancunBlockTimestamp = 0x65F1B057;
     public const ulong PragueBlockTimestamp = 0x681b3057;
-    public const ulong OsakaBlockTimestamp = ulong.MaxValue - 1;
+    public const ulong OsakaBlockTimestamp = 0x6930b057;
+    public const ulong BPO1BlockTimestamp = 0x69383057;
+    public const ulong BPO2BlockTimestamp = 0x695db057;
 
     IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) =>
         forkActivation switch
@@ -49,7 +51,9 @@ public class MainnetSpecProvider : ISpecProvider
             { Timestamp: < CancunBlockTimestamp } => Shanghai.Instance,
             { Timestamp: < PragueBlockTimestamp } => Cancun.Instance,
             { Timestamp: < OsakaBlockTimestamp } => Prague.Instance,
-            _ => Osaka.Instance
+            { Timestamp: < BPO1BlockTimestamp } => Osaka.Instance,
+            { Timestamp: < BPO2BlockTimestamp } => BPO1.Instance,
+            _ => BPO2.Instance
         };
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -73,6 +77,8 @@ public class MainnetSpecProvider : ISpecProvider
     public static ForkActivation CancunActivation { get; } = (ParisBlockNumber + 2, CancunBlockTimestamp);
     public static ForkActivation PragueActivation { get; } = (ParisBlockNumber + 3, PragueBlockTimestamp);
     public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 4, OsakaBlockTimestamp);
+    public static ForkActivation BPO1Activation { get; } = (ParisBlockNumber + 5, BPO1BlockTimestamp);
+    public static ForkActivation BPO2Activation { get; } = (ParisBlockNumber + 6, BPO2BlockTimestamp);
     public ForkActivation[] TransitionActivations { get; } =
     {
         (ForkActivation)HomesteadBlockNumber,
@@ -91,6 +97,8 @@ public class MainnetSpecProvider : ISpecProvider
         CancunActivation,
         PragueActivation,
         OsakaActivation,
+        BPO1Activation,
+        BPO2Activation,
     };
 
     public static MainnetSpecProvider Instance { get; } = new();
