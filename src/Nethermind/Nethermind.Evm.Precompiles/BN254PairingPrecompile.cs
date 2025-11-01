@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -37,9 +36,7 @@ public class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
         }
 
         byte[] output = new byte[32];
-        Memory<byte> input = Unsafe.As<ReadOnlyMemory<byte>, Memory<byte>>(ref inputData);
-
-        var result = BN254.CheckPairing(input.Span, output);
+        bool result = BN254.CheckPairing(inputData.Span, output);
 
         return result ? (output, true) : IPrecompile.Failure;
     }

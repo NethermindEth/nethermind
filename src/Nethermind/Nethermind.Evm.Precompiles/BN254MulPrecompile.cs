@@ -27,10 +27,11 @@ public class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
         Metrics.Bn254MulPrecompile++;
 
         Span<byte> input = stackalloc byte[96];
-        Span<byte> output = stackalloc byte[64];
 
-        inputData.Span[0..Math.Min(inputData.Length, input.Length)].CopyTo(input);
+        ReadOnlySpan<byte> inputSpan = inputData.Span;
+        inputSpan[0..Math.Min(inputSpan.Length, input.Length)].CopyTo(input);
 
-        return BN254.Mul(input, output) ? (output.ToArray(), true) : IPrecompile.Failure;
+        byte[] output = new byte[64];
+        return BN254.Mul(input, output) ? (output, true) : IPrecompile.Failure;
     }
 }

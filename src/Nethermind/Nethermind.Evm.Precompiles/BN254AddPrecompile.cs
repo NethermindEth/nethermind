@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -22,15 +23,30 @@ public class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
+    [SkipLocalsInit]
     public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254AddPrecompile++;
 
-        Span<byte> input = stackalloc byte[128];
-        Span<byte> output = stackalloc byte[64];
+        Span<byte> inputWritable = stackalloc byte[128];
+        ReadOnlySpan<byte> input = inputWritable;
 
-        inputData.Span[0..Math.Min(inputData.Length, input.Length)].CopyTo(input);
+        ReadOnlySpan<byte> orignalInput = inputData.Span;
+        if (orignalInput.Length == 128)
+        {
+            input = orignalInput;
+        }
+        else if (orignalInput.Length < 128)
+        {
+            orignalInput.CopyTo(inputWritable);
+            inputWritable[orignalInput.Length..].Clear();
+        }
+        else
+        {
+            orignalInput[0..inputWritable.Length].CopyTo(inputWritable);
+        }
 
-        return BN254.Add(input, output) ? (output.ToArray(), true) : IPrecompile.Failure;
+        byte[] output = new byte[64];
+        return BN254.Add(input, output) ? (output, true) : IPrecompile.Failure;
     }
 }
