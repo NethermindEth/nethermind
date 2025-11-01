@@ -26,6 +26,8 @@ internal static unsafe class BN254
 
     internal static bool Add(ReadOnlySpan<byte> input, Span<byte> output)
     {
+        const int chunkSize = 64;
+
         if (input.Length != 128)
             return false;
 
@@ -36,7 +38,7 @@ internal static unsafe class BN254
             if (!DeserializeG1(data, out x))
                 return false;
 
-            if (!DeserializeG1(data + 64, out y))
+            if (!DeserializeG1(data + chunkSize, out y))
                 return false;
         }
 
@@ -48,6 +50,8 @@ internal static unsafe class BN254
 
     internal static bool Mul(Span<byte> input, Span<byte> output)
     {
+        const int chunkSize = 64;
+
         if (input.Length != 96)
             return false;
 
@@ -58,9 +62,9 @@ internal static unsafe class BN254
             if (!DeserializeG1(data, out x))
                 return false;
 
-            CopyReverse32((data + 64), (data + 64)); // To little-endian
+            CopyReverse32((data + chunkSize), (data + chunkSize)); // To little-endian
 
-            if (mclBnFr_setLittleEndianMod(ref y, (nint)(data + 64), 32) == -1 || mclBnFr_isValid(y) == 0)
+            if (mclBnFr_setLittleEndianMod(ref y, (nint)(data + chunkSize), 32) == -1 || mclBnFr_isValid(y) == 0)
                 return false;
         }
 
@@ -135,6 +139,8 @@ internal static unsafe class BN254
     [SkipLocalsInit]
     private static bool DeserializeG1(byte* data, out mclBnG1 point)
     {
+        const int chunkSize = 32;
+
         point = default;
 
         // Treat all-zero as point at infinity for your calling convention
@@ -142,16 +148,16 @@ internal static unsafe class BN254
             return true;
 
         // Input is big-endian; MCL call below expects little-endian byte order for Fp
-        Span<byte> tmp = stackalloc byte[32];
+        Span<byte> tmp = stackalloc byte[chunkSize];
         fixed (byte* p = &MemoryMarshal.GetReference(tmp))
         {
             // x
             CopyReverse32(data, p);
-            if (mclBnFp_deserialize(ref point.x, (nint)p, 32) == nuint.Zero)
+            if (mclBnFp_deserialize(ref point.x, (nint)p, chunkSize) == nuint.Zero)
                 return false;
             // y
-            CopyReverse32((data + 32), p);
-            if (mclBnFp_deserialize(ref point.y, (nint)p, 32) == nuint.Zero)
+            CopyReverse32((data + chunkSize), p);
+            if (mclBnFp_deserialize(ref point.y, (nint)p, chunkSize) == nuint.Zero)
                 return false;
         }
 
@@ -162,6 +168,8 @@ internal static unsafe class BN254
     [SkipLocalsInit]
     private static bool DeserializeG2(byte* data, out mclBnG2 point)
     {
+        const int chunkSize = 32;
+
         point = default;
 
         // Treat all-zero as point at infinity
@@ -170,27 +178,27 @@ internal static unsafe class BN254
 
         // Input layout: x_im, x_re, y_im, y_re (each 32 bytes, big-endian)
         // MCL Fp2 layout: d0 = re, d1 = im
-        Span<byte> tmp = stackalloc byte[32];
+        Span<byte> tmp = stackalloc byte[chunkSize];
         fixed (byte* p = &MemoryMarshal.GetReference(tmp))
         {
             // x.im
             CopyReverse32(data, p);
-            if (mclBnFp_deserialize(ref point.x.d1, (nint)p, 32) == nuint.Zero)
+            if (mclBnFp_deserialize(ref point.x.d1, (nint)p, chunkSize) == nuint.Zero)
                 return false;
 
             // x.re
-            CopyReverse32((data + 32), p);
-            if (mclBnFp_deserialize(ref point.x.d0, (nint)p, 32) == nuint.Zero)
+            CopyReverse32((data + chunkSize), p);
+            if (mclBnFp_deserialize(ref point.x.d0, (nint)p, chunkSize) == nuint.Zero)
                 return false;
 
             // y.im
-            CopyReverse32((data + 64), p);
-            if (mclBnFp_deserialize(ref point.y.d1, (nint)p, 32) == nuint.Zero)
+            CopyReverse32((data + chunkSize * 2), p);
+            if (mclBnFp_deserialize(ref point.y.d1, (nint)p, chunkSize) == nuint.Zero)
                 return false;
 
             // y.re
-            CopyReverse32((data + 96), p);
-            if (mclBnFp_deserialize(ref point.y.d0, (nint)p, 32) == nuint.Zero)
+            CopyReverse32((data + chunkSize * 3), p);
+            if (mclBnFp_deserialize(ref point.y.d0, (nint)p, chunkSize) == nuint.Zero)
                 return false;
         }
 
@@ -201,16 +209,18 @@ internal static unsafe class BN254
 
     private static bool SerializeG1(in mclBnG1 point, Span<byte> output)
     {
+        const int chunkSize = 32;
+
         fixed (byte* ptr = &MemoryMarshal.GetReference(output))
         {
-            if (mclBnFp_getLittleEndian((nint)ptr, 32, point.x) == nuint.Zero)
+            if (mclBnFp_getLittleEndian((nint)ptr, chunkSize, point.x) == nuint.Zero)
                 return false;
 
-            if (mclBnFp_getLittleEndian((nint)ptr + 32, 32, point.y) == nuint.Zero)
+            if (mclBnFp_getLittleEndian((nint)ptr + chunkSize, chunkSize, point.y) == nuint.Zero)
                 return false;
 
             CopyReverse32(ptr, ptr); // To big-endian
-            CopyReverse32(ptr + 32, ptr + 32); // To big-endian
+            CopyReverse32(ptr + chunkSize, ptr + chunkSize); // To big-endian
         }
 
         return true;
@@ -220,6 +230,8 @@ internal static unsafe class BN254
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe bool IsZero64(byte* ptr)
     {
+        const int Length = 64;
+
         if (Vector512.IsHardwareAccelerated)
         {
             Vector512<byte> a = Unsafe.ReadUnaligned<Vector512<byte>>(ptr);
@@ -227,18 +239,18 @@ internal static unsafe class BN254
         }
         else if (Vector256.IsHardwareAccelerated)
         {
-            Vector256<byte> a = Unsafe.ReadUnaligned<Vector256<byte>>(ptr + 0);
-            Vector256<byte> b = Unsafe.ReadUnaligned<Vector256<byte>>(ptr + 32);
+            Vector256<byte> a = Unsafe.ReadUnaligned<Vector256<byte>>(ptr);
+            Vector256<byte> b = Unsafe.ReadUnaligned<Vector256<byte>>(ptr + Vector256<byte>.Count);
             Vector256<byte> o = Vector256.BitwiseOr(a, b);
             return o == default;
         }
         else if (Vector128.IsHardwareAccelerated)
         {
             // 4x16-byte blocks, coalesced in pairs
-            for (nuint offset = 0; offset < 64; offset += 32)
+            for (nuint offset = 0; offset < Length; offset += (nuint)Vector128<byte>.Count * 2)
             {
                 Vector128<byte> a = Unsafe.ReadUnaligned<Vector128<byte>>(ptr + offset);
-                Vector128<byte> b = Unsafe.ReadUnaligned<Vector128<byte>>(ptr + offset + 16);
+                Vector128<byte> b = Unsafe.ReadUnaligned<Vector128<byte>>(ptr + offset + Vector128<byte>.Count);
                 Vector128<byte> o = Vector128.BitwiseOr(a, b);
                 if (o != default) return false;
             }
@@ -261,21 +273,23 @@ internal static unsafe class BN254
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe bool IsZero128(byte* ptr)
     {
+        const int Length = 128;
+
         if (Vector512.IsHardwareAccelerated)
         {
             // 2x512 -> OR‑reduce -> EqualsAll
             Vector512<byte> a = Unsafe.ReadUnaligned<Vector512<byte>>(ptr + 0);
-            Vector512<byte> b = Unsafe.ReadUnaligned<Vector512<byte>>(ptr + 64);
+            Vector512<byte> b = Unsafe.ReadUnaligned<Vector512<byte>>(ptr + Vector512<byte>.Count);
             Vector512<byte> o = Vector512.BitwiseOr(a, b);
             return o == default;
         }
         else if (Vector256.IsHardwareAccelerated)
         {
             // 4x32-byte blocks, coalesced in pairs (2 loads per iteration)
-            for (nuint offset = 0; offset < 128; offset += 64)
+            for (nuint offset = 0; offset < Length; offset += (nuint)Vector256<byte>.Count * 2)
             {
                 Vector256<byte> a = Unsafe.ReadUnaligned<Vector256<byte>>(ptr + offset);
-                Vector256<byte> b = Unsafe.ReadUnaligned<Vector256<byte>>(ptr + offset + 32);
+                Vector256<byte> b = Unsafe.ReadUnaligned<Vector256<byte>>(ptr + offset + Vector256<byte>.Count);
                 Vector256<byte> o = Vector256.BitwiseOr(a, b);
                 if (o != default) return false;
             }
@@ -284,10 +298,10 @@ internal static unsafe class BN254
         else if (Vector128.IsHardwareAccelerated)
         {
             // 8x16-byte blocks, coalesced in pairs
-            for (nuint offset = 0; offset < 128; offset += 32)
+            for (nuint offset = 0; offset < Length; offset += (nuint)Vector128<byte>.Count * 2)
             {
                 Vector128<byte> a = Unsafe.ReadUnaligned<Vector128<byte>>(ptr + offset);
-                Vector128<byte> b = Unsafe.ReadUnaligned<Vector128<byte>>(ptr + offset + 16);
+                Vector128<byte> b = Unsafe.ReadUnaligned<Vector128<byte>>(ptr + offset + Vector128<byte>.Count);
                 Vector128<byte> o = Vector128.BitwiseOr(a, b);
                 if (o != default) return false;
             }
@@ -351,16 +365,15 @@ internal static unsafe class BN254
     {
         // Two 16-byte halves: reverse each then swap them
         Vector128<byte> lo = Unsafe.ReadUnaligned<Vector128<byte>>(srcRef);
-        Vector128<byte> hi = Unsafe.ReadUnaligned<Vector128<byte>>(srcRef + 16);
+        Vector128<byte> hi = Unsafe.ReadUnaligned<Vector128<byte>>(srcRef + Vector128<byte>.Count);
 
-        lo = Vector128.Shuffle(lo, Vector128.Create(
-            (byte)15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0));
-        hi = Vector128.Shuffle(hi, Vector128.Create(
-            (byte)15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0));
+        Vector128<byte> indices = Vector128.Create((byte)15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+        lo = Vector128.Shuffle(lo, indices);
+        hi = Vector128.Shuffle(hi, indices);
 
         // Store swapped halves reversed
         Unsafe.WriteUnaligned(dstRef, hi);
-        Unsafe.WriteUnaligned(dstRef + 16, lo);
+        Unsafe.WriteUnaligned(dstRef + Vector128<byte>.Count, lo);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
