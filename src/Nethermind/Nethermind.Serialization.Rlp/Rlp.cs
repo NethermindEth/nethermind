@@ -18,6 +18,8 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Logging.NLog;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -1836,21 +1838,27 @@ namespace Nethermind.Serialization.Rlp
             public string Key { get; } = key;
         }
 
+        private static ILogger _logger = NLogManager.TypedLogger<Rlp>.Logger;
+
         [StackTraceHidden]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
         {
             RlpLimit l = limit ?? RlpLimit.DefaultLimit;
             if (count > bytesLeft || count > l.Limit)
+            {
                 ThrowCountOverLimit(count, bytesLeft, l);
+            }
         }
 
         [DoesNotReturn]
         [StackTraceHidden]
         private static void ThrowCountOverLimit(int count, int bytesLeft, RlpLimit limit)
         {
-            throw new RlpLimitException(string.IsNullOrEmpty(limit.CollectionExpression)
+            string message = string.IsNullOrEmpty(limit.CollectionExpression)
                 ? $"Collection count of {count} is over limit {limit.Limit} or {bytesLeft} bytes left"
-                : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left");
+                : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left";
+            _logger.Error(message);
+            throw new RlpLimitException(message);
         }
     }
 

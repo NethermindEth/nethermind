@@ -176,7 +176,7 @@ namespace Nethermind.Logging.NLog
             LogManager.ConfigurationChanged -= _logManagerOnConfigurationChanged;
         }
 
-        private static class TypedLogger<T>
+        public static class TypedLogger<T>
         {
             public static ILogger Logger { get; } = BuildLogger(typeof(T));
         }
