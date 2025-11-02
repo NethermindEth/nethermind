@@ -298,6 +298,51 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_call_with_base_fee_opcode_without_from_address_should_return_0()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.BASEFEE)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData("0x20")
+            .PushData("0x0")
+            .Op(Instruction.RETURN)
+            .Done;
+
+        string dataStr = code.ToHexString();
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_with_value_transfer_without_from_address_should_throw()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.BASEFEE)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData("0x20")
+            .PushData("0x0")
+            .Op(Instruction.RETURN)
+            .Done;
+
+        string dataStr = code.ToHexString();
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"type\": \"0x2\", \"value\":\"{1.Ether()}\", \"data\": \"{dataStr}\"}}");
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        Console.WriteLine(serialized);
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient sender balance\"},\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_call_with_revert()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
