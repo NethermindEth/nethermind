@@ -48,7 +48,7 @@ internal static unsafe class BN254
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static bool Mul(Span<byte> input, Span<byte> output)
+    internal static bool Mul(ReadOnlySpan<byte> input, Span<byte> output)
     {
         const int chunkSize = 64;
 
@@ -60,10 +60,11 @@ internal static unsafe class BN254
             if (!DeserializeG1(data, out mclBnG1 x))
                 return false;
 
-            CopyReverse32((data + chunkSize), (data + chunkSize)); // To little-endian
+            byte* tmp = stackalloc byte[32];
+            CopyReverse32((data + chunkSize), tmp); // To little-endian
 
             Unsafe.SkipInit(out mclBnFr y);
-            if (mclBnFr_setLittleEndianMod(ref y, (nint)(data + chunkSize), 32) == -1 || mclBnFr_isValid(y) == 0)
+            if (mclBnFr_setLittleEndianMod(ref y, (nint)tmp, 32) == -1 || mclBnFr_isValid(y) == 0)
                 return false;
 
             mclBnG1_mul(ref x, x, y);  // x *= y

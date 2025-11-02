@@ -31,18 +31,24 @@ public class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
 
         ReadOnlySpan<byte> src = inputData.Span;
 
+        // Declare a scoped ReadOnlySpan<byte> that will reference
+        // either src directly or a padded/truncated version.
         scoped ReadOnlySpan<byte> input;
         if (src.Length == InputLength)
         {
+            // Case 1: Input is exactly the expected length - use it as-is.
             input = src;
         }
         else if (src.Length > InputLength)
         {
+            // Case 2: Input is too long — truncate to the expected length.
             input = src[..InputLength];
         }
         else
         {
+            // Case 3: Input is too short — pad with zeros up to the expected length.
             Span<byte> padded = stackalloc byte[InputLength];
+            // Copies input bytes; rest of the span is already zero-initialized.
             src.CopyTo(padded);
             input = padded;
         }
