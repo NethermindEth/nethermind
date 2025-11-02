@@ -92,11 +92,12 @@ internal static unsafe class BN254
         if (input.Length % PairSize != 0)
             return false;
 
-        Unsafe.SkipInit(out mclBnGT acc);
-        bool hasMl = false;
-
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
+            Unsafe.SkipInit(out mclBnGT ml);
+            Unsafe.SkipInit(out mclBnGT acc);
+            bool hasMl = false;
+
             for (int i = 0; i < input.Length; i += PairSize)
             {
                 if (!DeserializeG1(data + i, out mclBnG1 g1))
@@ -106,11 +107,10 @@ internal static unsafe class BN254
                     return false;
 
                 // Skip explicit neutral pairs
-                if (mclBnG1_isZero(g1) == 1 || mclBnG2_isZero(g2) == 1)
+                if (IsZero(g1) || IsZero(g2))
                     continue;
 
-                mclBnGT ml = default;
-                mclBn_millerLoop(ref ml, g1, g2); // Miller loop only
+                mclBn_millerLoop(ref hasMl ? ref ml : ref acc, g1, g2); // Miller loop only
 
                 if (hasMl)
                 {
@@ -118,25 +118,32 @@ internal static unsafe class BN254
                 }
                 else
                 {
-                    acc = ml;
                     hasMl = true;
                 }
             }
+
+            // No effective pairs -> valid
+            if (!hasMl)
+            {
+                output[31] = 1;
+                return true;
+            }
+
+            // Single final exponentiation for the product
+            mclBn_finalExp(ref acc, acc);
+
+            // True if the product of pairings equals 1 in GT
+            output[31] = (byte)(mclBnGT_isOne(acc) == 1 ? 1 : 0);
         }
-
-        // No effective pairs -> valid
-        if (!hasMl)
-        {
-            output[31] = 1;
-            return true;
-        }
-
-        // Single final exponentiation for the product
-        mclBn_finalExp(ref acc, acc);
-
-        // True if the product of pairings equals 1 in GT
-        output[31] = (byte)(mclBnGT_isOne(acc) == 1 ? 1 : 0);
         return true;
+    }
+
+    private static bool IsZero<T>(in T data)
+        where T : unmanaged, allows ref struct
+    {
+        ref byte start = ref Unsafe.As<T, byte>(ref Unsafe.AsRef(in data));
+        ReadOnlySpan<byte> span = MemoryMarshal.CreateReadOnlySpan(in start, sizeof(T));
+        return span.IndexOfAnyExcept((byte)0) < 0;
     }
 
     [SkipLocalsInit]
