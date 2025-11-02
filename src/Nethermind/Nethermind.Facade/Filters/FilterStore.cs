@@ -107,8 +107,8 @@ namespace Nethermind.Blockchain.Filters
                 ? filter as T
                 : null;
 
-        public BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true) =>
-            new(GetFilterId(setId), startBlockNumber);
+        public BlockFilter CreateBlockFilter(bool setId = true) =>
+            new(GetFilterId(setId));
 
         public PendingTransactionFilter CreatePendingTransactionFilter(bool setId = true) =>
             new(GetFilterId(setId));
