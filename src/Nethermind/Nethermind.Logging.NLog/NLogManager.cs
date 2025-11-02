@@ -31,6 +31,7 @@ namespace Nethermind.Logging.NLog
             // Required since 'NLog.config' could change during runtime, we need to re-apply the configuration
             _logManagerOnConfigurationChanged = (sender, args) => Setup(logFileName, logDirectory, logRules);
             LogManager.ConfigurationChanged += _logManagerOnConfigurationChanged;
+            Static.LogManager = this;
         }
 
         private static void Setup(string logFileName, string logDirectory = null, string logRules = null)
@@ -176,7 +177,7 @@ namespace Nethermind.Logging.NLog
             LogManager.ConfigurationChanged -= _logManagerOnConfigurationChanged;
         }
 
-        public static class TypedLogger<T>
+        private static class TypedLogger<T>
         {
             public static ILogger Logger { get; } = BuildLogger(typeof(T));
         }

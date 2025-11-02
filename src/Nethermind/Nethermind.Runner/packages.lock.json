@@ -1736,8 +1736,7 @@
         "type": "Project",
         "dependencies": {
           "Nethermind.Core": "[1.36.0-unstable, )",
-          "Nethermind.DotNetty.Buffers": "[1.0.2.76, )",
-          "Nethermind.Logging.NLog": "[1.36.0-unstable, )"
+          "Nethermind.DotNetty.Buffers": "[1.0.2.76, )"
         }
       },
       "nethermind.serialization.ssz": {

@@ -1838,7 +1838,7 @@ namespace Nethermind.Serialization.Rlp
             public string Key { get; } = key;
         }
 
-        private static ILogger _logger = NLogManager.TypedLogger<Rlp>.Logger;
+        private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
 
         [StackTraceHidden]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
@@ -1857,7 +1857,7 @@ namespace Nethermind.Serialization.Rlp
             string message = string.IsNullOrEmpty(limit.CollectionExpression)
                 ? $"Collection count of {count} is over limit {limit.Limit} or {bytesLeft} bytes left"
                 : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left";
-            _logger.Error(message + "; " + new StackTrace());
+            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR: {message}; {new StackTrace().ToString().Replace(Environment.NewLine, " ")}");
             throw new RlpLimitException(message);
         }
     }
