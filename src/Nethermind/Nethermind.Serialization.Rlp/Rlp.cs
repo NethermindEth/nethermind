@@ -19,7 +19,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Logging.NLog;
 
 namespace Nethermind.Serialization.Rlp
 {
