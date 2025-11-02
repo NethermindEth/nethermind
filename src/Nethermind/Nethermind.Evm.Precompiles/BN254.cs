@@ -32,21 +32,19 @@ internal static unsafe class BN254
         if (input.Length != 128)
             return false;
 
-        mclBnG1 x;
-        mclBnG1 y;
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
-            if (!DeserializeG1(data, out x))
+            if (!DeserializeG1(data, out mclBnG1 x))
                 return false;
 
-            if (!DeserializeG1(data + chunkSize, out y))
+            if (!DeserializeG1(data + chunkSize, out mclBnG1 y))
                 return false;
+
+            mclBnG1_add(ref x, x, y); // x += y
+            mclBnG1_normalize(ref x, x);
+
+            return SerializeG1(x, output);
         }
-
-        mclBnG1_add(ref x, x, y); // x += y
-        mclBnG1_normalize(ref x, x);
-
-        return SerializeG1(x, output);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -57,23 +55,21 @@ internal static unsafe class BN254
         if (input.Length != 96)
             return false;
 
-        mclBnG1 x;
-        mclBnFr y = default;
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
-            if (!DeserializeG1(data, out x))
+            if (!DeserializeG1(data, out mclBnG1 x))
                 return false;
 
             CopyReverse32((data + chunkSize), (data + chunkSize)); // To little-endian
 
+            Unsafe.SkipInit(out mclBnFr y);
             if (mclBnFr_setLittleEndianMod(ref y, (nint)(data + chunkSize), 32) == -1 || mclBnFr_isValid(y) == 0)
                 return false;
+
+            mclBnG1_mul(ref x, x, y);  // x *= y
+            mclBnG1_normalize(ref x, x);
+            return SerializeG1(x, output);
         }
-
-        mclBnG1_mul(ref x, x, y);  // x *= y
-        mclBnG1_normalize(ref x, x);
-
-        return SerializeG1(x, output);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
