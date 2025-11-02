@@ -44,6 +44,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
 
     // Jovian
     private readonly StorageCell _daFootprintGasScalarSlot = new(l1BlockAddr, new UInt256(8));
+    private static readonly UInt256 DaFootprintScalarDefault = 400;
     private static readonly UInt256 DaFootprintScale = 1_000_000;
 
     [SkipLocalsInit]
@@ -153,14 +154,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
         if (block.Transactions.Length == 0)
             return 0;
 
-        // https://specs.optimism.io/protocol/jovian/exec-engine.html#scalar-loading
-        const int scalarPosition = 12;
-        ReadOnlySpan<byte> span = worldState.Get(_daFootprintGasScalarSlot);
-
-        if (span.IsEmpty)
-            return 0;
-
-        var daFootprintGasScalar = ReadUInt16BigEndian(span[scalarPosition..]);
+        UInt256 daFootprintScalar = GetDaFootprintScalar(worldState);
 
         UInt256 footprint = UInt256.Zero;
         foreach (Transaction tx in block.Transactions)
@@ -174,7 +168,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
                 flzLen > L1CostInterceptNeg ? flzLen - L1CostInterceptNeg : 0 // avoid uint overflow
             ) / DaFootprintScale;
 
-            footprint += daUsageEstimate * daFootprintGasScalar;
+            footprint += daUsageEstimate * daFootprintScalar;
         }
 
         return footprint;
@@ -329,4 +323,17 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     }
 
     internal static UInt256 ComputeGasUsedFjord(UInt256 estimatedSize) => estimatedSize * GasCostOf.TxDataNonZeroEip2028 / BasicDivisor;
+
+    private UInt256 GetDaFootprintScalar(IWorldState worldState)
+    {
+        // https://specs.optimism.io/protocol/jovian/exec-engine.html#scalar-loading
+        ReadOnlySpan<byte> span = worldState.Get(_daFootprintGasScalarSlot);
+
+        const int scalarPosition = 12;
+        if (span.Length < scalarPosition + sizeof(UInt16))
+            return DaFootprintScalarDefault;
+
+        var scalar = ReadUInt16BigEndian(span[scalarPosition..]);
+        return scalar == 0 ? DaFootprintScalarDefault : scalar;
+    }
 }
