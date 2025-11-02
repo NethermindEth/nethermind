@@ -92,7 +92,7 @@ internal static unsafe class BN254
         if (input.Length % PairSize != 0)
             return false;
 
-        mclBnGT acc = default;
+        Unsafe.SkipInit(out mclBnGT acc);
         bool hasMl = false;
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))
@@ -149,7 +149,9 @@ internal static unsafe class BN254
 
         // Treat all-zero as point at infinity for your calling convention
         if (IsZero64(data))
+        {
             return true;
+        }
 
         // Input is big-endian; MCL call below expects little-endian byte order for Fp
         byte* tmp = stackalloc byte[chunkSize];
@@ -177,7 +179,9 @@ internal static unsafe class BN254
 
         // Treat all-zero as point at infinity
         if (IsZero128(data))
+        {
             return true;
+        }
 
         // Input layout: x_im, x_re, y_im, y_re (each 32 bytes, big-endian)
         // MCL Fp2 layout: d0 = re, d1 = im
