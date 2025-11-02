@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 
@@ -159,6 +160,8 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         TestObjectInternal.ExtraData = extraData;
         return this;
     }
+
+    public BlockHeaderBuilder WithExtraDataHex(string extraDataHex) => WithExtraData(Bytes.FromHexString(extraDataHex));
 
     public BlockHeaderBuilder WithMixHash(Hash256 mixHash)
     {

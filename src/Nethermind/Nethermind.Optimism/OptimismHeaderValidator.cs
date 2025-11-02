@@ -52,6 +52,18 @@ public class OptimismHeaderValidator(
                 error = $"{nameof(EIP1559Parameters)} is zero";
                 return false;
             }
+
+            if (!specHelper.IsJovian(header) && parameters.Version != 0)
+            {
+                error = $"{nameof(EIP1559Parameters)} version should be 0 before Jovian";
+                return false;
+            }
+
+            if (specHelper.IsJovian(header) && parameters.Version != 1)
+            {
+                error = $"{nameof(EIP1559Parameters)} version should be 1 post Jovian";
+                return false;
+            }
         }
 
         return base.Validate<TOrphaned>(header, parent, isUncle, out error);
@@ -73,8 +85,35 @@ public class OptimismHeaderValidator(
 
     protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 
+    protected override bool ValidateGasUsed(BlockHeader header, ref string? error)
+    {
+        if (!base.ValidateGasUsed(header, ref error))
+            return false;
+
+        if (specHelper.IsJovian(header))
+        {
+            if (header.BlobGasUsed is not { } blobGasUsed)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - no DA footprint in {nameof(header.BlobGasUsed)}");
+                error = ErrorMessages.DaFootprintMissing;
+                return false;
+            }
+
+            if ((long)blobGasUsed > header.GasLimit)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
+                error = ErrorMessages.DaFootprintExceededGasLimit;
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static class ErrorMessages
     {
         public static readonly string RequestHashShouldBeOfShaOfEmpty = $"{nameof(BlockHeader.RequestsHash)} should be {OptimismPostMergeBlockProducer.PostIsthmusRequestHash} for post-Isthmus blocks";
+        public const string DaFootprintMissing = $"DA footprint missing from block header {nameof(BlockHeader.BlobGasUsed)}.";
+        public const string DaFootprintExceededGasLimit = "ExceededGasLimit: DA footprint exceeds gas limit.";
     }
 }

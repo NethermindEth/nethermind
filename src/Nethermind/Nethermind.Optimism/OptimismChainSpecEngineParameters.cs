@@ -32,6 +32,8 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong? IsthmusTimestamp { get; set; }
 
+    public ulong? JovianTimestamp { get; set; }
+
     public Address? L1FeeRecipient { get; set; }
 
     public Address? L1BlockAddress { get; set; }
@@ -52,7 +54,7 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
         if (HoloceneTimestamp is not null)
         {
-            spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp.Value, new DefaultBaseFeeCalculator());
+            spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp.Value, JovianTimestamp, new DefaultBaseFeeCalculator());
         }
     }
 }

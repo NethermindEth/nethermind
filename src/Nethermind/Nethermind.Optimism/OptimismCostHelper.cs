@@ -42,6 +42,11 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     // Isthmus
     private readonly StorageCell _operatorFeeParamsSlot = new(l1BlockAddr, new UInt256(8));
 
+    // Jovian
+    private readonly StorageCell _daFootprintGasScalarSlot = new(l1BlockAddr, new UInt256(8));
+    private static readonly UInt256 DaFootprintScalarDefault = 400;
+    private static readonly UInt256 DaFootprintScale = 1_000_000;
+
     [SkipLocalsInit]
     public UInt256 ComputeL1Cost(Transaction tx, BlockHeader header, IWorldState worldState)
     {
@@ -129,7 +134,9 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
                 break;
         }
 
-        return (UInt256)gas * operatorFee.scalar / 1_000_000 + operatorFee.constant;
+        return opSpecHelper.IsJovian(header)
+            ? (UInt256)gas * operatorFee.scalar * 100 + operatorFee.constant // TODO: tests
+            : (UInt256)gas * operatorFee.scalar / 1_000_000 + operatorFee.constant;
 
         static (uint scalar, ulong constant) Parse(scoped ReadOnlySpan<byte> span)
         {
@@ -139,6 +146,32 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
             var operatorFeeConstant = ReadUInt64BigEndian(span[feeStart..]);
             return (operatorFeeScalar, operatorFeeConstant);
         }
+    }
+
+    // https://specs.optimism.io/protocol/jovian/exec-engine.html#da-footprint-block-limit
+    public UInt256 ComputeDaFootprint(Block block, IWorldState worldState)
+    {
+        if (block.Transactions.Length == 0)
+            return 0;
+
+        UInt256 daFootprintScalar = GetDaFootprintScalar(worldState);
+
+        UInt256 footprint = UInt256.Zero;
+        foreach (Transaction tx in block.Transactions)
+        {
+            if (tx.Type == TxType.DepositTx)
+                continue;
+
+            UInt256 flzLen = L1CostFastlzCoef * ComputeFlzCompressLen(tx);
+            UInt256 daUsageEstimate = UInt256.Max(
+                MinTransactionSizeScaled,
+                flzLen > L1CostInterceptNeg ? flzLen - L1CostInterceptNeg : 0 // avoid uint overflow
+            ) / DaFootprintScale;
+
+            footprint += daUsageEstimate * daFootprintScalar;
+        }
+
+        return footprint;
     }
 
     [SkipLocalsInit]
@@ -290,4 +323,17 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     }
 
     internal static UInt256 ComputeGasUsedFjord(UInt256 estimatedSize) => estimatedSize * GasCostOf.TxDataNonZeroEip2028 / BasicDivisor;
+
+    private UInt256 GetDaFootprintScalar(IWorldState worldState)
+    {
+        // https://specs.optimism.io/protocol/jovian/exec-engine.html#scalar-loading
+        ReadOnlySpan<byte> span = worldState.Get(_daFootprintGasScalarSlot);
+
+        const int scalarPosition = 12;
+        if (span.Length < scalarPosition + sizeof(UInt16))
+            return DaFootprintScalarDefault;
+
+        var scalar = ReadUInt16BigEndian(span[scalarPosition..]);
+        return scalar == 0 ? DaFootprintScalarDefault : scalar;
+    }
 }
