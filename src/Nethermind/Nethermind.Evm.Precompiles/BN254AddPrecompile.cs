@@ -26,6 +26,7 @@ public class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
+    [SkipLocalsInit]
     public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254AddPrecompile++;
@@ -38,7 +39,7 @@ public class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
         }
         else if (input.Length != InputLength)
         {
-            return PadInput(input);
+            return RunPaddedInput(input);
         }
 
         byte[] output = new byte[OutputLength];
@@ -46,12 +47,12 @@ public class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static (byte[], bool) PadInput(ReadOnlySpan<byte> src)
+    private static (byte[], bool) RunPaddedInput(ReadOnlySpan<byte> input)
     {
         // Input is too short — pad with zeros up to the expected length.
         Span<byte> padded = stackalloc byte[InputLength];
         // Copies input bytes; rest of the span is already zero-initialized.
-        src.CopyTo(padded);
+        input.CopyTo(padded);
 
         byte[] output = new byte[OutputLength];
         return BN254.Add(padded, output) ? (output, true) : IPrecompile.Failure;
