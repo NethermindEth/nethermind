@@ -1857,7 +1857,7 @@ namespace Nethermind.Serialization.Rlp
             string message = string.IsNullOrEmpty(limit.CollectionExpression)
                 ? $"Collection count of {count} is over limit {limit.Limit} or {bytesLeft} bytes left"
                 : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left";
-            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR: {message}; {new StackTrace().ToString().Replace(Environment.NewLine, " ")}");
+            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR: {message}; {new StackTrace()}");
             throw new RlpLimitException(message);
         }
     }
