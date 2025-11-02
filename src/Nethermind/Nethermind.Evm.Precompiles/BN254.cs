@@ -24,6 +24,7 @@ internal static unsafe class BN254
             throw new InvalidOperationException("MCL initialization failed");
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     internal static bool Add(ReadOnlySpan<byte> input, Span<byte> output)
     {
         const int chunkSize = 64;
@@ -48,6 +49,7 @@ internal static unsafe class BN254
         return SerializeG1(x, output);
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     internal static bool Mul(Span<byte> input, Span<byte> output)
     {
         const int chunkSize = 64;
@@ -74,6 +76,7 @@ internal static unsafe class BN254
         return SerializeG1(x, output);
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     internal static bool CheckPairing(ReadOnlySpan<byte> input, Span<byte> output)
     {
         if (output.Length < 32)
@@ -137,6 +140,7 @@ internal static unsafe class BN254
     }
 
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool DeserializeG1(byte* data, out mclBnG1 point)
     {
         const int chunkSize = 32;
@@ -148,24 +152,23 @@ internal static unsafe class BN254
             return true;
 
         // Input is big-endian; MCL call below expects little-endian byte order for Fp
-        Span<byte> tmp = stackalloc byte[chunkSize];
-        fixed (byte* p = &MemoryMarshal.GetReference(tmp))
-        {
-            // x
-            CopyReverse32(data, p);
-            if (mclBnFp_deserialize(ref point.x, (nint)p, chunkSize) == nuint.Zero)
-                return false;
-            // y
-            CopyReverse32((data + chunkSize), p);
-            if (mclBnFp_deserialize(ref point.y, (nint)p, chunkSize) == nuint.Zero)
-                return false;
-        }
+        byte* tmp = stackalloc byte[chunkSize];
+
+        // x
+        CopyReverse32(data, tmp);
+        if (mclBnFp_deserialize(ref point.x, (nint)tmp, chunkSize) == nuint.Zero)
+            return false;
+        // y
+        CopyReverse32((data + chunkSize), tmp);
+        if (mclBnFp_deserialize(ref point.y, (nint)tmp, chunkSize) == nuint.Zero)
+            return false;
 
         mclBnFp_setInt32(ref point.z, 1);
         return mclBnG1_isValid(point) == 1;
     }
 
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool DeserializeG2(byte* data, out mclBnG2 point)
     {
         const int chunkSize = 32;
@@ -178,29 +181,27 @@ internal static unsafe class BN254
 
         // Input layout: x_im, x_re, y_im, y_re (each 32 bytes, big-endian)
         // MCL Fp2 layout: d0 = re, d1 = im
-        Span<byte> tmp = stackalloc byte[chunkSize];
-        fixed (byte* p = &MemoryMarshal.GetReference(tmp))
-        {
-            // x.im
-            CopyReverse32(data, p);
-            if (mclBnFp_deserialize(ref point.x.d1, (nint)p, chunkSize) == nuint.Zero)
-                return false;
+        byte* tmp = stackalloc byte[chunkSize];
 
-            // x.re
-            CopyReverse32((data + chunkSize), p);
-            if (mclBnFp_deserialize(ref point.x.d0, (nint)p, chunkSize) == nuint.Zero)
-                return false;
+        // x.im
+        CopyReverse32(data, tmp);
+        if (mclBnFp_deserialize(ref point.x.d1, (nint)tmp, chunkSize) == nuint.Zero)
+            return false;
 
-            // y.im
-            CopyReverse32((data + chunkSize * 2), p);
-            if (mclBnFp_deserialize(ref point.y.d1, (nint)p, chunkSize) == nuint.Zero)
-                return false;
+        // x.re
+        CopyReverse32((data + chunkSize), tmp);
+        if (mclBnFp_deserialize(ref point.x.d0, (nint)tmp, chunkSize) == nuint.Zero)
+            return false;
 
-            // y.re
-            CopyReverse32((data + chunkSize * 3), p);
-            if (mclBnFp_deserialize(ref point.y.d0, (nint)p, chunkSize) == nuint.Zero)
-                return false;
-        }
+        // y.im
+        CopyReverse32((data + chunkSize * 2), tmp);
+        if (mclBnFp_deserialize(ref point.y.d1, (nint)tmp, chunkSize) == nuint.Zero)
+            return false;
+
+        // y.re
+        CopyReverse32((data + chunkSize * 3), tmp);
+        if (mclBnFp_deserialize(ref point.y.d0, (nint)tmp, chunkSize) == nuint.Zero)
+            return false;
 
         mclBnFp_setInt32(ref point.z.d0, 1);
 
@@ -227,7 +228,7 @@ internal static unsafe class BN254
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static unsafe bool IsZero64(byte* ptr)
     {
         const int Length = 64;
@@ -270,7 +271,7 @@ internal static unsafe class BN254
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static unsafe bool IsZero128(byte* ptr)
     {
         const int Length = 128;
@@ -338,7 +339,7 @@ internal static unsafe class BN254
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static void Reverse32BytesAvx2(byte* srcRef, byte* dstRef)
     {
         // Load 32 bytes as one 256-bit vector
@@ -360,7 +361,7 @@ internal static unsafe class BN254
         Unsafe.WriteUnaligned(dstRef, fullRev);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static void Reverse32Bytes128(byte* srcRef, byte* dstRef)
     {
         // Two 16-byte halves: reverse each then swap them
@@ -376,7 +377,7 @@ internal static unsafe class BN254
         Unsafe.WriteUnaligned(dstRef + Vector128<byte>.Count, lo);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static void Reverse32BytesScalar(byte* srcRef, byte* dstRef)
     {
         ulong* src = (ulong*)srcRef;
