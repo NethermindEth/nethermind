@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -25,12 +26,12 @@ internal static unsafe class BN254
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static bool Add(ReadOnlySpan<byte> input, Span<byte> output)
+    internal static bool Add(byte[] output, ReadOnlySpan<byte> input)
     {
         const int chunkSize = 64;
 
-        if (input.Length != 128)
-            return false;
+        Debug.Assert(input.Length == 128);
+        Debug.Assert(output.Length == 64);
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
@@ -48,12 +49,12 @@ internal static unsafe class BN254
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static bool Mul(ReadOnlySpan<byte> input, Span<byte> output)
+    internal static bool Mul(byte[] output, ReadOnlySpan<byte> input)
     {
         const int chunkSize = 64;
 
-        if (input.Length != 96)
-            return false;
+        Debug.Assert(input.Length == 96);
+        Debug.Assert(output.Length == 64);
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
@@ -216,11 +217,11 @@ internal static unsafe class BN254
         return mclBnG2_isValid(point) == 1 && mclBnG2_isValidOrder(point) == 1;
     }
 
-    private static bool SerializeG1(in mclBnG1 point, Span<byte> output)
+    private static bool SerializeG1(in mclBnG1 point, byte[] output)
     {
         const int chunkSize = 32;
 
-        fixed (byte* ptr = &MemoryMarshal.GetReference(output))
+        fixed (byte* ptr = &MemoryMarshal.GetArrayDataReference(output))
         {
             if (mclBnFp_getLittleEndian((nint)ptr, chunkSize, point.x) == nuint.Zero)
                 return false;
