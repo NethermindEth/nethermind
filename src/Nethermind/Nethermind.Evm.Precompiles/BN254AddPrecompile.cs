@@ -32,29 +32,27 @@ public class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
         Metrics.Bn254AddPrecompile++;
 
         ReadOnlySpan<byte> input = inputData.Span;
+        byte[] output = new byte[OutputLength];
         if (input.Length > InputLength)
         {
-            // Input is too long — trim to the expected length.
+            // Input is too long - trim to the expected length.
             input = input[..InputLength];
         }
-        else if (input.Length != InputLength)
-        {
-            return RunPaddedInput(input);
-        }
 
-        byte[] output = new byte[OutputLength];
-        return BN254.Add(input, output) ? (output, true) : IPrecompile.Failure;
+        bool result = (input.Length == InputLength) ?
+            BN254.Add(input, output) :
+            RunPaddedInput(output, input);
+
+        return result ? (output, true) : IPrecompile.Failure;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static (byte[], bool) RunPaddedInput(ReadOnlySpan<byte> input)
+    private static bool RunPaddedInput(byte[] output, ReadOnlySpan<byte> input)
     {
-        // Input is too short — pad with zeros up to the expected length.
+        // Input is too short - pad with zeros up to the expected length.
         Span<byte> padded = stackalloc byte[InputLength];
         // Copies input bytes; rest of the span is already zero-initialized.
         input.CopyTo(padded);
-
-        byte[] output = new byte[OutputLength];
-        return BN254.Add(padded, output) ? (output, true) : IPrecompile.Failure;
+        return BN254.Add(padded, output);
     }
 }
