@@ -40,6 +40,7 @@ public class SnapProtocolHandlerTests
                 if (_messageSerializationService is null)
                 {
                     _messageSerializationService = new MessageSerializationService(
+                        LimboLogs.Instance,
                         SerializerInfo.Create(new AccountRangeMessageSerializer())
                     );
                 }

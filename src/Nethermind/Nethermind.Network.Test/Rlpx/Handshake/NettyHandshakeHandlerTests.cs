@@ -34,7 +34,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
             _group = new SingleThreadEventLoop();
 
-            _serializationService = new MessageSerializationService();
+            _serializationService = new MessageSerializationService(LimboLogs.Instance);
 
             _channel = Substitute.For<IChannel>();
             _channel.Pipeline.Returns(_pipeline);

@@ -33,6 +33,7 @@ namespace Nethermind.Network.Test.P2P
         {
             _session = Substitute.For<ISession>();
             _serializer = new MessageSerializationService(
+                LimboLogs.Instance,
                 SerializerInfo.Create(new HelloMessageSerializer()),
                 SerializerInfo.Create(new PingMessageSerializer())
             );
