@@ -36,7 +36,7 @@ public class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
         }
 
         byte[] output = new byte[32];
-        bool result = BN254.CheckPairing(inputData.Span, output);
+        bool result = BN254.CheckPairing(output, inputData.Span);
 
         return result ? (output, true) : IPrecompile.Failure;
     }
