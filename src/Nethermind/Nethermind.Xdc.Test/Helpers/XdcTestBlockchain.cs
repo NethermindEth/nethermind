@@ -58,8 +58,6 @@ namespace Nethermind.Xdc.Test.Helpers;
 
 public class XdcTestBlockchain : TestBlockchain
 {
-    private readonly Random _random = new();
-
     public static async Task<XdcTestBlockchain> Create(Action<ContainerBuilder>? configurer = null)
     {
         XdcTestBlockchain chain = new();
@@ -68,7 +66,7 @@ public class XdcTestBlockchain : TestBlockchain
     }
 
     public List<PrivateKey> MasterNodeCandidates { get; }
-    public XdcContext XdcContext => Container.Resolve<XdcContext>();
+    public XdcConsensusContext XdcContext => Container.Resolve<XdcConsensusContext>();
 
     public IEpochSwitchManager EpochSwitchManager => _fromXdcContainer.EpochSwitchManager;
     public IQuorumCertificateManager QuorumCertificateManager => _fromXdcContainer.QuorumCertificateManager;
@@ -82,7 +80,6 @@ public class XdcTestBlockchain : TestBlockchain
         MasterNodeCandidates = new PrivateKeyGenerator().Generate(200).ToList();
     }
 
-    protected ISigner Signer => _fromXdcContainer.Signer;
 
     const int MAX_EPOCH_COUNT = 10;
     const int EPOCH_LENGTH = 5;
@@ -207,14 +204,6 @@ public class XdcTestBlockchain : TestBlockchain
                 ctx.Resolve<Configuration>().SlotTime
             ))
     ;
-
-
-    private static ISpecProvider WrapSpecProvider(ISpecProvider specProvider)
-    {
-        return specProvider is TestSpecProvider { AllowTestChainOverride: false }
-            ? specProvider
-            : new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
-    }
 
     private static IXdcReleaseSpec WrapReleaseSpec(IReleaseSpec spec)
     {
@@ -344,7 +333,6 @@ public class XdcTestBlockchain : TestBlockchain
         UInt256 nonce = 0;
         for (var i = 0; i < MAX_EPOCH_COUNT; i++)
         {
-            ((Signer)Signer).SetSigner(MasterNodesRotator.CurrentLeaderPvKey);  
             for(var j = 0; j < EPOCH_LENGTH; j++)
             {
                 await AddBlock(CreateTransactionBuilder().WithNonce(nonce++).TestObject);
@@ -355,7 +343,7 @@ public class XdcTestBlockchain : TestBlockchain
         while (true)
         {
             CancellationToken.ThrowIfCancellationRequested();
-            if (BlockTree.Head?.Number == 3) return;
+            if (BlockTree.Head?.Number == (long)nonce) return;
             await Task.Delay(1, CancellationToken);
         }
     }
