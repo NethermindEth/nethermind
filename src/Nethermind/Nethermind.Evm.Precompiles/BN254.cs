@@ -144,8 +144,6 @@ internal static unsafe class BN254
         return span.IndexOfAnyExcept((byte)0) < 0;
     }
 
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool DeserializeG1(byte* data, out mclBnG1 point)
     {
         const int chunkSize = 32;
@@ -174,8 +172,6 @@ internal static unsafe class BN254
         return mclBnG1_isValid(point) == 1;
     }
 
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool DeserializeG2(byte* data, out mclBnG2 point)
     {
         const int chunkSize = 32;
@@ -236,8 +232,6 @@ internal static unsafe class BN254
         return true;
     }
 
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
     private static unsafe bool IsZero64(byte* ptr)
     {
         const int Length = 64;
@@ -279,8 +273,6 @@ internal static unsafe class BN254
         }
     }
 
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
     private static unsafe bool IsZero128(byte* ptr)
     {
         const int Length = 128;
@@ -348,29 +340,28 @@ internal static unsafe class BN254
         }
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Reverse32BytesAvx2(byte* srcRef, byte* dstRef)
     {
         // Load 32 bytes as one 256-bit vector
         Vector256<byte> vec = Unsafe.ReadUnaligned<Vector256<byte>>(srcRef);
+        Vector256<byte> fullRev;
 
-        // Build reverse mask once — [31,30,...,0]
-        Vector256<byte> mask = Vector256.Create(
-            (byte)31, (byte)30, (byte)29, (byte)28,
-            (byte)27, (byte)26, (byte)25, (byte)24,
-            (byte)23, (byte)22, (byte)21, (byte)20,
-            (byte)19, (byte)18, (byte)17, (byte)16,
-            (byte)15, (byte)14, (byte)13, (byte)12,
-            (byte)11, (byte)10, (byte)9, (byte)8,
-            (byte)7, (byte)6, (byte)5, (byte)4,
-            (byte)3, (byte)2, (byte)1, (byte)0);
+        Vector256<byte> mask = Vector256.Create((byte)31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+        if (Avx512Vbmi.VL.IsSupported)
+        {
+            fullRev = Avx512Vbmi.VL.PermuteVar32x8(vec, mask);
+        }
+        else
+        {
+            Vector256<byte> revInLane = Avx2.Shuffle(vec, mask);
+            fullRev = Avx2.Permute2x128(revInLane, revInLane, 0x01);
+        }
 
-        Vector256<byte> revInLane = Avx2.Shuffle(vec, mask);
-        Vector256<byte> fullRev = Avx2.Permute2x128(revInLane, revInLane, 0x01);
         Unsafe.WriteUnaligned(dstRef, fullRev);
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Reverse32Bytes128(byte* srcRef, byte* dstRef)
     {
         // Two 16-byte halves: reverse each then swap them
@@ -386,7 +377,7 @@ internal static unsafe class BN254
         Unsafe.WriteUnaligned(dstRef + Vector128<byte>.Count, lo);
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Reverse32BytesScalar(byte* srcRef, byte* dstRef)
     {
         ulong* src = (ulong*)srcRef;

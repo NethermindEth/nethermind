@@ -16,6 +16,8 @@ namespace Nethermind.Precompiles.Benchmark
 {
     public abstract class PrecompileBenchmarkBase
     {
+        private const int Operations = 25;
+
         protected abstract IEnumerable<IPrecompile> Precompiles { get; }
 
         protected abstract string InputsDirectory { get; }
@@ -50,14 +52,14 @@ namespace Nethermind.Precompiles.Benchmark
                         // take only first line from each file
                         inputs.AddRange(File.ReadAllLines(file)
                             .Select(LineToTestInput).Take(1).ToArray()
-                            .Select(i => new Param(precompile, file, i, null)));
+                            .Select(i => new Param(precompile, Path.GetFileName(file), i, null)));
                     }
 
                     foreach (string file in Directory.GetFiles(inputsDir, "*.json", SearchOption.TopDirectoryOnly))
                     {
                         EthereumJsonSerializer jsonSerializer = new();
                         JsonInput[] jsonInputs = jsonSerializer.Deserialize<JsonInput[]>(File.ReadAllText(file));
-                        IEnumerable<Param> parameters = jsonInputs.Select(i => new Param(precompile, i.Name!, i.Input!, i.Expected));
+                        IEnumerable<Param> parameters = jsonInputs.Select(i => new Param(precompile, Path.GetFileName(i.Name!), i.Input!, i.Expected));
                         inputs.AddRange(parameters);
                     }
 
@@ -75,8 +77,16 @@ namespace Nethermind.Precompiles.Benchmark
         private static byte[] LineToTestInput(string line)
             => Bytes.FromHexString(line.Split(',')[0]);
 
-        [Benchmark(Baseline = true)]
+        [Benchmark(Baseline = true, OperationsPerInvoke = Operations)]
         public (ReadOnlyMemory<byte>, bool) Baseline()
-            => Input.Precompile.Run(Input.Bytes, Cancun.Instance);
+        {
+            bool overallResult = true;
+            for (var i = 0; i < Operations; i++)
+            {
+                (_, bool result) = Input.Precompile.Run(Input.Bytes, Cancun.Instance);
+                overallResult &= result;
+            }
+            return (default, overallResult);
+        }
     }
 }
