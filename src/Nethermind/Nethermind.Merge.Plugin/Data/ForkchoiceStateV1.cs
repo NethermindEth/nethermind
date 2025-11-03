@@ -33,5 +33,5 @@ public class ForkchoiceStateV1(Hash256 headBlockHash, Hash256 finalizedBlockHash
     public string ToString(long? headNumber, long? safeNumber, long? finalizedNumber) =>
         headNumber is null || safeNumber is null || finalizedNumber is null
             ? ToString()
-            : $"ForkChoice: {headNumber} ({HeadBlockHash}), Safe: {safeNumber} ({SafeBlockHash}), Finalized: {finalizedNumber} ({FinalizedBlockHash})";
+            : $"ForkChoice: {headNumber} ({HeadBlockHash.ToShortString()}), Safe: {safeNumber} ({SafeBlockHash.ToShortString()}), Finalized: {finalizedNumber} ({FinalizedBlockHash.ToShortString()})";
 }
