@@ -23,7 +23,6 @@ public class EncryptionHandshakeServiceTests
         _testRandom = new TestRandom();
 
         _messageSerializationService = new MessageSerializationService(
-            LimboLogs.Instance,
             SerializerInfo.Create(new AuthMessageSerializer()),
             SerializerInfo.Create(new AuthEip8MessageSerializer(new Eip8MessagePad(_testRandom))),
             SerializerInfo.Create(new AckMessageSerializer()),

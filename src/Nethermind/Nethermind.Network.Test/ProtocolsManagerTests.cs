@@ -88,7 +88,6 @@ public class ProtocolsManagerTests
             _discoveryApp = Substitute.For<IDiscoveryApp>();
 
             _serializer = new MessageSerializationService(
-                LimboLogs.Instance,
                 SerializerInfo.Create(new HelloMessageSerializer()),
                 SerializerInfo.Create(new StatusMessageSerializer()),
                 SerializerInfo.Create(new DisconnectMessageSerializer())

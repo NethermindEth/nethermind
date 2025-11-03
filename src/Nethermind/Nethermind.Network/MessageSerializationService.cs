@@ -4,12 +4,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
-using Nethermind.Core.Extensions;
-using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Serialization.Rlp;
 
@@ -17,47 +13,36 @@ namespace Nethermind.Network
 {
     public class MessageSerializationService : IMessageSerializationService
     {
-        private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _zeroSerializers = new();
-        private readonly ILogger _logger;
+        private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _zeroSerializers = new ConcurrentDictionary<RuntimeTypeHandle, object>();
 
-        public MessageSerializationService(ILogManager logManager, params IReadOnlyList<SerializerInfo> serializers)
+        public MessageSerializationService(params IReadOnlyList<SerializerInfo> serializers)
         {
-            _logger = logManager.GetClassLogger<MessageSerializationService>();
             Type openGeneric = typeof(IZeroMessageSerializer<>);
 
-            foreach ((Type messageType, object serializer) in serializers)
+            foreach ((Type MessageType, object Serializer) in serializers)
             {
-                Type expectedInterface = openGeneric.MakeGenericType(messageType);
+                Type expectedInterface = openGeneric.MakeGenericType(MessageType);
 
-                if (!expectedInterface.IsAssignableFrom(serializer.GetType()))
-                    ThrowMissingInterface(serializer, expectedInterface);
+                if (!expectedInterface.IsAssignableFrom(Serializer.GetType()))
+                {
+                    throw new ArgumentException(
+                        $"Serializer of type {Serializer.GetType().Name} must implement {expectedInterface.Name}.");
+                }
 
-                _zeroSerializers.TryAdd(messageType.TypeHandle, serializer);
-            }
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowMissingInterface(object serializer, Type expectedInterface)
-            {
-                throw new ArgumentException($"Serializer of type {serializer.GetType().Name} must implement {expectedInterface.Name}.");
+                _zeroSerializers.TryAdd(MessageType.TypeHandle, Serializer);
             }
         }
 
         public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase
         {
             if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
-                ThrowMissingSerializerException<T>();
+                throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
 
             IByteBuffer byteBuffer = NethermindBuffers.Default.Buffer(bytes.Count);
             byteBuffer.WriteBytes(bytes.Array, bytes.Offset, bytes.Count);
             try
             {
                 return zeroMessageSerializer.Deserialize(byteBuffer);
-            }
-            catch (RlpLimitException)
-            {
-                if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR RLP limit exception while deserializing message {bytes.AsSpan().ToHexString()}.");
-                throw;
             }
             finally
             {
@@ -66,37 +51,18 @@ namespace Nethermind.Network
 
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
-        private static void ThrowMissingSerializerException<T>() where T : MessageBase
-        {
-            throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
-        }
-
         public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
         {
             if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
-                ThrowMissingSerializerException<T>();
+                throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
 
-            try
-            {
-                return zeroMessageSerializer.Deserialize(buffer);
-            }
-            catch (RlpLimitException)
-            {
-                if (_logger.IsDebug)
-                {
-                    buffer.ResetReaderIndex();
-                    _logger.Error($"DEBUG/ERROR: RLP limit exception while deserializing message {buffer.AsSpan().ToHexString()}.");
-                }
-                throw;
-            }
+            return zeroMessageSerializer.Deserialize(buffer);
         }
 
         public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase
         {
             if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
-                ThrowMissingSerializerException<T>();
+                throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
 
             void WriteAdaptivePacketType(in IByteBuffer buffer)
             {
@@ -142,16 +108,9 @@ namespace Nethermind.Network
                 return true;
             }
 
-            ThrowInterfaceMissing(serializerObject);
-            return false;
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowInterfaceMissing(object serializerObject)
-            {
-                throw new InvalidOperationException($"Zero serializer for {nameof(T)} (registered: {serializerObject?.GetType().Name}) does not implement required interfaces");
-            }
+            throw new InvalidOperationException($"Zero serializer for {nameof(T)} (registered: {serializerObject?.GetType().Name}) does not implement required interfaces");
         }
+
     }
 
     public record SerializerInfo(Type MessageType, object Serializer)

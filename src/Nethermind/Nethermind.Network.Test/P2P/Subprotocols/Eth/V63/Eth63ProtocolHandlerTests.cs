@@ -206,7 +206,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 NetworkDiagTracer.IsEnabled = true;
 
                 _serializationService = new MessageSerializationService(
-                    LimboLogs.Instance,
                     SerializerInfo.Create(_statusMessageSerializer),
                     SerializerInfo.Create(_receiptMessageSerializer),
                     SerializerInfo.Create(_getReceiptMessageSerializer)

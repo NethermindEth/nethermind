@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -36,7 +35,7 @@ namespace Nethermind.Network.Test.Builders
 
         protected override void BeforeReturn()
         {
-            TestObject = new MessageSerializationService(LimboLogs.Instance, _serializers);
+            TestObject = new MessageSerializationService(_serializers);
         }
 
         public SerializationBuilder WithEncryptionHandshake()
