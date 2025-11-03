@@ -811,7 +811,7 @@ namespace Nethermind.Serialization.Rlp
                 return byteValue;
             }
 
-            ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan(RlpLimit.L64);
+            ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan(RlpLimit.L32);
 
             if (byteSpan.Length > 32)
             {

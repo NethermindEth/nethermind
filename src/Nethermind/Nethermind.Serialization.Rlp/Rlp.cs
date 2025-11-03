@@ -1133,7 +1133,7 @@ namespace Nethermind.Serialization.Rlp
 
             public UInt256 DecodeUInt256(int length = -1)
             {
-                ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan(RlpLimit.L64);
+                ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan(RlpLimit.L32);
                 if (byteSpan.Length > 32)
                 {
                     RlpHelpers.ThrowUnexpectedIntegerLength(byteSpan.Length);
