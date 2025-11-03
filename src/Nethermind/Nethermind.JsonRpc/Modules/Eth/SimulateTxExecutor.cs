@@ -46,7 +46,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                     StateOverrides = blockStateCall.StateOverrides,
                     Calls = blockStateCall.Calls?.Select(callTransactionModel =>
                     {
-                        callTransactionModel = UpdateTxType(callTransactionModel);
                         LegacyTransactionForRpc asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
@@ -56,8 +55,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
 
                         Transaction tx = callTransactionModel.ToTransaction();
 
-                        // The RPC set SystemUser as default, but we want to set it to zero to follow hive test.
-                        if (tx.SenderAddress == Address.SystemUser) tx.SenderAddress = Address.Zero;
                         tx.ChainId = _blockchainBridge.GetChainId();
 
                         TransactionWithSourceDetails? result = new()
@@ -74,30 +71,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         };
 
         return result;
-    }
-
-    private static TransactionForRpc UpdateTxType(TransactionForRpc rpcTransaction)
-    {
-        // TODO: This is a bit messy since we're changing the transaction type
-        if (rpcTransaction is LegacyTransactionForRpc legacy && rpcTransaction is not EIP1559TransactionForRpc)
-        {
-            rpcTransaction = new EIP1559TransactionForRpc
-            {
-                Nonce = legacy.Nonce,
-                To = legacy.To,
-                From = legacy.From,
-                Gas = legacy.Gas,
-                Value = legacy.Value,
-                Input = legacy.Input,
-                GasPrice = legacy.GasPrice,
-                ChainId = legacy.ChainId,
-                V = legacy.V,
-                R = legacy.R,
-                S = legacy.S,
-            };
-        }
-
-        return rpcTransaction;
     }
 
     public override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
