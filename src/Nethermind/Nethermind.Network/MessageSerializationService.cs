@@ -84,7 +84,11 @@ namespace Nethermind.Network
             }
             catch (RlpLimitException)
             {
-                if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR RLP limit exception while deserializing message {buffer.AsSpan().ToHexString()}.");
+                if (_logger.IsDebug)
+                {
+                    buffer.ResetReaderIndex();
+                    _logger.Error($"DEBUG/ERROR: RLP limit exception while deserializing message {buffer.AsSpan().ToHexString()}.");
+                }
                 throw;
             }
         }
