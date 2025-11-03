@@ -254,4 +254,37 @@ public class KeyStoreTests
         bytesHex.Should().NotStartWith(bomBytesHex);
         bytesHex.Should().StartWith(validBytesHex);
     }
+
+    [Test]
+    public void Can_unlock_pbkdf2_sha256_vector()
+    {
+        // Web3 Secret Storage Definition PBKDF2-SHA-256 test vector (version 3)
+        // Source: https://github.com/ethereumproject/wiki/wiki/Web3-Secret-Storage-Definition
+        const string keyJson =
+            "{ \"crypto\" : { \"cipher\" : \"aes-128-ctr\", \"cipherparams\" : { \"iv\" : \"6087dab2f9fdbbfaddc31a909735c1e6\" }, \"ciphertext\" : \"5318b4d5bcd28de64ee5559e671353e16f075ecae9f99c7a79a38af5f869aa46\", \"kdf\" : \"pbkdf2\", \"kdfparams\" : { \"c\" : 262144, \"dklen\" : 32, \"prf\" : \"hmac-sha256\", \"salt\" : \"ae3cd4e7013836a3df6bd7241b12db061dbe2c6785853cce422d148a624ce0bd\" }, \"mac\" : \"517ead924a9d0dc3124507e3393d175ce3ff7c1e96529c6c555ce9e51205e9b2\" }, \"id\" : \"3198bc9c-6672-5ab3-d995-4942343ae5b6\", \"version\" : 3 }";
+
+        // Address is not included in the classic vector; use a dummy but valid 20-byte hex for file naming
+        // The keystore reader only uses file content for decryption.
+        Address address = new Address("0000000000000000000000000000000000000000");
+
+        TestContext test = new TestContext();
+
+        // Password for the official PBKDF2 vector is "testpassword"
+        SecureString securePassword = new SecureString();
+        const string password = "testpassword";
+        for (int i = 0; i < password.Length; i++) securePassword.AppendChar(password[i]);
+        securePassword.MakeReadOnly();
+
+        // Persist then unlock
+        test.Store.StoreKey(address, new EthereumJsonSerializer().Deserialize<KeyStoreItem>(keyJson));
+        try
+        {
+            (PrivateKey key, Result result) = test.Store.GetKey(address, securePassword);
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), result.Error);
+        }
+        finally
+        {
+            test.Store.DeleteKey(address);
+        }
+    }
 }
