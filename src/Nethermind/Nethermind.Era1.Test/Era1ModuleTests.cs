@@ -73,7 +73,6 @@ public class Era1ModuleTests
         Assert.That(importedBlock1.TotalDifficulty, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
     }
 
-    [TestCase("holesky")]
     [TestCase("mainnet")]
     public async Task ImportAndExportGethFiles(string network)
     {
@@ -221,7 +220,7 @@ public class Era1ModuleTests
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create(configurer: builder =>
         {
             builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
-                new FunctionalGenesisPostProcessor(worldState, (block, state) =>
+                new FunctionalGenesisPostProcessor((block) =>
                 {
                     worldState.AddToBalance(TestItem.AddressA, 10.Ether(), specProvider.GenesisSpec);
                     worldState.RecalculateStateRoot();

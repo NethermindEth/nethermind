@@ -1,10 +1,9 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
@@ -40,8 +39,8 @@ using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Json;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -201,6 +200,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
+            @EthereumJsonSerializer.StrictHexFormat = RpcConfig.StrictHexFormat;
             await base.Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
@@ -220,7 +220,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ISyncServer>(),
                 Substitute.For<IBackgroundTaskScheduler>(),
                 TxPool,
-                Substitute.For<IPooledTxsRequestor>(),
                 Substitute.For<IDiscoveryApp>(),
                 Substitute.For<IMessageSerializationService>(),
                 Substitute.For<IRlpxHost>(),
@@ -230,8 +229,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Container.Resolve<IForkInfo>(),
                 Substitute.For<IGossipPolicy>(),
                 WorldStateManager,
-                Substitute.For<IBlockFinder>(),
                 LimboLogs.Instance,
+                Substitute.For<ITxPoolConfig>(),
+                Substitute.For<ISpecProvider>(),
                 Substitute.For<ITxGossipPolicy>()
             );
 

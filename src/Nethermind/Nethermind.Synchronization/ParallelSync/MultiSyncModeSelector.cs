@@ -201,6 +201,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             best.IsInFullSync = ShouldBeInFullSyncMode(best);
                             best.IsInDisconnected = ShouldBeInDisconnectedMode(best);
                             best.IsInWaitingForBlock = ShouldBeInWaitingForBlockMode(best);
+                            if (_logger.IsTrace) _logger.Trace($"Snapshot: {BuildStateStringDebug(best)}");
 
                             newModes = SyncMode.None;
                             CheckAddFlag(best.IsInUpdatingPivot, SyncMode.UpdatingPivot, ref newModes);
@@ -392,7 +393,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             // We stop `FastSyncLag` block before the highest known block in case the highest known block is non-canon
             // and we need to sync away from it.
-            // Note: its ok if target block height is not accurate as long as long full sync downloader does not stop
+            // Note: its ok if target block height is not accurate as long as full sync downloader does not stop
             //  earlier than this condition below which would cause a hang.
             bool notReachedFullSyncTransition = best.Header < best.TargetBlock - TotalSyncLag;
 
@@ -420,8 +421,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
                     (nameof(notReachedFullSyncTransition), notReachedFullSyncTransition),
                     (nameof(notInAStickyFullSync), notInAStickyFullSync),
-                    (nameof(stateNotDownloadedYet), stateNotDownloadedYet),
-                    (nameof(longRangeCatchUp), longRangeCatchUp),
+                    ($"{nameof(stateNotDownloadedYet)} || ${longRangeCatchUp}", stateNotDownloadedYet || longRangeCatchUp),
                     (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders));
             }
 
@@ -607,9 +607,8 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(notInUpdatingPivot), notInUpdatingPivot),
                     (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
                     (nameof(hasAnyPostPivotPeer), hasAnyPostPivotPeer),
-                    ($"{nameof(notInFastSync)}||{nameof(stickyStateNodes)}", notInFastSync || stickyStateNodes),
-                    (nameof(stateNotDownloadedYet), stateNotDownloadedYet),
-                    (nameof(longRangeCatchUp), longRangeCatchUp),
+                    ($"{nameof(notInFastSync)} || {nameof(stickyStateNodes)}", notInFastSync || stickyStateNodes),
+                    ($"{nameof(stateNotDownloadedYet)} || {nameof(longRangeCatchUp)}", stateNotDownloadedYet || longRangeCatchUp),
                     (nameof(notInAStickyFullSync), notInAStickyFullSync),
                     (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders));
             }
@@ -629,7 +628,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 LogDetailedSyncModeChecks("STATE_NODES",
                     (nameof(isInStateSync), isInStateSync),
-                    ($"{nameof(snapSyncDisabled)}||{nameof(snapRangesFinished)}", snapSyncDisabled || snapRangesFinished));
+                    ($"{nameof(snapSyncDisabled)} || {nameof(snapRangesFinished)}", snapSyncDisabled || snapRangesFinished));
             }
 
             return result;
@@ -762,15 +761,15 @@ namespace Nethermind.Synchronization.ParallelSync
             List<string> matched = new();
             List<string> failed = new();
 
-            foreach ((string Name, bool IsSatisfied) in checks)
+            foreach ((string name, bool isSatisfied) in checks)
             {
-                if (IsSatisfied)
+                if (isSatisfied)
                 {
-                    matched.Add(Name);
+                    matched.Add(name);
                 }
                 else
                 {
-                    failed.Add(Name);
+                    failed.Add(name);
                 }
             }
 

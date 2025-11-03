@@ -40,9 +40,9 @@
       },
       "System.CommandLine": {
         "type": "Direct",
-        "requested": "[2.0.0-rc.1.25451.107, )",
-        "resolved": "2.0.0-rc.1.25451.107",
-        "contentHash": "j+0Yg2TZ5rwbGTRArdF9w993dGWCPRbD+lg3S0D6MLckrKQ3J70s52TlbxKlISsoXUP/X+e6uPocbkKjP3wSag=="
+        "requested": "[2.0.0-rc.2.25502.107, )",
+        "resolved": "2.0.0-rc.2.25502.107",
+        "contentHash": "l2myq5KMDP78bweagWfubIvINvqW22qHTXGxBNH2mMbBBod6v0LNU4/cc8iU3IrFjeCtRtKgW8mw7vy2q482Fw=="
       },
       "AspNetCore.HealthChecks.UI.Core": {
         "type": "Transitive",
@@ -1831,11 +1831,13 @@
       "nethermind.txpool": {
         "type": "Project",
         "dependencies": {
+          "Collections.Pooled": "[1.0.82, )",
           "Nethermind.Config": "[1.35.0-unstable, )",
           "Nethermind.Core": "[1.35.0-unstable, )",
           "Nethermind.Crypto": "[1.35.0-unstable, )",
           "Nethermind.Db": "[1.35.0-unstable, )",
           "Nethermind.Evm": "[1.35.0-unstable, )",
+          "Nethermind.Network.Contract": "[1.35.0-unstable, )",
           "Nethermind.State": "[1.35.0-unstable, )",
           "NonBlocking": "[2.1.2, )"
         }
@@ -1916,6 +1918,12 @@
         "requested": "[2.1.5.1529, )",
         "resolved": "2.1.5.1529",
         "contentHash": "PUnwltfxU0V/rIHLlcVyCOmpaFCgYPDfBlp32F33qW5ZldjcWpDt3tEZAmFvX0Rt/Va05djdHkKH/QzXyDhpTg=="
+      },
+      "Collections.Pooled": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.82, )",
+        "resolved": "1.0.82",
+        "contentHash": "o14V0k8bg+EPMwaVJcFbLNrkyDPaqNx6fWTTjJLgVWJLu939kVIAAWKaV5lCwZ7LM/tv59igi65rVWRyjILc0Q=="
       },
       "CommunityToolkit.HighPerformance": {
         "type": "CentralTransitive",

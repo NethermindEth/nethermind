@@ -10,25 +10,19 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
 [Rlp.SkipGlobalRegistration] // Created explicitly
-public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
+public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : RlpValueDecoder<TxReceipt>
 {
-    private readonly bool _skipStateAndStatus;
-
-    public ReceiptMessageDecoder69(bool skipStateAndStatus = false)
-    {
-        _skipStateAndStatus = skipStateAndStatus;
-    }
-    public TxReceipt? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TxReceipt? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(span);
+        Rlp.ValueDecoderContext ctx = new(span);
         TxReceipt response = Decode(ref ctx, rlpBehaviors);
         rlpStream.SkipItem();
 
         return response;
     }
 
-    public TxReceipt? Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (ctx.IsNextItemNull())
         {
@@ -61,6 +55,7 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
         int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
         int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck);
+        ctx.GuardLimit(numberOfReceipts);
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {
@@ -88,7 +83,7 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
 
         bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
-        if (!_skipStateAndStatus)
+        if (!skipStateAndStatus)
         {
             contentLength += isEip658Receipts
                 ? Rlp.LengthOf(item.StatusCode)
@@ -109,13 +104,13 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
         return logsLength;
     }
 
-    public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         (int total, _) = GetContentLength(item, rlpBehaviors);
         return Rlp.LengthOfSequence(total);
     }
 
-    public void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -129,7 +124,7 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
 
         rlpStream.Encode((byte)item.TxType);
 
-        if (!_skipStateAndStatus)
+        if (!skipStateAndStatus)
         {
             if ((rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts)
             {

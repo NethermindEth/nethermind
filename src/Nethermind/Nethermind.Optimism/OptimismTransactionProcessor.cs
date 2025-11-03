@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -45,7 +45,7 @@ public class OptimismTransactionProcessor(
 
         TransactionResult result = base.Execute(tx, tracer, opts);
 
-        if (!result && tx.IsDeposit() && result.Error != "block gas limit exceeded")
+        if (!result && tx.IsDeposit() && result.Error != TransactionResult.ErrorType.BlockGasLimitExceeded)
         {
             // deposit tx should be included
             WorldState.Restore(snapshot);
@@ -58,7 +58,7 @@ public class OptimismTransactionProcessor(
                 WorldState.IncrementNonce(tx.SenderAddress!);
             }
             header.GasUsed += tx.GasLimit;
-            tracer.MarkAsFailed(tx.To!, tx.GasLimit, [], $"failed deposit: {result.Error}");
+            tracer.MarkAsFailed(tx.To!, tx.GasLimit, [], $"failed deposit: {result.ErrorDescription}");
             result = TransactionResult.Ok;
         }
 

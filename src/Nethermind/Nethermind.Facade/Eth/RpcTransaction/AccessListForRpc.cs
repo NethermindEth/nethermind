@@ -18,8 +18,10 @@ public class AccessListForRpc
 {
     private readonly IEnumerable<Item> _items;
 
-    [JsonConstructor]
-    public AccessListForRpc() { }
+    public AccessListForRpc()
+    {
+        _items = Array.Empty<Item>();
+    }
 
     private AccessListForRpc(IEnumerable<Item> items)
     {
@@ -33,7 +35,6 @@ public class AccessListForRpc
         [JsonConverter(typeof(StorageCellIndexConverter))]
         public IEnumerable<UInt256>? StorageKeys { get; set; }
 
-        [JsonConstructor]
         public Item() { }
 
         public Item(Address address, IEnumerable<UInt256>? storageKeys)
