@@ -34,6 +34,7 @@ namespace Nethermind.Db.Test.LogIndex
     // TODO: test for reorg out-of-order
     // TODO: test for concurrent reorg and backward sync
     // TODO: test for background job failure
+    // TODO: test with concurrent get up to the last synced block, and very small compaction distance
     [TestFixtureSource(nameof(TestCases))]
     [Parallelizable(ParallelScope.All)]
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
