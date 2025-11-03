@@ -139,10 +139,26 @@ namespace Nethermind.KeyStore
                     derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, n, r, p, n > 8192 ? 1 : null, kdfParams.DkLen);
                     break;
                 case "pbkdf2":
+                {
                     int c = kdfParams.C.Value;
-                    var deriveBytes = new Rfc2898DeriveBytes(passBytes, salt, c, HashAlgorithmName.SHA256);
-                    derivedKey = deriveBytes.GetBytes(256);
+                    string prf = kdfParams.Prf;
+                    HashAlgorithmName hashAlg = HashAlgorithmName.SHA256;
+                    if (!string.IsNullOrEmpty(prf))
+                    {
+                        string prfNorm = prf.Trim().ToLowerInvariant();
+                        if (prfNorm == "hmac-sha1" || prfNorm == "hmac-sha-1")
+                        {
+                            hashAlg = HashAlgorithmName.SHA1;
+                        }
+                        else if (prfNorm == "hmac-sha256" || prfNorm == "hmac-sha-256")
+                        {
+                            hashAlg = HashAlgorithmName.SHA256;
+                        }
+                    }
+                    using var deriveBytes = new Rfc2898DeriveBytes(passBytes, salt, c, hashAlg);
+                    derivedKey = deriveBytes.GetBytes(kdfParams.DkLen);
                     break;
+                }
                 default:
                     return (null, Result.Fail($"Unsupported algorithm: {kdf}"));
             }
