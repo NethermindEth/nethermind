@@ -407,6 +407,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void RetryStorageRange(StorageRange storageRange)
         {
+            bool dispose = false;
             if (storageRange.Accounts.Count == 1)
             {
                 EnqueueNextSlot(storageRange);
@@ -417,9 +418,12 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     EnqueueAccountStorage(account);
                 }
+
+                dispose = true;
             }
 
             Interlocked.Add(ref _activeStorageRequests, -(storageRange?.Accounts.Count ?? 0));
+            if (dispose) storageRange.Dispose();
         }
 
         public void ReportAccountRangePartitionFinished(in ValueHash256 hashLimit)
