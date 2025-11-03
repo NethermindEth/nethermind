@@ -104,7 +104,7 @@ internal static unsafe class BN254
                 if (!DeserializeG2(data + i + 64, out mclBnG2 g2))
                     return false;
 
-                // Skip explicit neutral pairs
+                // Skip if g1 or g2 are zero
                 if (IsZero(g1) || IsZero(g2))
                     continue;
 
@@ -120,7 +120,7 @@ internal static unsafe class BN254
                 }
             }
 
-            // No effective pairs -> valid
+            // All pairs had zero element -> valid
             if (!hasMl)
             {
                 output[31] = 1;
@@ -131,7 +131,7 @@ internal static unsafe class BN254
             mclBn_finalExp(ref acc, acc);
 
             // True if the product of pairings equals 1 in GT
-            output[31] = (byte)(mclBnGT_isOne(acc) == 1 ? 1 : 0);
+            output[31] = Convert.ToByte(mclBnGT_isOne(acc) == 1);
         }
         return true;
     }
