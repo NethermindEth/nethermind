@@ -35,7 +35,7 @@ public static class XdcExtensions
 
     public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, XdcBlockHeader xdcBlockHeader, ulong round = 0)
     {
-        IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcBlockHeader);
+        IXdcReleaseSpec spec = specProvider.GetSpec(xdcBlockHeader) as IXdcReleaseSpec;
         if (spec is null)
             throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
         spec.ApplyV2Config(round);
@@ -78,4 +78,9 @@ public static class XdcExtensions
         }
         return addresses.ToImmutableArray();
     }
+
+    public static bool ValidateBlockInfo(this BlockRoundInfo blockInfo, XdcBlockHeader blockHeader) =>
+        (blockInfo.BlockNumber == blockHeader.Number)
+        && (blockInfo.Hash == blockHeader.Hash)
+        && (blockInfo.Round == blockHeader.ExtraConsensusData.BlockRound);
 }
