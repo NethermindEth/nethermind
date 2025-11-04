@@ -88,12 +88,6 @@ internal static partial class EvmInstructions
         ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         IWorldState state = vm.WorldState;
 
-        // Ensure the executing account exists in the world state. If not, create it with a zero balance.
-        if (!state.AccountExists(env.ExecutingAccount))
-        {
-            state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
-        }
-
         // Pop parameters off the stack: value to transfer, memory position for the initialization code,
         // and the length of the initialization code.
         if (!stack.PopUInt256(out UInt256 value) ||

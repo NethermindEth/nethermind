@@ -29,7 +29,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct the base gas cost for reading the program counter.
-        gasAvailable -= GasCostOf.Base;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         // The program counter pushed is adjusted by -1 to reflect the correct opcode location.
         stack.PushUInt32<TTracingInst>((uint)(programCounter - 1));
 
@@ -51,7 +51,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJumpDest(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         // Deduct the gas cost specific for a jump destination marker.
-        gasAvailable -= GasCostOf.JumpDest;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.JumpDest;
 
         return EvmExceptionType.None;
     }
@@ -73,7 +73,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJump(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         // Deduct the gas cost for performing a jump.
-        gasAvailable -= GasCostOf.Jump;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Jump;
         // Pop the jump destination from the stack.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         // Validate the jump destination and update the program counter if valid.
@@ -105,7 +105,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJumpIf(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         // Deduct the high gas cost for a conditional jump.
-        gasAvailable -= GasCostOf.JumpI;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.JumpI;
         // Pop the jump destination.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 

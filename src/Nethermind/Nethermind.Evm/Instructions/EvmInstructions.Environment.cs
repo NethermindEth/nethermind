@@ -25,7 +25,7 @@ internal static partial class EvmInstructions
         /// <summary>
         /// The gas cost for the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static long GasCost(IReleaseSpec spec) => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as address.
         /// </summary>
@@ -42,7 +42,7 @@ internal static partial class EvmInstructions
         /// <summary>
         /// The gas cost for the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static long GasCost(IReleaseSpec spec) => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as ref to big endian word.
         /// </summary>
@@ -59,7 +59,7 @@ internal static partial class EvmInstructions
         /// <summary>
         /// The gas cost for the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static long GasCost(IReleaseSpec spec) => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as address.
         /// </summary>
@@ -72,7 +72,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public interface IOpEnvUInt256
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static long GasCost(IReleaseSpec spec) => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt256.
         /// </summary>
@@ -86,7 +86,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public interface IOpBlkUInt256
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static long GasCost(IReleaseSpec spec) => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt256.
         /// </summary>
@@ -100,7 +100,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public interface IOpEnvUInt32
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static long GasCost(IReleaseSpec spec) => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt32.
         /// </summary>
@@ -113,7 +113,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public interface IOpEnvUInt64
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static long GasCost(IReleaseSpec spec) => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt64.
         /// </summary>
@@ -126,7 +126,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public interface IOpBlkUInt64
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static long GasCost(IReleaseSpec spec) => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt64.
         /// </summary>
@@ -150,7 +150,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost as defined by the operation implementation.
-        gasAvailable -= TOpEnv.GasCost;
+        gasAvailable -= TOpEnv.GasCost(vm.Spec);
 
         // Execute the operation and retrieve the result.
         Address result = TOpEnv.Operation(vm.EvmState);
@@ -177,7 +177,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost as defined by the operation implementation.
-        gasAvailable -= TOpEnv.GasCost;
+        gasAvailable -= TOpEnv.GasCost(vm.Spec);
 
         // Execute the operation and retrieve the result.
         Address result = TOpEnv.Operation(vm);
@@ -202,7 +202,7 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpEnvUInt256
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpEnv.GasCost;
+        gasAvailable -= TOpEnv.GasCost(vm.Spec);
 
         ref readonly UInt256 result = ref TOpEnv.Operation(vm.EvmState);
 
@@ -225,7 +225,7 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpBlkUInt256
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpEnv.GasCost;
+        gasAvailable -= TOpEnv.GasCost(vm.Spec);
 
         ref readonly UInt256 result = ref TOpEnv.Operation(vm);
 
@@ -248,7 +248,7 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpEnvUInt32
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpEnv.GasCost;
+        gasAvailable -= TOpEnv.GasCost(vm.Spec);
 
         uint result = TOpEnv.Operation(vm.EvmState);
 
@@ -271,7 +271,7 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpEnvUInt64
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpEnv.GasCost;
+        gasAvailable -= TOpEnv.GasCost(vm.Spec);
 
         ulong result = TOpEnv.Operation(vm.EvmState);
 
@@ -294,7 +294,7 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpBlkUInt64
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpEnv.GasCost;
+        gasAvailable -= TOpEnv.GasCost(vm.Spec);
 
         ulong result = TOpEnv.Operation(vm);
 
@@ -317,7 +317,7 @@ internal static partial class EvmInstructions
         where TOpEnv : struct, IOpEnv32Bytes
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpEnv.GasCost;
+        gasAvailable -= TOpEnv.GasCost(vm.Spec);
 
         ref readonly ValueHash256 result = ref TOpEnv.Operation(vm);
 
@@ -331,6 +331,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCallDataSize : IOpEnvUInt32
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static uint Operation(EvmState vmState)
             => (uint)vmState.Env.InputData.Length;
     }
@@ -340,6 +341,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCodeSize : IOpEnvUInt32
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static uint Operation(EvmState vmState)
             => (uint)vmState.Env.CodeInfo.CodeSpan.Length;
     }
@@ -349,6 +351,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpTimestamp : IOpBlkUInt64
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static ulong Operation(VirtualMachine vm)
             => vm.BlockExecutionContext.Header.Timestamp;
     }
@@ -358,6 +361,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpNumber : IOpBlkUInt64
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static ulong Operation(VirtualMachine vm)
             => vm.BlockExecutionContext.Number;
     }
@@ -367,6 +371,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpGasLimit : IOpBlkUInt64
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static ulong Operation(VirtualMachine vm)
             => vm.BlockExecutionContext.GasLimit;
     }
@@ -376,6 +381,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpMSize : IOpEnvUInt64
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static ulong Operation(EvmState vmState)
             => vmState.Memory.Size;
     }
@@ -422,6 +428,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpGasPrice : IOpBlkUInt256
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static ref readonly UInt256 Operation(VirtualMachine vm)
             => ref vm.TxExecutionContext.GasPrice;
     }
@@ -431,6 +438,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCallValue : IOpEnvUInt256
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static ref readonly UInt256 Operation(EvmState vmState)
             => ref vmState.Env.Value;
     }
@@ -440,6 +448,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpAddress : IOpEnvAddress
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static Address Operation(EvmState vmState)
             => vmState.Env.ExecutingAccount;
     }
@@ -449,6 +458,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCaller : IOpEnvAddress
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static Address Operation(EvmState vmState)
             => vmState.Env.Caller;
     }
@@ -458,6 +468,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpOrigin : IOpEnv32Bytes
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static ref readonly ValueHash256 Operation(VirtualMachine vm)
             => ref vm.TxExecutionContext.Origin;
     }
@@ -467,6 +478,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCoinbase : IOpBlkAddress
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static Address Operation(VirtualMachine vm)
             => vm.BlockExecutionContext.Coinbase;
     }
@@ -476,6 +488,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpChainId : IOpEnv32Bytes
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
         public static ref readonly ValueHash256 Operation(VirtualMachine vm)
             => ref vm.ChainId;
     }
@@ -532,7 +545,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionSelfBalance<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.SelfBalance;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.SelfBalance;
 
         // Get balance for currently executing account.
         ref readonly UInt256 result = ref vm.WorldState.GetBalance(vm.EvmState.Env.ExecutingAccount);
@@ -676,7 +689,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct the base gas cost for reading gas.
-        gasAvailable -= GasCostOf.Base;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
 
         // If gas falls below zero after cost deduction, signal out-of-gas error.
         if (gasAvailable < 0) goto OutOfGas;
