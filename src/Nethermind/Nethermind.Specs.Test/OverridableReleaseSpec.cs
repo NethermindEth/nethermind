@@ -201,7 +201,17 @@ namespace Nethermind.Specs.Test
         public bool IsRip7728Enabled => spec.IsRip7728Enabled;
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
 
-        public FrozenSet<AddressAsKey>? CensoredSenders => spec.CensoredSenders;
-        public FrozenSet<AddressAsKey>? CensoredTo => spec.CensoredTo;
+        private FrozenSet<AddressAsKey>? _overridenCensoredSenders;
+        private FrozenSet<AddressAsKey>? _overridenCensoredTo;
+        public FrozenSet<AddressAsKey>? CensoredSenders
+        {
+            get => _overridenCensoredSenders ?? spec.CensoredSenders;
+            set => _overridenCensoredSenders = value;
+        }
+        public FrozenSet<AddressAsKey>? CensoredTo
+        {
+            get => _overridenCensoredTo ?? spec.CensoredTo;
+            set => _overridenCensoredTo = value;
+        }
     }
 }

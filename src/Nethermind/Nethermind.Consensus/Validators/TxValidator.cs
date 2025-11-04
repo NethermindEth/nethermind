@@ -416,7 +416,6 @@ public sealed class NonceCapTxValidator : ITxValidator
 
 public sealed class CensoringTxValidator(ulong chainId) : ITxValidator
 {
-    private const string Censored = "Censored";
     private readonly EthereumEcdsa _ethereumEcdsa = new(chainId);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
@@ -427,7 +426,7 @@ public sealed class CensoringTxValidator(ulong chainId) : ITxValidator
         transaction.SenderAddress ??= _ethereumEcdsa.RecoverAddress(transaction);
 
         return releaseSpec.IsCensoredTransaction(transaction)
-            ? Censored
+            ? TxErrorMessages.Censored
             : ValidationResult.Success;
     }
 }
