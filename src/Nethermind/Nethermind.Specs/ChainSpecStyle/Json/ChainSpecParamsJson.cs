@@ -174,6 +174,8 @@ public class ChainSpecParamsJson
     public ulong? OpHoloceneTransitionTimestamp { get; set; }
     public ulong? OpIsthmusTransitionTimestamp { get; set; }
     public SortedSet<BlobScheduleSettings> BlobSchedule { get; set; } = [];
+
+    public SortedSet<CensoringScheduleSettings> CensoringSchedule { get; set; } = [];
     public ulong? Eip7594TransitionTimestamp { get; set; }
     public ulong? Eip7939TransitionTimestamp { get; set; }
     public ulong? Rip7728TransitionTimestamp { get; set; }
