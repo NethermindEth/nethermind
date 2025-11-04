@@ -528,5 +528,8 @@ namespace Nethermind.Core.Specs
         /// RIP-7728: L1SLOAD precompile for reading L1 storage from L2
         /// </summary>
         public bool IsRip7728Enabled { get; }
+
+        public FrozenSet<AddressAsKey> InvalidSenders { get; }
+        public FrozenSet<AddressAsKey> InvalidTo { get; }
     }
 }
