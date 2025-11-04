@@ -145,7 +145,7 @@ bump_version() {
         return 1
     fi
     
-    if [[ ! $branch_name =~ ^refs/heads/release/[0-9]+\.[0-9]+\.0$ ]]; then
+    if ! echo "$branch_name" | grep -Eq '^refs/heads/release/[0-9]+\.[0-9]+\.0$'; then
         echo "error: Invalid branch name format. Expected: refs/heads/release/X.Y.0" >&2
         return 1
     fi
