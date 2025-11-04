@@ -528,5 +528,10 @@ namespace Nethermind.Core.Specs
         /// RIP-7728: L1SLOAD precompile for reading L1 storage from L2
         /// </summary>
         public bool IsRip7728Enabled { get; }
+
+        /// <summary>
+        /// L1CALL precompile for executing calls on L1 contracts from L2
+        /// </summary>
+        public bool IsL1CallEnabled { get; }
     }
 }

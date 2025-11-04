@@ -2,13 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -30,18 +27,18 @@ public class L1SloadPrecompileTests
     [Test]
     public void BaseGasCost_Should_Return_FixedGasCost()
     {
-        Assert.That(_precompile.BaseGasCost(_spec), Is.EqualTo(L1PrecompileConstants.FixedGasCost));
+        Assert.That(_precompile.BaseGasCost(_spec), Is.EqualTo(L1SloadConstants.FixedGasCost));
     }
 
     [Test]
     public void DataGasCost_With_Invalid_Input_Length_Should_Return_0()
     {
         // Input too short
-        var input = new byte[L1PrecompileConstants.AddressBytes]; // Only address
+        var input = new byte[L1SloadConstants.AddressBytes]; // Only address
         Assert.That(_precompile.DataGasCost(input, _spec), Is.EqualTo(0L));
 
         // Input too long
-        var expectedLength = L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes + L1PrecompileConstants.BlockNumberBytes;
+        var expectedLength = L1SloadConstants.AddressBytes + L1SloadConstants.StorageKeyBytes + L1SloadConstants.BlockNumberBytes;
         var longInput = new byte[expectedLength + 32]; // Extra 32 bytes
         Assert.That(_precompile.DataGasCost(longInput, _spec), Is.EqualTo(0L));
     }
@@ -50,21 +47,21 @@ public class L1SloadPrecompileTests
     public void DataGasCost_With_Valid_Input_Should_Calculate_Correctly()
     {
         var input = CreateValidInput(Address.FromNumber(123), (UInt256)1, (UInt256)1000);
-        Assert.That(_precompile.DataGasCost(input, _spec), Is.EqualTo(L1PrecompileConstants.PerLoadGasCost));
+        Assert.That(_precompile.DataGasCost(input, _spec), Is.EqualTo(L1SloadConstants.PerLoadGasCost));
     }
 
     [Test]
     public void Run_With_Invalid_Input_Length_Should_Fail()
     {
         // Input too short
-        var input = new byte[L1PrecompileConstants.AddressBytes];
+        var input = new byte[L1SloadConstants.AddressBytes];
         var (result, success) = _precompile.Run(input, _spec);
 
         Assert.That(success, Is.False);
         Assert.That(result, Is.Empty);
 
         // Input too long
-        var expectedLength = L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes + L1PrecompileConstants.BlockNumberBytes;
+        var expectedLength = L1SloadConstants.AddressBytes + L1SloadConstants.StorageKeyBytes + L1SloadConstants.BlockNumberBytes;
         var longInput = new byte[expectedLength + 32];
         (result, success) = _precompile.Run(longInput, _spec);
 
@@ -159,11 +156,11 @@ public class L1SloadPrecompileTests
 
     private static byte[] CreateValidInput(Address contractAddress, UInt256 storageKey, UInt256 blockNumber)
     {
-        var input = new byte[L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes + L1PrecompileConstants.BlockNumberBytes];
+        var input = new byte[L1SloadConstants.AddressBytes + L1SloadConstants.StorageKeyBytes + L1SloadConstants.BlockNumberBytes];
 
-        contractAddress.Bytes.CopyTo(input.AsSpan(0, L1PrecompileConstants.AddressBytes));
-        storageKey.ToBigEndian().CopyTo(input.AsSpan(L1PrecompileConstants.AddressBytes, L1PrecompileConstants.StorageKeyBytes));
-        blockNumber.ToBigEndian().CopyTo(input.AsSpan(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes, L1PrecompileConstants.BlockNumberBytes));
+        contractAddress.Bytes.CopyTo(input.AsSpan(0, L1SloadConstants.AddressBytes));
+        storageKey.ToBigEndian().CopyTo(input.AsSpan(L1SloadConstants.AddressBytes, L1SloadConstants.StorageKeyBytes));
+        blockNumber.ToBigEndian().CopyTo(input.AsSpan(L1SloadConstants.AddressBytes + L1SloadConstants.StorageKeyBytes, L1SloadConstants.BlockNumberBytes));
 
         return input;
     }

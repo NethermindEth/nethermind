@@ -163,6 +163,7 @@ namespace Nethermind.Specs
         Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
         public bool IsEip7939Enabled { get; set; }
         public bool IsRip7728Enabled { get; set; }
+        public bool IsL1CallEnabled { get; set; }
 
         private FrozenSet<AddressAsKey>? _precompiles;
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
@@ -197,6 +198,7 @@ namespace Nethermind.Specs
             }
             if (IsRip7212Enabled || IsEip7951Enabled) cache.Add(PrecompiledAddresses.P256Verify);
             if (IsRip7728Enabled) cache.Add(PrecompiledAddresses.L1Sload);
+            if (IsL1CallEnabled) cache.Add(PrecompiledAddresses.L1Call);
 
             return cache.ToFrozenSet();
         }
