@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -10,11 +9,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Evm.State;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
@@ -80,8 +80,7 @@ public class BlockhashProviderTests
         BlockhashProvider provider = CreateBlockHashProvider(tree, Frontier.Instance);
 
         BlockHeader notCanonParent = tree.FindHeader(chainLength - 4, BlockTreeLookupOptions.None)!;
-        Block expected = tree.FindBlock(chainLength - 3, BlockTreeLookupOptions.None)!;
-
+        BlockHeader expectedHeader = tree.FindHeader(chainLength - 3, BlockTreeLookupOptions.None)!;
         Block headParent = tree.FindBlock(chainLength - 2, BlockTreeLookupOptions.None)!;
         Block head = tree.FindBlock(chainLength - 1, BlockTreeLookupOptions.None)!;
 
@@ -89,12 +88,12 @@ public class BlockhashProviderTests
         tree.Insert(branch, BlockTreeInsertBlockOptions.SaveHeader).Should().Be(AddBlockResult.Added);
         tree.UpdateMainChain(branch); // Update branch
 
-        tree.UpdateMainChain([expected, headParent, head], true); // Update back to original again, but skipping the branch block.
+        tree.UpdateMainChain([headParent, head], true); // Update back to original again, but skipping the branch block.
 
         Block current = Build.A.Block.WithParent(head).TestObject; // At chainLength
 
         Hash256? result = provider.GetBlockhash(current.Header, chainLength - 3);
-        Assert.That(result, Is.EqualTo(expected.Header.Hash));
+        Assert.That(result, Is.EqualTo(expectedHeader.Hash));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

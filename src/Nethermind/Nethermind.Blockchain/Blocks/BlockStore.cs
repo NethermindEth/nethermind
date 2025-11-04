@@ -18,7 +18,8 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     private readonly BlockDecoder _blockDecoder = new();
     public const int CacheSize = 128 + 32;
 
-    private readonly ClockCache<Hash256AsKey, Block> _blockCache = new(CacheSize);
+    private readonly ClockCache<ValueHash256, Block>
+        _blockCache = new(CacheSize);
 
     public void SetMetadata(byte[] key, byte[] value)
     {
@@ -66,16 +67,9 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
 
     public Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
-        Block? b = blockDb.Get(blockNumber, blockHash, _blockDecoder, out _, _blockCache, rlpBehaviors, shouldCache);
+        Block? b = blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
         if (b is not null) return b;
-        return blockDb.Get(blockHash, _blockDecoder, out _, _blockCache, rlpBehaviors, shouldCache);
-    }
-
-    public Block? Get(long blockNumber, Hash256 blockHash, out bool fromCache, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
-    {
-        Block? b = blockDb.Get(blockNumber, blockHash, _blockDecoder, out fromCache, _blockCache, rlpBehaviors, shouldCache);
-        if (b is not null) return b;
-        return blockDb.Get(blockHash, _blockDecoder, out fromCache, _blockCache, rlpBehaviors, shouldCache);
+        return blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
     }
 
     public byte[]? GetRlp(long blockNumber, Hash256 blockHash)
@@ -102,7 +96,4 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     {
         _blockCache.Set(block.Hash, block);
     }
-
-    public Block? GetFromCache(Hash256 blockHash)
-        => _blockCache.Get(blockHash);
 }
