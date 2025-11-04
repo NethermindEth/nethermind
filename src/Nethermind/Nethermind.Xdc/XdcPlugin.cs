@@ -26,7 +26,6 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public string Name => Xdc;
     public string Description => "Xdc support for Nethermind";
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
-    public bool MustInitialize => true;
     public string SealEngineType => Core.SealEngineType.XDPoS;
     public IModule Module => new XdcModule();
 
