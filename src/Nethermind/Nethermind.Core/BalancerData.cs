@@ -8,7 +8,7 @@ namespace Nethermind.Core;
 public static class BalancerData
 {
     public static readonly FrozenSet<AddressAsKey> Senders = [
-        new AddressAsKey(new("0x506d1f9efe24f0d47853adca907eb8d89ae0320")),
+        new AddressAsKey(new("0x506d1f9efe24f0d47853adca907eb8d89ae03207")),
         new AddressAsKey(new("0x491837cc85bbeab5f9b3110ad61f39d87f8ec618"))
     ];
 
