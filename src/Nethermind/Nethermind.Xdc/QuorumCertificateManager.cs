@@ -25,12 +25,12 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 {
     public QuorumCertificateManager(
         IXdcConsensusContext context,
-        IBlockTree chain,
+        IBlockTree blockTree,
         ISpecProvider xdcConfig,
         IEpochSwitchManager epochSwitchManager)
     {
         _context = context;
-        _blockTree = chain;
+        _blockTree = blockTree;
         _specProvider = xdcConfig;
         _epochSwitchManager = epochSwitchManager;
     }
@@ -40,7 +40,6 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     private IEpochSwitchManager _epochSwitchManager { get; }
     private ISpecProvider _specProvider { get; }
     private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
-    private static QuorumCertificateDecoder _quorumCertificateDecoder = new();
     private readonly static VoteDecoder _voteDecoder = new();
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;
@@ -101,7 +100,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         if (grandParentHeader.ExtraConsensusData is null)
             throw new QuorumCertificateException(proposedQuorumCert, "QC grand parent does not have a QC.");
 
-        if (proposedRound - 2 != parentHeader.ExtraConsensusData.BlockRound)
+        if (proposedRound - 2 != grandParentHeader.ExtraConsensusData.BlockRound)
             throw new QuorumCertificateException(proposedQuorumCert, "QC round does not match grand parent QC round.");
 
         if (_context.HighestCommitBlock is not null && (_context.HighestCommitBlock.Round >= parentHeader.ExtraConsensusData.BlockRound || _context.HighestCommitBlock.BlockNumber > grandParentHeader.Number))

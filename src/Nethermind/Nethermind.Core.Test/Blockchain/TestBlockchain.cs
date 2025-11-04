@@ -264,7 +264,7 @@ public class TestBlockchain : IDisposable
 
             .AddSingleton<TestBlockchainUtil.Config, Configuration>((cfg) => new TestBlockchainUtil.Config(cfg.SlotTime))
 
-            .AddSingleton<PoWTestBlockchainUtil>((ctx) => new PoWTestBlockchainUtil(
+            .AddSingleton((ctx) => new PoWTestBlockchainUtil(
                 ctx.Resolve<IBlockProducerRunner>(),
                 ctx.Resolve<IManualBlockProductionTrigger>(),
                 ctx.Resolve<ManualTimestamper>(),

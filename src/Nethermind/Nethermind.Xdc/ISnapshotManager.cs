@@ -14,7 +14,13 @@ using System.Collections.ObjectModel;
 namespace Nethermind.Xdc;
 public interface ISnapshotManager
 {
-    Snapshot? GetSnapshot(Hash256 hash);
+    static bool IsTimeforSnapshot(long blockNumber, IXdcReleaseSpec spec)
+    {
+        if (blockNumber == spec.SwitchBlock)
+            return true;
+        return blockNumber % spec.EpochLength == spec.EpochLength - spec.Gap;
+    }
+    Snapshot? GetSnapshot(long blockNumber, IXdcReleaseSpec spec);
     void StoreSnapshot(Snapshot snapshot);
-    (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(XdcBlockHeader header, IXdcReleaseSpec spec);
+    (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec);
 }

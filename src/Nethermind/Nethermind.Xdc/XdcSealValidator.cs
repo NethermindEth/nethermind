@@ -72,7 +72,7 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
             }
 
             //TODO init masternodes by reading from most recent checkpoint
-            (masternodes, var penaltiesAddresses) = snapshotManager.CalculateNextEpochMasternodes(xdcHeader, xdcSpec);
+            (masternodes, var penaltiesAddresses) = snapshotManager.CalculateNextEpochMasternodes(xdcHeader.Number, xdcHeader.ParentHash, xdcSpec);
             if (!xdcHeader.ValidatorsAddress.SequenceEqual(masternodes))
             {
                 error = "Validators does not match what's stored in snapshot minus its penalty.";

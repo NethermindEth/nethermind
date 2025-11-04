@@ -38,7 +38,7 @@ namespace Nethermind.Xdc.Test.Helpers;
 /// </summary>
 /// <param name="configProvider"></param>
 /// <param name="spec"></param>
-public class PseudoXdcModule(IConfigProvider configProvider, ILogManager logManager) : Module
+public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager logManager) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -54,7 +54,6 @@ public class PseudoXdcModule(IConfigProvider configProvider, ILogManager logMana
             // add missing components
             .AddSingleton<IPenaltyHandler, RandomPenality>()
             .AddSingleton<IForensicsProcessor, TrustyForensics>()
-            .AddSingleton<ISnapshotManager>((ctx) => new SnapshotManager(new MemDb(), ctx.Resolve<IPenaltyHandler>()))
 
             // Environments
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider>((blockProcessingContext, chainHeadInfoProvider) => new BackgroundTaskScheduler(

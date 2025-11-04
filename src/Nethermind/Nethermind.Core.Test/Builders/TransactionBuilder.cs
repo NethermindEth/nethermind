@@ -257,11 +257,11 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> SignedAndResolved(PrivateKey? privateKey = null)
+        public TransactionBuilder<T> SignedAndResolved(PrivateKey? privateKey = null, bool isEip155Enabled = true)
         {
             privateKey ??= TestItem.IgnoredPrivateKey;
             EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? TestBlockchainIds.ChainId);
-            ecdsa.Sign(privateKey, TestObjectInternal, true);
+            ecdsa.Sign(privateKey, TestObjectInternal, isEip155Enabled);
             TestObjectInternal.SenderAddress = privateKey.Address;
             return this;
         }
