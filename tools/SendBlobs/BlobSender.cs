@@ -92,7 +92,6 @@ internal class BlobSender
             signers.Add(new(new Signer(chainId, privateKey, _logManager), nonce));
         }
 
-        TxDecoder txDecoder = TxDecoder.Instance;
         Random random = new();
 
         int signerIndex = -1;
