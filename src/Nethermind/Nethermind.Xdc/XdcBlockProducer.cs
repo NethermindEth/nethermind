@@ -111,6 +111,6 @@ internal class XdcBlockProducer : BlockProducerBase
         var tracer = new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace);
         var b = base.ProcessPreparedBlock(block, tracer);
         //BlockTraceDumper.LogDiagnosticTrace(tracer, b.Hash!, NullLogger.Instance);
-        return b; 
+        return b;
     }
 }

@@ -447,7 +447,7 @@ public class CliqueBlockProducer : IBlockProducer
             if (addresses.Count > 0)
             {
                 header.Beneficiary = addresses[_cryptoRandom.NextInt(addresses.Count)];
-                if (_proposals.TryGetValue(header. Beneficiary!, out bool proposal))
+                if (_proposals.TryGetValue(header.Beneficiary!, out bool proposal))
                 {
                     header.Nonce = proposal ? Clique.NonceAuthVote : Clique.NonceDropVote;
                 }
