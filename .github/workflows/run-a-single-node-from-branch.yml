@@ -25,7 +25,6 @@ on:
           - linea-mainnet
           - linea-sepolia
           - taiko-alethia
-          - taiko-hekla
           - energyweb
           - volta
       cl_client:
