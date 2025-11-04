@@ -173,7 +173,16 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        if (!qc.ProposedBlockInfo.ValidateBlockInfo(certificateTarget))
+        if (certificateTarget.Number == spec.SwitchBlock)
+        {
+            //Do not check round info on genesis block
+            if (qc.ProposedBlockInfo.BlockNumber != certificateTarget.Number || qc.ProposedBlockInfo.Hash != certificateTarget.Hash)
+            {
+                error = "QC genesis block data does not match header data.";
+                return false;
+            }
+        }
+        else if(!qc.ProposedBlockInfo.ValidateBlockInfo(certificateTarget))
         {
             error = "QC block data does not match header data.";
             return false;
@@ -187,5 +196,22 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         KeccakRlpStream stream = new();
         _voteDecoder.Encode(stream, new Vote(proposedBlockInfo, gapNumber), RlpBehaviors.ForSealing);
         return stream.GetValueHash();
+    }
+
+    public void Initialize(XdcBlockHeader current)
+    {
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(current);
+        QuorumCertificate latestQc;
+        if (current.Number == spec.SwitchBlock)
+        {
+            latestQc = new QuorumCertificate(new BlockRoundInfo(current.Hash, 0, current.Number), Array.Empty<Signature>(),
+                    (ulong)Math.Max(0, current.Number - spec.Gap));
+            _context.HighestQC = latestQc;
+            _context.SetNewRound(1);
+        }
+        else
+        {
+            CommitCertificate(current.ExtraConsensusData.QuorumCert);
+        }
     }
 }

@@ -160,6 +160,7 @@ public class XdcTestBlockchain : TestBlockchain
             Task newBlockWaiter = BlockTree.WaitForNewBlock(CancellationToken);
             MainProcessingContext.GenesisLoader.Load();
             await newBlockWaiter;
+            QuorumCertificateManager.Initialize((XdcBlockHeader)BlockTree.Head!.Header);
         }
 
         if (testConfiguration.AddBlockOnStart)
@@ -395,5 +396,25 @@ public class XdcTestBlockchain : TestBlockchain
 
         return txBuilder;
     }
+}
+
+public class XdcTestSigner() : ISigner
+{
+    public PrivateKey? Key => throw new NotImplementedException();
+
+    public Address Address => throw new NotImplementedException();
+
+    public bool CanSign => throw new NotImplementedException();
+
+    public Signature Sign(in ValueHash256 message)
+    {
+        throw new NotImplementedException();
+    }
+
+    public ValueTask Sign(Transaction tx)
+    {
+        throw new NotImplementedException();
+    }
+
 }
 

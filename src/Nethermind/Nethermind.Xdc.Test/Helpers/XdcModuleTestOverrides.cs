@@ -50,7 +50,6 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddModule(new PseudoNetworkModule())
             .AddModule(new TestBlockProcessingModule())
 
-
             // add missing components
             .AddSingleton<IPenaltyHandler, RandomPenality>()
             .AddSingleton<IForensicsProcessor, TrustyForensics>()
