@@ -62,7 +62,7 @@ public class OptimismBlockValidator(
     }
 
     protected override bool ValidateWithdrawals(Block block, IReleaseSpec spec, bool validateHashes, ref string? error) =>
-        !validateHashes || ValidateWithdrawals(block.Header, block.Body, out error);
+        ValidateWithdrawals(block.Header, block.Body, out error);
 
     private bool ValidateWithdrawals(BlockHeader header, BlockBody body, out string? error)
     {
