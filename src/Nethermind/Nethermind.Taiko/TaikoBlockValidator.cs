@@ -30,22 +30,29 @@ public class TaikoBlockValidator(
     private const long AnchorGasLimit = 250_000;
     private const long AnchorV3GasLimit = 1_000_000;
 
-    protected override bool ValidateEip4844Fields(Block block, IReleaseSpec spec, ref string? error) => true; // No blob transactions are expected, covered by ValidateTransactions also
+    protected override bool ValidateEip4844Fields(Block block, IReleaseSpec spec, out string? error)
+    {
+        // No blob transactions are expected, covered by ValidateTransactions also
+        error = null;
+        return true;
+    }
 
-    protected override bool ValidateTransactions(Block block, IReleaseSpec spec, ref string? errorMessage)
+    protected override bool ValidateTransactions(Block block, IReleaseSpec spec, out string? errorMessage)
     {
         if (block.IsGenesis)
         {
+            errorMessage = null;
             return true;
         }
 
-        if (block.Transactions.Length is not 0 && !ValidateAnchorTransaction(block.Transactions[0], block, (ITaikoReleaseSpec)spec, out errorMessage))
+        if (block.Transactions.Length is not 0)
         {
-            return false;
+            if (!ValidateAnchorTransaction(block.Transactions[0], block, (ITaikoReleaseSpec)spec, out errorMessage))
+                return false;
         }
 
-        // TaikoPlugin initializes the TxValidator with an Always.Valid validator
-        return base.ValidateTransactions(block, spec, ref errorMessage);
+        // TaikoPlugin initializes the TxValidator with a Always.Valid validator
+        return base.ValidateTransactions(block, spec, out errorMessage);
     }
 
     private bool ValidateAnchorTransaction(Transaction tx, Block block, ITaikoReleaseSpec spec, out string? errorMessage)

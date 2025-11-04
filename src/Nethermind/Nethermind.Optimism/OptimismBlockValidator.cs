@@ -38,30 +38,30 @@ public class OptimismBlockValidator(
     private const string NonNullWithdrawalsRootError =
         $"{nameof(BlockHeader.WithdrawalsRoot)} is not null";
 
-    public override bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? error)
+    public override bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? errorMessage)
     {
         if (!ValidateTxRootMatchesTxs(header, toBeValidated, out Hash256? txRoot))
         {
-            error = BlockErrorMessages.InvalidTxRoot(header.TxRoot!, txRoot);
+            errorMessage = BlockErrorMessages.InvalidTxRoot(header.TxRoot!, txRoot);
             return false;
         }
 
         if (!ValidateUnclesHashMatches(header, toBeValidated, out _))
         {
-            error = BlockErrorMessages.InvalidUnclesHash;
+            errorMessage = BlockErrorMessages.InvalidUnclesHash;
             return false;
         }
 
-        if (!ValidateWithdrawals(header, toBeValidated, out error))
+        if (!ValidateWithdrawals(header, toBeValidated, out errorMessage))
         {
             return false;
         }
 
-        error = null;
+        errorMessage = null;
         return true;
     }
 
-    protected override bool ValidateWithdrawals(Block block, IReleaseSpec spec, bool validateHashes, ref string? error) =>
+    protected override bool ValidateWithdrawals(Block block, IReleaseSpec spec, out string? error) =>
         ValidateWithdrawals(block.Header, block.Body, out error);
 
     private bool ValidateWithdrawals(BlockHeader header, BlockBody body, out string? error)
@@ -75,7 +75,7 @@ public class OptimismBlockValidator(
                 return false;
             }
 
-            if (header.WithdrawalsRoot is null)
+            if (header.WithdrawalsRoot == null)
             {
                 error = MissingWithdrawalsRootError;
                 return false;
@@ -95,10 +95,13 @@ public class OptimismBlockValidator(
                 return false;
             }
         }
-        else if (header.WithdrawalsRoot is not null)
+        else
         {
-            error = NonNullWithdrawalsRootError;
-            return false;
+            if (header.WithdrawalsRoot != null)
+            {
+                error = NonNullWithdrawalsRootError;
+                return false;
+            }
         }
 
         error = null;

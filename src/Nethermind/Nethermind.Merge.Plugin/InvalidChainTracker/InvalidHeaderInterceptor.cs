@@ -8,17 +8,25 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
-public class InvalidHeaderInterceptor(
-    IHeaderValidator headerValidator,
-    IInvalidChainTracker invalidChainTracker,
-    ILogManager logManager)
-    : IHeaderValidator
+public class InvalidHeaderInterceptor : IHeaderValidator
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<InvalidHeaderInterceptor>();
+    private readonly IHeaderValidator _baseValidator;
+    private readonly IInvalidChainTracker _invalidChainTracker;
+    private readonly ILogger _logger;
 
-    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error)
+    public InvalidHeaderInterceptor(
+        IHeaderValidator headerValidator,
+        IInvalidChainTracker invalidChainTracker,
+        ILogManager logManager)
     {
-        bool result = headerValidator.Validate(header, parent, isUncle, out error);
+        _baseValidator = headerValidator;
+        _invalidChainTracker = invalidChainTracker;
+        _logger = logManager.GetClassLogger<InvalidHeaderInterceptor>();
+    }
+
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
+    {
+        bool result = _baseValidator.Validate(header, parent, isUncle, out error);
         if (!result)
         {
             if (_logger.IsDebug) _logger.Debug($"Intercepted a bad header {header}");
@@ -27,14 +35,14 @@ public class InvalidHeaderInterceptor(
                 if (_logger.IsDebug) _logger.Debug($"Header invalidation should not be tracked");
                 return result;
             }
-            invalidChainTracker.OnInvalidBlock(header.Hash!, header.ParentHash);
+            _invalidChainTracker.OnInvalidBlock(header.Hash!, header.ParentHash);
         }
-        invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
+        _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
         return result;
     }
 
-    public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
-        headerValidator.ValidateOrphaned(header, out error);
-
-    private static bool ShouldNotTrackInvalidation(BlockHeader header) => !HeaderValidator.ValidateHash(header);
+    private static bool ShouldNotTrackInvalidation(BlockHeader header)
+    {
+        return !HeaderValidator.ValidateHash(header);
+    }
 }

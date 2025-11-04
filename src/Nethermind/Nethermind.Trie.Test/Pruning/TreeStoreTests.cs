@@ -107,12 +107,12 @@ namespace Nethermind.Trie.Test.Pruning
                 using (var _ = fullTrieStore.BeginScope(baseBlock))
                 {
                     pt.Set(TestItem.KeccakA.BytesToArray(), TestItem.Keccaks[i].BytesToArray());
-                    using (fullTrieStore.BeginStateBlockCommit(i + 1, trieNode))
+                    using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i + 1, trieNode))
                     {
                         pt.Commit();
                     }
 
-                    baseBlock = Build.A.BlockHeader.WithParentOptional(baseBlock).WithStateRoot(pt.RootHash).TestObject;
+                    baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(pt.RootHash).TestObject;
                 }
                 await Task.Yield();
                 fullTrieStore.WaitForPruning();
@@ -1004,6 +1004,50 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             memDb.Count.Should().Be(4);
+        }
+
+        [Test]
+        public Task Will_RePersist_PersistedReCommittedNode()
+        {
+            MemDb memDb = new();
+
+            using TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: new TestPruningStrategy(true, true),
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 3,
+                    TrackPastKeys = true
+                });
+
+            PatriciaTree topTree = new PatriciaTree(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
+
+            byte[] key1 = Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000");
+            byte[] key2 = Bytes.FromHexString("0011000000000000000000000000000000000000000000000000000000000000");
+
+            BlockHeader? baseBlock = null;
+            for (int i = 0; i < 64; i++)
+            {
+                using (fullTrieStore.BeginScope(baseBlock))
+                {
+                    topTree.Set(key1, [1, 2]);
+                    topTree.Set(key2, [4, (byte)(i % 4)]);
+
+                    using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, topTree.Root))
+                    {
+                        topTree.Commit();
+                    }
+
+                    baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(topTree.RootHash).TestObject;
+                }
+
+                fullTrieStore.WaitForPruning();
+            }
+
+            memDb.Count.Should().Be(13);
+            memDb.WritesCount.Should().Be(184);
+            return Task.CompletedTask;
         }
 
         [Test]
