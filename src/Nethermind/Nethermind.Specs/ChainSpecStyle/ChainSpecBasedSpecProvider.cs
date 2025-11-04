@@ -45,6 +45,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, static n => n.EndsWith("Transition"));
             AddTransitions(transitionTimestamps, _chainSpec.Parameters, static n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
             AddBlobScheduleTransitions(transitionTimestamps, _chainSpec);
+            AddCensoringScheduleTransitions(transitionTimestamps, _chainSpec);
             TimestampFork = transitionTimestamps.Count > 0 ? transitionTimestamps.Min : ISpecProvider.TimestampForkNever;
 
             static void AddTransitions<T>(
@@ -113,6 +114,26 @@ namespace Nethermind.Specs.ChainSpecStyle
                     if (settings.Target > settings.Max)
                     {
                         throw new ArgumentException($"Blob schedule target ({settings.Target}) should not exceed max ({settings.Max}).");
+                    }
+
+                    transitions.Add(settings.Timestamp);
+                }
+            }
+
+            static void AddCensoringScheduleTransitions(SortedSet<ulong> transitions, ChainSpec chainSpec)
+            {
+                if (chainSpec.Parameters.CensoringSchedule is not { Count: > 0 })
+                {
+                    return;
+                }
+
+                ulong genesisTimestamp = chainSpec.Genesis?.Timestamp ?? 0;
+
+                foreach (CensoringScheduleSettings settings in chainSpec.Parameters.CensoringSchedule)
+                {
+                    if (settings.Timestamp <= genesisTimestamp)
+                    {
+                        continue;
                     }
 
                     transitions.Add(settings.Timestamp);
@@ -329,7 +350,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             void SetCensoringScheduleParameters()
             {
-                CensoringScheduleSettings? censoringSchedule = chainSpec.Parameters.CensoringSchedule?.OrderByDescending(bs => bs).FirstOrDefault(bs => bs.Timestamp <= releaseStartTimestamp);
+                CensoringScheduleSettings? censoringSchedule = chainSpec.Parameters.CensoringSchedule?.OrderByDescending(cs => cs).FirstOrDefault(cs => cs.Timestamp <= releaseStartTimestamp);
 
                 if (censoringSchedule is not null)
                 {

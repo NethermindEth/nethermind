@@ -457,7 +457,11 @@ public class ChainSpecBasedSpecProviderTests
             { TestName = "Before Prague" };
             yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.PragueTimestamp))
             { TestName = "Prague" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.PragueTimestamp + 100000000))
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.BalancerTimestamp - 1))
+            { TestName = "Before Balancer" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.BalancerTimestamp))
+            { TestName = "Balancer" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.BalancerTimestamp + 100000000))
             { TestName = "Future" };
         }
     }
@@ -484,10 +488,13 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec? postCancunSpec = provider.GetSpec((1, GnosisSpecProvider.CancunTimestamp));
         IReleaseSpec? prePragueSpec = provider.GetSpec((1, GnosisSpecProvider.PragueTimestamp - 1));
         IReleaseSpec? postPragueSpec = provider.GetSpec((1, GnosisSpecProvider.PragueTimestamp));
+        IReleaseSpec? preBalancerSpec = provider.GetSpec((1, GnosisSpecProvider.BalancerTimestamp - 1));
+        IReleaseSpec? postBalancerSpec = provider.GetSpec((1, GnosisSpecProvider.BalancerTimestamp));
 
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics(postCancunSpec);
         VerifyGnosisPragueSpecifics(prePragueSpec, postPragueSpec, GnosisSpecProvider.FeeCollector);
+        VerifyGnosisBalancerSpecifics(preBalancerSpec, postBalancerSpec, GnosisSpecProvider.FeeCollector);
 
         using (Assert.EnterMultipleScope())
         {
@@ -510,6 +517,22 @@ public class ChainSpecBasedSpecProviderTests
         }
 
         VerifyGnosisCancunSpecifics(spec);
+    }
+
+    private static void VerifyGnosisBalancerSpecifics(IReleaseSpec preBalancerSpec, IReleaseSpec postBalancerSpec, Address feeCollector)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preBalancerSpec.FeeCollector, Is.EqualTo(feeCollector));
+            Assert.That(postBalancerSpec.FeeCollector, Is.EqualTo(feeCollector));
+            Assert.That(preBalancerSpec.CensoredSenders, Is.Null);
+            Assert.That(preBalancerSpec.CensoredTo, Is.Null);
+            Assert.That(postBalancerSpec.CensoredSenders!, Is.EqualTo(BalancerData.Senders));
+            Assert.That(postBalancerSpec.CensoredTo!, Is.EqualTo(BalancerData.To));
+        }
+
+        // should be unchanged
+        VerifyGnosisCancunSpecifics(postBalancerSpec);
     }
 
     private static void VerifyGnosisPragueSpecifics(IReleaseSpec prePragueSpec, IReleaseSpec postPragueSpec, Address feeCollector)
