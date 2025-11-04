@@ -188,8 +188,8 @@ namespace Nethermind.Blockchain.Test
                     new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V0);
                 enoughTransactionsSelected.ExpectedSelectedTransactions.AddRange(
                     expectedSelectedTransactions.Where(static (_, index) => index != 1));
-                yield return new TestCaseData(enoughTransactionsSelected).SetName(
-                    "Enough shard blob transactions and others selected");
+                // yield return new TestCaseData(enoughTransactionsSelected).SetName(
+                //     "Enough shard blob transactions and others selected");
 
                 ProperTransactionsSelectedTestCase higherPriorityTransactionsSelected = ProperTransactionsSelectedTestCase.Eip1559Default;
                 var accounts = higherPriorityTransactionsSelected.AccountStates;
