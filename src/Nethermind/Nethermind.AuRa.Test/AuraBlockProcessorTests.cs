@@ -94,11 +94,12 @@ namespace Nethermind.AuRa.Test
         }
 
         [Test]
-        public void Should_rewrite_contracts()
+        public void Should_rewrite_contracts([Values] bool isPostMerge)
         {
-            static BlockHeader Process(BranchProcessor auRaBlockProcessor, BlockHeader parent)
+            static BlockHeader Process(BranchProcessor auRaBlockProcessor, BlockHeader parent, bool isPostMerge)
             {
                 BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithParent(parent).TestObject;
+                header.IsPostMerge = isPostMerge;
                 Block block = Build.A.Block.WithHeader(header).TestObject;
                 return auRaBlockProcessor.Process(
                     parent,
@@ -143,7 +144,7 @@ namespace Nethermind.AuRa.Test
             }
 
             BlockHeader currentBlock = Build.A.BlockHeader.WithNumber(0).WithStateRoot(stateRoot).TestObject;
-            currentBlock = Process(processor, currentBlock);
+            currentBlock = Process(processor, currentBlock, isPostMerge);
 
             using (stateProvider.BeginScope(currentBlock))
             {
@@ -151,7 +152,7 @@ namespace Nethermind.AuRa.Test
                 stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Array.Empty<byte>());
             }
 
-            currentBlock = Process(processor, currentBlock);
+            currentBlock = Process(processor, currentBlock, isPostMerge);
 
             using (stateProvider.BeginScope(currentBlock))
             {
@@ -159,7 +160,7 @@ namespace Nethermind.AuRa.Test
                 stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x321"));
             }
 
-            currentBlock = Process(processor, currentBlock);
+            currentBlock = Process(processor, currentBlock, isPostMerge);
 
             using (stateProvider.BeginScope(currentBlock))
             {
