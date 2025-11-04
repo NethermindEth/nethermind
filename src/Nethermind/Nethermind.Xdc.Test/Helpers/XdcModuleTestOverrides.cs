@@ -13,6 +13,8 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
@@ -49,6 +51,12 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddModule(new XdcModule())
             .AddModule(new PseudoNetworkModule())
             .AddModule(new TestBlockProcessingModule())
+            .AddSingleton<ISigner>(ctx =>
+            {
+                var spec = ctx.Resolve<ISpecProvider>();
+                var logmanager = ctx.Resolve<ILogManager>();
+                return new Signer(spec.ChainId, TestItem.PrivateKeyA, logmanager);
+            })
 
             // add missing components
             .AddSingleton<IPenaltyHandler, RandomPenality>()
@@ -65,7 +73,6 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
             // Crypto
-            .AddSingleton<ISignerStore>(NullSigner.Instance)
             .AddSingleton(Substitute.For<IKeyStore>())
             .AddSingleton<IWallet, DevWallet>()
             .AddSingleton(Substitute.For<ITxSender>())
@@ -86,8 +93,13 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
 
     internal class RandomPenality : IPenaltyHandler
     {
-        public Address[] Penalize(Address[] candidates, int count = 2)
+        Dictionary<Hash256, Address[]> _penaltiesCache = new();
+        public Address[] Penalize(Hash256 currentHash, Address[] candidates, int count = 2)
         {
+            if (_penaltiesCache.ContainsKey(currentHash))
+            {
+                return _penaltiesCache[currentHash];
+            }
             var nodesCount = candidates.Length;
             List<Address> penalized = new();
 
@@ -98,11 +110,11 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
                 if (!penalized.Contains(candidate))
                     penalized.Add(candidate);
             }
-
-            return penalized.ToArray();
+            _penaltiesCache[currentHash] = penalized.ToArray();
+            return _penaltiesCache[currentHash];
         }
         public Address[] HandlePenalties(long number, Hash256 currentHash, Address[] candidates)
-            => Penalize(candidates, 7);
+            => Penalize(currentHash, candidates, 7);
     }
 
     internal class TrustyForensics : IForensicsProcessor

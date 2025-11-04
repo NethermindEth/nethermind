@@ -182,7 +182,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
                 return false;
             }
         }
-        else if(!qc.ProposedBlockInfo.ValidateBlockInfo(certificateTarget))
+        else if (!qc.ProposedBlockInfo.ValidateBlockInfo(certificateTarget))
         {
             error = "QC block data does not match header data.";
             return false;

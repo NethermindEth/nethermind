@@ -80,7 +80,7 @@ public class XdcTestBlockchain : TestBlockchain
         MasterNodeCandidates = new PrivateKeyGenerator().Generate(200).ToList();
     }
 
-    protected ISigner Signer => _fromXdcContainer.Signer;
+    protected Signer Signer => (Signer)_fromXdcContainer.Signer;
 
     private FromXdcContainer _fromXdcContainer = null!;
     public class FromXdcContainer(
@@ -169,11 +169,6 @@ public class XdcTestBlockchain : TestBlockchain
         return this;
     }
 
-    //private void InitialSnapshot(IXdcReleaseSpec spec)
-    //{
-    //    SnapshotManager.StoreSnapshot(new Types.Snapshot(spec.SwitchBlock, ) { });
-    //}
-
     protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
 
         base.ConfigureContainer(builder, configProvider)
@@ -189,6 +184,10 @@ public class XdcTestBlockchain : TestBlockchain
             .AddSingleton<FromContainer>()
             .AddSingleton<FromXdcContainer>()
             .AddScoped<IGenesisBuilder, XdcTestGenesisBuilder>()
+            .AddSingleton<ISealer, TestXdcSealer>()
+            .AddSingleton((ctx) => new CandidateContainer(MasterNodeCandidates))
+
+
 
             .AddSingleton((_) => BlockProducer)
             .AddSingleton((_) => BlockProducerRunner)
@@ -209,7 +208,7 @@ public class XdcTestBlockchain : TestBlockchain
     {
         var xdcSpec = XdcReleaseSpec.FromReleaseSpec(spec);
 
-        xdcSpec.GenesisMasterNodes = MasterNodeCandidates.Take(30).Select(k=>k.Address).ToArray();
+        xdcSpec.GenesisMasterNodes = MasterNodeCandidates.Take(30).Select(k => k.Address).ToArray();
         xdcSpec.EpochLength = 900;
         xdcSpec.Gap = 450;
         xdcSpec.SwitchEpoch = 0;
@@ -219,7 +218,8 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.ObserverReward = 0.5;     // 0.5 Ether per observer
         xdcSpec.MinimumMinerBlockPerEpoch = 1;
         xdcSpec.LimitPenaltyEpoch = 2;
-        xdcSpec.MinimumSigningTx = 1;        
+        xdcSpec.MinimumSigningTx = 1;
+        xdcSpec.GasLimitBoundDivisor = 1024;
 
         V2ConfigParams[] v2ConfigParams = [
             new V2ConfigParams {
@@ -349,8 +349,8 @@ public class XdcTestBlockchain : TestBlockchain
     {
         await base.AddBlock(transactions);
 
-        XdcBlockHeader head = (XdcBlockHeader)BlockTree.Head!.Header;
-        IXdcReleaseSpec headSpec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
+        var head = (XdcBlockHeader)BlockTree.Head!.Header;
+        var headSpec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
 
         if (ISnapshotManager.IsTimeforSnapshot(head.Number, headSpec))
         {
@@ -397,24 +397,3 @@ public class XdcTestBlockchain : TestBlockchain
         return txBuilder;
     }
 }
-
-public class XdcTestSigner() : ISigner
-{
-    public PrivateKey? Key => throw new NotImplementedException();
-
-    public Address Address => throw new NotImplementedException();
-
-    public bool CanSign => throw new NotImplementedException();
-
-    public Signature Sign(in ValueHash256 message)
-    {
-        throw new NotImplementedException();
-    }
-
-    public ValueTask Sign(Transaction tx)
-    {
-        throw new NotImplementedException();
-    }
-
-}
-

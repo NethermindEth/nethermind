@@ -419,18 +419,19 @@ namespace Nethermind.Xdc
                 throw new InvalidOperationException("Cannot determine leader with empty masternode set");
             }
 
-            EpochSwitchInfo epochSwitchInfo = null;
+            Address[] currentMasternodes;
             if (_epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
             {
                 //TODO calculate master nodes based on the current round
-                (masternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead.Number, currentHead.ParentHash, spec);
+                (currentMasternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead.Number, currentHead.ParentHash, spec);
             }
             else
             {
-                epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHead);
+                var epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHead);
+                currentMasternodes = epochSwitchInfo.Masternodes;
             }
 
-            int currentLeaderIndex = ((int)round % spec.EpochLength % epochSwitchInfo.Masternodes.Length);
+            int currentLeaderIndex = ((int)round % spec.EpochLength % currentMasternodes.Length);
             return masternodes[currentLeaderIndex];
         }
 

@@ -38,7 +38,7 @@ public class XdcModule : Module
             .AddSingleton<IXdcHeaderStore, XdcHeaderStore>()
             .AddSingleton<IBlockStore, XdcBlockStore>()
             .AddSingleton<IBlockTree, XdcBlockTree>()
-            
+
             // sealer
             .AddSingleton<ISealer, XdcSealer>()
 
