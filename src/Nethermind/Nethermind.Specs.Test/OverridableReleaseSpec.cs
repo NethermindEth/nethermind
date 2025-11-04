@@ -200,5 +200,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip7907Enabled => spec.IsEip7907Enabled;
         public bool IsRip7728Enabled => spec.IsRip7728Enabled;
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
+
+        public FrozenSet<AddressAsKey>? CensoredSenders => spec.CensoredSenders;
+        public FrozenSet<AddressAsKey>? CensoredTo => spec.CensoredTo;
     }
 }

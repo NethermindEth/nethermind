@@ -533,7 +533,7 @@ namespace Nethermind.Core.Specs
         /// <summary>
         // Censored addresses on gnosis
         /// </summary>
-        HashSet<AddressAsKey> CensoredSenders { get; }
-        HashSet<AddressAsKey> CensoredTo { get; }
+        FrozenSet<AddressAsKey>? CensoredSenders { get; }
+        FrozenSet<AddressAsKey>? CensoredTo { get; }
     }
 }
