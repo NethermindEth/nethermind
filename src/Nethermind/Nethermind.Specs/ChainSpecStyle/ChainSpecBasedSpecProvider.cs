@@ -300,6 +300,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
 
             SetBlobScheduleParameters();
+            SetCensoringScheduleParameters();
 
             return releaseSpec;
 
@@ -323,6 +324,16 @@ namespace Nethermind.Specs.ChainSpecStyle
                     releaseSpec.TargetBlobCount = Eip4844Constants.DefaultTargetBlobCount;
                     releaseSpec.MaxBlobCount = Eip4844Constants.DefaultMaxBlobCount;
                     releaseSpec.BlobBaseFeeUpdateFraction = Eip4844Constants.DefaultBlobGasPriceUpdateFraction;
+                }
+            }
+
+            void SetCensoringScheduleParameters()
+            {
+                CensoringScheduleSettings? censoringSchedule = chainSpec.Parameters.CensoringSchedule?.OrderByDescending(bs => bs).FirstOrDefault(bs => bs.Timestamp <= releaseStartTimestamp);
+
+                if (censoringSchedule is not null)
+                {
+                    releaseSpec.CensoredAddresses = [.. censoringSchedule.Addresses.Select(x => new AddressAsKey(x))];
                 }
             }
         }
