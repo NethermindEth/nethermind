@@ -9,7 +9,7 @@
 # Nethermind Ethereum client
 
 [![Tests](https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml/badge.svg)](https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml)
-[![Follow us on X](https://img.shields.io/twitter/follow/nethermindeth?style=social&label=Follow%20us)](https://x.com/nethermindeth)
+[![Follow us on X](https://img.shields.io/twitter/follow/nethermind?style=social&label=Follow%20us)](https://x.com/nethermind)
 [![Chat on Discord](https://img.shields.io/discord/629004402170134531?style=social&logo=discord)](https://discord.gg/GXJFaYk)
 [![GitHub Discussions](https://img.shields.io/github/discussions/nethermindeth/nethermind?style=social)](https://github.com/nethermindeth/nethermind/discussions)
 [![GitPOAPs](https://public-api.gitpoap.io/v1/repo/NethermindEth/nethermind/badge)](https://www.gitpoap.io/gh/NethermindEth/nethermind)
