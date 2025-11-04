@@ -104,13 +104,4 @@ internal class XdcBlockProducer : BlockProducerBase
         }
         return xdcBlockHeader;
     }
-
-    protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer,
-     CancellationToken token = default)
-    {
-        var tracer = new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace);
-        var b = base.ProcessPreparedBlock(block, tracer);
-        //BlockTraceDumper.LogDiagnosticTrace(tracer, b.Hash!, NullLogger.Instance);
-        return b;
-    }
 }
