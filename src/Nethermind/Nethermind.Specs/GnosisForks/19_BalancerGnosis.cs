@@ -14,7 +14,8 @@ public class BalancerGnosis : PragueGnosis
     private BalancerGnosis() : base()
     {
         Name = "Balancer";
-        CensoredAddresses = [.. BalancerData.Accounts];
+        CensoredSenders = [.. BalancerData.Senders];
+        CensoredTo = [.. BalancerData.To];
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new BalancerGnosis());

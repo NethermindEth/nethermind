@@ -10,7 +10,8 @@ public record class CensoringScheduleSettings : IComparable<CensoringScheduleSet
 {
     public ulong Timestamp { get; set; }
 
-    public Address[] Addresses;
+    public Address[] Senders;
+    public Address[] To;
 
     public int CompareTo(CensoringScheduleSettings? other) => other is null ? 1 : Timestamp.CompareTo(other.Timestamp);
 }

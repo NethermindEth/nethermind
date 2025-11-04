@@ -201,6 +201,7 @@ namespace Nethermind.Specs
             return cache.ToFrozenSet();
         }
 
-        public HashSet<AddressAsKey>? CensoredAddresses { get; set; } = null;
+        public HashSet<AddressAsKey>? CensoredSenders { get; set; } = null;
+        public HashSet<AddressAsKey>? CensoredTo{ get; set; } = null;
     }
 }

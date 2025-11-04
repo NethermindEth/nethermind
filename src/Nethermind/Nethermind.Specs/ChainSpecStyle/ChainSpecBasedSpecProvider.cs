@@ -333,7 +333,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
                 if (censoringSchedule is not null)
                 {
-                    releaseSpec.CensoredAddresses = [.. censoringSchedule.Addresses.Select(x => new AddressAsKey(x))];
+                    releaseSpec.CensoredSenders = [.. censoringSchedule.Senders.Select(x => new AddressAsKey(x))];
+                    releaseSpec.CensoredTo = [.. censoringSchedule.To.Select(x => new AddressAsKey(x))];
                 }
             }
         }
