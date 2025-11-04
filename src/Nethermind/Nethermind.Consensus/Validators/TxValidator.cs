@@ -289,15 +289,15 @@ public sealed class MempoolBlobTxValidator : ITxValidator
         return transaction switch
         {
             { NetworkWrapper: null } => ValidationResult.Success,
-            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateBlobs(transaction, wrapper),
+            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateBlobs(transaction, wrapper, releaseSpec),
             { Type: TxType.Blob } or { NetworkWrapper: not null } => TxErrorMessages.InvalidTransactionForm,
         };
 
-        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper)
+        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper, IReleaseSpec _)
         {
             IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
 
-            return (transaction.BlobVersionedHashes?.Length ?? 0) != wrapper.Blobs.Length || !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
+            return !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
                 transaction.BlobVersionedHashes is null || !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
                 !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
                 ValidationResult.Success;
@@ -315,13 +315,12 @@ public sealed class MempoolBlobTxProofVersionValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        return transaction switch
-        {
-            LightTransaction lightTx => ValidateProofVersion(lightTx.ProofVersion, releaseSpec),
-            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateProofVersion(wrapper.Version, releaseSpec),
-            { Type: TxType.Blob, NetworkWrapper: not null } => TxErrorMessages.InvalidTransactionForm,
-            _ => ValidationResult.Success,
-        };
+        if (!transaction.SupportsBlobs) return ValidationResult.Success;
+
+        ProofVersion? version = transaction.GetProofVersion();
+        return version is null
+            ? transaction.NetworkWrapper is not null ? TxErrorMessages.InvalidTransactionForm : ValidationResult.Success
+            : ValidateProofVersion(version.Value, releaseSpec);
 
         static ValidationResult ValidateProofVersion(ProofVersion txProofVersion, IReleaseSpec spec) =>
             txProofVersion != spec.BlobProofVersion ? TxErrorMessages.InvalidProofVersion : ValidationResult.Success;
