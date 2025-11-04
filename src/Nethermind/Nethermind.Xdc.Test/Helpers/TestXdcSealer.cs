@@ -8,7 +8,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
@@ -16,31 +15,38 @@ using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test.Helpers;
 
-internal class TestXdcSealer(CandidateContainer candidateContainer, ISigner signer, IXdcConsensusContext consensusContext, IEpochSwitchManager epochSwitchManager, ISnapshotManager snapshotManager, ISpecProvider specProvider) : ISealer
+internal class TestXdcBlockProducer(
+    ISigner signer,
+    CandidateContainer candidateContainer,
+    IEpochSwitchManager epochSwitchManager,
+    ISnapshotManager snapshotManager,
+    IXdcConsensusContext xdcContext,
+    ITxSource txSource,
+    IBlockchainProcessor processor,
+    ISealer sealer,
+    IBlockTree blockTree,
+    IWorldState stateProvider,
+    IGasLimitCalculator? gasLimitCalculator,
+    ITimestamper? timestamper,
+    ISpecProvider specProvider,
+    ILogManager logManager,
+    IDifficultyCalculator? difficultyCalculator,
+    IBlocksConfig? blocksConfig) : XdcBlockProducer(epochSwitchManager, snapshotManager, xdcContext, txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
 {
-    public Address Address => signer.Address;
-    private readonly XdcSealer _xdcSealer = new XdcSealer(signer);
     private readonly Signer signer = (Signer)signer;
 
-    public bool CanSeal(long blockNumber, Hash256 parentHash)
+    protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes)
     {
-        return true;
-    }
+        var prepared = (XdcBlockHeader)base.PrepareBlockHeader(parent, payloadAttributes);
 
-    public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
-    {
-        var header = (XdcBlockHeader)block.Header;
-        IXdcReleaseSpec headSpec = specProvider.GetXdcSpec(header, consensusContext.CurrentRound);
-        var leader = GetLeaderAddress(header, consensusContext.CurrentRound, headSpec);
+        IXdcReleaseSpec headSpec = _specProvider.GetXdcSpec(prepared, xdcContext.CurrentRound);
+        var leader = GetLeaderAddress(prepared, xdcContext.CurrentRound, headSpec);
         signer.SetSigner(candidateContainer.MasternodeCandidates.First(k => k.Address == leader));
-        block.Header.Author = leader;
-        block.Header.Beneficiary = leader;
-        return _xdcSealer.SealBlock(block, cancellationToken);
+        prepared.Author = leader;
+        return prepared;
     }
 
     private Address GetLeaderAddress(XdcBlockHeader currentHead, ulong round, IXdcReleaseSpec spec)

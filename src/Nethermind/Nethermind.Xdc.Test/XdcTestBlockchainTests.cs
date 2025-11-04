@@ -42,6 +42,7 @@ internal class XdcTestBlockchainTests
             Assert.That(block, Is.Not.Null);
             string? error;
             Assert.That(headerValidator.Validate(block!.Header, parent, false, out error), Is.True, "Header validation failed: " + error);
+            parent = block.Header;
         }
     }
 }

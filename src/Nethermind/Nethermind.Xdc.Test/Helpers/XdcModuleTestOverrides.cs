@@ -27,6 +27,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
 using Module = Autofac.Module;
@@ -51,15 +52,9 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddModule(new XdcModule())
             .AddModule(new PseudoNetworkModule())
             .AddModule(new TestBlockProcessingModule())
-            .AddSingleton<ISigner>(ctx =>
-            {
-                var spec = ctx.Resolve<ISpecProvider>();
-                var logmanager = ctx.Resolve<ILogManager>();
-                return new Signer(spec.ChainId, TestItem.PrivateKeyA, logmanager);
-            })
 
             // add missing components
-            .AddSingleton<IPenaltyHandler, RandomPenality>()
+            .AddSingleton<IPenaltyHandler, RandomPenalizer>()
             .AddSingleton<IForensicsProcessor, TrustyForensics>()
 
             // Environments
@@ -91,11 +86,16 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
         });
     }
 
-    internal class RandomPenality : IPenaltyHandler
+    internal class RandomPenalizer(ISpecProvider specProvider) : IPenaltyHandler
     {
         Dictionary<Hash256, Address[]> _penaltiesCache = new();
-        public Address[] Penalize(Hash256 currentHash, Address[] candidates, int count = 2)
+        public Address[] Penalize(long number, Hash256 currentHash, Address[] candidates, int count = 2)
         {
+            var spec = specProvider.GetFinalSpec() as IXdcReleaseSpec ?? throw new ArgumentException("Must have XDC spec configured.");
+            if (number == spec.SwitchBlock)
+            {
+                return Array.Empty<Address>();
+            }
             if (_penaltiesCache.ContainsKey(currentHash))
             {
                 return _penaltiesCache[currentHash];
@@ -114,7 +114,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             return _penaltiesCache[currentHash];
         }
         public Address[] HandlePenalties(long number, Hash256 currentHash, Address[] candidates)
-            => Penalize(currentHash, candidates, 7);
+            => Penalize(number, currentHash, candidates, 7);
     }
 
     internal class TrustyForensics : IForensicsProcessor

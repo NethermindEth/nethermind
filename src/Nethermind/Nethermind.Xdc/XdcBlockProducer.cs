@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -27,11 +29,11 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 internal class XdcBlockProducer : BlockProducerBase
 {
-    private readonly IEpochSwitchManager epochSwitchManager;
-    private readonly ISnapshotManager snapshotManager;
-    private readonly IXdcConsensusContext xdcContext;
-    private readonly ISealer sealer;
-    private readonly ISpecProvider specProvider;
+    protected readonly IEpochSwitchManager epochSwitchManager;
+    protected readonly ISnapshotManager snapshotManager;
+    protected readonly IXdcConsensusContext xdcContext;
+    protected readonly ISealer sealer;
+    protected readonly ISpecProvider specProvider;
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
 
     public XdcBlockProducer(IEpochSwitchManager epochSwitchManager, ISnapshotManager snapshotManager, IXdcConsensusContext xdcContext, ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IWorldState stateProvider, IGasLimitCalculator? gasLimitCalculator, ITimestamper? timestamper, ISpecProvider specProvider, ILogManager logManager, IDifficultyCalculator? difficultyCalculator, IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
@@ -101,5 +103,14 @@ internal class XdcBlockProducer : BlockProducerBase
             }
         }
         return xdcBlockHeader;
+    }
+
+    protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer,
+     CancellationToken token = default)
+    {
+        var tracer = new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace);
+        var b = base.ProcessPreparedBlock(block, tracer);
+        //BlockTraceDumper.LogDiagnosticTrace(tracer, b.Hash!, NullLogger.Instance);
+        return b; 
     }
 }

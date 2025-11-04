@@ -174,7 +174,7 @@ public class XdcTestBlockchain : TestBlockchain
         base.ConfigureContainer(builder, configProvider)
             .AddModule(new XdcModuleTestOverrides(configProvider, LimboLogs.Instance))
             .AddSingleton<ISpecProvider>(
-            new TestSpecProvider(WrapReleaseSpec(new XdcReleaseSpec()))
+            new TestSpecProvider(WrapReleaseSpec(Shanghai.Instance))
             {
                 AllowTestChainOverride = false,
                 //This is sort of a hack to make BlockTree accept Xdc blocks as head
@@ -184,10 +184,14 @@ public class XdcTestBlockchain : TestBlockchain
             .AddSingleton<FromContainer>()
             .AddSingleton<FromXdcContainer>()
             .AddScoped<IGenesisBuilder, XdcTestGenesisBuilder>()
-            .AddSingleton<ISealer, TestXdcSealer>()
+            .AddSingleton<IBlockProducer, TestXdcBlockProducer>()
             .AddSingleton((ctx) => new CandidateContainer(MasterNodeCandidates))
-
-
+            .AddSingleton<ISigner>(ctx =>
+            {
+                var spec = ctx.Resolve<ISpecProvider>();
+                var logmanager = ctx.Resolve<ILogManager>();
+                return new Signer(spec.ChainId, MasterNodeCandidates[1], logmanager);
+            })
 
             .AddSingleton((_) => BlockProducer)
             .AddSingleton((_) => BlockProducerRunner)
@@ -271,7 +275,9 @@ public class XdcTestBlockchain : TestBlockchain
     protected override IBlockProducer CreateTestBlockProducer()
     {
         IBlockProducerEnv env = BlockProducerEnvFactory.Create();
-        return new XdcBlockProducer(
+        return new TestXdcBlockProducer(
+            Signer,
+            Container.Resolve<CandidateContainer>(),
             EpochSwitchManager,
             SnapshotManager,
             XdcContext,
@@ -371,7 +377,7 @@ public class XdcTestBlockchain : TestBlockchain
         return switchInfo
                     .Masternodes
                     .OrderBy(x => _random.Next())
-                    .Take((int)(switchInfo.Masternodes.Length * headSpec.CertThreshold))
+                    .Take((int)(Math.Ceiling(switchInfo.Masternodes.Length * headSpec.CertThreshold)))
                     .Select(a => MasterNodeCandidates.First(c => a == c.Address))
                     .ToArray();
     }
