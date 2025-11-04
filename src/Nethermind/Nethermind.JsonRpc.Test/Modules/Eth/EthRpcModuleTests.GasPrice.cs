@@ -104,7 +104,7 @@ public partial class EthRpcModuleTests
         ).TestObject;
 
         Block secondBlock = Build.A.Block.WithNumber(1).WithParentHash(firstBlock.Hash!).WithBaseFeePerGas(3).WithTransactions(
-            Build.A.Transaction.WithMaxFeePerGas(3).WithMaxPriorityFeePerGas(3).SignedAndResolved(TestItem.PrivateKeyC).WithNonce(0).WithType(TxType.EIP1559).TestObject, //Min(3, 2 + 3) = 3
+            Build.A.Transaction.WithMaxFeePerGas(3).WithMaxPriorityFeePerGas(3).SignedAndResolved(TestItem.PrivateKeyC).WithNonce(0).WithType(TxType.EIP1559).TestObject, //Min(3, 3 + 3) = 3
             Build.A.Transaction.WithMaxFeePerGas(4).WithMaxPriorityFeePerGas(0).SignedAndResolved(TestItem.PrivateKeyD).WithNonce(0).WithType(TxType.EIP1559).TestObject  //Min(4, 0 + 3) = 3
         ).TestObject;
 
