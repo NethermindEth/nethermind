@@ -6,16 +6,15 @@ namespace Nethermind.Core;
 public static class BalancerData
 {
     public static readonly Address[] Senders = [
-        new("0x5e7FA86cfdD10de6129e53377335b78BB34eaBD3"),
-        new("0x234490fA3Cd6C899681C8E93Ba88e97183a71FE4"),
-        new("0x49b5CE67B22b1D596842ca071ac3dA93eE593E11"),
-        new("0x7b23c07A0BbBe652Bf7069c9c4143a2C85132166")
+        new("0x506d1f9efe24f0d47853adca907eb8d89ae0320"),
+        new("0x491837cc85bbeab5f9b3110ad61f39d87f8ec618"),
     ];
 
     public static readonly Address[] To = [
-        new("0x5e7FA86cfdD10de6129e53377335b78BB34eaBD3"),
-        new("0x234490fA3Cd6C899681C8E93Ba88e97183a71FE4"),
-        new("0x49b5CE67B22b1D596842ca071ac3dA93eE593E11"),
-        new("0x7b23c07A0BbBe652Bf7069c9c4143a2C85132166")
+        new("0x5e7fa86cfdd10de6129e53377335b78bb34eabd3"),
+        new("0x234490fa3cd6c899681c8e93ba88e97183a71fe4"),
+        new("0x49b5ce67b22b1d596842ca071ac3da93ee593e11"),
+        new("0x7b23c07a0bbbe652bf7069c9c4143a2c85132166"),
+        new("0x1bdc1febebf92bffab3a2e49c5cf3b7e35a9e81e")
     ];
 }
