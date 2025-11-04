@@ -11,6 +11,7 @@ using Nethermind.Core.Messages;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Specs;
 
 namespace Nethermind.Consensus.Validators;
 
@@ -418,11 +419,16 @@ public sealed class CensoringTxValidator(ulong chainId) : ITxValidator
     private const string Censored = "Censored";
     private readonly EthereumEcdsa _ethereumEcdsa = new(chainId);
 
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        releaseSpec.CensoredSenders is not null && releaseSpec.CensoredTo is not null &&
-        (releaseSpec.CensoredSenders.Contains(transaction.SenderAddress ??= _ethereumEcdsa.RecoverAddress(transaction))
-        || releaseSpec.CensoredTo.Contains(transaction.To))
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if (!releaseSpec.IsCensoringEnabled)
+            return ValidationResult.Success;
+
+        transaction.SenderAddress ??= _ethereumEcdsa.RecoverAddress(transaction);
+
+        return releaseSpec.IsCensoredTransaction(transaction)
             ? Censored
             : ValidationResult.Success;
+    }
 }
 

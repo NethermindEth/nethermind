@@ -535,5 +535,10 @@ namespace Nethermind.Core.Specs
         /// </summary>
         FrozenSet<AddressAsKey>? CensoredSenders { get; }
         FrozenSet<AddressAsKey>? CensoredTo { get; }
+
+        public bool IsCensoringEnabled => CensoredSenders is not null && CensoredTo is not null;
+
+        public bool IsCensoredTransaction(Transaction tx)
+           => IsCensoringEnabled && (tx.SenderAddress is not null && CensoredSenders!.Contains(tx.SenderAddress) || (tx.To is not null && CensoredTo!.Contains(tx.To)));
     }
 }
