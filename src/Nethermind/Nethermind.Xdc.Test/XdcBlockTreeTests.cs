@@ -35,7 +35,7 @@ internal class XdcBlockTreeTests
     private MemDb _blockInfosDb;
     private MemDb _metadataDb;
     private TestableXdcBlockTree _blockTree;
-    private XdcContext _xdcContext;
+    private XdcConsensusContext _xdcContext;
 
     [SetUp]
     public void Setup()
@@ -44,7 +44,7 @@ internal class XdcBlockTreeTests
         _headersDb = new MemDb();
         _blockInfosDb = new MemDb();
         _metadataDb = new MemDb();
-        _xdcContext = new XdcContext();
+        _xdcContext = new XdcConsensusContext();
 
         ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
         syncConfig.PivotNumber.Returns("1");
@@ -465,7 +465,7 @@ internal class XdcBlockTreeTests
     private class TestableXdcBlockTree : XdcBlockTree
     {
         public TestableXdcBlockTree(
-            XdcContext xdcConsensus,
+            XdcConsensusContext xdcConsensus,
             IBlockStore blockStore,
             IHeaderStore headerDb,
             IDb blockInfoDb,

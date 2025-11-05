@@ -22,10 +22,10 @@ namespace Nethermind.Xdc;
 internal class XdcBlockTree : BlockTree
 {
     private const int MaxSearchDepth = 1024;
-    private readonly XdcContext xdcConsensus;
+    private readonly XdcConsensusContext xdcConsensus;
 
     public XdcBlockTree(
-        XdcContext xdcConsensus,
+        XdcConsensusContext xdcConsensus,
         IBlockStore? blockStore,
         IHeaderStore? headerDb,
         [KeyFilter("blockInfos")] IDb? blockInfoDb,
