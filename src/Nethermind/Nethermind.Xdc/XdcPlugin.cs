@@ -16,7 +16,7 @@ using Nethermind.Init.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Xdc.Spec;
 using Nethermind.Blockchain.Headers;
-using Nethermind.Blockchain.Blocks;
+using System;
 
 namespace Nethermind.Xdc;
 
@@ -55,7 +55,7 @@ public class XdcModule : Module
             .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>())
 
-            .AddSingleton<XdcContext>(new XdcContext())
+            .AddSingleton<XdcConsensusContext>(new XdcConsensusContext())
 
             // stores
             .AddSingleton<IHeaderStore, XdcHeaderStore>()
@@ -73,7 +73,6 @@ public class XdcModule : Module
 
             // Validators
             .AddSingleton<IHeaderValidator, XdcHeaderValidator>()
-            .AddSingleton<IBlockInfoValidator, BlockInfoValidator>()
             .AddSingleton<ISealValidator, XdcSealValidator>()
 
             // managers
