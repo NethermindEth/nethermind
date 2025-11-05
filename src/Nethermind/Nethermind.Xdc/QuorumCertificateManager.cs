@@ -82,7 +82,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             {
                 if (_logger.IsWarn) _logger.Warn($"Could not commit block ({proposedBlockHeader.Hash}). {error}");
             }
-            
+
         }
 
         if (qc.ProposedBlockInfo.Round >= _context.CurrentRound)
@@ -120,10 +120,10 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         if (grandParentHeader.ExtraConsensusData is null)
         {
-            
+
             error = $"QC grand parent ({grandParentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}) does not have a QC.";
             return false;
-        }            
+        }
 
         if (proposedRound - 2 != grandParentHeader.ExtraConsensusData.BlockRound)
         {
