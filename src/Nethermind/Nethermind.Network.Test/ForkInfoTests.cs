@@ -167,8 +167,8 @@ public class ForkInfoTests
     [TestCase(91735000, GnosisSpecProvider.PragueTimestamp - 1, "0x1384dfc1", GnosisSpecProvider.PragueTimestamp, "Future Cancun timestamp")]
     [TestCase(101735000, GnosisSpecProvider.PragueTimestamp, "0x2f095d4a", GnosisSpecProvider.BalancerTimestamp, "First Prague timestamp")]
     [TestCase(101735000, GnosisSpecProvider.BalancerTimestamp - 1, "0x2f095d4a", GnosisSpecProvider.BalancerTimestamp, "Future Prague timestamp")]
-    [TestCase(111735000, GnosisSpecProvider.BalancerTimestamp, "0xe03957c4", 0ul, "First Balancer timestamp")]
-    [TestCase(111735000, GnosisSpecProvider.BalancerTimestamp + 10000, "0xe03957c4", 0ul, "Future Balancer timestamp")]
+    [TestCase(111735000, GnosisSpecProvider.BalancerTimestamp, "0x7788829d", 0ul, "First Balancer timestamp")]
+    [TestCase(111735000, GnosisSpecProvider.BalancerTimestamp + 10000, "0x7788829d", 0ul, "Future Balancer timestamp")]
     public void Fork_id_and_hash_as_expected_on_gnosis(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
