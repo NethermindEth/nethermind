@@ -179,12 +179,12 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 tx.SenderAddress ??= new EthereumEcdsa(specProvider.ChainId).RecoverAddress(tx);
                 tx.Hash ??= tx.CalculateHash();
 
-                if (tx.SupportsBlobs is true)
-                {
-                    tx.NetworkWrapper = IBlobProofsManager.For(
-                        spec.BlobProofVersion
-                        ).AllocateWrapper(_emptyBlobs[0..tx.BlobVersionedHashes!.Length]);
-                }
+                //if (tx.SupportsBlobs is true)
+                //{
+                //    tx.NetworkWrapper = IBlobProofsManager.For(
+                //        spec.BlobProofVersion
+                //        ).AllocateWrapper(_emptyBlobs[0..tx.BlobVersionedHashes!.Length]);
+                //}
 
                 txList.Add(tx);
                 submitted++;
