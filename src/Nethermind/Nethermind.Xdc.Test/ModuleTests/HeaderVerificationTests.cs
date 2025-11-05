@@ -42,11 +42,11 @@ internal class HeaderVerificationTests
         var invalidRoundBlock = GetLastHeader(false);
         var invalidRoundBlockParent = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(invalidRoundBlock.ParentHash!)!;
 
-        var proposedBlockInfo = new BlockRoundInfo(invalidRoundBlockParent.Hash!, invalidRoundBlockParent.ExtraConsensusData!.CurrentRound, invalidRoundBlockParent.Number);
+        var proposedBlockInfo = new BlockRoundInfo(invalidRoundBlockParent.Hash!, invalidRoundBlockParent.ExtraConsensusData!.BlockRound, invalidRoundBlockParent.Number);
 
         var voteForSign = new Vote(proposedBlockInfo, 1);
         
-        var validSigners = xdcTestBlockchain.MasterNodesRotator.MasternodesPvKeys
+        var validSigners = xdcTestBlockchain.MasterNodeCandidates
             .Where(pvkey => invalidRoundBlockParent.ValidatorsAddress!.Value.Contains(pvkey.Address))
             .Select(pvkey => new Signer(0, pvkey, xdcTestBlockchain.LogManager))
             .ToList();
@@ -219,7 +219,7 @@ internal class HeaderVerificationTests
     public void NonEpochSwitch_Block_With_ValidatorsSet()
     {
         var nonEpochSwitchWithValidators = GetLastHeader(false);
-        nonEpochSwitchWithValidators.Validators = xdcTestBlockchain.MasterNodesRotator.MasternodesPvKeys.SelectMany(addr => addr.Address.Bytes).ToArray(); // implement helper to return acc1 addr bytes
+        nonEpochSwitchWithValidators.Validators = xdcTestBlockchain.MasterNodeCandidates.SelectMany(addr => addr.Address.Bytes).ToArray(); // implement helper to return acc1 addr bytes
         var nonEpochSwitchWithValidatorsParent = xdcTestBlockchain.BlockTree.FindHeader(nonEpochSwitchWithValidators.ParentHash!);
         var result = xdcHeaderValidator.Validate(nonEpochSwitchWithValidators, nonEpochSwitchWithValidatorsParent);
         Assert.That(result, Is.False);
@@ -248,9 +248,9 @@ internal class HeaderVerificationTests
     {
         var invalidQcSignatureBlock = GetLastHeader(false);
         var invalidQcSignatureBlockParent = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(invalidQcSignatureBlock.ParentHash!)!;
-        var proposedBlockInfo = new BlockRoundInfo(invalidQcSignatureBlockParent!.Hash!, invalidQcSignatureBlockParent.ExtraConsensusData!.CurrentRound, invalidQcSignatureBlockParent.Number);
+        var proposedBlockInfo = new BlockRoundInfo(invalidQcSignatureBlockParent!.Hash!, invalidQcSignatureBlockParent.ExtraConsensusData!.BlockRound, invalidQcSignatureBlockParent.Number);
         var voteForSign = new Vote(proposedBlockInfo, 1);
-        var validSigners = xdcTestBlockchain.MasterNodesRotator.MasternodesPvKeys
+        var validSigners = xdcTestBlockchain.MasterNodeCandidates
             .Where(pvkey => invalidQcSignatureBlockParent.ValidatorsAddress!.Value.Contains(pvkey.Address))
             .Select(pvkey => new Signer(0, pvkey, xdcTestBlockchain.LogManager))
             .ToList();
