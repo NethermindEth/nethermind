@@ -103,7 +103,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     {
         if (timeoutCertificate is null) throw new ArgumentNullException(nameof(timeoutCertificate));
         if (timeoutCertificate.Signatures is null) throw new ArgumentNullException(nameof(timeoutCertificate.Signatures));
-          
+
         Snapshot snapshot = _snapshotManager.GetSnapshot((long)timeoutCertificate.GapNumber, _specProvider.GetXdcSpec(_blockTree.Head?.Header as XdcBlockHeader));
         if (snapshot is null)
         {
