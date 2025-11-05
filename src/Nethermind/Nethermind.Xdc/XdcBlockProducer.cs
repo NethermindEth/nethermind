@@ -85,7 +85,7 @@ internal class XdcBlockProducer : BlockProducerBase
 
         if (epochSwitchManager.IsEpochSwitchAtBlock(xdcBlockHeader))
         {
-            (Address[] masternodes, Address[] penalties) = snapshotManager.CalculateNextEpochMasternodes(xdcBlockHeader, spec);
+            (Address[] masternodes, Address[] penalties) = snapshotManager.CalculateNextEpochMasternodes(xdcBlockHeader.Number, xdcBlockHeader.ParentHash, spec);
 
             xdcBlockHeader.Validators = new byte[masternodes.Length * Address.Size];
 
