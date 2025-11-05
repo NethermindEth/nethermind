@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
@@ -21,18 +24,40 @@ namespace Nethermind.Consensus.Producers
     public class GlobalWorldStateBlockProducerEnvFactory(
         ILifetimeScope rootLifetime,
         IWorldStateManager worldStateManager,
-        IBlockProducerTxSourceFactory txSourceFactory)
+        IBlockProducerTxSourceFactory txSourceFactory,
+        IBlocksConfig blocksConfig)
         : IBlockProducerEnvFactory
     {
-        protected virtual ContainerBuilder ConfigureBuilder(ContainerBuilder builder) => builder
+        protected virtual ContainerBuilder ConfigureBuilder(ContainerBuilder builder)
+        {
+            builder
             .AddScoped<ITxSource>(txSourceFactory.Create())
             .AddScoped(BlockchainProcessor.Options.Default)
             .AddScoped<ITransactionProcessorAdapter, BuildUpTransactionProcessorAdapter>()
-            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
+                .AddScoped<IBlockProcessor.IBlockTransactionsExecutor,
+                    BlockProcessor.BlockProductionTransactionsExecutor>()
             .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
             .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
 
             .AddScoped<IBlockProducerEnv, BlockProducerEnv>();
+
+            if (blocksConfig.PreWarmStateOnBlockBuilding)
+            {
+                builder
+                    .AddScoped<PreBlockCaches>((worldStateManager.GlobalWorldState as IPreBlockCaches)!.Caches)
+                    .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
+                    //.AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
+                    //{
+                    //    PreBlockCaches preBlockCaches = ctx.Resolve<PreBlockCaches>();
+                    //    // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
+                    //    return new CachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository,
+                    //        preBlockCaches?.PrecompileCache);
+                    //})
+                    ;
+            }
+
+            return builder;
+        }
 
         public virtual IBlockProducerEnv Create()
         {

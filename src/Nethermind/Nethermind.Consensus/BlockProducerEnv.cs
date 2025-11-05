@@ -12,7 +12,8 @@ namespace Nethermind.Consensus
         IBlockTree BlockTree,
         IBlockchainProcessor ChainProcessor,
         IWorldState ReadOnlyStateProvider,
-        ITxSource TxSource) : IBlockProducerEnv;
+        ITxSource TxSource,
+        IBlockCachePreWarmer? BlockCachePreWarmer = null) : IBlockProducerEnv;
 
     public interface IBlockProducerEnv
     {
@@ -20,5 +21,6 @@ namespace Nethermind.Consensus
         public IBlockchainProcessor ChainProcessor { get; }
         public IWorldState ReadOnlyStateProvider { get; }
         public ITxSource TxSource { get; }
+        public IBlockCachePreWarmer? BlockCachePreWarmer{ get; }
     }
 }

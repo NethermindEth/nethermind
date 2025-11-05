@@ -23,6 +23,7 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -53,8 +54,15 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IBlockhashProvider, BlockhashProvider>()
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
             .AddScoped<IBlockhashStore, BlockhashStore>()
-            .AddScoped<IBranchProcessor, BranchProcessor>()
+            //.AddScoped<IBranchProcessor, BranchProcessor>()
+            .AddScoped<IBranchProcessor, IBlockProcessor, ISpecProvider, IWorldState, IComponentContext>((blockProcessor, specProvider, worldState, ctx) =>
+            {
+                IBlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing ? ctx.ResolveOptional<IBlockCachePreWarmer>() : null;
+                return new BranchProcessor(blockProcessor, specProvider, worldState, ctx.Resolve<IBeaconBlockRootHandler>(), ctx.Resolve<ILogManager>(), preWarmer);
+            })
+
             .AddScoped<IBlockProcessor, BlockProcessor>()
+
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
             .AddScoped<IBlockchainProcessor, BlockchainProcessor>()

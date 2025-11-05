@@ -61,5 +61,8 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Builds blocks on main (non-readonly) state", DefaultValue = "false", HiddenFromDocs = true)]
     bool BuildBlocksOnMainState { get; set; }
 
+    [ConfigItem(Description = "Whether to pre-warm the state when processing blocks. This can lead to an up to 2x speed-up in the main loop block processing.", DefaultValue = "True")]
+    bool PreWarmStateOnBlockBuilding { get; set; }
+
     byte[] GetExtraDataBytes();
 }

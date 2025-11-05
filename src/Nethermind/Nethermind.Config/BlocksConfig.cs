@@ -90,6 +90,7 @@ namespace Nethermind.Config
         }
 
         public bool BuildBlocksOnMainState { get; set; }
+        public bool PreWarmStateOnBlockBuilding { get; set; }
 
         public byte[] GetExtraDataBytes()
         {

@@ -57,7 +57,7 @@ public class PruningTrieStateFactory(
         IPruningTrieStore trieStore = mainPruningTrieStoreFactory.PruningTrieStore;
         ITrieStore mainWorldTrieStore = trieStore;
         PreBlockCaches? preBlockCaches = null;
-        if (blockConfig.PreWarmStateOnBlockProcessing)
+        if (blockConfig.PreWarmStateOnBlockProcessing || blockConfig.PreWarmStateOnBlockBuilding)
         {
             preBlockCaches = new PreBlockCaches();
             mainWorldTrieStore = new PreCachedTrieStore(trieStore, preBlockCaches.RlpCache);
