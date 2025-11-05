@@ -46,6 +46,9 @@ internal class XdcBlockTreeTests
         _metadataDb = new MemDb();
         _xdcContext = new XdcContext();
 
+        ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
+        syncConfig.PivotNumber.Returns("1");
+        syncConfig.PivotHash.Returns(Hash256.Zero.ToString());
         _blockTree = new TestableXdcBlockTree(
             _xdcContext,
             new BlockStore(_blocksDb),
@@ -56,7 +59,7 @@ internal class XdcBlockTreeTests
             new ChainLevelInfoRepository(_blockInfosDb),
             MainnetSpecProvider.Instance,
             NullBloomStorage.Instance,
-            Substitute.For<ISyncConfig>(),
+            syncConfig,
             LimboLogs.Instance,
             0);
 
@@ -453,7 +456,9 @@ internal class XdcBlockTreeTests
             new ExtraFieldsV2((ulong)number, new QuorumCertificate(
                     new BlockRoundInfo(parentHash, (ulong)number, number),
                     Array.Empty<Signature>(), 0))
-            ).TestObject;
+            )
+            .WithTimestamp(differentHash ? (ulong)DateTime.Now.Ticks : 1)
+            .TestObject;
         return new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
     }
 

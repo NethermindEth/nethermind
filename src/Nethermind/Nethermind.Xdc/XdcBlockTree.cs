@@ -19,7 +19,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-public class XdcBlockTree : BlockTree
+internal class XdcBlockTree : BlockTree
 {
     private const int MaxSearchDepth = 1024;
     private readonly XdcContext xdcConsensus;
