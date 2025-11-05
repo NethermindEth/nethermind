@@ -22,9 +22,9 @@ namespace Nethermind.Xdc;
 internal class XdcBlockTree : BlockTree
 {
     private const int MaxSearchDepth = 1024;
-    private readonly IXdcConsensusContext xdcConsensus;
+    private readonly XdcContext xdcConsensus;
 
-    public XdcBlockTree(IXdcConsensusContext xdcConsensus, IBlockStore? blockStore, IHeaderStore? headerDb, [KeyFilter("blockInfos")] IDb? blockInfoDb, [KeyFilter("metadata")] IDb? metadataDb, IBadBlockStore? badBlockStore, IChainLevelInfoRepository? chainLevelInfoRepository, ISpecProvider? specProvider, IBloomStorage? bloomStorage, ISyncConfig? syncConfig, ILogManager? logManager, long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
+    public XdcBlockTree(XdcContext xdcConsensus, IBlockStore? blockStore, IHeaderStore? headerDb, [KeyFilter("blockInfos")] IDb? blockInfoDb, [KeyFilter("metadata")] IDb? metadataDb, IBadBlockStore? badBlockStore, IChainLevelInfoRepository? chainLevelInfoRepository, ISpecProvider? specProvider, IBloomStorage? bloomStorage, ISyncConfig? syncConfig, ILogManager? logManager, long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
     {
         this.xdcConsensus = xdcConsensus;
     }
