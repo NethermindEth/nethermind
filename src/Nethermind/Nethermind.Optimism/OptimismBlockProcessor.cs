@@ -74,8 +74,11 @@ public class OptimismBlockProcessor : BlockProcessor
             if (hasOverflow || daFootprint > long.MaxValue)
                 throw new InvalidOperationException($"DA Footprint overflow ({daFootprintBig}) at block {block.Header.Number}");
 
-            block.Header.BlobGasUsed = daFootprint;
-            block.Header.Hash = block.Header.CalculateHash();
+            if (block.Header.BlobGasUsed != daFootprint)
+            {
+                block.Header.BlobGasUsed = daFootprint;
+                block.Header.Hash = block.Header.CalculateHash();
+            }
         }
 
         return receipts;
