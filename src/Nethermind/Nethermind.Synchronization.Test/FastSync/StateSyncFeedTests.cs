@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -34,7 +34,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         : StateSyncFeedTestsBase(peerCount, maxNodeLatency)
     {
         // Useful for set and forget run. But this test is taking a long time to have it set to other than 1.
-        private const int TestRepeatCount = 1;
+        private const int TestRepeatCount = 10000;
 
         [Test]
         [TestCaseSource(nameof(Scenarios))]
