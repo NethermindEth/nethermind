@@ -354,6 +354,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
                 if (censoringSchedule is not null)
                 {
+                    if (_logger.IsInfo) _logger.Info($"Gnosis patch applied, timestamp {censoringSchedule.Timestamp}");
                     releaseSpec.CensoredSenders = [.. censoringSchedule.Senders.Select(x => new AddressAsKey(x))];
                     releaseSpec.CensoredTo = [.. censoringSchedule.To.Select(x => new AddressAsKey(x))];
                 }
