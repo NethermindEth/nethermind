@@ -1,16 +1,21 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
+using Autofac;
+using Autofac.Core;
+using Autofac.Features.AttributeFilters;
+using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
+using Nethermind.Init.Modules;
 using Nethermind.Specs.ChainSpecStyle;
-using Autofac;
-using Autofac.Core;
 using Nethermind.Xdc.Spec;
+using System;
 
 namespace Nethermind.Xdc;
 
@@ -21,7 +26,6 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public string Name => Xdc;
     public string Description => "Xdc support for Nethermind";
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
-    public bool MustInitialize => true;
     public string SealEngineType => Core.SealEngineType.XDPoS;
     public IModule Module => new XdcModule();
 
@@ -38,6 +42,8 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
 public class XdcModule : Module
 {
+    private const string SnapshotDbName = "Snapshots";
+
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
@@ -49,8 +55,20 @@ public class XdcModule : Module
 
             // Validators
             .AddSingleton<IHeaderValidator, XdcHeaderValidator>()
-
+            .AddSingleton<ISealValidator, XdcSealValidator>()
+            .AddSingleton<IQuorumCertificateManager, QuorumCertificateManager>()
+            .AddSingleton<ISnapshotManager, SnapshotManager>()
+            .AddSingleton<IEpochSwitchManager, EpochSwitchManager>()
+            .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
+            .AddDatabase(SnapshotDbName)
+            .AddSingleton<ISnapshotManager, IDb, IPenaltyHandler>(CreateSnapshotManager)
+            .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             ;
+    }
+
+    private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IPenaltyHandler penaltyHandler)
+    {
+        return new SnapshotManager(db, penaltyHandler);
     }
 
 }
