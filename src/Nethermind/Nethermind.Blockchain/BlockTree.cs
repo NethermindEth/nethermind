@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain
         private readonly ISpecProvider _specProvider;
         private readonly IBloomStorage _bloomStorage;
         private readonly ISyncConfig _syncConfig;
-        protected readonly IChainLevelInfoRepository ChainLevelInfoRepository;
+        private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
 
         public BlockHeader? Genesis { get; private set; }
         public Block? Head { get; private set; }
@@ -130,7 +130,7 @@ namespace Nethermind.Blockchain
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            ChainLevelInfoRepository = chainLevelInfoRepository ??
+            _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
             _oldestBlock = syncConfig.AncientBodiesBarrierCalc;
 
@@ -156,7 +156,7 @@ namespace Nethermind.Blockchain
                     // just for corrupted test bases
 
                     genesisLevel.BlockInfos = [genesisBlockInfo];
-                    ChainLevelInfoRepository.PersistLevel(0, genesisLevel);
+                    _chainLevelInfoRepository.PersistLevel(0, genesisLevel);
                     //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
                 }
 
@@ -851,7 +851,7 @@ namespace Nethermind.Blockchain
             Hash256? nextHash = null;
             ChainLevelInfo? nextLevel = null;
 
-            using BatchWrite batch = ChainLevelInfoRepository.StartBatch();
+            using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
             while (true)
             {
                 ChainLevelInfo? currentLevel = nextLevel ?? LoadLevel(currentNumber);
@@ -881,11 +881,11 @@ namespace Nethermind.Blockchain
                 if (shouldRemoveLevel)
                 {
                     BestKnownNumber = Math.Min(BestKnownNumber, currentNumber - 1);
-                    ChainLevelInfoRepository.Delete(currentNumber, batch);
+                    _chainLevelInfoRepository.Delete(currentNumber, batch);
                 }
                 else if (currentLevel is not null)
                 {
-                    ChainLevelInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
+                    _chainLevelInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
                 }
 
                 if (Logger.IsInfo) Logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
@@ -955,7 +955,7 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            using BatchWrite batch = ChainLevelInfoRepository.StartBatch();
+            using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
 
             for (int i = 0; i < blocks.Count; i++)
             {
@@ -968,7 +968,7 @@ namespace Nethermind.Blockchain
                 int? index = (level?.FindIndex(block.Hash)) ?? throw new InvalidOperationException($"Cannot mark unknown block {block.ToString(Block.Format.FullHashAndNumber)} as processed");
                 BlockInfo info = level.BlockInfos[index.Value];
                 info.WasProcessed = true;
-                ChainLevelInfoRepository.PersistLevel(block.Number, level, batch);
+                _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
             }
         }
 
@@ -1008,7 +1008,7 @@ namespace Nethermind.Blockchain
 
             long lastNumber = ascendingOrder ? blocks[^1].Number : blocks[0].Number;
             long previousHeadNumber = Head?.Number ?? 0L;
-            using BatchWrite batch = ChainLevelInfoRepository.StartBatch();
+            using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
             if (previousHeadNumber > lastNumber)
             {
                 for (long i = 0; i < previousHeadNumber - lastNumber; i++)
@@ -1019,7 +1019,7 @@ namespace Nethermind.Blockchain
                     if (level is not null)
                     {
                         level.HasBlockOnMainChain = false;
-                        ChainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
+                        _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
                     }
                 }
             }
@@ -1085,7 +1085,7 @@ namespace Nethermind.Blockchain
             if (blockInfos is null || blockInfos.Length == 0)
                 return;
 
-            using BatchWrite batch = ChainLevelInfoRepository.StartBatch();
+            using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
 
             for (long j = clearBeaconMainChainStartPoint; j > blockInfos[^1].BlockNumber; --j)
             {
@@ -1097,7 +1097,7 @@ namespace Nethermind.Blockchain
                         level.BlockInfos[i].Metadata &= ~BlockMetadata.BeaconMainChain;
                     }
 
-                    ChainLevelInfoRepository.PersistLevel(j, level, batch);
+                    _chainLevelInfoRepository.PersistLevel(j, level, batch);
                 }
             }
 
@@ -1119,7 +1119,7 @@ namespace Nethermind.Blockchain
                         }
                     }
 
-                    ChainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
+                    _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
                 }
             }
         }
@@ -1186,7 +1186,7 @@ namespace Nethermind.Blockchain
 
             _bloomStorage.Store(block.Number, block.Bloom);
             level.HasBlockOnMainChain = true;
-            ChainLevelInfoRepository.PersistLevel(block.Number, level, batch);
+            _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
 
             Block previous = hashOfThePreviousMainBlock is not null && hashOfThePreviousMainBlock != block.Hash
                 ? FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block.Number)
@@ -1328,7 +1328,7 @@ namespace Nethermind.Blockchain
 
         private ChainLevelInfo UpdateOrCreateLevel(long number, BlockInfo blockInfo, bool setAsMain = false)
         {
-            using BatchWrite? batch = ChainLevelInfoRepository.StartBatch();
+            using BatchWrite? batch = _chainLevelInfoRepository.StartBatch();
 
             if (!blockInfo.IsBeaconInfo && number > BestKnownNumber)
             {
@@ -1351,19 +1351,19 @@ namespace Nethermind.Blockchain
                 level.HasBlockOnMainChain = true;
             }
 
-            ChainLevelInfoRepository.PersistLevel(number, level, batch);
+            _chainLevelInfoRepository.PersistLevel(number, level, batch);
 
             return level;
         }
 
         private void UpdateOrCreateLevel(in ArrayPoolListRef<(long number, BlockInfo blockInfo)> blockInfos, bool setAsMain = false)
         {
-            using BatchWrite? batch = ChainLevelInfoRepository.StartBatch();
+            using BatchWrite? batch = _chainLevelInfoRepository.StartBatch();
 
             using ArrayPoolListRef<long> blockNumbers = blockInfos.Select(b => b.number);
 
             // Yes, this is measurably faster
-            using IOwnedReadOnlyList<ChainLevelInfo?> levels = ChainLevelInfoRepository.MultiLoadLevel(blockNumbers);
+            using IOwnedReadOnlyList<ChainLevelInfo?> levels = _chainLevelInfoRepository.MultiLoadLevel(blockNumbers);
 
             for (var i = 0; i < blockInfos.Count; i++)
             {
@@ -1390,7 +1390,7 @@ namespace Nethermind.Blockchain
                     level.HasBlockOnMainChain = true;
                 }
 
-                ChainLevelInfoRepository.PersistLevel(number, level, batch);
+                _chainLevelInfoRepository.PersistLevel(number, level, batch);
             }
         }
 
@@ -1414,7 +1414,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            return ChainLevelInfoRepository.LoadLevel(number);
+            return _chainLevelInfoRepository.LoadLevel(number);
         }
 
         /// <summary>
@@ -1429,7 +1429,7 @@ namespace Nethermind.Blockchain
 
         public ChainLevelInfo? FindLevel(long number)
         {
-            return ChainLevelInfoRepository.LoadLevel(number);
+            return _chainLevelInfoRepository.LoadLevel(number);
         }
 
         public Hash256? HeadHash => Head?.Hash;
@@ -1686,7 +1686,7 @@ namespace Nethermind.Blockchain
             if (Head?.Number >= startNumber)
             {
                 // greater than zero so will not fail
-                ChainLevelInfo? chainLevelInfo = ChainLevelInfoRepository.LoadLevel(startNumber - 1) ?? throw new InvalidDataException(
+                ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(startNumber - 1) ?? throw new InvalidDataException(
                         $"Chain level {startNumber - 1} does not exist when {startNumber} level exists.");
 
                 // there may be no canonical block marked on this level - then we just hack to genesis
@@ -1696,17 +1696,17 @@ namespace Nethermind.Blockchain
                 newHeadBlock = newHeadHash is null ? null : FindBlock(newHeadHash, BlockTreeLookupOptions.None, blockNumber: startNumber - 1);
             }
 
-            using (ChainLevelInfoRepository.StartBatch())
+            using (_chainLevelInfoRepository.StartBatch())
             {
                 for (long i = endNumber.Value; i >= startNumber; i--)
                 {
-                    ChainLevelInfo? chainLevelInfo = ChainLevelInfoRepository.LoadLevel(i);
+                    ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
                     if (chainLevelInfo is null)
                     {
                         continue;
                     }
 
-                    ChainLevelInfoRepository.Delete(i);
+                    _chainLevelInfoRepository.Delete(i);
                     deleted++;
 
                     foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)

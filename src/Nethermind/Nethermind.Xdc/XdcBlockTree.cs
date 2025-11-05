@@ -19,12 +19,24 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-internal class XdcBlockTree : BlockTree
+public class XdcBlockTree : BlockTree
 {
     private const int MaxSearchDepth = 1024;
     private readonly XdcContext xdcConsensus;
 
-    public XdcBlockTree(XdcContext xdcConsensus, IBlockStore? blockStore, IHeaderStore? headerDb, [KeyFilter("blockInfos")] IDb? blockInfoDb, [KeyFilter("metadata")] IDb? metadataDb, IBadBlockStore? badBlockStore, IChainLevelInfoRepository? chainLevelInfoRepository, ISpecProvider? specProvider, IBloomStorage? bloomStorage, ISyncConfig? syncConfig, ILogManager? logManager, long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
+    public XdcBlockTree(
+        XdcContext xdcConsensus,
+        IBlockStore? blockStore,
+        IHeaderStore? headerDb,
+        [KeyFilter("blockInfos")] IDb? blockInfoDb,
+        [KeyFilter("metadata")] IDb? metadataDb,
+        IBadBlockStore? badBlockStore,
+        IChainLevelInfoRepository? chainLevelInfoRepository,
+        ISpecProvider? specProvider,
+        IBloomStorage? bloomStorage,
+        ISyncConfig? syncConfig,
+        ILogManager? logManager,
+        long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
     {
         this.xdcConsensus = xdcConsensus;
     }
@@ -38,17 +50,15 @@ internal class XdcBlockTree : BlockTree
             //Weird case if re-suggesting the finalized block
             return false;
         }
-        ChainLevelInfo finalizedLevel = ChainLevelInfoRepository.LoadLevel(finalizedBlockInfo.BlockNumber);
         int depth = 0;
         BlockHeader current = header;
         while (true)
         {
+            if (finalizedBlockInfo.BlockNumber >= current.Number)
+                return false;
+
             if (finalizedBlockInfo.Hash == current.ParentHash)
                 return base.BestSuggestedImprovementRequirementsSatisfied(header);
-
-            //Basically just an optimization in case this header is on a different chain than finalized
-            if (finalizedLevel.BlockInfos.Any(b => b.BlockHash == current.ParentHash))
-                return false;
 
             current = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (current == null)
