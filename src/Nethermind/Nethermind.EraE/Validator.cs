@@ -54,7 +54,10 @@ public class Validator {
 
      private async Task<HistoricalSummary?> GetHistoricalSummary(long slotNumber) {
         long historicalSummaryIndex = slotNumber / SLOTS_PER_HISTORICAL_ROOT;
-        HistoricalSummary? summary = await _historicalSummariesProvider?.GetHistoricalSummary((int)historicalSummaryIndex);
+        Task<HistoricalSummary?>? task = _historicalSummariesProvider?.GetHistoricalSummary((int)historicalSummaryIndex);
+        if (task is null) return null;
+
+        HistoricalSummary? summary = await task;
         return summary;
     }
 
@@ -102,7 +105,7 @@ public class Validator {
 
     private bool VerifyExecutionBlockProof(Block block, BlockHeaderProof proof) {
         return VerifyProof(
-            block.Header.ParentBeaconBlockRoot!,
+            block.Header.Hash,
             proof.ExecutionBlockProof!,
             11,
             GEN_INDEX_EXECUTION_BLOCK_PROOF_BELLATRIX,
@@ -111,7 +114,7 @@ public class Validator {
 
     private bool VerifyExecutionBlockProofPostDeneb(Block block, BlockHeaderProof proof) {
         return VerifyProof(
-            block.Header.ParentBeaconBlockRoot!,
+            block.Header.Hash,
             proof.ExecutionBlockProof!,
             12,
             GEN_INDEX_EXECUTION_BLOCK_PROOF_DENEB,
@@ -189,13 +192,13 @@ public class Validator {
         switch (blocksRootContext.AccumulatorType) {
             case AccumulatorType.HistoricalHashesAccumulator:
                 // verify accumulator root against the trusted accumulator root for the starting block or slot number
-                if (!VerifyAccumulator(blocksRootContext.startingBlockNumber, blocksRootContext.AccumulatorRoot)) {
+                if (!VerifyAccumulator(blocksRootContext.StartingBlockNumber, blocksRootContext.AccumulatorRoot)) {
                     throw new EraVerificationException("Computed accumulator does not match trusted accumulator");
                 }
                 break;
             case AccumulatorType.HistoricalRoots:
                 // verify historical root against the trusted historical root
-                long slotNumber = (long)_slotTime.GetSlot(blocksRootContext.startingBlockTimestamp);
+                long slotNumber = (long)_slotTime.GetSlot(blocksRootContext.StartingBlockTimestamp!.Value);
                 ValueHash256? trustedHistoricalRoot = GetHistoricalRoot(slotNumber);
                 if (trustedHistoricalRoot is null) {
                     throw new EraVerificationException("Historical root not found");
@@ -207,7 +210,7 @@ public class Validator {
                 break;
             case AccumulatorType.HistoricalSummaries:
                 // verify historical summary against the trusted historical summary
-                long _slotNumber = (long)_slotTime.GetSlot(blocksRootContext.startingBlockTimestamp);
+                long _slotNumber = (long)_slotTime.GetSlot(blocksRootContext.StartingBlockTimestamp!.Value);
                 HistoricalSummary? trustedHistoricalSummary = await GetHistoricalSummary(_slotNumber);
                 if (trustedHistoricalSummary is null) {
                     throw new EraVerificationException("Historical summary not found");

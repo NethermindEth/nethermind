@@ -13,9 +13,13 @@ public class EraStoreFactory(
     ISpecProvider specProvider,
     IBlockValidator blockValidator,
     IFileSystem fileSystem,
-    IEraConfig eraConfig
+    IEraEConfig eraConfig
 ) : Era1.EraStoreFactory(specProvider, blockValidator, fileSystem, new Era1.EraConfig { NetworkName = eraConfig.NetworkName, MaxEra1Size = eraConfig.MaxEraESize, Concurrency = eraConfig.Concurrency }), IEraStoreFactory
 {
+    private readonly ISpecProvider specProvider = specProvider;
+    private readonly IBlockValidator blockValidator = blockValidator;
+    private readonly IFileSystem fileSystem = fileSystem;
+
     public virtual Era1.IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators, ISet<ValueHash256>? trustedHistoricalRoots, IHistoricalSummariesProvider? historicalSummariesProvider)
     {
         return new EraStore(

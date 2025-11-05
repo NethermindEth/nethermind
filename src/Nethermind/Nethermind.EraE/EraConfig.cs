@@ -3,7 +3,7 @@
 
 namespace Nethermind.EraE;
 
-public class EraConfig: IEraConfig
+public class EraEConfig: IEraEConfig
 {
     public string? ImportDirectory { get; set; }
     public string? ExportDirectory { get; set; }

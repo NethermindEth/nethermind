@@ -31,7 +31,7 @@ public class EraModule: Module
             // The admin export/import history method is here
             .RegisterSingletonJsonRpcModule<IEraAdminRpcModule, EraAdminRpcModule>()
 
-            .AddDecorator<IEraConfig>((ctx, eraConfig) =>
+            .AddDecorator<IEraEConfig>((ctx, eraConfig) =>
             {
                 if (string.IsNullOrWhiteSpace(eraConfig.NetworkName))
                 {

@@ -5,45 +5,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Era1;
 using Nethermind.Int256;
-using Nethermind.Serialization;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Ssz;
 using Nethermind.Specs;
+using Nethermind.BlockProofs;
+using Nethermind.Serialization;
 
 namespace Nethermind.EraE;
-
-
-[SszSerializable]
-public class HistoricalBatch {
-    [SszVector(8192)]
-    public SSZBytes32[] BlockRoots { get; set; }
-
-    [SszVector(8192)]
-    public SSZBytes32[] StateRoots { get; set; }
-
-    public static HistoricalBatch From(ValueHash256[] blockRoots, ValueHash256[] stateRoots) {
-        return new HistoricalBatch {
-            BlockRoots = blockRoots.Select(SSZBytes32.From).ToArray(),
-            StateRoots = stateRoots.Select(SSZBytes32.From).ToArray()
-        };
-    }
-}
-
-[SszSerializable]
-public class ValueHash256Vector
-{
-    [SszVector(8192)]
-    public SSZBytes32[] Data { get; set; }
-
-    public static ValueHash256Vector From(ValueHash256[] hashesAccumulator)
-    {
-        return new ValueHash256Vector { Data = hashesAccumulator.Select(SSZBytes32.From).ToArray() };
-    }
-
-    public ValueHash256[] Hashes() {
-        return Data.Select(x => x.Hash).ToArray();
-    }
-}
 
 
 public enum AccumulatorType {
@@ -53,32 +19,32 @@ public enum AccumulatorType {
 }
 
 
-
 public class BlocksRootContext: IDisposable {
     private static readonly ForkActivation ParisFork = new(MainnetSpecProvider.ParisBlockNumber);
     private static readonly ForkActivation ShanghaiFork = new(long.MaxValue, MainnetSpecProvider.ShanghaiBlockTimestamp);
 
-    private readonly ArrayPoolList<ValueHash256> _blockRoots = new(8192, 8192);
-    private readonly ArrayPoolList<ValueHash256> _stateRoots = new(8192, 8192);
-    private readonly ArrayPoolList<(Hash256, UInt256)> _blockHashes = new(8192, 8192);
+    private readonly ArrayPoolList<ValueHash256> _blockRoots = new(8192);
+    private readonly ArrayPoolList<ValueHash256> _stateRoots = new(8192);
+    private readonly ArrayPoolList<(Hash256, UInt256)> _blockHashes = new(8192);
     public readonly AccumulatorType AccumulatorType;
 
     private ValueHash256? _accumulatorRoot;
     private HistoricalSummary? _historicalSummary;
     private ValueHash256? _historicalRoot;
+    public bool Populated { get; private set; }
 
-    public long startingBlockNumber { get; private set; }
-    public ulong startingBlockTimestamp { get; private set; }
+    public long StartingBlockNumber { get; private set; }
+    public ulong? StartingBlockTimestamp { get; private set; }
 
     public ValueHash256 AccumulatorRoot => _accumulatorRoot ?? throw new InvalidOperationException("Accumulator root not set or not finalized");
     public HistoricalSummary HistoricalSummary => _historicalSummary ?? throw new InvalidOperationException("Historical summary not set or not finalized");
     public ValueHash256 HistoricalRoot => _historicalRoot ?? throw new InvalidOperationException("Historical root not set or not finalized");
 
-    public BlocksRootContext(long startingBlockNumber, ulong? startingBlockTimestamp) {
+    public BlocksRootContext(long startingBlockNumber, ulong? startingBlockTimestamp = null) {
         var forkActivation = new ForkActivation(startingBlockNumber, startingBlockTimestamp);
         AccumulatorType = GetAccumulatorType(forkActivation);
-        startingBlockNumber = startingBlockNumber;
-        startingBlockTimestamp = startingBlockTimestamp;
+        StartingBlockNumber = startingBlockNumber;
+        StartingBlockTimestamp = startingBlockTimestamp;
     }
 
     public void Dispose() {
@@ -97,6 +63,11 @@ public class BlocksRootContext: IDisposable {
         return AccumulatorType.HistoricalSummaries;
     }
 
+    private (ValueHash256, ValueHash256) GetCLRootsForELBlock(Block block) {
+        // TODO: implement this method
+        return (new ValueHash256(), new ValueHash256());
+    }
+
 
     public void ProcessBlock(Block block) {
         switch (AccumulatorType) {
@@ -104,13 +75,18 @@ public class BlocksRootContext: IDisposable {
                 _blockHashes.Add((block.Header.Hash!, block.TotalDifficulty!.Value));
                 break;
             default:
-                _blockRoots.Add(block.Header.ParentBeaconBlockRoot!.ValueHash256);
-                _stateRoots.Add(block.Header.StateRoot!.ValueHash256);
-                break;
+                return;
+                // This branch is not used for now, because we only process pre-merge blocks
+                // (ValueHash256 beaconBlockRoot, ValueHash256 stateRoot) = await GetCLRootsForELBlock(block);
+                // _blockRoots.Add(beaconBlockRoot);
+                // _stateRoots.Add(stateRoot);
+                // break;
         }
+        Populated = true;
     }
 
-    public void Finalize() {
+    public void FinalizeContext() {
+        if (!Populated) return;
         switch (AccumulatorType) {
             case AccumulatorType.HistoricalHashesAccumulator:
                 AccumulatorCalculator calculator = new();

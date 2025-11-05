@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.BlockProofs;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -124,9 +125,9 @@ namespace Nethermind.Serialization.Rlp
                     rlpStream.Write(
                         SszEncoding.Encode(
                             BlockProofHistoricalRoots.From(
-                                headerProof.BeaconBlockProof!, 
-                                headerProof.BeaconBlockRoot!.Value, 
-                                headerProof.ExecutionBlockProof!, 
+                                headerProof.BeaconBlockProof!,
+                                headerProof.BeaconBlockRoot!.Value,
+                                headerProof.ExecutionBlockProof!,
                                 headerProof.Slot!.Value
                             )
                         )
@@ -137,9 +138,9 @@ namespace Nethermind.Serialization.Rlp
                     rlpStream.Write(
                         SszEncoding.Encode(
                             BlockProofHistoricalSummaries.From(
-                                headerProof.BeaconBlockProof!, 
-                                headerProof.BeaconBlockRoot!.Value, 
-                                headerProof.ExecutionBlockProof!, 
+                                headerProof.BeaconBlockProof!,
+                                headerProof.BeaconBlockRoot!.Value,
+                                headerProof.ExecutionBlockProof!,
                                 headerProof.Slot!.Value
                             )
                         )
@@ -179,9 +180,9 @@ namespace Nethermind.Serialization.Rlp
             {
                 headerProofLength = SszEncoding.GetLength(
                     BlockProofHistoricalRoots.From(
-                        item.BeaconBlockProof!, 
-                        item.BeaconBlockRoot!.Value, 
-                        item.ExecutionBlockProof!, 
+                        item.BeaconBlockProof!,
+                        item.BeaconBlockRoot!.Value,
+                        item.ExecutionBlockProof!,
                         item.Slot!.Value
                     )
                 );
@@ -190,9 +191,9 @@ namespace Nethermind.Serialization.Rlp
             {
                 headerProofLength = SszEncoding.GetLength(
                     BlockProofHistoricalSummaries.From(
-                        item.BeaconBlockProof!, 
-                        item.BeaconBlockRoot!.Value, 
-                        item.ExecutionBlockProof!, 
+                        item.BeaconBlockProof!,
+                        item.BeaconBlockRoot!.Value,
+                        item.ExecutionBlockProof!,
                         item.Slot!.Value
                     )
                 );

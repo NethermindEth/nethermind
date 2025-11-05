@@ -63,8 +63,8 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
     }
 
     public async Task<HistoricalSummary[]> GetHistoricalSummariesAsync(
-        string stateId = "head", 
-        CancellationToken cancellationToken = default, 
+        string stateId = "head",
+        CancellationToken cancellationToken = default,
         bool forceRefresh = false
     ) {
         // return cached summaries if available and not forced to refresh
@@ -83,7 +83,7 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
     /// <returns>Array of historical summary roots.</returns>
     private async Task<HistoricalSummary[]> LoadHistoricalSummariesAsync(string stateId = "head", CancellationToken cancellationToken = default)
     {
-        
+
         string requestUri = $"{Endpoint}/{stateId}";
         Uri fullUri = new(_baseUrl, requestUri);
 
@@ -94,7 +94,7 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
         response.EnsureSuccessStatusCode();
 
         await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        
+
         return await ParseHistoricalSummariesFromStreamAsync(stream, cancellationToken);
     }
 
@@ -108,9 +108,9 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
     private static async Task<HistoricalSummary[]> ParseHistoricalSummariesFromStreamAsync(Stream stream, CancellationToken cancellationToken)
     {
         using JsonDocument document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-        
+
         JsonElement root = document.RootElement;
-        
+
         // Navigate to data.historical_summaries
         if (root.TryGetProperty("data", out JsonElement data))
         {
@@ -120,21 +120,29 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
                 {
                     int arrayLength = historicalSummaries.GetArrayLength();
                     List<HistoricalSummary> summaries = new(arrayLength);
-                    
+
                     foreach (JsonElement summary in historicalSummaries.EnumerateArray())
                     {
+                        if (!data.TryGetProperty("block_summary_root", out JsonElement blockSummaryRoot))
+                        {
+                            continue;
+                        }
+                        if (!data.TryGetProperty("state_summary_root", out JsonElement stateSummaryRoot))
+                        {
+                            continue;
+                        }
                         var historicalSummary = HistoricalSummary.From(
-                            summary.GetProperty("block_summary_root").GetString(),
-                            summary.GetProperty("state_summary_root").GetString()
+                            blockSummaryRoot.ToString(),
+                            stateSummaryRoot.ToString()
                         );
                         summaries.Add(historicalSummary);
                     }
-                    
+
                     return summaries.ToArray();
                 }
             }
         }
-        
+
         return Array.Empty<HistoricalSummary>();
     }
 

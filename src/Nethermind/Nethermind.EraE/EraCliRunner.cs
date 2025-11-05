@@ -7,7 +7,7 @@ namespace Nethermind.EraE;
 
 public class EraCliRunner
 (
-    IEraConfig eraConfig,
+    IEraEConfig eraConfig,
     IEraImporter eraImporter,
     Era1.IEraExporter eraExporter,
     ILogManager logManager

@@ -26,15 +26,17 @@ public class EraExporter(
     ILogManager logManager)
     : IEraExporter
 {
-    private readonly string _networkName = (string.IsNullOrWhiteSpace(eraConfig.NetworkName))
+    protected readonly string _networkName = (string.IsNullOrWhiteSpace(eraConfig.NetworkName))
         ? throw new ArgumentException("Cannot be null or whitespace.", nameof(eraConfig.NetworkName))
         : eraConfig.NetworkName.Trim().ToLower();
 
-    private readonly ILogger _logger = logManager.GetClassLogger<EraExporter>();
-    private readonly int _era1Size = eraConfig.MaxEra1Size;
+    protected readonly ILogger _logger = logManager.GetClassLogger<EraExporter>();
+    protected readonly int _era1Size = eraConfig.MaxEra1Size;
 
     public const string AccumulatorFileName = "accumulators.txt";
     public const string ChecksumsFileName = "checksums.txt";
+
+    protected ISpecProvider _specProvider => specProvider;
 
     public Task Export(
         string destinationPath,
@@ -55,7 +57,7 @@ public class EraExporter(
         return new EraWriter(fileSystem.File.Create(filePath), specProvider);
     }
 
-    protected async Task DoExport(
+    protected virtual async Task DoExport(
         string destinationPath,
         long from,
         long to,

@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Collections;
 using System.Collections.Concurrent;
 using Nethermind.Core.Extensions;
-using Nethermind.Era1;
 using Nethermind.Era1.Exceptions;
 using Nethermind.State.Proofs;
 
@@ -29,10 +28,14 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
     private readonly ISet<ValueHash256>? _trustedHistoricalRoots;
     private readonly ISet<ValueHash256>? _trustedAccumulators;
 
+    public EraReader(string fileName) : this(new E2StoreReader(fileName))
+    {
+    }
+
     public EraReader(
-        E2StoreReader e2, 
+        E2StoreReader e2,
         IHistoricalSummariesProvider? historicalSummariesProvider,
-        ISet<ValueHash256>? trustedHistoricalRoots, 
+        ISet<ValueHash256>? trustedHistoricalRoots,
         ISet<ValueHash256>? trustedAccumulators
     ) : this(e2) {
         _historicalSummariesProvider = historicalSummariesProvider;
@@ -40,7 +43,7 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
         _trustedAccumulators = trustedAccumulators;
     }
 
-    
+
     protected readonly ProofDecoder _proofDecoder = new();
 
     async Task<BlockHeaderProof?> ReadProof(ulong slot, CancellationToken cancellationToken)
@@ -55,15 +58,6 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
             cancellationToken
         );
         return proof;
-    }
-
-    private bool VerifyEpochAccumulator(ArrayPoolList<(Hash256, UInt256)> blockHashes, ValueHash256 accumulator) {
-        using AccumulatorCalculator calculator = new();
-        foreach (var valueTuple in blockHashes.AsSpan())
-        {
-            calculator.Add(valueTuple.Item1, valueTuple.Item2);
-        }
-        return accumulator == calculator.ComputeRoot();
     }
 
     /// <summary>
@@ -95,10 +89,8 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
                 throw new EraVerificationException("Computed accumulator does not match provided accumulator");
             }
         }
-        
-        // read first block to get the starting block's timestamp. We don't validate here
-        EntryReadResult? res = await ReadBlockAndReceipts(startBlock, true, cancellation);
-        BlocksRootContext blocksRootContext = new(startBlock, res.Value.Block.Header.Timestamp);
+
+        BlocksRootContext blocksRootContext = new(startBlock);
 
         var blockNumbers = new ConcurrentQueue<long>(EnumerateBlockNumber());
 
@@ -125,7 +117,12 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
                     throw new EraVerificationException($"Mismatched receipt root. Block number {blockNumber}.");
                 }
 
-                blocksRootContext.ProcessBlock(err.Block);
+                // Remove this branch once we start processing post-merge blocks.
+                if (!err.Block.IsPoS())
+                {
+                    // we only process pre-merge blocks to compute accumulator root and compare one with trusted accumulator root.
+                    blocksRootContext.ProcessBlock(err.Block);
+                }
 
                 var slotNumber = err.Block.Header.IsPoS() ? (ulong)blockNumber : slotTime.GetSlot(err.Block.Header.Timestamp);
                 // read proof for this block
@@ -143,11 +140,14 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
         }, cancellation)).ToPooledList(verifyConcurrency);
         await Task.WhenAll(workers.AsSpan());
 
-        // finalize the blocks root context to compute the accumulator root, historical root, and historical summary.
-        blocksRootContext.Finalize();
-        // verify the blocks root context against the trusted blocks root context in case when individual block proofs are not provided in EraE file.
-        await blockProofValidator.VerifyBlocksRootContext(blocksRootContext);
-        
+        // For post-merge blocks, context wouldn't be populated, so we skip verification.
+        if (blocksRootContext.Populated) {
+            // finalize the blocks root context to compute the accumulator root, historical root, and historical summary.
+            blocksRootContext.FinalizeContext();
+            // verify the blocks root context against the trusted blocks root context in case when individual block proofs are not provided in EraE file.
+            await blockProofValidator.VerifyBlocksRootContext(blocksRootContext);
+        }
+
         return true;
     }
 
@@ -162,7 +162,7 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
 
             return hash;
         }
-        catch (EraException) {
+        catch (Era1.EraException) {
             return null; // accumulator is not available for this era
         }
         catch (Exception e) {

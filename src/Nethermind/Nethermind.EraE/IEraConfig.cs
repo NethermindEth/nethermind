@@ -5,7 +5,7 @@ using Nethermind.Config;
 
 namespace Nethermind.EraE;
 
-public interface IEraConfig : IConfig
+public interface IEraEConfig : IConfig
 {
     [ConfigItem(Description = "Directory of era1 archives to be imported.", DefaultValue = "", HiddenFromDocs = false)]
     string? ImportDirectory { get; set; }

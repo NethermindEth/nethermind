@@ -125,7 +125,7 @@ public class E2StoreReader : IDisposable
         // <starting block> + <offsets> * 8 + <count>
         int indexLength = IndexSectionStartBlock + (int)_blockCount * IndexOffsetSize + IndexSectionCount;
 
-        // Verify that its a block index
+        // Verify that it's a block index
         _ = ReadEntry(_fileLength - indexLength - HeaderSize, EntryTypes.BlockIndex);
 
         _startBlock = (long?)ReadUInt64(_fileLength - indexLength);

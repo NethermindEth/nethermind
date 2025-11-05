@@ -18,7 +18,7 @@ public class EraImporter(
     IReceiptStorage receiptStorage,
     IBlockValidator blockValidator,
     ILogManager logManager,
-    IEraConfig eraConfig,
+    IEraEConfig eraConfig,
     ISyncConfig syncConfig,
     IEraStoreFactory eraStoreFactory,
     [KeyFilter(DbNames.Blocks)] ITunableDb blocksDb,
@@ -37,6 +37,11 @@ public class EraImporter(
     ),
     IEraImporter
 {
+    private readonly IFileSystem fileSystem = fileSystem;
+    private readonly IBlockTree blockTree = blockTree;
+    private readonly ITunableDb blocksDb = blocksDb;
+    private readonly ITunableDb receiptsDb = receiptsDb;
+
     public async Task Import(string src, long from, long to, string? accumulatorFile, string? historicalRootsFile, CancellationToken cancellation = default)
     {
         if (!fileSystem.Directory.Exists(src))

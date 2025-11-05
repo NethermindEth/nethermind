@@ -1,11 +1,11 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+﻿// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Ssz;
 
-namespace Nethermind.Serialization.Rlp;
+namespace Nethermind.BlockProofs;
 
 [SszSerializable]
 public struct SSZBytes32
@@ -21,6 +21,38 @@ public struct SSZBytes32
     }
 }
 
+
+[SszSerializable]
+public struct HistoricalBatch {
+    [SszVector(8192)]
+    public SSZBytes32[] BlockRoots { get; set; }
+
+    [SszVector(8192)]
+    public SSZBytes32[] StateRoots { get; set; }
+
+    public static HistoricalBatch From(ValueHash256[] blockRoots, ValueHash256[] stateRoots) {
+        return new HistoricalBatch {
+            BlockRoots = blockRoots.Select(SSZBytes32.From).ToArray(),
+            StateRoots = stateRoots.Select(SSZBytes32.From).ToArray()
+        };
+    }
+}
+
+[SszSerializable]
+public struct ValueHash256Vector
+{
+    [SszVector(8192)]
+    public SSZBytes32[] Data { get; set; }
+
+    public static ValueHash256Vector From(ValueHash256[] hashesAccumulator)
+    {
+        return new ValueHash256Vector { Data = hashesAccumulator.Select(SSZBytes32.From).ToArray() };
+    }
+
+    public ValueHash256[] Hashes() {
+        return Data.Select(x => x.Hash).ToArray();
+    }
+}
 
 [SszSerializable]
 public struct BlockProofHistoricalHashesAccumulator
@@ -56,10 +88,10 @@ public struct BlockProofHistoricalRoots
 
     public static BlockProofHistoricalRoots From(ValueHash256[] beaconBlockProof, ValueHash256 beaconBlockRoot, ValueHash256[] executionBlockProof, long slot)
     {
-        return new BlockProofHistoricalRoots { 
-            BeaconBlockProofData = beaconBlockProof.Select(SSZBytes32.From).ToArray(), 
-            BeaconBlockRootData = SSZBytes32.From(beaconBlockRoot), 
-            ExecutionBlockProofData = executionBlockProof.Select(SSZBytes32.From).ToArray(), 
+        return new BlockProofHistoricalRoots {
+            BeaconBlockProofData = beaconBlockProof.Select(SSZBytes32.From).ToArray(),
+            BeaconBlockRootData = SSZBytes32.From(beaconBlockRoot),
+            ExecutionBlockProofData = executionBlockProof.Select(SSZBytes32.From).ToArray(),
             Slot = slot
         };
     }
@@ -83,10 +115,10 @@ public struct BlockProofHistoricalSummaries
 
     public static BlockProofHistoricalSummaries From(ValueHash256[] beaconBlockProof, ValueHash256 beaconBlockRoot, ValueHash256[] executionBlockProof, long slot)
     {
-        return new BlockProofHistoricalSummaries { 
-            BeaconBlockProofData = beaconBlockProof.Select(SSZBytes32.From).ToArray(), 
-            BeaconBlockRootData = SSZBytes32.From(beaconBlockRoot), 
-            ExecutionBlockProofData = executionBlockProof.Select(SSZBytes32.From).ToArray(), 
+        return new BlockProofHistoricalSummaries {
+            BeaconBlockProofData = beaconBlockProof.Select(SSZBytes32.From).ToArray(),
+            BeaconBlockRootData = SSZBytes32.From(beaconBlockRoot),
+            ExecutionBlockProofData = executionBlockProof.Select(SSZBytes32.From).ToArray(),
             Slot = slot
         };
     }
