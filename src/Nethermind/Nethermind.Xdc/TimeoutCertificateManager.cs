@@ -104,9 +104,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         if (timeoutCertificate is null) throw new ArgumentNullException(nameof(timeoutCertificate));
         if (timeoutCertificate.Signatures is null) throw new ArgumentNullException(nameof(timeoutCertificate.Signatures));
 
-        XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeoutCertificate.Round);
-        Snapshot snapshot = _snapshotManager.GetSnapshot((long)timeoutCertificate.GapNumber, spec);
+        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(_blockTree, timeoutCertificate.GapNumber);
         if (snapshot is null)
         {
             errorMessage = $"Failed to get snapshot using gap number {timeoutCertificate.GapNumber}";
@@ -121,7 +119,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         var nextEpochCandidates = new HashSet<Address>(snapshot.NextEpochCandidates);
 
         var signatures = new HashSet<Signature>(timeoutCertificate.Signatures);
-
+        var xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeoutCertificate.Round);
         EpochSwitchInfo epochInfo = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCertificate);
         if (epochInfo is null)
         {
@@ -197,10 +196,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private bool FilterTimeout(Timeout timeout)
     {
         if (timeout.Round < _consensusContext.CurrentRound) return false;
-
-        XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
-        Snapshot snapshot = _snapshotManager.GetSnapshot((long)timeout.GapNumber, spec);
+        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(_blockTree, timeout.GapNumber);
         if (snapshot is null || snapshot.NextEpochCandidates.Length == 0) return false;
 
         // Verify msg signature

@@ -177,8 +177,8 @@ namespace Nethermind.Xdc
             if (_blockTree.Head.Header is not XdcBlockHeader xdcHead)
                 throw new InvalidBlockException(_blockTree.Head, "Head is not XdcBlockHeader.");
 
-            ulong initialRound = xdcHead.ExtraConsensusData?.BlockRound + 1 ?? 0;
-            _logger.Info($"Initialized round counter from head: round {initialRound}");
+            _quorumCertificateManager.Initialize(xdcHead);
+            _logger.Info($"Initialized round counter from head: round {_xdcContext.CurrentRound}");
         }
 
         /// <summary>
@@ -419,19 +419,18 @@ namespace Nethermind.Xdc
                 throw new InvalidOperationException("Cannot determine leader with empty masternode set");
             }
 
-            Address[] currentMasternodes;
+            EpochSwitchInfo epochSwitchInfo = null;
             if (_epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
             {
                 //TODO calculate master nodes based on the current round
-                (currentMasternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead.Number, currentHead.ParentHash, spec);
+                (masternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead, spec);
             }
             else
             {
-                var epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHead);
-                currentMasternodes = epochSwitchInfo.Masternodes;
+                epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHead);
             }
 
-            int currentLeaderIndex = ((int)round % spec.EpochLength % currentMasternodes.Length);
+            int currentLeaderIndex = ((int)round % spec.EpochLength % epochSwitchInfo.Masternodes.Length);
             return masternodes[currentLeaderIndex];
         }
 

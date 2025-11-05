@@ -113,12 +113,10 @@ public readonly struct CappedArray<T>
         return AsSpan().ToArray();
     }
 
-    public override string? ToString()
-    {
-        return typeof(T) == typeof(byte) ?
-            SpanExtensions.ToHexString(MemoryMarshal.AsBytes(AsSpan()), withZeroX: true) :
+    public override string? ToString() =>
+        typeof(T) == typeof(byte) ?
+            MemoryMarshal.AsBytes(AsSpan()).ToHexString(withZeroX: true) :
             base.ToString();
-    }
 
     public readonly ArraySegment<T> AsArraySegment()
     {

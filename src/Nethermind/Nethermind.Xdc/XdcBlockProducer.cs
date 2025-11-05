@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -29,11 +27,12 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 internal class XdcBlockProducer : BlockProducerBase
 {
-    protected readonly IEpochSwitchManager epochSwitchManager;
-    protected readonly ISnapshotManager snapshotManager;
-    protected readonly IXdcConsensusContext xdcContext;
-    protected readonly ISealer sealer;
-    protected readonly ISpecProvider specProvider;
+    private readonly IEpochSwitchManager epochSwitchManager;
+    private readonly ISnapshotManager snapshotManager;
+    private readonly IXdcConsensusContext xdcContext;
+    private readonly ISealer sealer;
+    private readonly ISpecProvider specProvider;
+    private readonly ILogManager logManager;
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
 
     public XdcBlockProducer(IEpochSwitchManager epochSwitchManager, ISnapshotManager snapshotManager, IXdcConsensusContext xdcContext, ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IWorldState stateProvider, IGasLimitCalculator? gasLimitCalculator, ITimestamper? timestamper, ISpecProvider specProvider, ILogManager logManager, IDifficultyCalculator? difficultyCalculator, IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
@@ -43,6 +42,7 @@ internal class XdcBlockProducer : BlockProducerBase
         this.xdcContext = xdcContext;
         this.sealer = sealer;
         this.specProvider = specProvider;
+        this.logManager = logManager;
     }
 
     protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes)
@@ -70,8 +70,6 @@ internal class XdcBlockProducer : BlockProducerBase
             extra)
         {
             Author = blockAuthor,
-            //This will BestSuggestedBody in BlockTree, which may not be needed
-            IsPostMerge = true
         };
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcBlockHeader, currentRound);
@@ -79,8 +77,7 @@ internal class XdcBlockProducer : BlockProducerBase
         xdcBlockHeader.Timestamp = payloadAttributes?.Timestamp ?? parent.Timestamp + (ulong)spec.MinePeriod;
 
         xdcBlockHeader.Difficulty = 1;
-
-        xdcBlockHeader.TotalDifficulty = xdcParent.TotalDifficulty + 1;
+        xdcBlockHeader.TotalDifficulty = 1;
 
         xdcBlockHeader.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
 
@@ -88,7 +85,8 @@ internal class XdcBlockProducer : BlockProducerBase
 
         if (epochSwitchManager.IsEpochSwitchAtBlock(xdcBlockHeader))
         {
-            (Address[] masternodes, Address[] penalties) = snapshotManager.CalculateNextEpochMasternodes(xdcBlockHeader.Number, xdcBlockHeader.ParentHash, spec);
+            (Address[] masternodes, Address[] penalties) = snapshotManager.CalculateNextEpochMasternodes(xdcBlockHeader, spec);
+
             xdcBlockHeader.Validators = new byte[masternodes.Length * Address.Size];
 
             for (int i = 0; i < masternodes.Length; i++)
