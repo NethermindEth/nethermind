@@ -177,8 +177,6 @@ public class XdcTestBlockchain : TestBlockchain
             new TestSpecProvider(WrapReleaseSpec(Shanghai.Instance))
             {
                 AllowTestChainOverride = false,
-                //This is sort of a hack to make BlockTree accept Xdc blocks as head
-                TerminalTotalDifficulty = 1
             })
             .AddSingleton<Configuration>()
             .AddSingleton<FromContainer>()

@@ -93,10 +93,10 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
     {
         if (header.Difficulty != 1)
         {
-            error = "Total difficulty must be 1.";
+            error = "Difficulty must be 1.";
             return false;
         }
-        return true;
+        return base.ValidateTotalDifficulty(header, parent, ref error);
     }
 
     protected override bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)

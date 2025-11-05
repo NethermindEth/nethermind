@@ -79,7 +79,8 @@ internal class XdcBlockProducer : BlockProducerBase
         xdcBlockHeader.Timestamp = payloadAttributes?.Timestamp ?? parent.Timestamp + (ulong)spec.MinePeriod;
 
         xdcBlockHeader.Difficulty = 1;
-        xdcBlockHeader.TotalDifficulty = 1;
+
+        xdcBlockHeader.TotalDifficulty = xdcParent.TotalDifficulty + 1;
 
         xdcBlockHeader.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
 
