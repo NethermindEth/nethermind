@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -539,6 +540,8 @@ namespace Nethermind.Core.Specs
         public bool IsCensoringEnabled => CensoredSenders is not null && CensoredTo is not null;
 
         public bool IsCensoredTransaction(Transaction tx)
-           => IsCensoringEnabled && (tx.SenderAddress is not null && CensoredSenders!.Contains(tx.SenderAddress) || (tx.To is not null && CensoredTo!.Contains(tx.To)));
+           => (tx.SenderAddress is not null && CensoredSenders?.Contains(tx.SenderAddress) == true)
+              || (tx.To is not null && CensoredTo?.Contains(tx.To) == true)
+              || (tx.Type == TxType.SetCode && tx.AuthorizationList?.Any(t => t.Authority is not null && CensoredSenders?.Contains(t.Authority) == true) == true);
     }
 }

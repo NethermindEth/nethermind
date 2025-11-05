@@ -425,6 +425,14 @@ public sealed class CensoringTxValidator(ulong chainId) : ITxValidator
 
         transaction.SenderAddress ??= _ethereumEcdsa.RecoverAddress(transaction, !releaseSpec.ValidateChainId);
 
+        if (transaction.Type == TxType.SetCode)
+        {
+            foreach (AuthorizationTuple tuple in transaction.AuthorizationList ?? [])
+            {
+                tuple.Authority ??= _ethereumEcdsa.RecoverAddress(tuple);
+            }
+        }
+
         return releaseSpec.IsCensoredTransaction(transaction)
             ? TxErrorMessages.Censored
             : ValidationResult.Success;
