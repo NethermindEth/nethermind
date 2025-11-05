@@ -39,7 +39,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The hash of the genesis block. If not specified, the genesis block validity is not checked which is useful in the case of ad hoc test/private networks.", DefaultValue = "null")]
     string? GenesisHash { get; set; }
 
-    [ConfigItem(Description = "The network id. If not specified, taken from the chain spec file.", DefaultValue = "null")]
+    [ConfigItem(Description = "The network id. If not specified, taken from the chain spec file.", DefaultValue = "null", HiddenFromDocs = true)]
     ulong? NetworkId { get; set; }
 
     [ConfigItem(Description = "The path to the static nodes file.", DefaultValue = "static-nodes.json")]
