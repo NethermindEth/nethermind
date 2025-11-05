@@ -25,9 +25,6 @@
   "Metrics": {
     "NodeName": "Energy_Web"
   },
-  "Mining": {
-    "MinGasPrice": 1
-  },
   "Blocks": {
     "GasToken": "EWT"
   },
