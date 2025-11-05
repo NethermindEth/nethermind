@@ -1221,7 +1221,8 @@
         "dependencies": {
           "Nethermind.Api": "[1.36.0-unstable, )",
           "Nethermind.Consensus": "[1.36.0-unstable, )",
-          "Nethermind.Core": "[1.36.0-unstable, )"
+          "Nethermind.Core": "[1.36.0-unstable, )",
+          "Nethermind.Init": "[1.36.0-unstable, )"
         }
       },
       "AspNetCore.HealthChecks.UI": {
