@@ -27,9 +27,9 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc;
 internal class XdcBlockProducer : BlockProducerBase
 {
-    private readonly IEpochSwitchManager epochSwitchManager;
-    private readonly ISnapshotManager snapshotManager;
-    private readonly IXdcConsensusContext xdcContext;
+    protected readonly IEpochSwitchManager epochSwitchManager;
+    protected readonly ISnapshotManager snapshotManager;
+    protected readonly IXdcConsensusContext xdcContext;
     private readonly ISealer sealer;
     private readonly ISpecProvider specProvider;
     private readonly ILogManager logManager;

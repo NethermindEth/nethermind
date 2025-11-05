@@ -103,8 +103,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     {
         if (timeoutCertificate is null) throw new ArgumentNullException(nameof(timeoutCertificate));
         if (timeoutCertificate.Signatures is null) throw new ArgumentNullException(nameof(timeoutCertificate.Signatures));
-
-        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(_blockTree, timeoutCertificate.GapNumber);
+          
+        Snapshot snapshot = _snapshotManager.GetSnapshot((long)timeoutCertificate.GapNumber, _specProvider.GetXdcSpec(_blockTree.Head?.Header as XdcBlockHeader));
         if (snapshot is null)
         {
             errorMessage = $"Failed to get snapshot using gap number {timeoutCertificate.GapNumber}";
@@ -196,7 +196,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private bool FilterTimeout(Timeout timeout)
     {
         if (timeout.Round < _consensusContext.CurrentRound) return false;
-        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(_blockTree, timeout.GapNumber);
+        Snapshot snapshot = _snapshotManager.GetSnapshot((long)timeout.GapNumber, _specProvider.GetXdcSpec((XdcBlockHeader)_blockTree.Head.Header));
         if (snapshot is null || snapshot.NextEpochCandidates.Length == 0) return false;
 
         // Verify msg signature

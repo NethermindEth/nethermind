@@ -14,6 +14,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
@@ -28,7 +29,7 @@ internal class VotesManager(
     ISigner signer,
     IForensicsProcessor forensicsProcessor) : IVotesManager
 {
-    private IBlockTree _tree = tree;
+    private IBlockTree _blockTree = tree;
     private IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
     private ISnapshotManager _snapshotManager = snapshotManager;
     private IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager;
@@ -51,7 +52,7 @@ internal class VotesManager(
             throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(EpochSwitchInfo));
         //Optimize this by fetching with block number and round only
 
-        XdcBlockHeader header = _tree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
+        XdcBlockHeader header = _blockTree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
         if (header is null)
             throw new ArgumentException($"Cannot find block header for block {blockInfo.Hash}");
 
@@ -85,7 +86,7 @@ internal class VotesManager(
         _ = _forensicsProcessor.ProcessVoteEquivocation(vote);
 
         //TODO Optimize this by fetching with block number and round only
-        XdcBlockHeader proposedHeader = _tree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) as XdcBlockHeader;
+        XdcBlockHeader proposedHeader = _blockTree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) as XdcBlockHeader;
         if (proposedHeader is null)
         {
             //This is a vote for a block we have not seen yet, just return for now
@@ -167,7 +168,7 @@ internal class VotesManager(
     public Task OnReceiveVote(Vote vote)
     {
         var voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
-        var currentBlockNumber = _tree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
+        var currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
         if (Math.Abs(voteBlockNumber - currentBlockNumber) > _maxBlockDistance)
         {
             // Discarded propagated vote, too far away
@@ -186,7 +187,7 @@ internal class VotesManager(
     {
         if (vote.ProposedBlockInfo.Round < _ctx.CurrentRound) return false;
 
-        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(_tree, vote.GapNumber);
+        Snapshot snapshot = _snapshotManager.GetSnapshot((long)vote.GapNumber, _specProvider.GetXdcSpec((XdcBlockHeader)_blockTree.Head.Header));
         if (snapshot is null) throw new InvalidOperationException($"Failed to get snapshot by gapNumber={vote.GapNumber}");
         // Verify message signature
         vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
@@ -207,7 +208,7 @@ internal class VotesManager(
 
         for (int i = 0; i < blockNumDiff; i++)
         {
-            XdcBlockHeader parentHeader = _tree.FindHeader(nextBlockHash) as XdcBlockHeader;
+            XdcBlockHeader parentHeader = _blockTree.FindHeader(nextBlockHash) as XdcBlockHeader;
             if (parentHeader is null)
                 return false;
 
