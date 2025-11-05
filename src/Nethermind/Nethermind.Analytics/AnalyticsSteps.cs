@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.Analytics;
 using Nethermind.Api.Steps;
 using Nethermind.Core.PubSub;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init.Steps;
 using Nethermind.Sockets;
 using Nethermind.TxPool;
@@ -38,10 +39,10 @@ public class AnalyticsSteps(
     {
         if (analyticsConfig.StreamTransactions)
         {
+            TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(e.Transaction);
             foreach (IPublisher publisher in publishers)
             {
-                // TODO: probably need to serialize first
-                publisher.PublishAsync(e.Transaction);
+                publisher.PublishAsync(transactionForRpc);
             }
         }
     }
