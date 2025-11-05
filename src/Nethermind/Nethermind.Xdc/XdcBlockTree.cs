@@ -64,7 +64,7 @@ public class XdcBlockTree : BlockTree
             if (current == null)
                 return false;
             depth++;
-            if(depth == MaxSearchDepth)
+            if (depth == MaxSearchDepth)
             {
                 //Theoretically very deep reorgs could happen, if the chain doesnt finalize for a long time
                 //TODO Maybe this needs to be revisited later
