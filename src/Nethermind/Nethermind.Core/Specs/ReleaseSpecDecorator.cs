@@ -159,4 +159,5 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
 
     public FrozenSet<AddressAsKey>? CensoredSenders => spec.CensoredSenders;
     public FrozenSet<AddressAsKey>? CensoredTo => spec.CensoredTo;
+    public bool Is7702PatchEnabled => spec.Is7702PatchEnabled;
 }

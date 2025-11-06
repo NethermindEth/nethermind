@@ -536,12 +536,13 @@ namespace Nethermind.Core.Specs
         /// </summary>
         public FrozenSet<AddressAsKey>? CensoredSenders { get; }
         public FrozenSet<AddressAsKey>? CensoredTo { get; }
+        public bool Is7702PatchEnabled { get; }
 
         public bool IsCensoringEnabled => CensoredSenders is not null && CensoredTo is not null;
 
         public bool IsCensoredTransaction(Transaction tx)
            => (tx.SenderAddress is not null && CensoredSenders?.Contains(tx.SenderAddress) == true)
               || (tx.To is not null && CensoredTo?.Contains(tx.To) == true)
-              || (tx.Type == TxType.SetCode && tx.AuthorizationList?.Any(t => t.Authority is not null && CensoredSenders?.Contains(t.Authority) == true) == true);
+              || (Is7702PatchEnabled && tx.Type == TxType.SetCode && tx.AuthorizationList?.Any(t => t.Authority is not null && CensoredSenders?.Contains(t.Authority) == true) == true);
     }
 }

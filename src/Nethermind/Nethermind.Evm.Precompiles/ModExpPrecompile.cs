@@ -98,8 +98,16 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         ulong complexity = MultComplexity(baseLength, modulusLength, releaseSpec.IsEip7883Enabled);
 
         uint expLengthUpTo32 = Math.Min(LengthSize, expLength);
-        uint startIndex = LengthsLengths + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
-        UInt256 exp = new(inputData.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), isBigEndian: true);
+
+        ReadOnlySpan<byte> data = [];
+
+        if (baseLength < uint.MaxValue - LengthsLengths)
+        {
+            uint startIndex = LengthsLengths + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
+            data = inputData.SliceWithZeroPaddingEmptyOnError(startIndex, expLengthUpTo32);
+        }
+
+        UInt256 exp = new(data, isBigEndian: true);
         UInt256 iterationCount = CalculateIterationCount(expLength, exp, releaseSpec.IsEip7883Enabled);
 
         bool overflow = UInt256.MultiplyOverflow(complexity, iterationCount, out UInt256 result);
@@ -118,7 +126,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     {
         return releaseSpec.IsEip7823Enabled
             ? (baseLength > ModExpMaxInputSizeEip7823 | expLength > ModExpMaxInputSizeEip7823 | modulusLength > ModExpMaxInputSizeEip7823)
-            : (baseLength | modulusLength) > int.MaxValue;
+            : (baseLength | modulusLength) >= uint.MaxValue;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

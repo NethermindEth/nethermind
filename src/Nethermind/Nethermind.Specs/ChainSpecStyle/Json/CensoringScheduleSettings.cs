@@ -12,6 +12,7 @@ public record class CensoringScheduleSettings : IComparable<CensoringScheduleSet
 
     public Address[] Senders;
     public Address[] To;
+    public bool Is7702PatchEnabled;
 
     public int CompareTo(CensoringScheduleSettings? other) => other is null ? 1 : Timestamp.CompareTo(other.Timestamp);
 }

@@ -203,5 +203,6 @@ namespace Nethermind.Specs
 
         public FrozenSet<AddressAsKey>? CensoredSenders { get; set; } = null;
         public FrozenSet<AddressAsKey>? CensoredTo { get; set; } = null;
+        public bool Is7702PatchEnabled { get; set; }
     }
 }
