@@ -91,4 +91,44 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         _headerDecoder.Encode(rlpStream, this);
         return rlpStream.GetHash();
     }
+
+    public static XdcBlockHeader FromBlockHeader(BlockHeader src)
+    {
+        var x = new XdcBlockHeader(
+            src.ParentHash,
+            src.UnclesHash,
+            src.Beneficiary,
+            src.Difficulty,
+            src.Number,
+            src.GasLimit,
+            src.Timestamp,
+            src.ExtraData)
+        {
+            Bloom = src.Bloom ?? Bloom.Empty,
+            Hash = src.Hash,
+            MixHash = src.MixHash,
+            Nonce = src.Nonce,
+            TxRoot = src.TxRoot,
+            TotalDifficulty = src.TotalDifficulty,
+            AuRaStep = src.AuRaStep,
+            AuRaSignature = src.AuRaSignature,
+            ReceiptsRoot = src.ReceiptsRoot,
+            BaseFeePerGas = src.BaseFeePerGas,
+            WithdrawalsRoot = src.WithdrawalsRoot,
+            RequestsHash = src.RequestsHash,
+            IsPostMerge = src.IsPostMerge,
+            ParentBeaconBlockRoot = src.ParentBeaconBlockRoot,
+            ExcessBlobGas = src.ExcessBlobGas,
+            BlobGasUsed = src.BlobGasUsed,
+        };
+
+        return x;
+    }
+
+    public new XdcBlockHeader Clone()
+    {
+        var header = (XdcBlockHeader)MemberwiseClone();
+        header.Bloom = Bloom?.Clone() ?? new Bloom();
+        return header;
+    }
 }
