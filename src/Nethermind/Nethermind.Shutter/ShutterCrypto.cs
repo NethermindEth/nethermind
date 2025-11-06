@@ -30,10 +30,10 @@ public static class ShutterCrypto
 
     public readonly ref struct EncryptedMessage
     {
-        public readonly byte VersionId { get; init; }
-        public readonly G2 C1 { get; init; }
-        public readonly ReadOnlySpan<byte> C2 { get; init; }
-        public readonly ReadOnlySpan<byte> C3 { get; init; }
+        public byte VersionId { get; init; }
+        public G2 C1 { get; init; }
+        public ReadOnlySpan<byte> C2 { get; init; }
+        public ReadOnlySpan<byte> C3 { get; init; }
     }
 
     public class ShutterCryptoException(string message, Exception? innerException = null) : Exception(message, innerException);
@@ -101,7 +101,7 @@ public static class ShutterCrypto
 
     public static void RecoverSigma(out Span<byte> sigma, EncryptedMessage encryptedMessage, G1Affine decryptionKey)
     {
-        using ArrayPoolList<long> buf = new(GT.Sz, GT.Sz);
+        using ArrayPoolListRef<long> buf = new(GT.Sz, GT.Sz);
         GT p = new(buf.AsSpan());
         p.MillerLoop(encryptedMessage.C1.ToAffine(), decryptionKey);
         sigma = Hash2(p); // key
@@ -143,7 +143,7 @@ public static class ShutterCrypto
     public static void ComputeIdentity(G1 p, scoped ReadOnlySpan<byte> bytes)
     {
         int len = bytes.Length + 1;
-        using ArrayPoolList<byte> buf = new(len, len);
+        using ArrayPoolListRef<byte> buf = new(len, len);
         Span<byte> preimage = buf.AsSpan();
         preimage[0] = 0x1;
         bytes.CopyTo(preimage[1..]);
@@ -152,7 +152,7 @@ public static class ShutterCrypto
 
     public static Span<byte> Hash2(GT p)
     {
-        using ArrayPoolList<byte> buf = new(577, 577);
+        using ArrayPoolListRef<byte> buf = new(577, 577);
         Span<byte> preimage = buf.AsSpan();
         preimage[0] = 0x2;
         p.FinalExp().ToBendian().CopyTo(preimage[1..]);
@@ -167,7 +167,7 @@ public static class ShutterCrypto
         }
         exp -= 1;
 
-        using ArrayPoolList<long> buf = new(GT.Sz, GT.Sz);
+        using ArrayPoolListRef<long> buf = new(GT.Sz, GT.Sz);
         x.Fp12.CopyTo(buf.AsSpan());
         GT a = new(buf.AsSpan());
         for (; exp > 0; exp >>= 1)
@@ -184,7 +184,7 @@ public static class ShutterCrypto
     public static bool CheckDecryptionKey(G1Affine decryptionKey, G2Affine eonPublicKey, G1Affine identity)
     {
         int len = GT.Sz * 2;
-        using ArrayPoolList<long> buf = new(len, len);
+        using ArrayPoolListRef<long> buf = new(len, len);
         GT p1 = new(buf.AsSpan()[..GT.Sz]);
         p1.MillerLoop(G2Affine.Generator(stackalloc long[G2Affine.Sz]), decryptionKey);
         GT p2 = new(buf.AsSpan()[GT.Sz..]);
@@ -222,7 +222,7 @@ public static class ShutterCrypto
     public static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, ReadOnlySpan<byte> sigma)
     {
         int len = PaddedLength(msg);
-        using ArrayPoolList<byte> buf = new(len, len);
+        using ArrayPoolListRef<byte> buf = new(len, len);
         ComputeR(sigma, msg, out UInt256 r);
         ReadOnlySpan<byte> msgBlocks = PadAndSplit(buf.AsSpan(), msg);
         Span<byte> c3 = new byte[msgBlocks.Length];
@@ -266,7 +266,7 @@ public static class ShutterCrypto
 
         byte n = blocks[^1];
 
-        if (n == 0 || n > 32)
+        if (n is 0 or > 32)
         {
             throw new ShutterCryptoException("Invalid padding length");
         }
@@ -276,7 +276,7 @@ public static class ShutterCrypto
 
     private static Span<byte> ComputeC2(scoped ReadOnlySpan<byte> sigma, UInt256 r, G1 identity, G2 eonKey)
     {
-        using ArrayPoolList<long> buf = new(GT.Sz, GT.Sz);
+        using ArrayPoolListRef<long> buf = new(GT.Sz, GT.Sz);
         GT p = new(buf.AsSpan());
         p.MillerLoop(eonKey, identity);
         GTExp(ref p, r);
@@ -306,7 +306,7 @@ public static class ShutterCrypto
     private static void ComputeR(scoped ReadOnlySpan<byte> sigma, scoped ReadOnlySpan<byte> msg, out UInt256 r)
     {
         int len = 32 + msg.Length;
-        using ArrayPoolList<byte> buf = new(len, len);
+        using ArrayPoolListRef<byte> buf = new(len, len);
         Span<byte> preimage = buf.AsSpan();
         sigma.CopyTo(preimage);
         msg.CopyTo(preimage[32..]);
@@ -338,7 +338,7 @@ public static class ShutterCrypto
     private static void Hash3(ReadOnlySpan<byte> bytes, out UInt256 res)
     {
         int len = bytes.Length + 1;
-        using ArrayPoolList<byte> buf = new(len, len);
+        using ArrayPoolListRef<byte> buf = new(len, len);
         Span<byte> preimage = buf.AsSpan();
         preimage[0] = 0x3;
         bytes.CopyTo(preimage[1..]);
@@ -349,7 +349,7 @@ public static class ShutterCrypto
     private static ValueHash256 Hash4(ReadOnlySpan<byte> bytes)
     {
         int len = bytes.Length + 1;
-        using ArrayPoolList<byte> buf = new(len, len);
+        using ArrayPoolListRef<byte> buf = new(len, len);
         Span<byte> preimage = buf.AsSpan();
         preimage[0] = 0x4;
         bytes.CopyTo(preimage[1..]);
@@ -358,11 +358,11 @@ public static class ShutterCrypto
 
     private readonly struct SlotDecryptionIdentites
     {
-        public readonly ulong InstanceID { get; init; }
-        public readonly ulong Eon { get; init; }
-        public readonly ulong Slot { get; init; }
-        public readonly ulong TxPointer { get; init; }
-        public readonly IEnumerable<ReadOnlyMemory<byte>> IdentityPreimages { get; init; }
+        public ulong InstanceID { get; init; }
+        public ulong Eon { get; init; }
+        public ulong Slot { get; init; }
+        public ulong TxPointer { get; init; }
+        public IEnumerable<ReadOnlyMemory<byte>> IdentityPreimages { get; init; }
     }
 
 }

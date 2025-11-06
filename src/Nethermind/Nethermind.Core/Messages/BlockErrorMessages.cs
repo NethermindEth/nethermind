@@ -161,4 +161,6 @@ public static class BlockErrorMessages
     public static string InvalidBlockLevelAccessListRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidBlockLevelAccessListRoot: Expected {expected}, got {actual}";
 
+    public static string ReceiptCountMismatch(int expectedCount, int actualCount) =>
+        $"ReceiptCountMismatch: Expected {expectedCount} receipts to match transaction count, but got {actualCount}.";
 }

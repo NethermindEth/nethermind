@@ -8,17 +8,8 @@ namespace Ethereum.Test.Base
     public class TestEngineNewPayloadsJson
     {
         public JsonElement[] Params { get; set; }
-        // public EngineNewPayloadParams Params { get; set; }
         public string? NewPayloadVersion { get; set; }
         public string? ForkChoiceUpdatedVersion { get; set; }
-
-        // public class EngineNewPayloadParams
-        // {
-        //     public ParamsExecutionPayload ExecutionPayload;
-        //     public string[] BlobVersionedHashes;
-        //     public string ParentBeaconBlockRoot;
-        //     public string ValidationError;
-        // }
 
         public class ParamsExecutionPayload
         {

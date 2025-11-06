@@ -12,7 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
     public class NewPooledTransactionHashesMessageSerializer
         : HashesMessageSerializer<NewPooledTransactionHashesMessage>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage>(nameof(NewPooledTransactionHashesMessage.Hashes), NethermindSyncLimits.MaxHashesFetch);
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage.Hashes));
 
         public override NewPooledTransactionHashesMessage Deserialize(IByteBuffer byteBuffer)
         {

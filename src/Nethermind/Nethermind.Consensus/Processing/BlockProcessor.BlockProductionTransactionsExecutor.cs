@@ -57,7 +57,7 @@ namespace Nethermind.Consensus.Processing
                 int txCount = blockToProduce is not null ? defaultTxCount : block.Transactions.Length;
                 IEnumerable<Transaction> transactions = blockToProduce?.Transactions ?? block.Transactions;
 
-                using ArrayPoolList<Transaction> includedTx = new(txCount);
+                using ArrayPoolListRef<Transaction> includedTx = new(txCount);
 
                 HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
                 int i = 0;
@@ -116,7 +116,7 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
-                        args.Set(TxAction.Skip, result.Error!);
+                        args.Set(TxAction.Skip, result.ErrorDescription!);
                     }
                 }
 

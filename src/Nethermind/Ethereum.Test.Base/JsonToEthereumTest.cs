@@ -75,12 +75,17 @@ namespace Ethereum.Test.Base
                 TxRoot = new Hash256(headerJson.TransactionsTrie),
                 WithdrawalsRoot = headerJson.WithdrawalsRoot is null ? null : new Hash256(headerJson.WithdrawalsRoot),
                 BlockAccessListHash = headerJson.BlockAccessListHash is null ? null : new Hash256(headerJson.BlockAccessListHash),
-                BaseFeePerGas = (ulong)Bytes.FromHexString(headerJson.BaseFeePerGas).ToUnsignedBigInteger()
             };
+
+            if (headerJson.BaseFeePerGas is not null)
+            {
+                header.BaseFeePerGas = (ulong)Bytes.FromHexString(headerJson.BaseFeePerGas).ToUnsignedBigInteger();
+            }
+
             return header;
         }
 
-        public static IEnumerable<(ExecutionPayload, string[]?, string[]?, string?)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
+        public static IEnumerable<(ExecutionPayloadV3, string[]?, string[]?, int, int)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
         {
             if (executionPayloadsJson is null)
             {
@@ -115,7 +120,7 @@ namespace Ethereum.Test.Base
                     Withdrawals = executionPayload.Withdrawals is null ? null : [.. executionPayload.Withdrawals.Select(x => Rlp.Decode<Withdrawal>(Bytes.FromHexString(x)))],
                     Transactions = [.. executionPayload.Transactions.Select(x => Bytes.FromHexString(x))],
                     ExecutionRequests = []
-                }, blobVersionedHashes, validationError, engineNewPayload.NewPayloadVersion);
+                }, blobVersionedHashes, validationError, int.Parse(engineNewPayload.NewPayloadVersion ?? "4"), int.Parse(engineNewPayload.ForkChoiceUpdatedVersion ?? "3"));
             }
         }
 
@@ -306,9 +311,7 @@ namespace Ethereum.Test.Base
                 GenesisBlockHeader = testJson.GenesisBlockHeader,
                 Blocks = testJson.Blocks,
                 EngineNewPayloads = testJson.EngineNewPayloads,
-                // nullable for engine?
-                // Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value)
-                Pre = testJson.Pre
+                Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value)
             };
 
             HalfBlockchainTestJson half = testJson as HalfBlockchainTestJson;
@@ -411,7 +414,7 @@ namespace Ethereum.Test.Base
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
+                // Console.WriteLine(e);
                 Dictionary<string, HalfBlockchainTestJson> half =
                     _serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json);
                 testsInFile = [];

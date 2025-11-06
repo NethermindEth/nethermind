@@ -21,15 +21,6 @@ namespace Nethermind.Evm
                 return new ZeroPaddedSpan(default, length, padDirection);
             }
 
-            if (length == 1)
-            {
-                // why do we return zero length here?
-                // it was passing all the tests like this...
-                // return bytes.Length == 0 ? new byte[0] : new[] {bytes[startIndex]};
-                return span.Length == 0 ? new ZeroPaddedSpan(default, 0, padDirection) : new ZeroPaddedSpan(span.Slice(startIndex, 1), 0, padDirection);
-                // return bytes.Length == 0 ? new ZeroPaddedSpan(default, 1) : new ZeroPaddedSpan(bytes.Slice(startIndex, 1), 0);
-            }
-
             int copiedLength = Math.Min(span.Length - startIndex, length);
             return new ZeroPaddedSpan(span.Slice(startIndex, copiedLength), length - copiedLength, padDirection);
         }

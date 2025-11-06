@@ -7,12 +7,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Generic;
-using System.Linq;
+using System.Collections.Immutable;
 
 namespace Nethermind.Xdc;
 public static class XdcExtensions
@@ -68,7 +66,21 @@ public static class XdcExtensions
 
         return snapshotManager.GetSnapshot(gapBlockHash);
     }
+    public static ImmutableArray<Address>? ExtractAddresses(this Span<byte> data)
+    {
+        if (data.Length % Address.Size != 0)
+            return null;
 
+        Address[] addresses = new Address[data.Length / Address.Size];
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            addresses[i] = new Address(data.Slice(i * Address.Size, Address.Size));
+        }
+        return addresses.ToImmutableArray();
+    }
 
-
+    public static bool ValidateBlockInfo(this BlockRoundInfo blockInfo, XdcBlockHeader blockHeader) =>
+        (blockInfo.BlockNumber == blockHeader.Number)
+        && (blockInfo.Hash == blockHeader.Hash)
+        && (blockInfo.Round == blockHeader.ExtraConsensusData.BlockRound);
 }

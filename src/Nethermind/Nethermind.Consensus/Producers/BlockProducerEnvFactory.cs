@@ -27,7 +27,6 @@ namespace Nethermind.Consensus.Producers
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
             .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
             .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-
             .AddScoped<IBlockProducerEnv, BlockProducerEnv>();
 
         public IBlockProducerEnv Create()

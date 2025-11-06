@@ -38,6 +38,6 @@ public class Ripemd160Precompile : IPrecompile<Ripemd160Precompile>
     {
         Metrics.Ripemd160Precompile++;
 
-        return (Ripemd.Compute(inputData.ToArray()).PadLeft(32), true);
+        return (Ripemd.Compute(inputData.Span), true);
     }
 }

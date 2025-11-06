@@ -11,13 +11,13 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Optimism;
 
 [Rlp.Decoder(RlpDecoderKey.Trie)]
-public class OptimismReceiptTrieDecoder() : OptimismReceiptMessageDecoder(true);
+public sealed class OptimismReceiptTrieDecoder() : OptimismReceiptMessageDecoder(true);
 
 [Rlp.Decoder]
-public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool skipStateAndStatus = false) : IRlpStreamDecoder<TxReceipt>
+public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool skipStateAndStatus = false) : RlpStreamDecoder<TxReceipt>
 {
     private readonly bool _skipStateAndStatus = skipStateAndStatus;
-    public OptimismTxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override OptimismTxReceipt DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         OptimismTxReceipt txReceipt = new();
         if (!rlpStream.IsSequenceNext())
@@ -49,7 +49,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         int logEntriesCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
         int numberOfReceipts = rlpStream.PeekNumberOfItemsRemaining(logEntriesCheck);
-        Rlp.GuardLimit(numberOfReceipts);
+        rlpStream.GuardLimit(numberOfReceipts);
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {
@@ -126,7 +126,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2718
     /// </summary>
-    public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
     {
         (int total, _) = GetContentLength(item, rlpBehaviors);
         int receiptPayloadLength = Rlp.LengthOfSequence(total);
@@ -140,7 +140,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         return result;
     }
 
-    public void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -188,11 +188,6 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
                 }
             }
         }
-    }
-
-    TxReceipt IRlpStreamDecoder<TxReceipt>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
-    {
-        return Decode(rlpStream, rlpBehaviors);
     }
 }
 

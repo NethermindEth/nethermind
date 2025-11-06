@@ -8,10 +8,10 @@ using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Serialization.Rlp;
 
-public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<BlockBody>
+public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
 {
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
-    private readonly HeaderDecoder _headerDecoder = new();
+    private readonly IHeaderDecoder _headerDecoder;
     private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
     private readonly BlockAccessListDecoder _blockAccessListDecoder = new();
 
@@ -19,11 +19,12 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
 
     // Cant set to private because of `Rlp.RegisterDecoder`.
-    public BlockBodyDecoder()
+    public BlockBodyDecoder(IHeaderDecoder headerDecoder = null)
     {
+        _headerDecoder = headerDecoder ?? new HeaderDecoder();
     }
 
-    public int GetLength(BlockBody item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(BlockBody item, RlpBehaviors rlpBehaviors)
     {
         return Rlp.LengthOfSequence(GetBodyLength(item));
     }
@@ -84,7 +85,7 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
         return sum;
     }
 
-    public BlockBody? Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override BlockBody? DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int sequenceLength = ctx.ReadSequenceLength();
         int startingPosition = ctx.Position;
@@ -117,7 +118,7 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
         return new BlockBody(transactions, uncles, withdrawals, blockAccessList);
     }
 
-    public BlockBody Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override BlockBody DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         Span<byte> span = rlpStream.PeekNextItem();
         Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(span);
@@ -127,7 +128,7 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
         return response;
     }
 
-    public void Encode(RlpStream stream, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetBodyLength(body));
         stream.StartSequence(GetTxLength(body.Transactions));

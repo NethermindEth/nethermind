@@ -10,16 +10,16 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
-    public class NetworkNodeDecoder : IRlpStreamDecoder<NetworkNode>, IRlpObjectDecoder<NetworkNode>
+    public sealed class NetworkNodeDecoder : RlpStreamDecoder<NetworkNode>, IRlpObjectDecoder<NetworkNode>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>(nameof(NetworkNode.HostIp), (int)1.KiB());
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB(), nameof(NetworkNode.HostIp));
 
         static NetworkNodeDecoder()
         {
             Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
         }
 
-        public NetworkNode Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override NetworkNode DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             rlpStream.ReadSequenceLength();
 
@@ -41,7 +41,7 @@ namespace Nethermind.Network
             return networkNode;
         }
 
-        public void Encode(RlpStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int contentLength = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
@@ -70,7 +70,7 @@ namespace Nethermind.Network
             throw new NotImplementedException();
         }
 
-        public int GetLength(NetworkNode item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(NetworkNode item, RlpBehaviors rlpBehaviors)
         {
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }

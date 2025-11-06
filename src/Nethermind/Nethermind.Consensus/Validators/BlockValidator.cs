@@ -235,12 +235,6 @@ public class BlockValidator(
             error ??= BlockErrorMessages.InvalidRequestsHash(suggestedBlock.Header.RequestsHash, processedBlock.Header.RequestsHash);
         }
 
-        if (processedBlock.Header.WithdrawalsRoot != suggestedBlock.Header.WithdrawalsRoot)
-        {
-            if (_logger.IsWarn) _logger.Warn($"- withdrawals root : expected {suggestedBlock.Header.WithdrawalsRoot}, got {processedBlock.Header.WithdrawalsRoot}");
-            error ??= BlockErrorMessages.InvalidWithdrawalsRoot(suggestedBlock.Header.WithdrawalsRoot, processedBlock.Header.WithdrawalsRoot);
-        }
-
         if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
         {
             // Console.WriteLine("processed block:");
@@ -249,12 +243,20 @@ public class BlockValidator(
             error ??= BlockErrorMessages.InvalidBlockLevelAccessListRoot(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
         }
 
-        for (int i = 0; i < processedBlock.Transactions.Length; i++)
+        if (receipts.Length != processedBlock.Transactions.Length)
         {
-            if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
+            if (_logger.IsWarn) _logger.Warn($"- receipt count mismatch: expected {processedBlock.Transactions.Length} receipts to match transaction count, got {receipts.Length}");
+            error ??= BlockErrorMessages.ReceiptCountMismatch(processedBlock.Transactions.Length, receipts.Length);
+        }
+        else
+        {
+            for (int i = 0; i < processedBlock.Transactions.Length; i++)
             {
-                if (_logger.IsWarn) _logger.Warn($"- invalid transaction {i}");
-                error ??= BlockErrorMessages.InvalidTxInBlock(i);
+                if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
+                {
+                    if (_logger.IsWarn) _logger.Warn($"- invalid transaction {i}");
+                    error ??= BlockErrorMessages.InvalidTxInBlock(i);
+                }
             }
         }
 
