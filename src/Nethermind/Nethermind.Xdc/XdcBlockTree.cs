@@ -36,36 +36,36 @@ internal class XdcBlockTree : BlockTree
         _xdcConsensus = xdcConsensus;
     }
 
-    protected override bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
+    protected override AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
     {
         Types.BlockRoundInfo finalizedBlockInfo = _xdcConsensus.HighestCommitBlock;
         if (finalizedBlockInfo is null)
-            return true;
+            return base.Suggest(block, header, options);
         if (finalizedBlockInfo.Hash == header.Hash)
         {
             //Weird case if re-suggesting the finalized block
-            return false;
-        }
+            return AddBlockResult.AlreadyKnown;
+        }        
         int depth = 0;
         BlockHeader current = header;
         while (true)
         {
             if (finalizedBlockInfo.BlockNumber >= current.Number)
-                return false;
+                return AddBlockResult.InvalidBlock;
 
             if (finalizedBlockInfo.Hash == current.ParentHash)
-                return base.BestSuggestedImprovementRequirementsSatisfied(header);
+                return base.Suggest(block, header, options);
 
             current = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (current == null)
-                return false;
+                return AddBlockResult.UnknownParent;
             depth++;
             if (depth == MaxSearchDepth)
             {
                 //Theoretically very deep reorgs could happen, if the chain doesnt finalize for a long time
                 //TODO Maybe this needs to be revisited later
                 Logger.Warn($"Deep reorg past {MaxSearchDepth} blocks detected! Rejecting block {header.ToString(BlockHeader.Format.Full)}");
-                return false;
+                return AddBlockResult.InvalidBlock;
             }
         }
     }
