@@ -26,7 +26,7 @@ public class XdcGenesisBuilder(
     ITransactionProcessor transactionProcessor,
     ISnapshotManager snapshotManager,
     params IGenesisPostProcessor[] postProcessors
-): IGenesisBuilder
+) : IGenesisBuilder
 {
     public Block Build()
     {
