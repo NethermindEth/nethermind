@@ -98,7 +98,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         if ((proposedBlockHeader.Number - 2) <= spec.SwitchBlock)
         {
-            error = $"Proposed block ({proposedBlockHeader.Number}) is too close or before genesis block {spec.SwitchBlock})";
+            error = $"Proposed block ({proposedBlockHeader.Number}) is too close or before genesis block ({spec.SwitchBlock})";
             return false;
         }
 

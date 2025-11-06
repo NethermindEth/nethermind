@@ -234,7 +234,7 @@ public class XdcTestBlockchain : TestBlockchain
             },
             new V2ConfigParams {
                 SwitchRound = 5,
-                MaxMasternodes = 40,
+                MaxMasternodes = 30,
                 CertThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
@@ -242,7 +242,7 @@ public class XdcTestBlockchain : TestBlockchain
             },
             new V2ConfigParams {
                 SwitchRound = 10,
-                MaxMasternodes = 50,
+                MaxMasternodes = 30,
                 CertThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
@@ -250,7 +250,7 @@ public class XdcTestBlockchain : TestBlockchain
             },
             new V2ConfigParams {
                 SwitchRound = 15,
-                MaxMasternodes = 60,
+                MaxMasternodes = 30,
                 CertThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
@@ -258,7 +258,7 @@ public class XdcTestBlockchain : TestBlockchain
             },
             new V2ConfigParams {
                 SwitchRound = 20,
-                MaxMasternodes = 75,
+                MaxMasternodes = 30,
                 CertThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
@@ -346,6 +346,13 @@ public class XdcTestBlockchain : TestBlockchain
             CancellationToken.ThrowIfCancellationRequested();
             if (BlockTree.Head?.Number == 3) return;
             await Task.Delay(1, CancellationToken);
+        }
+    }
+    public async Task AddBlocks(int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            await AddBlock();
         }
     }
 
