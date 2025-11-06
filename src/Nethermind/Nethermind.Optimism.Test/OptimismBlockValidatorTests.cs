@@ -124,4 +124,32 @@ public class OptimismBlockValidatorTests
             error.Should().NotBeNull();
         }
     }
+
+    [TestCase(0UL, true)]
+    [TestCase(40_000UL, true)]
+    public void ValidateSuggestedBlock_IgnoresBlobGasUsed(ulong blobGasUsed, bool isValid)
+    {
+        var specProvider = Substitute.For<ISpecProvider>();
+        var specHelper = Substitute.For<IOptimismSpecHelper>();
+
+        var parentBlock = Build.A.BlockHeader.TestObject;
+        var block = Build.A.Block
+            .WithHeader(Build.A.BlockHeader
+                .WithParent(parentBlock)
+                .WithTimestamp(Spec.GenesisTimestamp)
+                .TestObject)
+            .WithBlobGasUsed(blobGasUsed)
+            .TestObject;
+
+        var validator = new OptimismBlockValidator(
+            Always.Valid,
+            Always.Valid,
+            Always.Valid,
+            specProvider,
+            specHelper,
+            TestLogManager.Instance);
+
+        string? error = null;
+        Assert.That(() => validator.ValidateSuggestedBlock(block, parentBlock, out error), Is.True, () => error!);
+    }
 }
