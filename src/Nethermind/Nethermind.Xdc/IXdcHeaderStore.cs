@@ -4,11 +4,8 @@
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 internal interface IXdcHeaderStore : IHeaderStore

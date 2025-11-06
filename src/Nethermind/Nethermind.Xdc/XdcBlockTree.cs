@@ -12,26 +12,62 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 internal class XdcBlockTree : BlockTree
 {
-    private readonly IXdcConsensusContext xdcConsensus;
+    private const int MaxSearchDepth = 1024;
+    private readonly IXdcConsensusContext _xdcConsensus;
 
-    public XdcBlockTree(IXdcConsensusContext xdcConsensus, IBlockStore? blockStore, IHeaderStore? headerDb, [KeyFilter("blockInfos")] IDb? blockInfoDb, [KeyFilter("metadata")] IDb? metadataDb, IBadBlockStore? badBlockStore, IChainLevelInfoRepository? chainLevelInfoRepository, ISpecProvider? specProvider, IBloomStorage? bloomStorage, ISyncConfig? syncConfig, ILogManager? logManager, long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
+    public XdcBlockTree(
+        IXdcConsensusContext xdcConsensus,
+        IBlockStore? blockStore,
+        IHeaderStore? headerDb,
+        [KeyFilter("blockInfos")] IDb? blockInfoDb,
+        [KeyFilter("metadata")] IDb? metadataDb,
+        IBadBlockStore? badBlockStore,
+        IChainLevelInfoRepository? chainLevelInfoRepository,
+        ISpecProvider? specProvider,
+        IBloomStorage? bloomStorage,
+        ISyncConfig? syncConfig,
+        ILogManager? logManager,
+        long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
     {
-        this.xdcConsensus = xdcConsensus;
+        _xdcConsensus = xdcConsensus;
     }
 
-    //protected override bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
-    //{
-    //    // In XDC we always accept the best suggested improvement
-    //    return true;
-    //}
+    protected override bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
+    {
+        Types.BlockRoundInfo finalizedBlockInfo = _xdcConsensus.HighestCommitBlock;
+        if (finalizedBlockInfo is null)
+            return true;
+        if (finalizedBlockInfo.Hash == header.Hash)
+        {
+            //Weird case if re-suggesting the finalized block
+            return false;
+        }
+        int depth = 0;
+        BlockHeader current = header;
+        while (true)
+        {
+            if (finalizedBlockInfo.BlockNumber >= current.Number)
+                return false;
+
+            if (finalizedBlockInfo.Hash == current.ParentHash)
+                return base.BestSuggestedImprovementRequirementsSatisfied(header);
+
+            current = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+            if (current == null)
+                return false;
+            depth++;
+            if (depth == MaxSearchDepth)
+            {
+                //Theoretically very deep reorgs could happen, if the chain doesnt finalize for a long time
+                //TODO Maybe this needs to be revisited later
+                Logger.Warn($"Deep reorg past {MaxSearchDepth} blocks detected! Rejecting block {header.ToString(BlockHeader.Format.Full)}");
+                return false;
+            }
+        }
+    }
 
 }

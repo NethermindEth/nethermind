@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -13,18 +11,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 internal class XdcBlockProducer : BlockProducerBase
@@ -79,7 +71,8 @@ internal class XdcBlockProducer : BlockProducerBase
         xdcBlockHeader.Timestamp = payloadAttributes?.Timestamp ?? parent.Timestamp + (ulong)spec.MinePeriod;
 
         xdcBlockHeader.Difficulty = 1;
-        xdcBlockHeader.TotalDifficulty = 1;
+
+        xdcBlockHeader.TotalDifficulty = xdcParent.TotalDifficulty + 1;
 
         xdcBlockHeader.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
 

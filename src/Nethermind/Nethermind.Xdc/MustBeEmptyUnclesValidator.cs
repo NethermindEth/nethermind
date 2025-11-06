@@ -3,11 +3,6 @@
 
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 public class MustBeEmptyUnclesValidator : IUnclesValidator

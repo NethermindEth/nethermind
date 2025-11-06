@@ -75,7 +75,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                     {
                         PreBlockCaches preBlockCaches = ctx.Resolve<PreBlockCaches>();
                         // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
-                        return new CachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository, preBlockCaches?.PrecompileCache);
+                        return new CachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository, blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
                     })
                     ;
             }

@@ -177,8 +177,8 @@ namespace Nethermind.Xdc
             if (_blockTree.Head.Header is not XdcBlockHeader xdcHead)
                 throw new InvalidBlockException(_blockTree.Head, "Head is not XdcBlockHeader.");
 
-            ulong initialRound = xdcHead.ExtraConsensusData?.BlockRound + 1 ?? 0;
-            _logger.Info($"Initialized round counter from head: round {initialRound}");
+            _quorumCertificateManager.Initialize(xdcHead);
+            _logger.Info($"Initialized round {_xdcContext.CurrentRound} from head.");
         }
 
         /// <summary>
@@ -423,7 +423,7 @@ namespace Nethermind.Xdc
             if (_epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
             {
                 //TODO calculate master nodes based on the current round
-                (currentMasternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead.Number, currentHead.ParentHash, spec);
+                (currentMasternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.ParentHash, spec);
             }
             else
             {

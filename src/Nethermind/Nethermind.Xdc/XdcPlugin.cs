@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Core;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Specs.ChainSpecStyle;
 using System;
 
 namespace Nethermind.Xdc;
-
 public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
     public const string Xdc = "Xdc";
