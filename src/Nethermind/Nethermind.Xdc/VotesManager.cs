@@ -196,6 +196,7 @@ internal class VotesManager(
 
     private void OnVotePoolThresholdReached(Signature[] validSignatures, Vote currVote)
     {
+        Console.WriteLine("certificate will be commited");
         QuorumCertificate qc = new(currVote.ProposedBlockInfo, validSignatures, currVote.GapNumber);
         _quorumCertificateManager.CommitCertificate(qc);
         EndRound(currVote.ProposedBlockInfo.Round);

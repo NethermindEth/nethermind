@@ -42,4 +42,17 @@ internal class XdcTestHelper
         }).ToArray();
         return signatures.ToArray();
     }
+
+    public static Vote BuildSignedVote(
+        BlockRoundInfo info, ulong gap, PrivateKey key)
+    {
+        var decoder = new VoteDecoder();
+        var ecdsa = new EthereumEcdsa(0);
+        var vote = new Vote(info, gap);
+        var stream = new KeccakRlpStream();
+        decoder.Encode(stream, vote, RlpBehaviors.ForSealing);
+        vote.Signature = ecdsa.Sign(key, stream.GetValueHash());
+        vote.Signer = key.Address;
+        return vote;
+    }
 }

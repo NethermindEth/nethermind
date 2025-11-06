@@ -80,7 +80,7 @@ public class XdcTestBlockchain : TestBlockchain
         MasterNodeCandidates = new PrivateKeyGenerator().Generate(200).ToList();
     }
 
-    protected Signer Signer => (Signer)_fromXdcContainer.Signer;
+    public Signer Signer => (Signer)_fromXdcContainer.Signer;
 
     private FromXdcContainer _fromXdcContainer = null!;
     public class FromXdcContainer(
