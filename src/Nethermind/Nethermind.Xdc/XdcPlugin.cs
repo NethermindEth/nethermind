@@ -6,10 +6,6 @@ using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Specs.ChainSpecStyle;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin

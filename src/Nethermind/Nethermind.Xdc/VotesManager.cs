@@ -14,7 +14,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
@@ -85,7 +84,6 @@ internal class VotesManager(
         _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotes);
         _ = _forensicsProcessor.ProcessVoteEquivocation(vote);
 
-        //TODO Optimize this by fetching with block number and round only
         XdcBlockHeader proposedHeader = _blockTree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) as XdcBlockHeader;
         if (proposedHeader is null)
         {
@@ -187,7 +185,9 @@ internal class VotesManager(
     {
         if (vote.ProposedBlockInfo.Round < _ctx.CurrentRound) return false;
 
-        Snapshot snapshot = _snapshotManager.GetSnapshot((long)vote.GapNumber, _specProvider.GetXdcSpec((XdcBlockHeader)_blockTree.Head.Header));
+        var xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
+        Snapshot snapshot = _snapshotManager.GetSnapshot((long)vote.GapNumber, spec);
         if (snapshot is null) throw new InvalidOperationException($"Failed to get snapshot by gapNumber={vote.GapNumber}");
         // Verify message signature
         vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);

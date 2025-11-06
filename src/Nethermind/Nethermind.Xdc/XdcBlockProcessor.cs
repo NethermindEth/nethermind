@@ -13,11 +13,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 internal class XdcBlockProcessor : BlockProcessor

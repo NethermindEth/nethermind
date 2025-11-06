@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Specs;
 using System.Collections.Generic;
 

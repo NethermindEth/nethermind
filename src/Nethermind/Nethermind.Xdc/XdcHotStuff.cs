@@ -178,7 +178,7 @@ namespace Nethermind.Xdc
                 throw new InvalidBlockException(_blockTree.Head, "Head is not XdcBlockHeader.");
 
             _quorumCertificateManager.Initialize(xdcHead);
-            _logger.Info($"Initialized round counter from head: round {_xdcContext.CurrentRound}");
+            _logger.Info($"Initialized round {_xdcContext.CurrentRound} from head.");
         }
 
         /// <summary>
@@ -419,18 +419,19 @@ namespace Nethermind.Xdc
                 throw new InvalidOperationException("Cannot determine leader with empty masternode set");
             }
 
-            EpochSwitchInfo epochSwitchInfo = null;
+            Address[] currentMasternodes;
             if (_epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
             {
                 //TODO calculate master nodes based on the current round
-                (masternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash, spec);
+                (currentMasternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.ParentHash, spec);
             }
             else
             {
-                epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHead);
+                var epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHead);
+                currentMasternodes = epochSwitchInfo.Masternodes;
             }
 
-            int currentLeaderIndex = ((int)round % spec.EpochLength % epochSwitchInfo.Masternodes.Length);
+            int currentLeaderIndex = ((int)round % spec.EpochLength % currentMasternodes.Length);
             return masternodes[currentLeaderIndex];
         }
 
