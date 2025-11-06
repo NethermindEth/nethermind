@@ -26,6 +26,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
 
         // Keep track of gas left
         simulateRequestState.TotalGasLeft -= transaction.SpentGas;
+        simulateRequestState.BlockGasLeft -= transaction.SpentGas;
         _currentTxIndex++;
         return result;
     }
