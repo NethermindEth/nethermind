@@ -12,20 +12,15 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 internal class XdcBlockTree : BlockTree
 {
     private const int MaxSearchDepth = 1024;
-    private readonly XdcConsensusContext xdcConsensus;
+    private readonly IXdcConsensusContext _xdcConsensus;
 
     public XdcBlockTree(
-        XdcConsensusContext xdcConsensus,
+        IXdcConsensusContext xdcConsensus,
         IBlockStore? blockStore,
         IHeaderStore? headerDb,
         [KeyFilter("blockInfos")] IDb? blockInfoDb,
@@ -38,11 +33,12 @@ internal class XdcBlockTree : BlockTree
         ILogManager? logManager,
         long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
     {
-        this.xdcConsensus = xdcConsensus;
+        _xdcConsensus = xdcConsensus;
     }
+
     protected override bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
     {
-        Types.BlockRoundInfo finalizedBlockInfo = xdcConsensus.HighestCommitBlock;
+        Types.BlockRoundInfo finalizedBlockInfo = _xdcConsensus.HighestCommitBlock;
         if (finalizedBlockInfo is null)
             return true;
         if (finalizedBlockInfo.Hash == header.Hash)
