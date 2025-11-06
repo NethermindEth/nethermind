@@ -144,7 +144,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             LoadTransitions(allTransitions);
 
-            TransitionActivations = [.. CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps).Where(a => a.Timestamp != GnosisSpecProvider.BalancerTimestamp)];
+            IEnumerable<ulong> censoringTransitionTimestamps = _chainSpec.Parameters.CensoringSchedule.Select(cs => cs.Timestamp);
+            TransitionActivations = [.. CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps).Where(a => a.Timestamp is not null && !censoringTransitionTimestamps.Contains(a.Timestamp.Value))];
 
             if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
