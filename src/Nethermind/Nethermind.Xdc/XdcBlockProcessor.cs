@@ -34,7 +34,7 @@ internal class XdcBlockProcessor : BlockProcessor
             bh.GasLimit,
             bh.Timestamp,
             bh.ExtraData
-            )
+        )
         {
             Bloom = Bloom.Empty,
             Author = bh.Author,
