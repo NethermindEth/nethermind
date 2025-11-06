@@ -45,7 +45,7 @@ internal class XdcBlockTree : BlockTree
         {
             //Weird case if re-suggesting the finalized block
             return AddBlockResult.AlreadyKnown;
-        }        
+        }
         int depth = 0;
         BlockHeader current = header;
         while (true)
