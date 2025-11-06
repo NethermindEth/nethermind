@@ -121,7 +121,8 @@
           "0x49b5ce67b22b1d596842ca071ac3da93ee593e11",
           "0x7b23c07a0bbbe652bf7069c9c4143a2c85132166",
           "0x1bdc1febebf92bffab3a2e49c5cf3b7e35a9e81e"
-        ]
+        ],
+        "is7702PatchEnabled": false
       }
     ]
   },

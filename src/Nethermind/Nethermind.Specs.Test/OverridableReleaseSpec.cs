@@ -213,5 +213,7 @@ namespace Nethermind.Specs.Test
             get => _overridenCensoredTo ?? spec.CensoredTo;
             set => _overridenCensoredTo = value;
         }
+
+        public bool Is7702PatchEnabled => spec.Is7702PatchEnabled;
     }
 }
