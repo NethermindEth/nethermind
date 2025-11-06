@@ -60,9 +60,11 @@ public class OptimismBlockValidator(
         return true;
     }
 
-    // Base implementation validates BlobGasUsed, but blob-transactions are disabled in Optimism since Ecotone
-    // TODO: add IsEcotone check?
-    protected override bool ValidateEip4844Fields(Block block, IReleaseSpec spec, ref string? error) => true;
+    protected override bool ValidateEip4844Fields(Block block, IReleaseSpec spec, ref string? error)
+    {
+        // Base implementation validates BlobGasUsed, but Blob transactions are disabled in Optimism since Ecotone
+        return specHelper.IsEcotone(block.Header) || base.ValidateEip4844Fields(block, spec, ref error);
+    }
 
     protected override bool ValidateWithdrawals(Block block, IReleaseSpec spec, bool validateHashes, ref string? error) =>
         ValidateWithdrawals(block.Header, block.Body, out error);

@@ -15,6 +15,7 @@ public static class Spec
 {
     public const ulong GenesisTimestamp = 1_000;
     public const ulong CanyonTimestamp = 1_300;
+    public const ulong EcotoneTimestamp = 1_600;
     public const ulong HoloceneTimeStamp = 2_000;
     public const ulong IsthmusTimeStamp = 2_100;
     public const ulong JovianTimeStamp = 2_200;
@@ -23,6 +24,7 @@ public static class Spec
         new OptimismSpecHelper(new OptimismChainSpecEngineParameters
         {
             CanyonTimestamp = CanyonTimestamp,
+            EcotoneTimestamp = EcotoneTimestamp,
             HoloceneTimestamp = HoloceneTimeStamp,
             IsthmusTimestamp = IsthmusTimeStamp,
             JovianTimestamp = JovianTimeStamp,

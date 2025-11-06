@@ -125,31 +125,45 @@ public class OptimismBlockValidatorTests
         }
     }
 
-    [TestCase(0UL, true)]
-    [TestCase(40_000UL, true)]
-    public void ValidateSuggestedBlock_IgnoresBlobGasUsed(ulong blobGasUsed, bool isValid)
+    [TestCase(Spec.GenesisTimestamp, 0, true)]
+    [TestCase(Spec.GenesisTimestamp, 10_000, false)]
+    [TestCase(Spec.CanyonTimestamp, 0, true)]
+    [TestCase(Spec.CanyonTimestamp, 20_000, false)]
+    [TestCase(Spec.EcotoneTimestamp, 0, true)]
+    [TestCase(Spec.EcotoneTimestamp, 90_000, true)]
+    [TestCase(Spec.HoloceneTimeStamp, 0, true)]
+    [TestCase(Spec.HoloceneTimeStamp, 70_000, true)]
+    [TestCase(Spec.JovianTimeStamp, 0, true)]
+    [TestCase(Spec.JovianTimeStamp, 80_000, true)]
+    public void ValidateSuggestedBlock_ValidatesBlobGasUsed_BeforeEcotone(ulong timestamp, int blobGasUsed, bool isValid)
     {
-        var specProvider = Substitute.For<ISpecProvider>();
-        var specHelper = Substitute.For<IOptimismSpecHelper>();
-
         var parentBlock = Build.A.BlockHeader.TestObject;
         var block = Build.A.Block
+            .WithWithdrawals(timestamp >= Spec.IsthmusTimeStamp ? [] : null)
             .WithHeader(Build.A.BlockHeader
                 .WithParent(parentBlock)
-                .WithTimestamp(Spec.GenesisTimestamp)
+                .WithTimestamp(timestamp)
+                .WithWithdrawalsRoot(timestamp switch
+                {
+                    >= Spec.IsthmusTimeStamp => TestWithdrawalsRoot,
+                    >= Spec.CanyonTimestamp => Keccak.EmptyTreeHash,
+                    _ => null
+                })
                 .TestObject)
-            .WithBlobGasUsed(blobGasUsed)
+            .WithBlobGasUsed((ulong)blobGasUsed)
             .TestObject;
+
+        var specProvider = Spec.BuildFor(block.Header);
 
         var validator = new OptimismBlockValidator(
             Always.Valid,
             Always.Valid,
             Always.Valid,
             specProvider,
-            specHelper,
+            Spec.Instance,
             TestLogManager.Instance);
 
         string? error = null;
-        Assert.That(() => validator.ValidateSuggestedBlock(block, parentBlock, out error), Is.True, () => error!);
+        Assert.That(() => validator.ValidateSuggestedBlock(block, parentBlock, out error), Is.EqualTo(isValid), () => error!);
     }
 }
