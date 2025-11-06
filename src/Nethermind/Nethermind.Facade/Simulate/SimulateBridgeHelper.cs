@@ -115,8 +115,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             {
                 nonceCache.Clear();
 
-                env.SimulateRequestState.TotalGasLeft = long.Min((long?)blockCall.BlockOverrides?.GasLimit ?? parent.GasLimit, gasCapLimit);
                 (BlockHeader callHeader, IReleaseSpec spec) = GetCallHeader(env.SpecProvider, blockCall, parent, payload.Validation);
+                env.SimulateRequestState.TotalGasLeft = long.Min(callHeader.GasLimit, gasCapLimit);
                 callHeader.Hash = callHeader.CalculateHash();
 
                 TransactionWithSourceDetails[] calls = blockCall.Calls ?? [];
