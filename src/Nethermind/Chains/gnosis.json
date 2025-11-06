@@ -122,7 +122,7 @@
           "0x7b23c07a0bbbe652bf7069c9c4143a2c85132166",
           "0x1bdc1febebf92bffab3a2e49c5cf3b7e35a9e81e"
         ],
-        "is7702PatchEnabled": false
+        "is7702PatchEnabled": true
       }
     ]
   },
