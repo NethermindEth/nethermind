@@ -124,11 +124,4 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
 
         return x;
     }
-
-    public new XdcBlockHeader Clone()
-    {
-        var header = (XdcBlockHeader)MemberwiseClone();
-        header.Bloom = Bloom?.Clone() ?? new Bloom();
-        return header;
-    }
 }
