@@ -140,8 +140,24 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         var version = log.Topics[3];
         if (version == DepositEvent.Version0)
         {
+            if (log.LogIndex is null)
+            {
+                throw new ArgumentException($"Log index cannot be null for deposit transaction");
+            }
+
+            if (log.LogIndex < 0)
+            {
+                throw new ArgumentException($"Log index cannot be negative, got {log.LogIndex}");
+            }
+
             var depositLogEventV0 = DepositLogEventV0.FromBytes(log.Data);
-            var sourceHash = ComputeSourceHash(log.BlockHash, (ulong)(log.LogIndex ?? 0)); // TODO: Unsafe cast with possible null;
+
+            if (depositLogEventV0.Gas > long.MaxValue)
+            {
+                throw new ArgumentException($"Gas limit {depositLogEventV0.Gas} exceeds maximum allowed value {long.MaxValue}");
+            }
+
+            var sourceHash = ComputeSourceHash(log.BlockHash, (ulong)log.LogIndex);
 
             return new()
             {
@@ -150,7 +166,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
                 To = depositLogEventV0.IsCreation ? null : to,
                 Mint = depositLogEventV0.Mint,
                 Value = depositLogEventV0.Value,
-                GasLimit = (long)depositLogEventV0.Gas, // WARNING: dangerous cast
+                GasLimit = (long)depositLogEventV0.Gas,
                 Data = depositLogEventV0.Data.ToArray(),
                 SourceHash = sourceHash,
                 IsOPSystemTransaction = false,
