@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -31,6 +32,12 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
         }
 
         block.Transactions[0].IsAnchorTx = true;
+
+        // If L1SLOAD precompile is enabled, set the anchor block ID.
+        if (L1SloadPrecompile.L1StorageProvider is not null)
+        {
+            JsonRpcL1StorageProvider.SetAnchorBlockId(block.Transactions[0]);
+        }
 
         using ArrayPoolListRef<Transaction> correctTransactions = new(block.Transactions.Length);
 

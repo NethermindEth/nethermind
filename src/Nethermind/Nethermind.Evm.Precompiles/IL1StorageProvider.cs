@@ -11,5 +11,5 @@ namespace Nethermind.Evm.Precompiles;
 /// </summary>
 public interface IL1StorageProvider
 {
-    UInt256? GetStorageValue(Address contractAddress, UInt256 storageKey, UInt256 blockNumber);
+    UInt256? GetStorageValue(Address contractAddress, UInt256 storageKey);
 }

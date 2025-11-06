@@ -21,9 +21,9 @@ public class TaikoBlockValidator(
     IEthereumEcdsa ecdsa,
     ILogManager logManager) : BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager)
 {
-    private static readonly byte[] AnchorSelector = Keccak.Compute("anchor(bytes32,bytes32,uint64,uint32)").Bytes[..4].ToArray();
-    private static readonly byte[] AnchorV2Selector = Keccak.Compute("anchorV2(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32))").Bytes[..4].ToArray();
-    private static readonly byte[] AnchorV3Selector = Keccak.Compute("anchorV3(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32),bytes32[])").Bytes[..4].ToArray();
+    public static readonly byte[] AnchorSelector = Keccak.Compute("anchor(bytes32,bytes32,uint64,uint32)").Bytes[..4].ToArray();
+    public static readonly byte[] AnchorV2Selector = Keccak.Compute("anchorV2(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32))").Bytes[..4].ToArray();
+    public static readonly byte[] AnchorV3Selector = Keccak.Compute("anchorV3(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32),bytes32[])").Bytes[..4].ToArray();
 
     public static readonly Address GoldenTouchAccount = new("0x0000777735367b36bC9B61C50022d9D0700dB4Ec");
 
