@@ -145,7 +145,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             LoadTransitions(allTransitions);
 
             IEnumerable<ulong> censoringTransitionTimestamps = _chainSpec.Parameters.CensoringSchedule.Select(cs => cs.Timestamp);
-            TransitionActivations = [.. CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps).Where(a => a.Timestamp is not null && !censoringTransitionTimestamps.Contains(a.Timestamp.Value))];
+            TransitionActivations = [.. CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps).Where(a => a.Timestamp is null || !censoringTransitionTimestamps.Contains(a.Timestamp.Value))];
 
             if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
