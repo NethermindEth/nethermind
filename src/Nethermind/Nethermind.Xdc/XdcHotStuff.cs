@@ -128,11 +128,11 @@ namespace Nethermind.Xdc
             }
             catch (OperationCanceledException)
             {
-                _logger.Info("XdcHotStuff consensus runner stopped gracefully");
+                _logger.Info("XdcHotStuff consensus runner stopped");
             }
             catch (Exception ex)
             {
-                _logger.Error("XdcHotStuff consensus runner encountered unexpected error", ex);
+                _logger.Error("XdcHotStuff consensus runner encountered fatal error", ex);
                 throw;
             }
             finally
@@ -199,9 +199,8 @@ namespace Nethermind.Xdc
                 {
                     throw;
                 }
-                catch (InvalidOperationException ex)
+                catch (InvalidOperationException)
                 {
-                    _logger.Error("", ex);
                     throw;
                 }
                 catch (Exception ex)

@@ -30,6 +30,7 @@ using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
+using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -42,11 +43,28 @@ namespace Nethermind.Xdc.Test.Helpers;
 public class XdcTestBlockchain : TestBlockchain
 {
     private readonly Random _random = new();
+    private readonly bool _useHotStuffModule;
 
-    public static async Task<XdcTestBlockchain> Create(Action<ContainerBuilder>? configurer = null)
+    public static async Task<XdcTestBlockchain> Create(int blocksToAdd, bool useHotStuffModule, Action<ContainerBuilder>? configurer = null)
     {
-        XdcTestBlockchain chain = new();
+        XdcTestBlockchain chain = new(useHotStuffModule);
         await chain.Build(configurer);
+
+        var fromXdcContainer = (FromContainer)chain.Container.Resolve<FromXdcContainer>();
+
+        Configuration testConfiguration = fromXdcContainer.Configuration;
+
+        if (testConfiguration.SuggestGenesisOnStart)
+        {
+            // The block added event is not waited by genesis, but its needed to wait here so that `AddBlock` wait correctly.
+            Task newBlockWaiter = chain.BlockTree.WaitForNewBlock(chain.CancellationToken);
+            chain.MainProcessingContext.GenesisLoader.Load();
+            await newBlockWaiter;
+            chain.QuorumCertificateManager.Initialize((XdcBlockHeader)chain.BlockTree.Head!.Header);
+        }
+
+        await chain.AddBlocks(blocksToAdd, true);
+
         return chain;
     }
 
@@ -58,11 +76,12 @@ public class XdcTestBlockchain : TestBlockchain
     public ITimeoutCertificateManager TimeoutCertificateManager => _fromXdcContainer.TimeoutCertificateManager;
     public ISnapshotManager SnapshotManager => _fromXdcContainer.SnapshotManager;
 
-    protected XdcTestBlockchain()
+    protected XdcTestBlockchain(bool useHotStuffModule)
     {
         var keys = new PrivateKeyGenerator().Generate(210).ToList();
         MasterNodeCandidates = keys.Take(200).ToList();
         RandomKeys = keys.Skip(200).ToList();
+        _useHotStuffModule = useHotStuffModule;
     }
 
     protected Signer Signer => (Signer)_fromXdcContainer.Signer;
@@ -113,7 +132,7 @@ public class XdcTestBlockchain : TestBlockchain
     // Please don't add any new parameter to this method. Pass any customization via autofac's configuration
     // or override method or a utility function that wrap around the autofac configuration.
     // Try to use plugin's module where possible to make sure prod and test components are wired similarly.
-    protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
+    protected override Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
     {
         JsonSerializer = new EthereumJsonSerializer();
 
@@ -125,11 +144,6 @@ public class XdcTestBlockchain : TestBlockchain
 
         Container = builder.Build();
 
-        _fromXdcContainer = Container.Resolve<FromXdcContainer>();
-        _fromContainer = (FromContainer)_fromXdcContainer;
-
-        Configuration testConfiguration = _fromContainer.Configuration;
-
         BlockchainProcessor.Start();
 
         BlockProducer = CreateTestBlockProducer();
@@ -139,19 +153,7 @@ public class XdcTestBlockchain : TestBlockchain
 
         _cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimout));
 
-        if (testConfiguration.SuggestGenesisOnStart)
-        {
-            // The block added event is not waited by genesis, but its needed to wait here so that `AddBlock` wait correctly.
-            Task newBlockWaiter = BlockTree.WaitForNewBlock(CancellationToken);
-            MainProcessingContext.GenesisLoader.Load();
-            await newBlockWaiter;
-            QuorumCertificateManager.Initialize((XdcBlockHeader)BlockTree.Head!.Header);
-        }
-
-        if (testConfiguration.AddBlockOnStart)
-            await AddBlocksOnStart();
-
-        return this;
+        return Task.FromResult((TestBlockchain)this);
     }
 
     protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
@@ -177,7 +179,9 @@ public class XdcTestBlockchain : TestBlockchain
             })
 
             .AddSingleton((_) => BlockProducer)
-            .AddSingleton((_) => BlockProducerRunner)
+            //.AddSingleton((_) => BlockProducerRunner)
+            .AddSingleton<IBlockProducerRunner, XdcHotStuff>()
+            .AddSingleton<IProcessExitSource>(new ProcessExitSource(TestContext.CurrentContext.CancellationToken))
 
             .AddSingleton<TestBlockchainUtil.Config, Configuration>((cfg) => new TestBlockchainUtil.Config(cfg.SlotTime))
 
@@ -277,6 +281,15 @@ public class XdcTestBlockchain : TestBlockchain
             BlocksConfig);
     }
 
+    protected override IBlockProducerRunner CreateBlockProducerRunner()
+    {
+        if (_useHotStuffModule)
+        {
+            return Container.Resolve<IBlockProducerRunner>();
+        }
+        return base.CreateBlockProducerRunner();
+    }
+
     private class XdcTestGenesisBuilder(
         ISpecProvider specProvider,
         IWorldState state,
@@ -315,29 +328,16 @@ public class XdcTestBlockchain : TestBlockchain
         }
     }
 
-    protected override async Task AddBlocksOnStart()
+    public async Task AddBlocks(int count, bool withTransaction = false)
     {
         UInt256 nonce = 0;
-        //for (var i = 0; i < MAX_EPOCH_COUNT; i++)
-        {
-            for (var j = 0; j < 3; j++)
-            {
-                await AddBlock(CreateTransactionBuilder().WithNonce(nonce++).TestObject);
-            }
-        }
 
-        while (true)
-        {
-            CancellationToken.ThrowIfCancellationRequested();
-            if (BlockTree.Head?.Number == 3) return;
-            await Task.Delay(1, CancellationToken);
-        }
-    }
-    public async Task AddBlocks(int count)
-    {
         for (var i = 0; i < count; i++)
         {
-            await AddBlock();
+            if (withTransaction)
+                await AddBlock(CreateTransactionBuilder().WithNonce(nonce++).TestObject);
+            else
+                await AddBlock();
         }
     }
 
@@ -353,13 +353,7 @@ public class XdcTestBlockchain : TestBlockchain
             this.SnapshotManager.StoreSnapshot(new Types.Snapshot(head.Number, head.Hash!, MasterNodeCandidates.Select(k => k.Address).ToArray()));
         }
 
-        EpochSwitchInfo switchInfo = EpochSwitchManager.GetEpochSwitchInfo(head.Hash!)!;
-
-        var gap = (ulong)Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % headSpec.EpochLength - headSpec.Gap);
-        PrivateKey[] masterNodes = TakeRandomMasterNodes(headSpec, switchInfo);
-        var headQc = XdcTestHelper.CreateQc(new BlockRoundInfo(head.Hash!, XdcContext.CurrentRound, head.Number), gap,
-            masterNodes);
-        QuorumCertificateManager.CommitCertificate(headQc);
+        CreateAndCommitQC(head);
     }
 
     public async Task<Block> AddBlockWithoutCommitQc(params Transaction[] txs)
@@ -374,6 +368,18 @@ public class XdcTestBlockchain : TestBlockchain
         }
 
         return BlockTree.Head!;
+    }
+
+    public void CreateAndCommitQC(XdcBlockHeader header)
+    {
+        var headSpec = SpecProvider.GetXdcSpec(header, XdcContext.CurrentRound);
+        EpochSwitchInfo switchInfo = EpochSwitchManager.GetEpochSwitchInfo(header.Hash!)!;
+
+        var gap = (ulong)Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % headSpec.EpochLength - headSpec.Gap);
+        PrivateKey[] masterNodes = TakeRandomMasterNodes(headSpec, switchInfo);
+        var headQc = XdcTestHelper.CreateQc(new BlockRoundInfo(header.Hash!, XdcContext.CurrentRound, header.Number), gap,
+            masterNodes);
+        QuorumCertificateManager.CommitCertificate(headQc);
     }
 
 
