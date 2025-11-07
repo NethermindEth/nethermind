@@ -162,7 +162,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             if (!_blockValidator.ValidateOrphanedBlock(block!, out string? error))
             {
-                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "orphaned block is invalid"));
+                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"orphaned block is invalid: {error}"));
                 return NewPayloadV1Result.Invalid(null, $"Invalid block without parent: {error}.");
             }
 

@@ -23,7 +23,6 @@ internal class XdcTestBlockchainTests
     public async Task Setup()
     {
         _blockchain = await XdcTestBlockchain.Create();
-        await _blockchain.WaitForNewHead();
     }
 
     [TearDown]
@@ -33,16 +32,18 @@ internal class XdcTestBlockchainTests
     }
 
     [Test]
-    public void SampleTest()
+    public async Task SetupXdcChainAndValidateAllHeaders()
     {
+        await _blockchain.AddBlocks(1800); 
         IHeaderValidator headerValidator = _blockchain.Container.Resolve<IHeaderValidator>();
-        BlockHeader parent = _blockchain.BlockTree.Genesis!;    
+        BlockHeader parent = _blockchain.BlockTree.Genesis!;
         for (int i = 1; i < _blockchain.BlockTree.Head!.Number; i++)
         {
             var block = _blockchain.BlockTree.FindBlock(i);
             Assert.That(block, Is.Not.Null);
             string? error;
-            Assert.That(headerValidator.Validate(block!.Header, parent, false, out error) , Is.True, "Header validation failed: " + error);
-        }   
+            Assert.That(headerValidator.Validate(block!.Header, parent, false, out error), Is.True, "Header validation failed: " + error);
+            parent = block.Header;
+        }
     }
 }

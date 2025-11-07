@@ -58,7 +58,7 @@ internal class ExtraConsensusDataDecoderTests
         ExtraConsensusDataDecoder decoder = new();
 
         Rlp encodedExtraData = decoder.Encode(extraFieldsV2);
-            
+
         ExtraFieldsV2 unencoded = decoder.Decode(new RlpStream(encodedExtraData.Bytes));
 
         unencoded.Should().BeEquivalentTo(extraFieldsV2);

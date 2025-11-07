@@ -87,7 +87,7 @@ public class PruningTrieStateFactory(
             trieStore,
             dbProvider,
             logManager,
-            new LastNStateRootTracker(blockTree, 128));
+            new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));
 
         // NOTE: Don't forget this! Very important!
         TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, blockTree!, logManager);
@@ -190,10 +190,10 @@ public class MainPruningTrieStoreFactory
 
         AdviseConfig(pruningConfig, dbConfig, hardwareInfo);
 
-        if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < 128)
+        if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < syncConfig.SnapServingMaxDepth)
         {
-            if (_logger.IsInfo) _logger.Info($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
-            pruningConfig.PruningBoundary = 128;
+            if (_logger.IsInfo) _logger.Info($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than {syncConfig.SnapServingMaxDepth}. Setting to {syncConfig.SnapServingMaxDepth}.");
+            pruningConfig.PruningBoundary = syncConfig.SnapServingMaxDepth;
         }
 
         if (pruningConfig.PruningBoundary < 64)
