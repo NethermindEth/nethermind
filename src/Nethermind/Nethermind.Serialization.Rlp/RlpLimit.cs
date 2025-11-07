@@ -20,7 +20,7 @@ public record struct RlpLimit(int Limit, string TypeName = "", ReadOnlyMemory<ch
     public static readonly RlpLimit L65 = new(65);
     private string _collectionExpression;
 
-    public RlpLimit() : this((int)256.KiB()) { }
+    public RlpLimit() : this((int)1.MiB()) { }
 
     public string CollectionExpression
     {
