@@ -79,15 +79,15 @@ namespace Nethermind.Precompiles.Benchmark
             => Bytes.FromHexString(line.Split(',')[0]);
 
         [Benchmark(Baseline = true, OperationsPerInvoke = Operations)]
-        public (byte[], bool) Baseline()
+        public bool Baseline()
         {
             bool overallResult = true;
             for (var i = 0; i < Operations; i++)
             {
-            	Result<byte[]> result = Input.Precompile.Run(Input.Bytes, Cancun.Instance);
-                overallResult &= result.ResultType == ResultType.Success;
+                Result<byte[]> result = Input.Precompile.Run(Input.Bytes, Cancun.Instance);
+                overallResult &= result;
             }
-            return (default, overallResult);
+            return overallResult;
         }
     }
 }
