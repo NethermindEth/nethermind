@@ -59,7 +59,7 @@ internal class XdcBlockTree : BlockTree
             return AddBlockResult.InvalidBlock;
         }
         BlockHeader current = header;
-        for(long i = header.Number; i >= finalizedBlockInfo.BlockNumber; i--)
+        for (long i = header.Number; i >= finalizedBlockInfo.BlockNumber; i--)
         {
             if (finalizedBlockInfo.BlockNumber >= current.Number)
                 return AddBlockResult.InvalidBlock;
@@ -69,7 +69,7 @@ internal class XdcBlockTree : BlockTree
 
             current = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (current == null)
-                return AddBlockResult.UnknownParent;      
+                return AddBlockResult.UnknownParent;
         }
         //This is not possible to reach
         return AddBlockResult.InvalidBlock;
