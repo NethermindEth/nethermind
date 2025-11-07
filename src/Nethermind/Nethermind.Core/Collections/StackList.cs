@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Caching;
 
 namespace Nethermind.Core.Collections
 {
@@ -47,10 +48,7 @@ namespace Nethermind.Core.Collections
             }
         }
 
-        public void Push(T item)
-        {
-            Add(item);
-        }
+        public void Push(T item) => Add(item);
 
         public bool TryGetSearchedItem(T activation, out T item)
         {
@@ -78,6 +76,20 @@ namespace Nethermind.Core.Collections
             }
 
             return result;
+        }
+
+        internal static StackList<T> Rent()
+            => StaticPool<StackList<T>>.Rent();
+
+        internal static void Return(StackList<T> value)
+        {
+            const int MaxPooledCapacity = 128;
+
+            if (value.Capacity > MaxPooledCapacity)
+                return;
+
+            value.Clear();
+            StaticPool<StackList<T>>.Return(value);
         }
     }
 }

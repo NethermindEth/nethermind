@@ -1,13 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -15,10 +12,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing.State;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -31,9 +26,9 @@ using Nethermind.Core.Cpu;
 /// </summary>
 internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 {
-    private readonly ITrieStore _trieStore;
-    private readonly StateProvider _stateProvider;
-    private readonly ILogManager? _logManager;
+    internal readonly ITrieStore _trieStore;
+    internal readonly StateProvider _stateProvider;
+    internal readonly ILogManager? _logManager;
     internal readonly IStorageTreeFactory _storageTreeFactory;
     private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = new();
@@ -44,7 +39,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     private readonly Dictionary<StorageCell, byte[]> _originalValues = new();
 
     private readonly HashSet<StorageCell> _committedThisRound = new();
-    private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
+    internal readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
 
     /// <summary>
     /// Manages persistent storage allowing for snapshotting and restoring
@@ -66,7 +61,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     }
 
     public Hash256 StateRoot { get; set; } = null!;
-    private readonly bool _populatePreBlockCache;
+    internal readonly bool _populatePreBlockCache;
 
     /// <summary>
     /// Reset the storage state
@@ -78,7 +73,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         _committedThisRound.Clear();
         if (resetBlockChanges)
         {
-            _storages.Clear();
+            ClearAndPoolStorages();
             _toUpdateRoots.Clear();
         }
     }
@@ -140,10 +135,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= new());
 
         bool isTracing = tracer.IsTracingStorage;
-        Dictionary<StorageCell, ChangeTrace>? trace = null;
+        Dictionary<StorageCell, StorageChangeTrace>? trace = null;
         if (isTracing)
         {
-            trace = new Dictionary<StorageCell, ChangeTrace>();
+            trace = [];
         }
 
         for (int i = 0; i <= currentPosition; i++)
@@ -158,7 +153,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             {
                 if (isTracing && change.ChangeType == ChangeType.JustCache)
                 {
-                    trace![change.StorageCell] = new ChangeTrace(change.Value, trace[change.StorageCell].After);
+                    trace![change.StorageCell] = new StorageChangeTrace(change.Value, trace[change.StorageCell].After);
                 }
 
                 continue;
@@ -204,7 +199,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
                 if (isTracing)
                 {
-                    trace![change.StorageCell] = new ChangeTrace(change.Value);
+                    trace![change.StorageCell] = new StorageChangeTrace(change.Value);
                 }
             }
         }
@@ -353,21 +348,23 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         // may make it worse. Always check on mainnet.
 
         using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
-        foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
+        foreach (PerContractState storage in _storages.Values)
         {
-            storage.Value.EnsureStorageTree(); // Cannot be called concurrently
+            storage.EnsureStorageTree(); // Cannot be called concurrently
             if (blockCommitter.TryRequestConcurrencyQuota())
             {
                 commitTask.Add(Task.Factory.StartNew((ctx) =>
                 {
                     PerContractState st = (PerContractState)ctx;
                     st.Commit();
+                    st.Reset();
                     blockCommitter.ReturnConcurrencyQuota();
-                }, storage.Value));
+                }, storage));
             }
             else
             {
-                storage.Value.Commit();
+                storage.Commit();
+                storage.Reset();
             }
         }
 
@@ -376,10 +373,19 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         _storages.Clear();
     }
 
+    private void ClearAndPoolStorages()
+    {
+        foreach (PerContractState storage in _storages.Values)
+        {
+            storage.Reset();
+        }
+        _storages.Clear();
+    }
+
     private PerContractState GetOrCreateStorage(Address address)
     {
         ref PerContractState? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
-        if (!exists) value = new PerContractState(address, this);
+        if (!exists) value = PerContractState.Rent(address, this);
         return value;
     }
 
@@ -403,7 +409,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
     }
 
-    private void PushToRegistryOnly(in StorageCell cell, byte[] value)
+    internal void PushToRegistryOnly(in StorageCell cell, byte[] value)
     {
         StackList<int> stack = SetupRegistry(cell);
         _originalValues[cell] = value;
@@ -411,9 +417,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         _changes.Add(new Change(in cell, value, ChangeType.JustCache));
     }
 
-    private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, ChangeTrace> trace)
+    private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
     {
-        foreach ((StorageCell address, ChangeTrace change) in trace)
+        foreach ((StorageCell address, StorageChangeTrace change) in trace)
         {
             byte[] before = change.Before;
             byte[] after = change.After;
@@ -447,250 +453,5 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         public StorageTree Create(Address address, IScopedTrieStore trieStore, Hash256 storageRoot, Hash256 stateRoot, ILogManager? logManager)
             => new(trieStore, storageRoot, logManager);
-    }
-
-    private sealed class DefaultableDictionary()
-    {
-        private bool _missingAreDefault;
-        private readonly Dictionary<UInt256, ChangeTrace> _dictionary = new(Comparer.Instance);
-        public int EstimatedSize => _dictionary.Count;
-
-        public void ClearAndSetMissingAsDefault()
-        {
-            _missingAreDefault = true;
-            _dictionary.Clear();
-        }
-
-        public ref ChangeTrace GetValueRefOrAddDefault(UInt256 storageCellIndex, out bool exists)
-        {
-            ref ChangeTrace value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dictionary, storageCellIndex, out exists);
-            if (!exists && _missingAreDefault)
-            {
-                // Where we know the rest of the tree is empty
-                // we can say the value was found but is default
-                // rather than having to check the database
-                value = ChangeTrace.ZeroBytes;
-                exists = true;
-            }
-            return ref value;
-        }
-
-        public ref ChangeTrace GetValueRefOrNullRef(UInt256 storageCellIndex)
-            => ref CollectionsMarshal.GetValueRefOrNullRef(_dictionary, storageCellIndex);
-
-        public ChangeTrace this[UInt256 key]
-        {
-            set => _dictionary[key] = value;
-        }
-
-        public Dictionary<UInt256, ChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
-
-        private sealed class Comparer : IEqualityComparer<UInt256>
-        {
-            public static Comparer Instance { get; } = new();
-
-            private Comparer() { }
-
-            public bool Equals(UInt256 x, UInt256 y)
-                => Unsafe.As<UInt256, Vector256<byte>>(ref x) == Unsafe.As<UInt256, Vector256<byte>>(ref y);
-
-            public int GetHashCode([DisallowNull] UInt256 obj)
-                => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
-        }
-    }
-
-    private sealed class PerContractState
-    {
-        private StorageTree? StorageTree;
-        private DefaultableDictionary BlockChange = new DefaultableDictionary();
-        private bool _wasWritten = false;
-        private readonly Func<StorageCell, byte[]> _loadFromTreeStorageFunc;
-        private readonly Address _address;
-        private readonly PersistentStorageProvider _provider;
-
-        public PerContractState(Address address,
-            PersistentStorageProvider provider)
-        {
-            _address = address;
-            _provider = provider;
-            _loadFromTreeStorageFunc = LoadFromTreeStorage;
-        }
-
-        public void EnsureStorageTree()
-        {
-            if (StorageTree is not null) return;
-
-            // Note: GetStorageRoot is not concurrent safe! And so do this whole method!
-            Account? acc = _provider._stateProvider.GetAccount(_address);
-            Hash256 storageRoot = acc?.StorageRoot ?? Keccak.EmptyTreeHash;
-            bool isEmpty = storageRoot == Keccak.EmptyTreeHash; // We know all lookups will be empty against this tree
-            StorageTree = _provider._storageTreeFactory.Create(_address,
-                _provider._trieStore.GetTrieStore(_address),
-                storageRoot,
-                _provider.StateRoot,
-                _provider._logManager);
-
-            if (isEmpty && !_wasWritten)
-            {
-                // Slight optimization that skips the tree
-                BlockChange.ClearAndSetMissingAsDefault();
-            }
-        }
-
-        public Hash256 RootHash
-        {
-            get
-            {
-                EnsureStorageTree();
-                return StorageTree.RootHash;
-            }
-        }
-
-        public void Commit()
-        {
-            EnsureStorageTree();
-            StorageTree.Commit();
-        }
-
-        public void Clear()
-        {
-            StorageTree = new StorageTree(_provider._trieStore.GetTrieStore(_address), Keccak.EmptyTreeHash, _provider._logManager);
-            BlockChange.ClearAndSetMissingAsDefault();
-        }
-
-        public void SaveChange(StorageCell storageCell, byte[] value)
-        {
-            _wasWritten = true;
-            ref ChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
-            if (!exists)
-            {
-                valueChanges = new ChangeTrace(value);
-            }
-            else
-            {
-                valueChanges.After = value;
-            }
-        }
-
-        public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
-        {
-            ref ChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
-            if (!exists)
-            {
-                byte[] value = !_provider._populatePreBlockCache ?
-                    LoadFromTreeReadPreWarmCache(in storageCell) :
-                    LoadFromTreePopulatePrewarmCache(in storageCell);
-
-                valueChange = new(value, value);
-            }
-            else
-            {
-                Db.Metrics.IncrementStorageTreeCache();
-            }
-
-            if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
-            return valueChange.After;
-        }
-
-        private byte[] LoadFromTreeReadPreWarmCache(in StorageCell storageCell)
-        {
-            if (_provider._preBlockCache?.TryGetValue(storageCell, out byte[] value) ?? false)
-            {
-                Db.Metrics.IncrementStorageTreeCache();
-            }
-            else
-            {
-                value = LoadFromTreeStorage(storageCell);
-            }
-            return value;
-        }
-
-        private byte[] LoadFromTreePopulatePrewarmCache(in StorageCell storageCell)
-        {
-            long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
-
-            byte[] value = _provider._preBlockCache is not null
-                ? _provider._preBlockCache.GetOrAdd(storageCell, _loadFromTreeStorageFunc)
-                : LoadFromTreeStorage(storageCell);
-
-            if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
-            {
-                // Read from Concurrent Cache
-                Db.Metrics.IncrementStorageTreeCache();
-            }
-            return value;
-        }
-
-        private byte[] LoadFromTreeStorage(StorageCell storageCell)
-        {
-            Db.Metrics.IncrementStorageTreeReads();
-
-            EnsureStorageTree();
-            return !storageCell.IsHash
-                ? StorageTree.Get(storageCell.Index)
-                : StorageTree.GetArray(storageCell.Hash.Bytes);
-        }
-
-        public (int writes, int skipped) ProcessStorageChanges()
-        {
-            EnsureStorageTree();
-
-            int writes = 0;
-            int skipped = 0;
-            if (BlockChange.EstimatedSize < PatriciaTree.MinEntriesToParallelizeThreshold)
-            {
-                foreach (var kvp in BlockChange)
-                {
-                    byte[] after = kvp.Value.After;
-                    if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
-                    {
-                        BlockChange[kvp.Key] = new(after, after);
-                        StorageTree.Set(kvp.Key, after);
-                        writes++;
-                    }
-                    else
-                    {
-                        skipped++;
-                    }
-                }
-            }
-            else
-            {
-                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkWrite = new(BlockChange.EstimatedSize);
-
-                Span<byte> keyBuf = stackalloc byte[32];
-                foreach (KeyValuePair<UInt256, ChangeTrace> kvp in BlockChange)
-                {
-                    byte[] after = kvp.Value.After;
-                    if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
-                    {
-                        BlockChange[kvp.Key] = new(after, after);
-
-                        StorageTree.ComputeKeyWithLookup(kvp.Key, keyBuf);
-                        bulkWrite.Add(StorageTree.CreateBulkSetEntry(new ValueHash256(keyBuf), after));
-
-                        writes++;
-                    }
-                    else
-                    {
-                        skipped++;
-                    }
-                }
-
-                StorageTree.BulkSet(bulkWrite);
-            }
-
-            if (writes > 0)
-            {
-                StorageTree.UpdateRootHash(canBeParallel: writes > 64);
-            }
-
-            return (writes, skipped);
-        }
-
-        public void RemoveStorageTree()
-        {
-            StorageTree = null;
-        }
     }
 }
