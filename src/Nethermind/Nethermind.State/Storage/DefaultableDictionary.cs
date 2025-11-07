@@ -17,7 +17,7 @@ internal sealed class DefaultableDictionary()
     private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
     public int EstimatedSize => _dictionary.Count;
     public int Capacity => _dictionary.Capacity;
-    
+
     public void Reset()
     {
         _missingAreDefault = false;
