@@ -15,8 +15,7 @@ public class BPO3 : BPO2
         Name = "bpo3";
         MaxBlobCount = 32;
         TargetBlobCount = 21;
-        // change
-        BlobBaseFeeUpdateFraction = 11684671;
+        BlobBaseFeeUpdateFraction = 17805213;
         Released = false;
     }
 

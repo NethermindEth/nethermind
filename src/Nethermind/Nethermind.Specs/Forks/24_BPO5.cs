@@ -15,8 +15,7 @@ public class BPO5 : BPO4
         Name = "bpo5";
         MaxBlobCount = 72;
         TargetBlobCount = 48;
-        // change
-        BlobBaseFeeUpdateFraction = 11684671;
+        BlobBaseFeeUpdateFraction = 40061729;
         Released = false;
     }
 
