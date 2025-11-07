@@ -54,13 +54,12 @@ namespace Nethermind.Facade
         /// Checks if state is available for the given block header.
         /// </summary>
         /// <param name="baseBlock">The block header to check state availability for.</param>
-        /// <returns>True if state is available, false otherwise (conservative approach).</returns>
+        /// <returns>True if state is available, false otherwise.</returns>
         /// <remarks>
-        /// This method uses a conservative approach based on node configuration:
-        /// - Archive nodes (PruningMode.None): State available from LowestInsertedHeader (if snap synced) to head.
-        /// - Pruning nodes (Memory/Full/Hybrid): State available within pruning boundary window (head - boundary + 1 to head).
-        /// Always returns false during state sync to prevent race conditions.
-        /// May return false negatives during slow state persistence to avoid claiming state exists when it might not.
+        /// Three cases:
+        /// - Archive nodes (FastSync=false, SnapSync=false, PruningMode=None): Always returns true.
+        /// - Pruning nodes (PruningMode != None): Returns true if block is within pruning boundary (requestedBlock &lt;= head - boundary).
+        /// - Else: Delegates to IStateReader.HasStateForBlock for accurate state availability.
         /// </remarks>
         bool HasStateForBlock(BlockHeader baseBlock);
     }

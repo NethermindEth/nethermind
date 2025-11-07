@@ -9,7 +9,6 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -23,7 +22,6 @@ using Block = Nethermind.Core.Block;
 using System.Threading;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
 using Nethermind.State;
 using Nethermind.Config;
@@ -57,7 +55,7 @@ namespace Nethermind.Facade
         IBlocksConfig blocksConfig,
         IMiningConfig miningConfig,
         IPruningConfig pruningConfig,
-        IEthSyncingInfo ethSyncingInfo)
+        ISyncConfig syncConfig)
         : IBlockchainBridge
     {
         private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
@@ -391,44 +389,21 @@ namespace Nethermind.Facade
 
         public bool HasStateForBlock(BlockHeader baseBlock)
         {
-            long headNumber = blockTree.Head?.Number ?? 0;
-            long requestedNumber = baseBlock.Number;
-
-            // Conservative: don't claim we have state during state sync
-            // This prevents race conditions during the sync process for all node types
-            if (ethSyncingInfo.SyncMode.HaveNotSyncedStateYet())
+            // Archive node
+            if (!syncConfig.FastSync && !syncConfig.SnapSync && pruningConfig.Mode == PruningMode.None)
             {
-                return false;
+                return true;
             }
 
-            // Archive nodes: no pruning, keep all state from snap sync point forward
-            if (pruningConfig.Mode == PruningMode.None)
+            // Pruning node - check boundary
+            if (pruningConfig.Mode != PruningMode.None)
             {
-                // For archive nodes that were snap synced, check the lowest inserted header
-                // We use LowestInsertedHeader (not SyncPivot) because SyncPivot moves forward over time
-                // as finalized blocks progress, while LowestInsertedHeader remains at the original starting point
-                long? lowestInsertedBlockNumber = blockTree.LowestInsertedHeader?.Number;
-                if (lowestInsertedBlockNumber.HasValue && lowestInsertedBlockNumber > 0 && requestedNumber < lowestInsertedBlockNumber)
-                {
-                    return false;  // State was never synced before the lowest inserted header
-                }
-
-                // For archive nodes, state is available for all blocks from snap sync point to head
-                return requestedNumber <= headNumber;
+                long headNumber = blockTree.Head?.Number ?? 0;
+                long requestedNumber = baseBlock.Number;
+                return requestedNumber <= headNumber - pruningConfig.PruningBoundary;
             }
 
-            // Pruning nodes: calculate oldest available state based on pruning boundary
-            // This is conservative but correct for all pruning node configurations:
-            // - Memory pruning: respects the configured boundary
-            // - Full pruning: also uses pruning boundary (persisted state within this window)
-            // - Hybrid: combination of both
-            // We add 1 for safety margin to account for:
-            // 1. Race conditions between checking state and accessing it
-            // 2. Blocks that might be pruned between the check and actual access
-            long oldestAvailableState = headNumber - pruningConfig.PruningBoundary + 1;
-
-            // Check if requested block is within available range
-            return requestedNumber >= oldestAvailableState && requestedNumber <= headNumber;
+            return stateReader.HasStateForBlock(baseBlock);
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
