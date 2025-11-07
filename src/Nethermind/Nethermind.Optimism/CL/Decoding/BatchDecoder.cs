@@ -11,6 +11,7 @@ namespace Nethermind.Optimism.CL.Decoding;
 
 public static class BatchDecoder
 {
+    private const ulong MaxSpanBatchElementCount = 10_000_000;
     public static IEnumerable<BatchV1> DecodeSpanBatches(ReadOnlyMemory<byte> source)
     {
         var reader = new BinaryMemoryReader(source);
@@ -36,8 +37,15 @@ public static class BatchDecoder
         var l1OriginCheck = reader.Take(20);
 
         // payload
-        // TODO: `blockCount`: This is at least 1, empty span batches are invalid.
         var blockCount = reader.Read(Protobuf.DecodeULong);
+        if (blockCount < 1)
+        {
+            throw new FormatException("Invalid span batch: block_count must be >= 1");
+        }
+        if (blockCount > MaxSpanBatchElementCount)
+        {
+            throw new FormatException($"Invalid span batch: block_count exceeds MAX_SPAN_BATCH_ELEMENT_COUNT ({MaxSpanBatchElementCount})");
+        }
         var originBits = reader.Read(Protobuf.DecodeBitList, blockCount);
 
         var blockTransactionCounts = new ulong[blockCount];
@@ -45,7 +53,15 @@ public static class BatchDecoder
         for (var i = 0; i < (int)blockCount; ++i)
         {
             blockTransactionCounts[i] = reader.Read(Protobuf.DecodeULong);
+            if (blockTransactionCounts[i] > MaxSpanBatchElementCount)
+            {
+                throw new FormatException($"Invalid span batch: tx count for block {i} exceeds MAX_SPAN_BATCH_ELEMENT_COUNT ({MaxSpanBatchElementCount})");
+            }
             totalTxCount += blockTransactionCounts[i];
+            if (totalTxCount > MaxSpanBatchElementCount)
+            {
+                throw new FormatException($"Invalid span batch: totalTxCount exceeds MAX_SPAN_BATCH_ELEMENT_COUNT ({MaxSpanBatchElementCount})");
+            }
         }
         // TODO:
         // `totalTxCount` in BatchV1 cannot be greater than MaxSpanBatchElementCount (`10_000_000`).
