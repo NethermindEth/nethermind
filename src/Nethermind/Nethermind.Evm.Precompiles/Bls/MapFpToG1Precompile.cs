@@ -38,8 +38,8 @@ public class MapFpToG1Precompile : IPrecompile<MapFpToG1Precompile>
         if (inputData.Length != expectedInputLength) return Errors.InvalidInputLength;
 
         G1 res = new(stackalloc long[G1.Sz]);
-        string? error = BlsExtensions.ValidRawFp(inputData.Span);
-        if (error is not Errors.NoError) return error;
+        Result result = BlsExtensions.ValidRawFp(inputData.Span);
+        if (!result) return result.Error!;
 
         // map field point to G1
         ReadOnlySpan<byte> fp = inputData[BlsConst.LenFpPad..BlsConst.LenFp].Span;

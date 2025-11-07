@@ -38,17 +38,18 @@ public class MapFp2ToG2Precompile : IPrecompile<MapFp2ToG2Precompile>
         if (inputData.Length != expectedInputLength) return Errors.InvalidInputLength;
 
         G2 res = new(stackalloc long[G2.Sz]);
-        string? error = BlsExtensions.ValidRawFp(inputData.Span[..BlsConst.LenFp]);
-        if (error is not Errors.NoError) return error;
+        Result result;
+        if ((result = BlsExtensions.ValidRawFp(inputData.Span[..BlsConst.LenFp])) &&
+            (result = BlsExtensions.ValidRawFp(inputData.Span[BlsConst.LenFp..])))
+        {
+            // map field point to G2
+            ReadOnlySpan<byte> fp0 = inputData[BlsConst.LenFpPad..BlsConst.LenFp].Span;
+            ReadOnlySpan<byte> fp1 = inputData[(BlsConst.LenFp + BlsConst.LenFpPad)..].Span;
+            res.MapTo(fp0, fp1);
 
-        error = BlsExtensions.ValidRawFp(inputData.Span[BlsConst.LenFp..]);
-        if (error is not Errors.NoError) return error;
+            return res.EncodeRaw();
+        }
 
-        // map field point to G2
-        ReadOnlySpan<byte> fp0 = inputData[BlsConst.LenFpPad..BlsConst.LenFp].Span;
-        ReadOnlySpan<byte> fp1 = inputData[(BlsConst.LenFp + BlsConst.LenFpPad)..].Span;
-        res.MapTo(fp0, fp1);
-
-        return res.EncodeRaw();
+        return result.Error!;
     }
 }

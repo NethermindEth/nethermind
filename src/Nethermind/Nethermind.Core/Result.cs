@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Core
 {
@@ -10,6 +11,7 @@ namespace Nethermind.Core
         public static Result Fail(string error) => new() { ResultType = ResultType.Failure, Error = error };
         public static Result Success { get; } = new() { ResultType = ResultType.Success };
         public static implicit operator bool(Result result) => result.ResultType == ResultType.Success;
+        public static implicit operator Result(string? error) => error is null ? Success : Fail(error);
     }
 
     public readonly record struct Result<TData>(ResultType ResultType, TData? Data = default, string? Error = null)
@@ -20,6 +22,7 @@ namespace Nethermind.Core
         public static implicit operator Result<TData>(TData data) => Success(data);
         public static implicit operator Result<TData>(string error) => Fail(error, typeof(TData) == typeof(byte[]) ? (TData)(object)Array.Empty<byte>() : default);
         public static implicit operator (TData?, bool)(Result<TData> result) => (result.Data, result.ResultType == ResultType.Success);
+        public static implicit operator Result(Result<TData> result) => result.Error;
 
         public void Deconstruct(out TData? result, out bool success)
         {

@@ -49,20 +49,22 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
         {
             int offset = i * PairSize;
 
-            string? error = x.TryDecodeRaw(inputData[offset..(offset + BlsConst.LenG1)].Span);
-            if (error is not Errors.NoError) return error;
-            if (!(BlsConst.DisableSubgroupChecks || x.InGroup())) return Errors.G1PointSubgroup;
+            Result result;
+            if ((result = x.TryDecodeRaw(inputData[offset..(offset + BlsConst.LenG1)].Span)) &&
+                (result = y.TryDecodeRaw(inputData[(offset + BlsConst.LenG1)..(offset + PairSize)].Span)))
+            {
+                if (!(BlsConst.DisableSubgroupChecks || x.InGroup())) return Errors.G1PointSubgroup;
+                if (!(BlsConst.DisableSubgroupChecks || y.InGroup())) return Errors.G2PointSubgroup;
 
-            error = y.TryDecodeRaw(inputData[(offset + BlsConst.LenG1)..(offset + PairSize)].Span);
-            if (error is not Errors.NoError) return error;
-            if (!(BlsConst.DisableSubgroupChecks || y.InGroup())) return Errors.G2PointSubgroup;
+                // x == inf || y == inf -> e(x, y) = 1
+                if (x.IsInf() || y.IsInf()) continue;
 
-            // x == inf || y == inf -> e(x, y) = 1
-            if (x.IsInf() || y.IsInf()) continue;
+                // acc *= e(x, y)
+                p.MillerLoop(y, x);
+                acc.Mul(p);
+            }
 
-            // acc *= e(x, y)
-            p.MillerLoop(y, x);
-            acc.Mul(p);
+            return result.Error!;
         }
 
         // e(x_0, y_0) * e(x_1, y_1) * ... == 1

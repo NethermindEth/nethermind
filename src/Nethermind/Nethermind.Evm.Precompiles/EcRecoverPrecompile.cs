@@ -15,6 +15,7 @@ namespace Nethermind.Evm.Precompiles;
 public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
 {
     public static readonly EcRecoverPrecompile Instance = new();
+    private static readonly Result<byte[]> Empty = Array.Empty<byte>();
 
     private EcRecoverPrecompile()
     {
@@ -53,20 +54,20 @@ public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
         // TEST: CALLCODEEcrecoverV_prefixedf0_d1g0v0
         if (!Bytes.AreEqual(_zero31, vBytes[..31]))
         {
-            return Array.Empty<byte>();
+            return Empty;
         }
 
         byte v = vBytes[31];
         if (v != 27 && v != 28)
         {
-            return Array.Empty<byte>();
+            return Empty;
         }
 
         Span<byte> publicKey = stackalloc byte[65];
         if (!EthereumEcdsa.RecoverAddressRaw(inputDataSpan.Slice(64, 64), Signature.GetRecoveryId(v),
                 inputDataSpan[..32], publicKey))
         {
-            return Array.Empty<byte>();
+            return Empty;
         }
 
         byte[] result = ValueKeccak.Compute(publicKey.Slice(1, 64)).ToByteArray();

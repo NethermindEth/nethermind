@@ -56,8 +56,8 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
     private Result<byte[]> Mul(ReadOnlyMemory<byte> inputData)
     {
         G1 x = new(stackalloc long[G1.Sz]);
-        string? error = x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span);
-        if (error is not Errors.NoError) return error;
+        Result result = x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span);
+        if (!result) return result.Error!;
 
         if (!(BlsConst.DisableSubgroupChecks || x.InGroup())) return Errors.G1PointSubgroup;
 
@@ -101,16 +101,16 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
             return BlsConst.G1Inf;
         }
 
-        string? error = null;
+        Result result = Result.Success;
 
         // decode points to rawPoints buffer
         // n.b. subgroup checks carried out as part of decoding
 #pragma warning disable CS0162 // Unreachable code detected
         if (BlsConst.DisableConcurrency)
         {
-            for (int i = 0; i < pointDestinations.Count && error is not Errors.NoError; i++)
+            for (int i = 0; i < pointDestinations.Count && result; i++)
             {
-                error = BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), pointDestinations[i], i);
+                result = BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), pointDestinations[i], i);
             }
         }
         else
@@ -118,17 +118,17 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
             Parallel.ForEach(pointDestinations, (dest, state, i) =>
             {
                 int index = (int)i;
-                string? localError = BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), dest, index);
-                if (localError is not Errors.NoError)
+                Result local = BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), dest, index);
+                if (!local)
                 {
-                    error = localError;
+                    result = local;
                     state.Break();
                 }
             });
         }
 #pragma warning restore CS0162 // Unreachable code detected
 
-        if (error is not Errors.NoError) return error;
+        if (!result) return result.Error!;
 
         // compute res = rawPoints_0 * rawScalars_0 + rawPoints_1 * rawScalars_1 + ...
         G1 res = new G1(stackalloc long[G1.Sz]).MultiMult(rawPoints.AsSpan(), rawScalars.AsSpan(), npoints);

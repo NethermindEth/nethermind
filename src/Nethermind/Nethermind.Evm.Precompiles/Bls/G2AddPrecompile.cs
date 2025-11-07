@@ -39,18 +39,19 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
 
         G2 x = new(stackalloc long[G2.Sz]);
         G2 y = new(stackalloc long[G2.Sz]);
-        string? error = x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span);
-        if (error is not Errors.NoError) return error;
+        Result result;
+        if ((result = x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span)) &&
+            (result = y.TryDecodeRaw(inputData[BlsConst.LenG2..].Span)))
+        {
+            // adding to infinity point has no effect
+            if (x.IsInf()) return inputData[BlsConst.LenG2..].ToArray();
 
-        error = y.TryDecodeRaw(inputData[BlsConst.LenG2..].Span);
-        if (error is not Errors.NoError) return error;
+            if (y.IsInf()) return inputData[..BlsConst.LenG2].ToArray();
 
-        // adding to infinity point has no effect
-        if (x.IsInf()) return inputData[BlsConst.LenG2..].ToArray();
+            G2 res = x.Add(y);
+            return res.EncodeRaw();
+        }
 
-        if (y.IsInf()) return inputData[..BlsConst.LenG2].ToArray();
-
-        G2 res = x.Add(y);
-        return res.EncodeRaw();
+        return result.Error!;
     }
 }

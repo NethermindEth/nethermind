@@ -7,8 +7,6 @@ namespace Nethermind.Evm.Precompiles;
 
 public static class Errors
 {
-    public const string? NoError = null;
-
     public const string InvalidInputLength = "invalid input length";
     public const string InvalidFieldLength = "invalid field element length";
     public const string InvalidFieldElementTopBytes = "invalid field element top bytes";
