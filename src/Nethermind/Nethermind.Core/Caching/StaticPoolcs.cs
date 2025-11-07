@@ -20,7 +20,7 @@ public static class StaticPool<T> where T : class, new()
     // Thread-local access is handled via TLS (thread-local storage) and is extremely fast
     // compared to interlocked operations or global queue coordination.
     [ThreadStatic]
-    private static T? _localFast; 
+    private static T? _localFast;
 
     // Global fallback pool shared between threads.
     // ConcurrentQueue is lock-free but not free of contention.
