@@ -181,7 +181,7 @@ internal class VotesManager(
         return Task.CompletedTask;
     }
 
-    private bool FilterVote(Vote vote)
+    internal bool FilterVote(Vote vote)
     {
         if (vote.ProposedBlockInfo.Round < _ctx.CurrentRound) return false;
 
@@ -244,5 +244,10 @@ internal class VotesManager(
         _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
         vote.Signature = _signer.Sign(stream.GetValueHash());
         vote.Signer = _signer.Address;
+    }
+
+    public long GetVotesCount(Vote vote)
+    {
+        return _votePool.GetCount(vote);
     }
 }

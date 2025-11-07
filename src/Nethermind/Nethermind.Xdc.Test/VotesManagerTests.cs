@@ -24,8 +24,10 @@ public class VotesManagerTests
 {
     public static IEnumerable<TestCaseData> HandleVoteCases()
     {
-        var (keys, _) = MakeKeys(20);
-        var masternodes = keys.Select(k => k.Address).ToArray();
+        var keys = MakeKeys(22);
+        var keysForMasternodes = keys.Take(20).ToArray();
+        var extraKeys = keys.Skip(20).ToArray();
+        var masternodes = keysForMasternodes.Select(k => k.Address).ToArray();
 
         ulong currentRound = 1;
         XdcBlockHeader header = Build.A.XdcBlockHeader()
@@ -34,16 +36,15 @@ public class VotesManagerTests
         var info = new BlockRoundInfo(header.Hash!, currentRound, header.Number);
 
         // Base case
-        yield return new TestCaseData(masternodes, header, currentRound, keys.Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray(), info, 1);
+        yield return new TestCaseData(masternodes, header, currentRound, keysForMasternodes.Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray(), info, 1);
 
         // Not enough valid signers
-        var (extraKeys, _) = MakeKeys(2);
-        var votes = keys.Take(12).Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray();
+        var votes = keysForMasternodes.Take(12).Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray();
         var extraVotes = extraKeys.Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray();
         yield return new TestCaseData(masternodes, header, currentRound, votes.Concat(extraVotes).ToArray(), info, 0);
 
         // Wrong gap number generates different keys for the vote pool
-        var keysForVotes = keys.Take(14).ToArray();
+        var keysForVotes = keysForMasternodes.Take(14).ToArray();
         var votesWithDiffGap = new List<Vote>(capacity: keysForVotes.Length);
         for (var i = 0; i < keysForVotes.Length - 3; i++) votesWithDiffGap.Add(XdcTestHelper.BuildSignedVote(info, 450, keysForVotes[i]));
         for (var i = keysForVotes.Length - 3; i < keysForVotes.Length; i++) votesWithDiffGap.Add(XdcTestHelper.BuildSignedVote(info, 451, keysForVotes[i]));
@@ -86,7 +87,7 @@ public class VotesManagerTests
     [Test]
     public async Task HandleVote_HeaderMissing_ReturnsEarly()
     {
-        var (keys, _) = MakeKeys(20);
+        var keys = MakeKeys(20);
         var masternodes = keys.Select(k => k.Address).ToArray();
 
         ulong currentRound = 1;
@@ -127,6 +128,25 @@ public class VotesManagerTests
 
         quorumCertificateManager.Received(1).CommitCertificate(Arg.Any<QuorumCertificate>());
     }
+
+    [TestCase(7UL, 0)]
+    [TestCase(6UL, 1)]
+    [TestCase(5UL, 1)]
+    [TestCase(4UL, 0)]
+    public async Task HandleVote_MsgRoundDifferentValues_ReturnsEarlyIfTooFarFromCurrentRound(ulong currentRound,
+        long expectedCount)
+    {
+        var ctx = new XdcConsensusContext { CurrentRound = currentRound };
+        VotesManager votesManager = BuildVoteManager(ctx);
+
+        // Dummy values, we only care about the round
+        var blockInfo = new BlockRoundInfo(Hash256.Zero, 6, 0);
+        var key = MakeKeys(1).First();
+        var vote = XdcTestHelper.BuildSignedVote(blockInfo, 450, key);
+        await votesManager.HandleVote(vote);
+        Assert.That(votesManager.GetVotesCount(vote),  Is.EqualTo(expectedCount));
+    }
+
 
     [TestCase(5UL, 4UL, false)] // Current round different from blockInfoRound
     [TestCase(5UL, 5UL, true)]  // No LockQc
@@ -206,12 +226,11 @@ public class VotesManagerTests
         Assert.That(votesManager.VerifyVotingRules(blockInfo, qc), Is.EqualTo(expected));
     }
 
-    private static (PrivateKey[] keys, Address[] addrs) MakeKeys(int n)
+    private static PrivateKey[] MakeKeys(int n)
     {
         var keyBuilder = new PrivateKeyGenerator();
         PrivateKey[] keys = keyBuilder.Generate(n).ToArray();
-        Address[] addrs = keys.Select(k => k.Address).ToArray();
-        return (keys, addrs);
+        return keys;
     }
 
     private static VotesManager BuildVoteManager(IXdcConsensusContext ctx, IBlockTree? blockTree = null)
