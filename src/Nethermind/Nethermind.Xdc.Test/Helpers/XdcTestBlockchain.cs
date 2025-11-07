@@ -144,6 +144,9 @@ public class XdcTestBlockchain : TestBlockchain
 
         Container = builder.Build();
 
+        _fromXdcContainer = Container.Resolve<FromXdcContainer>();
+        _fromContainer = (FromContainer)_fromXdcContainer;
+
         BlockchainProcessor.Start();
 
         BlockProducer = CreateTestBlockProducer();
