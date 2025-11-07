@@ -63,8 +63,10 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
                 p.MillerLoop(y, x);
                 acc.Mul(p);
             }
-
-            return result.Error!;
+            else
+            {
+                return result.Error!;
+            }
         }
 
         // e(x_0, y_0) * e(x_1, y_1) * ... == 1
