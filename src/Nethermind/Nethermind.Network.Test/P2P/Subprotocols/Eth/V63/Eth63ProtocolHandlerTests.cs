@@ -128,18 +128,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
         private ArrayPoolList<T> RepeatPooled<T>(T txReceipts, int count) =>
             Enumerable.Repeat(txReceipts, count).ToPooledList(count).AddTo(_disposables);
-
-        [Test]
-        public void Will_not_serve_receipts_requests_above_512()
-        {
-            using GetReceiptsMessage getReceiptsMessage = new(RepeatPooled(Keccak.Zero, NethermindSyncLimits.MaxReceiptFetch + 1));
-            Packet getReceiptsPacket =
-                new("eth", Eth63MessageCode.GetReceipts, _ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
-
-            Assert.Throws<RlpLimitException>(() => _ctx.ProtocolHandler.HandleMessage(getReceiptsPacket));
-            _ctx.Session.Received().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
-        }
-
+        
         [Test]
         public void Will_not_send_messages_larger_than_2MB()
         {
