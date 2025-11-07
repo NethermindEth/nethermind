@@ -76,7 +76,7 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
         }
 
         if (_sealValidator is XdcSealValidator xdcSealValidator ?
-            !xdcSealValidator.ValidateParams(parent, header, out error) : 
+            !xdcSealValidator.ValidateParams(parent, header, out error) :
             !_sealValidator.ValidateParams(parent, header, isUncle))
         {
             error = "Invalid consensus data in header.";
