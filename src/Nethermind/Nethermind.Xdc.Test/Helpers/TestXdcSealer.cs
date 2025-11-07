@@ -13,6 +13,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -40,12 +41,15 @@ internal class TestXdcBlockProducer(
 
     protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes)
     {
+        if (parent is not XdcBlockHeader xdcParent)
+            throw new ArgumentException($"Must be a {nameof(XdcBlockHeader)}", nameof(parent));
         var prepared = (XdcBlockHeader)base.PrepareBlockHeader(parent, payloadAttributes);
 
         IXdcReleaseSpec headSpec = _specProvider.GetXdcSpec(prepared, xdcContext.CurrentRound);
-        var leader = GetLeaderAddress(prepared, xdcContext.CurrentRound, headSpec);
+        var leader = GetLeaderAddress(xdcParent, xdcContext.CurrentRound, headSpec);
         signer.SetSigner(candidateContainer.MasternodeCandidates.First(k => k.Address == leader));
         prepared.Author = leader;
+        prepared.Beneficiary = leader;
         return prepared;
     }
 

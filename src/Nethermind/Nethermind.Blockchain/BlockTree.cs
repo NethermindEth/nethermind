@@ -427,7 +427,7 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
-        private AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
+        protected virtual AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         {
             bool shouldProcess = options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess);
             bool fillBeaconBlock = options.ContainsFlag(BlockTreeSuggestOptions.FillBeaconBlock);
@@ -1234,7 +1234,7 @@ namespace Nethermind.Blockchain
             return preMergeImprovementRequirementSatisfied || postMergeImprovementRequirementSatisfied;
         }
 
-        protected virtual bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
+        private bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
         {
             if (BestSuggestedHeader is null) return true;
 

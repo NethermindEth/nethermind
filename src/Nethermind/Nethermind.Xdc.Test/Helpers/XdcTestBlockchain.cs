@@ -2,58 +2,40 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
-using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Events;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Utils;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
-using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
-using Nethermind.Xdc;
 using Nethermind.Xdc.Spec;
-using Nethermind.Xdc.Test;
+using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
-using System.Configuration;
 using System.Diagnostics;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 
-using Nethermind.Core.Test;
-using Nethermind.Xdc.Types;
 namespace Nethermind.Xdc.Test.Helpers;
 
 
@@ -69,6 +51,7 @@ public class XdcTestBlockchain : TestBlockchain
     }
 
     public List<PrivateKey> MasterNodeCandidates { get; }
+    public List<PrivateKey> RandomKeys { get; }
     public IXdcConsensusContext XdcContext => Container.Resolve<IXdcConsensusContext>();
     public IEpochSwitchManager EpochSwitchManager => _fromXdcContainer.EpochSwitchManager;
     public IQuorumCertificateManager QuorumCertificateManager => _fromXdcContainer.QuorumCertificateManager;
@@ -77,7 +60,9 @@ public class XdcTestBlockchain : TestBlockchain
 
     protected XdcTestBlockchain()
     {
-        MasterNodeCandidates = new PrivateKeyGenerator().Generate(200).ToList();
+        var keys = new PrivateKeyGenerator().Generate(210).ToList();
+        MasterNodeCandidates = keys.Take(200).ToList();
+        RandomKeys = keys.Skip(200).ToList();
     }
 
     public Signer Signer => (Signer)_fromXdcContainer.Signer;
@@ -376,6 +361,21 @@ public class XdcTestBlockchain : TestBlockchain
             masterNodes);
         QuorumCertificateManager.CommitCertificate(headQc);
     }
+
+    public async Task<Block> AddBlockWithoutCommitQc(params Transaction[] txs)
+    {
+        await base.AddBlock(txs);
+
+        var head = (XdcBlockHeader)BlockTree.Head!.Header;
+        var headSpec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
+        if (ISnapshotManager.IsTimeforSnapshot(head.Number, headSpec))
+        {
+            SnapshotManager.StoreSnapshot(new Types.Snapshot(head.Number, head.Hash!, MasterNodeCandidates.Select(k => k.Address).ToArray()));
+        }
+
+        return BlockTree.Head!;
+    }
+
 
     public PrivateKey[] TakeRandomMasterNodes(IXdcReleaseSpec headSpec, EpochSwitchInfo switchInfo)
     {
