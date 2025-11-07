@@ -106,4 +106,31 @@ public class LastNStateRootTrackerTests
 
         tracker.HasStateRoot(Keccak.Compute(100.ToBigEndianByteArray())).Should().BeTrue();
     }
+
+    [Test]
+    public void Test_TrackLastN_WithCustomDepth()
+    {
+        System.Collections.Generic.List<Block> blocks = new();
+        Block currentBlock = Build.A.Block.Genesis.TestObject;
+        blocks.Add(currentBlock);
+        for (int i = 0; i < 300; i++)
+        {
+            currentBlock = Build.A.Block
+                .WithParent(currentBlock)
+                .WithStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
+                .TestObject;
+            blocks.Add(currentBlock);
+        }
+
+        BlockTree tree = Build.A.BlockTree().WithBlocks(blocks.ToArray()).TestObject;
+
+        // Test with a custom depth of 256 blocks (useful for networks with fast block times like Arbitrum)
+        LastNStateRootTracker tracker = new LastNStateRootTracker(tree, 256);
+
+        for (int i = 0; i < 320; i++)
+        {
+            tracker.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
+                .Should().Be(i is >= 44 and < 300);
+        }
+    }
 }

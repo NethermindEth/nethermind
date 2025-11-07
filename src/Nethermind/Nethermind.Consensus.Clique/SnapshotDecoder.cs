@@ -9,9 +9,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Clique
 {
-    internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>
+    internal sealed class SnapshotDecoder : RlpStreamDecoder<Snapshot>
     {
-        public Snapshot Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Snapshot DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             rlpStream.ReadSequenceLength();
 
@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Clique
             return snapshot;
         }
 
-        public void Encode(RlpStream stream, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream stream, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             (int contentLength, int signersLength, int votesLength, int tallyLength) =
                 GetContentLength(item, rlpBehaviors);
@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.Clique
 
         }
 
-        public int GetLength(Snapshot item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(Snapshot item, RlpBehaviors rlpBehaviors)
         {
             (int contentLength, int _, int _, int _) = GetContentLength(item, rlpBehaviors);
             return Rlp.LengthOfSequence(contentLength);
@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.Clique
         {
             rlpStream.ReadSequenceLength();
             int length = rlpStream.DecodeInt();
-            Rlp.GuardLimit(length);
+            rlpStream.GuardLimit(length);
             SortedList<Address, long> signers = new(AddressComparer.Instance);
             for (int i = 0; i < length; i++)
             {
@@ -85,7 +85,7 @@ namespace Nethermind.Consensus.Clique
         {
             rlpStream.ReadSequenceLength();
             int length = rlpStream.DecodeInt();
-            Rlp.GuardLimit(length);
+            rlpStream.GuardLimit(length);
             List<Vote> votes = new(length);
             for (int i = 0; i < length; i++)
             {
@@ -103,7 +103,7 @@ namespace Nethermind.Consensus.Clique
         {
             rlpStream.ReadSequenceLength();
             int length = rlpStream.DecodeInt();
-            Rlp.GuardLimit(length);
+            rlpStream.GuardLimit(length);
             Dictionary<Address, Tally> tally = new(length);
             for (int i = 0; i < length; i++)
             {

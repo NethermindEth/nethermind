@@ -108,7 +108,7 @@ public class BlockTreeOverlay : IBlockTree
 
     public BlockInfo FindCanonicalBlockInfo(long blockNumber) => _overlayTree.FindCanonicalBlockInfo(blockNumber) ?? _baseTree.FindCanonicalBlockInfo(blockNumber);
 
-    public Hash256 FindHash(long blockNumber) => _overlayTree.FindHash(blockNumber) ?? _baseTree.FindHash(blockNumber);
+    public Hash256 FindBlockHash(long blockNumber) => _overlayTree.FindBlockHash(blockNumber) ?? _baseTree.FindBlockHash(blockNumber);
 
     public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
     {
@@ -267,9 +267,6 @@ public class BlockTreeOverlay : IBlockTree
 
     public BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options) =>
         _overlayTree.FindHeader(blockNumber, options) ?? _baseTree.FindHeader(blockNumber, options);
-
-    public Hash256? FindBlockHash(long blockNumber) =>
-        _overlayTree.FindBlockHash(blockNumber) ?? _baseTree.FindBlockHash(blockNumber);
 
     public bool IsMainChain(BlockHeader blockHeader) =>
         _baseTree.IsMainChain(blockHeader) || _overlayTree.IsMainChain(blockHeader);

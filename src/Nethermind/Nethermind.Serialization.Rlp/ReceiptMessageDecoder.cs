@@ -10,7 +10,7 @@ namespace Nethermind.Serialization.Rlp
 {
     [Rlp.Decoder(RlpDecoderKey.Default)]
     [Rlp.Decoder(RlpDecoderKey.Trie)]
-    public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
+    public sealed class ReceiptMessageDecoder : RlpValueDecoder<TxReceipt>
     {
         private readonly bool _skipStateAndStatus;
 
@@ -18,7 +18,7 @@ namespace Nethermind.Serialization.Rlp
         {
             _skipStateAndStatus = skipStateAndStatus;
         }
-        public TxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override TxReceipt DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             Span<byte> span = rlpStream.PeekNextItem();
             Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(span);
@@ -28,7 +28,7 @@ namespace Nethermind.Serialization.Rlp
             return response;
         }
 
-        public TxReceipt Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override TxReceipt DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (ctx.IsNextItemNull())
             {
@@ -115,7 +115,7 @@ namespace Nethermind.Serialization.Rlp
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-2718
         /// </summary>
-        public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             (int Total, _) = GetContentLength(item, rlpBehaviors);
             int receiptPayloadLength = Rlp.LengthOfSequence(Total);
@@ -142,7 +142,7 @@ namespace Nethermind.Serialization.Rlp
             return stream.Data.ToArray();
         }
 
-        public void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

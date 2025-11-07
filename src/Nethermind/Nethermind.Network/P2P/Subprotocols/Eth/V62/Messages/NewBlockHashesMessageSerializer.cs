@@ -10,7 +10,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class NewBlockHashesMessageSerializer : IZeroInnerMessageSerializer<NewBlockHashesMessage>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<NewBlockHashesMessage>(nameof(NewBlockHashesMessage.BlockHashes), NethermindSyncLimits.MaxHashesFetch);
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<NewBlockHashesMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(NewBlockHashesMessage.BlockHashes));
 
         public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message)
         {

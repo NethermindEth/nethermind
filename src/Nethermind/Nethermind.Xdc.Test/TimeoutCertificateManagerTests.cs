@@ -11,8 +11,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Consensus;
 using Nethermind.Crypto;
-using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 
@@ -47,10 +47,13 @@ public class TimeoutCertificateManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
         var tcManager = new TimeoutCertificateManager(
+            new XdcConsensusContext(),
             snapshotManager,
             Substitute.For<IEpochSwitchManager>(),
             Substitute.For<ISpecProvider>(),
-            blockTree);
+            blockTree,
+            Substitute.For<ISyncInfoManager>(),
+            Substitute.For<ISigner>());
 
         var ok = tcManager.VerifyTimeoutCertificate(tc, out var err);
         Assert.That(ok, Is.False);
@@ -68,10 +71,13 @@ public class TimeoutCertificateManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
         var tcManager = new TimeoutCertificateManager(
+            new XdcConsensusContext(),
             snapshotManager,
             Substitute.For<IEpochSwitchManager>(),
             Substitute.For<ISpecProvider>(),
-            blockTree);
+            blockTree,
+            Substitute.For<ISyncInfoManager>(),
+            Substitute.For<ISigner>());
 
         var ok = tcManager.VerifyTimeoutCertificate(tc, out var err);
         Assert.That(ok, Is.False);
@@ -110,9 +116,12 @@ public class TimeoutCertificateManagerTests
             .Returns(new Snapshot(0, Hash256.Zero, masternodes));
 
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
-        var epochSwitchInfo = new EpochSwitchInfo(masternodes, [], new BlockRoundInfo(Hash256.Zero, 1, 10));
+        var epochSwitchInfo = new EpochSwitchInfo(masternodes, [], [], new BlockRoundInfo(Hash256.Zero, 1, 10));
         epochSwitchManager
-            .GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>(), Arg.Any<Hash256>())
+            .GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>())
+            .Returns(epochSwitchInfo);
+        epochSwitchManager
+            .GetEpochSwitchInfo(Arg.Any<Hash256>())
             .Returns(epochSwitchInfo);
         epochSwitchManager.GetTimeoutCertificateEpochInfo(Arg.Any<TimeoutCertificate>()).Returns(epochSwitchInfo);
 
@@ -128,7 +137,12 @@ public class TimeoutCertificateManagerTests
         blockTree.Head.Returns(new Block(header, new BlockBody()));
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
 
-        var tcManager = new TimeoutCertificateManager(snapshotManager, epochSwitchManager, specProvider, blockTree);
+        var context = new XdcConsensusContext();
+        ISyncInfoManager syncInfoManager = Substitute.For<ISyncInfoManager>();
+        ISigner signer = Substitute.For<ISigner>();
+
+        var tcManager = new TimeoutCertificateManager(context, snapshotManager, epochSwitchManager, specProvider,
+            blockTree, syncInfoManager, signer);
 
         Assert.That(tcManager.VerifyTimeoutCertificate(timeoutCertificate, out _), Is.EqualTo(expected));
     }
@@ -136,10 +150,13 @@ public class TimeoutCertificateManagerTests
     private TimeoutCertificateManager BuildTimeoutCertificateManager()
     {
         return new TimeoutCertificateManager(
+            new XdcConsensusContext(),
             Substitute.For<ISnapshotManager>(),
             Substitute.For<IEpochSwitchManager>(),
             Substitute.For<ISpecProvider>(),
-            Substitute.For<IBlockTree>());
+            Substitute.For<IBlockTree>(),
+            Substitute.For<ISyncInfoManager>(),
+            Substitute.For<ISigner>());
     }
 
     private static TimeoutCertificate BuildTimeoutCertificate(PrivateKey[] keys, ulong round = 1, ulong gap = 0)
