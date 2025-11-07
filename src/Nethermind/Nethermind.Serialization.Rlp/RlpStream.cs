@@ -351,7 +351,11 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        protected virtual void WriteZero(int length) => Position += 256;
+        protected virtual void WriteZero(int length)
+        {
+            Data.AsSpan(Position, length).Clear();
+            Position += length;
+        }
 
         public void Encode(byte value)
         {

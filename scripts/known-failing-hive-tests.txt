@@ -5,8 +5,6 @@ eth_getStorageAt/get-storage-invalid-key-too-large (nethermind)
 eth_createAccessList/create-al-abi-revert (nethermind)
 eth_sendRawTransaction/send-blob-tx (nethermind)
 eth_simulateV1/ethSimulate-instrict-gas-38013 (nethermind)
-eth_simulateV1/ethSimulate-run-gas-spending (nethermind)
-eth_simulateV1/ethSimulate-run-out-of-gas-in-block-38015 (nethermind)
 eth_simulateV1/ethSimulate-two-blocks-with-complete-eth-sends (nethermind)
 eth_simulateV1/ethSimulate-use-as-many-features-as-possible (nethermind)
 
