@@ -45,7 +45,7 @@ public class XdcTestBlockchain : TestBlockchain
     private readonly Random _random = new();
     private readonly bool _useHotStuffModule;
 
-    public static async Task<XdcTestBlockchain> Create(int blocksToAdd, bool useHotStuffModule, Action<ContainerBuilder>? configurer = null)
+    public static async Task<XdcTestBlockchain> Create(int blocksToAdd = 3, bool useHotStuffModule = false, Action<ContainerBuilder>? configurer = null)
     {
         XdcTestBlockchain chain = new(useHotStuffModule);
         await chain.Build(configurer);
