@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Runtime.Intrinsics;
+using System.Threading;
 
 using static Nethermind.Evm.EvmState;
 
@@ -29,24 +30,33 @@ internal sealed class StackPool
     /// <param name="returnStack"></param>
     public void ReturnStacks(byte[] dataStack, ReturnState[] returnStack)
     {
-        if (_stackPool.Count <= MaxStacksPooled)
+        // Reserve a slot first - O(1) bound without touching ConcurrentQueue.Count.
+        if (Interlocked.Increment(ref _poolCount) > MaxStacksPooled)
         {
-            _stackPool.Enqueue(new(dataStack, returnStack));
+            // Cap hit - roll back the reservation and drop the item.
+            Interlocked.Decrement(ref _poolCount);
+            return;
         }
+
+        _stackPool.Enqueue(new StackItem(dataStack, returnStack));
     }
+
+    // Manual reservation count - upper bound on items actually in the queue.
+    private int _poolCount;
 
     public const int StackLength = (EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32;
 
     public (byte[], ReturnState[]) RentStacks()
     {
-        if (_stackPool.TryDequeue(out StackItem result))
+        if (Volatile.Read(ref _poolCount) > 0 && _stackPool.TryDequeue(out StackItem result))
         {
+            Interlocked.Decrement(ref _poolCount);
             return (result.DataStack, result.ReturnStack);
         }
 
+        // Count was positive but we lost the race or the enqueuer has not published yet.
         return
         (
-            // Include extra Vector256<byte>.Count and pin so we can align to 32 bytes
             GC.AllocateUninitializedArray<byte>(StackLength + Vector256<byte>.Count, pinned: true),
             new ReturnState[EvmStack.ReturnStackSize]
         );
