@@ -15,6 +15,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
 using System.Linq;
@@ -45,9 +46,12 @@ internal class XdcBlockProducerTest
 
         XdcBlockHeader parent = Build.A.XdcBlockHeader().TestObject;
 
-        var xdcContext = new XdcContext();
-        xdcContext.CurrentRound = 1;
+        var xdcContext = new XdcConsensusContext();
+        xdcContext.SetNewRound(1);
         xdcContext.HighestQC = XdcTestHelper.CreateQc(new Types.BlockRoundInfo(parent.Hash!, 0, parent.Number), 0, masterNodes);
+
+        var quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
+        quorumCertificateManager.VerifyCertificate(Arg.Any<QuorumCertificate>(), Arg.Any<XdcBlockHeader>(), out _).Returns(true);
 
         IBlockchainProcessor processor = Substitute.For<IBlockchainProcessor>();
         processor.Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>()).Returns(args => args.ArgAt<Block>(0));
@@ -67,7 +71,7 @@ internal class XdcBlockProducerTest
             Substitute.For<ILogManager>(),
             Substitute.For<IDifficultyCalculator>(),
             Substitute.For<IBlocksConfig>());
-        XdcHeaderValidator headerValidator = new XdcHeaderValidator(Substitute.For<IBlockTree>(), new XdcSealValidator(Substitute.For<ISnapshotManager>(), epochManager, specProvider), specProvider, NullLogManager.Instance);
+        XdcHeaderValidator headerValidator = new XdcHeaderValidator(Substitute.For<IBlockTree>(), quorumCertificateManager, new XdcSealValidator(Substitute.For<ISnapshotManager>(), epochManager, specProvider), specProvider, NullLogManager.Instance);
 
         Block? block = await producer.BuildBlock(parent);
 

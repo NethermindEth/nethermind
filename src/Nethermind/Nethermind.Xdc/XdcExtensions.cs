@@ -78,4 +78,9 @@ public static class XdcExtensions
         }
         return addresses.ToImmutableArray();
     }
+
+    public static bool ValidateBlockInfo(this BlockRoundInfo blockInfo, XdcBlockHeader blockHeader) =>
+        (blockInfo.BlockNumber == blockHeader.Number)
+        && (blockInfo.Hash == blockHeader.Hash)
+        && (blockInfo.Round == blockHeader.ExtraConsensusData.BlockRound);
 }
