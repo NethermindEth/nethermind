@@ -3,8 +3,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Linq.Expressions;
-using System.Reflection;
 using System.Threading;
 
 namespace Nethermind.Core.Caching;
@@ -60,7 +58,7 @@ public static class StaticPool<T> where T : class, new()
         }
 
         // 3. Nothing available, allocate new instance via cached delegate.
-        return Create();
+        return new();
     }
 
     public static void Return(T item)
@@ -85,26 +83,5 @@ public static class StaticPool<T> where T : class, new()
         }
 
         _pool.Enqueue(item);
-    }
-
-    // Cached compiled constructor delegate.
-    // Compiled once at type-load time; eliminates reflection cost on Rent().
-    private static Func<T> Create { get; } = BuildCreator();
-
-    private static Func<T> BuildCreator()
-    {
-        // Use expression tree rather than Activator.CreateInstance which new T() calls.
-        // Compiling a NewExpression gives a direct ctor call.
-        ConstructorInfo? ci = typeof(T).GetConstructor(BindingFlags.Public | BindingFlags.Instance, []) ??
-            throw new InvalidOperationException($"{typeof(T).Name} has no parameterless ctor.");
-
-        NewExpression newExpr = Expression.New(ci);
-        Expression<Func<T>> lambda = Expression.Lambda<Func<T>>(
-            newExpr,
-            name: $"Create{typeof(T).Name}",
-            tailCall: false,
-            parameters: Array.Empty<ParameterExpression>()
-        );
-        return lambda.Compile();
     }
 }
