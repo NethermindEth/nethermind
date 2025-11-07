@@ -128,7 +128,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
         private ArrayPoolList<T> RepeatPooled<T>(T txReceipts, int count) =>
             Enumerable.Repeat(txReceipts, count).ToPooledList(count).AddTo(_disposables);
-        
+
         [Test]
         public void Will_not_send_messages_larger_than_2MB()
         {
