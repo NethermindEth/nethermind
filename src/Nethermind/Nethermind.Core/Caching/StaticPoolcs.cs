@@ -28,7 +28,7 @@ public static class StaticPool<T> where T : class, new()
     {
         // Try to pop from the global pool — this is only hit when a thread
         // has exhausted its own fast slot or is cross-thread renting.
-        if (_pool.TryDequeue(out T? item))
+        if (Volatile.Read(ref _poolCount) > 0 && _pool.TryDequeue(out T? item))
         {
             // We track count manually with Interlocked ops instead of using queue.Count.
             Interlocked.Decrement(ref _poolCount);

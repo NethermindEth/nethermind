@@ -732,7 +732,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             public static PerContractState Rent(Address address, PersistentStorageProvider provider)
             {
-                if (_pool.TryDequeue(out PerContractState item))
+                if (Volatile.Read(ref _poolCount) > 0 && _pool.TryDequeue(out PerContractState item))
                 {
                     Interlocked.Decrement(ref _poolCount);
                     item.Initialize(address, provider);
