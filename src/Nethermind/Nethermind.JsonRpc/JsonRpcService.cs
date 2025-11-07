@@ -117,15 +117,17 @@ public class JsonRpcService : IJsonRpcService
         }
 
         IRpcModule rpcModule = await _rpcModuleProvider.Rent(methodName, method.ReadOnly);
-        if (rpcModule is IContextAwareRpcModule contextAwareModule)
-        {
-            contextAwareModule.Context = context;
-        }
         bool returnImmediately = methodName != GetLogsMethodName;
         Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(methodName, rpcModule);
         IResultWrapper? resultWrapper = null;
+        bool responseCreated = false;
         try
         {
+            if (rpcModule is IContextAwareRpcModule contextAwareModule)
+            {
+                contextAwareModule.Context = context;
+            }
+
             // Execute method
             object invocationResult = hasMissing ?
                 method.MethodInfo.Invoke(rpcModule, parameters) :
@@ -144,11 +146,12 @@ public class JsonRpcService : IJsonRpcService
         }
         catch (Exception ex)
         {
+            responseCreated = true;
             return HandleInvocationException(ex, methodName, request, returnAction);
         }
         finally
         {
-            if (returnImmediately)
+            if (returnImmediately || !responseCreated)
             {
                 _rpcModuleProvider.Return(methodName, rpcModule);
             }
@@ -156,10 +159,12 @@ public class JsonRpcService : IJsonRpcService
 
         if (resultWrapper is null)
         {
+            responseCreated = true;
             return HandleMissingResultWrapper(request, methodName, returnAction);
         }
 
         Result result = resultWrapper.Result;
+        responseCreated = true;
         return result.ResultType != ResultType.Success
             ? GetErrorResponse(methodName, resultWrapper.ErrorCode, result.Error, resultWrapper.Data, request.Id, returnAction, resultWrapper.IsTemporary)
             : GetSuccessResponse(methodName, resultWrapper.Data, request.Id, returnAction);
