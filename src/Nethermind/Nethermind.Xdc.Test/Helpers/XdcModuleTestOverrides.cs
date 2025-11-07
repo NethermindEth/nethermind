@@ -13,6 +13,8 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
@@ -25,6 +27,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
 using Module = Autofac.Module;
@@ -51,7 +54,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddModule(new TestBlockProcessingModule())
 
             // add missing components
-            .AddSingleton<IPenaltyHandler, RandomPenality>()
+            .AddSingleton<IPenaltyHandler, RandomPenalizer>()
             .AddSingleton<IForensicsProcessor, TrustyForensics>()
 
             // Environments
@@ -65,7 +68,6 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
             // Crypto
-            .AddSingleton<ISignerStore>(NullSigner.Instance)
             .AddSingleton(Substitute.For<IKeyStore>())
             .AddSingleton<IWallet, DevWallet>()
             .AddSingleton(Substitute.For<ITxSender>())
@@ -84,10 +86,20 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
         });
     }
 
-    internal class RandomPenality : IPenaltyHandler
+    internal class RandomPenalizer(ISpecProvider specProvider) : IPenaltyHandler
     {
-        public Address[] Penalize(Address[] candidates, int count = 2)
+        Dictionary<Hash256, Address[]> _penaltiesCache = new();
+        public Address[] Penalize(long number, Hash256 currentHash, Address[] candidates, int count = 2)
         {
+            var spec = specProvider.GetFinalSpec() as IXdcReleaseSpec ?? throw new ArgumentException("Must have XDC spec configured.");
+            if (number == spec.SwitchBlock)
+            {
+                return Array.Empty<Address>();
+            }
+            if (_penaltiesCache.ContainsKey(currentHash))
+            {
+                return _penaltiesCache[currentHash];
+            }
             var nodesCount = candidates.Length;
             List<Address> penalized = new();
 
@@ -98,11 +110,11 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
                 if (!penalized.Contains(candidate))
                     penalized.Add(candidate);
             }
-
-            return penalized.ToArray();
+            _penaltiesCache[currentHash] = penalized.ToArray();
+            return _penaltiesCache[currentHash];
         }
         public Address[] HandlePenalties(long number, Hash256 currentHash, Address[] candidates)
-            => Penalize(candidates, 7);
+            => Penalize(number, currentHash, candidates, 7);
     }
 
     internal class TrustyForensics : IForensicsProcessor

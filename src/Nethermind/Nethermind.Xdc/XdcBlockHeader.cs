@@ -3,19 +3,13 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
-using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 public class XdcBlockHeader : BlockHeader, IHashResolver
@@ -96,5 +90,38 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         KeccakRlpStream rlpStream = new KeccakRlpStream();
         _headerDecoder.Encode(rlpStream, this);
         return rlpStream.GetHash();
+    }
+
+    public static XdcBlockHeader FromBlockHeader(BlockHeader src)
+    {
+        var x = new XdcBlockHeader(
+            src.ParentHash,
+            src.UnclesHash,
+            src.Beneficiary,
+            src.Difficulty,
+            src.Number,
+            src.GasLimit,
+            src.Timestamp,
+            src.ExtraData)
+        {
+            Bloom = src.Bloom ?? Bloom.Empty,
+            Hash = src.Hash,
+            MixHash = src.MixHash,
+            Nonce = src.Nonce,
+            TxRoot = src.TxRoot,
+            TotalDifficulty = src.TotalDifficulty,
+            AuRaStep = src.AuRaStep,
+            AuRaSignature = src.AuRaSignature,
+            ReceiptsRoot = src.ReceiptsRoot,
+            BaseFeePerGas = src.BaseFeePerGas,
+            WithdrawalsRoot = src.WithdrawalsRoot,
+            RequestsHash = src.RequestsHash,
+            IsPostMerge = src.IsPostMerge,
+            ParentBeaconBlockRoot = src.ParentBeaconBlockRoot,
+            ExcessBlobGas = src.ExcessBlobGas,
+            BlobGasUsed = src.BlobGasUsed,
+        };
+
+        return x;
     }
 }

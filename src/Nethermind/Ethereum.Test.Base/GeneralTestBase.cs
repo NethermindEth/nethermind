@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -100,17 +99,19 @@ namespace Ethereum.Test.Base
                 test.CurrentNumber,
                 test.CurrentGasLimit,
                 test.CurrentTimestamp,
-                []);
-            header.BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero;
-            header.StateRoot = test.PostHash;
+                [])
+            {
+                BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero,
+                StateRoot = test.PostHash,
+                IsPostMerge = test.CurrentRandom is not null,
+                MixHash = test.CurrentRandom,
+                WithdrawalsRoot = test.CurrentWithdrawalsRoot,
+                ParentBeaconBlockRoot = test.CurrentBeaconRoot,
+                ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null),
+                BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction),
+                RequestsHash = test.RequestsHash
+            };
             header.Hash = header.CalculateHash();
-            header.IsPostMerge = test.CurrentRandom is not null;
-            header.MixHash = test.CurrentRandom;
-            header.WithdrawalsRoot = test.CurrentWithdrawalsRoot;
-            header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
-            header.ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null);
-            header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction);
-            header.RequestsHash = test.RequestsHash;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
@@ -161,9 +162,11 @@ namespace Ethereum.Test.Base
             }
 
             List<string> differences = RunAssertions(test, stateProvider);
-            EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
-            testResult.TimeInMs = stopwatch.Elapsed.TotalMilliseconds;
-            testResult.StateRoot = stateProvider.StateRoot;
+            EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0)
+            {
+                TimeInMs = stopwatch.Elapsed.TotalMilliseconds,
+                StateRoot = stateProvider.StateRoot
+            };
 
             if (differences.Count > 0)
             {

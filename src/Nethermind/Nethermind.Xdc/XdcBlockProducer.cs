@@ -11,28 +11,21 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 internal class XdcBlockProducer : BlockProducerBase
 {
-    private readonly IEpochSwitchManager epochSwitchManager;
-    private readonly ISnapshotManager snapshotManager;
-    private readonly IXdcConsensusContext xdcContext;
-    private readonly ISealer sealer;
-    private readonly ISpecProvider specProvider;
-    private readonly ILogManager logManager;
+    protected readonly IEpochSwitchManager epochSwitchManager;
+    protected readonly ISnapshotManager snapshotManager;
+    protected readonly IXdcConsensusContext xdcContext;
+    protected readonly ISealer sealer;
+    protected readonly ISpecProvider specProvider;
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
 
     public XdcBlockProducer(IEpochSwitchManager epochSwitchManager, ISnapshotManager snapshotManager, IXdcConsensusContext xdcContext, ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IWorldState stateProvider, IGasLimitCalculator? gasLimitCalculator, ITimestamper? timestamper, ISpecProvider specProvider, ILogManager logManager, IDifficultyCalculator? difficultyCalculator, IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
@@ -42,7 +35,6 @@ internal class XdcBlockProducer : BlockProducerBase
         this.xdcContext = xdcContext;
         this.sealer = sealer;
         this.specProvider = specProvider;
-        this.logManager = logManager;
     }
 
     protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes)
@@ -79,7 +71,8 @@ internal class XdcBlockProducer : BlockProducerBase
         xdcBlockHeader.Timestamp = payloadAttributes?.Timestamp ?? parent.Timestamp + (ulong)spec.MinePeriod;
 
         xdcBlockHeader.Difficulty = 1;
-        xdcBlockHeader.TotalDifficulty = 1;
+
+        xdcBlockHeader.TotalDifficulty = xdcParent.TotalDifficulty + 1;
 
         xdcBlockHeader.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
 

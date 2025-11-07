@@ -10,13 +10,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Frozen;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Collections.ObjectModel;
 using System.Linq;
-
-using static Nethermind.Xdc.XdcExtensions;
 
 namespace Nethermind.Xdc;
 internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider) : ISealValidator
@@ -28,8 +22,6 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
     {
         return ValidateParams(parent, header, out _);
     }
-
-
 
     public bool ValidateParams(BlockHeader parent, BlockHeader header, out string error)
     {

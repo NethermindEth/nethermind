@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;
 using System;
 using System.Collections.Generic;

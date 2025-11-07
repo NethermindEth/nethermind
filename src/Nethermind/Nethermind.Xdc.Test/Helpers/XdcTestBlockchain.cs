@@ -80,7 +80,7 @@ public class XdcTestBlockchain : TestBlockchain
         MasterNodeCandidates = new PrivateKeyGenerator().Generate(200).ToList();
     }
 
-    protected ISigner Signer => _fromXdcContainer.Signer;
+    protected Signer Signer => (Signer)_fromXdcContainer.Signer;
 
     private FromXdcContainer _fromXdcContainer = null!;
     public class FromXdcContainer(
@@ -169,26 +169,27 @@ public class XdcTestBlockchain : TestBlockchain
         return this;
     }
 
-    //private void InitialSnapshot(IXdcReleaseSpec spec)
-    //{
-    //    SnapshotManager.StoreSnapshot(new Types.Snapshot(spec.SwitchBlock, ) { });
-    //}
-
     protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
 
         base.ConfigureContainer(builder, configProvider)
             .AddModule(new XdcModuleTestOverrides(configProvider, LimboLogs.Instance))
             .AddSingleton<ISpecProvider>(
-            new TestSpecProvider(WrapReleaseSpec(new XdcReleaseSpec()))
+            new TestSpecProvider(WrapReleaseSpec(Shanghai.Instance))
             {
                 AllowTestChainOverride = false,
-                //This is sort of a hack to make BlockTree accept Xdc blocks as head
-                TerminalTotalDifficulty = 1
             })
             .AddSingleton<Configuration>()
             .AddSingleton<FromContainer>()
             .AddSingleton<FromXdcContainer>()
             .AddScoped<IGenesisBuilder, XdcTestGenesisBuilder>()
+            .AddSingleton<IBlockProducer, TestXdcBlockProducer>()
+            .AddSingleton((ctx) => new CandidateContainer(MasterNodeCandidates))
+            .AddSingleton<ISigner>(ctx =>
+            {
+                var spec = ctx.Resolve<ISpecProvider>();
+                var logmanager = ctx.Resolve<ILogManager>();
+                return new Signer(spec.ChainId, MasterNodeCandidates[1], logmanager);
+            })
 
             .AddSingleton((_) => BlockProducer)
             .AddSingleton((_) => BlockProducerRunner)
@@ -209,7 +210,7 @@ public class XdcTestBlockchain : TestBlockchain
     {
         var xdcSpec = XdcReleaseSpec.FromReleaseSpec(spec);
 
-        xdcSpec.GenesisMasterNodes = MasterNodeCandidates.Take(30).Select(k=>k.Address).ToArray();
+        xdcSpec.GenesisMasterNodes = MasterNodeCandidates.Take(30).Select(k => k.Address).ToArray();
         xdcSpec.EpochLength = 900;
         xdcSpec.Gap = 450;
         xdcSpec.SwitchEpoch = 0;
@@ -219,7 +220,8 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.ObserverReward = 0.5;     // 0.5 Ether per observer
         xdcSpec.MinimumMinerBlockPerEpoch = 1;
         xdcSpec.LimitPenaltyEpoch = 2;
-        xdcSpec.MinimumSigningTx = 1;        
+        xdcSpec.MinimumSigningTx = 1;
+        xdcSpec.GasLimitBoundDivisor = 1024;
 
         V2ConfigParams[] v2ConfigParams = [
             new V2ConfigParams {
@@ -232,7 +234,7 @@ public class XdcTestBlockchain : TestBlockchain
             },
             new V2ConfigParams {
                 SwitchRound = 5,
-                MaxMasternodes = 40,
+                MaxMasternodes = 30,
                 CertThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
@@ -240,7 +242,7 @@ public class XdcTestBlockchain : TestBlockchain
             },
             new V2ConfigParams {
                 SwitchRound = 10,
-                MaxMasternodes = 50,
+                MaxMasternodes = 30,
                 CertThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
@@ -248,7 +250,7 @@ public class XdcTestBlockchain : TestBlockchain
             },
             new V2ConfigParams {
                 SwitchRound = 15,
-                MaxMasternodes = 60,
+                MaxMasternodes = 30,
                 CertThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
@@ -256,7 +258,7 @@ public class XdcTestBlockchain : TestBlockchain
             },
             new V2ConfigParams {
                 SwitchRound = 20,
-                MaxMasternodes = 75,
+                MaxMasternodes = 30,
                 CertThreshold = 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = 3000,
@@ -271,7 +273,9 @@ public class XdcTestBlockchain : TestBlockchain
     protected override IBlockProducer CreateTestBlockProducer()
     {
         IBlockProducerEnv env = BlockProducerEnvFactory.Create();
-        return new XdcBlockProducer(
+        return new TestXdcBlockProducer(
+            Signer,
+            Container.Resolve<CandidateContainer>(),
             EpochSwitchManager,
             SnapshotManager,
             XdcContext,
@@ -344,13 +348,20 @@ public class XdcTestBlockchain : TestBlockchain
             await Task.Delay(1, CancellationToken);
         }
     }
+    public async Task AddBlocks(int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            await AddBlock();
+        }
+    }
 
     public override async Task AddBlock(params Transaction[] transactions)
     {
         await base.AddBlock(transactions);
 
-        XdcBlockHeader head = (XdcBlockHeader)BlockTree.Head!.Header;
-        IXdcReleaseSpec headSpec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
+        var head = (XdcBlockHeader)BlockTree.Head!.Header;
+        var headSpec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
 
         if (ISnapshotManager.IsTimeforSnapshot(head.Number, headSpec))
         {
@@ -371,7 +382,7 @@ public class XdcTestBlockchain : TestBlockchain
         return switchInfo
                     .Masternodes
                     .OrderBy(x => _random.Next())
-                    .Take((int)(switchInfo.Masternodes.Length * headSpec.CertThreshold))
+                    .Take((int)(Math.Ceiling(switchInfo.Masternodes.Length * headSpec.CertThreshold)))
                     .Select(a => MasterNodeCandidates.First(c => a == c.Address))
                     .ToArray();
     }
@@ -397,24 +408,3 @@ public class XdcTestBlockchain : TestBlockchain
         return txBuilder;
     }
 }
-
-public class XdcTestSigner() : ISigner
-{
-    public PrivateKey? Key => throw new NotImplementedException();
-
-    public Address Address => throw new NotImplementedException();
-
-    public bool CanSign => throw new NotImplementedException();
-
-    public Signature Sign(in ValueHash256 message)
-    {
-        throw new NotImplementedException();
-    }
-
-    public ValueTask Sign(Transaction tx)
-    {
-        throw new NotImplementedException();
-    }
-
-}
-

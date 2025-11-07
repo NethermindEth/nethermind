@@ -32,8 +32,9 @@ internal class XdcTestBlockchainTests
     }
 
     [Test]
-    public void SampleTest()
+    public async Task SetupXdcChainAndValidateAllHeaders()
     {
+        await _blockchain.AddBlocks(1800); 
         IHeaderValidator headerValidator = _blockchain.Container.Resolve<IHeaderValidator>();
         BlockHeader parent = _blockchain.BlockTree.Genesis!;
         for (int i = 1; i < _blockchain.BlockTree.Head!.Number; i++)
@@ -42,6 +43,7 @@ internal class XdcTestBlockchainTests
             Assert.That(block, Is.Not.Null);
             string? error;
             Assert.That(headerValidator.Validate(block!.Header, parent, false, out error), Is.True, "Header validation failed: " + error);
+            parent = block.Header;
         }
     }
 }
