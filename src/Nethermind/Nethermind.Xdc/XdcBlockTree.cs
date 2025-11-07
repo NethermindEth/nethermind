@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
+using System;
 
 namespace Nethermind.Xdc;
 internal class XdcBlockTree : BlockTree
@@ -46,9 +47,19 @@ internal class XdcBlockTree : BlockTree
             //Weird case if re-suggesting the finalized block
             return AddBlockResult.AlreadyKnown;
         }
-        int depth = 0;
+        if (finalizedBlockInfo.BlockNumber >= header.Number)
+        {
+            return AddBlockResult.InvalidBlock;
+        }
+        if (header.Number - finalizedBlockInfo.BlockNumber > MaxSearchDepth)
+        {
+            //Theoretically very deep reorgs could happen, if the chain doesnt finalize for a long time
+            //TODO Maybe this needs to be revisited later
+            Logger.Warn($"Deep reorg past {MaxSearchDepth} blocks detected! Rejecting block {header.ToString(BlockHeader.Format.Full)}");
+            return AddBlockResult.InvalidBlock;
+        }
         BlockHeader current = header;
-        while (true)
+        for(long i = header.Number; i >= finalizedBlockInfo.BlockNumber; i--)
         {
             if (finalizedBlockInfo.BlockNumber >= current.Number)
                 return AddBlockResult.InvalidBlock;
@@ -58,16 +69,10 @@ internal class XdcBlockTree : BlockTree
 
             current = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (current == null)
-                return AddBlockResult.UnknownParent;
-            depth++;
-            if (depth == MaxSearchDepth)
-            {
-                //Theoretically very deep reorgs could happen, if the chain doesnt finalize for a long time
-                //TODO Maybe this needs to be revisited later
-                Logger.Warn($"Deep reorg past {MaxSearchDepth} blocks detected! Rejecting block {header.ToString(BlockHeader.Format.Full)}");
-                return AddBlockResult.InvalidBlock;
-            }
+                return AddBlockResult.UnknownParent;      
         }
+        //This is not possible to reach
+        return AddBlockResult.InvalidBlock;
     }
 
 }
