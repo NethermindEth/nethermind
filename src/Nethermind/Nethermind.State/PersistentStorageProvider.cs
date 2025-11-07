@@ -415,7 +415,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
     }
 
-    internal void PushToRegistryOnly(in StorageCell cell, byte[] value)
+    private void PushToRegistryOnly(in StorageCell cell, byte[] value)
     {
         StackList<int> stack = SetupRegistry(cell);
         _originalValues[cell] = value;
@@ -735,27 +735,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         private static class Pool
         {
-            [ThreadStatic]
-            private static PerContractState? _localFast; // one slot per thread
-
             private static readonly ConcurrentQueue<PerContractState> _pool = [];
             private static int _poolCount;
 
             public static PerContractState Rent(Address address, PersistentStorageProvider provider)
             {
-                // local ref avoids multiple TLS lookups
-                ref PerContractState local = ref _localFast;
-
-                PerContractState item = local;
-                if (item is not null)
-                {
-                    local = null;
-                    item.Initialize(address, provider);
-                    return item;
-                }
-
-                // fallback to global queue
-                if (_pool.TryDequeue(out item))
+                if (_pool.TryDequeue(out PerContractState item))
                 {
                     Interlocked.Decrement(ref _poolCount);
                     item.Initialize(address, provider);
@@ -773,16 +758,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 if (item.BlockChange.Capacity > MaxItemSize)
                     return;
 
-                item.BlockChange.Reset();
-
-                // per-thread fast slot - no global accounting
-                ref PerContractState local = ref _localFast;
-                if (local is null)
-                {
-                    local = item;
-                    return;
-                }
-
                 // shared pool fallback
                 if (Interlocked.Increment(ref _poolCount) > MaxPooledCount)
                 {
@@ -790,6 +765,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     return;
                 }
 
+                item.BlockChange.Reset();
                 _pool.Enqueue(item);
             }
         }

@@ -13,13 +13,6 @@ public static class StaticPool<T> where T : class, new()
     // Prevents unbounded accumulation under bursty workloads while still allowing per-thread caching.
     private const int MaxPooledCount = 4096;
 
-    // Each thread owns a single reusable slot.
-    // This avoids any atomic or locking cost on the hot path.
-    // Thread-local access is handled via TLS (thread-local storage) and is extremely fast
-    // compared to interlocked operations or global queue coordination.
-    [ThreadStatic]
-    private static T? _localFast;
-
     // Global fallback pool shared between threads.
     // ConcurrentQueue is lock-free but not free of contention.
     // It's used only when the thread-local fast path misses.
@@ -33,46 +26,21 @@ public static class StaticPool<T> where T : class, new()
 
     public static T Rent()
     {
-        // Local ref avoids repeated TLS lookups.
-        // Accessing a [ThreadStatic] field emits a TLS indirection in IL;
-        // caching it in a ref variable avoids repeating that per instruction.
-        ref T? local = ref _localFast;
-
-        // 1. Thread-local fast path
-        T? item = local;
-        if (item is not null)
-        {
-            // Clear slot and return cached instance
-            local = null;
-            return item;
-        }
-
-        // 2. Shared queue fallback
         // Try to pop from the global pool — this is only hit when a thread
         // has exhausted its own fast slot or is cross-thread renting.
-        if (_pool.TryDequeue(out item))
+        if (_pool.TryDequeue(out T? item))
         {
             // We track count manually with Interlocked ops instead of using queue.Count.
             Interlocked.Decrement(ref _poolCount);
             return item;
         }
 
-        // 3. Nothing available, allocate new instance via cached delegate.
+        // Nothing available, allocate new instance
         return new();
     }
 
     public static void Return(T item)
     {
-        // 1. Per-thread fast slot reuse
-        // No locking or fencing needed — each thread sees its own copy of _localFast.
-        ref T? local = ref _localFast;
-        if (local is null)
-        {
-            local = item;
-            return;
-        }
-
-        // 2. Shared pool fallback
         // We use Interlocked.Increment to reserve a slot up front.
         // This guarantees a bounded queue length without relying on slow Count().
         if (Interlocked.Increment(ref _poolCount) > MaxPooledCount)
