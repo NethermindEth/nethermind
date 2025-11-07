@@ -69,19 +69,20 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
 
     protected override bool ValidateSeal(BlockHeader header, BlockHeader parent, bool isUncle, ref string? error)
     {
-        if (_sealValidator is XdcSealValidator xdcSealValidator)
-            return xdcSealValidator.ValidateParams(parent, header, out error);
-
-        if (!_sealValidator.ValidateParams(parent, header, isUncle))
-        {
-            error = "Invalid consensus data in header.";
-            return false;
-        }
         if (!_sealValidator.ValidateSeal(header, false))
         {
             error = "Invalid validator signature.";
             return false;
         }
+
+        if (_sealValidator is XdcSealValidator xdcSealValidator ?
+            !xdcSealValidator.ValidateParams(parent, header, out error) : 
+            !_sealValidator.ValidateParams(parent, header, isUncle))
+        {
+            error = "Invalid consensus data in header.";
+            return false;
+        }
+
         return true;
     }
 

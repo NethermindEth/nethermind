@@ -46,6 +46,7 @@ internal class TestXdcBlockProducer(
         var leader = GetLeaderAddress(prepared, xdcContext.CurrentRound, headSpec);
         signer.SetSigner(candidateContainer.MasternodeCandidates.First(k => k.Address == leader));
         prepared.Author = leader;
+        prepared.Beneficiary = leader;
         return prepared;
     }
 
