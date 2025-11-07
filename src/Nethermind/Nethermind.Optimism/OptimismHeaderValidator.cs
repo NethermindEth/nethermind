@@ -109,6 +109,8 @@ public class OptimismHeaderValidator(
         return true;
     }
 
+    protected override ulong? CalculateExcessBlobGas(BlockHeader parent, IReleaseSpec spec) => 0;
+
     private static class ErrorMessages
     {
         public static readonly string RequestHashShouldBeOfShaOfEmpty = $"{nameof(BlockHeader.RequestsHash)} should be {OptimismPostMergeBlockProducer.PostIsthmusRequestHash} for post-Isthmus blocks";
