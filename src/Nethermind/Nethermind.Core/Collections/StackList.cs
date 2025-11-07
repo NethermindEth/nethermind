@@ -5,10 +5,11 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Resettables;
 
 namespace Nethermind.Core.Collections
 {
-    public sealed class StackList<T> : List<T>
+    public sealed class StackList<T> : List<T>, IResettable
         where T : struct, IComparable<T>
     {
         public T Peek() => this[^1];
@@ -81,7 +82,9 @@ namespace Nethermind.Core.Collections
         internal static StackList<T> Rent()
             => StaticPool<StackList<T>>.Rent();
 
-        internal static void Return(StackList<T> value)
+        public void Reset() => Return(this);
+
+        private static void Return(StackList<T> value)
         {
             const int MaxPooledCapacity = 128;
 

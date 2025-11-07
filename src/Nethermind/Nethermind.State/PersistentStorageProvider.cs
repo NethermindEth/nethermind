@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Resettables;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
@@ -79,7 +80,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         _committedThisRound.Clear();
         if (resetBlockChanges)
         {
-            ClearAndPoolStorages();
+            _storages.ResetAndClear();
             _toUpdateRoots.Clear();
         }
     }
@@ -379,15 +380,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         _storages.Clear();
     }
 
-    private void ClearAndPoolStorages()
-    {
-        foreach (PerContractState storage in _storages.Values)
-        {
-            storage.Reset();
-        }
-        _storages.Clear();
-    }
-
     private PerContractState GetOrCreateStorage(Address address)
     {
         ref PerContractState? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
@@ -517,7 +509,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
-    private sealed class PerContractState
+    private sealed class PerContractState : IResettable
     {
         private static readonly Func<StorageCell, PerContractState, byte[]> _loadFromTreeStorageFunc = LoadFromTreeStorage;
 

@@ -443,7 +443,7 @@ namespace Nethermind.State
                         // Remove address entry entirely if no more changes
                         if (_intraTxCache.Remove(change.Address, out StackList<int>? removed))
                         {
-                            StackList<int>.Return(removed);
+                            removed.Reset();
                         }
                     }
                 }
@@ -673,7 +673,7 @@ namespace Nethermind.State
             _changes.Clear();
             _committedThisRound.Clear();
             _nullAccountReads.Clear();
-            ClearIntraTxCache();
+            _intraTxCache.ResetAndClear();
 
             if (commitRoots)
             {
@@ -946,7 +946,7 @@ namespace Nethermind.State
                 _blockChanges.Clear();
                 _codeBatch?.Clear();
             }
-            ClearIntraTxCache();
+            _intraTxCache.ResetAndClear();
             _committedThisRound.Clear();
             _nullAccountReads.Clear();
             _changes.Clear();
@@ -954,15 +954,6 @@ namespace Nethermind.State
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace() => _logger.Trace("Clearing state provider caches");
-        }
-
-        private void ClearIntraTxCache()
-        {
-            foreach (StackList<int> stack in _intraTxCache.Values)
-            {
-                StackList<int>.Return(stack);
-            }
-            _intraTxCache.Clear();
         }
 
         public void CommitTree()
