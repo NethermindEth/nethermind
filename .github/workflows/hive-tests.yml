@@ -32,7 +32,7 @@ on:
       parallelism:
         description: Parallelism
         required: true
-        default: 6
+        default: 4
         type: number
       buildarg:
         description: Docker build arguments
