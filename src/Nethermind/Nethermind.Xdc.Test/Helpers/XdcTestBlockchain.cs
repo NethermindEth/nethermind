@@ -353,19 +353,21 @@ public class XdcTestBlockchain : TestBlockchain
         }
     }
 
-    public override async Task AddBlock(params Transaction[] transactions)
+    public override async Task<Block> AddBlock(params Transaction[] transactions)
     {
         var b = await AddBlockWithoutCommitQc(transactions);
         CreateAndCommitQC((XdcBlockHeader)b.Header);
+        return b;
     }
 
-    public override async Task AddBlockFromParent(BlockHeader parent, params Transaction[] transactions)
+    public override async Task<Block> AddBlockFromParent(BlockHeader parent, params Transaction[] transactions)
     {
-        await base.AddBlockFromParent(parent, transactions);
+        var b = await base.AddBlockFromParent(parent, transactions);
 
         CheckIfTimeForSnapshot();
 
-        CreateAndCommitQC((XdcBlockHeader)BlockTree.Head!.Header);
+        CreateAndCommitQC((XdcBlockHeader)b.Header);
+        return b;
     }
 
     public async Task<Block> AddBlockWithoutCommitQc(params Transaction[] txs)

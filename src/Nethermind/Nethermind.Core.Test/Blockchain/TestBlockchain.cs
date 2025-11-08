@@ -441,19 +441,19 @@ public class TestBlockchain : IDisposable
             (e) => predicate(e.Block));
     }
 
-    public virtual async Task AddBlock(params Transaction[] transactions)
+    public virtual Task<Block> AddBlock(params Transaction[] transactions)
     {
-        await TestUtil.AddBlockAndWaitForHead(false, _cts.Token, transactions);
+        return TestUtil.AddBlockAndWaitForHead(false, _cts.Token, transactions);
     }
 
-    public async Task AddBlock(TestBlockchainUtil.AddBlockFlags flags, params Transaction[] transactions)
+    public Task<Block> AddBlock(TestBlockchainUtil.AddBlockFlags flags, params Transaction[] transactions)
     {
-        await TestUtil.AddBlock(flags, _cts.Token, transactions);
+        return TestUtil.AddBlock(flags, _cts.Token, transactions);
     }
 
-    public virtual async Task AddBlockFromParent(BlockHeader parent, params Transaction[] transactions)
+    public virtual Task<Block> AddBlockFromParent(BlockHeader parent, params Transaction[] transactions)
     {
-        await TestUtil.AddBlock(parent, TestBlockchainUtil.AddBlockFlags.DoNotWaitForHead, _cts.Token, transactions);
+        return TestUtil.AddBlock(parent, TestBlockchainUtil.AddBlockFlags.DoNotWaitForHead, _cts.Token, transactions);
     }
 
     public async Task AddBlockMayMissTx(params Transaction[] transactions)

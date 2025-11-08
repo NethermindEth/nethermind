@@ -117,7 +117,7 @@ public class TestBlockchainUtil(
         return block;
     }
 
-    public Task AddBlock(CancellationToken cancellationToken)
+    public Task<Block> AddBlock(CancellationToken cancellationToken)
     {
         return AddBlock(AddBlockFlags.None, cancellationToken);
     }
@@ -130,12 +130,12 @@ public class TestBlockchainUtil(
         return await AddBlock(flags, cancellationToken, transactions);
     }
 
-    public async Task AddBlockAndWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
+    public async Task<Block> AddBlockAndWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
     {
         AddBlockFlags flags = AddBlockFlags.None;
         if (mayMissTx) flags |= AddBlockFlags.MayMissTx;
 
-        await AddBlock(flags, cancellationToken, transactions);
+        return await AddBlock(flags, cancellationToken, transactions);
     }
 
     private static async Task WaitAsync(Task task, string error)

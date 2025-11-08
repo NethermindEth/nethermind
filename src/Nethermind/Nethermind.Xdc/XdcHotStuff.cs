@@ -260,7 +260,7 @@ namespace Nethermind.Xdc
         }
 
         /// <summary>
-        /// Build block with parentQC, arm timeout, emit BlockProduced.
+        /// Build block with parentQC.
         /// </summary>
         private async Task BuildAndProposeBlock(XdcBlockHeader parent, ulong currentRound, IXdcReleaseSpec spec, CancellationToken ct)
         {
