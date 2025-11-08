@@ -239,8 +239,8 @@ namespace Nethermind.Xdc
                 return;
             }
 
-            bool isMyTurn = IsMyTurnAndTime(parent, currentRound, epochInfo.Masternodes, spec);
-            _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(parent, currentRound, epochInfo.Masternodes, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
+            bool isMyTurn = IsMyTurnAndTime(parent, currentRound, spec);
+            _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(parent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
 
             if (isMyTurn)
             {
@@ -380,7 +380,7 @@ namespace Nethermind.Xdc
         /// Check if the current node is the leader for the given round.
         /// Uses epoch switch manager and spec to determine leader via round-robin rotation.
         /// </summary>
-        private bool IsMyTurnAndTime(XdcBlockHeader parent, ulong round, Address[] masternodes, IXdcReleaseSpec spec)
+        private bool IsMyTurnAndTime(XdcBlockHeader parent, ulong round, IXdcReleaseSpec spec)
         {
             if (_highestSelfMinedRound <= round)
             {
@@ -400,10 +400,7 @@ namespace Nethermind.Xdc
                 return false;
             }
 
-            if (masternodes.Length == 0)
-                return false;
-
-            Address leaderAddress = GetLeaderAddress(parent, round, masternodes, spec);
+            Address leaderAddress = GetLeaderAddress(parent, round, spec);
             return leaderAddress == _signer.Address;
         }
 
@@ -411,13 +408,8 @@ namespace Nethermind.Xdc
         /// Get the leader address for a given round using round-robin rotation.
         /// Leader selection: (round % epochLength) % masternodeCount
         /// </summary>
-        private Address GetLeaderAddress(XdcBlockHeader currentHead, ulong round, Address[] masternodes, IXdcReleaseSpec spec)
+        public Address GetLeaderAddress(XdcBlockHeader currentHead, ulong round, IXdcReleaseSpec spec)
         {
-            if (masternodes.Length == 0)
-            {
-                throw new InvalidOperationException("Cannot determine leader with empty masternode set");
-            }
-
             Address[] currentMasternodes;
             if (_epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
             {
@@ -431,7 +423,7 @@ namespace Nethermind.Xdc
             }
 
             int currentLeaderIndex = ((int)round % spec.EpochLength % currentMasternodes.Length);
-            return masternodes[currentLeaderIndex];
+            return currentMasternodes[currentLeaderIndex];
         }
 
         /// <summary>

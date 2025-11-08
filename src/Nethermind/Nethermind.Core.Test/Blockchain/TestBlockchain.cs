@@ -451,6 +451,11 @@ public class TestBlockchain : IDisposable
         await TestUtil.AddBlock(flags, _cts.Token, transactions);
     }
 
+    public virtual async Task AddBlockFromParent(BlockHeader parent, params Transaction[] transactions)
+    {
+        await TestUtil.AddBlock(parent, TestBlockchainUtil.AddBlockFlags.DoNotWaitForHead, _cts.Token, transactions);
+    }
+
     public async Task AddBlockMayMissTx(params Transaction[] transactions)
     {
         await TestUtil.AddBlockAndWaitForHead(true, _cts.Token, transactions);

@@ -23,6 +23,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -75,12 +76,17 @@ public class XdcTestBlockchain : TestBlockchain
     public IQuorumCertificateManager QuorumCertificateManager => _fromXdcContainer.QuorumCertificateManager;
     public ITimeoutCertificateManager TimeoutCertificateManager => _fromXdcContainer.TimeoutCertificateManager;
     public ISnapshotManager SnapshotManager => _fromXdcContainer.SnapshotManager;
+    public IVotesManager VotesManager => _fromXdcContainer.VotesManager;
+    internal TestRandomSigner RandomSigner { get; }
+    internal XdcHotStuff ConsensusModule => (XdcHotStuff)BlockProducerRunner;
+
 
     protected XdcTestBlockchain(bool useHotStuffModule)
     {
         var keys = new PrivateKeyGenerator().Generate(210).ToList();
         MasterNodeCandidates = keys.Take(200).ToList();
         RandomKeys = keys.Skip(200).ToList();
+        RandomSigner = new TestRandomSigner(MasterNodeCandidates);
         _useHotStuffModule = useHotStuffModule;
     }
 
@@ -120,6 +126,7 @@ public class XdcTestBlockchain : TestBlockchain
         Lazy<IQuorumCertificateManager> quorumCertificateManager,
         Lazy<ITimeoutCertificateManager> timeoutCertificateManager,
         Lazy<ISnapshotManager> snapshotManager,
+        Lazy<IVotesManager> votesManager,
         Lazy<ISigner> signer
     ) : FromContainer(stateReader, ethereumEcdsa, nonceManager, receiptStorage, txPool, worldStateManager, blockPreprocessorStep, blockTree, blockFinder, logFinder, chainHeadInfoProvider, dbProvider, specProvider, sealEngine, transactionComparerProvider, poSSwitcher, chainLevelInfoRepository, mainProcessingContext, readOnlyTxProcessingEnvFactory, blockProducerEnvFactory, configuration, testBlockchainUtil, poWTestBlockchainUtil, manualTimestamper, blockProductionTrigger, shareableTxProcessorSource, sealer, forkInfo)
     {
@@ -128,6 +135,7 @@ public class XdcTestBlockchain : TestBlockchain
         public ITimeoutCertificateManager TimeoutCertificateManager => timeoutCertificateManager.Value;
         public ISnapshotManager SnapshotManager => snapshotManager.Value;
         public ISigner Signer => signer.Value;
+        public IVotesManager VotesManager => votesManager.Value;
     }
     // Please don't add any new parameter to this method. Pass any customization via autofac's configuration
     // or override method or a utility function that wrap around the autofac configuration.
@@ -159,9 +167,9 @@ public class XdcTestBlockchain : TestBlockchain
         return Task.FromResult((TestBlockchain)this);
     }
 
-    protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
-
-        base.ConfigureContainer(builder, configProvider)
+    protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
+    {
+        var  container = base.ConfigureContainer(builder, configProvider)
             .AddModule(new XdcModuleTestOverrides(configProvider, LimboLogs.Instance))
             .AddSingleton<ISpecProvider>(
             new TestSpecProvider(WrapReleaseSpec(Shanghai.Instance))
@@ -180,7 +188,6 @@ public class XdcTestBlockchain : TestBlockchain
                 var logmanager = ctx.Resolve<ILogManager>();
                 return new Signer(spec.ChainId, MasterNodeCandidates[1], logmanager);
             })
-
             .AddSingleton((_) => BlockProducer)
             //.AddSingleton((_) => BlockProducerRunner)
             .AddSingleton<IBlockProducerRunner, XdcHotStuff>()
@@ -197,6 +204,8 @@ public class XdcTestBlockchain : TestBlockchain
                 ctx.Resolve<Configuration>().SlotTime
             ));
 
+        return container;
+    }
 
     private IXdcReleaseSpec WrapReleaseSpec(IReleaseSpec spec)
     {
@@ -346,31 +355,93 @@ public class XdcTestBlockchain : TestBlockchain
 
     public override async Task AddBlock(params Transaction[] transactions)
     {
-        await base.AddBlock(transactions);
+        var b = await AddBlockWithoutCommitQc(transactions);
+        CreateAndCommitQC((XdcBlockHeader)b.Header);
+    }
 
-        var head = (XdcBlockHeader)BlockTree.Head!.Header;
-        var headSpec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
+    public override async Task AddBlockFromParent(BlockHeader parent, params Transaction[] transactions)
+    {
+        await base.AddBlockFromParent(parent, transactions);
 
-        if (ISnapshotManager.IsTimeforSnapshot(head.Number, headSpec))
-        {
-            this.SnapshotManager.StoreSnapshot(new Types.Snapshot(head.Number, head.Hash!, MasterNodeCandidates.Select(k => k.Address).ToArray()));
-        }
+        CheckIfTimeForSnapshot();
 
-        CreateAndCommitQC(head);
+        CreateAndCommitQC((XdcBlockHeader)BlockTree.Head!.Header);
     }
 
     public async Task<Block> AddBlockWithoutCommitQc(params Transaction[] txs)
     {
         await base.AddBlock(txs);
 
+        CheckIfTimeForSnapshot();
+
+        return BlockTree.Head!;
+    }
+
+    private void CheckIfTimeForSnapshot()
+    {
         var head = (XdcBlockHeader)BlockTree.Head!.Header;
         var headSpec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
         if (ISnapshotManager.IsTimeforSnapshot(head.Number, headSpec))
         {
             SnapshotManager.StoreSnapshot(new Types.Snapshot(head.Number, head.Hash!, MasterNodeCandidates.Select(k => k.Address).ToArray()));
         }
+    }
 
-        return BlockTree.Head!;
+    public async Task TriggerAndSimulateBlockProposalAndVoting()
+    {
+        if (!_useHotStuffModule)
+            throw new InvalidOperationException($"Can only be used when using the {nameof(XdcHotStuff)} module");
+        var head = (XdcBlockHeader)BlockTree.Head!.Header;
+        var spec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
+        var leader = ConsensusModule.GetLeaderAddress(head, XdcContext.CurrentRound, spec);
+
+        EpochSwitchInfo epochSwitchInfo = EpochSwitchManager.GetEpochSwitchInfo(head)!;
+        long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+        long gapNumber = epochSwitchNumber == 0 ? 0 : Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
+
+        VoteDecoder voteDecoder = new VoteDecoder();
+
+        var waitHandle = new TaskCompletionSource();
+        BlockTree.NewHeadBlock += OnNewHead;
+        try
+        {
+            //by setting the correct signer the block producer runner should trigger trying to propose a block
+            Signer.SetSigner(MasterNodeCandidates.First(k => k.Address == leader));
+            int count = 0;
+            //Simulate voting until a new head is detected
+            while (!waitHandle.Task.IsCompleted)
+            {
+                count++;
+                if (count > 200)
+                {
+                    break;
+                }
+                //Will cast a random master candidate vote for the head block and when vote threshold is reached the block should be propose
+                var vote = new Vote(new BlockRoundInfo(head.Hash!, XdcContext.CurrentRound, head.Number), (ulong)gapNumber);
+                SignRandom(vote);
+                var voteTask = this.VotesManager.HandleVote(vote);
+            }
+            //Blocks are not proposed 
+            var finishedTask = await Task.WhenAny(waitHandle.Task, Task.Delay(10_000));
+            if (finishedTask != waitHandle.Task)
+                Assert.Fail("After 200 votes no new head could be detected. Something is wrong.");
+        }
+        finally
+        {
+            BlockTree.NewHeadBlock -= OnNewHead;
+        }
+        
+        void OnNewHead(object? sender, BlockEventArgs e)
+        {
+            waitHandle.SetResult();
+        }
+        void SignRandom(Vote vote)
+        {
+            KeccakRlpStream stream = new();
+            voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
+            vote.Signature = RandomSigner.Sign(stream.GetValueHash());
+            vote.Signer = RandomSigner.Address;
+        }
     }
 
     public void CreateAndCommitQC(XdcBlockHeader header)

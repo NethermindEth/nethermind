@@ -31,7 +31,11 @@ public class TestBlockchainUtil(
 
     private Task _previousAddBlock = Task.CompletedTask;
 
-    public async Task<AcceptTxResult[]> AddBlock(AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
+    public Task<AcceptTxResult[]> AddBlock(AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
+    {
+        return AddBlock(blockTree.GetProducedBlockParent(null)!, flags, cancellationToken, transactions);
+    }
+    public async Task<AcceptTxResult[]> AddBlock(BlockHeader parentToBuildOn, AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
     {
         Task waitforHead = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)
             ? Task.CompletedTask
@@ -71,7 +75,7 @@ public class TestBlockchainUtil(
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            block = await blockProducer.BuildBlock(parentHeader: blockTree.GetProducedBlockParent(null), cancellationToken: cancellationToken);
+            block = await blockProducer.BuildBlock(parentHeader: parentToBuildOn, cancellationToken: cancellationToken);
 
             if (invalidBlock is not null) Assert.Fail($"Invalid block {invalidBlock} produced");
 
