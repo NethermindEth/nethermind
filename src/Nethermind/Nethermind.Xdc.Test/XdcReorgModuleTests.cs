@@ -35,6 +35,42 @@ internal class XdcReorgModuleTests
         blockChain.BlockTree.SuggestBlock(forkBlock!).Should().Be(Blockchain.AddBlockResult.Added);
     }
 
+    [Test]
+    public async Task TestReorg()
+    {
+        var blockChain = await XdcTestBlockchain.Create(3);
+        var startRound = blockChain.XdcContext.CurrentRound;
+        await blockChain.AddBlocks(10);
+
+        var finalizedBlockInfo = blockChain.XdcContext.HighestCommitBlock;
+        finalizedBlockInfo.Round.Should().Be(blockChain.XdcContext.CurrentRound - 2); // Finalization is 2 rounds behind
+
+        XdcBlockHeader? finalizedBlock = (XdcBlockHeader)blockChain.BlockTree.FindHeader(finalizedBlockInfo.Hash)!;
+
+        var newHeadWaitHandle = new TaskCompletionSource();
+        blockChain.BlockTree.NewHeadBlock += (_, args) =>
+        {
+            newHeadWaitHandle.SetResult();
+        };        
+
+        XdcBlockHeader forkparent = finalizedBlock;
+        for (int i = 0; i < 3; i++)
+        {
+            //Build a fork on finalized block, which should result in fork becoming new head
+            await blockChain.AddBlockFromParent(forkparent);
+            forkparent = (XdcBlockHeader)blockChain.BlockTree.Head!.Header;
+        }
+        
+        if (blockChain.BlockTree.Head!.Hash != forkparent.Hash)
+        {
+            //Wait for new head 
+            await Task.WhenAny(newHeadWaitHandle.Task, Task.Delay(10_000));
+        }
+
+        blockChain.BlockTree.Head!.Hash.Should().Be(forkparent.Hash!);
+        blockChain.XdcContext.HighestCommitBlock.Hash.Should().Be(blockChain.BlockTree.FindHeader(forkparent.ParentHash!)!.ParentHash!);
+    }
+
     [TestCase(5)]
     [TestCase(900)]
     [TestCase(901)]
