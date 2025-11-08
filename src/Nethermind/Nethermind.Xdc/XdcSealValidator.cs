@@ -115,18 +115,15 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
         if (header is not XdcBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
 
-        if (header.Author is null)
-        {
-            if (xdcHeader.Validator is null
-                || xdcHeader.Validator.Length != 65
-                 //Passing an illegal y parity to syscall will cause a fatal error and program can crash
-                 || xdcHeader.Validator[64] >= 4)
-                return false;
+        if (xdcHeader.Validator is null
+            || xdcHeader.Validator.Length != 65
+                //Passing an illegal y parity to syscall will cause a fatal error and program can crash
+                || xdcHeader.Validator[64] >= 4)
+            return false;
 
-            Address signer = _ethereumEcdsa.RecoverAddress(new Signature(xdcHeader.Validator.AsSpan(0, 64), xdcHeader.Validator[64]), Keccak.Compute(_headerDecoder.Encode(xdcHeader, RlpBehaviors.ForSealing).Bytes));
+        Address signer = _ethereumEcdsa.RecoverAddress(new Signature(xdcHeader.Validator.AsSpan(0, 64), xdcHeader.Validator[64]), Keccak.Compute(_headerDecoder.Encode(xdcHeader, RlpBehaviors.ForSealing).Bytes));
 
-            header.Author = signer;
-        }
-        return xdcHeader.Beneficiary == xdcHeader.Author;
+        var signerAddress = signer;
+        return xdcHeader.Beneficiary == signerAddress;
     }
 }

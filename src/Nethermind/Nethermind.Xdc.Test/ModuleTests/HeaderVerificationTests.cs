@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
+using Google.Protobuf.WellKnownTypes;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -10,9 +12,11 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using Org.BouncyCastle.Crypto;
 using System;
@@ -20,18 +24,23 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using ISigner = Nethermind.Consensus.ISigner;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 internal class HeaderVerificationTests
 {
     private XdcTestBlockchain xdcTestBlockchain;
     private IHeaderValidator xdcHeaderValidator;
+    private ISigner xdcSigner;
+    private ExtraConsensusDataDecoder extraConsensusDataDecoder;
 
     [SetUp]
     public async Task Setup()
     {
         xdcTestBlockchain = await XdcTestBlockchain.Create();
-        xdcHeaderValidator = xdcTestBlockchain.HeaderValidator;
+        xdcHeaderValidator = xdcTestBlockchain.Container.Resolve<IHeaderValidator>();
+        xdcSigner = xdcTestBlockchain.Container.Resolve<ISigner>();
+        extraConsensusDataDecoder = new();
     }
 
     [Test]
@@ -61,7 +70,7 @@ internal class HeaderVerificationTests
         var quorumCert = new QuorumCertificate(proposedBlockInfo, signatures.ToArray(), 1);
 
         var extra = new ExtraFieldsV2(proposedBlockInfo.Round, quorumCert);
-        var extraInBytes = Rlp.Encode(extra).Bytes;
+        var extraInBytes = extraConsensusDataDecoder.Encode(extra).Bytes;
 
         invalidRoundBlock.ExtraData = extraInBytes;
         var result = xdcHeaderValidator.Validate(invalidRoundBlock, invalidRoundBlockParent);
@@ -71,16 +80,16 @@ internal class HeaderVerificationTests
     [Test]
     public async Task Block_With_Illigitimate_Signer_Fails()
     {
-        var previousSigner = xdcTestBlockchain.Signer.Key;
+        var previousSigner = xdcSigner.Key;
 
         var coinbaseValidatorMismatchBlock = GetLastBlock(false);
         var coinbaseValidatorMismatchBlockParent = xdcTestBlockchain.BlockTree.FindHeader(coinbaseValidatorMismatchBlock.ParentHash!);
 
         var notQualifiedSigner = TestItem.PrivateKeyA; // private key
-        ((Signer)xdcTestBlockchain.Signer).SetSigner(notQualifiedSigner);
+        ((Signer)xdcSigner).SetSigner(notQualifiedSigner);
         await xdcTestBlockchain.SealEngine.SealBlock(coinbaseValidatorMismatchBlock, default);
 
-        ((Signer)xdcTestBlockchain.Signer).SetSigner(previousSigner);
+        ((Signer)xdcSigner).SetSigner(previousSigner);
         var result = xdcHeaderValidator.Validate(coinbaseValidatorMismatchBlock.Header, coinbaseValidatorMismatchBlockParent!);
         Assert.That(result, Is.False);
     }
@@ -161,8 +170,7 @@ internal class HeaderVerificationTests
         var parentNotExistBlock = GetLastHeader(true);
         parentNotExistBlock.ParentHash = TestItem.KeccakA;
         var parentNotExistBlockParent = xdcTestBlockchain.BlockTree.FindHeader(parentNotExistBlock.ParentHash!);
-        var result = xdcHeaderValidator.Validate(parentNotExistBlock, parentNotExistBlockParent!);
-        Assert.That(result, Is.False);
+        Assert.Throws<ArgumentNullException>(() => xdcHeaderValidator.Validate(parentNotExistBlock, parentNotExistBlockParent!));
     }
 
     [Test]
@@ -267,7 +275,7 @@ internal class HeaderVerificationTests
 
         var quorumCert = new QuorumCertificate(proposedBlockInfo, signatures.ToArray(), 1);
         var extra = new ExtraFieldsV2(proposedBlockInfo.Round, quorumCert);
-        var extraInBytes = Rlp.Encode(extra).Bytes;
+        var extraInBytes = extraConsensusDataDecoder.Encode(extra).Bytes;
         invalidQcSignatureBlock.ExtraData = extraInBytes;
         var result = xdcHeaderValidator.Validate(invalidQcSignatureBlock, invalidQcSignatureBlockParent);
         Assert.That(result, Is.False);
