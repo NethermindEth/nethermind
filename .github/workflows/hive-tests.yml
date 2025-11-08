@@ -28,7 +28,7 @@ on:
         required: true
         default: '3'
         type: choice
-        options: ['0', '1', '2', '3', '4', "5']
+        options: ['0', '1', '2', '3', '4', '5']
       parallelism:
         description: Parallelism
         required: true
