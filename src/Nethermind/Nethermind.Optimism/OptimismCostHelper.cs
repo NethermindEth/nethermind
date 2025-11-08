@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -149,7 +150,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     }
 
     // https://specs.optimism.io/protocol/jovian/exec-engine.html#da-footprint-block-limit
-    public UInt256 ComputeDaFootprint(Block block, IWorldState worldState)
+    public UInt256 ComputeDaFootprint(Block block, IWorldState? worldState)
     {
         if (block.Transactions.Length == 0)
             return 0;
@@ -324,16 +325,30 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
 
     internal static UInt256 ComputeGasUsedFjord(UInt256 estimatedSize) => estimatedSize * GasCostOf.TxDataNonZeroEip2028 / BasicDivisor;
 
-    private UInt256 GetDaFootprintScalar(IWorldState worldState)
+    // https://specs.optimism.io/protocol/jovian/exec-engine.html#scalar-loading
+    private UInt256 GetDaFootprintScalar(IWorldState? worldState)
     {
-        // https://specs.optimism.io/protocol/jovian/exec-engine.html#scalar-loading
-        ReadOnlySpan<byte> span = worldState.Get(_daFootprintGasScalarSlot);
+        ReadOnlySpan<byte> span = worldState is null ? ReadOnlySpan<byte>.Empty : worldState.Get(_daFootprintGasScalarSlot);
 
         const int scalarPosition = 12;
         if (span.Length < scalarPosition + sizeof(UInt16))
             return DaFootprintScalarDefault;
 
         var scalar = ReadUInt16BigEndian(span[scalarPosition..]);
+        return scalar == 0 ? DaFootprintScalarDefault : scalar;
+    }
+
+    // https://specs.optimism.io/protocol/jovian/l1-attributes.html
+    private static UInt256 GetDaFootprintScalar(Block block)
+    {
+        var firstTx = block.Transactions.FirstOrDefault();
+        if (firstTx?.Type is not TxType.DepositTx)
+            return DaFootprintScalarDefault;
+
+        if (firstTx.Data.Length < 178)
+            return DaFootprintScalarDefault;
+
+        var scalar = ReadUInt16BigEndian(firstTx.Data.Span[176..178]);
         return scalar == 0 ? DaFootprintScalarDefault : scalar;
     }
 }
