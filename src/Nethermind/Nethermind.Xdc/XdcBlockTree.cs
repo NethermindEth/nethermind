@@ -68,7 +68,7 @@ internal class XdcBlockTree : BlockTree
                 return base.Suggest(block, header, options);
 
             current = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-            if (current == null)
+            if (current is null)
                 return AddBlockResult.UnknownParent;
         }
         //This is not possible to reach
