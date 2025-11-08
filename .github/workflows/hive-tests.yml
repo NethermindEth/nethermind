@@ -65,7 +65,7 @@ jobs:
         run: |
           echo "LIMIT=${{ github.event.inputs.limit || '' }}" >> $GITHUB_ENV
           echo "LOG_LEVEL=${{ github.event.inputs.log-level || '3' }}" >> $GITHUB_ENV
-          echo "PARALLELISM=${{ github.event.inputs.parallelism || '6' }}" >> $GITHUB_ENV
+          echo "PARALLELISM=${{ github.event.inputs.parallelism || '4' }}" >> $GITHUB_ENV
           echo "HIVE_REPO=${{ github.event.inputs.hive-repo || 'ethereum/hive' }}" >> $GITHUB_ENV
           echo "HIVE_BRANCH=${{ github.event.inputs.hive-branch || 'master' }}" >> $GITHUB_ENV
           echo "BUILDARG=${{ github.event.inputs.buildarg || '' }}" >> $GITHUB_ENV
