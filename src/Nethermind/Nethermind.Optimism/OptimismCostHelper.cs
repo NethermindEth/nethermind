@@ -150,12 +150,12 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     }
 
     // https://specs.optimism.io/protocol/jovian/exec-engine.html#da-footprint-block-limit
-    public UInt256 ComputeDaFootprint(Block block, IWorldState? worldState)
+    public UInt256 ComputeDaFootprint(Block block, IWorldState worldState)
     {
         if (block.Transactions.Length == 0)
             return 0;
 
-        UInt256 daFootprintScalar = GetDaFootprintScalar(worldState);
+        UInt256 daFootprintScalar = GetDaFootprintScalar(block);
 
         UInt256 footprint = UInt256.Zero;
         foreach (Transaction tx in block.Transactions)
