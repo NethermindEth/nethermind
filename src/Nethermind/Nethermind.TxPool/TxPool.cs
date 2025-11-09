@@ -295,7 +295,7 @@ namespace Nethermind.TxPool
                         _lastBlockNumber = args.Block.Number;
                         _lastBlockHash = args.Block.Hash;
 
-                        ReAddReorganisedTransactions(args.PreviousBlock);
+                        //ReAddReorganisedTransactions(args.PreviousBlock);
                         RemoveProcessedTransactions(args.Block);
 
                         if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
@@ -160,6 +161,10 @@ public class TaikoPayloadPreparationService(
         _ = GetPayload(payloadId);
     }
 
+    public string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes, List<byte[]>? txRlp)
+    {
+        throw new NotImplementedException();
+    }
 
     public event EventHandler<BlockEventArgs>? BlockImproved { add { } remove { } }
 }

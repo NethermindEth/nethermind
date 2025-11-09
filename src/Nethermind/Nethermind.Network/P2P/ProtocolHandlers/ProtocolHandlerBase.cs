@@ -16,6 +16,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {

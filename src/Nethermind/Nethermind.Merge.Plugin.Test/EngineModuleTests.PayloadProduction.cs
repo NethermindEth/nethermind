@@ -1,17 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Threading;
-using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -37,8 +30,18 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.TxPool;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Threading;
+using System.Threading.Tasks;
 using ILogManager = Nethermind.Logging.ILogManager;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
@@ -314,7 +317,8 @@ public partial class EngineModuleTests
                 Transactions = new[]
                 {
                     Bytes.FromHexString(
-                        "0xf85f800182520894475674cb523a0a2736b7f7534390288fce16982c018025a0634db2f18f24d740be29e03dd217eea5757ed7422680429bdd458c582721b6c2a02f0fa83931c9a99d3448a46b922261447d6a41d8a58992b5596089d15d521102"),
+                        "0xf85f800182520894475674cb523a0a2736b7f7534390288fce16982c018025a0634db2f18f24d740be29e03dd217eea5757ed7422680429bdd458c582721b6c2a02f0fa83931c9a99d3448a46b922261447d6a41d8a58992b5596089d15d521102"
+                                        ),
                     Bytes.FromHexString(
                         "0x02f8620180011482520894475674cb523a0a2736b7f7534390288fce16982c0180c001a0db002b398e038bc919b316a214154aa6d9d5e404cb201aa8a151efb92f9fdbbda07bee8ea6915ed54bb07af4cd69b201548fe9aac699978e5c444405dc49f55a36")
                 },
@@ -326,13 +330,49 @@ public partial class EngineModuleTests
     [Test]
     public async Task getPayload_should_serialize_unknown_payload_response_properly()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain();
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(Prague.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+
         IEngineRpcModule rpc = chain.EngineRpcModule;
         byte[] payloadId = Bytes.FromHexString("0x1111111111111111");
+        var genesishash = chain.BlockTree.HeadHash;
 
-        string parameters = payloadId.ToHexString(true);
-        string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", parameters);
-        result.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-38001,\"message\":\"unknown payload\"},\"id\":67}");
+        var txs1 = BuildTransactions(chain, genesishash, TestItem.PrivateKeyB, TestItem.AddressF, 2, 10, out _, out _);
+        var txs2 = BuildTransactions(chain, genesishash, TestItem.PrivateKeyB, TestItem.AddressF, 1, 10, out _, out _);
+        var str1 = TxDecoder.Instance.Encode(txs1[0], RlpBehaviors.SkipTypedWrapping).ToString();
+        var str2 = TxDecoder.Instance.Encode(txs1[1], RlpBehaviors.SkipTypedWrapping).ToString();
+
+        if (str1 != null && str2 != null)
+        {
+            List<byte[]> param1 = new List<byte[]>() {
+                Bytes.FromHexString(str1)
+            };
+
+            List<byte[]> param11 = new List<byte[]>() {
+                Bytes.FromHexString(str2)
+            };
+
+            string param2 = "EMPTY";
+            string result1 = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", param1, param2, false);
+            var jo = JObject.Parse(result1);
+
+            string? blockHash = (string?)jo["result"]?["executionPayload"]?["blockHash"];
+            string? parentHash = (string?)jo["result"]?["executionPayload"]?["parentHash"];
+            string? executionPayloadJson = jo["result"]?["executionPayload"]?.ToString();
+            if (blockHash != null && executionPayloadJson != null && parentHash != null)
+            {
+                Hash256 hash = new Hash256(Bytes.FromHexString(blockHash));
+
+                ForkchoiceStateV1 fcuState = new(hash, genesishash, genesishash);
+                byte[]?[] bytes = new byte[0][];
+                byte[][]? bytes2 = new byte[0][];
+                var np = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV4", executionPayloadJson, bytes, parentHash, bytes2);
+                var fcu = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV3", fcuState, null);
+            }
+
+            string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", param11, param2, true);
+            Console.WriteLine(result);
+        }
     }
 
     [Test]

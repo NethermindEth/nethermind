@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Numerics;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -33,6 +33,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using System.Numerics;
 
 namespace Nethermind.Network.Test;
 
@@ -70,6 +71,7 @@ public class ProtocolsManagerTests
         private readonly IGossipPolicy _gossipPolicy;
         private readonly IPeerManager _peerManager;
         private readonly INetworkConfig _networkConfig;
+        private IBlockFinder _blockFinder = null!;
 
         public Context()
         {
@@ -85,6 +87,7 @@ public class ProtocolsManagerTests
             _syncServer.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
             _syncServer.Head.Returns(Build.A.BlockHeader.TestObject);
             _txPool = Substitute.For<ITxPool>();
+            _blockFinder.GetLowestBlock().Returns(3);
             _discoveryApp = Substitute.For<IDiscoveryApp>();
 
             _serializer = new MessageSerializationService(
@@ -123,6 +126,7 @@ public class ProtocolsManagerTests
                 forkInfo,
                 _gossipPolicy,
                 Substitute.For<IWorldStateManager>(),
+                _blockFinder,
                 LimboLogs.Instance,
                 Substitute.For<ITxPoolConfig>(),
                 Substitute.For<ISpecProvider>());

@@ -109,7 +109,7 @@ public partial class EngineModuleTests
             withdrawals);
         GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), executionRequests: [], shouldOverrideBuilder: false);
 
-        response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", expectedPayloadId);
+        response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", "", "0x86cF016FB873D50a7B8F31EB154c9234DD31b058");
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
@@ -310,8 +310,8 @@ public partial class EngineModuleTests
         // we're using payloadService directly, because we can't use fcU for branch
         string payloadId = chain.PayloadPreparationService!.StartPreparingPayload(parentHeader, payloadAttributes)!;
 
-        ResultWrapper<GetPayloadV4Result?> getPayloadResult =
-            await rpc.engine_getPayloadV4(Bytes.FromHexString(payloadId));
+        List<byte[]>? empty = new List<byte[]>();
+        ResultWrapper<GetPayloadV4Result?> getPayloadResult = await rpc.engine_getPayloadV4(empty, "");
         return getPayloadResult.Data!.ExecutionPayload!;
     }
 
@@ -369,9 +369,10 @@ public partial class EngineModuleTests
         string? payloadId = result.Data.PayloadId;
 
         await blockImprovementWait;
+        List<byte[]>? empty = new List<byte[]>();
 
         ResultWrapper<GetPayloadV4Result?> getPayloadResult =
-            await rpc.engine_getPayloadV4(Bytes.FromHexString(payloadId!));
+            await rpc.engine_getPayloadV4(empty, "");
 
         return getPayloadResult.Data!.ExecutionPayload!;
     }

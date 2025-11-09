@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -68,6 +69,7 @@ namespace Nethermind.Network
         private readonly ILogManager _logManager;
         private readonly ITxPoolConfig _txPoolConfdig;
         private readonly ISpecProvider _specProvider;
+        private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
@@ -88,6 +90,7 @@ namespace Nethermind.Network
             IForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
             IWorldStateManager worldStateManager,
+            IBlockFinder blockFinder,
             ILogManager logManager,
             ITxPoolConfig txPoolConfdig,
             ISpecProvider specProvider,
@@ -110,6 +113,7 @@ namespace Nethermind.Network
             _txPoolConfdig = txPoolConfdig;
             _specProvider = specProvider;
             _snapServer = worldStateManager.SnapServer;
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _protocolFactories = GetProtocolFactories();

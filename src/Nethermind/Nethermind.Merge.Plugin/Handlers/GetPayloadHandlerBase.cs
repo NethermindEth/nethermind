@@ -12,6 +12,12 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
+using Nethermind.TxPool;
+using Nethermind.Blockchain.Find;
+using Nethermind.Merge.Plugin.Data;
+using System.Collections.Generic;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -20,7 +26,8 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
     IPayloadPreparationService payloadPreparationService,
     ISpecProvider specProvider,
     ILogManager logManager,
-    ICensorshipDetector? censorshipDetector = null)
+    ICensorshipDetector? censorshipDetector = null,
+    IBlockFinder? finder = null)
     : IAsyncHandler<byte[], TGetPayloadResult?>
     where TGetPayloadResult : IForkValidator
 {
@@ -53,9 +60,78 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
         Metrics.NumberOfTransactionsInGetPayload = block.Transactions.Length;
         return ResultWrapper<TGetPayloadResult?>.Success(getPayloadResult);
     }
+    public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(List<byte[]>? txRlp, string privKey = "", bool reorg = false)
+    {
+        var previousBlock = reorg ? finder?.FindFinalizedBlock() : finder?.FindHeadBlock();
+        var latestBlock = finder?.FindHeadBlock();
+
+        if (previousBlock != null && latestBlock != null)
+        {
+            PayloadAttributes payloadAttributes;
+            if (privKey == "EMPTY")
+            {
+                var timestamp = latestBlock.Timestamp;
+                payloadAttributes = new()
+                {
+                    Timestamp = timestamp + 24 * 60 * 60 + 1,
+                    ParentBeaconBlockRoot = previousBlock.Hash,
+                    PrevRandao = previousBlock.Hash ?? Keccak.Zero,
+                    SuggestedFeeRecipient = Address.Zero,
+                    Withdrawals = Array.Empty<Withdrawal>(),
+                };
+            }
+            else
+            {
+                var timestamp2 = previousBlock.Timestamp;
+                payloadAttributes = new()
+                {
+                    Timestamp = timestamp2 + 24 * 60 * 60 + 1,
+                    ParentBeaconBlockRoot = previousBlock.Hash,
+                    PrevRandao = previousBlock.Hash ?? Keccak.Zero,
+                    SuggestedFeeRecipient = Address.Zero,
+                    Withdrawals = new[] { new Withdrawal
+                    {
+                        Address = new Address(privKey),
+                        AmountInGwei = ulong.MaxValue,
+                        ValidatorIndex = (ulong)(1),
+                        Index = (ulong)(1 % 16 + 1)
+                    }}
+                };
+            }
+
+            string id = payloadPreparationService.StartPreparingPayload(previousBlock.Header, payloadAttributes, txRlp) ?? "EMPTY";
+            _logger.Info("Started preparing Payload with ID: " + id);
+            IBlockProductionContext? blockContext = await payloadPreparationService.GetPayload(id);
+            Block? block = blockContext?.CurrentBestBlock;
+            _logger.Info("Current best block: " + block);
+
+            if (blockContext is null || block is null)
+            {
+                return ResultWrapper<TGetPayloadResult?>.Fail("unknown payload", MergeErrorCodes.UnknownPayload);
+            }
+
+            TGetPayloadResult getPayloadResult = GetPayloadResultFromBlock(blockContext);
+
+            if (!getPayloadResult.ValidateFork(specProvider))
+            {
+                if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
+                return ResultWrapper<TGetPayloadResult?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
+            }
+
+            if (_logger.IsInfo) _logger.Info($"GetPayloadV{apiVersion} result: {block.Header.ToString(BlockHeader.Format.Short)}.");
+
+            return ResultWrapper<TGetPayloadResult?>.Success(getPayloadResult);
+        }
+
+        else
+        {
+            return ResultWrapper<TGetPayloadResult?>.Fail("unknown payload", MergeErrorCodes.InvalidPayloadAttributes);
+        }        
+    }
 
     protected bool ShouldOverrideBuilder(Block block)
          => censorshipDetector?.GetCensoredBlocks().Contains(new BlockNumberHash(block)) ?? false;
 
     protected abstract TGetPayloadResult GetPayloadResultFromBlock(IBlockProductionContext blockProductionContext);
+
 }

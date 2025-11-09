@@ -19,6 +19,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Consensus;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Transaction = Nethermind.Core.Transaction;
