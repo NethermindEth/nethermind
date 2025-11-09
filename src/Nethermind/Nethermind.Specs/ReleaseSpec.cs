@@ -168,6 +168,7 @@ namespace Nethermind.Specs
 
         private FrozenSet<AddressAsKey>? _precompiles;
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
+        public long Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
 
         public virtual FrozenSet<AddressAsKey> BuildPrecompilesCache()
         {
