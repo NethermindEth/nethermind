@@ -458,7 +458,6 @@ public class XdcTestBlockchain : TestBlockchain
         QuorumCertificateManager.CommitCertificate(headQc);
     }
 
-
     public PrivateKey[] TakeRandomMasterNodes(IXdcReleaseSpec headSpec, EpochSwitchInfo switchInfo)
     {
         return switchInfo

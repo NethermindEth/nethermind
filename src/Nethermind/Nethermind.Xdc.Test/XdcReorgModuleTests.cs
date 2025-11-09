@@ -36,7 +36,7 @@ internal class XdcReorgModuleTests
     }
 
     [Test]
-    public async Task TestReorg()
+    public async Task BuildAValidForkOnFinalizedBlockAndAssertForkBecomesCanonical()
     {
         var blockChain = await XdcTestBlockchain.Create(3);
         var startRound = blockChain.XdcContext.CurrentRound;
@@ -67,7 +67,10 @@ internal class XdcReorgModuleTests
         }
 
         blockChain.BlockTree.Head!.Hash.Should().Be(forkparent.Hash!);
+        //The new fork head should commit it's grandparent as finalized
         blockChain.XdcContext.HighestCommitBlock.Hash.Should().Be(blockChain.BlockTree.FindHeader(forkparent.ParentHash!)!.ParentHash!);
+        //Our lock QC should be parent of the fork head
+        blockChain.XdcContext.LockQC!.ProposedBlockInfo.Hash.Should().Be(forkparent.ParentHash!);
     }
 
     [TestCase(5)]
