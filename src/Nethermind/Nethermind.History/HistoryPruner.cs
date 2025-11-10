@@ -266,6 +266,7 @@ public class HistoryPruner : IHistoryPruner
                             return Task.CompletedTask;
                         }))
                 {
+                    Interlocked.Exchange(ref _currentlyPruning, 0);
                     if (_logger.IsDebug) _logger.Debug("Failed to schedule historical block pruning.");
                 }
             }
