@@ -41,22 +41,16 @@ public class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
         return rounds;
     }
 
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        if (inputData.Length != RequiredInputLength)
-        {
-            return IPrecompile.Failure;
-        }
+        if (inputData.Length != RequiredInputLength) return Errors.InvalidInputLength;
 
         byte finalByte = inputData.Span[212];
-        if (finalByte != 0 && finalByte != 1)
-        {
-            return IPrecompile.Failure;
-        }
+        if (finalByte != 0 && finalByte != 1) return Errors.InvalidFinalFlag;
 
         byte[] result = new byte[64];
         _blake.Compress(inputData.Span, result);
 
-        return (result, true);
+        return result;
     }
 }
