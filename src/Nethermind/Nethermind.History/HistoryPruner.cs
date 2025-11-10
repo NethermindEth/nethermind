@@ -14,7 +14,9 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -127,25 +129,26 @@ public class HistoryPruner : IHistoryPruner
             }
 
             long? cutoffBlockNumber = null;
-            long searchCutoff = _blockTree.Head?.Number ?? _blockTree.SyncPivot.BlockNumber;
+            long to = _blockTree.Head?.Number ?? _blockTree.SyncPivot.BlockNumber;
+
+            // cutoff is unchanged, can reuse
+            if (_cutoffTimestamp is not null && cutoffTimestamp == _cutoffTimestamp)
+            {
+                return _cutoffPointer;
+            }
+
             bool lockTaken = false;
             try
             {
                 Monitor.TryEnter(_searchLock, LockWaitTimeoutMs, ref lockTaken);
-
                 if (lockTaken)
                 {
-                    // cutoff is unchanged, can reuse
-                    if (_cutoffTimestamp is not null && cutoffTimestamp == _cutoffTimestamp)
-                    {
-                        return _cutoffPointer;
-                    }
-
-                    // optimisticly search a few blocks from an old pointer
+                    // optimistically search a few blocks from an old pointer
                     if (_cutoffPointer is not null)
                     {
                         int attempts = 0;
-                        _ = GetBlocksByNumber(_cutoffPointer.Value, searchCutoff, b =>
+                        long from = _cutoffPointer.Value;
+                        using ArrayPoolListRef<Block> x = GetBlocksByNumber(from, to, b =>
                         {
                             if (attempts >= MaxOptimisticSearchAttempts)
                             {
@@ -159,11 +162,11 @@ public class HistoryPruner : IHistoryPruner
                             }
                             attempts++;
                             return afterCutoff;
-                        }).ToList();
+                        }).ToPooledListRef((int)(to - from + 1));
                     }
 
-                    // if linear search fails fallback to binary search
-                    cutoffBlockNumber ??= BlockTree.BinarySearchBlockNumber(_deletePointer, searchCutoff, (n, _) =>
+                    // if linear search fails, fallback to binary search
+                    cutoffBlockNumber ??= BlockTree.BinarySearchBlockNumber(_deletePointer, to, (n, _) =>
                     {
                         BlockInfo[]? blockInfos = _chainLevelInfoRepository.LoadLevel(n)?.BlockInfos;
 
@@ -197,7 +200,9 @@ public class HistoryPruner : IHistoryPruner
             finally
             {
                 if (lockTaken)
+                {
                     Monitor.Exit(_searchLock);
+                }
             }
 
             return cutoffBlockNumber;
@@ -499,7 +504,7 @@ public class HistoryPruner : IHistoryPruner
                     continue;
                 }
 
-                // search entire chain level before finishing
+                // search the entire chain level before finishing
                 if (endSearch(block))
                 {
                     finished = true;
@@ -512,7 +517,7 @@ public class HistoryPruner : IHistoryPruner
 
             if (finished)
             {
-                break;
+                yield break;
             }
         }
     }
