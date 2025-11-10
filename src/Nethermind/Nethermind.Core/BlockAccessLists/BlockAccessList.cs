@@ -331,6 +331,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                 {
                     Address = accountChanges.Address,
                     Type = ChangeType.StorageChange,
+                    Slot = storageKey,
                     PreviousValue = storageChanges.Changes[^1],
                     BlockAccessIndex = Index
                 });
