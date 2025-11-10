@@ -211,7 +211,7 @@ public class HistoryPruner : IHistoryPruner
             if (!_hasLoadedDeletePointer)
             {
                 bool lockTaken = false;
-                // take lock before updating delete the pointer
+                // take lock before updating delete pointer
                 // avoids race conditions with pruning
                 try
                 {
@@ -248,7 +248,7 @@ public class HistoryPruner : IHistoryPruner
     {
         Task.Run(() =>
         {
-            if (Interlocked.CompareExchange(ref _currentlyPruning, 1, 0) == 1)
+            if (Interlocked.CompareExchange(ref _currentlyPruning, 1, 0) == 0)
             {
                 if (!_backgroundTaskScheduler.TryScheduleTask(1,
                         (_, backgroundTaskToken) =>

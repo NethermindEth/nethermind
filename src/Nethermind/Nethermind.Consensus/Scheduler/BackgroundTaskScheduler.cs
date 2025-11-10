@@ -16,7 +16,7 @@ using Nethermind.TxPool;
 namespace Nethermind.Consensus.Scheduler;
 
 /// <summary>
-/// Provide a way to orchestrate tasks to run in the background at a lower priority.
+/// Provides a way to orchestrate tasks to run in the background at a lower priority.
 /// - Task will be run in a lower priority thread, but there is a concurrency limit.
 /// - Task closure will have the CancellationToken which will be canceled if block processing happens while the task is running.
 /// - The Task has a default timeout, which is counted from the time it is queued. If timed out because too many other background
@@ -183,7 +183,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
         bool success = false;
 
-        if (Interlocked.Increment(ref _queueCount) < _capacity)
+        if (Interlocked.Increment(ref _queueCount) <= _capacity)
         {
             success = _taskQueue.Writer.TryWrite(activity);
             if (success)
@@ -195,6 +195,11 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                 Interlocked.Decrement(ref _queueCount);
                 request.TryDispose();
             }
+        }
+        else
+        {
+            Interlocked.Decrement(ref _queueCount);
+            request.TryDispose();
         }
 
         return success;
