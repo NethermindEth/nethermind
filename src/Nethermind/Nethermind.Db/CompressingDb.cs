@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
@@ -21,6 +22,7 @@ namespace Nethermind.Db
         private class EOACompressingDb : IDb, ITunableDb
         {
             private readonly IDb _wrapped;
+            private const int StackAllocThreshold = 512;
 
             public EOACompressingDb(IDb wrapped)
             {
@@ -51,7 +53,37 @@ namespace Nethermind.Db
 
                 public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
                 {
-                    _wrapped.PutSpan(key, Compress(value, stackalloc byte[value.Length]), flags);
+                    if (!value.EndsWith(EmptyCodeHashStorageRoot))
+                    {
+                        _wrapped.PutSpan(key, value, flags);
+                        return;
+                    }
+
+                    int storedLength = value.Length - EmptyCodeHashStorageRoot.Length;
+                    int compressedLength = storedLength + PreambleLength;
+
+                    if (compressedLength <= EOACompressingDb.StackAllocThreshold)
+                    {
+                        Span<byte> tmp = stackalloc byte[compressedLength];
+                        tmp[PreambleIndex] = PreambleValue;
+                        value[..storedLength].CopyTo(tmp[EOACompressingDb.PreambleLength..]);
+                        _wrapped.PutSpan(key, tmp, flags);
+                    }
+                    else
+                    {
+                        byte[] rented = ArrayPool<byte>.Shared.Rent(compressedLength);
+                        try
+                        {
+                            Span<byte> tmp = rented.AsSpan(0, compressedLength);
+                            tmp[EOACompressingDb.PreambleIndex] = EOACompressingDb.PreambleValue;
+                            value[..storedLength].CopyTo(tmp[EOACompressingDb.PreambleLength..]);
+                            _wrapped.PutSpan(key, tmp, flags);
+                        }
+                        finally
+                        {
+                            ArrayPool<byte>.Shared.Return(rented);
+                        }
+                    }
                 }
 
                 public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
@@ -85,26 +117,19 @@ namespace Nethermind.Db
             private static byte[]? Compress(byte[]? bytes)
             {
                 if (bytes is null) return null;
-                return Compress(bytes, stackalloc byte[bytes.Length]).ToArray();
-            }
 
-            private static ReadOnlySpan<byte> Compress(ReadOnlySpan<byte> bytes, Span<byte> compressed)
-            {
-                if (bytes.IsNull())
-                    return bytes;
-
-                // no suffix found, return as is
-                if (bytes.EndsWith(EmptyCodeHashStorageRoot) == false)
+                ReadOnlySpan<byte> span = bytes;
+                if (span.IsNull() || !span.EndsWith(EmptyCodeHashStorageRoot))
                 {
+                    // No compression needed; avoid allocation
                     return bytes;
                 }
 
-                // compression, write [preamble, bytes[0], bytes[1], ...]
                 int storedLength = bytes.Length - EmptyCodeHashStorageRoot.Length;
+                byte[] compressed = new byte[storedLength + PreambleLength];
                 compressed[PreambleIndex] = PreambleValue;
-                bytes[..storedLength].CopyTo(compressed[PreambleLength..]);
-
-                return compressed[..(storedLength + PreambleLength)];
+                bytes.AsSpan(0, storedLength).CopyTo(compressed.AsSpan(PreambleLength));
+                return compressed;
             }
 
 
@@ -159,7 +184,37 @@ namespace Nethermind.Db
 
             public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
             {
-                _wrapped.PutSpan(key, Compress(value, stackalloc byte[value.Length]), flags);
+                if (!value.EndsWith(EmptyCodeHashStorageRoot))
+                {
+                    _wrapped.PutSpan(key, value, flags);
+                    return;
+                }
+
+                int storedLength = value.Length - EmptyCodeHashStorageRoot.Length;
+                int compressedLength = storedLength + PreambleLength;
+
+                if (compressedLength <= StackAllocThreshold)
+                {
+                    Span<byte> tmp = stackalloc byte[compressedLength];
+                    tmp[PreambleIndex] = PreambleValue;
+                    value[..storedLength].CopyTo(tmp[PreambleLength..]);
+                    _wrapped.PutSpan(key, tmp, flags);
+                }
+                else
+                {
+                    byte[] rented = ArrayPool<byte>.Shared.Rent(compressedLength);
+                    try
+                    {
+                        Span<byte> tmp = rented.AsSpan(0, compressedLength);
+                        tmp[PreambleIndex] = PreambleValue;
+                        value[..storedLength].CopyTo(tmp[PreambleLength..]);
+                        _wrapped.PutSpan(key, tmp, flags);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(rented);
+                    }
+                }
             }
 
             public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
