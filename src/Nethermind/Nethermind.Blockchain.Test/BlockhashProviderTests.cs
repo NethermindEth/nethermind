@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -37,6 +38,18 @@ public class BlockhashProviderTests
         (IWorldState worldState, Hash256 _) = CreateWorldState();
         BlockhashProvider provider = new(tree, new TestSpecProvider(spec), worldState, LimboLogs.Instance);
         return provider;
+    }
+
+    private static (BlockTree tree, BlockhashProvider provider, BlockHeader head) CreateChainWithProvider(int chainLength, IReleaseSpec spec, bool headersOnly)
+    {
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTree tree = headersOnly
+            ? Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject
+            : Build.A.BlockTree(genesis).OfChainLength(chainLength).TestObject;
+
+        BlockhashProvider provider = CreateBlockHashProvider(tree, spec);
+        BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
+        return (tree, provider, head);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -80,7 +93,7 @@ public class BlockhashProviderTests
         BlockhashProvider provider = CreateBlockHashProvider(tree, Frontier.Instance);
 
         BlockHeader notCanonParent = tree.FindHeader(chainLength - 4, BlockTreeLookupOptions.None)!;
-        Block expected = tree.FindBlock(chainLength - 3, BlockTreeLookupOptions.None)!;
+        BlockHeader expectedHeader = tree.FindHeader(chainLength - 3, BlockTreeLookupOptions.None)!;
 
         Block headParent = tree.FindBlock(chainLength - 2, BlockTreeLookupOptions.None)!;
         Block head = tree.FindBlock(chainLength - 1, BlockTreeLookupOptions.None)!;
@@ -89,12 +102,12 @@ public class BlockhashProviderTests
         tree.Insert(branch, BlockTreeInsertBlockOptions.SaveHeader).Should().Be(AddBlockResult.Added);
         tree.UpdateMainChain(branch); // Update branch
 
-        tree.UpdateMainChain([expected, headParent, head], true); // Update back to original again, but skipping the branch block.
+        tree.UpdateMainChain([headParent, head], true); // Update back to original again, but skipping the branch block.
 
         Block current = Build.A.Block.WithParent(head).TestObject; // At chainLength
 
         Hash256? result = provider.GetBlockhash(current.Header, chainLength - 3);
-        Assert.That(result, Is.EqualTo(expected.Header.Hash));
+        Assert.That(result, Is.EqualTo(expectedHeader.Hash));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -191,6 +204,37 @@ public class BlockhashProviderTests
         Block current = Build.A.Block.WithParent(head).TestObject;
         Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1);
         Assert.That(result, Is.EqualTo(head.Hash));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Fast_path_parent_is_head(bool headersOnly)
+    {
+        const int chainLength = 300;
+        (BlockTree tree, BlockhashProvider provider, BlockHeader head) = CreateChainWithProvider(chainLength, Frontier.Instance, headersOnly);
+
+        Block current = Build.A.Block.WithParent(head).TestObject; // parent == HeadHash
+        long lookupNumber = head.Number; // parent number
+
+        Hash256? result = provider.GetBlockhash(current.Header, lookupNumber);
+        Assert.That(result, Is.EqualTo(head.Hash));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Fast_path_parent_is_head_parent(bool headersOnly)
+    {
+        const int chainLength = 300;
+        (BlockTree tree, BlockhashProvider provider, BlockHeader head) = CreateChainWithProvider(chainLength, Frontier.Instance, headersOnly);
+
+        BlockHeader headParent = tree.FindHeader(chainLength - 2, BlockTreeLookupOptions.None)!;
+        Block current = Build.A.Block.WithParent(headParent).TestObject; // parent == Head?.ParentHash (sibling of head)
+        long lookupNumber = headParent.Number; // parent number (< current.Number)
+
+        Hash256? result = provider.GetBlockhash(current.Header, lookupNumber);
+        Assert.That(result, Is.EqualTo(headParent.Hash));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -417,6 +461,81 @@ public class BlockhashProviderTests
 
             Assert.That(result, Is.EqualTo(expectedHeader!.Hash),
                 $"Block {blockNum} should be retrievable within custom ring buffer of size {customRingBufferSize}");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Blockhash_changes_on_reorg_depth([Range(1, 255, 1)] int depth)
+    {
+        // Build a longer canonical chain that allows reorg depths up to 256 and checks last 256 blocks window
+        const int chainLength = 600; // canonical blocks: [0..599], current will be 600
+
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTree tree = Build.A.BlockTree(genesis).OfChainLength(chainLength).TestObject;
+        BlockhashProvider provider = CreateBlockHashProvider(tree, Prague.Instance);
+
+        // Sanity: base expectations on canonical head prior to any reorg
+        Block canonicalHeadMinus0 = tree.FindBlock(chainLength - 1, BlockTreeLookupOptions.None)!;
+        Block currentProbe = Build.A.Block.WithParent(canonicalHeadMinus0).TestObject;
+        Hash256? canonicalResult = provider.GetBlockhash(currentProbe.Header, chainLength - 1);
+        Assert.That(canonicalResult, Is.EqualTo(canonicalHeadMinus0.Hash));
+
+        // Build an alternative branch replacing the last `depth` blocks
+        long forkStartNumber = chainLength - depth; // first replaced number
+        long forkParentNumber = forkStartNumber - 1; // last common ancestor
+
+        // Find the common ancestor on canonical chain
+        BlockHeader forkParentHeader = tree.FindHeader(forkParentNumber, BlockTreeLookupOptions.None)!;
+
+        // Create alternative blocks [forkStartNumber .. chainLength - 1]
+        var altHashes = new Dictionary<long, Hash256>();
+        BlockHeader altParent = forkParentHeader;
+        for (long n = forkStartNumber; n <= chainLength - 1; n++)
+        {
+            Block alt = Build.A.Block
+                .WithParent(altParent)
+                .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject) // ensure different hash/content
+                .TestObject;
+
+            // Ensure it differs from the canonical block at the same height
+            BlockHeader canonicalAtN = tree.FindHeader(n, BlockTreeLookupOptions.None)!;
+            alt.Hash.Should().NotBe(canonicalAtN.Hash!);
+
+            tree.Insert(alt, BlockTreeInsertBlockOptions.SaveHeader).Should().Be(AddBlockResult.Added);
+            altHashes[n] = alt.Hash!;
+            altParent = alt.Header;
+        }
+
+        // Create current block on top of the new alternative head (which is at number chainLength - 1)
+        Block altHead = tree.FindBlock(altHashes[chainLength - 1], BlockTreeLookupOptions.None)!;
+        Block current = Build.A.Block.WithParent(altHead).TestObject; // current number = chainLength
+
+        // Test offsets 0..255 relative to current
+        for (int offset = 0; offset <= 255; offset++)
+        {
+            long queryNumber = current.Number - offset; // 0 => self, 1 => parent, ..., 255 => 255 blocks before
+            Hash256? result = provider.GetBlockhash(current.Header, queryNumber);
+
+            if (offset == 0)
+            {
+                // Self should be unavailable
+                Assert.That(result, Is.Null, $"depth={depth}, offset={offset}");
+                continue;
+            }
+
+            // Determine expected hash: from alt branch if within reorg window, otherwise canonical
+            long targetNumber = queryNumber;
+            Hash256? expected;
+            if (targetNumber >= forkStartNumber && targetNumber <= chainLength - 1)
+            {
+                expected = altHashes[targetNumber];
+            }
+            else
+            {
+                expected = tree.FindHeader(targetNumber, BlockTreeLookupOptions.None)!.Hash;
+            }
+
+            Assert.That(result, Is.EqualTo(expected), $"depth={depth}, offset={offset}, number={targetNumber}");
         }
     }
 }
