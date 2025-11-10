@@ -48,6 +48,10 @@ namespace Nethermind.Synchronization.FastBlocks
 
         }
 
+        /// <summary>
+        /// Marks the start of validation phase. This method is optional - if not called,
+        /// validation start time will be automatically set when <see cref="MarkHandlingStart"/> is called.
+        /// </summary>
         public void MarkValidation()
         {
             _validationStartTime = _stopwatch.ElapsedMilliseconds;
@@ -58,6 +62,10 @@ namespace Nethermind.Synchronization.FastBlocks
             _waitingStartTime = _stopwatch.ElapsedMilliseconds;
         }
 
+        /// <summary>
+        /// Marks the start of handling phase. If <see cref="MarkValidation"/> was not called previously,
+        /// validation start time is automatically set to the handling start time, treating validation as part of handling.
+        /// </summary>
         public void MarkHandlingStart()
         {
             _handlingStartTime = _stopwatch.ElapsedMilliseconds;
@@ -75,6 +83,10 @@ namespace Nethermind.Synchronization.FastBlocks
             => (_requestSentTime ?? _stopwatch.ElapsedMilliseconds) - (_scheduledLastTime ?? _stopwatch.ElapsedMilliseconds);
         public double? RequestTime
             => (_validationStartTime ?? _stopwatch.ElapsedMilliseconds) - (_requestSentTime ?? _stopwatch.ElapsedMilliseconds);
+        /// <summary>
+        /// Time spent in validation phase. If <see cref="MarkValidation"/> was not called,
+        /// this measures time from handling start (or current time if waiting hasn't started).
+        /// </summary>
         public double? ValidationTime
             => (_waitingStartTime ?? _stopwatch.ElapsedMilliseconds) - (_validationStartTime ?? _handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
         public double? WaitingTime
