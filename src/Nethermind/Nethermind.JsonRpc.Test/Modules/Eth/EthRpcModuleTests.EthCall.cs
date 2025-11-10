@@ -25,6 +25,7 @@ using Nethermind.Int256;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -633,6 +634,22 @@ public partial class EthRpcModuleTests
 
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"maxFeePerGas (1) < maxPriorityFeePerGas (2)\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_bubbles_up_precompile_errors()
+    {
+        using Context ctx = await Context.Create(new SingleReleaseSpecProvider(Osaka.Instance, BlockchainIds.Mainnet, BlockchainIds.Mainnet));
+        LegacyTransactionForRpc transaction = new(Build.A.Transaction
+            .WithData(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000004010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000101"))
+            .WithTo(new Address("0x0000000000000000000000000000000000000005"))
+            .WithGasLimit(100000000000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject);
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Precompile MODEXP failed with error: one or more of base/exponent/modulus length exceeded 1024 bytes\",\"data\":\"0x\"},\"id\":67}"));
     }
 
     private static async Task TestEthCallOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit)
