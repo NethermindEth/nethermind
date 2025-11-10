@@ -18,11 +18,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
-
-      - name: Checkout to master branch
-        run: |
-          git checkout master
-          git pull origin master
+        with:
+          ref: master
 
       - name: Bump up the version
         id: version
