@@ -41,7 +41,7 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
         Result result = x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) &&
                         y.TryDecodeRaw(inputData[BlsConst.LenG1..].Span);
 
-        if (!result)
+        if (result)
         {
             // adding to infinity point has no effect
             if (x.IsInf()) return inputData[BlsConst.LenG1..].ToArray();
