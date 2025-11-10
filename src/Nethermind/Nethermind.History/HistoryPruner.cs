@@ -272,7 +272,7 @@ public class HistoryPruner : IHistoryPruner
                                 }))
                         {
                             Interlocked.Exchange(ref _currentlyPruning, 0);
-                            if (_logger.IsDebug) _logger.Debug("Failed to schedule historical block pruning.");
+                            if (_logger.IsDebug) _logger.Debug("Failed to schedule historical block pruning (queue full). Will retry on next trigger.");
                         }
                     }
                     catch
