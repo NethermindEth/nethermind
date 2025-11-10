@@ -162,8 +162,6 @@ public class XdcTestBlockchain : TestBlockchain
         BlockProducerRunner.Start();
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
 
-        _cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimout));
-
         return Task.FromResult((TestBlockchain)this);
     }
 
