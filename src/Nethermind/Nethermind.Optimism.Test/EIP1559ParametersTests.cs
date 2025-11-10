@@ -5,11 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
-using FluentAssertions;
 using System;
-using Nethermind.Core.Specs;
-using Nethermind.Specs.Test;
-using NSubstitute;
 
 namespace Nethermind.Optimism.Test;
 

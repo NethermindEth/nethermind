@@ -94,10 +94,6 @@ public class OptimismCostHelperTests
     {
         Address l1BlockAddr = Build.An.Address.TestObject;
         var specHelper = Substitute.For<IOptimismSpecHelper>();
-        var worldState = new WorldStateStab(new() {
-            // https://specs.optimism.io/protocol/jovian/exec-engine.html#scalar-loading
-            { new(l1BlockAddr, new UInt256(8)), DefaultDaFootprintGasScalar.ToBigEndianByteArray().PadLeft(12 + sizeof(UInt16)) }
-        });
 
         var helper = new OptimismCostHelper(specHelper, l1BlockAddr);
 
