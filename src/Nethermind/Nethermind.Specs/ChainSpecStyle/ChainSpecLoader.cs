@@ -159,6 +159,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip4788ContractAddress = chainSpecJson.Params.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
             Eip2935TransitionTimestamp = chainSpecJson.Params.Eip2935TransitionTimestamp,
             Eip2935ContractAddress = chainSpecJson.Params.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
+            Eip2935RingBufferSize = chainSpecJson.Params.Eip2935RingBufferSize ?? Eip2935Constants.RingBufferSize,
             TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
             TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
             ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,

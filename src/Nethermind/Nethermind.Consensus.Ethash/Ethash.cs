@@ -155,7 +155,7 @@ namespace Nethermind.Consensus.Ethash
             IEthashDataSet dataSet = _hintBasedCache.Get(epoch);
             if (dataSet is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsTrace) _logger.Trace($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
                 dataSet = BuildCache(epoch);
             }
 
@@ -167,8 +167,7 @@ namespace Nethermind.Consensus.Ethash
             byte[] mixHash;
             while (true)
             {
-                ValueHash256 result;
-                (mixHash, result, _) = Hashimoto(fullSize, dataSet, headerHashed, null, nonce);
+                (mixHash, ValueHash256 result, _) = Hashimoto(fullSize, dataSet, headerHashed, null, nonce);
                 if (IsLessOrEqualThanTarget(result.Bytes, header.Difficulty))
                 {
                     break;

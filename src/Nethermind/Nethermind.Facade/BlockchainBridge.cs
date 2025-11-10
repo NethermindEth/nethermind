@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -214,9 +214,9 @@ namespace Nethermind.Facade
             {
                 return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, components);
             }
-            catch (InsufficientBalanceException ex)
+            catch (InsufficientBalanceException)
             {
-                return new TransactionResult(ex.Message);
+                return TransactionResult.InsufficientSenderBalance;
             }
         }
 
@@ -227,7 +227,7 @@ namespace Nethermind.Facade
             ITxTracer tracer,
             BlockProcessingComponents components)
         {
-            transaction.SenderAddress ??= Address.SystemUser;
+            transaction.SenderAddress ??= Address.Zero;
 
             //Ignore nonce on all CallAndRestore calls
             transaction.Nonce = components.StateReader.GetNonce(blockHeader, transaction.SenderAddress);
@@ -402,9 +402,9 @@ namespace Nethermind.Facade
         {
             var error = txResult switch
             {
-                { TransactionExecuted: true } when txResult.EvmExceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert) => txResult.EvmExceptionType.GetEvmExceptionDescription(),
+                { TransactionExecuted: true } when txResult.EvmExceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert) => txResult.SubstateError ?? txResult.EvmExceptionType.GetEvmExceptionDescription(),
                 { TransactionExecuted: true } when tracerError is not null => tracerError,
-                { TransactionExecuted: false, Error: not null } => txResult.Error,
+                { TransactionExecuted: false, Error: not TransactionResult.ErrorType.None } => txResult.ErrorDescription,
                 _ => null
             };
 

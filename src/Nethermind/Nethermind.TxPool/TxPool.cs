@@ -489,8 +489,6 @@ namespace Nethermind.TxPool
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            _retryCache.Received(tx.Hash!);
-
             bool startBroadcast = _txPoolConfig.PersistentBroadcastEnabled
                                   && (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
                                   TxHandlingOptions.PersistentBroadcast;
@@ -500,6 +498,7 @@ namespace Nethermind.TxPool
                 // If local tx allow it to be accepted even when syncing
                 !startBroadcast)
             {
+                _retryCache.Received(tx.Hash!);
                 return AcceptTxResult.Syncing;
             }
 
@@ -537,6 +536,11 @@ namespace Nethermind.TxPool
             finally
             {
                 _newHeadLock.ExitReadLock();
+            }
+
+            if (accepted != AcceptTxResult.Invalid)
+            {
+                _retryCache.Received(tx.Hash!);
             }
 
             if (accepted)

@@ -38,7 +38,7 @@ public partial class EthRpcModuleTests
         string serialized =
             await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for transfer: address 0x0001020304050607080910111213141516171819\"},\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient sender balance\"},\"id\":67}"));
         ctx.Test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
     }
 
@@ -125,7 +125,7 @@ public partial class EthRpcModuleTests
 
         AccessListTransactionForRpc transaction =
             test.JsonSerializer.Deserialize<AccessListTransactionForRpc>(
-                $"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
+                $"{{\"type\":\"0x1\", \"from\": \"{Address.SystemUser}\", \"data\": \"{code.ToHexString(true)}\"}}");
         string serialized = await test.TestEthRpc("eth_estimateGas", transaction, "0x0");
         Assert.That(
             serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{gasPriceWithoutAccessList.ToHexString(true)}\",\"id\":67}}"));

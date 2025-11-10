@@ -25,6 +25,7 @@ using Nethermind.Int256;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -70,7 +71,7 @@ public partial class EthRpcModuleTests
             "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"value\": 500, \"gas\": 100000000}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for transfer: address 0x0001020304050607080910111213141516171819\"},\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient sender balance\"},\"id\":67}"));
         ctx.Test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
     }
 
@@ -179,7 +180,7 @@ public partial class EthRpcModuleTests
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "{\"blockHash\":\"0xf0b3f69cbd4e1e8d9b0ef02ff5d1384d18e19d251a4052f5f90bab190c5e8937\"}");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"0xf0b3f69cbd4e1e8d9b0ef02ff5d1384d18e19d251a4052f5f90bab190c5e8937 could not be found\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"0xf0b3f69cbd4e1e8d9b0ef02ff5d1384d18e19d251a4052f5f90bab190c5e8937 could not be found\"},\"id\":67}"));
     }
 
     [Test]
@@ -295,6 +296,51 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_with_base_fee_opcode_without_from_address_should_return_0()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.BASEFEE)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData("0x20")
+            .PushData("0x0")
+            .Op(Instruction.RETURN)
+            .Done;
+
+        string dataStr = code.ToHexString();
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_with_value_transfer_without_from_address_should_throw()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.BASEFEE)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData("0x20")
+            .PushData("0x0")
+            .Op(Instruction.RETURN)
+            .Done;
+
+        string dataStr = code.ToHexString();
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"type\": \"0x2\", \"value\":\"{1.Ether()}\", \"data\": \"{dataStr}\"}}");
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        Console.WriteLine(serialized);
+        Assert.That(
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient sender balance\"},\"id\":67}"));
     }
 
     [Test]
@@ -588,6 +634,22 @@ public partial class EthRpcModuleTests
 
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"maxFeePerGas (1) < maxPriorityFeePerGas (2)\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_bubbles_up_precompile_errors()
+    {
+        using Context ctx = await Context.Create(new SingleReleaseSpecProvider(Osaka.Instance, BlockchainIds.Mainnet, BlockchainIds.Mainnet));
+        LegacyTransactionForRpc transaction = new(Build.A.Transaction
+            .WithData(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000004010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000101"))
+            .WithTo(new Address("0x0000000000000000000000000000000000000005"))
+            .WithGasLimit(100000000000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject);
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Precompile MODEXP failed with error: one or more of base/exponent/modulus length exceeded 1024 bytes\",\"data\":\"0x\"},\"id\":67}"));
     }
 
     private static async Task TestEthCallOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit)

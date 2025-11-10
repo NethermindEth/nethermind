@@ -123,27 +123,39 @@ public abstract class TransactionForRpc
 
         public override TransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            const string TypeFieldKey = nameof(TransactionForRpc.Type);
             // Copy the reader so we can do a double parse:
             // The first parse is used to check for fields, while the second parses the entire Transaction
             Utf8JsonReader txTypeReader = reader;
             JsonObject untyped = JsonSerializer.Deserialize<JsonObject>(ref txTypeReader, options);
 
-            TxType? txType = null;
-            if (untyped.TryGetPropertyValue(TypeFieldKey, out JsonNode? node))
-            {
-                txType = node.Deserialize<TxType?>(options);
-            }
-
-            Type concreteTxType =
-                (
-                    txType is not null
-                        ? _txTypes.FirstOrDefault(p => p.TxType == txType)
-                        : _txTypes.FirstOrDefault(p => p.DiscriminatorProperties.Any(name => untyped.ContainsKey(name)), _txTypes[^1])
-                )?.Type
-                ?? throw new JsonException("Unknown transaction type");
+            Type concreteTxType = DeriveTxType(untyped, options);
 
             return (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options);
+        }
+
+        private Type DeriveTxType(JsonObject untyped, JsonSerializerOptions options)
+        {
+            Type defaultTxType = typeof(EIP1559TransactionForRpc);
+            const string gasPriceFieldKey = nameof(LegacyTransactionForRpc.GasPrice);
+            const string typeFieldKey = nameof(TransactionForRpc.Type);
+
+            if (untyped.TryGetPropertyValue(typeFieldKey, out JsonNode? node))
+            {
+                TxType? setType = node.Deserialize<TxType?>(options);
+                if (setType is not null)
+                {
+                    return _txTypes.FirstOrDefault(p => p.TxType == setType)?.Type ??
+                           throw new JsonException("Unknown transaction type");
+                }
+            }
+
+            if (untyped.ContainsKey(gasPriceFieldKey))
+            {
+                return typeof(LegacyTransactionForRpc);
+            }
+
+            return _txTypes
+                .FirstOrDefault(p => p.DiscriminatorProperties.Any(untyped.ContainsKey))?.Type ?? defaultTxType;
         }
 
         public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options)
