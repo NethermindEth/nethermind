@@ -100,6 +100,9 @@ internal static partial class EvmInstructions
         // Increment global call metrics.
         Metrics.IncrementCalls();
 
+        if (Out.IsTargetBlock && Out.TraceShowOpcodes)
+            Out.Log($"call start gasAvailable={gasAvailable}");
+
         // Clear previous return data.
         vm.ReturnData = null;
 
@@ -111,6 +114,9 @@ internal static partial class EvmInstructions
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) goto OutOfGas;
+
+        if (Out.IsTargetBlock && Out.TraceShowOpcodes)
+            Out.Log($"call account access charged gasAvailable={gasAvailable}");
 
         ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         // Determine the call value based on the call type.
@@ -176,6 +182,9 @@ internal static partial class EvmInstructions
             !EvmCalculations.UpdateGas(gasExtra, ref gasAvailable))
             goto OutOfGas;
 
+        if (Out.IsTargetBlock && Out.TraceShowOpcodes)
+            Out.Log($"call call memory extra gasAvailable={gasAvailable} callCost={spec.GetCallCost()} gasExtra={gasExtra}");
+
         // Retrieve code information for the call and schedule background analysis if needed.
         ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
 
@@ -197,6 +206,9 @@ internal static partial class EvmInstructions
 
         long gasLimitUl = (long)gasLimit;
         if (!EvmCalculations.UpdateGas(gasLimitUl, ref gasAvailable)) goto OutOfGas;
+
+        if (Out.IsTargetBlock && Out.TraceShowOpcodes)
+            Out.Log($"call gasAvailable={gasAvailable} gasLimitUl={gasLimitUl}");
 
         // Add call stipend if value is being transferred.
         if (!transferValue.IsZero)
@@ -230,6 +242,10 @@ internal static partial class EvmInstructions
 
             // Refund the remaining gas to the caller.
             EvmCalculations.UpdateGasUp(gasLimitUl, ref gasAvailable);
+
+            if (Out.IsTargetBlock && Out.TraceShowOpcodes)
+                Out.Log($"call refund gasAvailable={gasAvailable} gasLimitUl={gasLimitUl}");
+
             if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);

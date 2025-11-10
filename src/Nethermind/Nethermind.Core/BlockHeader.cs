@@ -21,6 +21,7 @@ public static class Out
     public static readonly bool TraceShowOpcodes = Environment.GetEnvironmentVariable("TRACE_SHOW_OPCODES") == "true";
     public static readonly bool TraceShowDeepstate = Environment.GetEnvironmentVariable("TRACE_SHOW_DEEPSTATE") == "true";
     public static readonly bool TraceShowArbosRead = Environment.GetEnvironmentVariable("TRACE_SHOW_ARBOS_READ") == "true";
+    public static readonly bool TraceShowStateRootChange = Environment.GetEnvironmentVariable("TRACE_SHOW_STATE_ROOT_CHANGE") == "true";
 
     public static long CurrentBlockNumber { get; set; }
     public static long CurrentTransactionIndex { get; set; }
@@ -43,7 +44,7 @@ public static class Out
 
     public static void Log(string log)
     {
-        if (CurrentBlockNumber != TargetBlockNumber)
+        if (!IsTargetBlock)
             return;
 
         if (TraceShowStackTrace)
@@ -54,7 +55,7 @@ public static class Out
 
     public static void LogFast(string log)
     {
-        if (CurrentBlockNumber != TargetBlockNumber)
+        if (!IsTargetBlock)
             return;
 
         Console.WriteLine($"b={CurrentBlockNumber}, t={CurrentTransactionIndex} {log}");
@@ -62,7 +63,7 @@ public static class Out
 
     public static void Log(string scope, string key, string value)
     {
-        if (CurrentBlockNumber != TargetBlockNumber)
+        if (!IsTargetBlock)
             return;
 
         if (TraceShowStackTrace)
