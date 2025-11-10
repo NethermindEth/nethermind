@@ -446,7 +446,7 @@ public class TestBlockchain : IDisposable
     }
 
     public virtual Task<Block> AddBlock(params Transaction[] transactions)
-    {            
+    {
         return TestUtil.AddBlockAndWaitForHead(false, CreateCancellationSource().Token, transactions);
     }
 
