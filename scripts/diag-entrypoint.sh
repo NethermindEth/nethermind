@@ -48,7 +48,7 @@ case "$DIAG_WITH" in
     start_dottrace "$@"
     ;;
   *)
-    printf '\033[31mUnknown DIAG_WITH value: %q\033[0m\n' "$DIAG_WITH" >&2
+    printf '\e[31mUnknown DIAG_WITH value: %q\e[0m\n' "$DIAG_WITH" >&2
     exit 2
     ;;
 esac
