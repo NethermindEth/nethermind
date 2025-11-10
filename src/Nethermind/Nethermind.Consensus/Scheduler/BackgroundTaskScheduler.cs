@@ -45,15 +45,6 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
     private bool _disposed = false;
 
-    private static CancellationToken CancelledToken { get; } = CreateCancelledToken();
-
-    private static CancellationToken CreateCancelledToken()
-    {
-        CancellationTokenSource cts = new();
-        cts.Cancel();
-        return cts.Token;
-    }
-
     public BackgroundTaskScheduler(IBranchProcessor branchProcessor, IChainHeadInfoProvider headInfo, int concurrency, int capacity, ILogManager logManager)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
@@ -140,7 +131,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                             Interlocked.Increment(ref _queueCount);
                             await _taskQueue.Writer.WriteAsync(activity);
                             UpdateQueueCount();
-                            // Requeued, throttle to prevent infinite loop.
+                            // Re-queued, throttle to prevent infinite loop.
                             // The tasks are in priority order, so we know next is the same deadline or longer,
                             // And we want to exit the inner loop to refresh CancellationToken
                             goto Throttle;
@@ -181,28 +172,19 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
         Evm.Metrics.IncrementTotalBackgroundTasksQueued();
 
-        bool success = false;
-
         if (Interlocked.Increment(ref _queueCount) <= _capacity)
         {
-            success = _taskQueue.Writer.TryWrite(activity);
-            if (success)
+            if (_taskQueue.Writer.TryWrite(activity))
             {
                 UpdateQueueCount();
+                return true;
             }
-            else
-            {
-                Interlocked.Decrement(ref _queueCount);
-                request.TryDispose();
-            }
-        }
-        else
-        {
-            Interlocked.Decrement(ref _queueCount);
-            request.TryDispose();
         }
 
-        return success;
+        if (_logger.IsWarn) _logger.Warn($"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task {request}.");
+        Interlocked.Decrement(ref _queueCount);
+        request.TryDispose();
+        return false;
     }
 
     private void UpdateQueueCount() => Evm.Metrics.NumberOfBackgroundTasksScheduled = Volatile.Read(ref _queueCount);
@@ -238,7 +220,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             if (timeToComplete <= TimeSpan.Zero)
             {
                 // Cancel immediately. Got no time left.
-                token = CancelledToken;
+                token = CancellationTokenExtensions.AlreadyCancelledToken;
             }
             else
             {

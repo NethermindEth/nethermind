@@ -246,31 +246,42 @@ public class HistoryPruner : IHistoryPruner
 
     private void SchedulePruneHistory(CancellationToken cancellationToken)
     {
-        Task.Run(() =>
+        if (Volatile.Read(ref _currentlyPruning) == 0)
         {
-            if (Interlocked.CompareExchange(ref _currentlyPruning, 1, 0) == 0)
+            Task.Run(() =>
             {
-                if (!_backgroundTaskScheduler.TryScheduleTask(1,
-                        (_, backgroundTaskToken) =>
-                        {
-                            try
-                            {
-                                var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken, cancellationToken);
-                                TryPruneHistory(cts.Token);
-                            }
-                            finally
-                            {
-                                Interlocked.Exchange(ref _currentlyPruning, 0);
-                            }
-
-                            return Task.CompletedTask;
-                        }))
+                if (Interlocked.CompareExchange(ref _currentlyPruning, 1, 0) == 0)
                 {
-                    Interlocked.Exchange(ref _currentlyPruning, 0);
-                    if (_logger.IsDebug) _logger.Debug("Failed to schedule historical block pruning.");
+                    try
+                    {
+                        if (!_backgroundTaskScheduler.TryScheduleTask(1,
+                                (_, backgroundTaskToken) =>
+                                {
+                                    try
+                                    {
+                                        var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken,
+                                            cancellationToken);
+                                        TryPruneHistory(cts.Token);
+                                    }
+                                    finally
+                                    {
+                                        Interlocked.Exchange(ref _currentlyPruning, 0);
+                                    }
+
+                                    return Task.CompletedTask;
+                                }))
+                        {
+                            Interlocked.Exchange(ref _currentlyPruning, 0);
+                            if (_logger.IsDebug) _logger.Debug("Failed to schedule historical block pruning.");
+                        }
+                    }
+                    finally
+                    {
+                        Interlocked.Exchange(ref _currentlyPruning, 0);
+                    }
                 }
-            }
-        });
+            });
+        }
     }
 
     internal void TryPruneHistory(CancellationToken cancellationToken)
