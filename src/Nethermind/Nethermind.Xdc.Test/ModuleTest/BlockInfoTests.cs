@@ -26,7 +26,7 @@ internal class BlockInfoTests
     [Test]
     public void VerifyGenesisV2Block()
     {
-        XdcBlockHeader genesisBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(0)!; // in our case the v2 block is genesis it may have a diff number in mainnet
+        XdcBlockHeader genesisBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(xdcTestBlockchain.BlockTree.Genesis!.Number + 1)!;
 
         BlockRoundInfo blockInfo = new BlockRoundInfo(genesisBlock.Hash!, 1, genesisBlock.Number);
 
