@@ -174,4 +174,5 @@ public class ChainParameters
     #endregion
 
     public ulong? Rip7728TransitionTimestamp { get; set; }
+    public ulong? L1CallTransitionTimestamp { get; set; }
 }

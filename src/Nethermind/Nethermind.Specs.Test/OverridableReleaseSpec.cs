@@ -199,6 +199,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7939Enabled => spec.IsEip7939Enabled;
         public bool IsEip7907Enabled => spec.IsEip7907Enabled;
         public bool IsRip7728Enabled => spec.IsRip7728Enabled;
+        public bool IsL1CallEnabled => spec.IsL1CallEnabled;
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     }
 }

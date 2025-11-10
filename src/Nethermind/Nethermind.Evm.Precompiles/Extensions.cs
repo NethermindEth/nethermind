@@ -62,6 +62,11 @@ public static class Extensions
             AddPrecompile<L1SloadPrecompile>();
         }
 
+        if (spec.IsL1CallEnabled)
+        {
+            AddPrecompile<L1CallPrecompile>();
+        }
+
         return precompiles;
 
         void AddPrecompile<T>() where T : IPrecompile<T> => precompiles[T.Name] = T.Address;

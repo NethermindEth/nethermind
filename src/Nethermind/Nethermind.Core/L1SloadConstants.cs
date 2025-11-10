@@ -4,9 +4,9 @@
 namespace Nethermind.Core;
 
 /// <summary>
-/// Shared constants for L1SLOAD/L1CALL precompile operations.
+/// Constants for L1SLOAD precompile operations.
 /// </summary>
-public static class L1PrecompileConstants
+public static class L1SloadConstants
 {
     /// <summary>
     /// Number of bytes for the L1 contract address in the input

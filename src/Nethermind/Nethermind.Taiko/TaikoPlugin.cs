@@ -60,31 +60,44 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
 
-        InitializeL1SloadIfEnabled();
+        InitializeL1Precompiles();
 
         return Task.CompletedTask;
     }
 
-    private void InitializeL1SloadIfEnabled()
+    private void InitializeL1Precompiles()
     {
         ArgumentNullException.ThrowIfNull(_api?.SpecProvider);
 
         var taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GetFinalSpec();
 
-        if (!taikoSpec.IsRip7728Enabled)
+        if (!taikoSpec.IsRip7728Enabled && !taikoSpec.IsL1CallEnabled)
             return;
 
         ISurgeConfig surgeConfig = _api.Context.Resolve<ISurgeConfig>();
 
         if (string.IsNullOrEmpty(surgeConfig.L1EthApiEndpoint))
-            throw new ArgumentException($"{nameof(surgeConfig.L1EthApiEndpoint)} must be provided in the Surge configuration to use L1SLOAD precompile");
+            throw new ArgumentException($"{nameof(surgeConfig.L1EthApiEndpoint)} must be provided in the Surge configuration to use L1 precompiles");
 
-        var storageProvider = new JsonRpcL1StorageProvider(
-            surgeConfig.L1EthApiEndpoint,
-            _api.Context.Resolve<IJsonSerializer>(),
-            _api.Context.Resolve<ILogManager>());
+        if (taikoSpec.IsRip7728Enabled)
+        {
+            var storageProvider = new JsonRpcL1StorageProvider(
+                surgeConfig.L1EthApiEndpoint,
+                _api.Context.Resolve<IJsonSerializer>(),
+                _api.Context.Resolve<ILogManager>());
 
-        L1SloadPrecompile.L1StorageProvider = storageProvider;
+            L1SloadPrecompile.L1StorageProvider = storageProvider;
+        }
+
+        if (taikoSpec.IsL1CallEnabled)
+        {
+            var callProvider = new JsonRpcL1CallProvider(
+                surgeConfig.L1EthApiEndpoint,
+                _api.Context.Resolve<IJsonSerializer>(),
+                _api.Context.Resolve<ILogManager>());
+
+            L1CallPrecompile.L1CallProvider = callProvider;
+        }
     }
 
     public bool MustInitialize => true;
