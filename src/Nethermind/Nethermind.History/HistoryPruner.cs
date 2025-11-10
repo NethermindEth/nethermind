@@ -259,7 +259,7 @@ public class HistoryPruner : IHistoryPruner
                                 {
                                     try
                                     {
-                                        var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken,
+                                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken,
                                             cancellationToken);
                                         TryPruneHistory(cts.Token);
                                     }
