@@ -61,7 +61,6 @@ internal class XdcBlockProducer : BlockProducerBase
             0,
             extra)
         {
-            Author = blockAuthor,
             //This will BestSuggestedBody in BlockTree, which may not be needed
             IsPostMerge = true
         };

@@ -74,7 +74,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
             if (_context.LockQC is null || parentQc.ProposedBlockInfo.Round > _context.LockQC.ProposedBlockInfo.Round)
             {
-                //Basically finalize parent QC
+                //Parent QC is now our lock
                 _context.LockQC = parentQc;
             }
 
@@ -98,7 +98,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         if ((proposedBlockHeader.Number - 2) <= spec.SwitchBlock)
         {
-            error = $"Proposed block ({proposedBlockHeader.Number}) is too close or before genesis block {spec.SwitchBlock})";
+            error = $"Proposed block ({proposedBlockHeader.Number}) is too close or before genesis block ({spec.SwitchBlock})";
             return false;
         }
 

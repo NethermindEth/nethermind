@@ -90,11 +90,6 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     private static long DataGasCostInternal(ReadOnlySpan<byte> inputData, IReleaseSpec releaseSpec)
     {
         (uint baseLength, uint expLength, uint modulusLength) = GetInputLengths(inputData);
-        if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
-        {
-            return long.MaxValue;
-        }
-
         ulong complexity = MultComplexity(baseLength, modulusLength, releaseSpec.IsEip7883Enabled);
 
         uint expLengthUpTo32 = Math.Min(LengthSize, expLength);
@@ -227,7 +222,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         return (0, uint.MaxValue, 0);
     }
 
-    public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public unsafe Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.ModExpPrecompile++;
 
@@ -237,11 +232,11 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
                 : GetInputLengthsShort(inputSpan);
 
         if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
-            return IPrecompile.Failure;
+            return "one or more of base/exponent/modulus length exceeded 1024 bytes";
 
         // if both are 0, then expLength can be huge, which leads to a potential buffer too big exception
         if (baseLength == 0 && modulusLength == 0)
-            return (Bytes.Empty, true);
+            return Bytes.Empty;
 
         using var modulusInt = mpz_t.Create();
 
@@ -253,7 +248,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         }
 
         if (Gmp.mpz_sgn(modulusInt) == 0)
-            return (new byte[modulusLength], true);
+            return new byte[modulusLength];
 
         using var baseInt = mpz_t.Create();
         using var expInt = mpz_t.Create();
@@ -282,7 +277,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         fixed (byte* ptr = &MemoryMarshal.GetArrayDataReference(result))
             Gmp.mpz_export((nint)(ptr + offset), out _, 1, 1, 1, nuint.Zero, powmResult);
 
-        return (result, true);
+        return result;
     }
 
     /// <summary>
@@ -294,7 +289,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     /// <returns></returns>
     private static ulong MultComplexity(uint baseLength, uint modulusLength, bool isEip7883Enabled)
     {
-        // Pick the larger of the two  
+        // Pick the larger of the two
         uint max = baseLength > modulusLength ? baseLength : modulusLength;
 
         // Compute ceil(max/8) via a single add + shift

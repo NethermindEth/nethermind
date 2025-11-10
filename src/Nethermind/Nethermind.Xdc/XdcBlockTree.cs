@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
+using System;
 
 namespace Nethermind.Xdc;
 internal class XdcBlockTree : BlockTree
@@ -36,38 +37,42 @@ internal class XdcBlockTree : BlockTree
         _xdcConsensus = xdcConsensus;
     }
 
-    protected override bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
+    protected override AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
     {
         Types.BlockRoundInfo finalizedBlockInfo = _xdcConsensus.HighestCommitBlock;
         if (finalizedBlockInfo is null)
-            return true;
+            return base.Suggest(block, header, options);
         if (finalizedBlockInfo.Hash == header.Hash)
         {
             //Weird case if re-suggesting the finalized block
-            return false;
+            return AddBlockResult.AlreadyKnown;
         }
-        int depth = 0;
+        if (finalizedBlockInfo.BlockNumber >= header.Number)
+        {
+            return AddBlockResult.InvalidBlock;
+        }
+        if (header.Number - finalizedBlockInfo.BlockNumber > MaxSearchDepth)
+        {
+            //Theoretically very deep reorgs could happen, if the chain doesnt finalize for a long time
+            //TODO Maybe this needs to be revisited later
+            Logger.Warn($"Deep reorg past {MaxSearchDepth} blocks detected! Rejecting block {header.ToString(BlockHeader.Format.Full)}");
+            return AddBlockResult.InvalidBlock;
+        }
         BlockHeader current = header;
-        while (true)
+        for (long i = header.Number; i >= finalizedBlockInfo.BlockNumber; i--)
         {
             if (finalizedBlockInfo.BlockNumber >= current.Number)
-                return false;
+                return AddBlockResult.InvalidBlock;
 
             if (finalizedBlockInfo.Hash == current.ParentHash)
-                return base.BestSuggestedImprovementRequirementsSatisfied(header);
+                return base.Suggest(block, header, options);
 
             current = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-            if (current == null)
-                return false;
-            depth++;
-            if (depth == MaxSearchDepth)
-            {
-                //Theoretically very deep reorgs could happen, if the chain doesnt finalize for a long time
-                //TODO Maybe this needs to be revisited later
-                Logger.Warn($"Deep reorg past {MaxSearchDepth} blocks detected! Rejecting block {header.ToString(BlockHeader.Format.Full)}");
-                return false;
-            }
+            if (current is null)
+                return AddBlockResult.UnknownParent;
         }
+        //This is not possible to reach
+        return AddBlockResult.InvalidBlock;
     }
 
 }

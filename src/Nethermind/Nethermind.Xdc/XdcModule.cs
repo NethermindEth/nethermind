@@ -31,6 +31,7 @@ public class XdcModule : Module
             .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>())
 
+            .AddScoped<IGenesisBuilder, XdcGenesisBuilder>()
             .AddScoped<IBlockProcessor, XdcBlockProcessor>()
 
             // stores
@@ -62,6 +63,8 @@ public class XdcModule : Module
             .AddDatabase(SnapshotDbName)
             .AddSingleton<ISnapshotManager, IDb, IBlockTree, IPenaltyHandler>(CreateSnapshotManager)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
+            .AddSingleton<ITimeoutTimer, TimeoutTimer>()
+            .AddSingleton<ISyncInfoManager, SyncInfoManager>()
             ;
     }
 
