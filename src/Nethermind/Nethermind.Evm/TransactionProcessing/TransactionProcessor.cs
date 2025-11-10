@@ -248,10 +248,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            if (substate.EvmExceptionType != EvmExceptionType.None)
-                return TransactionResult.EvmException(substate.EvmExceptionType);
-
-            return TransactionResult.Ok;
+            return substate.EvmExceptionType != EvmExceptionType.None
+                ? TransactionResult.EvmException(substate.EvmExceptionType, substate.SubstateError)
+                : TransactionResult.Ok;
         }
 
         protected virtual TransactionResult CalculateAvailableGas(Transaction tx, IntrinsicGas intrinsicGas, out long gasAvailable)
@@ -936,6 +935,7 @@ namespace Nethermind.Evm.TransactionProcessing
             EvmExceptionType = evmException;
         }
         public ErrorType Error { get; }
+        public string? SubstateError { get; private init; }
         public bool TransactionExecuted => Error is ErrorType.None;
         public EvmExceptionType EvmExceptionType { get; }
 
@@ -964,9 +964,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public override string ToString() => Error is not ErrorType.None ? $"Fail : {ErrorDescription}" : "Success";
 
-        public static TransactionResult EvmException(EvmExceptionType evmExceptionType)
+        public static TransactionResult EvmException(EvmExceptionType evmExceptionType, string? substateError = null)
         {
-            return new TransactionResult(ErrorType.None, evmExceptionType);
+            return new TransactionResult(ErrorType.None, evmExceptionType) { SubstateError = substateError };
         }
 
         public static readonly TransactionResult Ok = new();
