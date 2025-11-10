@@ -247,6 +247,7 @@ internal class HeaderVerificationTests
     {
         var happyPathHeader = GetLastHeader(false);
         var happyPathParent = xdcTestBlockchain.BlockTree.FindHeader(happyPathHeader.ParentHash!);
+
         var result = xdcHeaderValidator.Validate(happyPathHeader, happyPathParent);
         Assert.That(result, Is.True);
     }
@@ -294,7 +295,7 @@ internal class HeaderVerificationTests
     {
         if (!isEpochSwitch)
         {
-            return (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header;
+            return ClearCacheFields((XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header);
         }
         else
         {
@@ -303,7 +304,7 @@ internal class HeaderVerificationTests
             {
                 if (xdcTestBlockchain.EpochSwitchManager.IsEpochSwitchAtBlock(currentHeader))
                 {
-                    return currentHeader;
+                    return ClearCacheFields(currentHeader);
                 }
                 currentHeader = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(currentHeader.ParentHash!)!;
             }
@@ -312,7 +313,11 @@ internal class HeaderVerificationTests
         }
     }
 
-
+    private static XdcBlockHeader ClearCacheFields(XdcBlockHeader header)
+    {
+        header.Author = null;
+        return header;
+    }
     private Block GetLastBlock(bool isEpochSwitch)
     {
         var header = GetLastHeader(isEpochSwitch);
