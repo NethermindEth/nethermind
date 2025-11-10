@@ -141,7 +141,7 @@ public class HistoryPruner : IHistoryPruner
                         return _cutoffPointer;
                     }
 
-                    // optimisticly search a few blocks from old pointer
+                    // optimisticly search a few blocks from an old pointer
                     if (_cutoffPointer is not null)
                     {
                         int attempts = 0;
