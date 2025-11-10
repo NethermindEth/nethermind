@@ -167,7 +167,7 @@ public class XdcTestBlockchain : TestBlockchain
 
     protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
     {
-        var  container = base.ConfigureContainer(builder, configProvider)
+        var container = base.ConfigureContainer(builder, configProvider)
             .AddModule(new XdcModuleTestOverrides(configProvider, LimboLogs.Instance))
             .AddSingleton<ISpecProvider>(
             new TestSpecProvider(WrapReleaseSpec(Shanghai.Instance))
@@ -430,7 +430,7 @@ public class XdcTestBlockchain : TestBlockchain
         {
             BlockTree.NewHeadBlock -= OnNewHead;
         }
-        
+
         void OnNewHead(object? sender, BlockEventArgs e)
         {
             waitHandle.SetResult();
