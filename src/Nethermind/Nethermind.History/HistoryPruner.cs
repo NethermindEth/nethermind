@@ -56,6 +56,7 @@ public class HistoryPruner : IHistoryPruner
     private long? _cutoffPointer;
     private ulong? _cutoffTimestamp;
     private bool _hasLoadedDeletePointer = false;
+    private int _currentlyPruning = 0;
 
     public event EventHandler<OnNewOldestBlockArgs>? NewOldestBlock;
 
@@ -126,7 +127,7 @@ public class HistoryPruner : IHistoryPruner
             }
 
             long? cutoffBlockNumber = null;
-            long searchCutoff = _blockTree.Head is null ? _blockTree.SyncPivot.BlockNumber : _blockTree.Head.Number;
+            long searchCutoff = _blockTree.Head?.Number ?? _blockTree.SyncPivot.BlockNumber;
             bool lockTaken = false;
             try
             {
@@ -161,7 +162,7 @@ public class HistoryPruner : IHistoryPruner
                         }).ToList();
                     }
 
-                    // if linear search fails fallback to  binary search
+                    // if linear search fails fallback to binary search
                     cutoffBlockNumber ??= BlockTree.BinarySearchBlockNumber(_deletePointer, searchCutoff, (n, _) =>
                     {
                         BlockInfo[]? blockInfos = _chainLevelInfoRepository.LoadLevel(n)?.BlockInfos;
@@ -210,7 +211,7 @@ public class HistoryPruner : IHistoryPruner
             if (!_hasLoadedDeletePointer)
             {
                 bool lockTaken = false;
-                // take lock before updating delete pointer
+                // take lock before updating delete the pointer
                 // avoids race conditions with pruning
                 try
                 {
@@ -230,7 +231,9 @@ public class HistoryPruner : IHistoryPruner
                 finally
                 {
                     if (lockTaken)
+                    {
                         Monitor.Exit(_pruneLock);
+                    }
                 }
             }
 
@@ -242,38 +245,62 @@ public class HistoryPruner : IHistoryPruner
         => SchedulePruneHistory(_processExitSource.Token);
 
     private void SchedulePruneHistory(CancellationToken cancellationToken)
-        => _backgroundTaskScheduler.ScheduleTask(1,
-            (_, backgroundTaskToken) =>
-            {
-                var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken, cancellationToken);
-                return TryPruneHistory(cts.Token);
-            });
-
-    internal Task TryPruneHistory(CancellationToken cancellationToken)
     {
+        Task.Run(() =>
+        {
+            if (Interlocked.CompareExchange(ref _currentlyPruning, 1, 0) == 1)
+            {
+                if (!_backgroundTaskScheduler.TryScheduleTask(1,
+                        (_, backgroundTaskToken) =>
+                        {
+                            var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken,
+                                cancellationToken);
+                            TryPruneHistory(cts.Token);
+                            Interlocked.Exchange(ref _currentlyPruning, 0);
+                            return Task.CompletedTask;
+                        }))
+                {
+                    if (_logger.IsDebug) _logger.Debug("Failed to schedule historical block pruning.");
+                }
+            }
+        });
+    }
+
+    internal void TryPruneHistory(CancellationToken cancellationToken)
+    {
+        if (_blockTree.Head is null ||
+            _blockTree.SyncPivot.BlockNumber == 0 ||
+            !_hasLoadedDeletePointer ||
+            !ShouldPruneHistory(out ulong? cutoffTimestamp))
+        {
+            SkipLocalPruning();
+            return;
+        }
+
         bool lockTaken = false;
+        Monitor.TryEnter(_pruneLock, LockWaitTimeoutMs, ref lockTaken);
         try
         {
-            Monitor.TryEnter(_pruneLock, LockWaitTimeoutMs, ref lockTaken);
             if (lockTaken)
             {
-                if (_blockTree.Head is null ||
-                    _blockTree.SyncPivot.BlockNumber == 0 ||
-                    !TryLoadDeletePointer() ||
-                    !ShouldPruneHistory(out ulong? cutoffTimestamp))
+                if (!TryLoadDeletePointer() ||
+                    !ShouldPruneHistory(out cutoffTimestamp))
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Skipping historical block pruning.");
-                    return Task.CompletedTask;
+                    SkipLocalPruning();
+                    return;
                 }
 
                 if (_logger.IsInfo)
                 {
-                    long? cutoff = CutoffBlockNumber;
-                    cutoff = cutoff is null ? null : long.Min(cutoff!.Value, _blockTree.SyncPivot.BlockNumber);
+                    long? cutoff = CutoffBlockNumber is null ? null : long.Min(CutoffBlockNumber.Value, _blockTree.SyncPivot.BlockNumber);
                     long? toDelete = cutoff - _deletePointer;
 
-                    string cutoffString = cutoffTimestamp is null ? $"#{(cutoff is null ? "unknown" : cutoff)}" : $"timestamp {cutoffTimestamp} (#{(cutoff is null ? "unknown" : cutoff)})";
-                    _logger.Info($"Pruning historical blocks up to {cutoffString}. Estimated {(toDelete is null ? "unknown" : toDelete)} blocks will be deleted.");
+                    string cutoffString = cutoffTimestamp is null
+                        ? $"#{FormatNumberOrUnknown(cutoff)}"
+                        : $"timestamp {cutoffTimestamp} (#{FormatNumberOrUnknown(cutoff)})";
+                    _logger.Info($"Pruning historical blocks up to {cutoffString}. Estimated {FormatNumberOrUnknown(toDelete)} blocks will be deleted.");
+
+                    static string FormatNumberOrUnknown(long? l) => l?.ToString() ?? "unknown";
                 }
 
                 PruneBlocksAndReceipts(cutoffTimestamp, cancellationToken);
@@ -286,10 +313,15 @@ public class HistoryPruner : IHistoryPruner
         finally
         {
             if (lockTaken)
+            {
                 Monitor.Exit(_pruneLock);
+            }
         }
 
-        return Task.CompletedTask;
+        void SkipLocalPruning()
+        {
+            if (_logger.IsTrace) _logger.Trace("Skipping historical block pruning.");
+        }
     }
 
     internal bool SetDeletePointerToOldestBlock()
@@ -359,12 +391,13 @@ public class HistoryPruner : IHistoryPruner
     private void PruneBlocksAndReceipts(ulong? cutoffTimestamp, CancellationToken cancellationToken)
     {
         int deletedBlocks = 0;
-        ulong? lastDeletedTimstamp = null;
+        ulong? lastDeletedTimestamp = null;
         try
         {
             IEnumerable<Block> blocks = _historyConfig.Pruning == PruningModes.UseAncientBarriers ?
                 GetBlocksBeforeAncientBarrier() :
                 GetBlocksBeforeTimestamp(cutoffTimestamp!.Value);
+
             foreach (Block block in blocks)
             {
                 long number = block.Number;
@@ -396,20 +429,21 @@ public class HistoryPruner : IHistoryPruner
                 _receiptStorage.RemoveReceipts(block);
 
                 UpdateDeletePointer(number + 1, remaining is null || remaining == 0);
-                lastDeletedTimstamp = block.Timestamp;
+                lastDeletedTimestamp = block.Timestamp;
                 deletedBlocks++;
                 Metrics.BlocksPruned++;
             }
         }
         finally
         {
-            if (_cutoffPointer < _deletePointer && lastDeletedTimstamp is not null)
+            if (_cutoffPointer < _deletePointer && lastDeletedTimestamp is not null)
             {
                 _cutoffPointer = _deletePointer;
-                _cutoffTimestamp = lastDeletedTimstamp;
+                _cutoffTimestamp = lastDeletedTimestamp;
                 Metrics.PruningCutoffBlocknumber = _cutoffPointer;
                 Metrics.PruningCutoffTimestamp = _cutoffTimestamp;
             }
+
             SaveDeletePointer();
 
             if (!cancellationToken.IsCancellationRequested)

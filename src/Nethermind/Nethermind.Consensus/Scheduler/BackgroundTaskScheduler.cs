@@ -158,7 +158,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         }
     }
 
-    public void ScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+    public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
     {
         timeout ??= DefaultTimeout;
         DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout.Value;
@@ -192,13 +192,9 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         else
         {
             request.TryDispose();
-            // This should never happen unless something goes very wrong.
-            UnableToWriteToTaskQueue();
         }
 
-        [StackTraceHidden, DoesNotReturn]
-        static void UnableToWriteToTaskQueue()
-            => throw new InvalidOperationException("Unable to write to background task queue.");
+        return success;
     }
 
     private void UpdateQueueCount()
