@@ -77,6 +77,16 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
         }
     }
 
+    public override void SetNonce(Address address, in UInt256 nonce)
+    {
+        _innerWorldState.SetNonce(address, nonce);
+
+        if (Enabled)
+        {
+            BlockAccessList.AddNonceChange(address, (ulong)nonce);
+        }
+    }
+
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
         if (Enabled)
