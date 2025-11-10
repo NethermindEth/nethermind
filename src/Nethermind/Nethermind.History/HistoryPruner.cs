@@ -311,7 +311,8 @@ public class HistoryPruner : IHistoryPruner
 
                 if (_logger.IsInfo)
                 {
-                    long? cutoff = CutoffBlockNumber is null ? null : long.Min(CutoffBlockNumber.Value, _blockTree.SyncPivot.BlockNumber);
+                    long? cutoffBlockNumber = CutoffBlockNumber;
+                    long? cutoff = cutoffBlockNumber is null ? null : long.Min(cutoffBlockNumber.Value, _blockTree.SyncPivot.BlockNumber);
                     long? toDelete = cutoff - _deletePointer;
 
                     string cutoffString = cutoffTimestamp is null

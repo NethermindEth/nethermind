@@ -28,7 +28,6 @@ using Nethermind.History;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-
     public class ReceiptsSyncFeed : BarrierSyncFeed<ReceiptsSyncBatch?>
     {
         protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedReceiptBlockNumber;
