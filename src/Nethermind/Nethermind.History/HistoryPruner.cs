@@ -253,10 +253,16 @@ public class HistoryPruner : IHistoryPruner
                 if (!_backgroundTaskScheduler.TryScheduleTask(1,
                         (_, backgroundTaskToken) =>
                         {
-                            var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken,
-                                cancellationToken);
-                            TryPruneHistory(cts.Token);
-                            Interlocked.Exchange(ref _currentlyPruning, 0);
+                            try
+                            {
+                                var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken, cancellationToken);
+                                TryPruneHistory(cts.Token);
+                            }
+                            finally
+                            {
+                                Interlocked.Exchange(ref _currentlyPruning, 0);
+                            }
+
                             return Task.CompletedTask;
                         }))
                 {
