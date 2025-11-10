@@ -581,6 +581,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             _address = null;
             _provider = null;
             StorageTree = null;
+            _wasWritten = false;
             Pool.Return(this);
         }
 
