@@ -29,13 +29,13 @@ internal class XdcBlockProducer : BlockProducerBase
 {
     private readonly IEpochSwitchManager epochSwitchManager;
     private readonly ISnapshotManager snapshotManager;
-    private readonly XdcContext xdcContext;
+    private readonly IXdcConsensusContext xdcContext;
     private readonly ISealer sealer;
     private readonly ISpecProvider specProvider;
     private readonly ILogManager logManager;
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
 
-    public XdcBlockProducer(IEpochSwitchManager epochSwitchManager, ISnapshotManager snapshotManager, XdcContext xdcContext, ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IWorldState stateProvider, IGasLimitCalculator? gasLimitCalculator, ITimestamper? timestamper, ISpecProvider specProvider, ILogManager logManager, IDifficultyCalculator? difficultyCalculator, IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
+    public XdcBlockProducer(IEpochSwitchManager epochSwitchManager, ISnapshotManager snapshotManager, IXdcConsensusContext xdcContext, ITxSource txSource, IBlockchainProcessor processor, ISealer sealer, IBlockTree blockTree, IWorldState stateProvider, IGasLimitCalculator? gasLimitCalculator, ITimestamper? timestamper, ISpecProvider specProvider, ILogManager logManager, IDifficultyCalculator? difficultyCalculator, IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
     {
         this.epochSwitchManager = epochSwitchManager;
         this.snapshotManager = snapshotManager;

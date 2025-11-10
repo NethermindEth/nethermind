@@ -31,7 +31,7 @@ public class TestBlockchainUtil(
 
     private Task _previousAddBlock = Task.CompletedTask;
 
-    public async Task<AcceptTxResult[]> AddBlock(AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
+    public async Task<Block> AddBlock(AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
     {
         Task waitforHead = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)
             ? Task.CompletedTask
@@ -110,7 +110,7 @@ public class TestBlockchainUtil(
         await txNewHead; // Wait for tx new head event so that processed tx was removed from txpool
 
         invalidBlockDetector.OnInvalidBlock -= OnInvalidBlock;
-        return txResults;
+        return block;
     }
 
     public Task AddBlock(CancellationToken cancellationToken)
@@ -118,7 +118,7 @@ public class TestBlockchainUtil(
         return AddBlock(AddBlockFlags.None, cancellationToken);
     }
 
-    public async Task<AcceptTxResult[]> AddBlockDoNotWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
+    public async Task<Block> AddBlockDoNotWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
     {
         AddBlockFlags flags = AddBlockFlags.DoNotWaitForHead;
         if (mayMissTx) flags |= AddBlockFlags.MayMissTx;
