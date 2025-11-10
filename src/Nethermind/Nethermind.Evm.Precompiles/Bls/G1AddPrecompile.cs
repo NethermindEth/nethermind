@@ -38,9 +38,10 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
         G1 x = new(stackalloc long[G1.Sz]);
         G1 y = new(stackalloc long[G1.Sz]);
-        Result result;
-        if ((result = x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span)) &&
-            (result = y.TryDecodeRaw(inputData[BlsConst.LenG1..].Span)))
+        Result result = x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) &&
+                        y.TryDecodeRaw(inputData[BlsConst.LenG1..].Span);
+
+        if (!result)
         {
             // adding to infinity point has no effect
             if (x.IsInf()) return inputData[BlsConst.LenG1..].ToArray();

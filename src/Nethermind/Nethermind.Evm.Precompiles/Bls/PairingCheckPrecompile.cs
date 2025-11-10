@@ -49,9 +49,10 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
         {
             int offset = i * PairSize;
 
-            Result result;
-            if ((result = x.TryDecodeRaw(inputData[offset..(offset + BlsConst.LenG1)].Span)) &&
-                (result = y.TryDecodeRaw(inputData[(offset + BlsConst.LenG1)..(offset + PairSize)].Span)))
+            Result result = x.TryDecodeRaw(inputData[offset..(offset + BlsConst.LenG1)].Span) &&
+                            y.TryDecodeRaw(inputData[(offset + BlsConst.LenG1)..(offset + PairSize)].Span);
+
+            if (result)
             {
                 if (!(BlsConst.DisableSubgroupChecks || x.InGroup())) return Errors.G1PointSubgroup;
                 if (!(BlsConst.DisableSubgroupChecks || y.InGroup())) return Errors.G2PointSubgroup;

@@ -18,9 +18,10 @@ internal static class BlsExtensions
             return Errors.InvalidFieldLength;
         }
 
-        Result result;
-        if ((result = ValidRawFp(raw[..BlsConst.LenFp])) &&
-            (result = ValidRawFp(raw[BlsConst.LenFp..])))
+        Result result = ValidRawFp(raw[..BlsConst.LenFp]) &&
+                        ValidRawFp(raw[BlsConst.LenFp..]);
+
+        if (result)
         {
             // set to infinity point by default
             p.Zero();
@@ -50,11 +51,11 @@ internal static class BlsExtensions
             return Errors.InvalidFieldLength;
         }
 
-        Result result;
-        if ((result = ValidRawFp(raw[..BlsConst.LenFp])) &&
-            (result = ValidRawFp(raw[BlsConst.LenFp..(2 * BlsConst.LenFp)])) &&
-            (result = ValidRawFp(raw[(2 * BlsConst.LenFp)..(3 * BlsConst.LenFp)])) &&
-            (result = ValidRawFp(raw[(3 * BlsConst.LenFp)..])))
+        Result result = ValidRawFp(raw[..BlsConst.LenFp]) &&
+                        ValidRawFp(raw[BlsConst.LenFp..(2 * BlsConst.LenFp)]) &&
+                        ValidRawFp(raw[(2 * BlsConst.LenFp)..(3 * BlsConst.LenFp)]) &&
+                        ValidRawFp(raw[(3 * BlsConst.LenFp)..]);
+        if (result)
         {
             // set to infinity point by default
             p.Zero();

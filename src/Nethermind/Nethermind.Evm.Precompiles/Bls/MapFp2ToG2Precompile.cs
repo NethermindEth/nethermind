@@ -38,9 +38,9 @@ public class MapFp2ToG2Precompile : IPrecompile<MapFp2ToG2Precompile>
         if (inputData.Length != expectedInputLength) return Errors.InvalidInputLength;
 
         G2 res = new(stackalloc long[G2.Sz]);
-        Result result;
-        if ((result = BlsExtensions.ValidRawFp(inputData.Span[..BlsConst.LenFp])) &&
-            (result = BlsExtensions.ValidRawFp(inputData.Span[BlsConst.LenFp..])))
+        Result result = BlsExtensions.ValidRawFp(inputData.Span[..BlsConst.LenFp]) &&
+                        BlsExtensions.ValidRawFp(inputData.Span[BlsConst.LenFp..]);
+        if (result)
         {
             // map field point to G2
             ReadOnlySpan<byte> fp0 = inputData[BlsConst.LenFpPad..BlsConst.LenFp].Span;

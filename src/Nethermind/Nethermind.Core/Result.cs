@@ -12,6 +12,11 @@ namespace Nethermind.Core
         public static Result Success { get; } = new() { ResultType = ResultType.Success };
         public static implicit operator bool(Result result) => result.ResultType == ResultType.Success;
         public static implicit operator Result(string? error) => error is null ? Success : Fail(error);
+        // Required for short-circuit && operator
+        public static bool operator true(Result result) => result.ResultType == ResultType.Success;
+        public static bool operator false(Result result) => result.ResultType == ResultType.Failure;
+        // This provides the short-circuit behavior
+        public static Result operator &(Result left, Result right) => left ? right : left;  // If left fails, return left (short-circuit)
     }
 
     public readonly record struct Result<TData>(ResultType ResultType, TData? Data = default, string? Error = null)
@@ -23,6 +28,12 @@ namespace Nethermind.Core
         public static implicit operator Result<TData>(string error) => Fail(error, typeof(TData) == typeof(byte[]) ? (TData)(object)Array.Empty<byte>() : default);
         public static implicit operator (TData?, bool)(Result<TData> result) => (result.Data, result.ResultType == ResultType.Success);
         public static implicit operator Result(Result<TData> result) => result.Error;
+        // Required for short-circuit && operator
+        public static bool operator true(Result<TData> result) => result.ResultType == ResultType.Success;
+        public static bool operator false(Result<TData> result) => result.ResultType == ResultType.Failure;
+
+        // This provides the short-circuit behavior
+        public static Result<TData> operator &(Result<TData> left, Result<TData> right) => left ? right : left;  // If left fails, return left (short-circuit)
 
         public void Deconstruct(out TData? result, out bool success)
         {
