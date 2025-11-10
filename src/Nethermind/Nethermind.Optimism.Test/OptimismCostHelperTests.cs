@@ -102,7 +102,7 @@ public class OptimismCostHelperTests
         var helper = new OptimismCostHelper(specHelper, l1BlockAddr);
 
         Block block = Build.A.Block.WithTransactions(transactions).TestObject;
-        return (long)helper.ComputeDaFootprint(block, worldState);
+        return (long)helper.ComputeDaFootprint(block);
     }
 
     private class WorldStateStab(Dictionary<StorageCell, byte[]> state) : WorldState(Substitute.For<ITrieStore>(), Substitute.For<IKeyValueStoreWithBatching>(), LimboLogs.Instance), IWorldState

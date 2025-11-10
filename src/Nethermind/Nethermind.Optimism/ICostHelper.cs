@@ -13,5 +13,5 @@ public interface ICostHelper
 
     UInt256 ComputeOperatorCost(long gas, BlockHeader header, IWorldState worldState);
 
-    UInt256 ComputeDaFootprint(Block block, IWorldState worldState);
+    UInt256 ComputeDaFootprint(Block block);
 }
