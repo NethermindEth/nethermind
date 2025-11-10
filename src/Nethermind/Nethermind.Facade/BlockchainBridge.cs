@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -420,7 +420,7 @@ namespace Nethermind.Facade
         {
             var error = txResult switch
             {
-                { TransactionExecuted: true } when txResult.EvmExceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert) => txResult.EvmExceptionType.GetEvmExceptionDescription(),
+                { TransactionExecuted: true } when txResult.EvmExceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert) => txResult.SubstateError ?? txResult.EvmExceptionType.GetEvmExceptionDescription(),
                 { TransactionExecuted: true } when tracerError is not null => tracerError,
                 { TransactionExecuted: false, Error: not TransactionResult.ErrorType.None } => txResult.ErrorDescription,
                 _ => null
