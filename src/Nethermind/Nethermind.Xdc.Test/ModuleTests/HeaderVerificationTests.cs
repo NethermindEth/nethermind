@@ -54,7 +54,7 @@ internal class HeaderVerificationTests
         var proposedBlockInfo = new BlockRoundInfo(invalidRoundBlockParent.Hash!, invalidRoundBlockParent.ExtraConsensusData!.BlockRound, invalidRoundBlockParent.Number);
 
         var voteForSign = new Vote(proposedBlockInfo, 1);
-        
+
         var validSigners = xdcTestBlockchain.MasterNodeCandidates
             .Where(pvkey => invalidRoundBlockParent.ValidatorsAddress!.Value.Contains(pvkey.Address))
             .Select(pvkey => new Signer(0, pvkey, xdcTestBlockchain.LogManager))
