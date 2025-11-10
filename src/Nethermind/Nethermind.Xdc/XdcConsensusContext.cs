@@ -23,6 +23,7 @@ public class XdcConsensusContext : IXdcConsensusContext
     public QuorumCertificate? LockQC { get; set; }
     public TimeoutCertificate? HighestTC { get; set; }
     public BlockRoundInfo HighestCommitBlock { get; set; }
+    public ulong HighestSelfMinedRound { get; internal set; }
 
     public event EventHandler<NewRoundEventArgs> NewRoundSetEvent;
 

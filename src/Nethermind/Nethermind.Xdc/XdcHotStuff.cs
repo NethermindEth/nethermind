@@ -263,7 +263,7 @@ namespace Nethermind.Xdc
         /// <summary>
         /// Build block with parentQC, arm timeout, emit BlockProduced.
         /// </summary>
-        private async Task BuildAndProposeBlock(XdcBlockHeader parent, ulong currentRound, IXdcReleaseSpec spec, CancellationToken ct)
+        internal async Task BuildAndProposeBlock(XdcBlockHeader parent, ulong currentRound, IXdcReleaseSpec spec, CancellationToken ct)
         {
             DateTime now = DateTime.UtcNow;
 
@@ -412,7 +412,7 @@ namespace Nethermind.Xdc
         /// Get the leader address for a given round using round-robin rotation.
         /// Leader selection: (round % epochLength) % masternodeCount
         /// </summary>
-        private Address GetLeaderAddress(XdcBlockHeader currentHead, ulong round, Address[] masternodes, IXdcReleaseSpec spec)
+        public Address GetLeaderAddress(XdcBlockHeader currentHead, ulong round, Address[] masternodes, IXdcReleaseSpec spec)
         {
             if (masternodes.Length == 0)
             {
