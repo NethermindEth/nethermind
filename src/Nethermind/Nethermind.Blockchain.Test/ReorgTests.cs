@@ -294,11 +294,20 @@ public class ReorgTests
     {
         EnsureStarted();
 
-        // Build initial canonical chain
+        // Helper to create tx with given nonce that calls contract
+        Transaction MakeTx(ulong nonce) => Build.A.Transaction
+            .WithNonce(nonce)
+            .WithTo(_contractAddress)
+            .WithGasLimit(100_000)
+            .WithValue(0)
+            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        // Build initial canonical chain with tx in every block
         Block b0 = Build.A.Block.WithHeader(_genesis).WithDifficulty(1).WithTotalDifficulty(1L).WithGasLimit(30_000_000).TestObject;
-        Block b1 = Build.A.Block.WithParent(b0).WithDifficulty(1).WithTotalDifficulty(2L).WithGasLimit(30_000_000).TestObject;
-        Block b2 = Build.A.Block.WithParent(b1).WithDifficulty(1).WithTotalDifficulty(3L).WithGasLimit(30_000_000).TestObject;
-        Block b3 = Build.A.Block.WithParent(b2).WithDifficulty(1).WithTotalDifficulty(4L).WithGasLimit(30_000_000).TestObject;
+        Block b1 = Build.A.Block.WithParent(b0).WithDifficulty(1).WithTotalDifficulty(2L).WithGasLimit(30_000_000).WithTransactions(MakeTx(0)).TestObject;
+        Block b2 = Build.A.Block.WithParent(b1).WithDifficulty(1).WithTotalDifficulty(3L).WithGasLimit(30_000_000).WithTransactions(MakeTx(1)).TestObject;
+        Block b3 = Build.A.Block.WithParent(b2).WithDifficulty(1).WithTotalDifficulty(4L).WithGasLimit(30_000_000).WithTransactions(MakeTx(2)).TestObject;
 
         int count = 0;
         ManualResetEventSlim mre = new(false);
@@ -316,44 +325,38 @@ public class ReorgTests
         _blockTree.SuggestBlock(b1);
         _blockTree.SuggestBlock(b2);
         _blockTree.SuggestBlock(b3);
-        // Wait until all events are received
         mre.Wait(Timeout.MaxTestTime);
         Assert.That(_blockTree.Head, Is.EqualTo(b3));
 
-        // Build heavier alternative branch from b1
-        Block b2B = Build.A.Block.WithParent(b1).WithDifficulty(5).WithTotalDifficulty(7L).WithGasLimit(30_000_000).TestObject;
-        Block b3B = Build.A.Block.WithParent(b2B).WithDifficulty(6).WithTotalDifficulty(13L).WithGasLimit(30_000_000).TestObject;
-        Block b4B = Build.A.Block.WithParent(b3B).WithDifficulty(7).WithTotalDifficulty(20L).WithGasLimit(30_000_000).TestObject;
+        // Verify canonical chain storage: each block N should have parent hash at storage[N]
+        _worldState.Get(new StorageCell(_contractAddress, 1)).ToArray().Should().BeEquivalentTo(b0.Hash!.BytesToArray());
+        _worldState.Get(new StorageCell(_contractAddress, 2)).ToArray().Should().BeEquivalentTo(b1.Hash!.BytesToArray());
+        _worldState.Get(new StorageCell(_contractAddress, 3)).ToArray().Should().BeEquivalentTo(b2.Hash!.BytesToArray());
 
-        // Build a transaction that calls the predeployed contract
-        Transaction tx = Build.A.Transaction
-            .WithNonce(0)
-            .WithTo(_contractAddress)
-            .WithGasLimit(100_000)
-            .WithValue(0)
-            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA)
-            .TestObject;
-
-        // Next block on the alt head including the tx; contract will store BLOCKHASH(NUMBER-1) into storage[1]
-        Block b5B = Build.A.Block
-            .WithParent(b4B)
-            .WithDifficulty(8)
-            .WithTotalDifficulty(28L)
-            .WithTransactions(tx)
-            .WithGasLimit(30_000_000)
-            .TestObject;
+        // Build heavier alternative branch from b1 with tx in every block
+        Block b2B = Build.A.Block.WithParent(b1).WithDifficulty(5).WithTotalDifficulty(7L).WithGasLimit(30_000_000).WithTransactions(MakeTx(1)).TestObject;
+        Block b3B = Build.A.Block.WithParent(b2B).WithDifficulty(6).WithTotalDifficulty(13L).WithGasLimit(30_000_000).WithTransactions(MakeTx(2)).TestObject;
+        Block b4B = Build.A.Block.WithParent(b3B).WithDifficulty(7).WithTotalDifficulty(20L).WithGasLimit(30_000_000).WithTransactions(MakeTx(3)).TestObject;
+        Block b5B = Build.A.Block.WithParent(b4B).WithDifficulty(8).WithTotalDifficulty(28L).WithGasLimit(30_000_000).WithTransactions(MakeTx(4)).TestObject;
 
         mre.Reset();
         _blockTree.SuggestBlock(b2B);
         _blockTree.SuggestBlock(b3B);
         _blockTree.SuggestBlock(b4B);
         _blockTree.SuggestBlock(b5B);
-        // Wait until head moves to b5B (reorg occurred)
         mre.Wait(Timeout.MaxTestTime);
         Assert.That(_blockTree.Head, Is.EqualTo(b5B));
 
-        // Verify that storage[1] of the contract equals the parent hash (b4B)
-        byte[] stored = _worldState.Get(new StorageCell(_contractAddress, 1)).ToArray();
-        stored.Should().BeEquivalentTo(b4B.Hash!.BytesToArray());
+        // Verify reorg branch storage: after reorg, storage should reflect new canonical chain
+        // storage[1] still has b0 hash (unchanged)
+        _worldState.Get(new StorageCell(_contractAddress, 1)).ToArray().Should().BeEquivalentTo(b0.Hash!.BytesToArray());
+        // storage[2] now has b1 hash (from b2B execution)
+        _worldState.Get(new StorageCell(_contractAddress, 2)).ToArray().Should().BeEquivalentTo(b1.Hash!.BytesToArray());
+        // storage[3] now has b2B hash (from b3B execution)
+        _worldState.Get(new StorageCell(_contractAddress, 3)).ToArray().Should().BeEquivalentTo(b2B.Hash!.BytesToArray());
+        // storage[4] now has b3B hash (from b4B execution)
+        _worldState.Get(new StorageCell(_contractAddress, 4)).ToArray().Should().BeEquivalentTo(b3B.Hash!.BytesToArray());
+        // storage[5] now has b4B hash (from b5B execution)
+        _worldState.Get(new StorageCell(_contractAddress, 5)).ToArray().Should().BeEquivalentTo(b4B.Hash!.BytesToArray());
     }
 }
