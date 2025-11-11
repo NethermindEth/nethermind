@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
@@ -51,6 +52,7 @@ namespace Nethermind.Db
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
                     => _wrapped.Set(key, Compress(value), flags);
 
+                [SkipLocalsInit]
                 public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
                 {
                     if (!value.EndsWith(EmptyCodeHashStorageRoot))
@@ -64,7 +66,8 @@ namespace Nethermind.Db
 
                     if (compressedLength <= EOACompressingDb.StackAllocThreshold)
                     {
-                        Span<byte> tmp = stackalloc byte[compressedLength];
+                        Span<byte> buffer = stackalloc byte[EOACompressingDb.StackAllocThreshold];
+                        Span<byte> tmp = buffer[..compressedLength];
                         tmp[PreambleIndex] = PreambleValue;
                         value[..storedLength].CopyTo(tmp[EOACompressingDb.PreambleLength..]);
                         _wrapped.PutSpan(key, tmp, flags);
@@ -72,17 +75,10 @@ namespace Nethermind.Db
                     else
                     {
                         byte[] rented = ArrayPool<byte>.Shared.Rent(compressedLength);
-                        try
-                        {
-                            Span<byte> tmp = rented.AsSpan(0, compressedLength);
-                            tmp[EOACompressingDb.PreambleIndex] = EOACompressingDb.PreambleValue;
-                            value[..storedLength].CopyTo(tmp[EOACompressingDb.PreambleLength..]);
-                            _wrapped.PutSpan(key, tmp, flags);
-                        }
-                        finally
-                        {
-                            ArrayPool<byte>.Shared.Return(rented);
-                        }
+                        Span<byte> tmp = rented.AsSpan(0, compressedLength);
+                        tmp[EOACompressingDb.PreambleIndex] = EOACompressingDb.PreambleValue;
+                        value[..storedLength].CopyTo(tmp[EOACompressingDb.PreambleLength..]);
+                        _wrapped.PutSpan(key, tmp, flags);
                     }
                 }
 
@@ -182,6 +178,7 @@ namespace Nethermind.Db
                 => Decompress(_wrapped.Get(key, flags));
 
 
+            [SkipLocalsInit]
             public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
             {
                 if (!value.EndsWith(EmptyCodeHashStorageRoot))
@@ -195,7 +192,8 @@ namespace Nethermind.Db
 
                 if (compressedLength <= StackAllocThreshold)
                 {
-                    Span<byte> tmp = stackalloc byte[compressedLength];
+                    Span<byte> buffer = stackalloc byte[StackAllocThreshold];
+                    Span<byte> tmp = buffer[..compressedLength];
                     tmp[PreambleIndex] = PreambleValue;
                     value[..storedLength].CopyTo(tmp[PreambleLength..]);
                     _wrapped.PutSpan(key, tmp, flags);
@@ -203,17 +201,10 @@ namespace Nethermind.Db
                 else
                 {
                     byte[] rented = ArrayPool<byte>.Shared.Rent(compressedLength);
-                    try
-                    {
-                        Span<byte> tmp = rented.AsSpan(0, compressedLength);
-                        tmp[PreambleIndex] = PreambleValue;
-                        value[..storedLength].CopyTo(tmp[PreambleLength..]);
-                        _wrapped.PutSpan(key, tmp, flags);
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(rented);
-                    }
+                    Span<byte> tmp = rented.AsSpan(0, compressedLength);
+                    tmp[PreambleIndex] = PreambleValue;
+                    value[..storedLength].CopyTo(tmp[PreambleLength..]);
+                    _wrapped.PutSpan(key, tmp, flags);
                 }
             }
 
