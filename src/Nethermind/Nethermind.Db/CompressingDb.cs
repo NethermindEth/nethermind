@@ -119,7 +119,7 @@ namespace Nethermind.Db
                 if (bytes is null) return null;
 
                 ReadOnlySpan<byte> span = bytes;
-                if (span.IsNull() || !span.EndsWith(EmptyCodeHashStorageRoot))
+                if (!span.EndsWith(EmptyCodeHashStorageRoot))
                 {
                     // No compression needed; avoid allocation
                     return bytes;
