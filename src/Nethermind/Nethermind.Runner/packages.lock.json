@@ -776,7 +776,7 @@
         "type": "Project",
         "dependencies": {
           "BouncyCastle.Cryptography": "[2.6.2, )",
-          "Ckzg.Bindings": "[2.1.5.1529, )",
+          "Ckzg.Bindings": "[2.1.5.1542, )",
           "Nethermind.Core": "[1.36.0-unstable, )",
           "Nethermind.Crypto.Bls": "[1.0.5, )",
           "Nethermind.Serialization.Rlp": "[1.36.0-unstable, )",
@@ -888,8 +888,8 @@
       "nethermind.grpc": {
         "type": "Project",
         "dependencies": {
-          "Google.Protobuf": "[3.32.1, )",
-          "Google.Protobuf.Tools": "[3.32.1, )",
+          "Google.Protobuf": "[3.33.0, )",
+          "Google.Protobuf.Tools": "[3.33.0, )",
           "Grpc": "[2.46.6, )",
           "Nethermind.Config": "[1.36.0-unstable, )",
           "Nethermind.Core": "[1.36.0-unstable, )",
@@ -1076,7 +1076,7 @@
       "nethermind.optimism": {
         "type": "Project",
         "dependencies": {
-          "Google.Protobuf": "[3.32.1, )",
+          "Google.Protobuf": "[3.33.0, )",
           "Nethermind.Api": "[1.36.0-unstable, )",
           "Nethermind.Blockchain": "[1.36.0-unstable, )",
           "Nethermind.Consensus": "[1.36.0-unstable, )",
@@ -1118,7 +1118,7 @@
       "nethermind.shutter": {
         "type": "Project",
         "dependencies": {
-          "Google.Protobuf": "[3.32.1, )",
+          "Google.Protobuf": "[3.33.0, )",
           "Nethermind.Blockchain": "[1.36.0-unstable, )",
           "Nethermind.Consensus": "[1.36.0-unstable, )",
           "Nethermind.Core": "[1.36.0-unstable, )",
@@ -1280,9 +1280,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1529, )",
-        "resolved": "2.1.5.1529",
-        "contentHash": "PUnwltfxU0V/rIHLlcVyCOmpaFCgYPDfBlp32F33qW5ZldjcWpDt3tEZAmFvX0Rt/Va05djdHkKH/QzXyDhpTg=="
+        "requested": "[2.1.5.1542, )",
+        "resolved": "2.1.5.1542",
+        "contentHash": "GFXmOjg5fZ8s+836/HdKiyXbJ+J73wVX6hNmUE6Isb1rA8dI2SMLeW1m48s+ZNIPN9ENJb8Daq1GwmMjBGjUVQ=="
       },
       "Collections.Pooled": {
         "type": "CentralTransitive",
@@ -1329,15 +1329,15 @@
       },
       "Google.Protobuf": {
         "type": "CentralTransitive",
-        "requested": "[3.32.1, )",
-        "resolved": "3.32.1",
-        "contentHash": "HbFFRNU46e1E+qhGvwCDAO2EZ80WADqlkNqlOBYvGi7SNxwMPkTrReZgCg9/TrXwLO/n0za+AIiT2IplzqrjZw=="
+        "requested": "[3.33.0, )",
+        "resolved": "3.33.0",
+        "contentHash": "+kIa03YipuiSDeRuZwcDcXS1xBQAFeGLIjuLbgJr2i+TlwBPYAqdnQZJ2SDVzIgDyy+q+n/400WyWyrJ5ZqCgQ=="
       },
       "Google.Protobuf.Tools": {
         "type": "CentralTransitive",
-        "requested": "[3.32.1, )",
-        "resolved": "3.32.1",
-        "contentHash": "5D+41uUzFkxsU50jsBJ2LS2cZ1jnwiy9UvTtl2RzSREv/5n105y70Vx324DDpNf8eYI7SQfKvX9FfbNcdcR7FA=="
+        "requested": "[3.33.0, )",
+        "resolved": "3.33.0",
+        "contentHash": "x1jDFKaC7s7zF7BmL9mXLYKXUaRyKdmjIsn/U5/GajCfHtIDvgkAFpFrsmDLCBxEg0I1YkjjbUVqDzCqMoo7Gw=="
       },
       "Grpc": {
         "type": "CentralTransitive",
@@ -1676,9 +1676,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1529, )",
-        "resolved": "2.1.5.1529",
-        "contentHash": "PUnwltfxU0V/rIHLlcVyCOmpaFCgYPDfBlp32F33qW5ZldjcWpDt3tEZAmFvX0Rt/Va05djdHkKH/QzXyDhpTg=="
+        "requested": "[2.1.5.1542, )",
+        "resolved": "2.1.5.1542",
+        "contentHash": "GFXmOjg5fZ8s+836/HdKiyXbJ+J73wVX6hNmUE6Isb1rA8dI2SMLeW1m48s+ZNIPN9ENJb8Daq1GwmMjBGjUVQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1773,9 +1773,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1529, )",
-        "resolved": "2.1.5.1529",
-        "contentHash": "PUnwltfxU0V/rIHLlcVyCOmpaFCgYPDfBlp32F33qW5ZldjcWpDt3tEZAmFvX0Rt/Va05djdHkKH/QzXyDhpTg=="
+        "requested": "[2.1.5.1542, )",
+        "resolved": "2.1.5.1542",
+        "contentHash": "GFXmOjg5fZ8s+836/HdKiyXbJ+J73wVX6hNmUE6Isb1rA8dI2SMLeW1m48s+ZNIPN9ENJb8Daq1GwmMjBGjUVQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1870,9 +1870,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1529, )",
-        "resolved": "2.1.5.1529",
-        "contentHash": "PUnwltfxU0V/rIHLlcVyCOmpaFCgYPDfBlp32F33qW5ZldjcWpDt3tEZAmFvX0Rt/Va05djdHkKH/QzXyDhpTg=="
+        "requested": "[2.1.5.1542, )",
+        "resolved": "2.1.5.1542",
+        "contentHash": "GFXmOjg5fZ8s+836/HdKiyXbJ+J73wVX6hNmUE6Isb1rA8dI2SMLeW1m48s+ZNIPN9ENJb8Daq1GwmMjBGjUVQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1967,9 +1967,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1529, )",
-        "resolved": "2.1.5.1529",
-        "contentHash": "PUnwltfxU0V/rIHLlcVyCOmpaFCgYPDfBlp32F33qW5ZldjcWpDt3tEZAmFvX0Rt/Va05djdHkKH/QzXyDhpTg=="
+        "requested": "[2.1.5.1542, )",
+        "resolved": "2.1.5.1542",
+        "contentHash": "GFXmOjg5fZ8s+836/HdKiyXbJ+J73wVX6hNmUE6Isb1rA8dI2SMLeW1m48s+ZNIPN9ENJb8Daq1GwmMjBGjUVQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -2064,9 +2064,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.5.1529, )",
-        "resolved": "2.1.5.1529",
-        "contentHash": "PUnwltfxU0V/rIHLlcVyCOmpaFCgYPDfBlp32F33qW5ZldjcWpDt3tEZAmFvX0Rt/Va05djdHkKH/QzXyDhpTg=="
+        "requested": "[2.1.5.1542, )",
+        "resolved": "2.1.5.1542",
+        "contentHash": "GFXmOjg5fZ8s+836/HdKiyXbJ+J73wVX6hNmUE6Isb1rA8dI2SMLeW1m48s+ZNIPN9ENJb8Daq1GwmMjBGjUVQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
