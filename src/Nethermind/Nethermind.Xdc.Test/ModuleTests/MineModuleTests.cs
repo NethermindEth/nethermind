@@ -24,7 +24,7 @@ internal class MineModuleTests
     [SetUp]
     public async Task Setup()
     {
-        _blockchainTests = await XdcTestBlockchain.Create();
+        _blockchainTests = await XdcTestBlockchain.Create(useHotStuffModule: true);
         _producer = (XdcBlockProducer)_blockchainTests.BlockProducer;
         _tree = (XdcBlockTree)_blockchainTests.BlockTree;
         _hotstuff = (XdcHotStuff)_blockchainTests.BlockProducerRunner;
@@ -44,7 +44,7 @@ internal class MineModuleTests
 
         // Arrange
         var spec = _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header!);
-        var previousLeader = _hotstuff.GetLeaderAddress((XdcBlockHeader)_tree.Head!.Header!, _blockchainTests.XdcContext.CurrentRound, masterNodesAddresses, spec);
+        var previousLeader = _hotstuff.GetLeaderAddress((XdcBlockHeader)_tree.Head!.Header!, _blockchainTests.XdcContext.CurrentRound, spec);
         Assert.That(previousLeader, Is.Not.Null);
 
         await _blockchainTests.AddBlock();
@@ -53,7 +53,7 @@ internal class MineModuleTests
 
         // Act - Attempt to mine again within the same round (the assumption is after mine period current round increments and a new leader is chosen)
         spec = _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header!);
-        var newLeader = _hotstuff.GetLeaderAddress((XdcBlockHeader)_tree.Head!.Header!, _blockchainTests.XdcContext.CurrentRound, masterNodesAddresses, spec);
+        var newLeader = _hotstuff.GetLeaderAddress((XdcBlockHeader)_tree.Head!.Header!, _blockchainTests.XdcContext.CurrentRound, spec);
 
         // Assert - Should fail because already mined
         Assert.That(newLeader, Is.Not.Null);
@@ -61,9 +61,8 @@ internal class MineModuleTests
         Assert.That(newLeader, Is.Not.EqualTo(previousLeader));
     }
 
-    [Test]
+    /*[Test]
     public async Task Block_Building_Fails_When_Not_Leader()
     {
-
-    }
+    }*/
 }
