@@ -46,7 +46,7 @@ public class TxPoolSourceTests
         IEnumerable<Transaction> txs = transactionSelector.GetTransactions(new BlockHeader(), long.MaxValue);
         int blobsCount = txs.Sum(tx => tx.GetBlobCount());
 
-        Assert.That(blobsCount, Is.LessThanOrEqualTo(Cancun.Instance.MaxBlobCount(customBlobLimit)));
+        Assert.That(blobsCount, Is.LessThanOrEqualTo(Cancun.Instance.MaxProductionBlobCount(customBlobLimit)));
     }
 
     public static IEnumerable<TestCaseData> BlobTransactionsWithBlobGasLimitPerBlockCombinations()
@@ -74,10 +74,10 @@ public class TxPoolSourceTests
         yield return ([3], Eip4844Constants.GasPerBlob * 2);
     }
 
-    [TestCaseSource(nameof(MaxBlobsTests))]
-    public int MaxBlobs_calculation(IReleaseSpec spec, int? customBlobLimit) => spec.MaxBlobCount(customBlobLimit);
+    [TestCaseSource(nameof(MaxProductionBlobCountTests))]
+    public int MaxProductionBlobCount_calculation(IReleaseSpec spec, int? customBlobLimit) => spec.MaxProductionBlobCount(customBlobLimit);
 
-    public static IEnumerable<TestCaseData> MaxBlobsTests()
+    public static IEnumerable<TestCaseData> MaxProductionBlobCountTests()
     {
         yield return new TestCaseData(Cancun.Instance, null).Returns(Cancun.Instance.MaxBlobCount);
         yield return new TestCaseData(Prague.Instance, null).Returns(Prague.Instance.MaxBlobCount);

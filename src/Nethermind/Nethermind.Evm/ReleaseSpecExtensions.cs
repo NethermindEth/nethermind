@@ -94,7 +94,7 @@ namespace Nethermind.Evm
         public static ulong GetTargetBlobGasPerBlock(this IReleaseSpec spec) =>
             spec.TargetBlobCount * Eip4844Constants.GasPerBlob;
 
-        public static int MaxBlobCount(this IReleaseSpec spec, int? blockProductionBlobLimit) =>
+        public static int MaxProductionBlobCount(this IReleaseSpec spec, int? blockProductionBlobLimit) =>
             blockProductionBlobLimit >= 0
                 ? Math.Min(blockProductionBlobLimit.Value, (int)spec.MaxBlobCount)
                 : (int)spec.MaxBlobCount;
