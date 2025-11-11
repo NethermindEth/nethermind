@@ -51,7 +51,7 @@ internal class XdcReorgModuleTests
         blockChain.BlockTree.NewHeadBlock += (_, args) =>
         {
             newHeadWaitHandle.SetResult();
-        };        
+        };
 
         XdcBlockHeader forkparent = finalizedBlock;
         for (int i = 0; i < 3; i++)
@@ -59,7 +59,7 @@ internal class XdcReorgModuleTests
             //Build a fork on finalized block, which should result in fork becoming new head
             forkparent = (XdcBlockHeader)(await blockChain.AddBlockFromParent(forkparent)).Header;
         }
-        
+
         if (blockChain.BlockTree.Head!.Hash != forkparent.Hash)
         {
             //Wait for new head 

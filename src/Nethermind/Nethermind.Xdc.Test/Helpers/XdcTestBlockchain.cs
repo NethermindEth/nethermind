@@ -80,7 +80,6 @@ public class XdcTestBlockchain : TestBlockchain
     internal TestRandomSigner RandomSigner { get; }
     internal XdcHotStuff ConsensusModule => (XdcHotStuff)BlockProducerRunner;
 
-
     protected XdcTestBlockchain(bool useHotStuffModule)
     {
         var keys = new PrivateKeyGenerator().Generate(210).ToList();
@@ -90,7 +89,7 @@ public class XdcTestBlockchain : TestBlockchain
         _useHotStuffModule = useHotStuffModule;
     }
 
-    protected Signer Signer => (Signer)_fromXdcContainer.Signer;
+    public Signer Signer => (Signer)_fromXdcContainer.Signer;
 
     private FromXdcContainer _fromXdcContainer = null!;
     public class FromXdcContainer(
@@ -147,7 +146,6 @@ public class XdcTestBlockchain : TestBlockchain
         IConfigProvider configProvider = new ConfigProvider([.. CreateConfigs()]);
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
-        ConfigureContainer(builder, configProvider);
         configurer?.Invoke(builder);
 
         Container = builder.Build();
@@ -160,14 +158,14 @@ public class XdcTestBlockchain : TestBlockchain
         BlockProducer = CreateTestBlockProducer();
         BlockProducerRunner ??= CreateBlockProducerRunner();
         BlockProducerRunner.Start();
-        Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
+        Suggester = new XdcBlockSuggester(BlockTree, BlockProducerRunner);
 
         return Task.FromResult((TestBlockchain)this);
     }
 
     protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
     {
-        var  container = base.ConfigureContainer(builder, configProvider)
+        var container = base.ConfigureContainer(builder, configProvider)
             .AddModule(new XdcModuleTestOverrides(configProvider, LimboLogs.Instance))
             .AddSingleton<ISpecProvider>(
             new TestSpecProvider(WrapReleaseSpec(Shanghai.Instance))
@@ -401,7 +399,9 @@ public class XdcTestBlockchain : TestBlockchain
 
         VoteDecoder voteDecoder = new VoteDecoder();
 
-        var waitHandle = new TaskCompletionSource();
+        var newHeadWaitHandle = new TaskCompletionSource();
+        var newRoundWaitHandle = new TaskCompletionSource();
+        XdcContext.NewRoundSetEvent += OnNewRound;
         BlockTree.NewHeadBlock += OnNewHead;
         try
         {
@@ -409,31 +409,42 @@ public class XdcTestBlockchain : TestBlockchain
             Signer.SetSigner(MasterNodeCandidates.First(k => k.Address == leader));
             int count = 0;
             //Simulate voting until a new head is detected
-            while (!waitHandle.Task.IsCompleted)
+            while (!newRoundWaitHandle.Task.IsCompleted)
             {
                 count++;
-                if (count > 200)
+                if (count > 1000)
                 {
                     break;
                 }
-                //Will cast a random master candidate vote for the head block and when vote threshold is reached the block should be propose
-                var vote = new Vote(new BlockRoundInfo(head.Hash!, XdcContext.CurrentRound, head.Number), (ulong)gapNumber);
+                //Will cast a random master candidate vote for the head block and when vote threshold is reached the block should be proposed
+                var vote = new Vote(new BlockRoundInfo(head.Hash!, head.ExtraConsensusData!.BlockRound, head.Number), (ulong)gapNumber);
                 SignRandom(vote);
-                var voteTask = this.VotesManager.HandleVote(vote);
+                var voteTask = this.VotesManager.OnReceiveVote(vote);
             }
-            //Blocks are not proposed 
-            var finishedTask = await Task.WhenAny(waitHandle.Task, Task.Delay(10_000));
-            if (finishedTask != waitHandle.Task)
+            //Voting will trigger QC creation which triggers new round
+            var finishedTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(10_000));
+            if (finishedTask != newRoundWaitHandle.Task)
                 Assert.Fail("After 200 votes no new head could be detected. Something is wrong.");
+
+            var waitingForHead = await Task.WhenAny(newHeadWaitHandle.Task, Task.Delay(10_000));
+
+            if (waitingForHead != newHeadWaitHandle.Task)
+                Assert.Fail("Timed out waiting for new head after succesful voting. Block was not proposed.");
         }
         finally
         {
             BlockTree.NewHeadBlock -= OnNewHead;
+            XdcContext.NewRoundSetEvent -= OnNewRound;
         }
-        
+
+        void OnNewRound(object? sender, NewRoundEventArgs e)
+        {
+            newHeadWaitHandle.SetResult();
+        }
+
         void OnNewHead(object? sender, BlockEventArgs e)
         {
-            waitHandle.SetResult();
+            newHeadWaitHandle.SetResult();
         }
         void SignRandom(Vote vote)
         {
@@ -451,7 +462,7 @@ public class XdcTestBlockchain : TestBlockchain
 
         var gap = (ulong)Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % headSpec.EpochLength - headSpec.Gap);
         PrivateKey[] masterNodes = TakeRandomMasterNodes(headSpec, switchInfo);
-        var headQc = XdcTestHelper.CreateQc(new BlockRoundInfo(header.Hash!, XdcContext.CurrentRound, header.Number), gap,
+        var headQc = XdcTestHelper.CreateQc(new BlockRoundInfo(header.Hash!, header.ExtraConsensusData!.BlockRound, header.Number), gap,
             masterNodes);
         QuorumCertificateManager.CommitCertificate(headQc);
     }
