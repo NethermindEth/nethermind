@@ -41,7 +41,7 @@ internal class XdcTestBlockchainTests
             c.EpochLength = 90;
             c.Gap = 45;
         });
-        
+
         await _blockchain.AddBlocks(count);
         IHeaderValidator headerValidator = _blockchain.Container.Resolve<IHeaderValidator>();
         BlockHeader parent = _blockchain.BlockTree.Genesis!;
