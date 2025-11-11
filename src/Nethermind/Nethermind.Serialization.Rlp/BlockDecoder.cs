@@ -23,6 +23,9 @@ namespace Nethermind.Serialization.Rlp
                 throw new RlpException($"Received a 0 length stream when decoding a {nameof(Block)}");
             }
 
+            Console.WriteLine("DECODING BLOCK");
+            Console.WriteLine(Convert.ToHexString(rlpStream.Data));
+
             if (rlpStream.IsNextItemNull())
             {
                 rlpStream.ReadByte();
@@ -41,7 +44,7 @@ namespace Nethermind.Serialization.Rlp
             int headerLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
 
             (int txs, int uncles, int? withdrawals, int? blockAccessList) = _blockBodyDecoder.GetBodyComponentLength(item.Body);
-            int? generatedBlockAccessList = item.GeneratedBlockAccessList is null ? null : _blockAccessListDecoder.GetLength(item.GeneratedBlockAccessList.Value, RlpBehaviors.None);
+            int? generatedBlockAccessList = item.GeneratedBlockAccessList is null ? null : _blockAccessListDecoder.GetLength(item.GeneratedBlockAccessList.Value, rlpBehaviors);
             int contentLength =
                 headerLength +
                 Rlp.LengthOfSequence(txs) +
