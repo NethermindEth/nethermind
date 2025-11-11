@@ -321,7 +321,7 @@ public class FilterManagerTests
 
         // adding always a simple block filter and test
         Block block = Build.A.Block.TestObject;
-		BlockFilter blockFilter = new(_currentFilterId++);
+        BlockFilter blockFilter = new(_currentFilterId++);
         filters.Add(blockFilter);
 
         _filterStore.GetFilters<LogFilter>().Returns(filters.OfType<LogFilter>().ToArray());
