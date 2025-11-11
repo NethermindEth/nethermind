@@ -336,6 +336,11 @@ public class XdcTestBlockchain : TestBlockchain
         }
     }
 
+    public void ChangeConfiguration(Action<XdcReleaseSpec> reconfigure)
+    {
+        reconfigure((XdcReleaseSpec)SpecProvider.GetXdcSpec((XdcBlockHeader)BlockTree.Head!.Header));
+    }
+
     public async Task AddBlocks(int count, bool withTransaction = false)
     {
         UInt256 nonce = 0;
@@ -351,18 +356,19 @@ public class XdcTestBlockchain : TestBlockchain
 
     public override async Task<Block> AddBlock(params Transaction[] transactions)
     {
+        CreateAndCommitQC((XdcBlockHeader)BlockTree.Head!.Header);
         var b = await AddBlockWithoutCommitQc(transactions);
-        CreateAndCommitQC((XdcBlockHeader)b.Header);
         return b;
     }
 
     public override async Task<Block> AddBlockFromParent(BlockHeader parent, params Transaction[] transactions)
     {
+        CreateAndCommitQC((XdcBlockHeader)BlockTree.Head!.Header);
+
         var b = await base.AddBlockFromParent(parent, transactions);
 
         CheckIfTimeForSnapshot();
 
-        CreateAndCommitQC((XdcBlockHeader)b.Header);
         return b;
     }
 
@@ -417,7 +423,7 @@ public class XdcTestBlockchain : TestBlockchain
                     break;
                 }
                 //Will cast a random master candidate vote for the head block and when vote threshold is reached the block should be proposed
-                var vote = new Vote(new BlockRoundInfo(head.Hash!, head.ExtraConsensusData!.BlockRound, head.Number), (ulong)gapNumber);
+                var vote = new Vote(new BlockRoundInfo(head.Hash!, head.ExtraConsensusData?.BlockRound ?? XdcContext.CurrentRound, head.Number), (ulong)gapNumber);
                 SignRandom(vote);
                 var voteTask = this.VotesManager.OnReceiveVote(vote);
             }
@@ -462,7 +468,7 @@ public class XdcTestBlockchain : TestBlockchain
 
         var gap = (ulong)Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % headSpec.EpochLength - headSpec.Gap);
         PrivateKey[] masterNodes = TakeRandomMasterNodes(headSpec, switchInfo);
-        var headQc = XdcTestHelper.CreateQc(new BlockRoundInfo(header.Hash!, header.ExtraConsensusData!.BlockRound, header.Number), gap,
+        var headQc = XdcTestHelper.CreateQc(new BlockRoundInfo(header.Hash!, header.ExtraConsensusData?.BlockRound ?? XdcContext.CurrentRound, header.Number), gap,
             masterNodes);
         QuorumCertificateManager.CommitCertificate(headQc);
     }
