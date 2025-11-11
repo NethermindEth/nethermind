@@ -17,6 +17,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -77,7 +78,7 @@ public class ReorgTests
 
             // Predeploy: fund sender and install a contract that executes BLOCKHASH(NUMBER-1) and stores it at storage[1]
             _sender = TestItem.AddressA;
-            stateProvider.CreateAccount(_sender, 1_000_000_000);
+            stateProvider.CreateAccount(_sender, 10.Ether());
 
             _contractAddress = TestItem.AddressB;
             stateProvider.CreateAccount(_contractAddress, 0);
@@ -90,7 +91,6 @@ public class ReorgTests
                 .Op(Instruction.BLOCKHASH)
                 .Op(Instruction.SWAP1)
                 .Op(Instruction.SSTORE)
-                .Op(Instruction.STOP)
                 .Done;
             stateProvider.InsertCode(_contractAddress, blockhashStoreCode, _specProvider.GenesisSpec);
 
@@ -300,6 +300,7 @@ public class ReorgTests
             .WithTo(_contractAddress)
             .WithGasLimit(100_000)
             .WithValue(0)
+            .WithGasPrice(1)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA)
             .TestObject;
 
@@ -311,6 +312,14 @@ public class ReorgTests
 
         int count = 0;
         ManualResetEventSlim mre = new(false);
+        _blockchainProcessor.InvalidBlock += (_, args) =>
+        {
+            Console.WriteLine($"Invalid block detected: {args.InvalidBlock.Number}");
+        };
+        _blockchainProcessor.BlockRemoved += (_, args) =>
+        { 
+            Console.WriteLine($"Block removed from main: {args.BlockHash}, {args.ProcessingResult}, {args.Message}, {args.Exception}");
+        };
         _blockTree.BlockAddedToMain += (_, args) =>
         {
             count++;
