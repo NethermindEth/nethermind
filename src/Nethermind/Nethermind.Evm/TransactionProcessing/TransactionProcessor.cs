@@ -879,7 +879,7 @@ namespace Nethermind.Evm.TransactionProcessing
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         protected void TraceLogInvalidTx(Transaction transaction, string reason)
         {
-            if (Logger.IsTrace) Logger.Trace($"Invalid tx {transaction.Hash} ({reason})");
+            Console.WriteLine($"Invalid tx {transaction.Hash} ({reason})");
         }
 
         protected virtual GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
