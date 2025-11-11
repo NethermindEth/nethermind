@@ -18,7 +18,7 @@ internal class SyncInfoManager(IXdcConsensusContext xdcConsensusContext) : ISync
 
     public void ProcessSyncInfo(SyncInfo syncInfo)
     {
-        
+
     }
 
     public bool VerifySyncInfo(SyncInfo syncInfo)

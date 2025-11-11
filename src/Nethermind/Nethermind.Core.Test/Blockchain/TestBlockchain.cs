@@ -111,7 +111,7 @@ public class TestBlockchain : IDisposable
     public ManualTimestamper Timestamper => _fromContainer.ManualTimestamper;
     protected IBlocksConfig BlocksConfig => Container.Resolve<IBlocksConfig>();
 
-    public ProducedBlockSuggester Suggester { get; protected set; } = null!;
+    public virtual IProducedBlockSuggester Suggester { get; protected set; } = null!;
 
     public IExecutionRequestsProcessor MainExecutionRequestsProcessor => ((MainProcessingContext)_fromContainer.MainProcessingContext).LifetimeScope.Resolve<IExecutionRequestsProcessor>();
     public IChainLevelInfoRepository ChainLevelInfoRepository => _fromContainer.ChainLevelInfoRepository;

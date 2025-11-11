@@ -382,7 +382,7 @@ namespace Nethermind.Xdc
         /// </summary>
         private bool IsMyTurnAndTime(XdcBlockHeader parent, ulong round, IXdcReleaseSpec spec)
         {
-            if (_highestSelfMinedRound <= round)
+            if (_highestSelfMinedRound >= round)
             {
                 //Already produced block for this round
                 return false;
