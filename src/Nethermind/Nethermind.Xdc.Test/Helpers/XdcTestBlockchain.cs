@@ -336,7 +336,7 @@ public class XdcTestBlockchain : TestBlockchain
         }
     }
 
-    public void ChangeConfiguration(Action<XdcReleaseSpec> reconfigure)
+    public void ChangeReleaseSpec(Action<XdcReleaseSpec> reconfigure)
     {
         reconfigure((XdcReleaseSpec)SpecProvider.GetXdcSpec((XdcBlockHeader)BlockTree.Head!.Header));
     }

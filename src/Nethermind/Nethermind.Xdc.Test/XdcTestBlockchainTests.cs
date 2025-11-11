@@ -33,10 +33,11 @@ internal class XdcTestBlockchainTests
     }
 
     [TestCase(180)]
+    [TestCase(91)]
     public async Task SetupXdcChainAndValidateAllHeaders(int count)
     {
         //Shorten the epoch length so we can run the test faster
-        _blockchain.ChangeConfiguration((c) =>
+        _blockchain.ChangeReleaseSpec((c) =>
         {
             c.EpochLength = 90;
             c.Gap = 45;
