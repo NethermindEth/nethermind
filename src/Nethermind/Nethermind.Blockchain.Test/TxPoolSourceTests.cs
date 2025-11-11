@@ -73,4 +73,20 @@ public class TxPoolSourceTests
         yield return ([2, 2], Eip4844Constants.GasPerBlob * 2);
         yield return ([3], Eip4844Constants.GasPerBlob * 2);
     }
+
+    [TestCaseSource(nameof(MaxBlobsTests))]
+    public int MaxBlobs_calculation(IReleaseSpec spec, int? customBlobLimit) => spec.MaxBlobCount(customBlobLimit);
+
+    public static IEnumerable<TestCaseData> MaxBlobsTests()
+    {
+        yield return new TestCaseData(Cancun.Instance, null).Returns(Cancun.Instance.MaxBlobCount);
+        yield return new TestCaseData(Prague.Instance, null).Returns(Prague.Instance.MaxBlobCount);
+        yield return new TestCaseData(BPO1.Instance, null).Returns(BPO1.Instance.MaxBlobCount);
+        yield return new TestCaseData(BPO2.Instance, null).Returns(BPO2.Instance.MaxBlobCount);
+
+        yield return new TestCaseData(Prague.Instance, -1).Returns(Prague.Instance.MaxBlobCount);
+        yield return new TestCaseData(Prague.Instance, 0).Returns(0);
+        yield return new TestCaseData(BPO1.Instance, 5).Returns(5);
+        yield return new TestCaseData(BPO2.Instance, 500_000).Returns(BPO2.Instance.MaxBlobCount);
+    }
 }
