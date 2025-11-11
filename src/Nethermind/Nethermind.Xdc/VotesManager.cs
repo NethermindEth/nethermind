@@ -187,8 +187,8 @@ internal class VotesManager(
 
         var xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
-        Snapshot snapshot = _snapshotManager.GetSnapshot((long)vote.GapNumber, spec);
-        if (snapshot is null) throw new InvalidOperationException($"Failed to get snapshot by gapNumber={vote.GapNumber}");
+        Snapshot snapshot = _snapshotManager.GetSnapshot(vote.ProposedBlockInfo.BlockNumber, spec);
+        if (snapshot is null) return false;
         // Verify message signature
         vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
         return snapshot.NextEpochCandidates.Any(x => x == vote.Signer);

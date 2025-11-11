@@ -147,6 +147,54 @@ public class VotesManagerTests
         Assert.That(votesManager.GetVotesCount(vote),  Is.EqualTo(expectedCount));
     }
 
+    public static IEnumerable<TestCaseData> FilterVoteCases()
+    {
+        var keys = MakeKeys(21);
+        var masternodes = keys.Take(20).Select(k => k.Address).ToArray();
+        var blockInfo = new BlockRoundInfo(Hash256.Zero, 14, 915);
+
+        // Disqualified as the round does not match
+        var vote = new Vote(blockInfo, 450);
+        yield return new TestCaseData(15UL, masternodes, vote, false);
+
+        // Invalid signature
+        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.Last()), false);
+
+        // Valid message
+        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.First()), true);
+
+        // If snapshot missing should return false
+        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(new BlockRoundInfo(Hash256.Zero, 14, 1000), 450, keys.First()), false);
+
+    }
+
+    [TestCaseSource(nameof(FilterVoteCases))]
+    public void FilterVote(ulong currentRound, Address[] masternodes, Vote vote, bool expected)
+    {
+        var context = new XdcConsensusContext();
+        context.SetNewRound(currentRound);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithExtraConsensusData(new ExtraFieldsV2(currentRound, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 0, 0), null, 0)))
+            .TestObject;
+        blockTree.Head.Returns(new Block(header));
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
+        snapshotManager.GetSnapshot(915, Arg.Any<IXdcReleaseSpec>())
+            .Returns(new Snapshot(0, Hash256.Zero, masternodes));
+        IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
+        ISigner signer = Substitute.For<ISigner>();
+        IForensicsProcessor forensicsProcessor = Substitute.For<IForensicsProcessor>();
+
+        var voteManager = new VotesManager(context, blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
+            specProvider, signer, forensicsProcessor);
+
+        Assert.That(voteManager.FilterVote(vote), Is.EqualTo(expected));
+    }
+
 
     [TestCase(5UL, 4UL, false)] // Current round different from blockInfoRound
     [TestCase(5UL, 5UL, true)]  // No LockQc
