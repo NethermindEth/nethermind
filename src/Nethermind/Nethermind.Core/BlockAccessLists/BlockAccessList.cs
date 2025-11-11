@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -12,7 +13,10 @@ namespace Nethermind.Core.BlockAccessLists;
 
 public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 {
+    [JsonIgnore]
     public ushort Index = 0;
+    public readonly IEnumerable<AccountChanges> AccountChanges => GetAccountChanges();
+
     private readonly SortedDictionary<Address, AccountChanges> _accountChanges;
     private readonly Stack<Change> _changes;
 
