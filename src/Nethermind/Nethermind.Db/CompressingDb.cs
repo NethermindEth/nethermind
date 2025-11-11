@@ -64,21 +64,25 @@ namespace Nethermind.Db
                     int storedLength = value.Length - EmptyCodeHashStorageRoot.Length;
                     int compressedLength = storedLength + PreambleLength;
 
-                    if (compressedLength <= EOACompressingDb.StackAllocThreshold)
+                    byte[]? rented = null;
+                    scoped Span<byte> tmp;
+                    if (compressedLength <= StackAllocThreshold)
                     {
-                        Span<byte> buffer = stackalloc byte[EOACompressingDb.StackAllocThreshold];
-                        Span<byte> tmp = buffer[..compressedLength];
-                        tmp[PreambleIndex] = PreambleValue;
-                        value[..storedLength].CopyTo(tmp[EOACompressingDb.PreambleLength..]);
-                        _wrapped.PutSpan(key, tmp, flags);
+                        tmp = (stackalloc byte[StackAllocThreshold])[..compressedLength];
                     }
                     else
                     {
-                        byte[] rented = ArrayPool<byte>.Shared.Rent(compressedLength);
-                        Span<byte> tmp = rented.AsSpan(0, compressedLength);
-                        tmp[EOACompressingDb.PreambleIndex] = EOACompressingDb.PreambleValue;
-                        value[..storedLength].CopyTo(tmp[EOACompressingDb.PreambleLength..]);
-                        _wrapped.PutSpan(key, tmp, flags);
+                        rented = ArrayPool<byte>.Shared.Rent(compressedLength);
+                        tmp = rented.AsSpan(0, compressedLength);
+                    }
+
+                    tmp[PreambleIndex] = PreambleValue;
+                    value[..storedLength].CopyTo(tmp[PreambleLength..]);
+                    _wrapped.PutSpan(key, tmp, flags);
+
+                    if (rented is not null)
+                    {
+                        ArrayPool<byte>.Shared.Return(rented);
                     }
                 }
 
@@ -190,21 +194,25 @@ namespace Nethermind.Db
                 int storedLength = value.Length - EmptyCodeHashStorageRoot.Length;
                 int compressedLength = storedLength + PreambleLength;
 
+                byte[]? rented = null;
+                scoped Span<byte> tmp;
                 if (compressedLength <= StackAllocThreshold)
                 {
-                    Span<byte> buffer = stackalloc byte[StackAllocThreshold];
-                    Span<byte> tmp = buffer[..compressedLength];
-                    tmp[PreambleIndex] = PreambleValue;
-                    value[..storedLength].CopyTo(tmp[PreambleLength..]);
-                    _wrapped.PutSpan(key, tmp, flags);
+                    tmp = (stackalloc byte[StackAllocThreshold])[..compressedLength];
                 }
                 else
                 {
-                    byte[] rented = ArrayPool<byte>.Shared.Rent(compressedLength);
-                    Span<byte> tmp = rented.AsSpan(0, compressedLength);
-                    tmp[PreambleIndex] = PreambleValue;
-                    value[..storedLength].CopyTo(tmp[PreambleLength..]);
-                    _wrapped.PutSpan(key, tmp, flags);
+                    rented = ArrayPool<byte>.Shared.Rent(compressedLength);
+                    tmp = rented.AsSpan(0, compressedLength);
+                }
+
+                tmp[PreambleIndex] = PreambleValue;
+                value[..storedLength].CopyTo(tmp[PreambleLength..]);
+                _wrapped.PutSpan(key, tmp, flags);
+
+                if (rented is not null)
+                {
+                    ArrayPool<byte>.Shared.Return(rented);
                 }
             }
 
