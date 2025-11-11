@@ -46,7 +46,7 @@ internal class TestXdcBlockProducer(
         var prepared = (XdcBlockHeader)base.PrepareBlockHeader(parent, payloadAttributes);
 
         IXdcReleaseSpec headSpec = _specProvider.GetXdcSpec(prepared, xdcContext.CurrentRound);
-        var leader = GetLeaderAddress(xdcParent, xdcContext.CurrentRound, headSpec);
+        var leader = GetLeaderAddress(prepared, xdcContext.CurrentRound, headSpec);
         signer.SetSigner(candidateContainer.MasternodeCandidates.First(k => k.Address == leader));
         prepared.Beneficiary = leader;
         return prepared;
