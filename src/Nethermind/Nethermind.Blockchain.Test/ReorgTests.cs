@@ -84,10 +84,11 @@ public class ReorgTests
 
             byte[] blockhashStoreCode = Prepare.EvmCode
                 .Op(Instruction.NUMBER)
+                .Op(Instruction.DUP1)
                 .PushData(1)
                 .Op(Instruction.SUB)
                 .Op(Instruction.BLOCKHASH)
-                .PushData(1)
+                .Op(Instruction.SWAP1)
                 .Op(Instruction.SSTORE)
                 .Op(Instruction.STOP)
                 .Done;
