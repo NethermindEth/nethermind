@@ -37,6 +37,10 @@ public class Validator {
         return GetAccumulatorForEpoch(blockNumber / SLOTS_PER_HISTORICAL_ROOT);
     }
 
+    private bool TrustedAccumulatorsProvided() {
+        return _trustedAccumulators is not null && _trustedAccumulators.Count > 0;
+    }
+
     private ValueHash256? GetAccumulatorForEpoch(long epochIdx) {
         if (_trustedAccumulators is not null && _trustedAccumulators.Count > epochIdx){
             return _trustedAccumulators.ElementAt((int)epochIdx);
@@ -182,9 +186,9 @@ public class Validator {
 
     public bool VerifyAccumulator(long blockNumber, ValueHash256 accumulatorRoot) {
         ValueHash256? trustedAccumulatorRoot = GetAccumulator(blockNumber);
-        if (trustedAccumulatorRoot is null) {
-            throw new EraVerificationException("Accumulator root not found");
-        }
+        // if no trusted accumulators are provided, we skip verification
+        if (!TrustedAccumulatorsProvided()) return true;
+        if (trustedAccumulatorRoot is null) throw new EraVerificationException("Trusted accumulator root was not provided");
         return trustedAccumulatorRoot.Equals(accumulatorRoot);
     }
 

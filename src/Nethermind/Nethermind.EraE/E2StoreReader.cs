@@ -4,9 +4,9 @@ namespace Nethermind.EraE;
 
 
 public struct BlockOffset(
-    long headerPosition, 
-    long bodyPosition, 
-    long receiptsPosition, 
+    long headerPosition,
+    long bodyPosition,
+    long receiptsPosition,
     long? totalDifficultyPosition,
     long? proofPosition
 )
@@ -26,38 +26,39 @@ public class E2StoreReader(string filePath) : Era1.E2StoreReader(filePath)
     private long _indexLength;
 
     // return tuple of header, body, receipts positions in the file
-    public new BlockOffset BlockOffset(long blockNumber)
+    public BlockOffset BlockOffsetE(long blockNumber)
     {
         EnsureIndexAvailable();
 
         if (blockNumber > _startBlock + _blockCount || blockNumber < _startBlock)
             throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Block {blockNumber} is outside the bounds of this index.");
 
-        long componentIndexLocation = (long)(blockNumber - _startBlock!) * _componentsCount * IndexOffsetSize;
-        long offsetLocation = _indexLength - componentIndexLocation;
-        
-        long indexPosition = _fileLength - HeaderSize - _indexLength;
-        
+        long indexPosition = _fileLength - (HeaderSize + _indexLength);
+        // actual components offsets start after the RLP header of BlockIndex plus starting block number field
+        long firstBlockIndexPosition = indexPosition + HeaderSize + IndexSectionComponentsCount;
+        long blockIndex = blockNumber - _startBlock!.Value;
+        long blockIndexPosition = firstBlockIndexPosition + blockIndex * _componentsCount * IndexOffsetSize;
+
         // 3 consecutive bytes in the index are the header, body, and receipts offsets. All of them are relative to the index (i.e. negative values).
-        long headerRelativeOffset = ReadInt64(_fileLength - offsetLocation);
-        long bodyRelativeOffset = ReadInt64(_fileLength - offsetLocation + IndexOffsetSize);
-        long receiptsRelativeOffset = ReadInt64(_fileLength - offsetLocation + IndexOffsetSize * 2);
-        
+        long headerRelativeOffset = ReadInt64(blockIndexPosition);
+        long bodyRelativeOffset = ReadInt64(blockIndexPosition + IndexOffsetSize);
+        long receiptsRelativeOffset = ReadInt64(blockIndexPosition + IndexOffsetSize * 2);
+
         long? totalDifficultyPosition = null;
         if (_componentsCount > 3) {
-            long tdRelativeOffset = ReadInt64(_fileLength - offsetLocation + IndexOffsetSize * 3);
+            long tdRelativeOffset = ReadInt64(blockIndexPosition + IndexOffsetSize * 3);
             totalDifficultyPosition = indexPosition + tdRelativeOffset;
         }
-        
+
         long? proofPosition = null;
         if (_componentsCount > 4) {
-            long proofRelativeOffset = ReadInt64(_fileLength - offsetLocation + IndexOffsetSize * 4);
+            long proofRelativeOffset = ReadInt64(blockIndexPosition + IndexOffsetSize * 4);
             proofPosition = indexPosition + proofRelativeOffset;
         }
 
         return new BlockOffset(
-            indexPosition + headerRelativeOffset, 
-            indexPosition + bodyRelativeOffset, 
+            indexPosition + headerRelativeOffset,
+            indexPosition + bodyRelativeOffset,
             indexPosition + receiptsRelativeOffset,
             totalDifficultyPosition,
             proofPosition
@@ -77,9 +78,9 @@ public class E2StoreReader(string filePath) : Era1.E2StoreReader(filePath)
 
         // <starting block> + <blocks count> * <components count> * 8 + <components count> + <count>
         _indexLength = (
-            IndexSectionStartBlock 
-            + (int)_blockCount * ((int)_componentsCount * IndexOffsetSize) 
-            + IndexSectionComponentsCount 
+            IndexSectionStartBlock
+            + (int)_blockCount * ((int)_componentsCount * IndexOffsetSize)
+            + IndexSectionComponentsCount
             + IndexSectionCount
         );
 

@@ -13,6 +13,8 @@ public class EraCliRunner
     ILogManager logManager
 ): Era1.EraCliRunner(
     new Era1.EraConfig {
+        ImportDirectory = eraConfig.ImportDirectory,
+        ExportDirectory = eraConfig.ExportDirectory,
         MaxEra1Size = eraConfig.MaxEraESize,
         NetworkName = eraConfig.NetworkName,
         Concurrency = eraConfig.Concurrency,

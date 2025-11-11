@@ -46,8 +46,8 @@ public class EraImporter(
     {
         if (!fileSystem.Directory.Exists(src))
             throw new ArgumentException($"Import directory {src} does not exist");
-        if (accumulatorFile != null && !fileSystem.File.Exists(accumulatorFile))
-            throw new ArgumentException($"Accumulator file {accumulatorFile} not exist");
+        // if (accumulatorFile != null && !fileSystem.File.Exists(accumulatorFile))
+        //    throw new ArgumentException($"Accumulator file {accumulatorFile} not exist");
         if (historicalRootsFile != null && !fileSystem.File.Exists(historicalRootsFile))
             throw new ArgumentException($"Historical roots file {historicalRootsFile} not exist");
 

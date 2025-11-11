@@ -43,12 +43,11 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
         _trustedAccumulators = trustedAccumulators;
     }
 
-
     protected readonly ProofDecoder _proofDecoder = new();
 
     async Task<BlockHeaderProof?> ReadProof(ulong slot, CancellationToken cancellationToken)
     {
-        BlockOffset blockOffset = ((E2StoreReader)_fileReader).BlockOffset((long)slot);
+        BlockOffset blockOffset = ((E2StoreReader)_fileReader).BlockOffsetE((long)slot);
         // if proof is available for a specific block, decode one.
         if (blockOffset.ProofPosition is null) return null;
         (BlockHeaderProof proof, long _) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
@@ -124,7 +123,7 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
                     blocksRootContext.ProcessBlock(err.Block);
                 }
 
-                var slotNumber = err.Block.Header.IsPoS() ? (ulong)blockNumber : slotTime.GetSlot(err.Block.Header.Timestamp);
+                var slotNumber = err.Block.Header.IsPoS() ? slotTime.GetSlot(err.Block.Header.Timestamp): (ulong)blockNumber;
                 // read proof for this block
 
                 if (await ReadProof(slotNumber, cancellation) is { } proof) {
@@ -176,7 +175,7 @@ public class EraReader(E2StoreReader e2) : Era1.EraReader(e2, new ReceiptMessage
             || blockNumber > _fileReader.First + _fileReader.BlockCount)
             throw new ArgumentOutOfRangeException("Value is outside the range of the archive.", blockNumber, nameof(blockNumber));
         // cast to E2StoreReader to access the BlockOffset method which is overridden in EraE
-        BlockOffset blockOffset = ((E2StoreReader)_fileReader).BlockOffset(blockNumber);
+        var blockOffset = ((E2StoreReader)_fileReader).BlockOffsetE(blockNumber);
 
         (BlockHeader header, long _) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
             blockOffset.HeaderPosition,

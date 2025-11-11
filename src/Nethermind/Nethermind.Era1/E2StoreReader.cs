@@ -61,7 +61,10 @@ public class E2StoreReader : IDisposable
         ushort reserved = ReadUInt16(position + 6);
 
         Entry entry = new Entry(type, length);
-        if (expectedType.HasValue && entry.Type != expectedType) throw new EraException($"Expected an entry of type {expectedType}, but got {entry.Type}.");
+        if (expectedType.HasValue && entry.Type != expectedType)
+        {
+            throw new EraException($"Expected an entry of type {expectedType}, but got {entry.Type}.");
+        }
         if (entry.Length + (ulong)position > (ulong)_fileLength)
             throw new EraFormatException($"Entry has an invalid length of {entry.Length} at position {position}, which is longer than stream length of {_fileLength}.");
         if (entry.Length > ValueSizeLimit)
@@ -94,7 +97,7 @@ public class E2StoreReader : IDisposable
         _file.Dispose();
     }
 
-    public virtual long BlockOffset(long blockNumber)
+    public long BlockOffset(long blockNumber)
     {
         EnsureIndexAvailable();
 

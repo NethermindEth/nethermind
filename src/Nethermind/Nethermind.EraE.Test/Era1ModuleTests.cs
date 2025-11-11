@@ -205,7 +205,7 @@ public class EraEModuleTests
 
         for (int i = 0; i < fileReader.BlockCount; i++)
         {
-            BlockOffset blockOffset = fileReader.BlockOffset(fileReader.First + i);
+            BlockOffset blockOffset = fileReader.BlockOffsetE(fileReader.First + i);
 
             RandomAccess.Read(file, buf, blockOffset.HeaderPosition);
             ushort entryType = BinaryPrimitives.ReadUInt16LittleEndian(buf);
@@ -326,7 +326,7 @@ public class EraEModuleTests
                 From = start,
                 To = end,
                 ImportDirectory = tmpDir,
-                TrustedAccumulatorFile = Path.Join(tmpDir, EraExporter.AccumulatorFileName),
+                // TrustedAccumulatorFile = Path.Join(tmpDir, EraExporter.AccumulatorFileName),
                 MaxEraESize = 16,
                 NetworkName = EraTestModule.TestNetwork
             })

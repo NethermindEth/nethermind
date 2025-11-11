@@ -52,6 +52,7 @@ public class EraCliRunner(
     {
         try
         {
+            _logger.Info("Starting import job");
             await eraImporter.Import(eraConfig.ImportDirectory!, eraConfig.From, eraConfig.To, eraConfig.TrustedAccumulatorFile, cancellation);
         }
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)

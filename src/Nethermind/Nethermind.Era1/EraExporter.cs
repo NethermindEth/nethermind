@@ -119,7 +119,7 @@ public class EraExporter(
                 destinationPath,
                 EraPathUtils.Filename(_networkName, epoch, Keccak.Zero));
 
-            EraWriter eraWriter = GetWriter(filePath, specProvider);
+            using EraWriter eraWriter = GetWriter(filePath, specProvider);
 
             for (var y = startingIndex; y < startingIndex + _era1Size && y <= to; y++)
             {
