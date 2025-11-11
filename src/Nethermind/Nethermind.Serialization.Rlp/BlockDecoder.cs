@@ -50,8 +50,8 @@ namespace Nethermind.Serialization.Rlp
                 Rlp.LengthOfSequence(txs) +
                 Rlp.LengthOfSequence(uncles) +
                 (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0) +
-                (blockAccessList is not null ? Rlp.LengthOfSequence(blockAccessList.Value) : 0) +
-                (generatedBlockAccessList is not null ? Rlp.LengthOfSequence(generatedBlockAccessList.Value) : 0);
+                (blockAccessList is not null ? blockAccessList.Value : 0) +
+                (generatedBlockAccessList is not null ? generatedBlockAccessList.Value : 0);
             return (contentLength, txs, uncles, withdrawals, blockAccessList, generatedBlockAccessList);
         }
 
@@ -136,13 +136,13 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.BlockAccessList is not null)
             {
-                stream.StartSequence(balLength.Value);
+                // stream.StartSequence(balLength.Value);
                 stream.Encode(item.BlockAccessList.Value);
             }
 
             if (item.GeneratedBlockAccessList is not null)
             {
-                stream.StartSequence(genBalLength.Value);
+                // stream.StartSequence(genBalLength.Value);
                 stream.Encode(item.GeneratedBlockAccessList.Value);
             }
         }
