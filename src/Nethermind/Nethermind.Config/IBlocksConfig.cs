@@ -63,6 +63,6 @@ public interface IBlocksConfig : IConfig
 
     byte[] GetExtraDataBytes();
 
-    [ConfigItem(Description = "The blob limit after which the block producer should stop adding blobs. Minimum value is 0.", DefaultValue = "null")]
+    [ConfigItem(Description = "The max blob count after which the block producer should stop adding blobs. Minimum value is `0`.", DefaultValue = "null")]
     int? BlockProductionBlobLimit { get; set; }
 }
