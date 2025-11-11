@@ -55,7 +55,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                     new BlockchainProcessor.Options
                     {
                         StoreReceiptsByDefault = receiptConfig.StoreReceipts,
-                        DumpOptions = DumpOptions.All
+                        DumpOptions = initConfig.AutoDump
                     })
                 {
                     IsMainProcessor = true // Manual construction because of this flag
