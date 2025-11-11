@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -22,79 +24,108 @@ using Nethermind.Core.Test.Db;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
 
+[TestFixture]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class ReorgTests
 {
-#pragma warning disable NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private BlockchainProcessor _blockchainProcessor = null!;
-#pragma warning restore NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private BlockTree _blockTree = null!;
     private BlockHeader _genesis = null!;
+    private BlockhashProvider _blockhashProvider = null!;
+    private bool _started;
 
-    [OneTimeSetUp]
+    // EVM/state dependencies for executing BLOCKHASH inside tx
+    private IWorldState _worldState = null!;
+    private ISpecProvider _specProvider = null!;
+    private EthereumEcdsa _ecdsa = null!;
+    private Address _contractAddress = null!;
+    private Address _sender = null!;
+
+    [SetUp]
     public void Setup()
     {
-        ISpecProvider specProvider = MainnetSpecProvider.Instance;
+        _specProvider = MainnetSpecProvider.Instance;
         IDbProvider memDbProvider = TestMemDbProvider.Init();
         (IWorldState stateProvider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(memDbProvider, LimboLogs.Instance);
+        _worldState = stateProvider;
 
-        IReleaseSpec finalSpec = specProvider.GetFinalSpec();
+        IReleaseSpec finalSpec = _specProvider.GetFinalSpec();
 
         using (var _ = stateProvider.BeginScope(IWorldState.PreGenesis))
         {
             if (finalSpec.WithdrawalsEnabled)
             {
                 stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-                stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, specProvider.GenesisSpec);
+                stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, _specProvider.GenesisSpec);
             }
 
             if (finalSpec.ConsolidationRequestsEnabled)
             {
                 stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-                stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, specProvider.GenesisSpec);
+                stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, _specProvider.GenesisSpec);
             }
 
-            stateProvider.Commit(specProvider.GenesisSpec);
+            // Predeploy: fund sender and install a contract that executes BLOCKHASH(NUMBER-1) and stores it at storage[1]
+            _sender = TestItem.AddressA;
+            stateProvider.CreateAccount(_sender, 1_000_000_000);
+
+            _contractAddress = TestItem.AddressB;
+            stateProvider.CreateAccount(_contractAddress, 0);
+
+            byte[] blockhashStoreCode = Prepare.EvmCode
+                .Op(Instruction.NUMBER)
+                .PushData(1)
+                .Op(Instruction.SUB)
+                .Op(Instruction.BLOCKHASH)
+                .PushData(1)
+                .Op(Instruction.SSTORE)
+                .Op(Instruction.STOP)
+                .Done;
+            stateProvider.InsertCode(_contractAddress, blockhashStoreCode, _specProvider.GenesisSpec);
+
+            stateProvider.Commit(_specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
 
             _genesis = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject;
         }
 
-        EthereumEcdsa ecdsa = new(1);
+        _ecdsa = new EthereumEcdsa(1);
         ITransactionComparerProvider transactionComparerProvider =
-            new TransactionComparerProvider(specProvider, _blockTree);
+            new TransactionComparerProvider(_specProvider, _blockTree);
 
         _blockTree = Build.A.BlockTree()
             .WithoutSettingHead
-            .WithSpecProvider(specProvider)
+            .WithSpecProvider(_specProvider)
             .TestObject;
 
         TxPool.TxPool txPool = new(
-            ecdsa,
+            _ecdsa,
             new BlobTxStorage(),
             new ChainHeadInfoProvider(
-                new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, stateReader),
+                new ChainHeadSpecProvider(_specProvider, _blockTree), _blockTree, stateReader),
             new TxPoolConfig(),
-            new TxValidator(specProvider.ChainId),
+            new TxValidator(_specProvider.ChainId),
             LimboLogs.Instance,
             transactionComparerProvider.GetDefaultComparer());
-        BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
+        BlockhashProvider blockhashProvider = new(_blockTree, _specProvider, stateProvider, LimboLogs.Instance);
+        _blockhashProvider = new BlockhashProvider(_blockTree, _specProvider, stateProvider, LimboLogs.Instance);
         VirtualMachine virtualMachine = new(
             blockhashProvider,
-            specProvider,
+            _specProvider,
             LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new(
             BlobBaseFeeCalculator.Instance,
-            specProvider,
+            _specProvider,
             stateProvider,
             virtualMachine,
             new EthereumCodeInfoRepository(stateProvider),
@@ -103,7 +134,7 @@ public class ReorgTests
         BlockProcessor blockProcessor = new BlockProcessor(
             MainnetSpecProvider.Instance,
             Always.Valid,
-            new RewardCalculator(specProvider),
+            new RewardCalculator(_specProvider),
             new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
@@ -123,20 +154,29 @@ public class ReorgTests
             _blockTree,
             branchProcessor,
             new RecoverSignatures(
-                ecdsa,
-                specProvider,
+                _ecdsa,
+                _specProvider,
                 LimboLogs.Instance),
             stateReader,
             LimboLogs.Instance, BlockchainProcessor.Options.Default);
     }
 
-    [OneTimeTearDown]
+    private void EnsureStarted()
+    {
+        if (!_started)
+        {
+            _blockchainProcessor.Start();
+            _started = true;
+        }
+    }
+
+    [TearDown]
     public async Task TearDownAsync() => await (_blockchainProcessor?.DisposeAsync() ?? default);
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    [Retry(3)]
-    public void Test()
+    public void BlockTree_reorg_updates_head_and_emits_events_in_order()
     {
+        EnsureStarted();
         List<Block> events = new();
 
         Block block0 = Build.A.Block.WithHeader(_genesis).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
@@ -146,12 +186,17 @@ public class ReorgTests
         Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(4).WithTotalDifficulty(5L).TestObject;
         Block block2B = Build.A.Block.WithParent(block1B).WithDifficulty(6).WithTotalDifficulty(11L).TestObject;
 
+        int count = 0;
+        ManualResetEventSlim mre = new(false);
         _blockTree.BlockAddedToMain += (_, args) =>
         {
             events.Add(args.Block);
+            count++;
+            if (count >= 6)
+            {
+                mre.Set();
+            }
         };
-
-        _blockchainProcessor.Start();
 
         _blockTree.SuggestBlock(block0);
         _blockTree.SuggestBlock(block1);
@@ -160,10 +205,154 @@ public class ReorgTests
         _blockTree.SuggestBlock(block1B);
         _blockTree.SuggestBlock(block2B);
 
-        Assert.That(() => _blockTree.Head, Is.EqualTo(block2B).After(10000, 500));
+        // Wait until all events are received
+        mre.Wait(Timeout.MaxTestTime);
+        Assert.That(_blockTree.Head, Is.EqualTo(block2B));
 
         events.Should().HaveCount(6);
         events[4].Hash.Should().Be(block1B.Hash!);
         events[5].Hash.Should().Be(block2B.Hash!);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Blockhash_provider_correct_on_multi_block_reorg_via_blockchain_processor()
+    {
+        EnsureStarted();
+
+        // Build initial canonical chain: genesis (0) -> 1 -> 2 -> 3 -> 4 (total diff small)
+        Block block0 = Build.A.Block.WithHeader(_genesis).WithDifficulty(1).WithTotalDifficulty(1L).TestObject; // number 0
+        Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(1).WithTotalDifficulty(2L).TestObject;    // number 1
+        Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(1).WithTotalDifficulty(3L).TestObject;    // number 2
+        Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(1).WithTotalDifficulty(4L).TestObject;    // number 3
+        Block block4 = Build.A.Block.WithParent(block3).WithDifficulty(1).WithTotalDifficulty(5L).TestObject;    // number 4
+        
+        int count = 0;
+        ManualResetEventSlim mre = new(false);
+        _blockTree.BlockAddedToMain += (_, args) =>
+        {
+            count++;
+            if (count == 5 || count == 8)
+            {
+                mre.Set();
+            }
+        };
+
+        _blockTree.SuggestBlock(block0);
+        _blockTree.SuggestBlock(block1);
+        _blockTree.SuggestBlock(block2);
+        _blockTree.SuggestBlock(block3);
+        _blockTree.SuggestBlock(block4);
+        
+        // Wait until all events are received
+        mre.Wait(Timeout.MaxTestTime);
+        Assert.That(_blockTree.Head, Is.EqualTo(block4));
+
+        // Build heavier alternative branch from block1 (replaces 2,3,4)
+        Block block2B = Build.A.Block.WithParent(block1).WithDifficulty(5).WithTotalDifficulty(7L).TestObject;    // number 2
+        Block block3B = Build.A.Block.WithParent(block2B).WithDifficulty(6).WithTotalDifficulty(13L).TestObject;  // number 3
+        Block block4B = Build.A.Block.WithParent(block3B).WithDifficulty(7).WithTotalDifficulty(20L).TestObject;  // number 4 (heavier than canonical 5)
+
+        mre.Reset();
+        // Suggest alt branch blocks
+        _blockTree.SuggestBlock(block2B);
+        _blockTree.SuggestBlock(block3B);
+        _blockTree.SuggestBlock(block4B);
+
+        // Wait until head moves to block4B (reorg occurred)
+        mre.Wait(Timeout.MaxTestTime);
+        Assert.That(_blockTree.Head, Is.EqualTo(block4B));
+
+        // Create a new current block (number 5) atop the new head without suggesting it yet
+        Block current = Build.A.Block.WithParent(block4B).WithDifficulty(1).WithTotalDifficulty(21L).TestObject; // number 5
+
+        // Verify blockhash lookups for replaced and preserved blocks
+        // Self lookup (current.Number) should be null
+        _blockhashProvider.GetBlockhash(current.Header, current.Number).Should().BeNull();
+
+        // Future lookup should be null
+        _blockhashProvider.GetBlockhash(current.Header, current.Number + 1).Should().BeNull();
+
+        // Parent (fast path)
+        _blockhashProvider.GetBlockhash(current.Header, block4B.Number).Should().Be(block4B.Hash!);
+
+        // Replaced branch numbers (2,3,4) should return alt branch hashes
+        _blockhashProvider.GetBlockhash(current.Header, block4B.Number - 1).Should().Be(block3B.Hash!); // 3
+        _blockhashProvider.GetBlockhash(current.Header, block4B.Number - 2).Should().Be(block2B.Hash!); // 2
+
+        // Unreplaced earlier block (1) should still return original hash
+        _blockhashProvider.GetBlockhash(current.Header, block1.Number).Should().Be(block1.Hash!);
+
+        // Ensure original canonical hashes differ from the alt branch ones to validate reorg effect
+        block2B.Hash.Should().NotBe(block2.Hash!);
+        block3B.Hash.Should().NotBe(block3.Hash!);
+        block4B.Hash.Should().NotBe(block4.Hash!);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Blockhash_opcode_in_tx_returns_parent_hash_on_alt_branch()
+    {
+        EnsureStarted();
+
+        // Build initial canonical chain
+        Block b0 = Build.A.Block.WithHeader(_genesis).WithDifficulty(1).WithTotalDifficulty(1L).WithGasLimit(30_000_000).TestObject;
+        Block b1 = Build.A.Block.WithParent(b0).WithDifficulty(1).WithTotalDifficulty(2L).WithGasLimit(30_000_000).TestObject;
+        Block b2 = Build.A.Block.WithParent(b1).WithDifficulty(1).WithTotalDifficulty(3L).WithGasLimit(30_000_000).TestObject;
+        Block b3 = Build.A.Block.WithParent(b2).WithDifficulty(1).WithTotalDifficulty(4L).WithGasLimit(30_000_000).TestObject;
+
+        int count = 0;
+        ManualResetEventSlim mre = new(false);
+        _blockTree.BlockAddedToMain += (_, args) =>
+        {
+            count++;
+            Console.WriteLine($"Block added to main: {args.Block.Number} (count={count})");
+            if (count == 4 || count == 8)
+            {
+                mre.Set();
+            }
+        };
+
+        _blockTree.SuggestBlock(b0);
+        _blockTree.SuggestBlock(b1);
+        _blockTree.SuggestBlock(b2);
+        _blockTree.SuggestBlock(b3);
+        // Wait until all events are received
+        mre.Wait(Timeout.MaxTestTime);
+        Assert.That(_blockTree.Head, Is.EqualTo(b3));
+
+        // Build heavier alternative branch from b1
+        Block b2B = Build.A.Block.WithParent(b1).WithDifficulty(5).WithTotalDifficulty(7L).WithGasLimit(30_000_000).TestObject;
+        Block b3B = Build.A.Block.WithParent(b2B).WithDifficulty(6).WithTotalDifficulty(13L).WithGasLimit(30_000_000).TestObject;
+        Block b4B = Build.A.Block.WithParent(b3B).WithDifficulty(7).WithTotalDifficulty(20L).WithGasLimit(30_000_000).TestObject;
+
+        // Build a transaction that calls the predeployed contract
+        Transaction tx = Build.A.Transaction
+            .WithNonce(0)
+            .WithTo(_contractAddress)
+            .WithGasLimit(100_000)
+            .WithValue(0)
+            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        // Next block on the alt head including the tx; contract will store BLOCKHASH(NUMBER-1) into storage[1]
+        Block b5B = Build.A.Block
+            .WithParent(b4B)
+            .WithDifficulty(8)
+            .WithTotalDifficulty(28L)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+        mre.Reset();
+        _blockTree.SuggestBlock(b2B);
+        _blockTree.SuggestBlock(b3B);
+        _blockTree.SuggestBlock(b4B);
+        _blockTree.SuggestBlock(b5B);
+        // Wait until head moves to b5B (reorg occurred)
+        mre.Wait(Timeout.MaxTestTime);
+        Assert.That(_blockTree.Head, Is.EqualTo(b5B));
+
+        // Verify that storage[1] of the contract equals the parent hash (b4B)
+        byte[] stored = _worldState.Get(new StorageCell(_contractAddress, 1)).ToArray();
+        stored.Should().BeEquivalentTo(b4B.Hash!.BytesToArray());
     }
 }
