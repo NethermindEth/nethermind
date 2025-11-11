@@ -109,7 +109,7 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength, int? _, int? _) = GetContentLength(item, rlpBehaviors);
+            (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength, int? balLength, int? genBalLength) = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
             _headerDecoder.Encode(stream, item.Header);
             stream.StartSequence(txsLength);
@@ -136,11 +136,13 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.BlockAccessList is not null)
             {
+                stream.StartSequence(balLength.Value);
                 stream.Encode(item.BlockAccessList.Value);
             }
 
             if (item.GeneratedBlockAccessList is not null)
             {
+                stream.StartSequence(genBalLength.Value);
                 stream.Encode(item.GeneratedBlockAccessList.Value);
             }
         }
