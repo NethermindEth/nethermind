@@ -41,7 +41,7 @@ public class ReorgTests
 {
     private BlockchainProcessor _blockchainProcessor = null!;
     private BlockTree _blockTree = null!;
-    private BlockHeader _genesis = null!;
+    private Block _genesis = null!;
     private BlockhashProvider _blockhashProvider = null!;
     private bool _started;
 
@@ -94,10 +94,11 @@ public class ReorgTests
                 .Done;
             stateProvider.InsertCode(_contractAddress, blockhashStoreCode, _specProvider.GenesisSpec);
 
-            stateProvider.Commit(_specProvider.GenesisSpec);
+            stateProvider.Commit(_specProvider.GenesisSpec, isGenesis: true, commitRoots: true);
             stateProvider.CommitTree(0);
 
-            _genesis = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject;
+            _genesis = Build.A.Block.WithStateRoot(stateProvider.StateRoot).TestObject;
+            _genesis.Header.Hash = _genesis.Header.CalculateHash();
         }
 
         _ecdsa = new EthereumEcdsa(1);
@@ -180,7 +181,7 @@ public class ReorgTests
         EnsureStarted();
         List<Block> events = new();
 
-        Block block0 = Build.A.Block.WithHeader(_genesis).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
+        Block block0 = Build.A.Block.WithHeader(_genesis.Header).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
         Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(2).WithTotalDifficulty(2L).TestObject;
         Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(1).WithTotalDifficulty(3L).TestObject;
         Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(3).WithTotalDifficulty(6L).TestObject;
@@ -221,7 +222,7 @@ public class ReorgTests
         EnsureStarted();
 
         // Build initial canonical chain: genesis (0) -> 1 -> 2 -> 3 -> 4 (total diff small)
-        Block block0 = Build.A.Block.WithHeader(_genesis).WithDifficulty(1).WithTotalDifficulty(1L).TestObject; // number 0
+        Block block0 = Build.A.Block.WithHeader(_genesis.Header).WithDifficulty(1).WithTotalDifficulty(1L).TestObject; // number 0
         Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(1).WithTotalDifficulty(2L).TestObject;    // number 1
         Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(1).WithTotalDifficulty(3L).TestObject;    // number 2
         Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(1).WithTotalDifficulty(4L).TestObject;    // number 3
@@ -300,12 +301,12 @@ public class ReorgTests
             .WithTo(_contractAddress)
             .WithGasLimit(100_000)
             .WithValue(0)
-            .WithGasPrice(1)
+            .WithGasPrice(0)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA)
             .TestObject;
 
         // Build initial canonical chain with tx in every block
-        Block b0 = Build.A.Block.WithHeader(_genesis).WithDifficulty(1).WithTotalDifficulty(1L).WithGasLimit(30_000_000).TestObject;
+        Block b0 = Build.A.Block.WithHeader(_genesis.Header).WithDifficulty(1).WithTotalDifficulty(1L).WithGasLimit(30_000_000).TestObject;
         Block b1 = Build.A.Block.WithParent(b0).WithDifficulty(1).WithTotalDifficulty(2L).WithGasLimit(30_000_000).WithTransactions(MakeTx(0)).TestObject;
         Block b2 = Build.A.Block.WithParent(b1).WithDifficulty(1).WithTotalDifficulty(3L).WithGasLimit(30_000_000).WithTransactions(MakeTx(1)).TestObject;
         Block b3 = Build.A.Block.WithParent(b2).WithDifficulty(1).WithTotalDifficulty(4L).WithGasLimit(30_000_000).WithTransactions(MakeTx(2)).TestObject;
