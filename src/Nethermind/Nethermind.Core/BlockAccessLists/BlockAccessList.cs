@@ -110,13 +110,6 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
-        // is needed?
-        // need more complex logic like for storage & balance changes?
-        if (Enumerable.SequenceEqual(before, after))
-        {
-            return;
-        }
-
         accountChanges.PopCodeChange(Index, out CodeChange? oldCodeChange);
         _changes.Push(new()
         {
