@@ -24,7 +24,7 @@ public class FilterStoreTests
     public void Can_save_and_load_block_filter()
     {
         FilterStore store = new(new TimerFactory());
-        BlockFilter filter = store.CreateBlockFilter(1);
+        BlockFilter filter = store.CreateBlockFilter();
         store.SaveFilter(filter);
         Assert.That(store.FilterExists(0), Is.True, "exists");
         Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.BlockFilter), "type");
@@ -45,7 +45,7 @@ public class FilterStoreTests
     {
         FilterStore store = new(new TimerFactory());
 
-        BlockFilter externalFilter = new(100, 1);
+        BlockFilter externalFilter = new(100);
         store.SaveFilter(externalFilter);
         Assert.Throws<InvalidOperationException>(() => store.SaveFilter(externalFilter));
     }
@@ -55,7 +55,7 @@ public class FilterStoreTests
     {
         FilterStore store = new(new TimerFactory());
 
-        BlockFilter externalFilter = new(100, 1);
+        BlockFilter externalFilter = new(100);
         store.SaveFilter(externalFilter);
         LogFilter filter = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2));
         store.SaveFilter(filter);
@@ -69,7 +69,7 @@ public class FilterStoreTests
     public void Remove_filter_removes_and_notifies()
     {
         FilterStore store = new(new TimerFactory());
-        BlockFilter filter = store.CreateBlockFilter(1);
+        BlockFilter filter = store.CreateBlockFilter();
         store.SaveFilter(filter);
         bool hasNotified = false;
         store.FilterRemoved += (s, e) => hasNotified = true;
@@ -83,7 +83,7 @@ public class FilterStoreTests
     public void Can_get_filters_by_type()
     {
         FilterStore store = new(new TimerFactory());
-        BlockFilter filter1 = store.CreateBlockFilter(1);
+        BlockFilter filter1 = store.CreateBlockFilter();
         store.SaveFilter(filter1);
         LogFilter filter2 = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2));
         store.SaveFilter(filter2);
@@ -154,8 +154,8 @@ public class FilterStoreTests
         List<int> removedFilterIds = new();
         FilterStore store = new(new TimerFactory(), 50, 20);
         store.FilterRemoved += (_, e) => removedFilterIds.Add(e.FilterId);
-        store.SaveFilter(store.CreateBlockFilter(1));
-        store.SaveFilter(store.CreateBlockFilter(2));
+        store.SaveFilter(store.CreateBlockFilter());
+        store.SaveFilter(store.CreateBlockFilter());
         store.SaveFilter(store.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest));
         store.SaveFilter(store.CreatePendingTransactionFilter());
         await Task.Delay(30);
