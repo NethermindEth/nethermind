@@ -139,11 +139,15 @@ public class BlockhashCache(IHeaderStore headerStore, ILogManager logManager) : 
                 return null;
         }
 
-        long targetBlockNumber = headBlock.Number - depth;
+        return GetAncestorHash(blockData, depth);
+    }
+
+    private Hash256? GetAncestorHash(BlockData blockData, long depth)
+    {
+        long targetBlockNumber = blockData.Number - depth;
         if (targetBlockNumber < 0)
             return null;
 
-        // Walk through snapshot chain to find the right segment
         int currentSnapshotId = blockData.SnapshotId;
 
         while (currentSnapshotId != 0)
@@ -151,7 +155,6 @@ public class BlockhashCache(IHeaderStore headerStore, ILogManager logManager) : 
             if (!_snapshots.TryGetValue(currentSnapshotId, out AncestorSnapshot snapshot))
                 return null;
 
-            // Check if target block is in this segment
             if (targetBlockNumber >= snapshot.BaseBlockNumber &&
                 targetBlockNumber < snapshot.BaseBlockNumber + SegmentSize)
             {
@@ -159,18 +162,12 @@ public class BlockhashCache(IHeaderStore headerStore, ILogManager logManager) : 
                 return snapshot.Ancestors[offset];
             }
 
-            if (snapshot.ParentSnapshotId.HasValue)
+            if (!snapshot.ParentSnapshotId.HasValue)
             {
-                currentSnapshotId = snapshot.ParentSnapshotId.Value;
+                return null;
             }
-            else
-            {
-                blockData = LoadFromStore(headBlock);
-                if (blockData.SnapshotId == 0)
-                    return null;
 
-                currentSnapshotId = blockData.SnapshotId;
-            }
+            currentSnapshotId = snapshot.ParentSnapshotId.Value;
         }
 
         return null;
@@ -180,9 +177,8 @@ public class BlockhashCache(IHeaderStore headerStore, ILogManager logManager) : 
     {
         using ArrayPoolListRef<BlockHeader> blocksToAdd = new(SegmentSize);
         BlockHeader? currentHeader = blockHeader;
-        long walked = 0;
 
-        while (walked < SegmentSize)
+        for (int i = 0; i < SegmentSize; i++)
         {
             if (_blocks.ContainsKey(currentHeader.Hash!))
                 break;
@@ -197,7 +193,6 @@ public class BlockhashCache(IHeaderStore headerStore, ILogManager logManager) : 
                 break;
 
             currentHeader = parent;
-            walked++;
         }
 
         while (blocksToAdd.Count > 0)
@@ -231,34 +226,7 @@ public class BlockhashCache(IHeaderStore headerStore, ILogManager logManager) : 
         });
     }
 
-    private bool HasAllAncestors(BlockData block)
-    {
-        long targetBlockNumber = block.Number - SegmentSize;
-        if (targetBlockNumber < 0)
-            return true;
-
-        int currentSnapshotId = block.SnapshotId;
-
-        while (currentSnapshotId != 0)
-        {
-            if (!_snapshots.TryGetValue(currentSnapshotId, out AncestorSnapshot snapshot))
-                return false;
-
-            if (targetBlockNumber >= snapshot.BaseBlockNumber &&
-                targetBlockNumber < snapshot.BaseBlockNumber + SegmentSize)
-            {
-                int offset = (int)(targetBlockNumber % SegmentSize);
-                return snapshot.Ancestors[offset] is not null;
-            }
-
-            if (!snapshot.ParentSnapshotId.HasValue)
-                return false;
-
-            currentSnapshotId = snapshot.ParentSnapshotId.Value;
-        }
-
-        return false;
-    }
+    private bool HasAllAncestors(BlockData block) => GetAncestorHash(block, SegmentSize) is not null;
 
     public void Remove(Hash256AsKey blockHash)
     {
@@ -282,6 +250,7 @@ public class BlockhashCache(IHeaderStore headerStore, ILogManager logManager) : 
         int removed = 0;
 
         int capacity = blockNumber > _minBlock ? (int)(blockNumber - _minBlock) : 64;
+        _minBlock = blockNumber;
         using ArrayPoolListRef<Hash256> blocksToRemove = new(capacity);
 
         foreach (KeyValuePair<Hash256AsKey, BlockData> kvp in _blocks)

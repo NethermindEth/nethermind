@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Headers;
@@ -15,6 +17,8 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test;
 
 [TestFixture]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
+[Parallelizable(ParallelScope.All)]
 public class BlockhashCacheTests
 {
     private IHeaderStore _headerStore = null!;
@@ -407,5 +411,425 @@ public class BlockhashCacheTests
         // Assert
         stats.TotalBlocks.Should().Be(0);
         stats.UniqueSnapshots.Should().Be(0);
+    }
+
+    [Test]
+    public void Stress_test_with_thousands_of_blocks_and_periodic_pruning()
+    {
+        // Arrange
+        const int totalBlocks = 5000;
+        const int pruneInterval = 128;
+        const int pruneKeepWindow = 512; // Keep last 512 blocks
+        BlockHeader[] chain = new BlockHeader[totalBlocks];
+
+        // Act & Assert - Build chain with periodic pruning
+        chain[0] = Build.A.BlockHeader.WithNumber(0).TestObject;
+        _cache.Set(chain[0]);
+        _headerStore.Insert(chain[0]);
+
+        int totalPruned = 0;
+        BlockhashCache.CacheStats lastStats = _cache.GetStats();
+
+        for (int i = 1; i < totalBlocks; i++)
+        {
+            // Add new block
+            chain[i] = Build.A.BlockHeader
+                .WithNumber(i)
+                .WithParent(chain[i - 1])
+                .TestObject;
+            _cache.Set(chain[i]);
+            _headerStore.Insert(chain[i]);
+
+            // Verify recent ancestor lookups work correctly
+            if (i >= 10)
+            {
+                Hash256? ancestor5 = _cache.GetHash(chain[i], 5);
+                ancestor5.Should().Be(chain[i - 5].Hash!,
+                    $"block {i} should find ancestor at depth 5");
+            }
+
+            if (i >= 100)
+            {
+                Hash256? ancestor100 = _cache.GetHash(chain[i], 100);
+                ancestor100.Should().Be(chain[i - 100].Hash!,
+                    $"block {i} should find ancestor at depth 100");
+            }
+
+            // Perform pruning every 128 blocks
+            if (i > 0 && i % pruneInterval == 0 && i > pruneKeepWindow)
+            {
+                long pruneBeforeBlock = i - pruneKeepWindow;
+                int prunedCount = _cache.PruneBefore(pruneBeforeBlock);
+                totalPruned += prunedCount;
+
+                // Verify pruned blocks are gone
+                if (pruneBeforeBlock > 0)
+                {
+                    _cache.Contains(chain[pruneBeforeBlock - 1].Hash!).Should().BeFalse(
+                        $"block {pruneBeforeBlock - 1} should be pruned at iteration {i}");
+                }
+
+                // Verify kept blocks are still present
+                _cache.Contains(chain[i].Hash!).Should().BeTrue(
+                    $"block {i} should be kept at iteration {i}");
+                _cache.Contains(chain[i - pruneKeepWindow / 2].Hash!).Should().BeTrue(
+                    $"block {i - pruneKeepWindow / 2} should be kept at iteration {i}");
+
+                BlockhashCache.CacheStats stats = _cache.GetStats();
+
+                // Cache should not grow unbounded
+                stats.TotalBlocks.Should().BeLessThan(pruneKeepWindow + pruneInterval,
+                    $"cache size should be bounded at iteration {i}");
+
+                lastStats = stats;
+            }
+
+            // Test queries at various depths periodically
+            if (i > 0 && i % 250 == 0)
+            {
+                // Query at multiple depths
+                for (int depth = 1; depth <= Math.Min(i, 256); depth += 32)
+                {
+                    Hash256? result = _cache.GetHash(chain[i], depth);
+                    if (i - depth >= 0 && _cache.Contains(chain[i - depth].Hash!))
+                    {
+                        result.Should().Be(chain[i - depth].Hash!,
+                            $"block {i} should find ancestor at depth {depth}");
+                    }
+                }
+            }
+        }
+
+        // Final validations
+        BlockhashCache.CacheStats finalStats = _cache.GetStats();
+
+        // Verify final cache size is bounded
+        finalStats.TotalBlocks.Should().BeLessThan(pruneKeepWindow + pruneInterval,
+            "final cache size should be bounded");
+
+        // Verify we pruned a significant number of blocks
+        totalPruned.Should().BeGreaterThan(totalBlocks - pruneKeepWindow - pruneInterval,
+            "should have pruned most old blocks");
+
+        // Verify recent blocks are still accessible
+        for (int i = totalBlocks - 256; i < totalBlocks; i++)
+        {
+            _cache.Contains(chain[i].Hash!).Should().BeTrue(
+                $"recent block {i} should still be in cache");
+
+            if (i < totalBlocks - 1)
+            {
+                Hash256? hash = _cache.GetHash(chain[totalBlocks - 1], totalBlocks - 1 - i);
+                hash.Should().Be(chain[i].Hash!,
+                    $"should be able to query ancestor {i} from block {totalBlocks - 1}");
+            }
+        }
+
+        // Verify statistics are reasonable
+        finalStats.UniqueSnapshots.Should().BeLessThan(10,
+            "should have few snapshots due to pruning");
+        finalStats.MaxSegmentDepth.Should().BeGreaterThan(0);
+    }
+
+    [Test]
+    public void Stress_test_with_multiple_forks_and_pruning()
+    {
+        // Arrange
+        const int mainChainLength = 3000;
+        const int pruneInterval = 128;
+        const int pruneKeepWindow = 384;
+        const int forksCount = 10;
+        const int forkLength = 50;
+
+        BlockHeader[] mainChain = new BlockHeader[mainChainLength];
+        List<BlockHeader[]> forks = new();
+
+        // Act - Build main chain
+        mainChain[0] = Build.A.BlockHeader.WithNumber(0).TestObject;
+        _cache.Set(mainChain[0]);
+        _headerStore.Insert(mainChain[0]);
+
+        for (int i = 1; i < mainChainLength; i++)
+        {
+            mainChain[i] = Build.A.BlockHeader
+                .WithNumber(i)
+                .WithParent(mainChain[i - 1])
+                .TestObject;
+            _cache.Set(mainChain[i]);
+            _headerStore.Insert(mainChain[i]);
+
+            // Create forks at specific intervals
+            if (i % (mainChainLength / forksCount) == 0 && i > 100 && forks.Count < forksCount)
+            {
+                BlockHeader[] fork = new BlockHeader[forkLength];
+                fork[0] = Build.A.BlockHeader
+                    .WithNumber(i)
+                    .WithParent(mainChain[i - 1])
+                    .WithExtraData(new byte[] { (byte)forks.Count, 0xFF }) // Unique hash
+                    .TestObject;
+                _cache.Set(fork[0]);
+
+                for (int j = 1; j < forkLength; j++)
+                {
+                    fork[j] = Build.A.BlockHeader
+                        .WithNumber(i + j)
+                        .WithParent(fork[j - 1])
+                        .TestObject;
+                    _cache.Set(fork[j]);
+                }
+
+                forks.Add(fork);
+            }
+
+            // Periodic pruning
+            if (i > 0 && i % pruneInterval == 0 && i > pruneKeepWindow)
+            {
+                long pruneBeforeBlock = i - pruneKeepWindow;
+                _cache.PruneBefore(pruneBeforeBlock);
+            }
+
+            // Verify ancestor queries work on main chain
+            if (i >= 50)
+            {
+                Hash256? ancestor = _cache.GetHash(mainChain[i], 50);
+                if (_cache.Contains(mainChain[i - 50].Hash!))
+                {
+                    ancestor.Should().Be(mainChain[i - 50].Hash!,
+                        $"main chain block {i} should find ancestor at depth 50");
+                }
+            }
+        }
+
+        // Verify all forks can still query their ancestors (if not pruned)
+        foreach (BlockHeader[] fork in forks)
+        {
+            if (_cache.Contains(fork[^1].Hash!))
+            {
+                for (int depth = 1; depth < Math.Min(forkLength, 50); depth++)
+                {
+                    if (forkLength - depth - 1 >= 0 && _cache.Contains(fork[forkLength - depth - 1].Hash!))
+                    {
+                        Hash256? ancestor = _cache.GetHash(fork[^1], depth);
+                        ancestor.Should().Be(fork[forkLength - depth - 1].Hash!,
+                            "fork should maintain correct ancestor relationships");
+                    }
+                }
+            }
+        }
+
+        // Final validations
+        BlockhashCache.CacheStats finalStats = _cache.GetStats();
+        finalStats.TotalBlocks.Should().BeLessThan(pruneKeepWindow + pruneInterval + (forksCount * forkLength),
+            "cache should be bounded even with forks");
+
+        // Note: Most forks get pruned during execution, so we expect fewer snapshots at the end
+        // The test validates that forks work correctly while they exist, not that they all survive pruning
+        finalStats.UniqueSnapshots.Should().BeGreaterThan(0,
+            "should have at least some snapshots remaining after pruning");
+    }
+
+    [Test]
+    public async Task Stress_test_with_concurrent_operations()
+    {
+        // Arrange
+        const int blocksPerTask = 500;
+        const int taskCount = 4;
+        const int pruneInterval = 128;
+        BlockHeader[] sharedChain = new BlockHeader[blocksPerTask * taskCount];
+
+        // Build initial chain in header store
+        sharedChain[0] = Build.A.BlockHeader.WithNumber(0).TestObject;
+        _headerStore.Insert(sharedChain[0]);
+
+        for (int i = 1; i < sharedChain.Length; i++)
+        {
+            sharedChain[i] = Build.A.BlockHeader
+                .WithNumber(i)
+                .WithParent(sharedChain[i - 1])
+                .TestObject;
+            _headerStore.Insert(sharedChain[i]);
+        }
+
+        // Act - Concurrent operations
+        List<Task> tasks = new();
+
+        // Task 1-3: Concurrent Set operations on different ranges
+        for (int taskId = 0; taskId < 3; taskId++)
+        {
+            int startIdx = taskId * blocksPerTask;
+            int endIdx = startIdx + blocksPerTask;
+            tasks.Add(Task.Run(() =>
+            {
+                for (int i = startIdx; i < endIdx && i < sharedChain.Length; i++)
+                {
+                    _cache.Set(sharedChain[i]);
+                    if (i % 10 == 0)
+                    {
+                        Thread.Sleep(1); // Small delay to increase contention
+                    }
+                }
+            }));
+        }
+
+        // Task 4: Concurrent GetHash queries
+        tasks.Add(Task.Run(async () =>
+        {
+            await Task.Delay(50); // Let some blocks be added first
+            for (int i = 0; i < 100; i++)
+            {
+                int blockIdx = Random.Shared.Next(100, Math.Min(1000, sharedChain.Length));
+                int depth = Random.Shared.Next(1, Math.Min(blockIdx, 100));
+                if (_cache.Contains(sharedChain[blockIdx].Hash!))
+                {
+                    _cache.GetHash(sharedChain[blockIdx], depth);
+                }
+                await Task.Delay(5);
+            }
+        }));
+
+        // Task 5: Periodic pruning
+        tasks.Add(Task.Run(async () =>
+        {
+            await Task.Delay(100); // Let cache populate first
+            for (int i = 0; i < 5; i++)
+            {
+                long pruneBlock = (i + 1) * pruneInterval;
+                if (pruneBlock < sharedChain.Length)
+                {
+                    _cache.PruneBefore(pruneBlock);
+                }
+                await Task.Delay(50);
+            }
+        }));
+
+        // Task 6: Concurrent Prefetch operations
+        tasks.Add(Task.Run(async () =>
+        {
+            await Task.Delay(75);
+            for (int i = 0; i < 20; i++)
+            {
+                int blockIdx = Random.Shared.Next(256, Math.Min(1500, sharedChain.Length));
+                if (_cache.Contains(sharedChain[blockIdx].Hash!))
+                {
+                    await _cache.Prefetch(sharedChain[blockIdx]);
+                }
+                await Task.Delay(10);
+            }
+        }));
+
+        // Wait for all tasks
+        await Task.WhenAll(tasks);
+
+        // Assert - Verify cache integrity
+        BlockhashCache.CacheStats stats = _cache.GetStats();
+        stats.TotalBlocks.Should().BeGreaterThan(0, "cache should contain blocks after concurrent operations");
+
+        // Verify some ancestor queries work correctly
+        for (int i = sharedChain.Length - 100; i < sharedChain.Length; i++)
+        {
+            if (_cache.Contains(sharedChain[i].Hash!))
+            {
+                for (int depth = 1; depth < Math.Min(50, i); depth += 10)
+                {
+                    if (_cache.Contains(sharedChain[i - depth].Hash!))
+                    {
+                        Hash256? result = _cache.GetHash(sharedChain[i], depth);
+                        result.Should().Be(sharedChain[i - depth].Hash!,
+                            $"block {i} should correctly find ancestor at depth {depth} after concurrent operations");
+                    }
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void Stress_test_deep_ancestor_queries_across_segments()
+    {
+        // Arrange
+        const int chainLength = 4000;
+        const int pruneInterval = 128;
+        const int maxQueryDepth = 1024; // Query across multiple 256-block segments
+
+        BlockHeader[] chain = new BlockHeader[chainLength];
+        chain[0] = Build.A.BlockHeader.WithNumber(0).TestObject;
+        _cache.Set(chain[0]);
+        _headerStore.Insert(chain[0]);
+
+        // Build chain
+        for (int i = 1; i < chainLength; i++)
+        {
+            chain[i] = Build.A.BlockHeader
+                .WithNumber(i)
+                .WithParent(chain[i - 1])
+                .TestObject;
+            _cache.Set(chain[i]);
+            _headerStore.Insert(chain[i]);
+
+            // Periodic pruning but keep a large window
+            if (i > 0 && i % pruneInterval == 0 && i > 1500)
+            {
+                _cache.PruneBefore(i - 1200);
+            }
+        }
+
+        // Act & Assert - Test deep ancestor queries
+        int[] testDepths = { 1, 50, 100, 150, 200, 256, 300, 512, 768, 1000 };
+
+        foreach (int depth in testDepths)
+        {
+            int queryBlockIdx = chainLength - 1;
+            int ancestorIdx = queryBlockIdx - depth;
+
+            if (ancestorIdx >= 0)
+            {
+                Hash256? result = _cache.GetHash(chain[queryBlockIdx], depth);
+
+                if (_cache.Contains(chain[ancestorIdx].Hash!))
+                {
+                    result.Should().Be(chain[ancestorIdx].Hash!,
+                        $"should find ancestor at depth {depth} (block {ancestorIdx}) from block {queryBlockIdx}");
+                }
+            }
+        }
+
+        // Test queries from multiple recent blocks at various depths
+        for (int blockIdx = chainLength - 300; blockIdx < chainLength; blockIdx += 50)
+        {
+            for (int depth = 50; depth <= Math.Min(blockIdx, maxQueryDepth); depth += 100)
+            {
+                int ancestorIdx = blockIdx - depth;
+                if (ancestorIdx >= 0 && _cache.Contains(chain[ancestorIdx].Hash!))
+                {
+                    Hash256? result = _cache.GetHash(chain[blockIdx], depth);
+                    result.Should().Be(chain[ancestorIdx].Hash!,
+                        $"block {blockIdx} should find ancestor {ancestorIdx} at depth {depth}");
+                }
+            }
+        }
+
+        // Verify segment chaining works correctly
+        BlockhashCache.CacheStats stats = _cache.GetStats();
+        stats.MaxSegmentDepth.Should().BeGreaterThan(3,
+            "should have multiple chained segments for deep queries");
+
+        // Test boundary cases around segment boundaries (multiples of 256)
+        int[] segmentBoundaries = { 256, 512, 768, 1024, 1280 };
+        foreach (int boundary in segmentBoundaries)
+        {
+            if (chainLength > boundary + 100)
+            {
+                int testBlock = boundary + 50;
+                if (_cache.Contains(chain[testBlock].Hash!))
+                {
+                    // Query across segment boundary
+                    Hash256? beforeBoundary = _cache.GetHash(chain[testBlock], 100);
+                    if (_cache.Contains(chain[testBlock - 100].Hash!))
+                    {
+                        beforeBoundary.Should().Be(chain[testBlock - 100].Hash!,
+                            $"should correctly query across segment boundary at {boundary}");
+                    }
+                }
+            }
+        }
     }
 }
