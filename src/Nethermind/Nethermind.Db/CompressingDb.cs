@@ -55,7 +55,7 @@ namespace Nethermind.Db
                 [SkipLocalsInit]
                 public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
                 {
-                    PutSpanCompressedIfNeeded(key, value, flags, _wrapped.PutSpan);
+                    PutSpanCompressedIfNeeded(_wrapped, key, value, flags);
                 }
 
                 public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
@@ -86,18 +86,16 @@ namespace Nethermind.Db
             private const byte PreambleIndex = 0;
             private const byte PreambleValue = 0;
 
-            private delegate void PutSpanWriter(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags);
-
             [SkipLocalsInit]
             private static void PutSpanCompressedIfNeeded(
+                IWriteOnlyKeyValueStore store,
                 ReadOnlySpan<byte> key,
                 ReadOnlySpan<byte> value,
-                WriteFlags flags,
-                PutSpanWriter put)
+                WriteFlags flags)
             {
                 if (!value.EndsWith(EmptyCodeHashStorageRoot))
                 {
-                    put(key, value, flags);
+                    store.PutSpan(key, value, flags);
                     return;
                 }
 
@@ -118,7 +116,7 @@ namespace Nethermind.Db
 
                 tmp[PreambleIndex] = PreambleValue;
                 value[..storedLength].CopyTo(tmp[PreambleLength..]);
-                put(key, tmp, flags);
+                store.PutSpan(key, tmp, flags);
 
                 if (rented is not null)
                 {
@@ -197,7 +195,7 @@ namespace Nethermind.Db
             [SkipLocalsInit]
             public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
             {
-                PutSpanCompressedIfNeeded(key, value, flags, _wrapped.PutSpan);
+                PutSpanCompressedIfNeeded(_wrapped, key, value, flags);
             }
 
             public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
