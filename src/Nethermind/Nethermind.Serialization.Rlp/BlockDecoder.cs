@@ -23,8 +23,8 @@ namespace Nethermind.Serialization.Rlp
                 throw new RlpException($"Received a 0 length stream when decoding a {nameof(Block)}");
             }
 
-            Console.WriteLine("DECODING BLOCK");
-            Console.WriteLine(Convert.ToHexString(rlpStream.Data));
+            // Console.WriteLine("DECODING BLOCK");
+            // Console.WriteLine(Convert.ToHexString(rlpStream.Data));
 
             if (rlpStream.IsNextItemNull())
             {

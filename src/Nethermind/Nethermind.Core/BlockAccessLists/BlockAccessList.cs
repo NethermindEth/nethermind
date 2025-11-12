@@ -348,7 +348,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     {
         AccountChanges accountChanges = _accountChanges[address];
 
-        if (!accountChanges.TryGetSlotChanges(key, out SlotChanges? slotChanges))
+        if (!accountChanges.TryGetSlotChanges(key, out SlotChanges? slotChanges) || slotChanges.Changes.Count == 0)
         {
             // first storage change of block
             // return storage prior to this instruction
