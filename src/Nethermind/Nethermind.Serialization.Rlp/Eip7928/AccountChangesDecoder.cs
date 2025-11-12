@@ -92,15 +92,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             return index;
         }, s => s));
 
-        return new()
-        {
-            Address = address,
-            StorageChanges = slotChangesMap,
-            StorageReads = storageReadsList,
-            BalanceChanges = balanceChangesList,
-            NonceChanges = nonceChangesList,
-            CodeChanges = codeChangesList
-        };
+        return new(address, slotChangesMap, storageReadsList, balanceChangesList, nonceChangesList, codeChangesList);
     }
 
     public int GetLength(AccountChanges item, RlpBehaviors rlpBehaviors)
@@ -120,17 +112,17 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Address);
-        stream.EncodeArray([.. item.StorageChanges.Values], rlpBehaviors);
+        stream.EncodeArray([.. item.StorageChanges], rlpBehaviors);
         stream.EncodeArray([.. item.StorageReads], rlpBehaviors);
-        stream.EncodeArray([.. item.BalanceChanges.Values], rlpBehaviors);
-        stream.EncodeArray([.. item.NonceChanges.Values], rlpBehaviors);
-        stream.EncodeArray([.. item.CodeChanges.Values], rlpBehaviors);
+        stream.EncodeArray([.. item.BalanceChanges], rlpBehaviors);
+        stream.EncodeArray([.. item.NonceChanges], rlpBehaviors);
+        stream.EncodeArray([.. item.CodeChanges], rlpBehaviors);
     }
 
     private static int GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors)
     {
         int slotChangesLen = 0;
-        foreach (SlotChanges slotChanges in item.StorageChanges.Values)
+        foreach (SlotChanges slotChanges in item.StorageChanges)
         {
             slotChangesLen += SlotChangesDecoder.Instance.GetLength(slotChanges, rlpBehaviors);
         }
@@ -144,21 +136,21 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         storageReadsLen = Rlp.LengthOfSequence(storageReadsLen);
 
         int balanceChangesLen = 0;
-        foreach (BalanceChange balanceChange in item.BalanceChanges.Values)
+        foreach (BalanceChange balanceChange in item.BalanceChanges)
         {
             balanceChangesLen += BalanceChangeDecoder.Instance.GetLength(balanceChange, rlpBehaviors);
         }
         balanceChangesLen = Rlp.LengthOfSequence(balanceChangesLen);
 
         int nonceChangesLen = 0;
-        foreach (NonceChange nonceChange in item.NonceChanges.Values)
+        foreach (NonceChange nonceChange in item.NonceChanges)
         {
             nonceChangesLen += NonceChangeDecoder.Instance.GetLength(nonceChange, rlpBehaviors);
         }
         nonceChangesLen = Rlp.LengthOfSequence(nonceChangesLen);
 
         int codeChangesLen = 0;
-        foreach (CodeChange codeChange in item.CodeChanges.Values)
+        foreach (CodeChange codeChange in item.CodeChanges)
         {
             codeChangesLen += CodeChangeDecoder.Instance.GetLength(codeChange, rlpBehaviors);
         }

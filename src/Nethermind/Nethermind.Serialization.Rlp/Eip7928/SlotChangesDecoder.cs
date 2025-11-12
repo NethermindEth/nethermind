@@ -26,11 +26,7 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
         }
 
         StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _codeLimit);
-        SlotChanges slotChanges = new()
-        {
-            Slot = slot,
-            Changes = [.. changes]
-        };
+        SlotChanges slotChanges = new(slot, [.. changes]);
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {

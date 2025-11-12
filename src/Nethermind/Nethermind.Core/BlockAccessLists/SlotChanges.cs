@@ -4,12 +4,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly struct SlotChanges(byte[] slot, List<StorageChange> changes) : IEquatable<SlotChanges>
+public class SlotChanges(byte[] slot, List<StorageChange> changes) : IEquatable<SlotChanges>
 {
     public byte[] Slot { get; init; } = slot;
     public List<StorageChange> Changes { get; init; } = changes;
@@ -18,14 +18,15 @@ public readonly struct SlotChanges(byte[] slot, List<StorageChange> changes) : I
     {
     }
 
-    public readonly bool Equals(SlotChanges other) =>
+    public bool Equals(SlotChanges? other) =>
+        other is not null &&
         CompareByteArrays(Slot, other.Slot) &&
         Changes.SequenceEqual(other.Changes);
 
-    public override readonly bool Equals(object? obj) =>
+    public override bool Equals(object? obj) =>
         obj is SlotChanges other && Equals(other);
 
-    public override readonly int GetHashCode() =>
+    public override int GetHashCode() =>
         HashCode.Combine(Slot, Changes);
 
     private static bool CompareByteArrays(byte[]? left, byte[]? right) =>
@@ -43,9 +44,28 @@ public readonly struct SlotChanges(byte[] slot, List<StorageChange> changes) : I
     public static bool operator !=(SlotChanges left, SlotChanges right) =>
         !(left == right);
 
-    public override readonly string? ToString()
+    public bool PopStorageChange(ushort index, [NotNullWhen(true)] out StorageChange? storageChange)
     {
-        string changes = string.Join(", ", [.. Changes.Select(s => s.ToString())]);
-        return $"[0x{Bytes.ToHexString(Slot)}, [{changes}]]";
+        storageChange = null;
+
+        if (Changes.Count == 0)
+            return false;
+
+        StorageChange lastChange = Changes.Last();
+
+        if (lastChange.BlockAccessIndex == index)
+        {
+            Changes.RemoveAt(Changes.Count - 1);
+            storageChange = lastChange;
+            return true;
+        }
+
+        return false;
     }
+
+    // public override readonly string? ToString()
+    // {
+    //     string changes = string.Join(", ", [.. Changes.Select(s => s.ToString())]);
+    //     return $"[0x{Bytes.ToHexString(Slot)}, [{changes}]]";
+    // }
 }
