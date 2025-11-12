@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Buffers;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -23,7 +22,6 @@ namespace Nethermind.Db
         private class EOACompressingDb : IDb, ITunableDb
         {
             private readonly IDb _wrapped;
-            private const int StackAllocThreshold = 512;
 
             public EOACompressingDb(IDb wrapped)
             {
@@ -100,27 +98,10 @@ namespace Nethermind.Db
 
                 int storedLength = value.Length - EmptyCodeHashStorageRoot.Length;
                 int compressedLength = storedLength + PreambleLength;
-
-                byte[]? rented = null;
-                scoped Span<byte> tmp;
-                if (compressedLength <= StackAllocThreshold)
-                {
-                    tmp = (stackalloc byte[StackAllocThreshold])[..compressedLength];
-                }
-                else
-                {
-                    rented = ArrayPool<byte>.Shared.Rent(compressedLength);
-                    tmp = rented.AsSpan(0, compressedLength);
-                }
-
+                scoped Span<byte> tmp = stackalloc byte[compressedLength];
                 tmp[PreambleIndex] = PreambleValue;
                 value[..storedLength].CopyTo(tmp[PreambleLength..]);
                 store.PutSpan(key, tmp, flags);
-
-                if (rented is not null)
-                {
-                    ArrayPool<byte>.Shared.Return(rented);
-                }
             }
 
             private static byte[]? Compress(byte[]? bytes)
