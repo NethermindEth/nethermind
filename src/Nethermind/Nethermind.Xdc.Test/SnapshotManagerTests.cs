@@ -25,7 +25,7 @@ internal class SnapshotManagerTests
     private ISnapshotManager _snapshotManager;
     private IBlockTree _blockTree;
     private IXdcReleaseSpec _xdcReleaseSpec;
-    private IDb _snapshotDb = new MemDb();
+    private IDb _snapshotDb;
 
     [SetUp]
     public void Setup()
@@ -39,12 +39,6 @@ internal class SnapshotManagerTests
         IPenaltyHandler penaltyHandler = Substitute.For<IPenaltyHandler>();
         _blockTree = Substitute.For<IBlockTree>();
         _snapshotManager = new SnapshotManager(_snapshotDb, _blockTree, penaltyHandler);
-    }
-
-    [TearDown]
-    public void TearDown()
-    {
-        _snapshotDb.Dispose();
     }
 
     [Test]
