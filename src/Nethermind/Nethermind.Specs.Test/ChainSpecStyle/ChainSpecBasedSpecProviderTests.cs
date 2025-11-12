@@ -660,8 +660,8 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec postBPO1Spec = provider.GetSpec(MainnetSpecProvider.BPO1Activation);
         IReleaseSpec postBPO2Spec = provider.GetSpec(MainnetSpecProvider.BPO2Activation);
 
-        VerifyCancunSpecificsForMainnetAndSepolia(postCancunSpec);
-        VerifyPragueSpecificsForMainnetHoodiAndSepolia(provider.ChainId, postPragueSpec);
+        VerifyCancunSpecificsForMainnetAndHoleskyAndSepolia(postCancunSpec);
+        VerifyPragueSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postPragueSpec);
         VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postOsakaSpec, postBPO1Spec, postBPO2Spec);
     }
 
