@@ -113,13 +113,15 @@ public static class EIP1559ParametersExtensions
             return false;
         }
 
-        var denominator = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(sizeof(UInt32)));
-        var elasticity = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(sizeof(UInt32)));
+        UInt32 denominator = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(sizeof(UInt32)));
+        UInt32 elasticity = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(sizeof(UInt32)));
 
         if (version == 0)
+        {
             return EIP1559Parameters.TryCreateV0(denominator, elasticity, out parameters, out error);
+        }
 
-        var minBaseFee = BinaryPrimitives.ReadUInt64BigEndian(data.TakeAndMove(sizeof(UInt64)));
+        UInt64 minBaseFee = BinaryPrimitives.ReadUInt64BigEndian(data.TakeAndMove(sizeof(UInt64)));
         return EIP1559Parameters.TryCreateV1(denominator, elasticity, minBaseFee, out parameters, out error);
     }
 
@@ -142,13 +144,15 @@ public static class EIP1559ParametersExtensions
             return false;
         }
 
-        var denominator = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(sizeof(UInt32)));
-        var elasticity = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(sizeof(UInt32)));
+        UInt32 denominator = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(sizeof(UInt32)));
+        UInt32 elasticity = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(sizeof(UInt32)));
 
         if (version == 0)
+        {
             return EIP1559Parameters.TryCreateV0(denominator, elasticity, out parameters, out error);
+        }
 
-        var minBaseFee = BinaryPrimitives.ReadUInt64BigEndian(data.TakeAndMove(sizeof(UInt64)));
+        UInt64 minBaseFee = BinaryPrimitives.ReadUInt64BigEndian(data.TakeAndMove(sizeof(UInt64)));
         return EIP1559Parameters.TryCreateV1(denominator, elasticity, minBaseFee, out parameters, out error);
     }
 }
