@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
@@ -22,7 +24,7 @@ public class BlockhashCacheTests
     public void Setup()
     {
         _headerStore = new HeaderStore(new MemDb(), new MemDb());
-        _cache = new BlockhashCache(_headerStore);
+        _cache = new BlockhashCache(_headerStore, LimboLogs.Instance);
     }
 
     [TearDown]
@@ -326,7 +328,7 @@ public class BlockhashCacheTests
     }
 
     [Test]
-    public void Prefetch_loads_ancestors_in_background()
+    public async Task Prefetch_loads_ancestors_in_background()
     {
         // Arrange - add blocks to store
         BlockHeader[] headers = new BlockHeader[100];
@@ -343,8 +345,7 @@ public class BlockhashCacheTests
         }
 
         // Act - prefetch
-        _cache.Prefetch(headers[99], 50);
-        System.Threading.Thread.Sleep(100); // Give background task time
+        await _cache.Prefetch(headers[99]);
 
         // Assert - ancestors should now be cached
         _cache.Contains(headers[99].Hash!).Should().BeTrue();

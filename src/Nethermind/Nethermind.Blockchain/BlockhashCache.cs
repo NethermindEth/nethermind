@@ -11,29 +11,19 @@ using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.Blockchain;
 
-public class BlockhashCache(IHeaderStore headerStore) : IDisposable
+public class BlockhashCache(IHeaderStore headerStore, ILogManager logManager) : IDisposable
 {
-    // Maps blockHash -> BlockData (minimal metadata)
+    private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ConcurrentDictionary<Hash256AsKey, BlockData> _blocks = new();
-
-    // Maps chainSnapshotId -> pooled ancestor array segment
-    // Snapshots form a linked list for deep ancestor queries
     private readonly ConcurrentDictionary<int, AncestorSnapshot> _snapshots = new();
-
     private int _nextSnapshotId;
-
-    // Each snapshot covers 256 blocks
-    // Multiple snapshots chain together for deeper history
     private const int SegmentSize = 256;
-
     private long _minBlock = long.MaxValue;
 
-    /// <summary>
-    /// Add block - reuses parent's snapshot if possible, creates new segment on overflow
-    /// </summary>
     public void Set(BlockHeader blockHeader)
     {
         int snapshotId;
@@ -58,7 +48,6 @@ public class BlockhashCache(IHeaderStore headerStore) : IDisposable
         }
 
         _minBlock = Math.Min(blockHeader.Number, _minBlock);
-
         _blocks[blockHeader.Hash!] = new BlockData
         {
             Block = new BlockInfo(blockHeader),
@@ -66,11 +55,22 @@ public class BlockhashCache(IHeaderStore headerStore) : IDisposable
         };
     }
 
-    private static int ReuseSnapshot(BlockHeader blockHeader, AncestorSnapshot snapshot, int snapshotId)
+    private int ReuseSnapshot(BlockHeader blockHeader, AncestorSnapshot snapshot, int snapshotId)
     {
-        snapshot.IncrementRefCount();
-        snapshot.Ancestors[CalculateOffset(blockHeader)] = blockHeader.Hash;
-        return snapshotId;
+        if (!snapshot.IsDisposed)
+        {
+            lock (snapshot)
+            {
+                if (!snapshot.IsDisposed)
+                {
+                    snapshot.RefCount++;
+                    snapshot.Ancestors[CalculateOffset(blockHeader)] = blockHeader.Hash;
+                    return snapshotId;
+                }
+            }
+        }
+
+        return CreateSnapshot(blockHeader);
     }
 
     private enum SnapshotCompatibility
@@ -81,9 +81,7 @@ public class BlockhashCache(IHeaderStore headerStore) : IDisposable
         Orphaned,
     }
 
-    /// <summary>
-    /// Check if we can reuse parent's snapshot
-    /// </summary>
+    // Check if we can reuse parent's snapshot
     private SnapshotCompatibility CheckSnapshotCompatibility(int parentSnapshotId, BlockHeader blockHeader, out AncestorSnapshot snapshot)
     {
         if (!_snapshots.TryGetValue(parentSnapshotId, out snapshot))
@@ -136,7 +134,7 @@ public class BlockhashCache(IHeaderStore headerStore) : IDisposable
 
         if (!_blocks.TryGetValue(headBlock.Hash!, out BlockData blockData))
         {
-            blockData = LoadFromStoreMinimal(headBlock, depth);
+            blockData = LoadFromStore(headBlock);
             if (blockData.SnapshotId == 0)
                 return null;
         }
@@ -158,14 +156,7 @@ public class BlockhashCache(IHeaderStore headerStore) : IDisposable
                 targetBlockNumber < snapshot.BaseBlockNumber + SegmentSize)
             {
                 int offset = (int)(targetBlockNumber % SegmentSize);
-                Hash256? result = snapshot.Ancestors[offset];
-
-                if (result is not null && depth < SegmentSize / 2)
-                {
-                    TriggerBackgroundFetch(headBlock, SegmentSize);
-                }
-
-                return result;
+                return snapshot.Ancestors[offset];
             }
 
             if (snapshot.ParentSnapshotId.HasValue)
@@ -174,33 +165,24 @@ public class BlockhashCache(IHeaderStore headerStore) : IDisposable
             }
             else
             {
-                return GetHashFromStore(headBlock, depth);
+                blockData = LoadFromStore(headBlock);
+                if (blockData.SnapshotId == 0)
+                    return null;
+
+                currentSnapshotId = blockData.SnapshotId;
             }
         }
 
         return null;
     }
 
-    // Replace GetHashFromStore with a simple delegation
-    private Hash256? GetHashFromStore(BlockHeader headBlock, long depth)
+    private BlockData LoadFromStore(BlockHeader blockHeader)
     {
-        // Just trigger a sync load and retry - unified path
-        LoadFromStoreMinimal(headBlock, depth);
-        return GetHash(headBlock, depth); // Retry with cache populated
-    }
-
-    // Simplify LoadFromStoreMinimal - remove the background fetch trigger
-    private BlockData LoadFromStoreMinimal(BlockHeader blockHeader, long requiredDepth)
-    {
-        if (_blocks.TryGetValue(blockHeader.Hash!, out BlockData cached))
-            return cached;
-
-        long count = Math.Min(requiredDepth, SegmentSize);
-        using ArrayPoolListRef<BlockHeader> blocksToAdd = new((int)(count + 1));
+        using ArrayPoolListRef<BlockHeader> blocksToAdd = new(SegmentSize);
         BlockHeader? currentHeader = blockHeader;
         long walked = 0;
 
-        while (walked <= count)
+        while (walked < SegmentSize)
         {
             if (_blocks.ContainsKey(currentHeader.Hash!))
                 break;
@@ -227,74 +209,31 @@ public class BlockhashCache(IHeaderStore headerStore) : IDisposable
             }
         }
 
-        // Remove the TriggerBackgroundFetch call here - avoid circular calls
-        // Background fetching should only be triggered from GetHash when needed
-
-        _blocks.TryGetValue(blockHeader.Hash, out BlockData result);
+        _blocks.TryGetValue(blockHeader.Hash!, out BlockData result);
         return result;
     }
 
-    // LoadAncestorsAsync becomes the single background loader
-    private void LoadAncestorsAsync(BlockHeader blockHeader, long depth)
+    public Task Prefetch(BlockHeader blockHeader)
     {
-        BlockHeader? current = blockHeader;
-        long loaded = 0;
-
-        while (current is not null && loaded < depth)
-        {
-            if (_blocks.ContainsKey(current.Hash!))
-            {
-                // Already in cache, get parent and continue
-                if (_blocks.TryGetValue(current.Hash!, out BlockData block))
-                {
-                    if (block.ParentHash is null)
-                        break;
-                    BlockHeader? parent = headerStore.Get(block.ParentHash, true, block.Number - 1);
-                    current = parent;
-                }
-
-                loaded++;
-                continue;
-            }
-
-            // Not in cache - fetch and add
-            Set(current);
-
-            if (current.ParentHash is null)
-                break;
-
-            current = headerStore.Get(current.ParentHash, true, current.Number - 1);
-            loaded++;
-        }
-    }
-
-    private void TriggerBackgroundFetch(BlockHeader blockHeader, long depth)
-    {
-        Task.Run(() =>
+        return Task.Run(() =>
         {
             try
             {
-                LoadAncestorsAsync(blockHeader, depth);
+                if (!_blocks.TryGetValue(blockHeader.Hash!, out BlockData blockData) || !HasAllAncestors(blockData))
+                {
+                    LoadFromStore(blockHeader);
+                }
             }
-            catch
+            catch (Exception ex)
             {
-                // Swallow exceptions in background operations
+                if (_logger.IsWarn) _logger.Warn($"Background fetch failed for block {blockHeader.Number}: {ex.Message}");
             }
         });
     }
 
-    public void Prefetch(BlockHeader blockHeader, long depth = SegmentSize)
+    private bool HasAllAncestors(BlockData block)
     {
-        if (!_blocks.TryGetValue(blockHeader.Hash!, out BlockData blockData) || !HasAllAncestors(blockData, depth))
-        {
-            TriggerBackgroundFetch(blockHeader, depth);
-        }
-    }
-
-
-    private bool HasAllAncestors(BlockData block, long depth)
-    {
-        long targetBlockNumber = block.Number - depth;
+        long targetBlockNumber = block.Number - SegmentSize;
         if (targetBlockNumber < 0)
             return true;
 
@@ -324,11 +263,17 @@ public class BlockhashCache(IHeaderStore headerStore) : IDisposable
     public void Remove(Hash256AsKey blockHash)
     {
         if (_blocks.TryRemove(blockHash, out BlockData block)
-            && _snapshots.TryGetValue(block.SnapshotId, out AncestorSnapshot snapshot)
-            && snapshot.DecrementRefCount() == 0)
+            && _snapshots.TryGetValue(block.SnapshotId, out AncestorSnapshot snapshot))
         {
-            _snapshots.TryRemove(block.SnapshotId, out _);
-            snapshot.Dispose();
+            lock (snapshot)
+            {
+                snapshot.RefCount--;
+                if (snapshot.RefCount == 0)
+                {
+                    _snapshots.TryRemove(block.SnapshotId, out _);
+                    snapshot.Dispose();
+                }
+            }
         }
     }
 
@@ -444,25 +389,15 @@ public class BlockhashCache(IHeaderStore headerStore) : IDisposable
         public Hash256?[] Ancestors { get; } = ancestors;
         public long BaseBlockNumber { get; } = baseBlockNumber;
         public int? ParentSnapshotId { get; } = parentSnapshotId;
-
-        private int _refCount = 1;
-        private bool _disposed;
-
-        public int RefCount => _refCount;
-
-        public void IncrementRefCount()
-        {
-            Interlocked.Increment(ref _refCount);
-        }
-
-        public int DecrementRefCount() => Interlocked.Decrement(ref _refCount);
+        public int RefCount { get; set; } = 1;
+        public bool IsDisposed { get; private set; }
 
         public void Dispose()
         {
-            if (!_disposed)
+            if (!IsDisposed)
             {
-                ArrayPool<Hash256>.Shared.Return(Ancestors, clearArray: true);
-                _disposed = true;
+                ArrayPool<Hash256?>.Shared.Return(Ancestors, clearArray: true);
+                IsDisposed = true;
             }
         }
     }
