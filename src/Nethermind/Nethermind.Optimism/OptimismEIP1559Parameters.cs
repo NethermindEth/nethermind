@@ -109,7 +109,7 @@ public static class EIP1559ParametersExtensions
         var expLength = EIP1559Parameters.ByteLengthByVersion[version];
         if (dataLength != expLength)
         {
-            error = $"{nameof(header.ExtraData)} must be {expLength} bytes long";
+            error = $"{nameof(header.ExtraData)} must be {expLength} bytes long on version {version}";
             return false;
         }
 

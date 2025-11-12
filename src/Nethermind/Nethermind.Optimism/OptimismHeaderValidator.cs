@@ -85,9 +85,9 @@ public class OptimismHeaderValidator(
 
     protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 
-    protected override bool ValidateGasUsed(BlockHeader header, ref string? error)
+    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
     {
-        if (!base.ValidateGasUsed(header, ref error))
+        if (!base.ValidateBlobGasFields(header, parent, spec, ref error))
             return false;
 
         if (specHelper.IsJovian(header))
