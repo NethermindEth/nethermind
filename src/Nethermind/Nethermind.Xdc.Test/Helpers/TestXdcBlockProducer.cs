@@ -39,6 +39,11 @@ internal class TestXdcBlockProducer(
 {
     private readonly Signer signer = (Signer)signer;
 
+    public BlockHeader WrappedPrepare(BlockHeader parent, PayloadAttributes payloadAttributes)
+    {
+        return PrepareBlockHeader(parent, payloadAttributes);
+    }
+
     protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes)
     {
         if (parent is not XdcBlockHeader xdcParent)

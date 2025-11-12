@@ -1,17 +1,20 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Consensus;
+using Nethermind.Core;
+using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
+using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Test.Helpers;
+using NUnit.Framework;
+using Org.BouncyCastle.Crypto;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Consensus;
-using Nethermind.TxPool;
-using Nethermind.Xdc.Test.Helpers;
-using NUnit.Framework;
-using Org.BouncyCastle.Crypto;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 internal class MineModuleTests
@@ -61,8 +64,38 @@ internal class MineModuleTests
         Assert.That(newLeader, Is.Not.EqualTo(previousLeader));
     }
 
-    /*[Test]
-    public async Task Block_Building_Fails_When_Not_Leader()
+    [Test]
+    public async Task Update_Multiple_MasterNodes()
     {
-    }*/
+        IXdcReleaseSpec? spec = _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header);
+
+        for (int i = 0; i <= 1800; i++)
+        {
+            await _blockchainTests.AddBlock();
+
+            if(i == 1800)
+            {
+                var header = (XdcBlockHeader)_tree.Head!.Header!;
+                spec = _blockchainTests.SpecProvider.GetXdcSpec(header);
+                var snapshot = _blockchainTests.SnapshotManager.GetSnapshot(header.Number, spec);
+
+                Assert.That(snapshot, Is.Not.Null);
+                Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(_blockchainTests.MasterNodeCandidates.Count));
+                Assert.That(snapshot.BlockNumber, Is.EqualTo(1350));
+            }
+        }
+
+        long tstamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        // --- Create header for block 1800
+        var header1800 = (XdcBlockHeader)(await _blockchainTests.AddBlockFromParent(_tree.Head!.Header!)).Header;
+        _blockchainTests.CreateAndCommitQC(header1800);
+
+        // --- Validate header fields
+        int validatorCount = header1800.Validator!.Length / Address.Size;
+        int penaltyCount = header1800.Penalties!.Length / Address.Size;
+
+        Assert.That(validatorCount, Is.EqualTo(spec.MaxMasternodes));
+        Assert.That(penaltyCount, Is.EqualTo(0));
+    }
 }
