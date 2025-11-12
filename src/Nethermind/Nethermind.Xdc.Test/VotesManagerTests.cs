@@ -34,19 +34,19 @@ public class VotesManagerTests
         var info = new BlockRoundInfo(header.Hash!, currentRound, header.Number);
 
         // Base case
-        yield return new TestCaseData(masternodes, header, currentRound, keys.Select(k => BuildSignedVote(info, 450, k)).ToArray(), info, 1);
+        yield return new TestCaseData(masternodes, header, currentRound, keys.Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray(), info, 1);
 
         // Not enough valid signers
         var (extraKeys, _) = MakeKeys(2);
-        var votes = keys.Take(12).Select(k => BuildSignedVote(info, 450, k)).ToArray();
-        var extraVotes = extraKeys.Select(k => BuildSignedVote(info, 450, k)).ToArray();
+        var votes = keys.Take(12).Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray();
+        var extraVotes = extraKeys.Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray();
         yield return new TestCaseData(masternodes, header, currentRound, votes.Concat(extraVotes).ToArray(), info, 0);
 
         // Wrong gap number generates different keys for the vote pool
         var keysForVotes = keys.Take(14).ToArray();
         var votesWithDiffGap = new List<Vote>(capacity: keysForVotes.Length);
-        for (var i = 0; i < keysForVotes.Length - 3; i++) votesWithDiffGap.Add(BuildSignedVote(info, 450, keysForVotes[i]));
-        for (var i = keysForVotes.Length - 3; i < keysForVotes.Length; i++) votesWithDiffGap.Add(BuildSignedVote(info, 451, keysForVotes[i]));
+        for (var i = 0; i < keysForVotes.Length - 3; i++) votesWithDiffGap.Add(XdcTestHelper.BuildSignedVote(info, 450, keysForVotes[i]));
+        for (var i = keysForVotes.Length - 3; i < keysForVotes.Length; i++) votesWithDiffGap.Add(XdcTestHelper.BuildSignedVote(info, 451, keysForVotes[i]));
         yield return new TestCaseData(masternodes, header, currentRound, votesWithDiffGap.ToArray(), info, 0);
     }
 
@@ -118,13 +118,13 @@ public class VotesManagerTests
 
         var keysForVotes = keys.ToArray();
         for (var i = 0; i < keysForVotes.Length - 1; i++)
-            await voteManager.HandleVote(BuildSignedVote(info, gap: 450, keysForVotes[i]));
+            await voteManager.HandleVote(XdcTestHelper.BuildSignedVote(info, gap: 450, keysForVotes[i]));
 
         quorumCertificateManager.DidNotReceive().CommitCertificate(Arg.Any<QuorumCertificate>());
 
         // Now insert header and send one more
         blockTree.FindHeader(header.Hash!, Arg.Any<long>()).Returns(header);
-        await voteManager.HandleVote(BuildSignedVote(info, 450, keysForVotes[keysForVotes.Length - 1]));
+        await voteManager.HandleVote(XdcTestHelper.BuildSignedVote(info, 450, keysForVotes[keysForVotes.Length - 1]));
 
         quorumCertificateManager.Received(1).CommitCertificate(Arg.Any<QuorumCertificate>());
     }
@@ -215,18 +215,7 @@ public class VotesManagerTests
         return (keys, addrs);
     }
 
-    private static Vote BuildSignedVote(
-        BlockRoundInfo info, ulong gap, PrivateKey key)
-    {
-        var decoder = new VoteDecoder();
-        var ecdsa = new EthereumEcdsa(0);
-        var vote = new Vote(info, gap);
-        var stream = new KeccakRlpStream();
-        decoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-        vote.Signature = ecdsa.Sign(key, stream.GetValueHash());
-        vote.Signer = key.Address;
-        return vote;
-    }
+
 
     private static VotesManager BuildVoteManager(IXdcConsensusContext ctx, IBlockTree? blockTree = null)
     {

@@ -23,9 +23,6 @@ internal class ProposedBlockTests
 
         await blockChain.AddBlockWithoutCommitQc();
 
-        //We wait here because HotStuff will cast a vote itself, and if we change the Signer before that, the test will fail
-        await Task.Delay(200);
-
         var head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header;
         var spec = blockChain.SpecProvider.GetXdcSpec(head, blockChain.XdcContext.CurrentRound);
 
@@ -42,14 +39,17 @@ internal class ProposedBlockTests
         var newRoundWaitHandle = new TaskCompletionSource();
         blockChain.XdcContext.NewRoundSetEvent += (s, a) => { newRoundWaitHandle.SetResult(); };
 
-        var votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
+        BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
+        long gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0 ? 0 : Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
         //We skip 1 vote so we are 1 under the vote threshold, proving that if the round advances the module cast a vote itself
         foreach (var key in masternodes.Skip(1))
-        {
-            //Need to set the signer before casting vote
-            blockChain.Signer.SetSigner(key);
-            await blockChain.VotesManager.CastVote(votingBlock);
+        {            
+            var vote = XdcTestHelper.BuildSignedVote(votingBlock, (ulong)gapNumber, key);
+            await blockChain.VotesManager.HandleVote(vote);
         }
+
+        //Starting here will trigger the final vote to be cast and round should advance
+        blockChain.StartHotStuffModule();
 
         var waitTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(5_000));
         if (waitTask != newRoundWaitHandle.Task)
@@ -61,18 +61,22 @@ internal class ProposedBlockTests
         var grandParentOfHead = blockChain.BlockTree.FindHeader(parentOfHead!.ParentHash!);
 
         grandParentOfHead!.Hash!.Should().Be(blockChain.XdcContext.HighestCommitBlock.Hash);
-
     }
 
     [Test]
     public async Task TestShouldNotCommitIfRoundsNotContinousFor3Rounds()
     {
-        var blockChain = await XdcTestBlockchain.Create(1, true);
+        var blockChain = await XdcTestBlockchain.Create(2, true);
+
+        await blockChain.AddBlockWithoutCommitQc();
+
+        blockChain.StartHotStuffModule();
+
+        await blockChain.TriggerAndSimulateBlockProposalAndVoting();
 
         var newRoundWaitHandle = new TaskCompletionSource();
         blockChain.XdcContext.NewRoundSetEvent += (s, a) => { newRoundWaitHandle.SetResult(); };
 
-        await blockChain.TriggerAndSimulateBlockProposalAndVoting();
 
         await newRoundWaitHandle.Task;
     }
