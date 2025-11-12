@@ -335,7 +335,7 @@ namespace Nethermind.Facade
 
         public int NewBlockFilter()
         {
-            BlockFilter filter = filterStore.CreateBlockFilter(blockTree.Head!.Number);
+            BlockFilter filter = filterStore.CreateBlockFilter();
             filterStore.SaveFilter(filter);
             return filter.Id;
         }
