@@ -76,7 +76,7 @@ internal class SnapshotManagerTests
 
     [Test]
     public void GetSnapshot_ShouldReturnNullForEmptyDb()
-    {        
+    {
         // Act
         var result = _snapshotManager.GetSnapshot(0, _xdcReleaseSpec);
         // Assert
