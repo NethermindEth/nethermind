@@ -141,7 +141,7 @@ internal class ProposedBlockTests
     [TestCase(1)]
     [TestCase(10)]
     [TestCase(30)]
-    public async Task CanBuildAChain(int count)
+    public async Task CanBuildAFinalizedChain(int count)
     {
         var blockChain = await XdcTestBlockchain.Create(0, true);
         blockChain.ChangeReleaseSpec((s) =>
@@ -161,6 +161,8 @@ internal class ProposedBlockTests
         {
             await blockChain.TriggerAndSimulateBlockProposalAndVoting();
             blockChain.BlockTree.Head.Number.Should().Be(startBlock.Number + i);
+            blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber.Should().Be(startBlock.Number + i - 1);
+            blockChain.XdcContext.HighestCommitBlock.BlockNumber.Should().Be(startBlock.Number + i - 3);
         }
     }
 }
