@@ -58,7 +58,7 @@ internal class TestXdcBlockProducer(
         if (epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
         {
             //TODO calculate master nodes based on the current round
-            (masternodes, _) = snapshotManager.CalculateNextEpochMasternodes(currentHead.Number, currentHead.ParentHash!, spec);
+            (masternodes, _) = snapshotManager.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash!, spec);
         }
         else
         {
