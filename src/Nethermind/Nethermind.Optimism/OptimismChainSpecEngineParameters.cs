@@ -52,9 +52,6 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
             spec.BaseFeeMaxChangeDenominator = CanyonBaseFeeChangeDenominator.Value;
         }
 
-        if (HoloceneTimestamp is not null)
-        {
-            spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp.Value, JovianTimestamp, new DefaultBaseFeeCalculator());
-        }
+        spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp, JovianTimestamp, new DefaultBaseFeeCalculator());
     }
 }

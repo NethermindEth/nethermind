@@ -121,7 +121,6 @@ public static class EIP1559ParametersExtensions
 
         var minBaseFee = BinaryPrimitives.ReadUInt64BigEndian(data.TakeAndMove(sizeof(UInt64)));
         return EIP1559Parameters.TryCreateV1(denominator, elasticity, minBaseFee, out parameters, out error);
-
     }
 
     public static bool TryDecodeEIP1559Parameters(this OptimismPayloadAttributes attributes, out EIP1559Parameters parameters, [NotNullWhen(false)] out string? error)

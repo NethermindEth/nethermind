@@ -12,7 +12,7 @@ namespace Nethermind.Optimism;
 /// See <see href="https://specs.optimism.io/protocol/holocene/exec-engine.html#base-fee-computation"/>
 /// </remarks>
 public sealed class OptimismBaseFeeCalculator(
-    ulong holoceneTimestamp,
+    ulong? holoceneTimestamp,
     ulong? jovianTimestamp,
     IBaseFeeCalculator baseFeeCalculator
 ) : IBaseFeeCalculator

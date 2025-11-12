@@ -22,59 +22,77 @@ public class OptimismHeaderValidatorTests
     private static readonly Hash256 PostCanyonWithdrawalsRoot = Keccak.OfAnEmptySequenceRlp;
 
     [TestCaseSource(nameof(EIP1559ParametersExtraData))]
-    public void Validates_EIP1559Parameters_InExtraData_AfterHolocene_OrJovian((string HexString, bool validHolocene, bool validJovian) testCase)
+    public void Validates_EIP1559Parameters_InExtraData_AfterJovian((string HexString, bool _, bool Valid) testCase)
     {
-        var genesis = Build.A.BlockHeader
+        BlockHeader genesis = Build.A.BlockHeader
             .WithNumber(0)
             .WithTimestamp(Spec.GenesisTimestamp)
             .TestObject;
 
-        var headerHolocene = BuildHeader(Spec.HoloceneTimeStamp);
-        var headerJovian = BuildHeader(Spec.JovianTimeStamp);
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithTimestamp(Spec.JovianTimeStamp)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
+            .WithWithdrawalsRoot(PostCanyonWithdrawalsRoot)
+            .WithExtraDataHex(testCase.HexString)
+            .WithRequestsHash(OptimismPostMergeBlockProducer.PostIsthmusRequestHash)
+            .TestObject;
 
         var validator = new OptimismHeaderValidator(
             AlwaysPoS.Instance,
             Substitute.For<IBlockTree>(),
             Always.Valid, Spec.Instance,
-            Spec.BuildFor(headerHolocene, headerJovian),
+            Spec.BuildFor(header),
             TestLogManager.Instance);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(() => validator.Validate(headerHolocene, genesis), Is.EqualTo(testCase.validHolocene));
-            Assert.That(() => validator.Validate(headerJovian, genesis), Is.EqualTo(testCase.validJovian));
-        }
+        Assert.That(() => validator.Validate(header, genesis), Is.EqualTo(testCase.Valid));
+    }
 
-        BlockHeader BuildHeader(ulong timestamp)
-        {
-            BlockHeaderBuilder builder = Build.A.BlockHeader
-                .WithNumber(1)
-                .WithParent(genesis)
-                .WithTimestamp(timestamp)
-                .WithDifficulty(0)
-                .WithNonce(0)
-                .WithBlobGasUsed(0)
-                .WithExcessBlobGas(0)
-                .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
-                .WithWithdrawalsRoot(PostCanyonWithdrawalsRoot)
-                .WithExtraData(Bytes.FromHexString(testCase.HexString))
-                .WithRequestsHash(timestamp >= Spec.IsthmusTimeStamp
-                    ? OptimismPostMergeBlockProducer.PostIsthmusRequestHash
-                    : null
-                );
+    [TestCaseSource(nameof(EIP1559ParametersExtraData))]
+    public void Validates_EIP1559Parameters_InExtraData_AfterHolocene((string HexString, bool Valid, bool _) testCase)
+    {
+        BlockHeader genesis = Build.A.BlockHeader
+            .WithNumber(0)
+            .WithTimestamp(Spec.GenesisTimestamp)
+            .TestObject;
 
-            return builder.TestObject;
-        }
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithTimestamp(Spec.HoloceneTimeStamp)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
+            .WithWithdrawalsRoot(PostCanyonWithdrawalsRoot)
+            .WithExtraData(Bytes.FromHexString(testCase.HexString))
+            .TestObject;
+
+        var validator = new OptimismHeaderValidator(
+            AlwaysPoS.Instance,
+            Substitute.For<IBlockTree>(),
+            Always.Valid, Spec.Instance,
+            Spec.BuildFor(header),
+            TestLogManager.Instance);
+
+        Assert.That(() => validator.Validate(header, genesis), Is.EqualTo(testCase.Valid));
     }
 
     [TestCaseSource(nameof(EIP1559ParametersExtraData))]
     public void Ignores_ExtraData_BeforeHolocene((string HexString, bool _1, bool _2) testCase)
     {
-        var genesis = Build.A.BlockHeader
+        BlockHeader genesis = Build.A.BlockHeader
             .WithNumber(0)
             .WithTimestamp(Spec.GenesisTimestamp)
             .TestObject;
-        var header = Build.A.BlockHeader
+
+        BlockHeader header = Build.A.BlockHeader
             .WithNumber(1)
             .WithParent(genesis)
             .WithTimestamp(Spec.HoloceneTimeStamp - 1)
@@ -150,16 +168,8 @@ public class OptimismHeaderValidatorTests
         valid.Should().Be(isValid);
     }
 
-    private static IEnumerable<(string, bool, bool)> EIP1559ParametersExtraData()
+    private static IEnumerable<(string data, bool validOnHolocene, bool validOnJovian)> EIP1559ParametersExtraData()
     {
-        // Valid post Holocene
-        yield return ("0x000000000100000000", true, false);
-        yield return ("0x0000000001000001bc", true, false);
-        yield return ("0x0000000001ffffffff", true, false);
-        yield return ("0x00ffffffff00000000", true, false);
-        yield return ("0x00ffffffff000001bc", true, false);
-        yield return ("0x00ffffffffffffffff", true, false);
-
         // Valid post Jovian
         yield return ("0x0100000001000000000000000000000000", false, true);
         yield return ("0x0100000001000001bc0000000000000001", false, true);
@@ -167,6 +177,14 @@ public class OptimismHeaderValidatorTests
         yield return ("0x01ffffffff0000000000000000000001ff", false, true);
         yield return ("0x01ffffffff000001bc01000000000000ff", false, true);
         yield return ("0x01ffffffffffffffffffffffffffffffff", false, true);
+
+        // Valid post Holocene
+        yield return ("0x000000000100000000", true, false);
+        yield return ("0x0000000001000001bc", true, false);
+        yield return ("0x0000000001ffffffff", true, false);
+        yield return ("0x00ffffffff00000000", true, false);
+        yield return ("0x00ffffffff000001bc", true, false);
+        yield return ("0x00ffffffffffffffff", true, false);
 
         // Invalid
         yield return ("0x0", false, false);

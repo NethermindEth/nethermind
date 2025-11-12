@@ -52,15 +52,16 @@ public class OptimismHeaderValidator(
                 return false;
             }
 
-            if (!specHelper.IsJovian(header) && parameters.Version != 0)
+            (int version, string reason) versionCheck = header switch
             {
-                error = $"{nameof(EIP1559Parameters)} version should be 0 before Jovian";
-                return false;
-            }
+                // Newer forks should be added on top
+                _ when specHelper.IsJovian(header) => (1, "since Jovian"),
+                _ => (0, "before Jovian")
+            };
 
-            if (specHelper.IsJovian(header) && parameters.Version != 1)
+            if (versionCheck.version != parameters.Version)
             {
-                error = $"{nameof(EIP1559Parameters)} version should be 1 post Jovian";
+                error = $"{nameof(EIP1559Parameters)} version should be {versionCheck.version} {versionCheck.reason}";
                 return false;
             }
         }
