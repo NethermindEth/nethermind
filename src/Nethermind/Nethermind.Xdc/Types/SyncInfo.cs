@@ -10,6 +10,4 @@ public class SyncInfo(QuorumCertificate highestQuorumCert, TimeoutCertificate hi
 {
     public QuorumCertificate HighestQuorumCert { get; set; } = highestQuorumCert;
     public TimeoutCertificate HighestTimeoutCert { get; set; } = highestTimeoutCert;
-
-    public Hash256 SigHash() => Keccak.Compute(Rlp.Encode(this).Bytes);
 }

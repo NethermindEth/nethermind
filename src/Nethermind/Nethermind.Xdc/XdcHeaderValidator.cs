@@ -7,7 +7,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Xdc.Types;
 using System;
@@ -70,19 +69,20 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
 
     protected override bool ValidateSeal(BlockHeader header, BlockHeader parent, bool isUncle, ref string? error)
     {
-        if (_sealValidator is XdcSealValidator xdcSealValidator)
-            return xdcSealValidator.ValidateParams(parent, header, out error);
-
-        if (!_sealValidator.ValidateParams(parent, header, isUncle))
-        {
-            error = "Invalid consensus data in header.";
-            return false;
-        }
         if (!_sealValidator.ValidateSeal(header, false))
         {
             error = "Invalid validator signature.";
             return false;
         }
+
+        if (_sealValidator is XdcSealValidator xdcSealValidator ?
+            !xdcSealValidator.ValidateParams(parent, header, out error) :
+            !_sealValidator.ValidateParams(parent, header, isUncle))
+        {
+            error = "Invalid consensus data in header.";
+            return false;
+        }
+
         return true;
     }
 
@@ -93,10 +93,10 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
     {
         if (header.Difficulty != 1)
         {
-            error = "Total difficulty must be 1.";
+            error = "Difficulty must be 1.";
             return false;
         }
-        return true;
+        return base.ValidateTotalDifficulty(header, parent, ref error);
     }
 
     protected override bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
