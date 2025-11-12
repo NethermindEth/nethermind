@@ -414,7 +414,7 @@ namespace Nethermind.Xdc
             if (_epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
             {
                 //TODO calculate master nodes based on the current round
-                (currentMasternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.ParentHash, spec);
+                (currentMasternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash, spec);
             }
             else
             {
