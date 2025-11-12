@@ -31,13 +31,13 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
             1,
             XdcConstants.TargetGasLimit,
             1_700_000_000,
-            new byte[] { 1, 2, 3 })
+            [])
         {
             StateRoot = Keccak.EmptyTreeHash,
             TxRoot = Keccak.EmptyTreeHash,
             ReceiptsRoot = Keccak.EmptyTreeHash,
             Bloom = Bloom.Empty,
-            GasUsed = 21_000,
+            GasUsed = Transaction.BaseTxGasCost,
             MixHash = Keccak.Compute("mix_hash"),
             Nonce = 0,
             Validators = new byte[20 * 2],
