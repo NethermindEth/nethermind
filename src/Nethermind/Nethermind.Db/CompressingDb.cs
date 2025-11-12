@@ -52,7 +52,6 @@ namespace Nethermind.Db
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
                     => _wrapped.Set(key, Compress(value), flags);
 
-                [SkipLocalsInit]
                 public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
                 {
                     PutSpanCompressedIfNeeded(_wrapped, key, value, flags);
