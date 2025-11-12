@@ -43,7 +43,7 @@ internal class ProposedBlockTests
         long gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0 ? 0 : Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
         //We skip 1 vote so we are 1 under the vote threshold, proving that if the round advances the module cast a vote itself
         foreach (var key in masternodes.Skip(1))
-        {            
+        {
             var vote = XdcTestHelper.BuildSignedVote(votingBlock, (ulong)gapNumber, key);
             await blockChain.VotesManager.HandleVote(vote);
         }
@@ -74,10 +74,19 @@ internal class ProposedBlockTests
 
         await blockChain.TriggerAndSimulateBlockProposalAndVoting();
 
-        var newRoundWaitHandle = new TaskCompletionSource();
-        blockChain.XdcContext.NewRoundSetEvent += (s, a) => { newRoundWaitHandle.SetResult(); };
+        await blockChain.SimulateVoting();
 
+        var beforeTimeoutFinalized = blockChain.XdcContext.HighestCommitBlock;
+        var beforeTimeoutQC = blockChain.XdcContext.HighestQC;
 
-        await newRoundWaitHandle.Task;
+        //Simulate timeout
+        blockChain.XdcContext.SetNewRound();
+
+        await blockChain.TriggerBlockProposal();
+
+        await blockChain.SimulateVoting();
+
+        blockChain.XdcContext.HighestCommitBlock.Should().Be(beforeTimeoutFinalized);
+        blockChain.XdcContext.HighestQC.Should().NotBe(beforeTimeoutQC);
     }
 }

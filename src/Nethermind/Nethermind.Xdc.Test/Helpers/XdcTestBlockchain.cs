@@ -434,7 +434,7 @@ public class XdcTestBlockchain : TestBlockchain
             while (!newRoundWaitHandle.Task.IsCompleted)
             {
                 count++;
-                if (count > 1000)
+                if (count > 300)
                 {
                     break;
                 }
@@ -446,7 +446,7 @@ public class XdcTestBlockchain : TestBlockchain
             //Voting will trigger QC creation which triggers new round
             var finishedTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(10_000));
             if (finishedTask != newRoundWaitHandle.Task)
-                Assert.Fail("After 200 votes no new head could be detected. Something is wrong.");
+                Assert.Fail("After 300 votes no new head could be detected. Something is wrong.");
         }
         finally
         {
