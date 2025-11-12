@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
@@ -346,8 +347,9 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             }
         }
 
-        // assert error? should never happen
-        throw new Exception("Error calculating pre tx balance");
+        // should never happen
+        Debug.Fail("Error calculating pre tx balance");
+        return true;
     }
 
     private readonly bool HasStorageChangedDuringTx(Address address, byte[] key, in ReadOnlySpan<byte> beforeInstr, in ReadOnlySpan<byte> afterInstr)
@@ -380,8 +382,9 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             }
         }
 
-        // assert error? should never happen
-        throw new Exception("Error calculating pre tx storage");
+        // should never happen
+        Debug.Fail("Error calculating pre tx storage");
+        return true;
     }
 
     private readonly AccountChanges GetOrAddAccountChanges(Address address)
