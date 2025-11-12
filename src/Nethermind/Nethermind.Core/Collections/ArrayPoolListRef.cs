@@ -63,6 +63,7 @@ public ref struct ArrayPoolListRef<T>
 
     public void Insert(int index, T item) => ArrayPoolListCore.Insert(ArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, index, item);
     public bool Remove(T item) => ArrayPoolListCore.Remove(_array, ref _count, item);
+    public T? RemoveLast() => ArrayPoolListCore.RemoveLast(_array, ref _count);
     public void RemoveAt(int index) => ArrayPoolListCore.RemoveAt(_array, ref _count, index, shouldThrow: true);
     public void Clear() => ArrayPoolListCore.Clear(_array, ref _count);
     public void ReduceCount(int newCount) => ArrayPoolListCore.ReduceCount(ArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, newCount);

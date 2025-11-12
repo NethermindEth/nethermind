@@ -12,7 +12,7 @@ namespace Nethermind.Facade.Simulate;
 public sealed class SimulateBlockhashProvider(IBlockhashProvider blockhashProvider, IBlockTree blockTree)
     : IBlockhashProvider
 {
-    public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec)
+    public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
     {
         long bestKnown = blockTree.BestKnownNumber;
         return bestKnown < number && blockTree.BestSuggestedHeader is not null

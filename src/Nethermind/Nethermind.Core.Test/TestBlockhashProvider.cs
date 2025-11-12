@@ -7,21 +7,16 @@ using Nethermind.Evm;
 
 namespace Nethermind.Core.Test
 {
-    public class TestBlockhashProvider : IBlockhashProvider
+    public class TestBlockhashProvider(ISpecProvider specProvider) : IBlockhashProvider
     {
-        private readonly ISpecProvider _specProvider;
-        public TestBlockhashProvider(ISpecProvider specProvider)
-        {
-            _specProvider = specProvider;
-        }
         public Hash256 GetBlockhash(BlockHeader currentBlock, long number)
-            => GetBlockhash(currentBlock, number, _specProvider.GetSpec(currentBlock));
+            => GetBlockhash(currentBlock, number, specProvider.GetSpec(currentBlock));
 
-        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec)
+        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
         {
-            return Keccak.Compute(spec!.IsBlockHashInStateAvailable
+            return Keccak.Compute(spec.IsBlockHashInStateAvailable
                 ? (Eip2935Constants.RingBufferSize + number).ToString()
-                : (number).ToString());
+                : number.ToString());
         }
     }
 }

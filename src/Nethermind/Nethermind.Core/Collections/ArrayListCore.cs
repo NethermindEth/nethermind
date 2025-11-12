@@ -170,6 +170,19 @@ internal static class ArrayPoolListCore
         }
     }
 
+    public static T? RemoveLast<T>(T[] array, ref int count)
+    {
+        if (count > 0)
+        {
+            int index = count - 1;
+            T item = array[index];
+            RemoveAt(array, ref count, index, true);
+            return item;
+        }
+
+        return default;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool RemoveAt<T>(T[] array, ref int count, int index, bool shouldThrow)
     {
@@ -193,10 +206,7 @@ internal static class ArrayPoolListCore
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool Remove<T>(T[] array, ref int count, T item)
-    {
-        return RemoveAt(array, ref count, IndexOf(array, count, item), false);
-    }
+    public static bool Remove<T>(T[] array, ref int count, T item) => RemoveAt(array, ref count, IndexOf(array, count, item), false);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Insert<T>(

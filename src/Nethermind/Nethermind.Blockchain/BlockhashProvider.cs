@@ -14,26 +14,22 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain
 {
-    public class BlockhashProvider : IBlockhashProvider
+    public class BlockhashProvider(
+        IBlockFinder blockTree,
+        ISpecProvider specProvider,
+        IWorldState worldState,
+        ILogManager? logManager)
+        : IBlockhashProvider
     {
-        private static readonly int _maxDepth = 256;
-        private readonly IBlockFinder _blockTree;
-        private readonly ISpecProvider _specProvider;
-        private readonly IBlockhashStore _blockhashStore;
-        private readonly ILogger _logger;
-
-        public BlockhashProvider(IBlockFinder blockTree, ISpecProvider specProvider, IWorldState worldState, ILogManager? logManager)
-        {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _specProvider = specProvider;
-            _blockhashStore = new BlockhashStore(specProvider, worldState);
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        private const int MaxDepth = 256;
+        private readonly IBlockFinder _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        private readonly IBlockhashStore _blockhashStore = new BlockhashStore(specProvider, worldState);
+        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         public Hash256? GetBlockhash(BlockHeader currentBlock, long number)
-            => GetBlockhash(currentBlock, number, _specProvider.GetSpec(currentBlock));
+            => GetBlockhash(currentBlock, number, specProvider.GetSpec(currentBlock));
 
-        public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec)
+        public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
         {
             if (spec.IsBlockHashInStateAvailable)
             {
@@ -41,7 +37,7 @@ namespace Nethermind.Blockchain
             }
 
             long current = currentBlock.Number;
-            if (number >= current || number < current - Math.Min(current, _maxDepth))
+            if (number >= current || number < current - Math.Min(current, MaxDepth))
             {
                 return null;
             }
@@ -49,7 +45,7 @@ namespace Nethermind.Blockchain
             BlockHeader header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded) ??
                 throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
 
-            for (var i = 0; i < _maxDepth; i++)
+            for (int i = 0; i < MaxDepth; i++)
             {
                 if (number == header.Number)
                 {
