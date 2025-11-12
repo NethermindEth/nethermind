@@ -1,158 +1,168 @@
-//// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
-//// SPDX-License-Identifier: LGPL-3.0-only
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
-//using FluentAssertions;
-//using Nethermind.Blockchain;
-//using Nethermind.Core;
-//using Nethermind.Core.Crypto;
-//using Nethermind.Core.Test.Builders;
-//using Nethermind.Db;
-//using Nethermind.Int256;
-//using Nethermind.Xdc.Types;
-//using NUnit.Framework;
-//using System;
-//using System.Collections.Generic;
-//using System.Linq;
-//using System.Text;
-//using System.Threading.Tasks;
+using FluentAssertions;
+using Nethermind.Blockchain;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Types;
+using NSubstitute;
+using NUnit.Framework;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 
-//namespace Nethermind.Xdc.Test;
-//internal class SnapshotManagerTests
-//{
-//    private ISnapshotManager _snapshotManager;
-//    private readonly IDb _snapshotDb = new MemDb();
+namespace Nethermind.Xdc.Test;
 
-//    [SetUp]
-//    public void Setup()
-//    {
-//        IPenaltyHandler penaltyHandler = NSubstitute.Substitute.For<IPenaltyHandler>();
-//        _snapshotManager = new SnapshotManager(_snapshotDb, penaltyHandler);
-//    }
+internal class SnapshotManagerTests
+{
+    private ISnapshotManager _snapshotManager;
+    private IBlockTree _blockTree;
+    private IXdcReleaseSpec _xdcReleaseSpec;
+    private IDb _snapshotDb = new MemDb();
 
-//    [TearDown]
-//    public void TearDown()
-//    {
-//        _snapshotDb.Dispose();
-//    }
+    [SetUp]
+    public void Setup()
+    {
+        _xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        _xdcReleaseSpec.EpochLength.Returns(900);
+        _xdcReleaseSpec.Gap.Returns(450);
 
-//    [Test]
-//    public void GetSnapshot_ShouldReturnNullForNonExistentSnapshot()
-//    {
-//        // Act
-//        var result = _snapshotManager.GetSnapshot(TestItem.KeccakD);
+        _snapshotDb = new MemDb();
 
-//        // Assert
-//        result.Should().BeNull();
-//    }
+        IPenaltyHandler penaltyHandler = Substitute.For<IPenaltyHandler>();
+        _blockTree = Substitute.For<IBlockTree>();
+        _snapshotManager = new SnapshotManager(_snapshotDb, _blockTree, penaltyHandler);
+    }
 
-//    [Test]
-//    public void GetSnapshot_ShouldRetrieveFromIfFound()
-//    {
-//        // Arrange
-//        var snapshot = new Snapshot(2, TestItem.KeccakE, [Address.FromNumber(1)]);
-//        _snapshotManager.StoreSnapshot(snapshot);
+    [TearDown]
+    public void TearDown()
+    {
+        _snapshotDb.Dispose();
+    }
 
-//        // Act
-//        var result = _snapshotManager.GetSnapshot(TestItem.KeccakE);
+    [Test]
+    public void GetSnapshot_ShouldReturnNullForNonExistentSnapshot()
+    {
+        // Act
+        var result = _snapshotManager.GetSnapshot(0, _xdcReleaseSpec);
 
-//        // assert that it was retrieved from cache
-//        result.Should().BeEquivalentTo(snapshot);
-//    }
+        // Assert
+        result.Should().BeNull();
+    }
 
-//    [Test]
-//    public void GetSnapshot_ShouldReturnNullForEmptyDb()
-//    {
-//        // Arrange
-//        var hash = TestItem.KeccakF;
-//        // Act
-//        var result = _snapshotManager.GetSnapshot(hash);
-//        // Assert
-//        result.Should().BeNull();
-//    }
+    [Test]
+    public void GetSnapshot_ShouldRetrieveFromIfFound()
+    {
+        // Arrange
+        const int gapBlock = 0;
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        var snapshot = new Snapshot(gapBlock, header.Hash!, [Address.FromNumber(1)]);
+        _snapshotManager.StoreSnapshot(snapshot);
+        _blockTree.FindHeader(gapBlock).Returns(header);
 
-//    [Test]
-//    public void GetSnapshot_ShouldRetrieveFromDbIfNotInCache()
-//    {
-//        // Arrange
-//        var snapshot = new Snapshot(3, TestItem.KeccakG, [Address.FromNumber(3)]);
-//        _snapshotManager.StoreSnapshot(snapshot);
+        // Act
+        var result = _snapshotManager.GetSnapshot(gapBlock, _xdcReleaseSpec);
 
-//        // Act
-//        var saved = _snapshotManager.GetSnapshot(TestItem.KeccakG);
+        // assert that it was retrieved from cache
+        result.Should().BeEquivalentTo(snapshot);
+    }
 
-//        // Assert
-//        saved.Should().BeEquivalentTo(snapshot);
-//    }
+    [Test]
+    public void GetSnapshot_ShouldReturnNullForEmptyDb()
+    {        
+        // Act
+        var result = _snapshotManager.GetSnapshot(0, _xdcReleaseSpec);
+        // Assert
+        result.Should().BeNull();
+    }
 
-//    [Test]
-//    public void StoreSnapshot_ShouldStoreSnapshotInDb()
-//    {
-//        // Arrange
-//        var snapshot = new Snapshot(4, TestItem.KeccakH, [Address.FromNumber(4)]);
+    [Test]
+    public void GetSnapshot_ShouldRetrieveFromDbIfNotInCache()
+    {
+        // Arrange
+        const int gapBlock = 0;
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        var snapshot = new Snapshot(gapBlock, header.Hash!, [Address.FromNumber(1)]);
+        _snapshotManager.StoreSnapshot(snapshot);
+        _blockTree.FindHeader(gapBlock).Returns(header);
 
-//        // Act
-//        _snapshotManager.StoreSnapshot(snapshot);
-//        var fromDb = _snapshotManager.GetSnapshot(TestItem.KeccakH);
+        // Act
+        var saved = _snapshotManager.GetSnapshot(gapBlock, _xdcReleaseSpec);
 
-//        // Assert
-//        fromDb.Should().BeEquivalentTo(snapshot);
-//    }
+        // Assert
+        saved.Should().BeEquivalentTo(snapshot);
+    }
 
-//    [Test]
-//    public void GetSnapshot_ShouldReturnSnapshotIfExists()
-//    {
-//        // setup a snapshot and store it
-//        var snapshot1 = new Snapshot(5, TestItem.KeccakA, [Address.FromNumber(5)]);
-//        _snapshotManager.StoreSnapshot(snapshot1);
-//        var result = _snapshotManager.GetSnapshot(TestItem.KeccakA);
+    [Test]
+    public void StoreSnapshot_ShouldStoreSnapshotInDb()
+    {
+        // Arrange
+        const int gapBlock = 0;
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        var snapshot = new Snapshot(gapBlock, header.Hash!, [Address.FromNumber(1)]);
+        _blockTree.FindHeader(gapBlock).Returns(header);
 
-//        // assert that it was retrieved from db 
-//        result.Should().BeEquivalentTo(snapshot1);
+        // Act
+        _snapshotManager.StoreSnapshot(snapshot);
+        var fromDb = _snapshotManager.GetSnapshot(gapBlock, _xdcReleaseSpec);
 
-//        // store another snapshot with the same hash but different data
-//        var snapshot2 = new Snapshot(6, TestItem.KeccakA, [Address.FromNumber(5)]);
-//        _snapshotManager.StoreSnapshot(snapshot2);
-//        result = _snapshotManager.GetSnapshot(TestItem.KeccakA);
+        // Assert
+        fromDb.Should().BeEquivalentTo(snapshot);
+    }
 
-//        // assert that the original snapshot is still returned
-//        result.Should().BeEquivalentTo(snapshot1);
-//    }
+    [Test]
+    public void GetSnapshot_ShouldReturnSnapshotIfExists()
+    {
+        // setup a snapshot and store it
+        const int gapBlock1 = 0;
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        var snapshot1 = new Snapshot(gapBlock1, header.Hash!, [Address.FromNumber(1)]);
+        _snapshotManager.StoreSnapshot(snapshot1);
+        _blockTree.FindHeader(gapBlock1).Returns(header);
+        var result = _snapshotManager.GetSnapshot(gapBlock1, _xdcReleaseSpec);
 
-//    [Test]
-//    public void GetSnapshotByHeader_ShouldReturnNullIfNotExists()
-//    {
-//        XdcBlockHeaderBuilder builder = Build.A.XdcBlockHeader();
-//        XdcBlockHeader header = builder.WithBaseFee((UInt256)1_000_000_000).TestObject;
-//        header.Hash = TestItem.KeccakH;
-//        // Act
-//        var result = _snapshotManager.GetSnapshotByHeader(header);
-//        // Assert
-//        result.Should().BeNull();
-//    }
+        // assert that it was retrieved from db 
+        result.Should().BeEquivalentTo(snapshot1);
 
-//    [Test]
-//    public void GetSnapshotByHeader_ShouldReturnNullIfHeaderIsNull()
-//    {
-//        // Act
-//        var result = _snapshotManager.GetSnapshotByHeader(null);
-//        // Assert
-//        result.Should().BeNull();
-//    }
+        // store another snapshot with the same hash but different data
 
-//    [Test]
-//    public void GetSnapshotByHeader_ShouldReturnSnapshotIfExists()
-//    {
-//        // Arrange
-//        var snapshot = new Snapshot(7, TestItem.KeccakB, [Address.FromNumber(6)]);
-//        _snapshotManager.StoreSnapshot(snapshot);
-//        XdcBlockHeaderBuilder builder = Build.A.XdcBlockHeader();
-//        XdcBlockHeader header = builder.WithBaseFee((UInt256)1_000_000_000).TestObject;
-//        header.Hash = TestItem.KeccakB;
+        const int gapBlock2 = 450;
+        XdcBlockHeader header2 = Build.A.XdcBlockHeader().WithGeneratedExtraConsensusData(1).TestObject;
+        var snapshot2 = new Snapshot(gapBlock2, header2.Hash!, [Address.FromNumber(2)]);
+        _snapshotManager.StoreSnapshot(snapshot2);
+        _blockTree.FindHeader(gapBlock2).Returns(header2);
+        _snapshotManager.StoreSnapshot(snapshot2);
+        result = _snapshotManager.GetSnapshot(900, _xdcReleaseSpec);
 
-//        // Act
-//        var result = _snapshotManager.GetSnapshotByHeader(header);
+        // assert that the original snapshot is still returned
+        result.Should().BeEquivalentTo(snapshot2);
+    }
 
-//        // Assert
-//        result.Should().BeEquivalentTo(snapshot);
-//    }
-//}
+    [TestCase(1, 0)]
+    [TestCase(451, 0)]
+    [TestCase(899, 0)]
+    [TestCase(900, 450)]
+    [TestCase(1349, 450)]
+    [TestCase(1350, 450)]
+    [TestCase(1800, 1350)]
+    public void GetSnapshot_DifferentBlockNumbers_ReturnsSnapshotFromCorrectGapNumber(int blockNumber, int expectedGapNumber)
+    {
+        // setup a snapshot and store it
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        var snapshot = new Snapshot(expectedGapNumber, header.Hash!, [Address.FromNumber(1)]);
+        _snapshotManager.StoreSnapshot(snapshot);
+        _blockTree.FindHeader(expectedGapNumber).Returns(header);
+        var result = _snapshotManager.GetSnapshot(blockNumber, _xdcReleaseSpec);
+
+        // assert that it was retrieved from db 
+        result.Should().BeEquivalentTo(snapshot);
+
+    }
+}
