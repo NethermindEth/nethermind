@@ -134,8 +134,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore
 
     public void Remove(ReadOnlySpan<byte> key)
     {
-        // TODO: this does not participate in batching?
-        _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
+        Set(key, null);
     }
 
     public bool KeyExists(ReadOnlySpan<byte> key)

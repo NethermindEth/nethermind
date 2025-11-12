@@ -74,7 +74,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
             if (_context.LockQC is null || parentQc.ProposedBlockInfo.Round > _context.LockQC.ProposedBlockInfo.Round)
             {
-                //Basically finalize parent QC
+                //Parent QC is now our lock
                 _context.LockQC = parentQc;
             }
 

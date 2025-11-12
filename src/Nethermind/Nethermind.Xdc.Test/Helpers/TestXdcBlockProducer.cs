@@ -48,7 +48,6 @@ internal class TestXdcBlockProducer(
         IXdcReleaseSpec headSpec = _specProvider.GetXdcSpec(prepared, xdcContext.CurrentRound);
         var leader = GetLeaderAddress(xdcParent, xdcContext.CurrentRound, headSpec);
         signer.SetSigner(candidateContainer.MasternodeCandidates.First(k => k.Address == leader));
-        prepared.Author = leader;
         prepared.Beneficiary = leader;
         return prepared;
     }
@@ -59,7 +58,7 @@ internal class TestXdcBlockProducer(
         if (epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
         {
             //TODO calculate master nodes based on the current round
-            (masternodes, _) = snapshotManager.CalculateNextEpochMasternodes(currentHead.Number, currentHead.ParentHash!, spec);
+            (masternodes, _) = snapshotManager.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash!, spec);
         }
         else
         {

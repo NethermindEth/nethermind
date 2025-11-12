@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
@@ -78,15 +79,15 @@ namespace Nethermind.Precompiles.Benchmark
             => Bytes.FromHexString(line.Split(',')[0]);
 
         [Benchmark(Baseline = true, OperationsPerInvoke = Operations)]
-        public (ReadOnlyMemory<byte>, bool) Baseline()
+        public bool Baseline()
         {
             bool overallResult = true;
             for (var i = 0; i < Operations; i++)
             {
-                (_, bool result) = Input.Precompile.Run(Input.Bytes, Cancun.Instance);
+                Result<byte[]> result = Input.Precompile.Run(Input.Bytes, Cancun.Instance);
                 overallResult &= result;
             }
-            return (default, overallResult);
+            return overallResult;
         }
     }
 }

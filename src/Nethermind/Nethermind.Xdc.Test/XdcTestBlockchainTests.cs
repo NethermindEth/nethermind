@@ -5,6 +5,7 @@ using Autofac;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using NUnit.Framework;
 using System;
@@ -31,10 +32,18 @@ internal class XdcTestBlockchainTests
         _blockchain?.Dispose();
     }
 
-    [Test]
-    public async Task SetupXdcChainAndValidateAllHeaders()
+    [TestCase(180)]
+    [TestCase(91)]
+    public async Task SetupXdcChainAndValidateAllHeaders(int count)
     {
-        await _blockchain.AddBlocks(1800);
+        //Shorten the epoch length so we can run the test faster
+        _blockchain.ChangeReleaseSpec((c) =>
+        {
+            c.EpochLength = 90;
+            c.Gap = 45;
+        });
+
+        await _blockchain.AddBlocks(count);
         IHeaderValidator headerValidator = _blockchain.Container.Resolve<IHeaderValidator>();
         BlockHeader parent = _blockchain.BlockTree.Genesis!;
         for (int i = 1; i < _blockchain.BlockTree.Head!.Number; i++)
