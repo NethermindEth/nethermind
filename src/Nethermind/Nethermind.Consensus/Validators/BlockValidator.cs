@@ -237,11 +237,10 @@ public class BlockValidator(
 
         if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
         {
-            // Console.WriteLine("processed block:");
-            // Console.WriteLine(processedBlock.BlockAccessList.ToString());
             if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
             error ??= BlockErrorMessages.InvalidBlockLevelAccessListRoot(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
             suggestedBlock.GeneratedBlockAccessList = processedBlock.BlockAccessList;
+            if (_logger.IsWarn) _logger.Warn($"Generated block access list:\n{suggestedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{suggestedBlock.BlockAccessList}");
         }
 
         if (receipts.Length != processedBlock.Transactions.Length)

@@ -28,7 +28,4 @@ public readonly struct StorageRead(byte[] key) : IEquatable<StorageRead>, ICompa
 
     public static bool operator !=(StorageRead left, StorageRead right) =>
         !(left == right);
-
-    // public override readonly string? ToString()
-    //     => $"0x{Bytes.ToHexString(Key.Unwrap())}";
 }

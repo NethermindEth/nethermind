@@ -62,10 +62,4 @@ public class SlotChanges(byte[] slot, List<StorageChange> changes) : IEquatable<
 
         return false;
     }
-
-    // public override readonly string? ToString()
-    // {
-    //     string changes = string.Join(", ", [.. Changes.Select(s => s.ToString())]);
-    //     return $"[0x{Bytes.ToHexString(Slot)}, [{changes}]]";
-    // }
 }

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
 using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
 
@@ -254,7 +255,6 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         {
             Change change = _changes.Pop();
             AccountChanges accountChanges = _accountChanges[change.Address];
-            // int count;
             switch (change.Type)
             {
                 case ChangeType.BalanceChange:
@@ -306,8 +306,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     }
 
     public override readonly string? ToString()
-        => ""; // json serialise
-        // => "[\n" + string.Join(",\n", [.. _accountChanges.Values.Select(account => account.ToString())]) + "\n]";
+        => JsonSerializer.Serialize(this);
 
     private readonly bool HasBalanceChangedDuringTx(Address address, UInt256 beforeInstr, UInt256 afterInstr)
     {
