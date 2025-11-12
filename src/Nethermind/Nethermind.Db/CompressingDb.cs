@@ -191,7 +191,6 @@ namespace Nethermind.Db
                 => Decompress(_wrapped.Get(key, flags));
 
 
-            [SkipLocalsInit]
             public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
             {
                 PutSpanCompressedIfNeeded(_wrapped, key, value, flags);
