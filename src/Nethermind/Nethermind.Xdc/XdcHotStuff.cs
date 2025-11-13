@@ -331,7 +331,7 @@ namespace Nethermind.Xdc
                 return;
             }
 
-            // Check voting rule 
+            // Check voting rule
             bool canVote = _votesManager.VerifyVotingRules(head);
             if (!canVote)
             {
