@@ -4,19 +4,12 @@
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 
@@ -36,7 +29,7 @@ internal class SnapshotManagerTests
 
         _snapshotDb = new MemDb();
 
-        IPenaltyHandler penaltyHandler = Substitute.For<IPenaltyHandler>();
+        IPenaltyHandler penaltyHandler = NSubstitute.Substitute.For<IPenaltyHandler>();
         _blockTree = Substitute.For<IBlockTree>();
         _snapshotManager = new SnapshotManager(_snapshotDb, _blockTree, penaltyHandler);
     }
@@ -45,7 +38,7 @@ internal class SnapshotManagerTests
     public void GetSnapshot_ShouldReturnNullForNonExistentSnapshot()
     {
         // Act
-        var result = _snapshotManager.GetSnapshot(0, _xdcReleaseSpec);
+        var result = _snapshotManager.GetSnapshotByBlockNumber(0, _xdcReleaseSpec);
 
         // Assert
         result.Should().BeNull();
@@ -62,7 +55,7 @@ internal class SnapshotManagerTests
         _blockTree.FindHeader(gapBlock).Returns(header);
 
         // Act
-        var result = _snapshotManager.GetSnapshot(gapBlock, _xdcReleaseSpec);
+        var result = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // assert that it was retrieved from cache
         result.Should().BeEquivalentTo(snapshot);
@@ -72,7 +65,7 @@ internal class SnapshotManagerTests
     public void GetSnapshot_ShouldReturnNullForEmptyDb()
     {
         // Act
-        var result = _snapshotManager.GetSnapshot(0, _xdcReleaseSpec);
+        var result = _snapshotManager.GetSnapshotByBlockNumber(0, _xdcReleaseSpec);
         // Assert
         result.Should().BeNull();
     }
@@ -88,7 +81,7 @@ internal class SnapshotManagerTests
         _blockTree.FindHeader(gapBlock).Returns(header);
 
         // Act
-        var saved = _snapshotManager.GetSnapshot(gapBlock, _xdcReleaseSpec);
+        var saved = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // Assert
         saved.Should().BeEquivalentTo(snapshot);
@@ -105,7 +98,7 @@ internal class SnapshotManagerTests
 
         // Act
         _snapshotManager.StoreSnapshot(snapshot);
-        var fromDb = _snapshotManager.GetSnapshot(gapBlock, _xdcReleaseSpec);
+        var fromDb = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // Assert
         fromDb.Should().BeEquivalentTo(snapshot);
@@ -120,9 +113,9 @@ internal class SnapshotManagerTests
         var snapshot1 = new Snapshot(gapBlock1, header.Hash!, [Address.FromNumber(1)]);
         _snapshotManager.StoreSnapshot(snapshot1);
         _blockTree.FindHeader(gapBlock1).Returns(header);
-        var result = _snapshotManager.GetSnapshot(gapBlock1, _xdcReleaseSpec);
+        var result = _snapshotManager.GetSnapshotByGapNumber(gapBlock1);
 
-        // assert that it was retrieved from db 
+        // assert that it was retrieved from db
         result.Should().BeEquivalentTo(snapshot1);
 
         // store another snapshot with the same hash but different data
@@ -133,7 +126,7 @@ internal class SnapshotManagerTests
         _snapshotManager.StoreSnapshot(snapshot2);
         _blockTree.FindHeader(gapBlock2).Returns(header2);
         _snapshotManager.StoreSnapshot(snapshot2);
-        result = _snapshotManager.GetSnapshot(900, _xdcReleaseSpec);
+        result = _snapshotManager.GetSnapshotByBlockNumber(900, _xdcReleaseSpec);
 
         // assert that the original snapshot is still returned
         result.Should().BeEquivalentTo(snapshot2);
@@ -153,10 +146,9 @@ internal class SnapshotManagerTests
         var snapshot = new Snapshot(expectedGapNumber, header.Hash!, [Address.FromNumber(1)]);
         _snapshotManager.StoreSnapshot(snapshot);
         _blockTree.FindHeader(expectedGapNumber).Returns(header);
-        var result = _snapshotManager.GetSnapshot(blockNumber, _xdcReleaseSpec);
+        var result = _snapshotManager.GetSnapshotByBlockNumber(blockNumber, _xdcReleaseSpec);
 
-        // assert that it was retrieved from db 
+        // assert that it was retrieved from db
         result.Should().BeEquivalentTo(snapshot);
-
     }
 }
