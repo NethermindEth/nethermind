@@ -58,12 +58,8 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
 
         if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
         {
-            bool needsUpdate = !(typeof(TValue).IsValueType ?
-                EqualityComparer<TValue>.Default.Equals(ov.Value, val) :
-                ReferenceEquals(ov.Value, val));
-
-            // Fast path: no update or atomic update using TryUpdate
-            if (!needsUpdate || _cacheMap.TryUpdate(key, new(val, ov.Offset), comparisonValue: ov))
+            // Fast path: atomic update using TryUpdate
+            if (_cacheMap.TryUpdate(key, new(val, ov.Offset), comparisonValue: ov))
             {
                 MarkAccessed(ov.Offset);
                 return false;
