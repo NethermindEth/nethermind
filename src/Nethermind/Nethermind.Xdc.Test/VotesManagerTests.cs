@@ -180,7 +180,7 @@ public class VotesManagerTests
         blockTree.Head.Returns(new Block(header));
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshot(915, Arg.Any<IXdcReleaseSpec>())
+        snapshotManager.GetSnapshotByBlockNumber(915, Arg.Any<IXdcReleaseSpec>())
             .Returns(new Snapshot(0, Hash256.Zero, masternodes));
         IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
