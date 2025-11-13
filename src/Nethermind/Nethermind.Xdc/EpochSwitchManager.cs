@@ -114,7 +114,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
         if (header.Number == xdcSpec.SwitchBlock)
         {
-            masterNodes = XdcExtensions.ExtractAddresses(header.ExtraData[XdcConstants.ExtraVanity..^XdcConstants.ExtraSeal]).Value.ToArray();
+            masterNodes = xdcSpec.GenesisMasterNodes;
         }
         else
         {
@@ -126,8 +126,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             masterNodes = header.ValidatorsAddress.Value.ToArray();
         }
 
-
-        var snap = _snapshotManager.GetSnapshot(header.Hash);
+        var snap = _snapshotManager.GetSnapshotByBlockNumber(header.Number, xdcSpec);
         if (snap is null)
         {
             return null;
@@ -152,7 +151,6 @@ internal class EpochSwitchManager : IEpochSwitchManager
         {
             epochSwitchInfo.EpochSwitchParentBlockInfo = header.ExtraConsensusData.QuorumCert.ProposedBlockInfo;
         }
-
 
         _epochSwitches.Set(header.Hash, epochSwitchInfo);
         return epochSwitchInfo;
@@ -338,8 +336,11 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
     public BlockRoundInfo? GetBlockByEpochNumber(ulong targetEpoch)
     {
-        var headHeader = _tree.Head.Header as XdcBlockHeader;
-
+        var headHeader = _tree.Head?.Header as XdcBlockHeader;
+        if (headHeader is null)
+        {
+            return null;
+        }
         var xdcSpec = _xdcSpecProvider.GetXdcSpec(headHeader);
 
         EpochSwitchInfo epochSwitchInfo = GetEpochSwitchInfo(headHeader);

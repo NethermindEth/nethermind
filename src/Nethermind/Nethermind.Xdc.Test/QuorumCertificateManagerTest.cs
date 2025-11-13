@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -30,7 +31,8 @@ public class QuorumCertificateManagerTest
             new XdcConsensusContext(),
             Substitute.For<IBlockTree>(),
             Substitute.For<ISpecProvider>(),
-            Substitute.For<IEpochSwitchManager>());
+            Substitute.For<IEpochSwitchManager>(),
+            Substitute.For<ILogManager>());
 
         Assert.That(() => quorumCertificateManager.VerifyCertificate(null!, Build.A.XdcBlockHeader().TestObject, out _), Throws.ArgumentNullException);
     }
@@ -42,7 +44,8 @@ public class QuorumCertificateManagerTest
             new XdcConsensusContext(),
             Substitute.For<IBlockTree>(),
             Substitute.For<ISpecProvider>(),
-            Substitute.For<IEpochSwitchManager>());
+            Substitute.For<IEpochSwitchManager>(),
+            Substitute.For<ILogManager>());
 
         Assert.That(() => quorumCertificateManager.VerifyCertificate(Build.A.QuorumCertificate().TestObject, null!, out _), Throws.ArgumentNullException);
     }
@@ -95,7 +98,8 @@ public class QuorumCertificateManagerTest
             new XdcConsensusContext(),
             Substitute.For<IBlockTree>(),
             specProvider,
-            epochSwitchManager);
+            epochSwitchManager,
+            Substitute.For<ILogManager>());
 
         Assert.That(quorumCertificateManager.VerifyCertificate(quorumCert, xdcBlockHeaderBuilder.TestObject, out _), Is.EqualTo(expected));
     }
