@@ -133,7 +133,6 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         if (_context.HighestCommitBlock is not null && (_context.HighestCommitBlock.Round >= parentHeader.ExtraConsensusData.BlockRound || _context.HighestCommitBlock.BlockNumber > grandParentHeader.Number))
         {
-
             error = $"Committed block ({_context.HighestCommitBlock.Hash}) has higher round or block number.";
             return false;
         }
