@@ -386,10 +386,10 @@ public class HistoryPruner : IHistoryPruner
 
     private void CheckConfig()
     {
-        if (_historyConfig.RetentionEpochs < _minHistoryRetentionEpochs)
-        {
-            throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
-        }
+        // if (_historyConfig.RetentionEpochs < _minHistoryRetentionEpochs)
+        // {
+        //     throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
+        // }
     }
 
     private bool ShouldPruneHistory(out ulong? cutoffTimestamp)
