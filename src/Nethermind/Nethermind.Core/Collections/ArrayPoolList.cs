@@ -243,7 +243,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         ArrayPoolListCore.Dispose(_arrayPool, ref _array, ref _count, ref _capacity, ref _disposed);
 
 #if DEBUG
-        GC.SuppressFinalize(this);
+    GC.SuppressFinalize(this);
 #endif
     }
 

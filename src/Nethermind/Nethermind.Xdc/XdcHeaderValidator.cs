@@ -18,10 +18,7 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
     protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader parent, bool isUncle, out string? error)
     {
         if (parent is null)
-        {
             throw new ArgumentNullException(nameof(parent));
-        }
-
         if (header is not XdcBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
         if (parent is not XdcBlockHeader parentXdcHeader)
