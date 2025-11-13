@@ -72,8 +72,9 @@ public class Tests
 
         //Invalid total difficulty
         blockHeaderBuilder = CreateValidHeader();
-        blockHeaderBuilder.WithDifficulty(2);
-        blockHeaderBuilder.WithTotalDifficulty(1);
+        blockHeaderBuilder
+            .WithDifficulty(1)
+            .WithTotalDifficulty(1);
         yield return [blockHeaderBuilder, false];
 
         static XdcBlockHeaderBuilder CreateValidHeader()
