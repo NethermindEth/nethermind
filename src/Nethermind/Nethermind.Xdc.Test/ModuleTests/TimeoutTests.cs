@@ -11,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.Xdc.Types;
 using Nethermind.Xdc.Test.Helpers;
 using NUnit.Framework;
+using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 
@@ -36,21 +37,13 @@ public class TimeoutTests
         var blockchain = await XdcTestBlockchain.Create();
         // Create TCManager with a signer not in the Masternode list
         var extraKey = blockchain.RandomKeys.First();
-        //TODO: Probably should add correct xdc chain id to BlockchainIds
-        var signer = new Signer(0, extraKey, NSubstitute.Substitute.For<ILogManager>());
-        var tcManager = new TimeoutCertificateManager(
-            blockchain.XdcContext,
-            blockchain.SnapshotManager,
-            blockchain.EpochSwitchManager,
-            blockchain.SpecProvider,
-            blockchain.BlockTree,
-            NSubstitute.Substitute.For<ISyncInfoManager>(),
-            signer);
-        var ctx = blockchain.XdcContext;
-        tcManager.OnCountdownTimer();
+
+        blockchain.Signer.SetSigner(TestItem.PrivateKeyA);
+        
+        blockchain.TimeoutCertificateManager.OnCountdownTimer();
 
         // Since the signer is not in masternode list, method should return early
-        Assert.That(ctx.TimeoutCounter, Is.EqualTo(0));
+        Assert.That(blockchain.XdcContext.TimeoutCounter, Is.EqualTo(0));
     }
 
     [Test]
