@@ -4,12 +4,10 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 internal class XdcTestHelper
@@ -41,5 +39,15 @@ internal class XdcTestHelper
             return ecdsa.Sign(k, stream.GetValueHash());
         }).ToArray();
         return signatures.ToArray();
+    }
+
+    public static Timeout BuildSignedTimeout(PrivateKey key, ulong round, ulong gap)
+    {
+        var decoder = new TimeoutDecoder();
+        var timeout = new Timeout(round, signature: null, gap);
+        Rlp rlp = decoder.Encode(timeout, Nethermind.Serialization.Rlp.RlpBehaviors.ForSealing);
+        var hash = Keccak.Compute(rlp.Bytes).ValueHash256;
+        var signature = new EthereumEcdsa(0).Sign(key, hash);
+        return new Timeout(round, signature, gap) { Signer = key.Address };
     }
 }

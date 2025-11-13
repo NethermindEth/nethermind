@@ -87,7 +87,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     public void ProcessTimeoutCertificate(TimeoutCertificate timeoutCertificate)
     {
-        if (timeoutCertificate.Round > _consensusContext.HighestTC.Round)
+        if (_consensusContext.HighestTC is null || timeoutCertificate.Round > _consensusContext.HighestTC.Round)
         {
             _consensusContext.HighestTC = timeoutCertificate;
         }
@@ -179,8 +179,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         var currentBlock = _blockTree.Head ?? throw new InvalidOperationException("Failed to get current block");
         var currentHeader = currentBlock.Header as XdcBlockHeader;
         var currentBlockNumber = currentBlock.Number;
-        var epochLenth = _specProvider.GetXdcSpec(currentHeader, timeout.Round).EpochLength;
-        if (Math.Abs((long)timeout.GapNumber - currentBlockNumber) > 3 * epochLenth)
+        var epochLength = _specProvider.GetXdcSpec(currentHeader, timeout.Round).EpochLength;
+        if (Math.Abs((long)timeout.GapNumber - currentBlockNumber) > 3 * epochLength)
         {
             // Discarded propagated timeout, too far away
             return Task.CompletedTask;
@@ -194,7 +194,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         return Task.CompletedTask;
     }
 
-    private bool FilterTimeout(Timeout timeout)
+    internal bool FilterTimeout(Timeout timeout)
     {
         if (timeout.Round < _consensusContext.CurrentRound) return false;
 
