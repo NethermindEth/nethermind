@@ -429,7 +429,6 @@ public class XdcTestBlockchain : TestBlockchain
         var newHeadWaitHandle = new TaskCompletionSource();
         var newRoundWaitHandle = new TaskCompletionSource();
         XdcContext.NewRoundSetEvent += OnNewRound;
-        BlockTree.NewHeadBlock += OnNewHead;
         try
         {
             //by setting the correct signer the block producer runner should trigger trying to propose a block
@@ -455,7 +454,6 @@ public class XdcTestBlockchain : TestBlockchain
         }
         finally
         {
-            BlockTree.NewHeadBlock -= OnNewHead;
             XdcContext.NewRoundSetEvent -= OnNewRound;
         }
 
