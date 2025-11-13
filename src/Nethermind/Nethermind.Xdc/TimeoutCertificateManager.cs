@@ -200,7 +200,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
         XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
-        //TODO: getSnapshot method should receive block number instead of gapnumber
         Snapshot snapshot = _snapshotManager.GetSnapshot((long)timeout.GapNumber, spec);
         if (snapshot is null || snapshot.NextEpochCandidates.Length == 0) return false;
 
