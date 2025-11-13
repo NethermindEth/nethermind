@@ -227,7 +227,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         {
             EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader);
             if (epochSwitchInfo is null)
-                throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
+                throw new DataExtractionException(nameof(EpochSwitchInfo));
 
             var currentNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
             gapNumber = Math.Max(0, currentNumber - currentNumber % spec.EpochLength - spec.Gap);
