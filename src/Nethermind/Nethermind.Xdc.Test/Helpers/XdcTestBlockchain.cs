@@ -85,8 +85,8 @@ public class XdcTestBlockchain : TestBlockchain
     protected XdcTestBlockchain(bool useHotStuffModule, int masterNodesCount)
     {
         var keys = new PrivateKeyGenerator().Generate(210).ToList();
-        MasterNodeCandidates = keys.Take(200).ToList();
-        RandomKeys = keys.Skip(200).ToList();
+        MasterNodeCandidates = keys.Take(masterNodesCount).ToList();
+        RandomKeys = keys.Skip(masterNodesCount).ToList();
         RandomSigner = new TestRandomSigner(MasterNodeCandidates);
         _useHotStuffModule = useHotStuffModule;
         _masterNodeCount = masterNodesCount;
@@ -391,7 +391,6 @@ public class XdcTestBlockchain : TestBlockchain
         var headSpec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
         if (ISnapshotManager.IsTimeforSnapshot(head.Number, headSpec))
         {
-            Console.WriteLine($"Storing snapshot for block {head.Number}");
             SnapshotManager.StoreSnapshot(new Types.Snapshot(head.Number, head.Hash!, MasterNodeCandidates.Select(k => k.Address).ToArray()));
         }
     }
@@ -435,7 +434,7 @@ public class XdcTestBlockchain : TestBlockchain
             //Voting will trigger QC creation which triggers new round
             var finishedTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(10_000));
             if (finishedTask != newRoundWaitHandle.Task)
-                Assert.Fail("After 200 votes no new head could be detected. Something is wrong.");
+                Assert.Fail($"After {_masterNodeCount} votes no new head could be detected. Something is wrong.");
 
             var waitingForHead = await Task.WhenAny(newHeadWaitHandle.Task, Task.Delay(10_000));
 
