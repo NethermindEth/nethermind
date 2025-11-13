@@ -128,11 +128,11 @@ namespace Nethermind.Xdc
             }
             catch (OperationCanceledException)
             {
-                _logger.Info("XdcHotStuff consensus runner stopped gracefully");
+                _logger.Info("XdcHotStuff consensus runner stopped");
             }
             catch (Exception ex)
             {
-                _logger.Error("XdcHotStuff consensus runner encountered unexpected error", ex);
+                _logger.Error("XdcHotStuff consensus runner encountered fatal error", ex);
                 throw;
             }
             finally
@@ -164,7 +164,7 @@ namespace Nethermind.Xdc
             _logger.Debug("Waiting for blockTree.Head to initialize...");
             while (_blockTree.Head == null)
             {
-                await Task.Delay(200, cancellationToken);
+                await Task.Delay(100, cancellationToken);
             }
             _logger.Debug($"BlockTree initialized with head at block #{_blockTree.Head.Number}");
         }
@@ -178,7 +178,7 @@ namespace Nethermind.Xdc
                 throw new InvalidBlockException(_blockTree.Head, "Head is not XdcBlockHeader.");
 
             _quorumCertificateManager.Initialize(xdcHead);
-            _logger.Info($"Initialized round counter from head: round {_xdcContext.CurrentRound}");
+            _logger.Info($"Initialized round {_xdcContext.CurrentRound} from head.");
         }
 
         /// <summary>
@@ -199,9 +199,8 @@ namespace Nethermind.Xdc
                 {
                     throw;
                 }
-                catch (InvalidOperationException ex)
+                catch (InvalidOperationException)
                 {
-                    _logger.Error("", ex);
                     throw;
                 }
                 catch (Exception ex)
@@ -218,14 +217,14 @@ namespace Nethermind.Xdc
         {
             ulong currentRound = _xdcContext.CurrentRound;
 
-            XdcBlockHeader? parent = GetParentForRound();
-            if (parent == null)
+            XdcBlockHeader? roundParent = GetParentForRound();
+            if (roundParent == null)
             {
                 throw new InvalidOperationException($"Head is null or not XdcBlockHeader.");
             }
 
             // Get XDC spec for this round
-            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(parent, currentRound);
+            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(roundParent, currentRound);
             if (spec == null)
             {
                 _logger.Error($"Round {currentRound}: Failed to get XDC spec, skipping");
@@ -233,35 +232,35 @@ namespace Nethermind.Xdc
             }
 
             // Get epoch info and check for epoch switch
-            EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(parent);
+            EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(roundParent);
             if (epochInfo?.Masternodes == null || epochInfo.Masternodes.Length == 0)
             {
                 _logger.Warn($"Round {currentRound}: No masternodes in epoch, skipping");
                 return;
             }
 
-            bool isMyTurn = IsMyTurnAndTime(parent, currentRound, epochInfo.Masternodes, spec);
-            _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(parent, currentRound, epochInfo.Masternodes, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
+            bool isMyTurn = IsMyTurnAndTime(roundParent, currentRound, spec);
+            _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
 
             if (isMyTurn)
             {
                 _highestSelfMinedRound = currentRound;
-                Task blockBuilder = BuildAndProposeBlock(parent, currentRound, spec, ct);
+                Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
             }
 
-            await CommitCertificateAndVote(parent, epochInfo, currentRound);
+            if (spec.SwitchBlock < roundParent.Number)
+            {
+                await CommitCertificateAndVote(roundParent, epochInfo);
+            }
         }
 
         private XdcBlockHeader GetParentForRound()
         {
-            BlockHeader parent = _blockTree.FindHeader(_xdcContext.HighestQC?.ProposedBlockInfo.Hash, _xdcContext.HighestQC?.ProposedBlockInfo.BlockNumber);
-            if (parent == null)
-                parent = _blockTree.Head.Header;
-            return parent as XdcBlockHeader;
+            return _blockTree.Head.Header as XdcBlockHeader;
         }
 
         /// <summary>
-        /// Build block with parentQC, arm timeout, emit BlockProduced.
+        /// Build block with parentQC.
         /// </summary>
         private async Task BuildAndProposeBlock(XdcBlockHeader parent, ulong currentRound, IXdcReleaseSpec spec, CancellationToken ct)
         {
@@ -312,23 +311,23 @@ namespace Nethermind.Xdc
         /// <summary>
         /// Voter path - commit received QC, check voting rule, cast vote.
         /// </summary>
-        private async Task CommitCertificateAndVote(XdcBlockHeader head, EpochSwitchInfo epochInfo, ulong currentRound)
+        private async Task CommitCertificateAndVote(XdcBlockHeader head, EpochSwitchInfo epochInfo)
         {
             if (head.ExtraConsensusData?.QuorumCert is null)
                 throw new InvalidOperationException("Head block missing consensus data.");
+            var votingRound = head.ExtraConsensusData.BlockRound;
+            if (_highestVotedRound >= votingRound)
+                return;
 
             // Commit/record the header's QC
             _quorumCertificateManager.CommitCertificate(head.ExtraConsensusData.QuorumCert);
 
-            if (_highestVotedRound >= _xdcContext.CurrentRound)
-                return;
-
-            _highestVotedRound = currentRound;
+            _highestVotedRound = votingRound;
 
             // Check if we are in the masternode set
             if (!Array.Exists(epochInfo.Masternodes, (a) => a == _signer.Address))
             {
-                _logger.Info($"Round {currentRound}: Skipped voting (not in masternode set)");
+                _logger.Info($"Round {votingRound}: Skipped voting (not in masternode set)");
                 return;
             }
 
@@ -336,7 +335,7 @@ namespace Nethermind.Xdc
             bool canVote = _votesManager.VerifyVotingRules(head);
             if (!canVote)
             {
-                _logger.Info($"Round {currentRound}: Voting rule not satisfied for block #{head.Hash}");
+                _logger.Info($"Round {votingRound}: Voting rule not satisfied for block #{head.Hash}");
                 return;
             }
 
@@ -345,11 +344,11 @@ namespace Nethermind.Xdc
                 BlockRoundInfo voteInfo = new BlockRoundInfo(head.Hash!, head.ExtraConsensusData.BlockRound, head.Number);
                 await _votesManager.CastVote(voteInfo);
                 _lastActivityTime = DateTime.UtcNow;
-                _logger.Info($"Round {currentRound}: Voted for block #{head.Number}, hash={head.Hash}");
+                _logger.Info($"Round {votingRound}: Voted for block #{head.Number}, hash={head.Hash}");
             }
             catch (Exception ex)
             {
-                _logger.Error($"Round {currentRound}: Failed to cast vote.", ex);
+                _logger.Error($"Round {votingRound}: Failed to cast vote.", ex);
             }
         }
 
@@ -381,9 +380,9 @@ namespace Nethermind.Xdc
         /// Check if the current node is the leader for the given round.
         /// Uses epoch switch manager and spec to determine leader via round-robin rotation.
         /// </summary>
-        private bool IsMyTurnAndTime(XdcBlockHeader parent, ulong round, Address[] masternodes, IXdcReleaseSpec spec)
+        private bool IsMyTurnAndTime(XdcBlockHeader parent, ulong round, IXdcReleaseSpec spec)
         {
-            if (_highestSelfMinedRound <= round)
+            if (_highestSelfMinedRound >= round)
             {
                 //Already produced block for this round
                 return false;
@@ -401,10 +400,7 @@ namespace Nethermind.Xdc
                 return false;
             }
 
-            if (masternodes.Length == 0)
-                return false;
-
-            Address leaderAddress = GetLeaderAddress(parent, round, masternodes, spec);
+            Address leaderAddress = GetLeaderAddress(parent, round, spec);
             return leaderAddress == _signer.Address;
         }
 
@@ -412,26 +408,22 @@ namespace Nethermind.Xdc
         /// Get the leader address for a given round using round-robin rotation.
         /// Leader selection: (round % epochLength) % masternodeCount
         /// </summary>
-        private Address GetLeaderAddress(XdcBlockHeader currentHead, ulong round, Address[] masternodes, IXdcReleaseSpec spec)
+        public Address GetLeaderAddress(XdcBlockHeader currentHead, ulong round, IXdcReleaseSpec spec)
         {
-            if (masternodes.Length == 0)
-            {
-                throw new InvalidOperationException("Cannot determine leader with empty masternode set");
-            }
-
-            EpochSwitchInfo epochSwitchInfo = null;
+            Address[] currentMasternodes;
             if (_epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
             {
                 //TODO calculate master nodes based on the current round
-                (masternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash, spec);
+                (currentMasternodes, _) = _snapshotManager.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash, spec);
             }
             else
             {
-                epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHead);
+                var epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHead);
+                currentMasternodes = epochSwitchInfo.Masternodes;
             }
 
-            int currentLeaderIndex = ((int)round % spec.EpochLength % epochSwitchInfo.Masternodes.Length);
-            return masternodes[currentLeaderIndex];
+            int currentLeaderIndex = ((int)round % spec.EpochLength % currentMasternodes.Length);
+            return currentMasternodes[currentLeaderIndex];
         }
 
         /// <summary>

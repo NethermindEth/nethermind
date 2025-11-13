@@ -45,12 +45,14 @@ public class TimeoutCertificateManagerTests
                     .Returns((Snapshot?)null);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-        blockTree.FindHeader(Arg.Any<long>()).Returns(header);
+        blockTree.Head.Returns(new Block(header));
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new XdcReleaseSpec() { V2Configs = [new V2ConfigParams()] });
         var tcManager = new TimeoutCertificateManager(
             new XdcConsensusContext(),
             snapshotManager,
             Substitute.For<IEpochSwitchManager>(),
-            Substitute.For<ISpecProvider>(),
+            specProvider,
             blockTree,
             Substitute.For<ISyncInfoManager>(),
             Substitute.For<ISigner>());
@@ -69,12 +71,16 @@ public class TimeoutCertificateManagerTests
             .Returns(new Snapshot(0, Hash256.Zero, Array.Empty<Address>()));
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-        blockTree.FindHeader(Arg.Any<long>()).Returns(header);
+        blockTree
+            .Head
+            .Returns(new Block(header));
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new XdcReleaseSpec() { V2Configs = [new V2ConfigParams()] });
         var tcManager = new TimeoutCertificateManager(
             new XdcConsensusContext(),
             snapshotManager,
             Substitute.For<IEpochSwitchManager>(),
-            Substitute.For<ISpecProvider>(),
+            specProvider,
             blockTree,
             Substitute.For<ISyncInfoManager>(),
             Substitute.For<ISigner>());

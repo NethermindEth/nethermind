@@ -12,6 +12,7 @@ using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test;
+
 internal class SnapshotManagerTests
 {
     private ISnapshotManager _snapshotManager;
@@ -31,12 +32,6 @@ internal class SnapshotManagerTests
         IPenaltyHandler penaltyHandler = NSubstitute.Substitute.For<IPenaltyHandler>();
         _blockTree = Substitute.For<IBlockTree>();
         _snapshotManager = new SnapshotManager(_snapshotDb, _blockTree, penaltyHandler);
-    }
-
-    [TearDown]
-    public void TearDown()
-    {
-        _snapshotDb.Dispose();
     }
 
     [Test]
@@ -135,7 +130,6 @@ internal class SnapshotManagerTests
 
         // assert that the original snapshot is still returned
         result.Should().BeEquivalentTo(snapshot2);
-
     }
 
     [TestCase(1, 0)]
@@ -156,6 +150,5 @@ internal class SnapshotManagerTests
 
         // assert that it was retrieved from db
         result.Should().BeEquivalentTo(snapshot);
-
     }
 }
