@@ -416,7 +416,7 @@ namespace Nethermind.Synchronization
         {
             try
             {
-                Hash256? hash = _blockTree.FindBlockHash(number);
+                Hash256? hash = _blockTree.FindHash(number);
                 return hash;
             }
             catch (Exception)
