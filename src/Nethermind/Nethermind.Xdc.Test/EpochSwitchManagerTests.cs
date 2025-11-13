@@ -45,7 +45,7 @@ internal class EpochSwitchManagerTests
 
             if ((block.ExtraConsensusData?.BlockRound ?? 0ul) % (ulong)spec.EpochLength == 0)
             {
-                snapManager.GetSnapshot(block.Hash!).Returns(new Snapshot(block.Number, block.Hash!, [.. StandbyAddresses, .. SignerAddresses]));
+                snapManager.GetSnapshotByBlockNumber(block.Number, Arg.Any<IXdcReleaseSpec>()).Returns(new Snapshot(block.Number, block.Hash!, [.. StandbyAddresses, .. SignerAddresses]));
             }
 
             tree.FindHeader(block.Hash!).Returns(block);
@@ -545,7 +545,7 @@ internal class EpochSwitchManagerTests
         header.Number = (long)blockNumber;
         header.ExtraData = FillExtraDataForTests([TestItem.AddressA, TestItem.AddressB]);
 
-        _snapshotManager.GetSnapshot(hash256).Returns(new Snapshot(header.Number, header.Hash!, signers));
+        _snapshotManager.GetSnapshotByBlockNumber((long)blockNumber, Arg.Any<IXdcReleaseSpec>()).Returns(new Snapshot(header.Number, header.Hash!, signers));
 
         _tree.FindHeader((long)blockNumber).Returns(header);
         var result = _epochSwitchManager.GetEpochSwitchInfo(header);
@@ -629,7 +629,7 @@ internal class EpochSwitchManagerTests
         header.ExtraData = FillExtraDataForTests([TestItem.AddressA, TestItem.AddressB]);
         header.Hash = TestItem.KeccakA;
 
-        _snapshotManager.GetSnapshot(TestItem.KeccakA).Returns((Snapshot)null!);
+        _snapshotManager.GetSnapshotByBlockNumber((long)blockNumber, Arg.Any<IXdcReleaseSpec>()).Returns((Snapshot)null!);
 
         _tree.FindHeader((long)blockNumber).Returns(header);
         _tree.FindHeader(header.Hash).Returns(header);

@@ -126,7 +126,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
         }
 
 
-        var snap = _snapshotManager.GetSnapshot(header.Hash);
+        var snap = _snapshotManager.GetSnapshotByBlockNumber(header.Number, xdcSpec);
         if (snap is null)
         {
             return null;

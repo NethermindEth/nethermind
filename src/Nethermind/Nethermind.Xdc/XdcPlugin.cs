@@ -16,6 +16,7 @@ using Nethermind.Init.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Xdc.Spec;
 using System;
+using Nethermind.Blockchain;
 
 namespace Nethermind.Xdc;
 
@@ -61,14 +62,14 @@ public class XdcModule : Module
             .AddSingleton<IEpochSwitchManager, EpochSwitchManager>()
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(SnapshotDbName)
-            .AddSingleton<ISnapshotManager, IDb, IPenaltyHandler>(CreateSnapshotManager)
+            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IPenaltyHandler>(CreateSnapshotManager)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             ;
     }
 
-    private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IPenaltyHandler penaltyHandler)
+    private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IPenaltyHandler penaltyHandler)
     {
-        return new SnapshotManager(db, penaltyHandler);
+        return new SnapshotManager(db, blockTree, penaltyHandler);
     }
 
 }

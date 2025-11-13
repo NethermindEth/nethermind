@@ -11,18 +11,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 internal class XdcBlockProducer : BlockProducerBase
@@ -85,7 +79,7 @@ internal class XdcBlockProducer : BlockProducerBase
 
         if (epochSwitchManager.IsEpochSwitchAtBlock(xdcBlockHeader))
         {
-            (Address[] masternodes, Address[] penalties) = snapshotManager.CalculateNextEpochMasternodes(xdcBlockHeader, spec);
+            (Address[] masternodes, Address[] penalties) = snapshotManager.CalculateNextEpochMasternodes(xdcBlockHeader.Number, xdcBlockHeader.ParentHash, spec);
 
             xdcBlockHeader.Validators = new byte[masternodes.Length * Address.Size];
 
