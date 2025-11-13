@@ -39,7 +39,7 @@ public class TimeoutTests
         var extraKey = blockchain.RandomKeys.First();
 
         blockchain.Signer.SetSigner(TestItem.PrivateKeyA);
-        
+
         blockchain.TimeoutCertificateManager.OnCountdownTimer();
 
         // Since the signer is not in masternode list, method should return early
