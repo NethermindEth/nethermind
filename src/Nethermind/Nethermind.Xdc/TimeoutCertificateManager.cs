@@ -214,14 +214,14 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     private void SendTimeout()
     {
-        ulong gapNumber = 0;
+        long gapNumber = 0;
         var currentHeader = (XdcBlockHeader)_blockTree.Head?.Header;
         if (currentHeader is null) throw new InvalidOperationException("Failed to retrieve current header");
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(currentHeader, _consensusContext.CurrentRound);
         if (_epochSwitchManager.IsEpochSwitchAtRound(_consensusContext.CurrentRound, currentHeader))
         {
-            ulong currentNumber = (ulong)currentHeader.Number + 1;
-            gapNumber = Math.Max(0, currentNumber - currentNumber % (ulong)spec.EpochLength - (ulong)spec.Gap);
+            var currentNumber = currentHeader.Number + 1;
+            gapNumber = Math.Max(0, currentNumber - currentNumber % spec.EpochLength - spec.Gap);
         }
         else
         {
@@ -229,13 +229,13 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             if (epochSwitchInfo is null)
                 throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
 
-            ulong currentNumber = (ulong)epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-            gapNumber = Math.Max(0, currentNumber - currentNumber % (ulong)spec.EpochLength - (ulong)spec.Gap);
+            var currentNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+            gapNumber = Math.Max(0, currentNumber - currentNumber % spec.EpochLength - spec.Gap);
         }
 
-        ValueHash256 msgHash = ComputeTimeoutMsgHash(_consensusContext.CurrentRound, gapNumber);
+        ValueHash256 msgHash = ComputeTimeoutMsgHash(_consensusContext.CurrentRound, (ulong)gapNumber);
         Signature signedHash = _signer.Sign(msgHash);
-        var timeoutMsg = new Timeout(_consensusContext.CurrentRound, signedHash, gapNumber);
+        var timeoutMsg = new Timeout(_consensusContext.CurrentRound, signedHash, (ulong)gapNumber);
         timeoutMsg.Signer = _signer.Address;
 
         HandleTimeoutVote(timeoutMsg);
@@ -259,6 +259,11 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         KeccakRlpStream stream = new KeccakRlpStream();
         _timeoutDecoder.Encode(stream, timeout, RlpBehaviors.ForSealing);
         return stream.GetValueHash();
+    }
+
+    public long GetTimeoutsCount(Timeout timeout)
+    {
+        return _timeouts.GetCount(timeout);
     }
 
 }
