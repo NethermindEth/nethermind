@@ -41,7 +41,7 @@ internal class MineModuleTests
         var spec = _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header!);
 
         var oldHead = (XdcBlockHeader)_tree.Head!.Header!;
-        var snapshotBefore = _blockchainTests.SnapshotManager.GetSnapshot(oldHead.Number, false, _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header!));
+        var snapshotBefore = _blockchainTests.SnapshotManager.GetSnapshotByBlockNumber(oldHead.Number, _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header!));
 
         Assert.That(snapshotBefore, Is.Not.Null);
         Assert.That(snapshotBefore.NextEpochCandidates.Length, Is.EqualTo(_masterNodesGenesisCount));
@@ -60,7 +60,7 @@ internal class MineModuleTests
         var newHead = (XdcBlockHeader)_tree.Head!.Header!;
         Assert.That(newHead.Number, Is.EqualTo(gapBlock.Number));
 
-        var snapshotAfter = _blockchainTests.SnapshotManager.GetSnapshot(newHead.Number, true, _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header!));
+        var snapshotAfter = _blockchainTests.SnapshotManager.GetSnapshotByGapNumber((ulong)newHead.Number);
 
         Assert.That(snapshotAfter, Is.Not.Null);
         Assert.That(snapshotAfter.BlockNumber, Is.EqualTo(gapBlock.Number));
@@ -112,7 +112,7 @@ internal class MineModuleTests
 
         var header = (XdcBlockHeader)_blockchainTests.BlockTree.Head!.Header!;
         spec = _blockchainTests.SpecProvider.GetXdcSpec(header);
-        var snapshot = _blockchainTests.SnapshotManager.GetSnapshot(header.Number, false, spec);
+        var snapshot = _blockchainTests.SnapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
 
         Assert.That(snapshot, Is.Not.Null);
         Assert.That(snapshot.BlockNumber, Is.EqualTo(0));
@@ -128,7 +128,7 @@ internal class MineModuleTests
 
         header = (XdcBlockHeader)gapBlock.Header!;
         spec = _blockchainTests.SpecProvider.GetXdcSpec(header);
-        snapshot = _blockchainTests.SnapshotManager.GetSnapshot(header.Number, true, spec);
+        snapshot = _blockchainTests.SnapshotManager.GetSnapshotByGapNumber((ulong)header.Number);
 
         Assert.That(snapshot, Is.Not.Null);
         Assert.That(snapshot.BlockNumber, Is.EqualTo(gapBlock.Number));
