@@ -87,17 +87,5 @@ internal class BlockInfoTests
 
         Assert.That(result, Is.True);
     }
-
-    /*
-    func TestShouldVerifyBlockInfo(t *testing.T) {
-	    // Insert another Block, but it won't trigger commit
-	    blockNum := 902
-	    blockCoinBase := fmt.Sprintf("0x111000000000000000000000000000000%03d", blockNum)
-	    block902 := CreateBlock(blockchain, params.TestXDPoSMockChainConfig, currentBlock, blockNum, 2, blockCoinBase, signer, signFn, nil, nil, "")
-	    err = blockchain.InsertBlock(block902)
-	    assert.Nil(t, err)
-	}
-    */
-
 }
 
