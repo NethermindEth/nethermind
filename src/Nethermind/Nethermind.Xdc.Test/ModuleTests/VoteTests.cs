@@ -65,7 +65,7 @@ public class VoteTests
         ctx.HighestQC.Should().BeEquivalentTo(initialHighestQc);
 
         // Create a vote message that should trigger qc processing and increment the round
-        var lastVote =  XdcTestHelper.BuildSignedVote(blockInfo, gap, keys.Last());
+        var lastVote = XdcTestHelper.BuildSignedVote(blockInfo, gap, keys.Last());
         await votesManager.HandleVote(lastVote);
         // Check new round has been set
         Assert.That(ctx.CurrentRound, Is.EqualTo(initialRound + 1));

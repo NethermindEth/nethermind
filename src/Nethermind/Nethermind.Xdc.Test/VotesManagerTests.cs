@@ -144,7 +144,7 @@ public class VotesManagerTests
         var key = MakeKeys(1).First();
         var vote = XdcTestHelper.BuildSignedVote(blockInfo, 450, key);
         await votesManager.HandleVote(vote);
-        Assert.That(votesManager.GetVotesCount(vote),  Is.EqualTo(expectedCount));
+        Assert.That(votesManager.GetVotesCount(vote), Is.EqualTo(expectedCount));
     }
 
     public static IEnumerable<TestCaseData> FilterVoteCases()
