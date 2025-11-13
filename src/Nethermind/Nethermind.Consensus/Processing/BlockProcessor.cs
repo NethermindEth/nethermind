@@ -133,8 +133,8 @@ public partial class BlockProcessor
 
         if (_tracedAccessWorldState is not null)
         {
-            _tracedAccessWorldState.Enabled = spec.BlockLevelAccessListsEnabled;
-            _tracedAccessWorldState.BlockAccessList.ResetBlockAccessIndex();
+            _tracedAccessWorldState.TracingEnabled = spec.BlockLevelAccessListsEnabled;
+            _tracedAccessWorldState.GeneratedBlockAccessList.ResetBlockAccessIndex();
         }
 
         StoreBeaconRoot(block, spec);
@@ -187,8 +187,8 @@ public partial class BlockProcessor
             }
             else
             {
-                body.BlockAccessList = _tracedAccessWorldState.BlockAccessList;
-                block.EncodedBlockAccessList = Rlp.Encode(_tracedAccessWorldState.BlockAccessList).Bytes;
+                body.BlockAccessList = _tracedAccessWorldState.GeneratedBlockAccessList;
+                block.EncodedBlockAccessList = Rlp.Encode(_tracedAccessWorldState.GeneratedBlockAccessList).Bytes;
                 header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
             }
         }

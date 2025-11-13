@@ -82,7 +82,7 @@ public class PruningTrieStateFactory(
                 populatePreBlockCache: false);
 
         WorldStateManager stateManager = new(
-            new TracedAccessWorldState(worldState),
+            new TracedAccessWorldState(worldState, blockConfig.ParallelExecution),
             trieStore,
             dbProvider,
             logManager,

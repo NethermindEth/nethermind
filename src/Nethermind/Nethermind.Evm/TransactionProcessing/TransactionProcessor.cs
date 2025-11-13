@@ -278,7 +278,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
 
-                    if (_tracedAccessWorldState is not null && _tracedAccessWorldState.Enabled && IncludeAccountRead(res))
+                    if (_tracedAccessWorldState is not null && _tracedAccessWorldState.TracingEnabled && IncludeAccountRead(res))
                     {
                         _tracedAccessWorldState.AddAccountRead(authority);
                     }

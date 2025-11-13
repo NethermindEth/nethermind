@@ -35,7 +35,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         delegationAddress = null;
         if (vmSpec.IsPrecompile(codeSource)) // _localPrecompiles have to have all precompiles
         {
-            if (_tracedAccessWorldState is not null && _tracedAccessWorldState.Enabled)
+            if (_tracedAccessWorldState is not null && _tracedAccessWorldState.TracingEnabled)
             {
                 _tracedAccessWorldState.AddAccountRead(codeSource);
             }

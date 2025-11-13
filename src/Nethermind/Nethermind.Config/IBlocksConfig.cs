@@ -61,5 +61,10 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Builds blocks on main (non-readonly) state", DefaultValue = "false", HiddenFromDocs = true)]
     bool BuildBlocksOnMainState { get; set; }
 
+    [ConfigItem(
+        Description = "Parallelize transaction execution with Block access lists.",
+        DefaultValue = "false")]
+    bool ParallelExecution { get; set; }
+
     byte[] GetExtraDataBytes();
 }

@@ -266,7 +266,7 @@ public class BlockAccessListTests()
         using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
         InitWorldState(worldState);
 
-        (worldState as TracedAccessWorldState)!.BlockAccessList = new();
+        (worldState as TracedAccessWorldState)!.GeneratedBlockAccessList = new();
 
         const long gasUsed = 167340;
         const long gasUsedBeforeFinal = 92100;
