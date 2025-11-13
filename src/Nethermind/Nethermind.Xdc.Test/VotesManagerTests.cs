@@ -164,7 +164,7 @@ public class VotesManagerTests
         yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.First()), true);
 
         // If snapshot missing should return false
-        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(new BlockRoundInfo(Hash256.Zero, 14, 1000), 450, keys.First()), false);
+        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 1350, keys.First()), false);
 
     }
 
@@ -180,7 +180,7 @@ public class VotesManagerTests
         blockTree.Head.Returns(new Block(header));
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshotByBlockNumber(915, Arg.Any<IXdcReleaseSpec>())
+        snapshotManager.GetSnapshotByGapNumber(450)
             .Returns(new Snapshot(0, Hash256.Zero, masternodes));
         IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
