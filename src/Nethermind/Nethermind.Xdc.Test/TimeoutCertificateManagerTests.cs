@@ -41,7 +41,7 @@ public class TimeoutCertificateManagerTests
     {
         var tc = new TimeoutCertificate(1, Array.Empty<Signature>(), 0);
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshot(Arg.Any<long>(), Arg.Any<IXdcReleaseSpec>())
+        snapshotManager.GetSnapshotByGapNumber(Arg.Any<ulong>())
                     .Returns((Snapshot?)null);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
@@ -67,7 +67,7 @@ public class TimeoutCertificateManagerTests
     {
         var tc = new TimeoutCertificate(1, Array.Empty<Signature>(), 0);
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshot(Arg.Any<long>(), Arg.Any<IXdcReleaseSpec>())
+        snapshotManager.GetSnapshotByGapNumber(Arg.Any<ulong>())
             .Returns(new Snapshot(0, Hash256.Zero, Array.Empty<Address>()));
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
@@ -118,7 +118,7 @@ public class TimeoutCertificateManagerTests
     {
         Address[] masternodes = masternodesList.ToArray();
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshot(Arg.Any<long>(), Arg.Any<IXdcReleaseSpec>())
+        snapshotManager.GetSnapshotByGapNumber(Arg.Any<ulong>())
             .Returns(new Snapshot(0, Hash256.Zero, masternodes));
 
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
