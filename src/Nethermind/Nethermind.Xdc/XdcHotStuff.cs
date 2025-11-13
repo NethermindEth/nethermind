@@ -335,7 +335,7 @@ namespace Nethermind.Xdc
             bool canVote = _votesManager.VerifyVotingRules(head);
             if (!canVote)
             {
-                _logger.Info($"Round {votingRound}: Voting rule not satisfied for block #{head.Hash}");
+                _logger.Info($"Round {votingRound}: Voting rule not satisfied for block #{head.Number}, hash={head.Hash}");
                 return;
             }
 
