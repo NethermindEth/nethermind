@@ -185,9 +185,7 @@ internal class VotesManager(
     {
         if (vote.ProposedBlockInfo.Round < _ctx.CurrentRound) return false;
 
-        var xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
-        Snapshot snapshot = _snapshotManager.GetSnapshot(vote.ProposedBlockInfo.BlockNumber, spec);
+        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(vote.GapNumber);
         if (snapshot is null) return false;
         // Verify message signature
         vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
@@ -196,7 +194,6 @@ internal class VotesManager(
 
     private void OnVotePoolThresholdReached(Signature[] validSignatures, Vote currVote)
     {
-        Console.WriteLine("certificate will be commited");
         QuorumCertificate qc = new(currVote.ProposedBlockInfo, validSignatures, currVote.GapNumber);
         _quorumCertificateManager.CommitCertificate(qc);
         EndRound(currVote.ProposedBlockInfo.Round);

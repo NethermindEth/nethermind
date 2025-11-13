@@ -8,6 +8,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using System;
 
 namespace Nethermind.Xdc;
+
 public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
     public const string Xdc = "Xdc";

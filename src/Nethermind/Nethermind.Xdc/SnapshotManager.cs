@@ -21,11 +21,9 @@ internal class SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHan
 
     private readonly SnapshotDecoder _snapshotDecoder = new();
 
-    public Snapshot? GetSnapshot(long blockNumber, IXdcReleaseSpec spec)
+    public Snapshot? GetSnapshotByGapNumber(ulong gapNumber)
     {
-        long gapBlockNum = Math.Max(0, blockNumber - blockNumber % spec.EpochLength - spec.Gap);
-
-        XdcBlockHeader? gapBlockHeader = blockTree.FindHeader(gapBlockNum) as XdcBlockHeader;
+        var gapBlockHeader = blockTree.FindHeader((long)gapNumber) as XdcBlockHeader;
 
         if (gapBlockHeader is null)
             return null;
@@ -43,10 +41,16 @@ internal class SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHan
         if (value.IsEmpty)
             return null;
 
-        var decoded = _snapshotDecoder.Decode(value, RlpBehaviors.None);
+        var decoded = _snapshotDecoder.Decode(value);
         snapshot = decoded;
         _snapshotCache.Set(gapBlockHeader.Hash, snapshot);
         return snapshot;
+    }
+
+    public Snapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec)
+    {
+        var gapBlockNum = Math.Max(0, blockNumber - blockNumber % spec.EpochLength - spec.Gap);
+        return GetSnapshotByGapNumber((ulong)gapBlockNum);
     }
 
     public void StoreSnapshot(Snapshot snapshot)
@@ -56,7 +60,7 @@ internal class SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHan
         if (snapshotDb.KeyExists(key))
             return;
 
-        var rlpEncodedSnapshot = _snapshotDecoder.Encode(snapshot, RlpBehaviors.None);
+        var rlpEncodedSnapshot = _snapshotDecoder.Encode(snapshot);
 
         snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
     }
@@ -64,7 +68,7 @@ internal class SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHan
     public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec)
     {
         int maxMasternodes = spec.MaxMasternodes;
-        var previousSnapshot = GetSnapshot(blockNumber, spec);
+        var previousSnapshot = GetSnapshotByBlockNumber(blockNumber, spec);
 
         if (previousSnapshot is null)
             throw new InvalidOperationException($"No snapshot found for header #{blockNumber}");
@@ -91,5 +95,4 @@ internal class SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHan
 
         return (candidates, penalties);
     }
-
 }

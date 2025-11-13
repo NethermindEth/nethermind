@@ -15,7 +15,8 @@ public interface ISnapshotManager
             return true;
         return blockNumber % spec.EpochLength == spec.EpochLength - spec.Gap;
     }
-    Snapshot? GetSnapshot(long blockNumber, IXdcReleaseSpec spec);
+    Snapshot? GetSnapshotByGapNumber(ulong gapNumber);
+    Snapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec);
     void StoreSnapshot(Snapshot snapshot);
     (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec);
 }
