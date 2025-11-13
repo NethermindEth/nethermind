@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Crypto;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
@@ -27,16 +28,44 @@ internal class MineModuleTests
     [SetUp]
     public async Task Setup()
     {
-        _blockchainTests = await XdcTestBlockchain.Create(useHotStuffModule: true);
+        _blockchainTests = await XdcTestBlockchain.Create(blocksToAdd: 1349, useHotStuffModule: true);
         _producer = (XdcBlockProducer)_blockchainTests.BlockProducer;
         _tree = (XdcBlockTree)_blockchainTests.BlockTree;
         _hotstuff = (XdcHotStuff)_blockchainTests.BlockProducerRunner;
     }
 
     [Test]
-    public void YourTurnInitialV2()
+    public async Task Should_Update_MasterNodes_On_GapBlock()
     {
+        // this test is basically an emulation because our block producer test setup does not support saving snapshots yet
+        // add blocks until the next gap block
+        var spec = _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header!);
+        while (!ISnapshotManager.IsTimeforSnapshot(_tree.Head!.Header!.Number, spec))
+        {
+            await _blockchainTests.AddBlock();
+        }
 
+        var oldHead = (XdcBlockHeader)_tree.Head!.Header!;
+        var snapshotBefore = _blockchainTests.SnapshotManager.GetSnapshot(oldHead.Number, _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header!));
+
+        Assert.That(snapshotBefore, Is.Not.Null);
+        Assert.That(snapshotBefore.NextEpochCandidates.Length, Is.EqualTo(_blockchainTests.MasterNodeCandidates.Count));
+
+        // simulate adding a new validator
+        var newValidator = new PrivateKeyGenerator().Generate();
+        _blockchainTests.MasterNodeCandidates.Add(newValidator);
+
+        // mine the gap block that should trigger master node update
+        var gapBlock = await _blockchainTests.AddBlock();
+
+
+        var newHead = (XdcBlockHeader)_tree.Head!.Header!;
+        var snapshotAfter = _blockchainTests.SnapshotManager.GetSnapshot(newHead.Number, _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header!));
+
+        Assert.That(snapshotAfter, Is.Not.Null);
+        Assert.That(snapshotAfter.BlockNumber, Is.EqualTo(gapBlock.Number));
+        Assert.That(snapshotAfter.NextEpochCandidates.Length, Is.EqualTo(_blockchainTests.MasterNodeCandidates.Count));
+        Assert.That(snapshotAfter.NextEpochCandidates.Contains(newValidator.Address), Is.True);
     }
 
     [Test]
@@ -69,7 +98,7 @@ internal class MineModuleTests
     {
         IXdcReleaseSpec? spec = _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header);
 
-        for (int i = 0; i <= 1800; i++)
+        for (int i = 1350; i <= 1800; i++)
         {
             await _blockchainTests.AddBlock();
 
@@ -93,7 +122,7 @@ internal class MineModuleTests
 
         // --- Validate header fields
         int validatorCount = header1800.Validator!.Length / Address.Size;
-        int penaltyCount = header1800.Penalties!.Length / Address.Size;
+        int penaltyCount = (header1800.Penalties?.Length ?? 0) / Address.Size;
 
         Assert.That(validatorCount, Is.EqualTo(spec.MaxMasternodes));
         Assert.That(penaltyCount, Is.EqualTo(0));
