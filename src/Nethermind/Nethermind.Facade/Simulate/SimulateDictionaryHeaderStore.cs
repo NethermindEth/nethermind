@@ -34,21 +34,19 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         }
     }
 
-    public BlockHeader? Get(Hash256 blockHash, out bool fromCache, bool shouldCache = false, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
     {
         blockNumber ??= GetBlockNumber(blockHash);
 
         if (blockNumber.HasValue && _headerDict.TryGetValue(blockHash, out BlockHeader? header))
         {
-            fromCache = true;
             if (shouldCache)
             {
-                InsertBlockNumber(header.Hash, header.Number);
+                Cache(header);
             }
             return header;
         }
 
-        fromCache = false;
         header = readonlyBaseHeaderStore.Get(blockHash, false, blockNumber);
         if (header is not null && shouldCache)
         {
@@ -57,7 +55,7 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         return header;
     }
 
-    public void Cache(BlockHeader header, bool isCanonical = false)
+    public void Cache(BlockHeader header)
     {
         Insert(header);
     }
@@ -77,10 +75,4 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
     {
         return _blockNumberDict.TryGetValue(blockHash, out var blockNumber) ? blockNumber : readonlyBaseHeaderStore.GetBlockNumber(blockHash);
     }
-
-    public Hash256? GetBlockHash(long blockNumber) => null;
-
-    public BlockHeader? GetFromCache(Hash256 blockHash) => null;
-
-    public void CacheBlockHash(long blockNumber, Hash256 blockHash) { }
 }

@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using FluentAssertions;
-using Nethermind.Analytics;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -115,15 +114,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void Eth_stats_disabled_by_default(string configWildcard)
     {
         Test<IEthStatsConfig, bool>(configWildcard, static c => c.Enabled, false);
-    }
-
-    [TestCase("*")]
-    public void Analytics_defaults(string configWildcard)
-    {
-        Test<IAnalyticsConfig, bool>(configWildcard, static c => c.PluginsEnabled, false);
-        Test<IAnalyticsConfig, bool>(configWildcard, static c => c.StreamBlocks, false);
-        Test<IAnalyticsConfig, bool>(configWildcard, static c => c.StreamTransactions, false);
-        Test<IAnalyticsConfig, bool>(configWildcard, static c => c.LogPublishedData, false);
     }
 
     [TestCase("mainnet archive", 4096000000)]

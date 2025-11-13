@@ -96,7 +96,7 @@
     "agent": "g6-standard-6"
   },
   {
-    "network": "taiko-hekla",
+    "network": "taiko-hoodi",
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",

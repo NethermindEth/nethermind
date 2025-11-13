@@ -51,4 +51,17 @@ internal class ExtraConsensusDataDecoderTests
         decodedExtraData.Should().BeEquivalentTo(extraFields);
     }
 
+    [Test]
+    public void Decode_QCIsNull_CanDecodeNormally()
+    {
+        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(1, null!);
+        ExtraConsensusDataDecoder decoder = new();
+
+        Rlp encodedExtraData = decoder.Encode(extraFieldsV2);
+
+        ExtraFieldsV2 unencoded = decoder.Decode(new RlpStream(encodedExtraData.Bytes));
+
+        unencoded.Should().BeEquivalentTo(extraFieldsV2);
+    }
+
 }

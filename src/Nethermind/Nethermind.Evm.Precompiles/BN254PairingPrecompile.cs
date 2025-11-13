@@ -25,19 +25,19 @@ public class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
         (releaseSpec.IsEip1108Enabled ? 34_000L : 80_000L) * (inputData.Length / BN254.PairSize);
 
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254PairingPrecompile++;
 
         if (releaseSpec.IsOpGraniteEnabled && inputData.Length > PairingMaxInputSizeGranite ||
             inputData.Length % BN254.PairSize > 0)
         {
-            return IPrecompile.Failure;
+            return Errors.InvalidInputLength;
         }
 
         byte[] output = new byte[32];
         bool result = BN254.CheckPairing(output, inputData.Span);
 
-        return result ? (output, true) : IPrecompile.Failure;
+        return result ? output : Errors.Failed;
     }
 }

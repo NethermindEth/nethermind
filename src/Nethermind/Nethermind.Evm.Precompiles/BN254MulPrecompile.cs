@@ -27,7 +27,7 @@ public class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     [SkipLocalsInit]
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254MulPrecompile++;
 
@@ -39,11 +39,11 @@ public class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
         }
 
         byte[] output = new byte[OutputLength];
-        bool result = (input.Length == InputLength) ?
-            BN254.Mul(output, input) :
-            RunPaddedInput(output, input);
+        bool result = input.Length == InputLength
+            ? BN254.Mul(output, input)
+            : RunPaddedInput(output, input);
 
-        return result ? (output, true) : IPrecompile.Failure;
+        return result ? output : Errors.Failed;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

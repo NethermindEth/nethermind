@@ -27,7 +27,7 @@ public class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     [SkipLocalsInit]
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254AddPrecompile++;
 
@@ -43,7 +43,7 @@ public class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
             BN254.Add(output, input) :
             RunPaddedInput(output, input);
 
-        return result ? (output, true) : IPrecompile.Failure;
+        return result ? output : Errors.Failed;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
