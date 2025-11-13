@@ -45,11 +45,13 @@ public class XdcTestBlockchain : TestBlockchain
 {
     private readonly Random _random = new();
     private readonly bool _useHotStuffModule;
+    private readonly int _masterNodeCount = 30;
 
-    public static async Task<XdcTestBlockchain> Create(int blocksToAdd = 3, bool useHotStuffModule = false, Action<ContainerBuilder>? configurer = null)
+    public static async Task<XdcTestBlockchain> Create(int blocksToAdd = 3, bool useHotStuffModule = false, int masterNodesCount = 30, Action<ContainerBuilder>? configurer = null)
     {
-        XdcTestBlockchain chain = new(useHotStuffModule);
+        XdcTestBlockchain chain = new(useHotStuffModule, masterNodesCount);
         await chain.Build(configurer);
+
 
         var fromXdcContainer = (FromContainer)chain.Container.Resolve<FromXdcContainer>();
 
@@ -80,13 +82,14 @@ public class XdcTestBlockchain : TestBlockchain
     internal TestRandomSigner RandomSigner { get; }
     internal XdcHotStuff ConsensusModule => (XdcHotStuff)BlockProducerRunner;
 
-    protected XdcTestBlockchain(bool useHotStuffModule)
+    protected XdcTestBlockchain(bool useHotStuffModule, int masterNodesCount)
     {
         var keys = new PrivateKeyGenerator().Generate(210).ToList();
         MasterNodeCandidates = keys.Take(200).ToList();
         RandomKeys = keys.Skip(200).ToList();
         RandomSigner = new TestRandomSigner(MasterNodeCandidates);
         _useHotStuffModule = useHotStuffModule;
+        _masterNodeCount = masterNodesCount;
     }
 
     public Signer Signer => (Signer)_fromXdcContainer.Signer;
@@ -207,7 +210,7 @@ public class XdcTestBlockchain : TestBlockchain
     {
         var xdcSpec = XdcReleaseSpec.FromReleaseSpec(spec);
 
-        xdcSpec.GenesisMasterNodes = MasterNodeCandidates.Take(30).Select(k => k.Address).ToArray();
+        xdcSpec.GenesisMasterNodes = MasterNodeCandidates.Take(_masterNodeCount).Select(k => k.Address).ToArray();
         xdcSpec.EpochLength = 900;
         xdcSpec.Gap = 450;
         xdcSpec.SwitchEpoch = 0;
@@ -388,6 +391,7 @@ public class XdcTestBlockchain : TestBlockchain
         var headSpec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
         if (ISnapshotManager.IsTimeforSnapshot(head.Number, headSpec))
         {
+            Console.WriteLine($"Storing snapshot for block {head.Number}");
             SnapshotManager.StoreSnapshot(new Types.Snapshot(head.Number, head.Hash!, MasterNodeCandidates.Select(k => k.Address).ToArray()));
         }
     }
