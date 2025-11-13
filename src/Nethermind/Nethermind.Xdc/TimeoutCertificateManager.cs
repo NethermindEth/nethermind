@@ -104,7 +104,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         if (timeoutCertificate is null) throw new ArgumentNullException(nameof(timeoutCertificate));
         if (timeoutCertificate.Signatures is null) throw new ArgumentNullException(nameof(timeoutCertificate.Signatures));
 
-        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(_blockTree, timeoutCertificate.GapNumber);
+        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(timeoutCertificate.GapNumber);
         if (snapshot is null)
         {
             errorMessage = $"Failed to get snapshot using gap number {timeoutCertificate.GapNumber}";
@@ -196,7 +196,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private bool FilterTimeout(Timeout timeout)
     {
         if (timeout.Round < _consensusContext.CurrentRound) return false;
-        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(_blockTree, timeout.GapNumber);
+        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(timeout.GapNumber);
         if (snapshot is null || snapshot.NextEpochCandidates.Length == 0) return false;
 
         // Verify msg signature
@@ -222,7 +222,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         {
             EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader);
             if (epochSwitchInfo is null)
-                throw new ConsensusHeaderDataExtractionException(nameof(EpochSwitchInfo));
+                throw new DataExtractionException(nameof(EpochSwitchInfo));
 
             ulong currentNumber = (ulong)epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
             gapNumber = Math.Max(0, currentNumber - currentNumber % (ulong)spec.EpochLength - (ulong)spec.Gap);

@@ -65,6 +65,18 @@ public class Tests
         blockHeaderBuilder.WithUnclesHash(Hash256.FromBytesWithPadding([0x01]));
         yield return [blockHeaderBuilder, false];
 
+        //Invalid difficulty
+        blockHeaderBuilder = CreateValidHeader();
+        blockHeaderBuilder.WithDifficulty(2);
+        yield return [blockHeaderBuilder, false];
+
+        //Invalid total difficulty
+        blockHeaderBuilder = CreateValidHeader();
+        blockHeaderBuilder
+            .WithDifficulty(1)
+            .WithTotalDifficulty(1);
+        yield return [blockHeaderBuilder, false];
+
         static XdcBlockHeaderBuilder CreateValidHeader()
         {
             XdcBlockHeaderBuilder blockHeaderBuilder = (XdcBlockHeaderBuilder)Build.A
