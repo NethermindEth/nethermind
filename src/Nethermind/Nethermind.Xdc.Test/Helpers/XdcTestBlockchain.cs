@@ -418,6 +418,7 @@ public class XdcTestBlockchain : TestBlockchain
             throw new InvalidOperationException($"Can only be used when using the {nameof(XdcHotStuff)} module");
         var head = (XdcBlockHeader)BlockTree.Head!.Header;
         var spec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
+        var leader = ConsensusModule.GetLeaderAddress(head, XdcContext.CurrentRound, spec);
 
         EpochSwitchInfo epochSwitchInfo = EpochSwitchManager.GetEpochSwitchInfo(head)!;
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
@@ -425,10 +426,14 @@ public class XdcTestBlockchain : TestBlockchain
 
         VoteDecoder voteDecoder = new VoteDecoder();
 
+        var newHeadWaitHandle = new TaskCompletionSource();
         var newRoundWaitHandle = new TaskCompletionSource();
         XdcContext.NewRoundSetEvent += OnNewRound;
+        BlockTree.NewHeadBlock += OnNewHead;
         try
         {
+            //by setting the correct signer the block producer runner should trigger trying to propose a block
+            Signer.SetSigner(MasterNodeCandidates.First(k => k.Address == leader));
             int count = 0;
             //Simulate voting until a new head is detected
             while (!newRoundWaitHandle.Task.IsCompleted)
@@ -450,6 +455,7 @@ public class XdcTestBlockchain : TestBlockchain
         }
         finally
         {
+            BlockTree.NewHeadBlock -= OnNewHead;
             XdcContext.NewRoundSetEvent -= OnNewRound;
         }
 
