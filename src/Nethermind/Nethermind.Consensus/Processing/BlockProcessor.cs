@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -60,10 +61,19 @@ public partial class BlockProcessor(
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
-        ValidateProcessedBlock(suggestedBlock, options, block, receipts);
-        if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
+        try
         {
-            StoreTxReceipts(block, receipts, spec);
+            ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+        }
+        catch (InvalidBlockException)
+        {
+            if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
+            {
+                // block is invalid and we already stored receipts in background, remove them
+                receiptStorage.RemoveReceipts(suggestedBlock);
+            }
+
+            throw;
         }
 
         return (block, receipts);
@@ -104,17 +114,20 @@ public partial class BlockProcessor(
         _stateProvider.Commit(spec, commitRoots: false);
 
         TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        Task backGroundCalculations = Task.Run(() =>
+        {
+            CalculateBlooms(receipts);
+            header.BlobGasUsed = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateBlobGas(block.Transactions) : null;
+            header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+
+            if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
+            {
+                // Setting canonical is done when the BlockAddedToMain event is fired
+                receiptStorage.Insert(block, receipts, spec, false);
+            }
+        });
 
         _stateProvider.Commit(spec, commitRoots: false);
-
-        CalculateBlooms(receipts);
-
-        if (spec.IsEip4844Enabled)
-        {
-            header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
-        }
-
-        header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
@@ -141,6 +154,7 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
+        backGroundCalculations.Wait();
         header.Hash = header.CalculateHash();
 
         return receipts;
@@ -171,12 +185,6 @@ public partial class BlockProcessor(
         {
             if (_logger.IsWarn) _logger.Warn($"Storing beacon block root for block {block.ToString(Block.Format.FullHashAndNumber)} failed: {e}");
         }
-    }
-
-    private void StoreTxReceipts(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
-    {
-        // Setting canonical is done when the BlockAddedToMain event is fired
-        receiptStorage.Insert(block, txReceipts, spec, false);
     }
 
     private Block PrepareBlockForProcessing(Block suggestedBlock)
