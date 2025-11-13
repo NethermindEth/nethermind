@@ -53,7 +53,7 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 180,
-    "agent": "g6-standard-6"
+    "agent": "g6-standard-8"
   },
   {
     "network": "world-sepolia",
