@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -985,7 +985,7 @@ namespace Nethermind.Trie.Test.Pruning
                 persistenceStrategy: No.Persistence,
                 pruningConfig: new PruningConfig()
                 {
-                    PruningBoundary = 3,
+                    PruningBoundary = 4,
                     TrackPastKeys = true
                 });
 
@@ -1002,6 +1002,8 @@ namespace Nethermind.Trie.Test.Pruning
                 // Pruning is done in background
                 await Task.Delay(TimeSpan.FromMilliseconds(10));
             }
+
+            fullTrieStore.PersistCache(default);
 
             memDb.Count.Should().Be(4);
         }

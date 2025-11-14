@@ -248,7 +248,7 @@ namespace Nethermind.State
 
         public IDisposable BeginScope(BlockHeader? baseBlock)
         {
-            if (!Interlocked.CompareExchange(ref _isInScope, true, false))
+            if (Interlocked.CompareExchange(ref _isInScope, true, false))
             {
                 throw new InvalidOperationException("Cannot create nested worldstate scope.");
             }
