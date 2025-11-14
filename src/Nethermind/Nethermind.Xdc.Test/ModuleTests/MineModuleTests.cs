@@ -121,7 +121,7 @@ internal class MineModuleTests
         var gapBlock = await _blockchainTests.AddBlock();
         while (!ISnapshotManager.IsTimeforSnapshot(_tree.Head!.Header!.Number, spec))
         {
-            gapBlock  = await _blockchainTests.AddBlock();
+            gapBlock = await _blockchainTests.AddBlock();
         }
 
         Assert.That(gapBlock.Number, Is.EqualTo(spec.Gap));
