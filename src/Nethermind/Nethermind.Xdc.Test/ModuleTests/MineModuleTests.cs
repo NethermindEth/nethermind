@@ -32,7 +32,7 @@ internal class MineModuleTests
     }
 
     [Test]
-    public async Task Should_Update_MasterNodes_On_GapBlock()
+    public async Task TestUpdateMultipleMasterNodes()
     {
         var (_blockchainTests, _tree) = await Setup();
 
@@ -69,7 +69,7 @@ internal class MineModuleTests
     }
 
     [Test]
-    public async Task Should_Mine_Once_Per_Round()
+    public async Task TestShouldMineOncePerRound()
     {
         var (_blockchainTests, _tree) = await Setup();
 
@@ -98,7 +98,7 @@ internal class MineModuleTests
     }
 
     [Test]
-    public async Task Update_Multiple_MasterNodes()
+    public async Task TestUpdateMasterNodes()
     {
         var (_blockchainTests, _tree) = await Setup();
 
