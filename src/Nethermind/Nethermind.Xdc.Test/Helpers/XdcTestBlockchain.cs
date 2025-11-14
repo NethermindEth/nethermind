@@ -45,11 +45,10 @@ public class XdcTestBlockchain : TestBlockchain
 {
     private readonly Random _random = new();
     private readonly bool _useHotStuffModule;
-    private readonly int _masterNodeCount = 30;
 
-    public static async Task<XdcTestBlockchain> Create(int blocksToAdd = 3, bool useHotStuffModule = false, int masterNodesCount = 30, Action<ContainerBuilder>? configurer = null)
+    public static async Task<XdcTestBlockchain> Create(int blocksToAdd = 3, bool useHotStuffModule = false, Action<ContainerBuilder>? configurer = null)
     {
-        XdcTestBlockchain chain = new(useHotStuffModule, masterNodesCount);
+        XdcTestBlockchain chain = new(useHotStuffModule);
         await chain.Build(configurer);
 
 
@@ -82,14 +81,13 @@ public class XdcTestBlockchain : TestBlockchain
     internal TestRandomSigner RandomSigner { get; }
     internal XdcHotStuff ConsensusModule => (XdcHotStuff)BlockProducerRunner;
 
-    protected XdcTestBlockchain(bool useHotStuffModule, int masterNodesCount)
+    protected XdcTestBlockchain(bool useHotStuffModule)
     {
         var keys = new PrivateKeyGenerator().Generate(210).ToList();
-        MasterNodeCandidates = keys.Take(masterNodesCount).ToList();
-        RandomKeys = keys.Skip(masterNodesCount).ToList();
+        MasterNodeCandidates = keys.Take(200).ToList();
+        RandomKeys = keys.Skip(200).ToList();
         RandomSigner = new TestRandomSigner(MasterNodeCandidates);
         _useHotStuffModule = useHotStuffModule;
-        _masterNodeCount = masterNodesCount;
     }
 
     public Signer Signer => (Signer)_fromXdcContainer.Signer;
@@ -210,7 +208,7 @@ public class XdcTestBlockchain : TestBlockchain
     {
         var xdcSpec = XdcReleaseSpec.FromReleaseSpec(spec);
 
-        xdcSpec.GenesisMasterNodes = MasterNodeCandidates.Take(_masterNodeCount).Select(k => k.Address).ToArray();
+        xdcSpec.GenesisMasterNodes = MasterNodeCandidates.Take(30).Select(k => k.Address).ToArray();
         xdcSpec.EpochLength = 900;
         xdcSpec.Gap = 450;
         xdcSpec.SwitchEpoch = 0;
@@ -434,7 +432,7 @@ public class XdcTestBlockchain : TestBlockchain
             //Voting will trigger QC creation which triggers new round
             var finishedTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(10_000));
             if (finishedTask != newRoundWaitHandle.Task)
-                Assert.Fail($"After {_masterNodeCount} votes no new head could be detected. Something is wrong.");
+                Assert.Fail($"After {200} votes no new head could be detected. Something is wrong.");
 
             var waitingForHead = await Task.WhenAny(newHeadWaitHandle.Task, Task.Delay(10_000));
 

@@ -21,11 +21,9 @@ using System.Threading.Tasks;
 namespace Nethermind.Xdc.Test.ModuleTests;
 internal class MineModuleTests
 {
-    private const int _masterNodesGenesisCount = 100;
-
     public async Task<(XdcTestBlockchain, XdcBlockTree)> Setup()
     {
-        var _blockchainTests = await XdcTestBlockchain.Create(useHotStuffModule: true, masterNodesCount: _masterNodesGenesisCount);
+        var _blockchainTests = await XdcTestBlockchain.Create(useHotStuffModule: true);
         var _tree = (XdcBlockTree)_blockchainTests.BlockTree;
 
         return (_blockchainTests, _tree);
@@ -44,7 +42,7 @@ internal class MineModuleTests
         var snapshotBefore = _blockchainTests.SnapshotManager.GetSnapshotByBlockNumber(oldHead.Number, _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header!));
 
         Assert.That(snapshotBefore, Is.Not.Null);
-        Assert.That(snapshotBefore.NextEpochCandidates.Length, Is.EqualTo(_masterNodesGenesisCount));
+        Assert.That(snapshotBefore.NextEpochCandidates.Length, Is.EqualTo(30));
 
         // simulate adding a new validator
         var newValidator = new PrivateKeyGenerator().Generate();
@@ -116,7 +114,7 @@ internal class MineModuleTests
 
         Assert.That(snapshot, Is.Not.Null);
         Assert.That(snapshot.BlockNumber, Is.EqualTo(0));
-        Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(_masterNodesGenesisCount));
+        Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(30));
 
         var gapBlock = await _blockchainTests.AddBlock();
         while (!ISnapshotManager.IsTimeforSnapshot(_tree.Head!.Header!.Number, spec))
