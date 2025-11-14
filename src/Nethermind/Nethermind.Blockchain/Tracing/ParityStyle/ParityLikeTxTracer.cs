@@ -81,9 +81,9 @@ public class ParityLikeTxTracer : TxTracer
         {
             ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.EOFCREATE
                 or ExecutionType.TXCREATE => "create",
-            ExecutionType.CALL or ExecutionType.TRANSACTION => "call",
-            ExecutionType.DELEGATECALL => "delegatecall",
-            ExecutionType.STATICCALL => "staticcall",
+            ExecutionType.CALL or ExecutionType.TRANSACTION or ExecutionType.EOFCALL => "call",
+            ExecutionType.DELEGATECALL or ExecutionType.EOFDELEGATECALL => "delegatecall",
+            ExecutionType.STATICCALL or ExecutionType.EOFSTATICCALL => "staticcall",
             ExecutionType.CALLCODE => "callcode",
             _ => throw new NotSupportedException($"Parity trace call type is undefined for {executionType}")
         };
