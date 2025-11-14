@@ -52,10 +52,10 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         }
 
         BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance, true, default, _txLimit);
-        ushort? lastIndex = null;
-        SortedList<ushort, BalanceChange> balanceChangesList = new(balanceChanges.ToDictionary(s =>
+        int? lastIndex = null;
+        SortedList<int, BalanceChange> balanceChangesList = new(balanceChanges.ToDictionary(s =>
         {
-            ushort index = s.BlockAccessIndex;
+            int index = s.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
             {
                 Console.WriteLine($"Balance changes were in incorrect order. index={index}, lastIndex={lastIndex}");
@@ -67,9 +67,9 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
         lastIndex = null;
         NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<ushort, NonceChange> nonceChangesList = new(nonceChanges.ToDictionary(s =>
+        SortedList<int, NonceChange> nonceChangesList = new(nonceChanges.ToDictionary(s =>
         {
-            ushort index = s.BlockAccessIndex;
+            int index = s.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException("Nonce changes were in incorrect order.");
@@ -81,9 +81,9 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance, true, default, _txLimit);
 
         lastIndex = null;
-        SortedList<ushort, CodeChange> codeChangesList = new(codeChanges.ToDictionary(s =>
+        SortedList<int, CodeChange> codeChangesList = new(codeChanges.ToDictionary(s =>
         {
-            ushort index = s.BlockAccessIndex;
+            int index = s.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException("Code changes were in incorrect order.");

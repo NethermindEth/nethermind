@@ -6,7 +6,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly struct BalanceChange(ushort blockAccessIndex, UInt256 postBalance) : IEquatable<BalanceChange>, IIndexedChange
+public readonly struct BalanceChange(int blockAccessIndex, UInt256 postBalance) : IEquatable<BalanceChange>, IIndexedChange
 {
     public int BlockAccessIndex { get; init; } = blockAccessIndex;
     public UInt256 PostBalance { get; init; } = postBalance;

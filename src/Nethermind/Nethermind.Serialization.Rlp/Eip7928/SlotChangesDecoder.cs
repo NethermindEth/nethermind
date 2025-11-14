@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 
@@ -26,7 +28,20 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
         }
 
         StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _codeLimit);
-        SlotChanges slotChanges = new(slot, [.. changes]);
+
+        int? lastIndex = null;
+        SortedList<int, StorageChange> changesList = new(changes.ToDictionary(s =>
+        {
+            int index = s.BlockAccessIndex;
+            if (lastIndex is not null && index <= lastIndex)
+            {
+                Console.WriteLine($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
+                throw new RlpException("Storage changes were in incorrect order.");
+            }
+            lastIndex = index;
+            return index;
+        }, s => s));
+        SlotChanges slotChanges = new(slot, changesList);
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {

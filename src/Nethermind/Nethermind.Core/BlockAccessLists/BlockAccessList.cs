@@ -233,7 +233,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                 NewValue = newValue
             };
 
-            slotChanges.Changes.Add(storageChange);
+            slotChanges.AddStorageChange(storageChange);
             accountChanges.RemoveStorageRead(storageKey);
         }
         else
@@ -297,7 +297,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     slotChanges!.PopStorageChange(Index, out _);
                     if (previousStorage is not null)
                     {
-                        slotChanges.Changes.Add(previousStorage.Value);
+                        slotChanges.AddStorageChange(previousStorage.Value);
                     }
 
                     accountChanges.ClearSlotChangesIfEmpty(change.Slot!);

@@ -275,7 +275,7 @@ namespace Nethermind.State
 
         public bool IsInScope => _isInScope;
 
-        public UInt256 GetBalance(Address address)
+        public UInt256 GetBalance(Address address, int? _)
         {
             DebugGuardInScope();
             return _stateProvider.GetBalance(address);

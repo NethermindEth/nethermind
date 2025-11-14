@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 

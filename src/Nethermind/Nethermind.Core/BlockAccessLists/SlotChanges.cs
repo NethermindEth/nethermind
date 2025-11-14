@@ -6,13 +6,24 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public class SlotChanges(byte[] slot, List<StorageChange> changes) : IEquatable<SlotChanges>
+public class SlotChanges(byte[] slot, SortedList<int, StorageChange> changes) : IEquatable<SlotChanges>
 {
     public byte[] Slot { get; init; } = slot;
-    public List<StorageChange> Changes { get; init; } = changes;
+    public EnumerableWithCount<StorageChange> Changes { get {
+        bool includesPreState = false;
+        IEnumerable<StorageChange> changes = _changes.Values.Where(c => {
+            bool include = c.BlockAccessIndex != -1;
+            includesPreState &= include;
+            return include;
+        });
+        return new(changes, includesPreState ? _changes.Count - 1 : _changes.Count);
+    }}
+
+    private readonly SortedList<int, StorageChange> _changes = changes;
 
     public SlotChanges(byte[] slot) : this(slot, [])
     {
@@ -44,18 +55,21 @@ public class SlotChanges(byte[] slot, List<StorageChange> changes) : IEquatable<
     public static bool operator !=(SlotChanges left, SlotChanges right) =>
         !(left == right);
 
+    public void AddStorageChange(StorageChange storageChange)
+        => _changes.Add(storageChange.BlockAccessIndex, storageChange);
+
     public bool PopStorageChange(int index, [NotNullWhen(true)] out StorageChange? storageChange)
     {
         storageChange = null;
 
-        if (Changes.Count == 0)
+        if (_changes.Count == 0)
             return false;
 
         StorageChange lastChange = Changes.Last();
 
         if (lastChange.BlockAccessIndex == index)
         {
-            Changes.RemoveAt(Changes.Count - 1);
+            _changes.RemoveAt(_changes.Count - 1);
             storageChange = lastChange;
             return true;
         }

@@ -33,12 +33,16 @@ public class AccountChanges : IEquatable<AccountChanges>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IEnumerable<CodeChange> CodeChanges => _codeChanges.Values;
 
+    [JsonIgnore]
+    public ValueHash256 CodeHash { get => _codeHash; set => _codeHash = value; }
+
     private readonly SortedDictionary<byte[], SlotChanges> _storageChanges;
     private readonly SortedSet<StorageRead> _storageReads;
     private readonly SortedList<int, BalanceChange> _balanceChanges;
     private readonly SortedList<int, NonceChange> _nonceChanges;
     private readonly SortedList<int, CodeChange> _codeChanges;
     private bool _isDestroyed = false;
+    private ValueHash256 _codeHash;
     // private bool _existedPreBlock = false;
     // fetch whole account in prestate load?
 
@@ -224,6 +228,6 @@ public class AccountChanges : IEquatable<AccountChanges>
         return new();
     }
 
-    // public bool AccountExists()
-    //     => !_isDestroyed || 
+    public bool AccountExists()
+        => !_isDestroyed; // check through BAL
 }

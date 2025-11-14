@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.State;
@@ -26,6 +27,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
 
     public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches).IsWarmWorldState;
 
+    public void SetupGeneratedAccessLists(int txCount)
+        => _intermediateBlockAccessLists = new BlockAccessList[txCount + 1];
+
     public void LoadSuggestedBlockAccessList(BlockAccessList suggested)
     {
         LoadPreBlockState(suggested);
@@ -34,18 +38,29 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
 
     private void LoadPreBlockState(BlockAccessList blockAccessList)
     {
-        _suggestedBlockAccessList.Index = -1;
         foreach (AccountChanges accountChanges in blockAccessList.AccountChanges)
         {
-            _suggestedBlockAccessList.AddAccountRead(accountChanges.Address);
-            if (accountChanges.BalanceChanges.Count > 0)
+            _innerWorldState.TryGetAccount(accountChanges.Address, out AccountStruct account);
+            accountChanges.AddBalanceChange(new(-1, account.Balance));
+            accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
+            accountChanges.CodeHash = account.CodeHash;
+
+            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                _suggestedBlockAccessList.AddBalanceChange(accountChanges.Address, 0, accountChanges.BalanceChanges.Last().PostBalance);
+                StorageCell storageCell = new(accountChanges.Address, new(slotChanges.Slot.AsSpan()));
+                slotChanges.AddStorageChange(new(-1, [.. _innerWorldState.Get(storageCell)]));
+            }
+
+            foreach (StorageRead storageRead in accountChanges.StorageReads)
+            {
+                SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
+                StorageCell storageCell = new(accountChanges.Address, new(storageRead.Key.AsSpan()));
+                slotChanges.AddStorageChange(new(-1, [.. _innerWorldState.Get(storageCell)]));
             }
         }
     }
 
-    public void ApplyStateChanges(IReleaseSpec spec)
+    public void ApplyStateChanges(IReleaseSpec spec, bool shouldComputeStateRoot)
     {
         foreach (AccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
         {
@@ -53,6 +68,11 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
             {
                 _innerWorldState.AddToBalance(accountChanges.Address, _innerWorldState.GetBalance(accountChanges.Address) - accountChanges.BalanceChanges.Last().PostBalance, spec);
             }
+        }
+        _innerWorldState.Commit(spec);
+        if (shouldComputeStateRoot)
+        {
+            _innerWorldState.RecalculateStateRoot();
         }
     }
 
@@ -88,7 +108,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
 
     public override IDisposable BeginScope(BlockHeader? baseBlock)
     {
-        GeneratedBlockAccessList = new();
+        // GeneratedBlockAccessList = new();
         return _innerWorldState.BeginScope(baseBlock);
     }
 
@@ -167,7 +187,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
 
             if (accountChanges is not null && accountChanges.BalanceChanges.Count > 0)
             {
-                return accountChanges.GetBalance(blockAccessIndex);
+                return accountChanges.GetBalance(blockAccessIndex.Value);
             }
 
             return _innerWorldState.GetBalance(address);
@@ -303,11 +323,27 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         }
     }
 
-    public override bool IsStorageEmpty(Address address)
+    public override void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
     {
-        //todo
-        return false;
+        if (!ParallelExecutionEnabled)
+        {
+            _innerWorldState.Commit(releaseSpec, isGenesis, commitRoots);
+        }
     }
+
+    public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
+    {
+        if (!ParallelExecutionEnabled)
+        {
+            _innerWorldState.Commit(releaseSpec, isGenesis, commitRoots);
+        }
+    }
+
+    // needed? also trygetaccount?
+    // public override bool IsStorageEmpty(Address address)
+    // {
+    //     return false;
+    // }
 
     private BlockAccessList GetGeneratingBlockAccessList(int? blockAccessIndex = null)
         => ParallelExecutionEnabled ? _intermediateBlockAccessLists[blockAccessIndex!.Value] : GeneratedBlockAccessList;
