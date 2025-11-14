@@ -251,6 +251,7 @@ internal static partial class EvmInstructions
         // Create or update the inheritor account with the transferred balance.
         if (!inheritorAccountExists)
         {
+            // should only be recorded if result != 0 ?
             state.CreateAccount(inheritor, result);
         }
         else if (!inheritor.Equals(executingAccount))

@@ -9,7 +9,7 @@ namespace Nethermind.Core.BlockAccessLists;
 
 public readonly struct CodeChange(ushort blockAccessIndex, byte[] newCode) : IEquatable<CodeChange>, IIndexedChange
 {
-    public ushort BlockAccessIndex { get; init; } = blockAccessIndex;
+    public int BlockAccessIndex { get; init; } = blockAccessIndex;
     public byte[] NewCode { get; init; } = newCode;
 
     public readonly bool Equals(CodeChange other) =>

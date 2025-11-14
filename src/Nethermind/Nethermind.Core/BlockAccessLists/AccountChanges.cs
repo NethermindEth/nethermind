@@ -7,7 +7,10 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -22,7 +25,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     public IEnumerable<StorageRead> StorageReads => _storageReads;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IEnumerable<BalanceChange> BalanceChanges => _balanceChanges.Values;
+    public EnumerableWithCount<BalanceChange> BalanceChanges => new(_balanceChanges.Values.Where(c => c.BlockAccessIndex != -1), _balanceChanges.Count);
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IEnumerable<NonceChange> NonceChanges => _nonceChanges.Values;
@@ -32,9 +35,12 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     private readonly SortedDictionary<byte[], SlotChanges> _storageChanges;
     private readonly SortedSet<StorageRead> _storageReads;
-    private readonly SortedList<ushort, BalanceChange> _balanceChanges;
-    private readonly SortedList<ushort, NonceChange> _nonceChanges;
-    private readonly SortedList<ushort, CodeChange> _codeChanges;
+    private readonly SortedList<int, BalanceChange> _balanceChanges;
+    private readonly SortedList<int, NonceChange> _nonceChanges;
+    private readonly SortedList<int, CodeChange> _codeChanges;
+    private bool _isDestroyed = false;
+    // private bool _existedPreBlock = false;
+    // fetch whole account in prestate load?
 
     public AccountChanges()
     {
@@ -56,7 +62,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         _codeChanges = [];
     }
 
-    public AccountChanges(Address address, SortedDictionary<byte[], SlotChanges> storageChanges, SortedSet<StorageRead> storageReads, SortedList<ushort, BalanceChange> balanceChanges, SortedList<ushort, NonceChange> nonceChanges, SortedList<ushort, CodeChange> codeChanges)
+    public AccountChanges(Address address, SortedDictionary<byte[], SlotChanges> storageChanges, SortedSet<StorageRead> storageReads, SortedList<int, BalanceChange> balanceChanges, SortedList<int, NonceChange> nonceChanges, SortedList<int, CodeChange> codeChanges)
     {
         Address = address;
         _storageChanges = storageChanges;
@@ -128,12 +134,18 @@ public class AccountChanges : IEquatable<AccountChanges>
         _storageChanges.Clear();
         _nonceChanges.Clear();
         _codeChanges.Clear();
+        _isDestroyed = true;
+    }
+
+    public void CreateAccount()
+    {
+        _isDestroyed = false;
     }
 
     public void AddBalanceChange(BalanceChange balanceChange)
         => _balanceChanges.Add(balanceChange.BlockAccessIndex, balanceChange);
 
-    public bool PopBalanceChange(ushort index, [NotNullWhen(true)] out BalanceChange? balanceChange)
+    public bool PopBalanceChange(int index, [NotNullWhen(true)] out BalanceChange? balanceChange)
     {
         balanceChange = null;
         if (PopChange(_balanceChanges, index, out BalanceChange change))
@@ -147,7 +159,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     public void AddNonceChange(NonceChange nonceChange)
         => _nonceChanges.Add(nonceChange.BlockAccessIndex, nonceChange);
 
-    public bool PopNonceChange(ushort index, [NotNullWhen(true)] out NonceChange? nonceChange)
+    public bool PopNonceChange(int index, [NotNullWhen(true)] out NonceChange? nonceChange)
     {
         nonceChange = null;
         if (PopChange(_nonceChanges, index, out NonceChange change))
@@ -161,7 +173,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     public void AddCodeChange(CodeChange codeChange)
         => _codeChanges.Add(codeChange.BlockAccessIndex, codeChange);
 
-    public bool PopCodeChange(ushort index, [NotNullWhen(true)] out CodeChange? codeChange)
+    public bool PopCodeChange(int index, [NotNullWhen(true)] out CodeChange? codeChange)
     {
         codeChange = null;
         if (PopChange(_codeChanges, index, out CodeChange change))
@@ -172,14 +184,14 @@ public class AccountChanges : IEquatable<AccountChanges>
         return false;
     }
 
-    private static bool PopChange<T>(SortedList<ushort, T> changes, ushort index, [NotNullWhen(true)] out T? change) where T : IIndexedChange
+    private static bool PopChange<T>(SortedList<int, T> changes, int index, [NotNullWhen(true)] out T? change) where T : IIndexedChange
     {
         change = default;
 
         if (changes.Count == 0)
             return false;
 
-        KeyValuePair<ushort, T> lastChange = changes.Last();
+        KeyValuePair<int, T> lastChange = changes.Last();
 
         if (lastChange.Key == index)
         {
@@ -190,4 +202,28 @@ public class AccountChanges : IEquatable<AccountChanges>
 
         return false;
     }
+
+    public UInt256 GetNonce(int blockAccessIndex)
+    {
+        return 0;
+    }
+
+    public UInt256 GetBalance(int blockAccessIndex)
+    {
+        return 0;
+    }
+
+    public bool IsStorageEmpty(int blockAccessIndex)
+    {
+        return false;
+    }
+
+    // add to codechanges when generating?
+    public ValueHash256 GetCodeHash(int blockAccessIndex)
+    {
+        return new();
+    }
+
+    // public bool AccountExists()
+    //     => !_isDestroyed || 
 }

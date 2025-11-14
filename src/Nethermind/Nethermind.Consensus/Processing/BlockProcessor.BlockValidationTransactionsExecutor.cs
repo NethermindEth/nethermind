@@ -64,6 +64,7 @@ namespace Nethermind.Consensus.Processing
                     {
                         Transaction tx = state.txs[i];
                         ITransactionProcessorAdapter transactionProcessor = state.transactionProcessors[i];
+                        TracedAccessWorldState worldState = (state.stateProvider as TracedAccessWorldState)!;
                         ProcessTransactionParallel(
                             transactionProcessor,
                             state.stateProvider,

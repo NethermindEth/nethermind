@@ -44,7 +44,7 @@ public class SlotChanges(byte[] slot, List<StorageChange> changes) : IEquatable<
     public static bool operator !=(SlotChanges left, SlotChanges right) =>
         !(left == right);
 
-    public bool PopStorageChange(ushort index, [NotNullWhen(true)] out StorageChange? storageChange)
+    public bool PopStorageChange(int index, [NotNullWhen(true)] out StorageChange? storageChange)
     {
         storageChange = null;
 

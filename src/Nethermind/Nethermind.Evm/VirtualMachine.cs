@@ -156,6 +156,7 @@ public unsafe partial class VirtualMachine(
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
+        // (_worldState as TracedAccessWorldState).BlockAccessIndex = 
 
         // Main execution loop: processes call frames until the top-level transaction completes.
         while (true)
@@ -945,6 +946,7 @@ public unsafe partial class VirtualMachine(
     {
         if (_parityTouchBugAccount.ShouldDelete)
         {
+            // potential edge case?
             if (_worldState.AccountExists(_parityTouchBugAccount.Address))
             {
                 _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Spec);

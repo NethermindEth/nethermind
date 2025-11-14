@@ -8,7 +8,7 @@ namespace Nethermind.Core.BlockAccessLists;
 
 public readonly struct BalanceChange(ushort blockAccessIndex, UInt256 postBalance) : IEquatable<BalanceChange>, IIndexedChange
 {
-    public ushort BlockAccessIndex { get; init; } = blockAccessIndex;
+    public int BlockAccessIndex { get; init; } = blockAccessIndex;
     public UInt256 PostBalance { get; init; } = postBalance;
 
     public readonly bool Equals(BalanceChange other) =>

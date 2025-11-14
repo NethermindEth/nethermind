@@ -19,7 +19,7 @@ namespace Nethermind.Core
         }
 
         [SkipLocalsInit]
-        UInt256 GetBalance(Address address)
+        UInt256 GetBalance(Address address, int? blockAccessIndex = null)
         {
             TryGetAccount(address, out AccountStruct account);
             return account.Balance;

@@ -7,9 +7,9 @@ using System.Linq;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly struct StorageChange(ushort blockAccessIndex, byte[] newValue) : IEquatable<StorageChange>, IIndexedChange
+public readonly struct StorageChange(int blockAccessIndex, byte[] newValue) : IEquatable<StorageChange>, IIndexedChange
 {
-    public ushort BlockAccessIndex { get; init; } = blockAccessIndex;
+    public int BlockAccessIndex { get; init; } = blockAccessIndex;
     public byte[] NewValue { get; init; } = newValue;
 
     public readonly bool Equals(StorageChange other) =>

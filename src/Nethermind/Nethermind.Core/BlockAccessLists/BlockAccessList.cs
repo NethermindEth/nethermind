@@ -15,8 +15,9 @@ namespace Nethermind.Core.BlockAccessLists;
 public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 {
     [JsonIgnore]
-    public ushort Index = 0;
+    public int Index = 0;
     public readonly IEnumerable<AccountChanges> AccountChanges => _accountChanges.Values;
+    public readonly bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
     private readonly SortedDictionary<Address, AccountChanges> _accountChanges;
     private readonly Stack<Change> _changes;
@@ -406,6 +407,6 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         public IIndexedChange? PreviousValue { get; init; }
         public UInt256? PreTxBalance { get; init; }
         public byte[]? PreTxStorage { get; init; }
-        public ushort BlockAccessIndex { get; init; }
+        public int BlockAccessIndex { get; init; }
     }
 }

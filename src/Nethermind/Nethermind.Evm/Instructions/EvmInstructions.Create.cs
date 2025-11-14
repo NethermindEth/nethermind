@@ -139,7 +139,7 @@ internal static partial class EvmInstructions
         ReadOnlyMemory<byte> initCode = vm.EvmState.Memory.Load(in memoryPositionOfInitCode, in initCodeLength);
 
         // Check that the executing account has sufficient balance to transfer the specified value.
-        UInt256 balance = state.GetBalance(env.ExecutingAccount);
+        UInt256 balance = state.GetBalance(env.ExecutingAccount, vm.TxExecutionContext.BlockAccessIndex);
         if (value > balance)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
