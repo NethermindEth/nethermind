@@ -5,17 +5,13 @@ using System;
 using FluentAssertions;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
-using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Xdc.Test.ModuleTests;
+namespace Nethermind.Xdc.Test;
 
 public class VoteTests
 {

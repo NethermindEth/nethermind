@@ -9,7 +9,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test;
 
-[TestFixture]
+[TestFixture, Parallelizable(ParallelScope.All)]
 public class XdcSpecProviderTests
 {
     [Test]

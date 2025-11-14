@@ -19,6 +19,7 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class TimeoutCertificateManagerTests
 {
 

@@ -14,7 +14,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Utils;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -34,7 +33,6 @@ using Nethermind.Xdc.Types;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 

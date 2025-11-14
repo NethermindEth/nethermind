@@ -1,18 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Consensus.Validators;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
 
-namespace Nethermind.Xdc.Test.ModuleTest;
+namespace Nethermind.Xdc.Test;
+[Parallelizable(ParallelScope.All)]
 internal class BlockInfoTests
 {
     private XdcTestBlockchain xdcTestBlockchain;

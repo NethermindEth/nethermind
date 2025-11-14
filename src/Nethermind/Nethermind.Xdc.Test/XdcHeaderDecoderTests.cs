@@ -9,7 +9,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Xdc.Test
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class XdcHeaderDecoderTests
     {
         private static (XdcBlockHeader Header, byte[] Bytes) BuildHeaderAndDefaultEncode(XdcHeaderDecoder codec, bool includeBaseFee = true)

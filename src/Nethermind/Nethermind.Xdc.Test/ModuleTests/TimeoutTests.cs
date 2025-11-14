@@ -5,15 +5,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
-using Nethermind.Logging;
 using Nethermind.Xdc.Types;
 using Nethermind.Xdc.Test.Helpers;
 using NUnit.Framework;
 using Nethermind.Core.Test.Builders;
 
-namespace Nethermind.Xdc.Test.ModuleTests;
+namespace Nethermind.Xdc.Test;
 
 public class TimeoutTests
 {

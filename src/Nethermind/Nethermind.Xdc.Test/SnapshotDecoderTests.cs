@@ -1,17 +1,11 @@
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
-using System.Collections;
 using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc.Test;
 

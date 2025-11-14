@@ -11,7 +11,7 @@ using System.Collections;
 
 namespace Nethermind.Xdc.Test;
 
-[TestFixture]
+[TestFixture, Parallelizable(ParallelScope.All)]
 public class TimeoutCertificateDecoderTests
 {
     public static IEnumerable TcCases
