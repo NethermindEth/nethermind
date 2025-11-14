@@ -34,7 +34,7 @@ public class ExternalRpcIntegrationTests
         {
             string requestedBlockNumber = currentBlockNumber is null ? "latest" : currentBlockNumber.Value.ToHexString(false);
             BlockForRpcForTest block =
-                await client.Post<BlockForRpcForTest>("eth_getBlockByNumber", [requestedBlockNumber, false])1;
+                await client.Post<BlockForRpcForTest>("eth_getBlockByNumber", [requestedBlockNumber, false])!;
             Assert.That(block, Is.Not.Null);
             if (currentHash is not null)
             {
