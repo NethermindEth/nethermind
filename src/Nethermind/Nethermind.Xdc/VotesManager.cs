@@ -28,18 +28,18 @@ internal class VotesManager(
     ISigner signer,
     IForensicsProcessor forensicsProcessor) : IVotesManager
 {
-    private IBlockTree _blockTree = tree;
-    private IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
-    private ISnapshotManager _snapshotManager = snapshotManager;
-    private IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager;
-    private IXdcConsensusContext _ctx = context;
-    private IForensicsProcessor _forensicsProcessor = forensicsProcessor;
-    private ISpecProvider _specProvider = specProvider;
-    private ISigner _signer = signer;
+    private readonly IBlockTree _blockTree = tree;
+    private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
+    private readonly ISnapshotManager _snapshotManager = snapshotManager;
+    private readonly IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager;
+    private readonly IXdcConsensusContext _ctx = context;
+    private readonly IForensicsProcessor _forensicsProcessor = forensicsProcessor;
+    private readonly ISpecProvider _specProvider = specProvider;
+    private readonly ISigner _signer = signer;
 
-    private XdcPool<Vote> _votePool = new();
-    private static VoteDecoder _voteDecoder = new();
-    private static EthereumEcdsa _ethereumEcdsa = new(0);
+    private readonly XdcPool<Vote> _votePool = new();
+    private static readonly VoteDecoder _voteDecoder = new();
+    private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private readonly ConcurrentDictionary<ulong, byte> _qcBuildStartedByRound = new();
     private const int _maxBlockDistance = 7; // Maximum allowed backward distance from the chain head
     private long _highestVotedRound = -1;
