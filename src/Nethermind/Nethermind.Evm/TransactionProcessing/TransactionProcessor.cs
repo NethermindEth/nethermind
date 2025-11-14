@@ -180,9 +180,15 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (!(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas))) return result;
 
+            UInt256 effectiveGasPriceForTxContext = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, in header.BaseFeePerGas);
             UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas);
 
-            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice));
+            if (Out.IsTargetBlock)
+                Out.Log($"evm call effectiveGasPrice msg={effectiveGasPrice} txContext={effectiveGasPriceForTxContext} " +
+                        $"maxPriorityFeePerGas={tx.MaxPriorityFeePerGas} maxFeePerGas={tx.MaxFeePerGas} " +
+                        $"baseFeePerGas={header.BaseFeePerGas} eip1559Enabled={spec.IsEip1559Enabled}");
+
+            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPriceForTxContext));
 
             UpdateMetrics(opts, effectiveGasPrice);
 
@@ -206,8 +212,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 Out.Log($"evm call from={tx.SenderAddress} to={tx.To} gasAvailable={gasAvailable} value={tx.Value}");
 
             int statusCode = !tracer.IsTracingInstructions ?
-                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
-                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
+                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas, in effectiveGasPrice) :
+                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas, in effectiveGasPrice);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
             tx.SpentGas = spentGas.SpentGas;
@@ -663,7 +669,8 @@ namespace Nethermind.Evm.TransactionProcessing
             long gasAvailable,
             in ExecutionEnvironment env,
             out TransactionSubstate substate,
-            out GasConsumed gasConsumed)
+            out GasConsumed gasConsumed,
+            in UInt256 effectiveGasPrice)
             where TTracingInst : struct, IFlag
         {
             substate = default;
@@ -760,12 +767,12 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable,
-                VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
+                effectiveGasPrice, delegationRefunds, gas.FloorGas);
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
-            gasConsumed = RefundOnFailContractCreation(tx, spec, opts, in VirtualMachine.TxExecutionContext.GasPrice);
+            gasConsumed = RefundOnFailContractCreation(tx, spec, opts, in effectiveGasPrice);
             if (Out.IsTargetBlock)
                 Out.Log("evm restored state before transaction");
 
