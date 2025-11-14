@@ -13,7 +13,7 @@
 
 ## Introduction
 
-The XDC (XinFin Digital Contract) module implements a Byzantine Fault Tolerant (BFT) consensus mechanism based on the HotStuff protocol. It extends Ethereum's blockchain architecture with advanced consensus features including:
+The Nethermind XDC module implements a Byzantine Fault Tolerant (BFT) consensus mechanism based on the HotStuff protocol. It extends Ethereum's blockchain architecture with additional consensus features including:
 
 - **HotStuff-based consensus** with 3-chain finalization
 - **Quorum Certificates (QC)** for block validation
