@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -15,6 +12,9 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 

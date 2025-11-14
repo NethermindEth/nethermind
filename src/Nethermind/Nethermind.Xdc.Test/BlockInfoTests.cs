@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 [Parallelizable(ParallelScope.All)]

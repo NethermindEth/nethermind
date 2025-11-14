@@ -20,10 +20,10 @@ using System.Text;
 namespace Nethermind.Xdc.Test;
 internal class EpochSwitchManagerTests
 {
-    private static ImmutableArray<Address> SignerAddresses = [TestItem.AddressA, TestItem.AddressB];
-    private static ImmutableArray<Address> PenalizedAddresses = [TestItem.AddressC, TestItem.AddressD];
-    private static ImmutableArray<Address> StandbyAddresses = [TestItem.AddressE, TestItem.AddressF];
-    private static ImmutableArray<Signature> SignerSignatures = [TestItem.RandomSignatureA, TestItem.RandomSignatureB];
+    private static readonly ImmutableArray<Address> SignerAddresses = [TestItem.AddressA, TestItem.AddressB];
+    private static readonly ImmutableArray<Address> PenalizedAddresses = [TestItem.AddressC, TestItem.AddressD];
+    private static readonly ImmutableArray<Address> StandbyAddresses = [TestItem.AddressE, TestItem.AddressF];
+    private static readonly ImmutableArray<Signature> SignerSignatures = [TestItem.RandomSignatureA, TestItem.RandomSignatureB];
 
     private IEpochSwitchManager _epochSwitchManager;
     private IBlockTree _tree;

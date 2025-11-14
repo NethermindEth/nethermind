@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using FluentAssertions;
-using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Crypto;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
+using System;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 
