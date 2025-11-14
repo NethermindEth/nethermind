@@ -10,8 +10,11 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Nethermind.Xdc.Test;
-internal class XdcTestHelper
+internal static class XdcTestHelper
 {
+    private static readonly EthereumEcdsa ecdsa = new EthereumEcdsa(0);
+    private static readonly VoteDecoder decoder = new VoteDecoder();
+
     public static PrivateKey[] GeneratePrivateKeys(int count)
     {
         var keyBuilder = new PrivateKeyGenerator();
@@ -20,7 +23,6 @@ internal class XdcTestHelper
 
     public static QuorumCertificate CreateQc(BlockRoundInfo roundInfo, ulong gapNumber, PrivateKey[] keys)
     {
-        EthereumEcdsa ecdsa = new EthereumEcdsa(0);
         var qcEncoder = new VoteDecoder();
 
         IEnumerable<Signature> signatures = CreateVoteSignatures(roundInfo, gapNumber, keys);
@@ -30,7 +32,6 @@ internal class XdcTestHelper
 
     public static Signature[] CreateVoteSignatures(BlockRoundInfo roundInfo, ulong gapnumber, PrivateKey[] keys)
     {
-        EthereumEcdsa ecdsa = new EthereumEcdsa(0);
         var encoder = new VoteDecoder();
         IEnumerable<Signature> signatures = keys.Select(k =>
         {
@@ -49,5 +50,16 @@ internal class XdcTestHelper
         var hash = Keccak.Compute(rlp.Bytes).ValueHash256;
         var signature = new EthereumEcdsa(0).Sign(key, hash);
         return new Timeout(round, signature, gap) { Signer = key.Address };
+    }
+
+    public static Vote BuildSignedVote(
+    BlockRoundInfo info, ulong gap, PrivateKey key)
+    {
+        var vote = new Vote(info, gap);
+        var stream = new KeccakRlpStream();
+        decoder.Encode(stream, vote, RlpBehaviors.ForSealing);
+        vote.Signature = ecdsa.Sign(key, stream.GetValueHash());
+        vote.Signer = key.Address;
+        return vote;
     }
 }
