@@ -339,6 +339,14 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         }
     }
 
+    public override void RecalculateStateRoot()
+    {
+        if (!ParallelExecutionEnabled)
+        {
+            _innerWorldState.RecalculateStateRoot();
+        }
+    }
+
     // needed? also trygetaccount?
     // public override bool IsStorageEmpty(Address address)
     // {

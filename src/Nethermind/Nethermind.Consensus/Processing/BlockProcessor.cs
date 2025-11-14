@@ -133,7 +133,8 @@ public partial class BlockProcessor
         ReceiptsTracer.StartNewBlockTrace(block);
 
         SetupBlockAccessLists(spec, block.Transactions.Length);
-        Task stateApplication = ApplyBlockAccessListToState(spec, ShouldComputeStateRoot(header));
+        bool shouldComputeStateRoot = ShouldComputeStateRoot(header);
+        Task stateApplication = ApplyBlockAccessListToState(spec, shouldComputeStateRoot);
         _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
         StoreBeaconRoot(block, spec);
@@ -172,13 +173,10 @@ public partial class BlockProcessor
             block.AccountChanges = _stateProvider.GetAccountChanges(); // how to handle?
         }
 
-        if (ShouldComputeStateRoot(header))
+        await stateApplication;
+        if (shouldComputeStateRoot)
         {
-            if (!(_tracedAccessWorldState?.ParallelExecutionEnabled ?? false))
-            {
-                _stateProvider.RecalculateStateRoot();
-            }
-            await stateApplication;
+            _stateProvider.RecalculateStateRoot();
             header.StateRoot = _stateProvider.StateRoot;
         }
 
