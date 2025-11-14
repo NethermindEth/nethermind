@@ -52,9 +52,10 @@ public class TaikoTransactionProcessor(
 
         if (!tx.IsAnchorTx && !baseFees.IsZero && spec.FeeCollector is not null)
         {
-            if (((ITaikoReleaseSpec)spec).IsOntakeEnabled)
+            var taikoSpec = (ITaikoReleaseSpec)spec;
+            if (taikoSpec.IsOntakeEnabled || taikoSpec.IsShastaEnabled)
             {
-                byte basefeeSharingPctg = header.DecodeOntakeExtraData() ?? 0;
+                byte basefeeSharingPctg = (taikoSpec.IsOntakeEnabled ? header.DecodeOntakeExtraData() : header.DecodeShastaExtraData()) ?? 0;
 
                 UInt256 feeCoinbase = baseFees * basefeeSharingPctg / 100;
 

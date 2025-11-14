@@ -13,10 +13,12 @@ public class TaikoOntakeReleaseSpec : Cancun, ITaikoReleaseSpec
     {
         IsOntakeEnabled = true;
         IsPacayaEnabled = false;
+        IsShastaEnabled = false;
     }
 
     public bool IsOntakeEnabled { get; set; }
     public bool IsPacayaEnabled { get; set; }
+    public bool IsShastaEnabled { get; set; }
     public bool UseSurgeGasPriceOracle { get; set; }
     public Address TaikoL2Address { get; set; } = new("0x1670000000000000000000000000000000010001");
 }
@@ -28,6 +30,17 @@ public class TaikoPacayaReleaseSpec : TaikoOntakeReleaseSpec, ITaikoReleaseSpec
     {
         IsOntakeEnabled = true;
         IsPacayaEnabled = true;
+        IsShastaEnabled = false;
     }
 
+}
+
+public class TaikoShastaReleaseSpec : TaikoPacayaReleaseSpec, ITaikoReleaseSpec
+{
+    public TaikoShastaReleaseSpec()
+    {
+        IsOntakeEnabled = true;
+        IsPacayaEnabled = true;
+        IsShastaEnabled = true;
+    }
 }
