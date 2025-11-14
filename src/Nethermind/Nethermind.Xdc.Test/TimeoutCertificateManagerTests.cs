@@ -176,7 +176,7 @@ public class TimeoutCertificateManagerTests
         PrivateKey[] keys = keyBuilder.Generate(21).ToArray();
         var masternodes = keys.Take(20).Select(k => k.Address).ToArray();
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshot(0, Arg.Any<IXdcReleaseSpec>())
+        snapshotManager.GetSnapshotByGapNumber(0)
             .Returns(new Snapshot(0, Hash256.Zero, masternodes));
 
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
