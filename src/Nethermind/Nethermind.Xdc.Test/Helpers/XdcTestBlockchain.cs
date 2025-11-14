@@ -51,7 +51,6 @@ public class XdcTestBlockchain : TestBlockchain
         XdcTestBlockchain chain = new(useHotStuffModule);
         await chain.Build(configurer);
 
-
         var fromXdcContainer = (FromContainer)chain.Container.Resolve<FromXdcContainer>();
 
         Configuration testConfiguration = fromXdcContainer.Configuration;
@@ -158,7 +157,7 @@ public class XdcTestBlockchain : TestBlockchain
 
         BlockProducer = CreateTestBlockProducer();
         BlockProducerRunner ??= CreateBlockProducerRunner();
-        BlockProducerRunner.Start();
+
         Suggester = new XdcBlockSuggester(BlockTree, BlockProducerRunner);
 
         return Task.FromResult((TestBlockchain)this);
@@ -342,6 +341,20 @@ public class XdcTestBlockchain : TestBlockchain
         reconfigure((XdcReleaseSpec)SpecProvider.GetXdcSpec((XdcBlockHeader)BlockTree.Head!.Header));
     }
 
+    public void StartHotStuffModule()
+    {
+        if (!_useHotStuffModule)
+            throw new InvalidOperationException("Must be using HotStuff module");
+        BlockProducerRunner.Start();
+    }
+
+    public Task StopHotStuffModule()
+    {
+        if (!_useHotStuffModule)
+            throw new InvalidOperationException("Must be using HotStuff module");
+        return BlockProducerRunner.StopAsync();
+    }
+
     public async Task AddBlocks(int count, bool withTransaction = false)
     {
         UInt256 nonce = 0;
@@ -395,6 +408,12 @@ public class XdcTestBlockchain : TestBlockchain
 
     public async Task TriggerAndSimulateBlockProposalAndVoting()
     {
+        await SimulateVoting();
+        await TriggerBlockProposal();
+    }
+
+    public async Task SimulateVoting()
+    {
         if (!_useHotStuffModule)
             throw new InvalidOperationException($"Can only be used when using the {nameof(XdcHotStuff)} module");
         var head = (XdcBlockHeader)BlockTree.Head!.Header;
@@ -410,7 +429,6 @@ public class XdcTestBlockchain : TestBlockchain
         var newHeadWaitHandle = new TaskCompletionSource();
         var newRoundWaitHandle = new TaskCompletionSource();
         XdcContext.NewRoundSetEvent += OnNewRound;
-        BlockTree.NewHeadBlock += OnNewHead;
         try
         {
             //by setting the correct signer the block producer runner should trigger trying to propose a block
@@ -420,7 +438,7 @@ public class XdcTestBlockchain : TestBlockchain
             while (!newRoundWaitHandle.Task.IsCompleted)
             {
                 count++;
-                if (count > 1000)
+                if (count > 300)
                 {
                     break;
                 }
@@ -432,27 +450,16 @@ public class XdcTestBlockchain : TestBlockchain
             //Voting will trigger QC creation which triggers new round
             var finishedTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(10_000));
             if (finishedTask != newRoundWaitHandle.Task)
-                Assert.Fail($"After {200} votes no new head could be detected. Something is wrong.");
-
-            var waitingForHead = await Task.WhenAny(newHeadWaitHandle.Task, Task.Delay(10_000));
-
-            if (waitingForHead != newHeadWaitHandle.Task)
-                Assert.Fail("Timed out waiting for new head after succesful voting. Block was not proposed.");
+                Assert.Fail("After 300 votes no new head could be detected. Something is wrong.");
         }
         finally
         {
-            BlockTree.NewHeadBlock -= OnNewHead;
             XdcContext.NewRoundSetEvent -= OnNewRound;
         }
 
         void OnNewRound(object? sender, NewRoundEventArgs e)
         {
-            newHeadWaitHandle.SetResult();
-        }
-
-        void OnNewHead(object? sender, BlockEventArgs e)
-        {
-            newHeadWaitHandle.SetResult();
+            newRoundWaitHandle.SetResult();
         }
         void SignRandom(Vote vote)
         {
@@ -460,6 +467,37 @@ public class XdcTestBlockchain : TestBlockchain
             voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
             vote.Signature = RandomSigner.Sign(stream.GetValueHash());
             vote.Signer = RandomSigner.Address;
+        }
+    }
+
+    public async Task TriggerBlockProposal()
+    {
+        if (!_useHotStuffModule)
+            throw new InvalidOperationException("Requires HotStuff module");
+        var head = (XdcBlockHeader)BlockTree.Head!.Header;
+        var spec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
+
+        var newHeadWaitHandle = new TaskCompletionSource();
+
+        BlockTree.NewHeadBlock += OnNewHead;
+        try
+        {
+            //by setting the correct signer the block producer runner should trigger trying to propose a block
+            var leader = ConsensusModule.GetLeaderAddress(head, XdcContext.CurrentRound, spec);
+            Signer.SetSigner(MasterNodeCandidates.First(k => k.Address == leader));
+
+            var waitingForHead = await Task.WhenAny(newHeadWaitHandle.Task, Task.Delay(10_000));
+            if (waitingForHead != newHeadWaitHandle.Task)
+                Assert.Fail("Timed out waiting for new head after setting leader as signer.");
+        }
+        finally
+        {
+            BlockTree.NewHeadBlock -= OnNewHead;
+        }
+
+        void OnNewHead(object? sender, BlockEventArgs e)
+        {
+            newHeadWaitHandle.SetResult();
         }
     }
 
