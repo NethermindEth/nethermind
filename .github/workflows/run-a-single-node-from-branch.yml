@@ -22,8 +22,8 @@ on:
           - world-mainnet
           - joc-mainnet
           - joc-testnet
-          - linea-mainnet
-          - linea-sepolia
+          # - linea-mainnet
+          # - linea-sepolia
           - taiko-alethia
           - taiko-hoodi
           - energyweb
