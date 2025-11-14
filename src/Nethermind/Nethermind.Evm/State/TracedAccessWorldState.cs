@@ -76,6 +76,11 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         }
     }
 
+    public void GenerateBlockAccessList()
+    {
+        // combine intermidiate BALs and receipt tracers
+    }
+
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => AddToBalance(address, balanceChange, spec, out _);
 

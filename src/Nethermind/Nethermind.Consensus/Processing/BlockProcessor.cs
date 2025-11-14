@@ -7,6 +7,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.FSharp.Data.UnitSystems.SI.UnitNames;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -180,6 +181,7 @@ public partial class BlockProcessor
             header.StateRoot = _stateProvider.StateRoot;
         }
 
+        // move everything inside some bal generator class?
         if (_tracedAccessWorldState is not null && spec.BlockLevelAccessListsEnabled)
         {
             if (block.IsGenesis)
@@ -188,6 +190,7 @@ public partial class BlockProcessor
             }
             else
             {
+                _tracedAccessWorldState.GenerateBlockAccessList();
                 body.BlockAccessList = _tracedAccessWorldState.GeneratedBlockAccessList;
                 block.EncodedBlockAccessList = Rlp.Encode(_tracedAccessWorldState.GeneratedBlockAccessList).Bytes;
                 header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
