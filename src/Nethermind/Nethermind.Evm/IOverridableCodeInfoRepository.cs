@@ -10,6 +10,8 @@ namespace Nethermind.Evm;
 
 public interface IOverridableCodeInfoRepository : ICodeInfoRepository
 {
-    void SetCodeOverwrite(IReleaseSpec vmSpec, Address key, ICodeInfo value, Address? redirectAddress = null);
-    public void ResetOverrides();
+    void SetCodeOverride(IReleaseSpec vmSpec, Address key, ICodeInfo value);
+    void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr);
+    void ResetOverrides();
+    void ResetPrecompileOverrides();
 }

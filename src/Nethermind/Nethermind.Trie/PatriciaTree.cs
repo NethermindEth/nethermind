@@ -706,14 +706,15 @@ namespace Nethermind.Trie
                 }
 
                 // About 1% reach here
-                node = MaybeCombineNode(ref path, node);
+                node = MaybeCombineNode(ref path, node, null);
             }
 
             return node;
         }
 
-        internal bool ShouldUpdateChild(TrieNode parent, TrieNode? oldChild, TrieNode? newChild)
+        internal bool ShouldUpdateChild(TrieNode? parent, TrieNode? oldChild, TrieNode? newChild)
         {
+            if (parent is null) return true;
             if (oldChild is null && newChild is null) return false;
             if (!ReferenceEquals(oldChild, newChild)) return true;
             if (newChild.Keccak is null && parent.Keccak is not null) return true; // So that recalculate root knows to recalculate the parent root.
@@ -726,7 +727,7 @@ namespace Nethermind.Trie
         /// <param name="path"></param>
         /// <param name="node"></param>
         /// <returns></returns>
-        internal TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode? node)
+        internal TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode? node, TrieNode? originalNode)
         {
             int onlyChildIdx = -1;
             TrieNode? onlyChildNode = null;
@@ -764,12 +765,50 @@ namespace Nethermind.Trie
 
             if (onlyChildNode.IsBranch)
             {
+                byte[] extensionKey = [(byte)onlyChildIdx];
+                if (originalNode is not null && originalNode.IsExtension && Bytes.AreEqual(extensionKey, originalNode.Key))
+                {
+                    TrieNode? originalChild = originalNode.GetChildWithChildPath(TrieStore, ref path, 0);
+                    if (!ShouldUpdateChild(originalNode, originalChild, onlyChildNode))
+                    {
+                        return originalNode;
+                    }
+                }
+
                 return TrieNodeFactory.CreateExtension([(byte)onlyChildIdx], onlyChildNode);
             }
 
             // 35%
             // Replace the only child with something with extra key.
             byte[] newKey = Bytes.Concat((byte)onlyChildIdx, onlyChildNode.Key);
+
+            if (originalNode is not null) // Only bulkset provide original node
+            {
+                if (originalNode.IsExtension && onlyChildNode.IsExtension)
+                {
+                    if (Bytes.AreEqual(newKey, originalNode.Key))
+                    {
+                        TrieNode? originalChild = originalNode.GetChildWithChildPath(TrieStore, ref path, 0);
+                        TrieNode? newChild = onlyChildNode.GetChildWithChildPath(TrieStore, ref path, 0);
+                        if (!ShouldUpdateChild(originalNode, originalChild, newChild))
+                        {
+                            return originalNode;
+                        }
+                    }
+                }
+
+                if (originalNode.IsLeaf && onlyChildNode.IsLeaf)
+                {
+                    if (Bytes.AreEqual(newKey, originalNode.Key))
+                    {
+                        if (onlyChildNode.Value.Equals(originalNode.Value))
+                        {
+                            return originalNode;
+                        }
+                    }
+                }
+            }
+
             TrieNode tn = onlyChildNode.CloneWithChangedKey(newKey);
             return tn;
         }

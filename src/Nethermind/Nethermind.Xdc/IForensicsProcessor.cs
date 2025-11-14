@@ -14,20 +14,20 @@ namespace Nethermind.Xdc;
 
 public interface IForensicsProcessor
 {
-    Task ForensicsMonitoring(IEnumerable<XdcBlockHeader> headerQcToBeCommitted, QuorumCert incomingQC);
+    Task ForensicsMonitoring(IEnumerable<XdcBlockHeader> headerQcToBeCommitted, QuorumCertificate incomingQC);
 
-    Task SetCommittedQCs(IEnumerable<XdcBlockHeader> headers, QuorumCert incomingQC);
+    Task SetCommittedQCs(IEnumerable<XdcBlockHeader> headers, QuorumCertificate incomingQC);
 
-    Task ProcessForensics(QuorumCert incomingQC);
+    Task ProcessForensics(QuorumCertificate incomingQC);
 
-    Task SendForensicProof(QuorumCert firstQc, QuorumCert secondQc);
+    Task SendForensicProof(QuorumCertificate firstQc, QuorumCertificate secondQc);
 
     (Hash256 AncestorHash, IList<string> FirstPath, IList<string> SecondPath)
         FindAncestorBlockHash(BlockRoundInfo firstBlockInfo, BlockRoundInfo secondBlockInfo);
 
     Task ProcessVoteEquivocation(Vote incomingVote);
 
-    Task DetectEquivocationInVotePool(Vote vote, List<Vote> votePool);
+    Task DetectEquivocationInVotePool(Vote vote, IEnumerable<Vote> votePool);
 
     Task SendVoteEquivocationProof(Vote vote1, Vote vote2, Address signer);
 }

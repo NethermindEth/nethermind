@@ -31,33 +31,6 @@ namespace Nethermind.JsonRpc.Modules
         public const string Rpc = nameof(Rpc);
         public const string Rbuilder = nameof(Rbuilder);
 
-        public static IEnumerable<string> AllBuiltInModules { get; } = new List<string>()
-        {
-            Admin,
-            Clique,
-            Engine,
-            Db,
-            Debug,
-            Erc20,
-            Eth,
-            Evm,
-            Flashbots,
-            Net,
-            Nft,
-            Parity,
-            Personal,
-            Proof,
-            Subscribe,
-            Trace,
-            TxPool,
-            Web3,
-            Vault,
-            Deposit,
-            Health,
-            Rpc,
-            Rbuilder,
-        };
-
         public static IEnumerable<string> DefaultModules { get; } = new List<string>()
         {
             Eth,

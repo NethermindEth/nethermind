@@ -326,8 +326,7 @@ public class PersistentReceiptStorageTests
         CreateStorage();
         (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true);
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
-        Thread.Sleep(100);
-        _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeNull();
+        Assert.That(() => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes], Is.Null.After(100, 10));
     }
 
     [TestCase(1L, false)]
@@ -339,13 +338,9 @@ public class PersistentReceiptStorageTests
         CreateStorage();
         _blockTree.BlockAddedToMain +=
             Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(blockNumber).TestObject));
-        Thread.Sleep(100);
-        IEnumerable<ICall> calls = _blockTree.ReceivedCalls()
-            .Where(static call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlock)));
-        if (WillPruneOldIndicies)
-            calls.Should().NotBeEmpty();
-        else
-            calls.Should().BeEmpty();
+        Assert.That(() => _blockTree.ReceivedCalls()
+            .Where(static call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlock))),
+            WillPruneOldIndicies ? Is.Not.Empty.After(100, 10) : Is.Empty.After(100, 10));
     }
 
     [Test]
@@ -355,8 +350,7 @@ public class PersistentReceiptStorageTests
         CreateStorage();
         (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true, headNumber: 1001);
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
-        Thread.Sleep(100);
-        _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeNull();
+        Assert.That(() => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes], Is.Null.After(100, 10));
     }
 
     [Test]

@@ -124,6 +124,7 @@ public class TaikoPayloadPreparationService(
         int transactionsCheck = rlpStream.Position + transactionsSequenceLength;
 
         int txCount = rlpStream.PeekNumberOfItemsRemaining(transactionsCheck);
+        rlpStream.GuardLimit(txCount);
 
         Transaction[] transactions = new Transaction[txCount];
         int txIndex = 0;

@@ -11,7 +11,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.Proofs;
 
-public class ProofTxTracer(bool treatSystemAccountDifferently) : TxTracer
+public class ProofTxTracer(bool treatZeroAccountDifferently) : TxTracer
 {
     public HashSet<Address> Accounts { get; } = new();
 
@@ -33,7 +33,7 @@ public class ProofTxTracer(bool treatSystemAccountDifferently) : TxTracer
 
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
-        if (treatSystemAccountDifferently && Address.SystemUser == address && before is null && after?.IsZero != false)
+        if (treatZeroAccountDifferently && Address.Zero == address && before is null && after?.IsZero != false)
         {
             return;
         }
@@ -43,7 +43,7 @@ public class ProofTxTracer(bool treatSystemAccountDifferently) : TxTracer
 
     public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
     {
-        if (treatSystemAccountDifferently && Address.SystemUser == address && before is null &&
+        if (treatZeroAccountDifferently && Address.Zero == address && before is null &&
             after == Array.Empty<byte>())
         {
             return;
@@ -54,7 +54,7 @@ public class ProofTxTracer(bool treatSystemAccountDifferently) : TxTracer
 
     public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)
     {
-        if (treatSystemAccountDifferently && Address.SystemUser == address && before is null && after?.IsZero != false)
+        if (treatZeroAccountDifferently && Address.Zero == address && before is null && after?.IsZero != false)
         {
             return;
         }

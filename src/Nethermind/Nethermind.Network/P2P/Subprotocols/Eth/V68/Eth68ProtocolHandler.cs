@@ -1,53 +1,58 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V68;
 
-public class Eth68ProtocolHandler : Eth67ProtocolHandler
+public class Eth68ProtocolHandler(ISession session,
+    IMessageSerializationService serializer,
+    INodeStatsManager nodeStatsManager,
+    ISyncServer syncServer,
+    IBackgroundTaskScheduler backgroundTaskScheduler,
+    ITxPool txPool,
+    IGossipPolicy gossipPolicy,
+    IForkInfo forkInfo,
+    ILogManager logManager,
+    ITxPoolConfig txPoolConfig,
+    ISpecProvider specProvider,
+    ITxGossipPolicy? transactionsGossipPolicy = null
+    )
+    : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
 {
-    private readonly IPooledTxsRequestor _pooledTxsRequestor;
+    private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
+    private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
-    private readonly Action<V66.Messages.GetPooledTransactionsMessage> _sendAction;
+    private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
+        ? long.MaxValue
+        : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock();
+
+    private ClockCache<ValueHash256, (int, TxType)> TxShapeAnnouncements { get; } = new(MemoryAllowance.TxHashCacheSize / 10);
 
     public override string Name => "eth68";
 
     public override byte ProtocolVersion => EthVersions.Eth68;
-
-    public Eth68ProtocolHandler(ISession session,
-        IMessageSerializationService serializer,
-        INodeStatsManager nodeStatsManager,
-        ISyncServer syncServer,
-        IBackgroundTaskScheduler backgroundTaskScheduler,
-        ITxPool txPool,
-        IPooledTxsRequestor pooledTxsRequestor,
-        IGossipPolicy gossipPolicy,
-        IForkInfo forkInfo,
-        ILogManager logManager,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
-        : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
-    {
-        _pooledTxsRequestor = pooledTxsRequestor;
-
-        // Capture Action once rather than per call
-        _sendAction = Send<V66.Messages.GetPooledTransactionsMessage>;
-    }
 
     public override void HandleMessage(ZeroPacket message)
     {
@@ -77,15 +82,15 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
     private void Handle(NewPooledTransactionHashesMessage68 msg)
     {
-        using var message = msg;
-        bool isTrace = Logger.IsTrace;
+        using NewPooledTransactionHashesMessage68 message = msg;
+
         if (message.Hashes.Count != message.Types.Count || message.Hashes.Count != message.Sizes.Count)
         {
             string errorMessage = $"Wrong format of {nameof(NewPooledTransactionHashesMessage68)} message. " +
                                   $"Hashes count: {message.Hashes.Count} " +
                                   $"Types count: {message.Types.Count} " +
                                   $"Sizes count: {message.Sizes.Count}";
-            if (isTrace) Logger.Trace(errorMessage);
+            if (Logger.IsTrace) Logger.Trace(errorMessage);
 
             throw new SubprotocolException(errorMessage);
         }
@@ -94,11 +99,86 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
         AddNotifiedTransactions(message.Hashes);
 
-        long startTime = isTrace ? Stopwatch.GetTimestamp() : 0;
+        long startTime = Logger.IsTrace ? Stopwatch.GetTimestamp() : 0;
 
-        _pooledTxsRequestor.RequestTransactionsEth68(_sendAction, message.Hashes, message.Sizes, message.Types);
+        RequestPooledTransactions(message.Hashes, message.Sizes, message.Types);
 
-        if (isTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+        if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+    }
+
+    protected void RequestPooledTransactions(IOwnedReadOnlyList<Hash256> hashes, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<byte> types)
+    {
+        using ArrayPoolListRef<int> newTxHashesIndexes = AddMarkUnknownHashes(hashes.AsSpan());
+
+        if (newTxHashesIndexes.Count == 0)
+        {
+            hashes.Dispose();
+            sizes.Dispose();
+            types.Dispose();
+
+            return;
+        }
+
+        int packetSizeLeft = TransactionsMessage.MaxPacketSize;
+        ArrayPoolList<Hash256> hashesToRequest = new(newTxHashesIndexes.Count);
+
+        int discoveredCount = newTxHashesIndexes.Count;
+        int toRequestCount = 0;
+
+        foreach (int index in newTxHashesIndexes.AsSpan())
+        {
+            Hash256 hash = hashes[index];
+            int txSize = sizes[index];
+            TxType txType = (TxType)types[index];
+            TxShapeAnnouncements.Set(hash, (txSize, txType));
+
+            long maxTxSize = txType.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
+
+            if (txSize > maxTxSize)
+                continue;
+
+            if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
+            {
+                Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
+                hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
+                packetSizeLeft = TransactionsMessage.MaxPacketSize;
+                toRequestCount = 0;
+            }
+
+            if (_blobSupportEnabled || txType != TxType.Blob)
+            {
+                hashesToRequest.Add(hash);
+                packetSizeLeft -= txSize;
+                toRequestCount++;
+            }
+        }
+
+        if (hashesToRequest.Count is not 0)
+        {
+            Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
+        }
+        else
+        {
+            hashesToRequest.Dispose();
+        }
+    }
+
+    private ArrayPoolListRef<int> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes)
+    {
+        ArrayPoolListRef<int> discoveredTxHashesAndSizes = new(hashes.Length);
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            Hash256 hash = hashes[i];
+            if (!_txPool.IsKnown(hash))
+            {
+                if (_txPool.AnnounceTx(hash, this) is AnnounceResult.New)
+                {
+                    discoveredTxHashesAndSizes.Add(i);
+                }
+            }
+        }
+
+        return discoveredTxHashesAndSizes;
     }
 
     protected override void SendNewTransactionCore(Transaction tx)
@@ -165,4 +245,22 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
         Send(message);
     }
+
+    protected override ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
+    {
+        int startIdx = request.startIndex;
+        for (int i = startIdx; i < request.txs.Count; i++)
+        {
+            if (!ValidateSizeAndType(request.txs[i]))
+            {
+                request.txs.Dispose();
+                throw new SubprotocolException("invalid pooled tx type or size");
+            }
+        }
+
+        return base.HandleSlow(request, cancellationToken);
+    }
+
+    private bool ValidateSizeAndType(Transaction tx)
+        => !TxShapeAnnouncements.Delete(tx.Hash!, out (int Size, TxType Type) txShape) || (tx.GetLength() == txShape.Size && tx.Type == txShape.Type);
 }

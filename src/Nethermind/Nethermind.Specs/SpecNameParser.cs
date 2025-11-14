@@ -54,6 +54,11 @@ namespace Nethermind.Specs
                 "Paris" => Paris.Instance,
                 "Prague" => Prague.Instance,
                 "Osaka" => Osaka.Instance,
+                "BPO1" => BPO1.Instance,
+                "BPO2" => BPO2.Instance,
+                "BPO3" => BPO3.Instance,
+                "BPO4" => BPO4.Instance,
+                "BPO5" => BPO5.Instance,
                 "Amsterdam" => Amsterdam.Instance,
                 _ => throw new NotSupportedException()
             };

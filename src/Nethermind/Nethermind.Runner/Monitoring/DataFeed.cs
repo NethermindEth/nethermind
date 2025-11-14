@@ -336,9 +336,9 @@ public class DataFeed
         DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, new DataCompletion());
 
         Block head = choice.Head;
-        Transaction[] txs = choice.Head.Transactions;
-        IReleaseSpec spec = _specProvider.GetSpec(choice.Head.Header);
-        ReceiptForRpc[] receipts = _receiptFinder.Get(choice.Head).Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, txs[i].GetGasInfo(spec, choice.Head.Header))).ToArray();
+        Transaction[] txs = head.Transactions;
+        IReleaseSpec spec = _specProvider.GetSpec(head.Header);
+        ReceiptForRpc[] receipts = _receiptFinder.Get(head).Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header))).ToArray();
         forkChoice.TrySetResult(
             JsonSerializer.SerializeToUtf8Bytes(
                 new ForkData
@@ -426,7 +426,7 @@ public class DataFeed
         public UInt256 EffectiveGasPrice { get; set; }
         public Address? ContractAddress { get; set; }
         public LogEntryForWeb[] Logs { get; set; }
-        public long Status { get; set; }
+        public long? Status { get; set; }
         public UInt256 BlobGasPrice { get; set; }
         public ulong BlobGasUsed { get; set; }
     }

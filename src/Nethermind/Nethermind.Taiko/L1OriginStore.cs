@@ -23,7 +23,7 @@ public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, IRl
         Span<byte> keyBytes = stackalloc byte[UInt256BytesLength];
         blockId.ToBigEndian(keyBytes);
 
-        return db.Get(new ValueHash256(keyBytes), decoder);
+        return db.Get(new Hash256(keyBytes), decoder);
     }
 
     public void WriteL1Origin(UInt256 blockId, L1Origin l1Origin)

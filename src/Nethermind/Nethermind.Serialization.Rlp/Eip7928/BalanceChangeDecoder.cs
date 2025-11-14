@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
@@ -17,14 +16,8 @@ public class BalanceChangeDecoder : IRlpValueDecoder<BalanceChange>, IRlpStreamD
 
     public BalanceChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
-        // var tmp = ctx.Data[ctx.Position..].ToArray();
-
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
-
-        // tmp = tmp[..(length + 1)];
-        // Console.WriteLine("balance change:" + length);
-        // Console.WriteLine(Bytes.ToHexString(tmp));
 
         BalanceChange balanceChange = new()
         {

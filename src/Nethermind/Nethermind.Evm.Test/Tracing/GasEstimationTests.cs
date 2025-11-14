@@ -325,7 +325,7 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void Estimate_UseErrorMargin_EstimationResultIsNotExact()
+        public void Estimate_simple_transfer_with_errorMargin_should_be_exact()
         {
             Transaction tx = Build.A.Transaction.WithGasLimit(30000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
@@ -345,7 +345,7 @@ namespace Nethermind.Evm.Test.Tracing
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(err, Is.Null);
-                Assert.That(result, Is.Not.EqualTo(totalGas).Within(10));
+                Assert.That(result, Is.EqualTo(totalGas));
             }
         }
 
@@ -592,6 +592,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.InsertContract(contractAddress, contractCode);
 
             Transaction tx = Build.A.Transaction
+                .WithData([0x00, 0x00, 0x00, 0x00])
                 .WithGasLimit(gasLimit)
                 .WithTo(contractAddress)
                 .WithSenderAddress(TestItem.AddressA)
@@ -633,7 +634,7 @@ namespace Nethermind.Evm.Test.Tracing
 
                 EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
                 VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-                _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+                _transactionProcessor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
                 _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
 
                 tracer = new();

@@ -307,6 +307,12 @@ namespace Nethermind.Core.Specs
         Address Eip2935ContractAddress { get; }
 
         /// <summary>
+        /// EIP-2935 ring buffer size for historical block hash storage.
+        /// Defaults to 8,191 blocks for Ethereum mainnet.
+        /// </summary>
+        long Eip2935RingBufferSize => Eip2935Constants.RingBufferSize;
+
+        /// <summary>
         /// SELFDESTRUCT only in same transaction
         /// </summary>
         bool IsEip6780Enabled { get; }

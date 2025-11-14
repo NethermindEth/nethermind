@@ -122,6 +122,10 @@ public class Block
     public Hash256? BlockAccessListHash => Header.BlockAccessListHash; // do not add setter here
     public BlockAccessList? BlockAccessList => Body.BlockAccessList; // do not add setter here
 
+    // for debugging by rpc
+    [JsonIgnore]
+    public BlockAccessList? GeneratedBlockAccessList { get; set; }
+
     [JsonIgnore]
     public byte[][]? ExecutionRequests { get; set; }
 

@@ -21,11 +21,13 @@ public class CodeInfoRepository : ICodeInfoRepository
     private static readonly CodeLruCache _codeCache = new();
     private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
+    private readonly TracedAccessWorldState? _tracedAccessWorldState;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
+        _tracedAccessWorldState = _worldState as TracedAccessWorldState;
     }
 
     public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
@@ -33,12 +35,16 @@ public class CodeInfoRepository : ICodeInfoRepository
         delegationAddress = null;
         if (vmSpec.IsPrecompile(codeSource)) // _localPrecompiles have to have all precompiles
         {
+            if (_tracedAccessWorldState is not null && _tracedAccessWorldState.TracingEnabled)
+            {
+                _tracedAccessWorldState.AddAccountRead(codeSource);
+            }
             return _localPrecompiles[codeSource];
         }
 
         ICodeInfo cachedCodeInfo = InternalGetCachedCode(_worldState, codeSource, vmSpec);
 
-        if (!cachedCodeInfo.IsEmpty && TryGetDelegatedAddress(cachedCodeInfo.CodeSpan, out delegationAddress))
+        if (!cachedCodeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(cachedCodeInfo.CodeSpan, out delegationAddress))
         {
             if (followDelegation)
                 cachedCodeInfo = InternalGetCachedCode(_worldState, delegationAddress, vmSpec);
@@ -144,27 +150,11 @@ public class CodeInfoRepository : ICodeInfoRepository
             : codeHash;
     }
 
-    /// <remarks>
-    /// Parses delegation code to extract the contained address.
-    /// <b>Assumes </b><paramref name="code"/> <b>is delegation code!</b>
-    /// </remarks>
-    private static bool TryGetDelegatedAddress(ReadOnlySpan<byte> code, [NotNullWhen(true)] out Address? address)
-    {
-        if (Eip7702Constants.IsDelegatedCode(code))
-        {
-            address = new Address(code[Eip7702Constants.DelegationHeader.Length..].ToArray());
-            return true;
-        }
-
-        address = null;
-        return false;
-    }
-
     public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        TryGetDelegatedAddress(InternalGetCachedCode(_worldState, address, spec).CodeSpan, out delegatedAddress);
+        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCachedCode(_worldState, address, spec).CodeSpan, out delegatedAddress);
 
     public bool TryGetDelegation(in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        TryGetDelegatedAddress(InternalGetCachedCode(_worldState, in codeHash, spec).CodeSpan, out delegatedAddress);
+        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCachedCode(_worldState, in codeHash, spec).CodeSpan, out delegatedAddress);
 
     private sealed class CodeLruCache
     {

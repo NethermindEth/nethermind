@@ -11,6 +11,7 @@ namespace Nethermind.Facade.Filters
         public Address Address { get; }
         public Hash256 BlockHash { get; }
         public long BlockNumber { get; }
+        public ulong BlockTimestamp { get; }
         public byte[] Data { get; }
         public long LogIndex { get; }
         public bool Removed { get; }
@@ -18,10 +19,11 @@ namespace Nethermind.Facade.Filters
         public Hash256 TransactionHash { get; }
         public long TransactionIndex { get; }
 
-        public FilterLog(long logIndex, TxReceipt txReceipt, LogEntry logEntry, bool removed = false)
+        public FilterLog(long logIndex, TxReceipt txReceipt, LogEntry logEntry, ulong blockTimestamp, bool removed = false)
             : this(
                 logIndex,
                 txReceipt.BlockNumber,
+                blockTimestamp,
                 txReceipt.BlockHash,
                 txReceipt.Index,
                 txReceipt.TxHash,
@@ -31,11 +33,12 @@ namespace Nethermind.Facade.Filters
                 removed)
         { }
 
-        public FilterLog(long logIndex, long blockNumber, Hash256 blockHash, int transactionIndex, Hash256 transactionHash, Address address, byte[] data, Hash256[] topics, bool removed = false)
+        public FilterLog(long logIndex, long blockNumber, ulong blockTimestamp, Hash256 blockHash, int transactionIndex, Hash256 transactionHash, Address address, byte[] data, Hash256[] topics, bool removed = false)
         {
             Removed = removed;
             LogIndex = logIndex;
             BlockNumber = blockNumber;
+            BlockTimestamp = blockTimestamp;
             BlockHash = blockHash;
             TransactionIndex = transactionIndex;
             TransactionHash = transactionHash;

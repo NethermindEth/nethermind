@@ -178,6 +178,7 @@ jobs:
             --el-extra-flag "Seq.ServerUrl=https://seq.nethermind.io" \
             --el-extra-flag "Seq.ApiKey=${{ secrets.SEQ_API_KEY }}" \
             --el-extra-flag Seq.MinLevel=Info \
+            --el-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug" \
             --el-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}"
           )
           OP_METRICS_FLAGS=(
@@ -186,6 +187,7 @@ jobs:
             --el-op-extra-flag "Seq.ServerUrl=https://seq.nethermind.io" \
             --el-op-extra-flag "Seq.ApiKey=${{ secrets.SEQ_API_KEY }}" \
             --el-op-extra-flag Seq.MinLevel=Info \
+            --el-op-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug" \
             --el-op-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}"
           )
           L2_METRICS_FLAGS=(
@@ -194,6 +196,7 @@ jobs:
             --el-l2-extra-flag "Seq.ServerUrl=https://seq.nethermind.io" \
             --el-l2-extra-flag "Seq.ApiKey=${{ secrets.SEQ_API_KEY }}" \
             --el-l2-extra-flag Seq.MinLevel=Info \
+            --el-l2-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug" \
             --el-l2-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}"
           )
 
@@ -251,10 +254,10 @@ jobs:
               EXECUTION_URL="${{ secrets.MAINNET_EXECUTION_URL }}"
               stripped_network="mainnet"
               taiko_client_version="taiko-alethia-client-v0.43.2"
-            elif [[ "$network" == *hekla* ]]; then
-              CONSENSUS_URL="${{ secrets.HOLESKY_CONSENSUS_URL }}"
-              EXECUTION_URL="${{ secrets.HOLESKY_EXECUTION_URL }}"
-              stripped_network="holesky"
+            elif [[ "$network" == *hoodi* ]]; then
+              CONSENSUS_URL="${{ secrets.HOODI_CONSENSUS_URL }}"
+              EXECUTION_URL="${{ secrets.HOODI_EXECUTION_URL }}"
+              stripped_network="hoodi"
               taiko_client_version="latest"
             else
               echo "Unknown network"

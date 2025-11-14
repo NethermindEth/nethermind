@@ -17,7 +17,7 @@ public class HeaderStoreTests
     [Test]
     public void TestCanStoreAndGetHeader()
     {
-        HeaderStore store = new(new MemDb(), new MemDb());
+        IHeaderStore store = new HeaderStore(new MemDb(), new MemDb());
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
         BlockHeader header2 = Build.A.BlockHeader.WithNumber(102).TestObject;
@@ -39,7 +39,7 @@ public class HeaderStoreTests
     public void TestCanReadHeaderStoredWithHash()
     {
         IDb headerDb = new MemDb();
-        HeaderStore store = new(headerDb, new MemDb());
+        IHeaderStore store = new HeaderStore(headerDb, new MemDb());
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
         headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header).Bytes);
@@ -50,7 +50,7 @@ public class HeaderStoreTests
     [Test]
     public void TestCanReadCacheHeader()
     {
-        HeaderStore store = new(new MemDb(), new MemDb());
+        IHeaderStore store = new HeaderStore(new MemDb(), new MemDb());
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
         store.Cache(header);
@@ -60,7 +60,7 @@ public class HeaderStoreTests
     [Test]
     public void TestCanDeleteHeader()
     {
-        HeaderStore store = new(new MemDb(), new MemDb());
+        IHeaderStore store = new HeaderStore(new MemDb(), new MemDb());
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
         store.Insert(header);
         store.Delete(header.Hash!);
@@ -72,7 +72,7 @@ public class HeaderStoreTests
     public void TestCanDeleteHeaderStoredWithHash()
     {
         IDb headerDb = new MemDb();
-        HeaderStore store = new(headerDb, new MemDb());
+        IHeaderStore store = new HeaderStore(headerDb, new MemDb());
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
         headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header).Bytes);

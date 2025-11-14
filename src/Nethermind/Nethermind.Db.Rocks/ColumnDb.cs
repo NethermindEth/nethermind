@@ -11,7 +11,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDb
+public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore
 {
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
@@ -57,6 +57,11 @@ public class ColumnDb : IDb
         _mainDb.SetWithColumnFamily(key, _columnFamily, value, writeFlags);
     }
 
+    public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
+    {
+        _mainDb.MergeWithColumnFamily(key, _columnFamily, value, writeFlags);
+    }
+
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] =>
         _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());
 
@@ -99,6 +104,11 @@ public class ColumnDb : IDb
             _underlyingWriteBatch.Dispose();
         }
 
+        public void Clear()
+        {
+            _underlyingWriteBatch.Clear();
+        }
+
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             if (value is null)
@@ -115,6 +125,11 @@ public class ColumnDb : IDb
         {
             _underlyingWriteBatch.Set(key, value, _columnDb._columnFamily, flags);
         }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            _underlyingWriteBatch.Merge(key, value, _columnDb._columnFamily, flags);
+        }
     }
 
     public void Remove(ReadOnlySpan<byte> key)
@@ -130,7 +145,7 @@ public class ColumnDb : IDb
 
     public void Flush(bool onlyWal)
     {
-        _mainDb.Flush(onlyWal);
+        _mainDb.FlushWithColumnFamily(_columnFamily);
     }
 
     public void Compact()
@@ -150,5 +165,32 @@ public class ColumnDb : IDb
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {
         _mainDb.DangerousReleaseMemory(span);
+    }
+
+    public byte[]? FirstKey
+    {
+        get
+        {
+            ReadOptions readOptions = new();
+            using Iterator iterator = _mainDb.CreateIterator(readOptions, ch: _columnFamily);
+            iterator.SeekToFirst();
+            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+        }
+    }
+
+    public byte[]? LastKey
+    {
+        get
+        {
+            ReadOptions readOptions = new();
+            using Iterator iterator = _mainDb.CreateIterator(readOptions, ch: _columnFamily);
+            iterator.SeekToLast();
+            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+        }
+    }
+
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
+    {
+        return _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily);
     }
 }

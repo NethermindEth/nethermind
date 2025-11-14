@@ -75,12 +75,17 @@ namespace Ethereum.Test.Base
                 TxRoot = new Hash256(headerJson.TransactionsTrie),
                 WithdrawalsRoot = headerJson.WithdrawalsRoot is null ? null : new Hash256(headerJson.WithdrawalsRoot),
                 BlockAccessListHash = headerJson.BlockAccessListHash is null ? null : new Hash256(headerJson.BlockAccessListHash),
-                BaseFeePerGas = (ulong)Bytes.FromHexString(headerJson.BaseFeePerGas).ToUnsignedBigInteger()
             };
+
+            if (headerJson.BaseFeePerGas is not null)
+            {
+                header.BaseFeePerGas = (ulong)Bytes.FromHexString(headerJson.BaseFeePerGas).ToUnsignedBigInteger();
+            }
+
             return header;
         }
 
-        public static IEnumerable<(ExecutionPayload, string[]?, string[]?, string?)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
+        public static IEnumerable<(ExecutionPayloadV3, string[]?, string[]?, int, int)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
         {
             if (executionPayloadsJson is null)
             {
@@ -115,7 +120,7 @@ namespace Ethereum.Test.Base
                     Withdrawals = executionPayload.Withdrawals is null ? null : [.. executionPayload.Withdrawals.Select(x => Rlp.Decode<Withdrawal>(Bytes.FromHexString(x)))],
                     Transactions = [.. executionPayload.Transactions.Select(x => Bytes.FromHexString(x))],
                     ExecutionRequests = []
-                }, blobVersionedHashes, validationError, engineNewPayload.NewPayloadVersion);
+                }, blobVersionedHashes, validationError, int.Parse(engineNewPayload.NewPayloadVersion ?? "4"), int.Parse(engineNewPayload.ForkChoiceUpdatedVersion ?? "3"));
             }
         }
 

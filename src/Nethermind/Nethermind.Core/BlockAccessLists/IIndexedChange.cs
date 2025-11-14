@@ -5,5 +5,5 @@ namespace Nethermind.Core.BlockAccessLists;
 
 public interface IIndexedChange
 {
-    public ushort BlockAccessIndex { get; init; }
+    public int BlockAccessIndex { get; init; }
 }

@@ -217,7 +217,7 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
                 int overflow = size - inThis;
 
                 // Clear bits [lane .. lane+inThis-1] from both masks
-                ulong clearThis = (Bmi1.X64.IsSupported ?
+                ulong clearThis = (Bmi2.X64.IsSupported ?
                         Bmi2.X64.ZeroHighBits(ulong.MaxValue, (uint)inThis) :
                         ((1UL << inThis) - 1UL))
                     << lane;
@@ -228,7 +228,7 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
                 // If it spilled, mark those lanes for the next chunk
                 if (overflow > 0)
                 {
-                    carryMask = (Bmi1.X64.IsSupported ?
+                    carryMask = (Bmi2.X64.IsSupported ?
                         Bmi2.X64.ZeroHighBits(ulong.MaxValue, (uint)overflow) :
                         ((1UL << overflow) - 1UL));
                     break;

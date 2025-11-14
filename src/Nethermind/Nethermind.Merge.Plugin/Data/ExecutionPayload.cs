@@ -13,6 +13,7 @@ using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -52,7 +53,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public ulong Timestamp { get; set; }
 
-    public byte[]? BlockAccessList { get; set; } = [];
+    public byte[]? BlockAccessList { get; set; }
 
     protected byte[][] _encodedTransactions = [];
 
@@ -111,6 +112,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
     {
+        // Console.WriteLine("Created block access list:\n" +  (block.BlockAccessList is null ? "null" : block.BlockAccessList.ToString()));
         TExecutionPayload executionPayload = new()
         {
             BlockHash = block.Hash!,
@@ -127,7 +129,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Timestamp = block.Timestamp,
             BaseFeePerGas = block.BaseFeePerGas,
             Withdrawals = block.Withdrawals,
-            BlockAccessList = block.EncodedBlockAccessList!,
+            BlockAccessList = block.EncodedBlockAccessList ?? (block.BlockAccessList is null ? null : Rlp.Encode<BlockAccessList>(block.BlockAccessList!.Value).Bytes),
         };
         executionPayload.SetTransactions(block.Transactions);
         return executionPayload;
@@ -177,12 +179,15 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
         if (BlockAccessList is not null)
         {
+            //tmp
+            // Console.WriteLine("Decoding BAL from execution payload:\n" + Bytes.ToHexString(BlockAccessList));
             try
             {
                 blockAccessList = Rlp.Decode<BlockAccessList>(BlockAccessList);
             }
-            catch (RlpException)
+            catch (RlpException e)
             {
+                Console.Error.Write("Could not decode block access list from execution payload: " + e);
                 return new("Could not decode block access list.");
             }
         }
@@ -191,10 +196,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         return new(block);
     }
 
-    protected virtual Hash256? BuildWithdrawalsRoot()
-    {
-        return Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
-    }
+    protected virtual Hash256? BuildWithdrawalsRoot() => Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
 
     protected Transaction[]? _transactions = null;
 

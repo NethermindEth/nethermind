@@ -45,7 +45,7 @@ public class BranchProcessor(
         _stateProvider.CommitTree(block.Number);
     }
 
-    public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
+    public async Task<Block[]> Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
 
@@ -118,7 +118,7 @@ public class BranchProcessor(
 
                 if (prewarmCancellation is not null)
                 {
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                    (processedBlock, receipts) = await blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                     // Block is processed, we can cancel the prewarm task
                     CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
                 }
@@ -130,7 +130,7 @@ public class BranchProcessor(
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                    (processedBlock, receipts) = await blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
 
                 processedBlocks[i] = processedBlock;

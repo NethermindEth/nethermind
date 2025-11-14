@@ -76,6 +76,14 @@ public class ArrayPoolListTests
         return list.Contains(item);
     }
 
+    [Test]
+    public void Can_enumerate()
+    {
+        using ArrayPoolList<int> list = new(4);
+        list.AddRange(Enumerable.Range(0, 50));
+        list.ToArray().Should().BeEquivalentTo(Enumerable.Range(0, 50));
+    }
+
     [TestCase(0, new[] { -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 })]
     [TestCase(4, new[] { 0, 1, 2, 3, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 })]
     [TestCase(16, new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -1 })]

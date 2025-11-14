@@ -62,6 +62,7 @@ public class TestBlockchain : IDisposable
     public IBranchProcessor BranchProcessor => _fromContainer.MainProcessingContext.BranchProcessor;
     public IBlockProcessor BlockProcessor => _fromContainer.MainProcessingContext.BlockProcessor;
     public IBlockchainProcessor BlockchainProcessor => _fromContainer.MainProcessingContext.BlockchainProcessor;
+    public IBlockProcessingQueue BlockProcessingQueue => _fromContainer.MainProcessingContext.BlockProcessingQueue;
     public IBlockPreprocessorStep BlockPreprocessorStep => _fromContainer.BlockPreprocessorStep;
 
     public IBlockTree BlockTree => _fromContainer.BlockTree;
@@ -371,6 +372,11 @@ public class TestBlockchain : IDisposable
             if (specProvider.GenesisSpec.RequestsEnabled)
             {
                 genesisBlockBuilder.WithEmptyRequestsHash();
+            }
+
+            if (specProvider.GenesisSpec.BlockLevelAccessListsEnabled)
+            {
+                genesisBlockBuilder.WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp);
             }
 
             Block genesisBlock = genesisBlockBuilder.TestObject;

@@ -15,9 +15,10 @@ public class OptimismReceiptForRpc : ReceiptForRpc
     public OptimismReceiptForRpc(
         Hash256 txHash,
         OptimismTxReceipt receipt,
+        ulong blockTimestamp,
         TxGasInfo gasInfo,
         L1TxGasInfo l1GasInfo,
-        int logIndexStart = 0) : base(txHash, receipt, gasInfo, logIndexStart)
+        int logIndexStart = 0) : base(txHash, receipt, blockTimestamp, gasInfo, logIndexStart)
     {
         if (receipt.TxType == TxType.DepositTx)
         {
@@ -43,8 +44,9 @@ public class OptimismReceiptForRpc : ReceiptForRpc
     public OptimismReceiptForRpc(
         Hash256 txHash,
         TxReceipt receipt,
+        ulong blockTimestamp,
         TxGasInfo gasInfo,
-        int logIndexStart = 0) : base(txHash, receipt, gasInfo, logIndexStart)
+        int logIndexStart = 0) : base(txHash, receipt, blockTimestamp, gasInfo, logIndexStart)
     {
     }
 

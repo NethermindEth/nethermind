@@ -15,18 +15,12 @@ using Snappier;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers;
 
-public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
+public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : SimpleChannelInboundHandler<ZeroPacket>
 {
-    private readonly ISession _session;
-    private readonly ILogger _logger;
+    private readonly ISession _session = session ?? throw new ArgumentNullException(nameof(session));
+    private readonly ILogger _logger = logManager?.GetClassLogger<ZeroNettyP2PHandler>() ?? throw new ArgumentNullException(nameof(logManager));
 
     public bool SnappyEnabled { get; private set; }
-
-    public ZeroNettyP2PHandler(ISession session, ILogManager logManager)
-    {
-        _session = session ?? throw new ArgumentNullException(nameof(session));
-        _logger = logManager?.GetClassLogger<ZeroNettyP2PHandler>() ?? throw new ArgumentNullException(nameof(logManager));
-    }
 
     public void Init(IPacketSender packetSender, IChannelHandlerContext context)
     {

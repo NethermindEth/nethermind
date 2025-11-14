@@ -15,23 +15,17 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
     private static AccountChangesDecoder? _instance = null;
     public static AccountChangesDecoder Instance => _instance ??= new();
 
+    private static readonly RlpLimit _slotsLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
+    private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
+
     public AccountChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
-        // var tmp = ctx.Data[ctx.Position..].ToArray();
-
-        // Console.WriteLine("account change uncut:");
-        // Console.WriteLine(Bytes.ToHexString(tmp));
-
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
-        // tmp = tmp[..(length + 1)];
-        // Console.WriteLine("account change:" + length);
-        // Console.WriteLine(Bytes.ToHexString(tmp));
-
         Address address = ctx.DecodeAddress();
 
-        SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance);
+        SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, true, default, _slotsLimit);
         byte[]? lastSlot = null;
         SortedDictionary<byte[], SlotChanges> slotChangesMap = new(slotChanges.ToDictionary(s =>
         {
@@ -44,8 +38,8 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             return slot;
         }, s => s), Bytes.Comparer);
 
-        StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance);
-        SortedSet<StorageRead> storareReadsList = [];
+        StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance, true, default, _slotsLimit);
+        SortedSet<StorageRead> storageReadsList = [];
         StorageRead? lastRead = null;
         foreach (StorageRead storageRead in storageReads)
         {
@@ -53,29 +47,30 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             {
                 throw new RlpException("Storage reads were in incorrect order.");
             }
-            storareReadsList.Add(storageRead);
+            storageReadsList.Add(storageRead);
             lastRead = storageRead;
         }
 
-        BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance);
-        ushort lastIndex = 0;
-        SortedList<ushort, BalanceChange> balanceChangesList = new(balanceChanges.ToDictionary(s =>
+        BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance, true, default, _txLimit);
+        int? lastIndex = null;
+        SortedList<int, BalanceChange> balanceChangesList = new(balanceChanges.ToDictionary(s =>
         {
-            ushort index = s.BlockAccessIndex;
-            if (index <= lastIndex)
+            int index = s.BlockAccessIndex;
+            if (lastIndex is not null && index <= lastIndex)
             {
+                Console.WriteLine($"Balance changes were in incorrect order. index={index}, lastIndex={lastIndex}");
                 throw new RlpException("Balance changes were in incorrect order.");
             }
             lastIndex = index;
             return index;
         }, s => s));
 
-        lastIndex = 0;
-        NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance);
-        SortedList<ushort, NonceChange> nonceChangesList = new(nonceChanges.ToDictionary(s =>
+        lastIndex = null;
+        NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance, true, default, _txLimit);
+        SortedList<int, NonceChange> nonceChangesList = new(nonceChanges.ToDictionary(s =>
         {
-            ushort index = s.BlockAccessIndex;
-            if (index <= lastIndex)
+            int index = s.BlockAccessIndex;
+            if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException("Nonce changes were in incorrect order.");
             }
@@ -83,18 +78,13 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             return index;
         }, s => s));
 
-        CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance);
+        CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance, true, default, _txLimit);
 
-        if (codeChanges.Length > Eip7928Constants.MaxCodeChanges)
+        lastIndex = null;
+        SortedList<int, CodeChange> codeChangesList = new(codeChanges.ToDictionary(s =>
         {
-            throw new RlpException("Number of code changes exceeded maximum.");
-        }
-
-        lastIndex = 0;
-        SortedList<ushort, CodeChange> codeChangesList = new(codeChanges.ToDictionary(s =>
-        {
-            ushort index = s.BlockAccessIndex;
-            if (index <= lastIndex)
+            int index = s.BlockAccessIndex;
+            if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException("Code changes were in incorrect order.");
             }
@@ -102,15 +92,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             return index;
         }, s => s));
 
-        return new()
-        {
-            Address = address,
-            StorageChanges = slotChangesMap,
-            StorageReads = storareReadsList,
-            BalanceChanges = balanceChangesList,
-            NonceChanges = nonceChangesList,
-            CodeChanges = codeChangesList
-        };
+        return new(address, slotChangesMap, storageReadsList, balanceChangesList, nonceChangesList, codeChangesList);
     }
 
     public int GetLength(AccountChanges item, RlpBehaviors rlpBehaviors)
@@ -130,17 +112,17 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Address);
-        stream.EncodeArray([.. item.StorageChanges.Values], rlpBehaviors);
+        stream.EncodeArray([.. item.StorageChanges], rlpBehaviors);
         stream.EncodeArray([.. item.StorageReads], rlpBehaviors);
-        stream.EncodeArray([.. item.BalanceChanges.Values], rlpBehaviors);
-        stream.EncodeArray([.. item.NonceChanges.Values], rlpBehaviors);
-        stream.EncodeArray([.. item.CodeChanges.Values], rlpBehaviors);
+        stream.EncodeArray([.. item.BalanceChanges], rlpBehaviors);
+        stream.EncodeArray([.. item.NonceChanges], rlpBehaviors);
+        stream.EncodeArray([.. item.CodeChanges], rlpBehaviors);
     }
 
     private static int GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors)
     {
         int slotChangesLen = 0;
-        foreach (SlotChanges slotChanges in item.StorageChanges.Values)
+        foreach (SlotChanges slotChanges in item.StorageChanges)
         {
             slotChangesLen += SlotChangesDecoder.Instance.GetLength(slotChanges, rlpBehaviors);
         }
@@ -154,21 +136,21 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         storageReadsLen = Rlp.LengthOfSequence(storageReadsLen);
 
         int balanceChangesLen = 0;
-        foreach (BalanceChange balanceChange in item.BalanceChanges.Values)
+        foreach (BalanceChange balanceChange in item.BalanceChanges)
         {
             balanceChangesLen += BalanceChangeDecoder.Instance.GetLength(balanceChange, rlpBehaviors);
         }
         balanceChangesLen = Rlp.LengthOfSequence(balanceChangesLen);
 
         int nonceChangesLen = 0;
-        foreach (NonceChange nonceChange in item.NonceChanges.Values)
+        foreach (NonceChange nonceChange in item.NonceChanges)
         {
             nonceChangesLen += NonceChangeDecoder.Instance.GetLength(nonceChange, rlpBehaviors);
         }
         nonceChangesLen = Rlp.LengthOfSequence(nonceChangesLen);
 
         int codeChangesLen = 0;
-        foreach (CodeChange codeChange in item.CodeChanges.Values)
+        foreach (CodeChange codeChange in item.CodeChanges)
         {
             codeChangesLen += CodeChangeDecoder.Instance.GetLength(codeChange, rlpBehaviors);
         }

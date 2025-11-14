@@ -4,13 +4,12 @@
 
 using System;
 using System.Linq;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.BlockAccessLists;
 
 public readonly struct CodeChange(ushort blockAccessIndex, byte[] newCode) : IEquatable<CodeChange>, IIndexedChange
 {
-    public ushort BlockAccessIndex { get; init; } = blockAccessIndex;
+    public int BlockAccessIndex { get; init; } = blockAccessIndex;
     public byte[] NewCode { get; init; } = newCode;
 
     public readonly bool Equals(CodeChange other) =>
@@ -37,7 +36,4 @@ public readonly struct CodeChange(ushort blockAccessIndex, byte[] newCode) : IEq
 
     public static bool operator !=(CodeChange left, CodeChange right) =>
         !(left == right);
-
-    public override readonly string? ToString()
-        => $"{BlockAccessIndex}, 0x{Bytes.ToHexString(NewCode)}";
 }

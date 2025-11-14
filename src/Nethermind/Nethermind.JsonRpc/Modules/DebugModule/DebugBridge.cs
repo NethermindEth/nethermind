@@ -171,7 +171,7 @@ public class DebugBridge : IDebugBridge
     {
         if (parameter.BlockNumber is long number)
         {
-            Hash256? hash = _blockTree.FindHash(number);
+            Hash256? hash = _blockTree.FindBlockHash(number);
             if (hash is null) return null;
             return _blockStore.GetRlp(number, hash);
         }

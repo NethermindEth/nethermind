@@ -6,17 +6,20 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp
 {
     public static class RlpDecoderExtensions
     {
-        private readonly static SpanSource[] s_intPreEncodes = CreatePreEncodes();
+        private static readonly SpanSource[] s_intPreEncodes = CreatePreEncodes();
 
-        public static T[] DecodeArray<T>(this IRlpStreamDecoder<T> decoder, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static T[] DecodeArray<T>(this IRlpStreamDecoder<T> decoder, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
-            T[] result = new T[rlpStream.PeekNumberOfItemsRemaining(checkPosition)];
+            int length = rlpStream.PeekNumberOfItemsRemaining(checkPosition);
+            rlpStream.GuardLimit(length, limit);
+            T[] result = new T[length];
             for (int i = 0; i < result.Length; i++)
             {
                 result[i] = decoder.Decode(rlpStream, rlpBehaviors);
@@ -25,10 +28,12 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public static T[] DecodeArray<T>(this IRlpValueDecoder<T> decoder, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static T[] DecodeArray<T>(this IRlpValueDecoder<T> decoder, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            T[] result = new T[decoderContext.PeekNumberOfItemsRemaining(checkPosition)];
+            int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition);
+            decoderContext.GuardLimit(length, limit);
+            T[] result = new T[length];
             for (int i = 0; i < result.Length; i++)
             {
                 result[i] = decoder.Decode(ref decoderContext, rlpBehaviors);
@@ -116,6 +121,27 @@ namespace Nethermind.Serialization.Rlp
             int bufferLength = Rlp.LengthOfSequence(totalLength);
 
             rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(bufferLength));
+            rlpStream.StartSequence(totalLength);
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                decoder.Encode(rlpStream, items[i], behaviors);
+            }
+
+            return rlpStream;
+        }
+
+        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamDecoder<T> decoder, in ArrayPoolListRef<T?> items, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            int totalLength = 0;
+            for (int i = 0; i < items.Count; i++)
+            {
+                totalLength += decoder.GetLength(items[i], behaviors);
+            }
+
+            int bufferLength = Rlp.LengthOfSequence(totalLength);
+
+            NettyRlpStream rlpStream = new(NethermindBuffers.Default.Buffer(bufferLength));
             rlpStream.StartSequence(totalLength);
 
             for (int i = 0; i < items.Count; i++)

@@ -16,5 +16,7 @@ public class CallOutput
 
     public bool InputError { get; set; }
 
+    public bool ExecutionReverted { get; set; }
+
     public AccessList? AccessList { get; set; }
 }

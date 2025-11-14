@@ -21,12 +21,9 @@ namespace Nethermind.Network.Rlpx.Handshake
         public void Serialize(IByteBuffer byteBuffer, AckMessage msg)
         {
             byteBuffer.EnsureWritable(TotalLength);
-            // TODO: find a way to now allocate this here
-            byte[] data = new byte[TotalLength];
-            Buffer.BlockCopy(msg.EphemeralPublicKey.Bytes, 0, data, EphemeralPublicKeyOffset, EphemeralPublicKeyLength);
-            Buffer.BlockCopy(msg.Nonce, 0, data, NonceOffset, NonceLength);
-            data[IsTokenUsedOffset] = msg.IsTokenUsed ? (byte)0x01 : (byte)0x00;
-            byteBuffer.WriteBytes(data);
+            byteBuffer.WriteBytes(msg.EphemeralPublicKey.Bytes);
+            byteBuffer.WriteBytes(msg.Nonce);
+            byteBuffer.WriteByte(msg.IsTokenUsed ? (byte)0x01 : (byte)0x00);
         }
 
         public AckMessage Deserialize(IByteBuffer msgBytes)

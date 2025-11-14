@@ -9,24 +9,21 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace Nethermind.Xdc;
 
-public class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValidator, ISpecProvider specProvider, ILogManager? logManager = null) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
+public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager quorumCertificateManager, ISealValidator sealValidator, ISpecProvider specProvider, ILogManager? logManager = null) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
-
-    public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader parent, bool isUncle, out string? error)
     {
         if (header is not XdcBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
+        if (parent is not XdcBlockHeader parentXdcHeader)
+            throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {parent.GetType().Name}.", nameof(parent));
 
-        if (xdcHeader.Validator == null || xdcHeader.Validator.Length == 0)
+        if (xdcHeader.Validator is null || xdcHeader.Validator.Length == 0)
         {
             error = "Validator field is required in XDC header.";
             return false;
@@ -39,7 +36,10 @@ public class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValidat
             return false;
         }
 
-        //TODO verify QC
+        if (!quorumCertificateManager.VerifyCertificate(extraFields.QuorumCert, parentXdcHeader, out error))
+        {
+            return false;
+        }
 
         if (xdcHeader.Nonce != XdcConstants.NonceDropVoteValue && xdcHeader.Nonce != XdcConstants.NonceAuthVoteValue)
         {
@@ -49,17 +49,17 @@ public class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValidat
 
         if (xdcHeader.MixHash != Hash256.Zero)
         {
-            error = $"Non-zero mix hash.";
+            error = "Non-zero mix hash.";
             return false;
         }
 
         if (xdcHeader.UnclesHash != Keccak.OfAnEmptySequenceRlp)
         {
-            error = $"Cannot contain uncles.";
+            error = "Cannot contain uncles.";
             return false;
         }
 
-        if (!base.Validate(header, parent, isUncle, out error))
+        if (!base.Validate<TOrphaned>(header, parent, isUncle, out error))
         {
             return false;
         }
@@ -71,7 +71,7 @@ public class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValidat
     protected override bool ValidateSeal(BlockHeader header, BlockHeader parent, bool isUncle, ref string? error)
     {
         if (_sealValidator is XdcSealValidator xdcSealValidator)
-            return xdcSealValidator.ValidateParams(header, parent, out error);
+            return xdcSealValidator.ValidateParams(parent, header, out error);
 
         if (!_sealValidator.ValidateParams(parent, header, isUncle))
         {
@@ -86,13 +86,10 @@ public class XdcHeaderValidator(IBlockTree blockTree, ISealValidator sealValidat
         return true;
     }
 
-    protected override bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle, ref string? error)
-    {
-        //Extra consensus data is validated in SealValidator
-        return true;
-    }
+    // Extra consensus data is validated in SealValidator
+    protected override bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle, ref string? error) => true;
 
-    protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header, ref string? error)
+    protected override bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
     {
         if (header.Difficulty != 1)
         {

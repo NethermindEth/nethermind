@@ -46,6 +46,13 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
+            return (currentBlock.ParentHash == _blockTree.HeadHash || currentBlock.ParentHash == _blockTree.Head?.ParentHash) ?
+                _blockTree.FindBlockHash(number) :
+                GetBlockHashFromNonHeadParent(currentBlock, number);
+        }
+
+        private Hash256 GetBlockHashFromNonHeadParent(BlockHeader currentBlock, long number)
+        {
             BlockHeader header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded) ??
                 throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
 

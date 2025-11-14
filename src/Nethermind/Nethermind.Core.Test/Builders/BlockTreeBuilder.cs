@@ -33,6 +33,7 @@ namespace Nethermind.Core.Test.Builders
         private IReceiptStorage? _receiptStorage;
         private IEthereumEcdsa? _ecdsa;
         private Hash256? _stateRoot;
+        private Func<Block, Hash256>? _stateRootGen;
         private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;
 
         private bool _onlyHeaders;
@@ -200,6 +201,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockTreeBuilder WithStateRoot(Func<Block, Hash256> stateRootGen)
+        {
+            _stateRootGen = stateRootGen;
+            return this;
+        }
+
         public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
             OfChainLength(out _, chainLength, splitVariant, splitFrom, withWithdrawals, blockBeneficiaries);
@@ -324,6 +331,10 @@ namespace Nethermind.Core.Test.Builders
                     .TestObject;
             }
 
+            if (_stateRootGen is not null)
+            {
+                currentBlock.Header.StateRoot = _stateRootGen(currentBlock);
+            }
             currentBlock.Header.AuRaStep = blockIndex;
 
             return currentBlock;

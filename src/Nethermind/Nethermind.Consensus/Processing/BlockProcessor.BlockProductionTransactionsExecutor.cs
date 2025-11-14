@@ -31,6 +31,7 @@ namespace Nethermind.Consensus.Processing
             ILogManager logManager)
             : IBlockProductionTransactionsExecutor
         {
+            private readonly TracedAccessWorldState? _tracedAccessWorldState = stateProvider as TracedAccessWorldState;
             private readonly ILogger _logger = logManager.GetClassLogger();
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
@@ -56,7 +57,7 @@ namespace Nethermind.Consensus.Processing
                 int txCount = blockToProduce is not null ? defaultTxCount : block.Transactions.Length;
                 IEnumerable<Transaction> transactions = blockToProduce?.Transactions ?? block.Transactions;
 
-                using ArrayPoolList<Transaction> includedTx = new(txCount);
+                using ArrayPoolListRef<Transaction> includedTx = new(txCount);
 
                 HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
                 int i = 0;
@@ -65,6 +66,7 @@ namespace Nethermind.Consensus.Processing
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
+                    _tracedAccessWorldState?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
                     if (action == TxAction.Stop) break;
 
@@ -78,6 +80,8 @@ namespace Nethermind.Consensus.Processing
                         }
                     }
                 }
+                _tracedAccessWorldState?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+                // Console.WriteLine($"Built block {i}, balIndex={(_tracedAccessWorldState is null ? "null" : _tracedAccessWorldState.BlockAccessList.Index)}");
 
                 block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());
                 if (blockToProduce is not null)
@@ -108,11 +112,11 @@ namespace Nethermind.Consensus.Processing
                     if (result)
                     {
                         _transactionProcessed?.Invoke(this,
-                            new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+                            new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
                     }
                     else
                     {
-                        args.Set(TxAction.Skip, result.Error!);
+                        args.Set(TxAction.Skip, result.ErrorDescription!);
                     }
                 }
 

@@ -16,10 +16,11 @@ namespace Ethereum.Blockchain.Block.Test
         [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {
-            bool isWindows = System.Runtime.InteropServices.RuntimeInformation
-            .IsOSPlatform(OSPlatform.Windows);
+            bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
             if (isWindows)
+            {
                 return;
+            }
 
             await RunTest(test);
         }

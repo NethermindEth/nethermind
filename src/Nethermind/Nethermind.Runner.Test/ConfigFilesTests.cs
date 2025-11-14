@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Config.Test;
+using Nethermind.Consensus;
 using Nethermind.Db;
 using Nethermind.EthStats;
 using Nethermind.JsonRpc;
@@ -107,7 +108,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("^validators ^spaceneth", false)]
     public void Mining_defaults_are_correct(string configWildcard, bool defaultValue = false)
     {
-        Test<IInitConfig, bool>(configWildcard, static c => c.IsMining, defaultValue);
+        Test<IMiningConfig, bool>(configWildcard, static c => c.Enabled, defaultValue);
     }
 
     [TestCase("*")]
@@ -168,7 +169,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     }
 
     [TestCase("mainnet", 2048)]
-    [TestCase("holesky", 1024)]
+    [TestCase("hoodi", 1024)]
     [TestCase("sepolia", 1024)]
     [TestCase("gnosis", 2048)]
     [TestCase("poacore", 2048)]
@@ -185,9 +186,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("gnosis", true)]
     [TestCase("mainnet", true)]
     [TestCase("sepolia", true)]
-    [TestCase("holesky", true)]
+    [TestCase("hoodi", true)]
     [TestCase("chiado", true)]
-    [TestCase("^spaceneth ^mainnet ^gnosis ^sepolia ^holesky ^chiado", false)]
+    [TestCase("^spaceneth ^mainnet ^gnosis ^sepolia ^hoodi ^chiado", false)]
     public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
     {
         Test<IJsonRpcConfig, bool>(configWildcard, static c => c.Enabled, jsonEnabled);
@@ -224,11 +225,11 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<ISyncConfig, bool>(configWildcard, static c => c.SnapSync, enabled);
     }
 
-    [TestCase("^aura ^sepolia ^holesky ^mainnet", false)]
+    [TestCase("^aura ^sepolia ^hoodi ^mainnet", false)]
     [TestCase("aura ^archive", true)]
     [TestCase("^archive ^spaceneth", true)]
     [TestCase("sepolia ^archive", true)]
-    [TestCase("holesky ^archive", true)]
+    [TestCase("hoodi ^archive", true)]
     [TestCase("mainnet ^archive", true)]
     public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
     {
@@ -244,7 +245,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void Migrations_are_not_enabled_by_default(string configWildcard)
     {
-        Test<IInitConfig, bool>(configWildcard, static c => c.ReceiptsMigration, false);
+        Test<IReceiptConfig, bool>(configWildcard, static c => c.ReceiptsMigration, false);
         Test<IBloomConfig, bool>(configWildcard, static c => c.Migration, false);
         Test<IBloomConfig, bool>(configWildcard, static c => c.MigrationStatistics, false);
     }
@@ -267,8 +268,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IInitConfig, string>(configWildcard, c => c.BaseDbPath, (cf, p) => p.Should().StartWith(startWith));
     }
 
-    [TestCase("^sepolia", "Data/static-nodes.json")]
-    [TestCase("sepolia", "Data/static-nodes-sepolia.json")]
+    [TestCase("*", "static-nodes.json")]
     public void Static_nodes_path_is_default(string configWildcard, string staticNodesPath)
     {
         Test<IInitConfig, string>(configWildcard, static c => c.StaticNodesPath, staticNodesPath);
@@ -309,11 +309,11 @@ public class ConfigFilesTests : ConfigFileTestsBase
     }
 
     [TestCase("sepolia", BlobsSupportMode.StorageWithReorgs)]
-    [TestCase("holesky", BlobsSupportMode.StorageWithReorgs)]
+    [TestCase("hoodi", BlobsSupportMode.StorageWithReorgs)]
     [TestCase("chiado", BlobsSupportMode.StorageWithReorgs)]
     [TestCase("mainnet", BlobsSupportMode.StorageWithReorgs)]
     [TestCase("gnosis", BlobsSupportMode.StorageWithReorgs)]
-    [TestCase("^sepolia ^holesky ^chiado ^mainnet ^gnosis", BlobsSupportMode.Disabled)]
+    [TestCase("^sepolia ^hoodi ^chiado ^mainnet ^gnosis", BlobsSupportMode.Disabled)]
     public void Blob_txs_support_is_correct(string configWildcard, BlobsSupportMode blobsSupportMode)
     {
         Test<ITxPoolConfig, BlobsSupportMode>(configWildcard, static c => c.BlobsSupport, blobsSupportMode);
@@ -349,10 +349,10 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("chiado", 17_000_000L, 5UL, 3000)]
     [TestCase("gnosis", 17_000_000L, 5UL, 3000)]
-    [TestCase("mainnet", 45_000_000L)]
+    [TestCase("mainnet", 60_000_000L)]
     [TestCase("sepolia", 60_000_000L)]
-    [TestCase("holesky", 60_000_000L)]
-    [TestCase("^chiado ^gnosis ^mainnet ^sepolia ^holesky")]
+    [TestCase("hoodi", 60_000_000L)]
+    [TestCase("^chiado ^gnosis ^mainnet ^sepolia ^hoodi")]
     public void Blocks_defaults_are_correct(string configWildcard, long? targetBlockGasLimit = null, ulong secondsPerSlot = 12, int blockProductionTimeout = 4000)
     {
         Test<IBlocksConfig, long?>(configWildcard, static c => c.TargetBlockGasLimit, targetBlockGasLimit);
@@ -403,8 +403,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     protected override IEnumerable<string> Configs { get; } = new HashSet<string>
     {
-        "holesky.json",
-        "holesky_archive.json",
+        "hoodi.json",
+        "hoodi_archive.json",
         "mainnet_archive.json",
         "mainnet.json",
         "poacore.json",

@@ -58,4 +58,46 @@ public class RocksDbConfigFactoryTests
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
         config.WriteBufferSize.Should().Be((ulong)500.MB());
     }
+
+    [Test]
+    public void WillAutomaticallySetMaxOpenFilesWhenNotConfigured()
+    {
+        var dbConfig = new DbConfig();
+        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0, 10000), LimboLogs.Instance);
+        IRocksDbConfig config = factory.GetForDatabase("State0", null);
+        // With system limit of 10000, should set per-db limit to 10000 * 0.8 = 8000
+        config.MaxOpenFiles.Should().Be(8000);
+    }
+
+    [Test]
+    public void WillNotOverrideUserConfiguredMaxOpenFiles()
+    {
+        var dbConfig = new DbConfig();
+        dbConfig.MaxOpenFiles = 3000;
+        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0, 10000), LimboLogs.Instance);
+        IRocksDbConfig config = factory.GetForDatabase("State0", null);
+        // Should keep user-configured value
+        config.MaxOpenFiles.Should().Be(3000);
+    }
+
+    [Test]
+    public void WillNotSetMaxOpenFilesWhenSystemLimitUnknown()
+    {
+        var dbConfig = new DbConfig();
+        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0, null), LimboLogs.Instance);
+        IRocksDbConfig config = factory.GetForDatabase("State0", null);
+        // Should be null when system limit is unknown
+        config.MaxOpenFiles.Should().BeNull();
+    }
+
+    [Test]
+    public void WillEnforceMinimumMaxOpenFiles()
+    {
+        var dbConfig = new DbConfig();
+        // Very low system limit (e.g., 1000) should still give minimum of 256
+        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0, 1000), LimboLogs.Instance);
+        IRocksDbConfig config = factory.GetForDatabase("State0", null);
+        // With system limit of 1000, would be 1000 * 0.8 = 800
+        config.MaxOpenFiles.Should().Be(800);
+    }
 }

@@ -40,10 +40,10 @@ public class ZeroNettyFrameEncodeDecodeTests
 
     private async Task RunStreamTests(FrameCipher frameCipher, FrameMacProcessor macProcessor, FrameCipher frameCipher2, FrameMacProcessor macProcessor2)
     {
-        ZeroPacketSplitter splitter = new(LimboLogs.Instance);
-        ZeroFrameEncoder encoder = new(frameCipher, macProcessor, LimboLogs.Instance);
+        ZeroPacketSplitter splitter = new();
+        ZeroFrameEncoder encoder = new(frameCipher, macProcessor);
 
-        ZeroFrameDecoder decoder = new(frameCipher2, macProcessor2, LimboLogs.Instance);
+        ZeroFrameDecoder decoder = new(frameCipher2, macProcessor2);
         ZeroFrameMerger frameMerger = new(LimboLogs.Instance);
 
         IByteBuffer reDecoded = null;

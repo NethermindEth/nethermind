@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
@@ -16,7 +17,8 @@ namespace Nethermind.Consensus.Producers
     public class BlockProducerEnvFactory(
         ILifetimeScope rootLifetime,
         IWorldStateManager worldStateManager,
-        IBlockProducerTxSourceFactory txSourceFactory
+        IBlockProducerTxSourceFactory txSourceFactory,
+        IBlocksConfig blocksConfig
     ) : IBlockProducerEnvFactory
     {
         protected virtual ContainerBuilder ConfigureBuilder(ContainerBuilder builder) => builder
@@ -27,12 +29,11 @@ namespace Nethermind.Consensus.Producers
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
             .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
             .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-
             .AddScoped<IBlockProducerEnv, BlockProducerEnv>();
 
         public IBlockProducerEnv Create()
         {
-            IWorldState worldState = worldStateManager.CreateResettableWorldState();
+            IWorldState worldState = new TracedAccessWorldState(worldStateManager.CreateResettableWorldState(), blocksConfig.ParallelExecution);
             ILifetimeScope lifetimeScope = rootLifetime.BeginLifetimeScope(builder =>
                 ConfigureBuilder(builder)
                     .AddScoped(worldState));

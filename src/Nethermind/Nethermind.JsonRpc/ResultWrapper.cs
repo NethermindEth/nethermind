@@ -17,7 +17,7 @@ namespace Nethermind.JsonRpc
         public int ErrorCode { get; init; }
         public bool IsTemporary { get; init; }
 
-        private ResultWrapper()
+        protected ResultWrapper()
         {
         }
 
@@ -60,6 +60,36 @@ namespace Nethermind.JsonRpc
         public void Dispose()
         {
             if (Data is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        }
+    }
+
+    public class ResultWrapper<T, TErrorData> : ResultWrapper<T>, IResultWrapper, IDisposable
+    {
+        public TErrorData ErrorData { get; init; }
+
+        object IResultWrapper.Data => ErrorData;
+
+
+        private ResultWrapper()
+        {
+        }
+
+        public static ResultWrapper<T, TErrorData> Fail(string error, int errorCode, TErrorData errorData) =>
+            new() { ErrorCode = errorCode, ErrorData = errorData, Result = Result.Fail(error) };
+
+        public static new ResultWrapper<T, TErrorData> Success(T data) =>
+            new() { Data = data, ErrorData = default, Result = Result.Success };
+
+        public static implicit operator Task<ResultWrapper<T, TErrorData>>(ResultWrapper<T, TErrorData> resultWrapper) => Task.FromResult(resultWrapper);
+
+        public new void Dispose()
+        {
+            base.Dispose();
+
+            if (ErrorData is IDisposable disposable)
             {
                 disposable.Dispose();
             }

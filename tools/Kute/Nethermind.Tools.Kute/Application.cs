@@ -45,7 +45,7 @@ public sealed class Application
         var totalTimer = new Timer();
         using (totalTimer.Time())
         {
-            await _processor.Process(_msgProvider.Messages(token), async (jsonRpc) =>
+            await _processor.Process(_msgProvider.Messages(token), async jsonRpc =>
             {
                 await ProcessRpc(jsonRpc, token);
             }, token);

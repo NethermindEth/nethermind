@@ -105,7 +105,7 @@ public class EraWriter : IDisposable
         //Index is 64 bits segments in the format => start | index | index | ... | count
         //16 bytes is for the start and count plus every entry
         int length = 16 + _entryIndexes.Count * 8;
-        using ArrayPoolList<byte> blockIndex = new ArrayPoolList<byte>(length, length);
+        using ArrayPoolList<byte> blockIndex = new(length, length);
         Span<byte> blockIndexSpan = blockIndex.AsSpan();
         WriteInt64(blockIndexSpan, 0, _startNumber);
 
