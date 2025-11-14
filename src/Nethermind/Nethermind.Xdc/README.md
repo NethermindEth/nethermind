@@ -895,7 +895,7 @@ TPS (practical):    500 - 1000 tx/s
 
 ```csharp
 EpochLength: 900              // Blocks per epoch
-Gap: 50                       // Snapshot before epoch end
+Gap: 450                      // Snapshot before epoch end
 SwitchBlock: <configured>     // V2 activation block
 MaxMasternodes: 108          // Maximum validators
 CertThreshold: 0.67          // 2/3 quorum
