@@ -50,7 +50,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly long _epochLength;
     private readonly long _pruningInterval;
     private readonly long _minHistoryRetentionEpochs;
-    private readonly int _deletionProgressLoggingInterval;
+    // private readonly int _deletionProgressLoggingInterval;
     private readonly long _ancientBarrier;
     private long _deletePointer = 1;
     private BlockHeader? _deletePointerHeader;
@@ -59,6 +59,7 @@ public class HistoryPruner : IHistoryPruner
     private ulong? _cutoffTimestamp;
     private bool _hasLoadedDeletePointer = false;
     private int _currentlyPruning = 0;
+    private bool _completedPruning = false; // prune on startup
 
     public event EventHandler<OnNewOldestBlockArgs>? NewOldestBlock;
 
@@ -79,7 +80,7 @@ public class HistoryPruner : IHistoryPruner
         ILogManager logManager)
     {
         _logger = logManager.GetClassLogger();
-        _deletionProgressLoggingInterval = _logger.IsDebug ? 5 : 100000;
+        // _deletionProgressLoggingInterval = _logger.IsDebug ? 5 : 100000;
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
         _chainLevelInfoRepository = chainLevelInfoRepository;
@@ -127,6 +128,8 @@ public class HistoryPruner : IHistoryPruner
             {
                 return null;
             }
+
+            // todo: convert everything to use block number
 
             long? cutoffBlockNumber = null;
             long to = _blockTree.Head?.Number ?? _blockTree.SyncPivot.BlockNumber;
@@ -411,7 +414,7 @@ public class HistoryPruner : IHistoryPruner
     }
 
     private bool PruningIntervalHasElapsed()
-        => _pruningInterval == 0 || _blockTree.Head!.Number % _pruningInterval == 0;
+        => !_completedPruning || _pruningInterval == 0 || _blockTree.Head!.Number % _pruningInterval == 0;
 
     private void PruneBlocksAndReceipts(ulong? cutoffTimestamp, CancellationToken cancellationToken)
     {
@@ -430,7 +433,8 @@ public class HistoryPruner : IHistoryPruner
 
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Pruning operation timed out at timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
+                    if (_logger.IsInfo) _logger.Info($"Pruning operation paused at timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
+                    _completedPruning = false;
                     break;
                 }
 
@@ -443,11 +447,11 @@ public class HistoryPruner : IHistoryPruner
 
                 long? remaining = CutoffBlockNumber;
                 remaining = remaining is null ? null : long.Min(remaining!.Value, _blockTree.SyncPivot.BlockNumber) - _deletePointer;
-                if (_logger.IsInfo && deletedBlocks % _deletionProgressLoggingInterval == 0)
-                {
-                    string suffix = remaining is null ? "could not calculate cutoff." : $"with {remaining} remaining.";
-                    _logger.Info($"Historical block pruning in progress... Deleted {deletedBlocks} blocks, " + suffix);
-                }
+                // if (_logger.IsInfo && deletedBlocks % _deletionProgressLoggingInterval == 0)
+                // {
+                //     string suffix = remaining is null ? "could not calculate cutoff." : $"with {remaining} remaining.";
+                //     _logger.Info($"Historical block pruning in progress... Deleted {deletedBlocks} blocks, " + suffix);
+                // }
 
                 if (_logger.IsDebug) _logger.Debug($"Deleting old block {number} with hash {hash}.");
                 _blockTree.DeleteOldBlock(number, hash);
@@ -475,6 +479,7 @@ public class HistoryPruner : IHistoryPruner
             {
                 if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks up to #{_deletePointer}.");
                 _lastPrunedTimestamp = cutoffTimestamp;
+                _completedPruning = true;
             }
         }
     }
