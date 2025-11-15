@@ -116,10 +116,16 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
                 int level = int.Parse(m.Groups["level"].Value);
                 for (int i = 2; i <= 19; i++)
                 {
-                    Group group = m.Groups[i];
-                    Metrics.DbCompactionStats[($"{dbName}Db", level, group.Name)] = double.Parse(group.Value) * i switch
+                    // Skip size_scale group (index 5) as it's processed together with size (index 4)
+                    if (i == 5)
                     {
-                        4 => m.Groups[++i].Value switch
+                        continue;
+                    }
+
+                    Group group = m.Groups[i];
+                    double multiplier = i switch
+                    {
+                        4 => m.Groups[5].Value switch
                         {
                             "KB" => 1.KiB(),
                             "MB" => 1.MiB(),
@@ -128,6 +134,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
                         },
                         _ => 1
                     };
+                    Metrics.DbCompactionStats[($"{dbName}Db", level, group.Name)] = double.Parse(group.Value) * multiplier;
                 }
             }
         }
