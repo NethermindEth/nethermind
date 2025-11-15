@@ -124,13 +124,13 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
     private void DecodeDepositRequest(Block block, LogEntry log, Span<byte> buffer)
     {
-        object[] result = null;
+        object[] result;
         try
         {
             result = _abiEncoder.Decode(AbiEncodingStyle.None, DepositEventAbi, log.Data);
             ValidateLayout(result, block);
         }
-        catch (Exception e) when (e is AbiException or OverflowException)
+        catch (AbiException e)
         {
             throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout(e.Message));
         }
