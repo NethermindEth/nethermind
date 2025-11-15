@@ -246,4 +246,21 @@ public class HeaderDecoderTests
         yield return new object?[] { ulong.MaxValue / 2, ulong.MaxValue, null };
         yield return new object?[] { ulong.MaxValue, ulong.MaxValue / 2, null };
     }
+
+    [Test]
+    public void Doesnt_modify_malformed_rlp()
+    {
+        HeaderDecoder decoder = new();
+
+        byte[] rlpInput = [
+            0xd8, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
+            0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
+            0x80, 0x80, 0x86, 0x80, 0x80, 0x80, 0x80, 0xff, 0x2c
+        ];
+
+        BlockHeader header1 = decoder.Decode(rlpInput.AsRlpStream());
+        Rlp reEncoded = decoder.Encode(header1);
+        BlockHeader header2 = decoder.Decode(reEncoded.Bytes.AsRlpStream());
+        Assert.That(header1.Hash, Is.EqualTo(header2.Hash));
+    }
 }

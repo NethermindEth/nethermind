@@ -198,7 +198,7 @@ namespace Nethermind.Serialization.Rlp
             requiredItems[0] = !header.BaseFeePerGas.IsZero;
             requiredItems[1] = (header.WithdrawalsRoot is not null);
             requiredItems[2] = (header.BlobGasUsed is not null);
-            requiredItems[3] = (header.BlobGasUsed is not null || header.ExcessBlobGas is not null);
+            requiredItems[3] = (header.ExcessBlobGas is not null);
             requiredItems[4] = (header.ParentBeaconBlockRoot is not null);
             requiredItems[5] = (header.RequestsHash is not null);
 
@@ -208,7 +208,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             if (requiredItems[0]) rlpStream.Encode(header.BaseFeePerGas);
-            if (requiredItems[1]) rlpStream.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
+            if (requiredItems[1]) rlpStream.Encode(header.WithdrawalsRoot);
             if (requiredItems[2]) rlpStream.Encode(header.BlobGasUsed.GetValueOrDefault());
             if (requiredItems[3]) rlpStream.Encode(header.ExcessBlobGas.GetValueOrDefault());
             if (requiredItems[4]) rlpStream.Encode(header.ParentBeaconBlockRoot);
@@ -271,7 +271,7 @@ namespace Nethermind.Serialization.Rlp
             requiredItems[0] = !item.BaseFeePerGas.IsZero;
             requiredItems[1] = (item.WithdrawalsRoot is not null);
             requiredItems[2] = (item.BlobGasUsed is not null);
-            requiredItems[3] = (item.BlobGasUsed is not null || item.ExcessBlobGas is not null);
+            requiredItems[3] = (item.ExcessBlobGas is not null);
             requiredItems[4] = (item.ParentBeaconBlockRoot is not null);
             requiredItems[5] = (item.RequestsHash is not null);
 
@@ -281,7 +281,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             if (requiredItems[0]) contentLength += Rlp.LengthOf(item.BaseFeePerGas);
-            if (requiredItems[1]) contentLength += Rlp.LengthOf(item.WithdrawalsRoot ?? Keccak.Zero);
+            if (requiredItems[1]) contentLength += Rlp.LengthOf(item.WithdrawalsRoot);
             if (requiredItems[2]) contentLength += Rlp.LengthOf(item.BlobGasUsed.GetValueOrDefault());
             if (requiredItems[3]) contentLength += Rlp.LengthOf(item.ExcessBlobGas.GetValueOrDefault());
             if (requiredItems[4]) contentLength += Rlp.LengthOf(item.ParentBeaconBlockRoot);
