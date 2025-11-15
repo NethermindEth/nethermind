@@ -132,7 +132,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         }
         catch (AbiException e)
         {
-            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout(e.Message));
+            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout(e.Message), e);
         }
 
         int offset = 0;
