@@ -45,7 +45,7 @@ public static class EnrTreeParser
     private static EnrLeaf ParseEnrLeaf(string enrLeafText)
     {
         EnrLeaf leaf = new();
-        leaf.NodeRecord = enrLeafText;
+        leaf.NodeRecord = enrLeafText[4..];
         return leaf;
     }
 
