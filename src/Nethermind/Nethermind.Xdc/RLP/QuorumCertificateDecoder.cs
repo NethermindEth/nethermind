@@ -36,6 +36,10 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
         }
 
         ulong gap = decoderContext.DecodeULong();
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+        {
+            decoderContext.Check(endPosition);
+        }
         return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
@@ -61,6 +65,10 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
         }
 
         ulong gap = rlpStream.DecodeULong();
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+        {
+            rlpStream.Check(endPosition);
+        }
         return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
