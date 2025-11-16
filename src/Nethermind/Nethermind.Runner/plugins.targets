@@ -1,0 +1,47 @@
+<Project>
+
+  <!-- Readable names -->
+  <ItemGroup>
+    <ExtraProjectToBuild Include="Nethermind.Consensus.AuRa" />
+    <ExtraProjectToBuild Include="Nethermind.Consensus.Clique" />
+    <ExtraProjectToBuild Include="Nethermind.Consensus.Ethash" />
+    <ExtraProjectToBuild Include="Nethermind.EthStats" />
+    <ExtraProjectToBuild Include="Nethermind.Flashbots" />
+    <ExtraProjectToBuild Include="Nethermind.HealthChecks" />
+    <ExtraProjectToBuild Include="Nethermind.Hive" />
+    <ExtraProjectToBuild Include="Nethermind.Init.Snapshot" />
+    <ExtraProjectToBuild Include="Nethermind.Merge.AuRa" />
+    <ExtraProjectToBuild Include="Nethermind.Merge.Plugin" />
+    <ExtraProjectToBuild Include="Nethermind.Optimism" />
+    <ExtraProjectToBuild Include="Nethermind.Shutter" />
+    <ExtraProjectToBuild Include="Nethermind.Taiko" />
+    <ExtraProjectToBuild Include="Nethermind.UPnP.Plugin" />
+    <ExtraProjectToBuild Include="Nethermind.Xdc" />
+  </ItemGroup>
+
+  <!-- Convert names to full paths -->
+  <ItemGroup Condition="'@(ExtraProjectToBuild)' != ''">
+    <ExtraProjectToBuildFullPath Include="@(ExtraProjectToBuild -> '../%(Identity)/%(Identity).csproj')" />
+  </ItemGroup>
+
+  <Target Name="BuildExtraProjects"
+          BeforeTargets="Build"
+          Condition="'@(ExtraProjectToBuildFullPath)' != ''">
+
+    <Message Text="Building dependent projects: @(ExtraProjectToBuildFullPath)"
+             Importance="High" />
+
+    <MSBuild Projects="@(ExtraProjectToBuildFullPath)"
+             Targets="Build"
+             Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs"
+              ItemName="ExtraProjectOutputs" />
+    </MSBuild>
+
+    <!-- Copy built plugin assemblies to the plugin folder -->
+    <Copy SourceFiles="@(ExtraProjectOutputs)"
+          DestinationFolder="$(OutDir)\plugins\"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

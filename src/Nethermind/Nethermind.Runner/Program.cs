@@ -21,7 +21,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks;
-using Nethermind.Init.Snapshot;
+//using Nethermind.Init.Snapshot;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
@@ -145,13 +145,13 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     IConfigProvider configProvider = CreateConfigProvider(parseResult);
     IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
     IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
-    ISnapshotConfig snapshotConfig = configProvider.GetConfig<ISnapshotConfig>();
+    //ISnapshotConfig snapshotConfig = configProvider.GetConfig<ISnapshotConfig>();
     IPluginConfig pluginConfig = configProvider.GetConfig<IPluginConfig>();
 
     pluginLoader.OrderPlugins(pluginConfig);
 
     ResolveDataDirectory(parseResult.GetValue(BasicOptions.DataDirectory),
-        initConfig, keyStoreConfig, snapshotConfig);
+        initConfig, keyStoreConfig);
 
     NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
     DotNettyLoggerFactory.DefaultFactory = new NethermindLoggerFactory(logManager, lowerLogLevel: true);
@@ -482,7 +482,7 @@ void ResolveDatabaseDirectory(string? path, IInitConfig initConfig)
     }
 }
 
-void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig keyStoreConfig, ISnapshotConfig snapshotConfig)
+void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig keyStoreConfig)
 {
     if (string.IsNullOrWhiteSpace(path))
     {
@@ -495,7 +495,7 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
         string newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(path);
         string newLogDirectory = initConfig.LogDirectory.GetApplicationResourcePath(path);
         string newKeyStorePath = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath(path);
-        string newSnapshotPath = snapshotConfig.SnapshotDirectory.GetApplicationResourcePath(path);
+        //string newSnapshotPath = snapshotConfig.SnapshotDirectory.GetApplicationResourcePath(path);
 
         if (logger.IsInfo)
         {
@@ -503,15 +503,15 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
             logger.Info($"{nameof(initConfig.LogDirectory)}: {Path.GetFullPath(newLogDirectory)}");
             logger.Info($"{nameof(keyStoreConfig.KeyStoreDirectory)}: {Path.GetFullPath(newKeyStorePath)}");
 
-            if (snapshotConfig.Enabled)
-                logger.Info($"{nameof(snapshotConfig.SnapshotDirectory)}: {Path.GetFullPath(newSnapshotPath)}");
+            //if (snapshotConfig.Enabled)
+            //    logger.Info($"{nameof(snapshotConfig.SnapshotDirectory)}: {Path.GetFullPath(newSnapshotPath)}");
         }
 
         initConfig.BaseDbPath = newDbPath;
         initConfig.DataDir = path;
         initConfig.LogDirectory = newLogDirectory;
         keyStoreConfig.KeyStoreDirectory = newKeyStorePath;
-        snapshotConfig.SnapshotDirectory = newSnapshotPath;
+        //snapshotConfig.SnapshotDirectory = newSnapshotPath;
     }
 }
 

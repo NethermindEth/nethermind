@@ -27,7 +27,7 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Resettables;
-using Nethermind.HealthChecks;
+//using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -115,7 +115,7 @@ public class Startup : IStartup
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
         IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
         IJsonRpcUrlCollection jsonRpcUrlCollection = app.ApplicationServices.GetRequiredService<IJsonRpcUrlCollection>();
-        IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
+        //IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
 
         // If request is local, don't use response compression,
         // as it allocates a lot, but doesn't improve much for loopback
@@ -133,31 +133,31 @@ public class Startup : IStartup
             builder => builder.UseWebSocketsModules());
         }
 
-        app.UseEndpoints(endpoints =>
-        {
-            if (healthChecksConfig.Enabled)
-            {
-                try
-                {
-                    endpoints.MapHealthChecks(healthChecksConfig.Slug, new HealthCheckOptions()
-                    {
-                        Predicate = _ => true,
-                        ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
-                    });
-                    if (healthChecksConfig.UIEnabled)
-                    {
-                        endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "nethermind.css")));
-                    }
-                }
-                catch (Exception e)
-                {
-                    if (logger.IsError) logger.Error("Unable to initialize health checks. Check if you have Nethermind.HealthChecks.dll in your plugins folder.", e);
-                }
+        //app.UseEndpoints(endpoints =>
+        //{
+        //    if (healthChecksConfig.Enabled)
+        //    {
+        //        try
+        //        {
+        //            endpoints.MapHealthChecks(healthChecksConfig.Slug, new HealthCheckOptions()
+        //            {
+        //                Predicate = _ => true,
+        //                ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+        //            });
+        //            if (healthChecksConfig.UIEnabled)
+        //            {
+        //                //endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "nethermind.css")));
+        //            }
+        //        }
+        //        catch (Exception e)
+        //        {
+        //            if (logger.IsError) logger.Error("Unable to initialize health checks. Check if you have Nethermind.HealthChecks.dll in your plugins folder.", e);
+        //        }
 
-                IServiceProvider services = app.ApplicationServices;
-                endpoints.MapDataFeeds(lifetime);
-            }
-        });
+        //        IServiceProvider services = app.ApplicationServices;
+        //        endpoints.MapDataFeeds(lifetime);
+        //    }
+        //});
 
         app.MapWhen(
             (ctx) => ctx.Request.ContentType?.Contains("application/json") ?? false,
@@ -325,15 +325,15 @@ public class Startup : IStartup
             }
         }));
 
-        if (healthChecksConfig.Enabled)
-        {
-            string executableDir = Path.GetDirectoryName(Environment.ProcessPath) ?? Directory.GetCurrentDirectory();
-            string wwwrootPath = Path.Combine(executableDir, "wwwroot");
-            PhysicalFileProvider fileProvider = new(wwwrootPath);
+        //if (healthChecksConfig.Enabled)
+        //{
+        //    string executableDir = Path.GetDirectoryName(Environment.ProcessPath) ?? Directory.GetCurrentDirectory();
+        //    string wwwrootPath = Path.Combine(executableDir, "wwwroot");
+        //    PhysicalFileProvider fileProvider = new(wwwrootPath);
 
-            app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
-            app.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
-        }
+        //    app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
+        //    app.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
+        //}
     }
 
     /// <summary>
