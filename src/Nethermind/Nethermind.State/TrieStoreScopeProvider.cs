@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -288,32 +287,6 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             {
                 storageTree.UpdateRootHash(_bulkWrite?.Count > 64);
                 worldStateWriteBatch.MarkDirty(address, storageTree.RootHash);
-            }
-        }
-    }
-
-    private class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb) : IWorldStateScopeProvider.ICodeDb
-    {
-        public byte[]? GetCode(in ValueHash256 codeHash)
-        {
-            return codeDb[codeHash.Bytes]?.ToArray();
-        }
-
-        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite()
-        {
-            return new CodeSetter(codeDb.StartWriteBatch());
-        }
-
-        private class CodeSetter(IWriteBatch writeBatch) : IWorldStateScopeProvider.ICodeSetter
-        {
-            public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code)
-            {
-                writeBatch.PutSpan(codeHash.Bytes, code);
-            }
-
-            public void Dispose()
-            {
-                writeBatch.Dispose();
             }
         }
     }
