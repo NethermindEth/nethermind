@@ -24,8 +24,10 @@ public class VotesManagerTests
 {
     public static IEnumerable<TestCaseData> HandleVoteCases()
     {
-        var (keys, _) = MakeKeys(20);
-        var masternodes = keys.Select(k => k.Address).ToArray();
+        var keys = MakeKeys(22);
+        var keysForMasternodes = keys.Take(20).ToArray();
+        var extraKeys = keys.Skip(20).ToArray();
+        var masternodes = keysForMasternodes.Select(k => k.Address).ToArray();
 
         ulong currentRound = 1;
         XdcBlockHeader header = Build.A.XdcBlockHeader()
@@ -34,16 +36,15 @@ public class VotesManagerTests
         var info = new BlockRoundInfo(header.Hash!, currentRound, header.Number);
 
         // Base case
-        yield return new TestCaseData(masternodes, header, currentRound, keys.Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray(), info, 1);
+        yield return new TestCaseData(masternodes, header, currentRound, keysForMasternodes.Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray(), info, 1);
 
         // Not enough valid signers
-        var (extraKeys, _) = MakeKeys(2);
-        var votes = keys.Take(12).Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray();
+        var votes = keysForMasternodes.Take(12).Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray();
         var extraVotes = extraKeys.Select(k => XdcTestHelper.BuildSignedVote(info, 450, k)).ToArray();
         yield return new TestCaseData(masternodes, header, currentRound, votes.Concat(extraVotes).ToArray(), info, 0);
 
         // Wrong gap number generates different keys for the vote pool
-        var keysForVotes = keys.Take(14).ToArray();
+        var keysForVotes = keysForMasternodes.Take(14).ToArray();
         var votesWithDiffGap = new List<Vote>(capacity: keysForVotes.Length);
         for (var i = 0; i < keysForVotes.Length - 3; i++) votesWithDiffGap.Add(XdcTestHelper.BuildSignedVote(info, 450, keysForVotes[i]));
         for (var i = keysForVotes.Length - 3; i < keysForVotes.Length; i++) votesWithDiffGap.Add(XdcTestHelper.BuildSignedVote(info, 451, keysForVotes[i]));
@@ -86,7 +87,7 @@ public class VotesManagerTests
     [Test]
     public async Task HandleVote_HeaderMissing_ReturnsEarly()
     {
-        var (keys, _) = MakeKeys(20);
+        var keys = MakeKeys(20);
         var masternodes = keys.Select(k => k.Address).ToArray();
 
         ulong currentRound = 1;
@@ -116,18 +117,84 @@ public class VotesManagerTests
         var voteManager = new VotesManager(context, blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
             specProvider, signer, forensicsProcessor);
 
-        var keysForVotes = keys.ToArray();
-        for (var i = 0; i < keysForVotes.Length - 1; i++)
-            await voteManager.HandleVote(XdcTestHelper.BuildSignedVote(info, gap: 450, keysForVotes[i]));
+        for (var i = 0; i < keys.Length - 1; i++)
+            await voteManager.HandleVote(XdcTestHelper.BuildSignedVote(info, gap: 450, keys[i]));
 
         quorumCertificateManager.DidNotReceive().CommitCertificate(Arg.Any<QuorumCertificate>());
 
         // Now insert header and send one more
         blockTree.FindHeader(header.Hash!, Arg.Any<long>()).Returns(header);
-        await voteManager.HandleVote(XdcTestHelper.BuildSignedVote(info, 450, keysForVotes[keysForVotes.Length - 1]));
+        await voteManager.HandleVote(XdcTestHelper.BuildSignedVote(info, 450, keys.Last()));
 
         quorumCertificateManager.Received(1).CommitCertificate(Arg.Any<QuorumCertificate>());
     }
+
+    [TestCase(7UL, 0)]
+    [TestCase(6UL, 1)]
+    [TestCase(5UL, 1)]
+    [TestCase(4UL, 0)]
+    public async Task HandleVote_MsgRoundDifferentValues_ReturnsEarlyIfTooFarFromCurrentRound(ulong currentRound,
+        long expectedCount)
+    {
+        var ctx = new XdcConsensusContext { CurrentRound = currentRound };
+        VotesManager votesManager = BuildVoteManager(ctx);
+
+        // Dummy values, we only care about the round
+        var blockInfo = new BlockRoundInfo(Hash256.Zero, 6, 0);
+        var key = MakeKeys(1).First();
+        var vote = XdcTestHelper.BuildSignedVote(blockInfo, 450, key);
+        await votesManager.HandleVote(vote);
+        Assert.That(votesManager.GetVotesCount(vote), Is.EqualTo(expectedCount));
+    }
+
+    public static IEnumerable<TestCaseData> FilterVoteCases()
+    {
+        var keys = MakeKeys(21);
+        var masternodes = keys.Take(20).Select(k => k.Address).ToArray();
+        var blockInfo = new BlockRoundInfo(Hash256.Zero, 14, 915);
+
+        // Disqualified as the round does not match
+        var vote = new Vote(blockInfo, 450);
+        yield return new TestCaseData(15UL, masternodes, vote, false);
+
+        // Invalid signature
+        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.Last()), false);
+
+        // Valid message
+        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 450, keys.First()), true);
+
+        // If snapshot missing should return false
+        yield return new TestCaseData(14UL, masternodes, XdcTestHelper.BuildSignedVote(blockInfo, 1350, keys.First()), false);
+
+    }
+
+    [TestCaseSource(nameof(FilterVoteCases))]
+    public void FilterVote(ulong currentRound, Address[] masternodes, Vote vote, bool expected)
+    {
+        var context = new XdcConsensusContext();
+        context.SetNewRound(currentRound);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithExtraConsensusData(new ExtraFieldsV2(currentRound, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 0, 0), null, 0)))
+            .TestObject;
+        blockTree.Head.Returns(new Block(header));
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
+        snapshotManager.GetSnapshotByGapNumber(450)
+            .Returns(new Snapshot(0, Hash256.Zero, masternodes));
+        IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
+        ISigner signer = Substitute.For<ISigner>();
+        IForensicsProcessor forensicsProcessor = Substitute.For<IForensicsProcessor>();
+
+        var voteManager = new VotesManager(context, blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
+            specProvider, signer, forensicsProcessor);
+
+        Assert.That(voteManager.FilterVote(vote), Is.EqualTo(expected));
+    }
+
 
     [TestCase(5UL, 4UL, false)] // Current round different from blockInfoRound
     [TestCase(5UL, 5UL, true)]  // No LockQc
@@ -207,15 +274,12 @@ public class VotesManagerTests
         Assert.That(votesManager.VerifyVotingRules(blockInfo, qc), Is.EqualTo(expected));
     }
 
-    private static (PrivateKey[] keys, Address[] addrs) MakeKeys(int n)
+    private static PrivateKey[] MakeKeys(int n)
     {
         var keyBuilder = new PrivateKeyGenerator();
         PrivateKey[] keys = keyBuilder.Generate(n).ToArray();
-        Address[] addrs = keys.Select(k => k.Address).ToArray();
-        return (keys, addrs);
+        return keys;
     }
-
-
 
     private static VotesManager BuildVoteManager(IXdcConsensusContext ctx, IBlockTree? blockTree = null)
     {

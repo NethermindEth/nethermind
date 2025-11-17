@@ -13,4 +13,5 @@ public interface ITimeoutCertificateManager
     void OnCountdownTimer();
     void ProcessTimeoutCertificate(TimeoutCertificate timeoutCertificate);
     bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, out string errorMessage);
+    long GetTimeoutsCount(Timeout timeout);
 }
