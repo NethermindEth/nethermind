@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Crypto;
@@ -19,125 +20,133 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
+[Parallelizable(ParallelScope.All)]
 internal class MineModuleTests
 {
     public async Task<(XdcTestBlockchain, XdcBlockTree)> Setup()
     {
-        var _blockchainTests = await XdcTestBlockchain.Create(useHotStuffModule: true);
-        var _tree = (XdcBlockTree)_blockchainTests.BlockTree;
+        var blockchain = await XdcTestBlockchain.Create(useHotStuffModule: true);
+        var tree = (XdcBlockTree)blockchain.BlockTree;
 
-        return (_blockchainTests, _tree);
+        return (blockchain, tree);
     }
 
     [Test]
     public async Task TestUpdateMultipleMasterNodes()
     {
-        var (_blockchainTests, _tree) = await Setup();
+        var (blockchain, tree) = await Setup();
 
         // this test is basically an emulation because our block producer test setup does not support saving snapshots yet
         // add blocks until the next gap block
-        var spec = _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header!);
+        var spec = blockchain.SpecProvider.GetXdcSpec((XdcBlockHeader)tree.Head!.Header!);
 
-        var oldHead = (XdcBlockHeader)_tree.Head!.Header!;
-        var snapshotBefore = _blockchainTests.SnapshotManager.GetSnapshotByBlockNumber(oldHead.Number, _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header!));
+        var oldHead = (XdcBlockHeader)tree.Head!.Header!;
+        var snapshotBefore = blockchain.SnapshotManager.GetSnapshotByBlockNumber(oldHead.Number, blockchain.SpecProvider.GetXdcSpec((XdcBlockHeader)tree.Head!.Header!));
 
         Assert.That(snapshotBefore, Is.Not.Null);
         Assert.That(snapshotBefore.NextEpochCandidates.Length, Is.EqualTo(30));
 
         // simulate adding a new validator
         var newValidator = new PrivateKeyGenerator().Generate();
-        _blockchainTests.MasterNodeCandidates.Add(newValidator);
+        blockchain.MasterNodeCandidates.Add(newValidator);
 
         // mine the gap block that should trigger master node update
-        var gapBlock = await _blockchainTests.AddBlock();
-        while (!ISnapshotManager.IsTimeforSnapshot(_tree.Head!.Header!.Number, spec))
+        var gapBlock = await blockchain.AddBlock();
+        while (!ISnapshotManager.IsTimeforSnapshot(tree.Head!.Header!.Number, spec))
         {
-            gapBlock = await _blockchainTests.AddBlock();
+            gapBlock = await blockchain.AddBlock();
         }
 
-        var newHead = (XdcBlockHeader)_tree.Head!.Header!;
+        var newHead = (XdcBlockHeader)tree.Head!.Header!;
         Assert.That(newHead.Number, Is.EqualTo(gapBlock.Number));
 
-        var snapshotAfter = _blockchainTests.SnapshotManager.GetSnapshotByGapNumber((ulong)newHead.Number);
+        var snapshotAfter = blockchain.SnapshotManager.GetSnapshotByGapNumber((ulong)newHead.Number);
 
         Assert.That(snapshotAfter, Is.Not.Null);
         Assert.That(snapshotAfter.BlockNumber, Is.EqualTo(gapBlock.Number));
-        Assert.That(snapshotAfter.NextEpochCandidates.Length, Is.EqualTo(_blockchainTests.MasterNodeCandidates.Count));
+        Assert.That(snapshotAfter.NextEpochCandidates.Length, Is.EqualTo(blockchain.MasterNodeCandidates.Count));
         Assert.That(snapshotAfter.NextEpochCandidates.Contains(newValidator.Address), Is.True);
     }
 
     [Test]
     public async Task TestShouldMineOncePerRound()
     {
-        var (_blockchainTests, _tree) = await Setup();
+        var (xdcBlockchain, tree) = await Setup();
 
-        var _hotstuff = (XdcHotStuff)_blockchainTests.BlockProducerRunner;
+        var _hotstuff = (XdcHotStuff)xdcBlockchain.BlockProducerRunner;
 
-        var parentBlock = _tree.Head!.Header!;
-        var masterNodesAddresses = _blockchainTests.MasterNodeCandidates.Select(pv => pv.Address).ToArray();
+        var blocksProposed = 0;
+        xdcBlockchain.ConsensusModule.BlockProduced += (sender, args) => 
+        {
+            blocksProposed++;
+        };
 
-        // Arrange
-        var spec = _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header!);
-        var previousLeader = _hotstuff.GetLeaderAddress((XdcBlockHeader)_tree.Head!.Header!, _blockchainTests.XdcContext.CurrentRound, spec);
-        Assert.That(previousLeader, Is.Not.Null);
+        var newRoundWaitHandle = new TaskCompletionSource();
+        xdcBlockchain.XdcContext.NewRoundSetEvent += (sender, args) =>
+        {
+            newRoundWaitHandle.TrySetResult();
+        };
 
-        await _blockchainTests.AddBlock();
-        // Wait for mine period to elapse
-        await Task.Delay(TimeSpan.FromSeconds(spec.MinePeriod));
+        xdcBlockchain.StartHotStuffModule();  
 
-        // Act - Attempt to mine again within the same round (the assumption is after mine period current round increments and a new leader is chosen)
-        spec = _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header!);
-        var newLeader = _hotstuff.GetLeaderAddress((XdcBlockHeader)_tree.Head!.Header!, _blockchainTests.XdcContext.CurrentRound, spec);
+        var parentBlock = tree.Head!.Header!;
+        var masterNodesAddresses = xdcBlockchain.MasterNodeCandidates.Select(pv => pv.Address).ToArray();
 
-        // Assert - Should fail because already mined
-        Assert.That(newLeader, Is.Not.Null);
+        var spec = xdcBlockchain.SpecProvider.GetXdcSpec((XdcBlockHeader)tree.Head!.Header!);
 
-        Assert.That(newLeader, Is.Not.EqualTo(previousLeader));
+        await xdcBlockchain.TriggerAndSimulateBlockProposalAndVoting();
+
+        Task firstTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(5_000));
+        if (firstTask != newRoundWaitHandle.Task)
+        {
+            Assert.Fail("Timeout waiting for new round event");
+        }
+        blocksProposed.Should().Be(1);
     }
 
     [Test]
     public async Task TestUpdateMasterNodes()
     {
-        var (_blockchainTests, _tree) = await Setup();
+        var (blockchain, tree) = await Setup();
 
-        _blockchainTests.ChangeReleaseSpec((spec) =>
+        blockchain.ChangeReleaseSpec((spec) =>
         {
             spec.EpochLength = 90;
             spec.Gap = 45;
         });
 
-        IXdcReleaseSpec? spec = _blockchainTests.SpecProvider.GetXdcSpec((XdcBlockHeader)_tree.Head!.Header);
+        IXdcReleaseSpec? spec = blockchain.SpecProvider.GetXdcSpec((XdcBlockHeader)tree.Head!.Header);
 
-        var header = (XdcBlockHeader)_blockchainTests.BlockTree.Head!.Header!;
-        spec = _blockchainTests.SpecProvider.GetXdcSpec(header);
-        var snapshot = _blockchainTests.SnapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
+        var header = (XdcBlockHeader)blockchain.BlockTree.Head!.Header!;
+        spec = blockchain.SpecProvider.GetXdcSpec(header);
+        var snapshot = blockchain.SnapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
 
         Assert.That(snapshot, Is.Not.Null);
         Assert.That(snapshot.BlockNumber, Is.EqualTo(0));
         Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(30));
 
-        var gapBlock = await _blockchainTests.AddBlock();
-        while (!ISnapshotManager.IsTimeforSnapshot(_tree.Head!.Header!.Number, spec))
+        var gapBlock = await blockchain.AddBlock();
+        while (!ISnapshotManager.IsTimeforSnapshot(tree.Head!.Header!.Number, spec))
         {
-            gapBlock = await _blockchainTests.AddBlock();
+            gapBlock = await blockchain.AddBlock();
         }
 
         Assert.That(gapBlock.Number, Is.EqualTo(spec.Gap));
 
         header = (XdcBlockHeader)gapBlock.Header!;
-        spec = _blockchainTests.SpecProvider.GetXdcSpec(header);
-        snapshot = _blockchainTests.SnapshotManager.GetSnapshotByGapNumber((ulong)header.Number);
+        spec = blockchain.SpecProvider.GetXdcSpec(header);
+        snapshot = blockchain.SnapshotManager.GetSnapshotByGapNumber((ulong)header.Number);
 
         Assert.That(snapshot, Is.Not.Null);
         Assert.That(snapshot.BlockNumber, Is.EqualTo(gapBlock.Number));
-        Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(_blockchainTests.MasterNodeCandidates.Count));
+        Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(blockchain.MasterNodeCandidates.Count));
 
         long tstamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-        var epochSwitchBlock = await _blockchainTests.AddBlock();
-        while (!_blockchainTests.EpochSwitchManager.IsEpochSwitchAtBlock((XdcBlockHeader)_tree.Head!.Header!))
+        var epochSwitchBlock = await blockchain.AddBlock();
+        while (!blockchain.EpochSwitchManager.IsEpochSwitchAtBlock((XdcBlockHeader)tree.Head!.Header!))
         {
-            epochSwitchBlock = await _blockchainTests.AddBlock();
+            epochSwitchBlock = await blockchain.AddBlock();
         }
 
         Assert.That(epochSwitchBlock.Number, Is.EqualTo(spec.EpochLength));
