@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Frozen;
+using System.Linq;
+using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
@@ -19,6 +23,15 @@ public static class Spec
     public const ulong HoloceneTimeStamp = 2_000;
     public const ulong IsthmusTimeStamp = 2_100;
     public const ulong JovianTimeStamp = 2_200;
+
+    // Aggregates all fork timestamps and names
+    public static readonly FrozenDictionary<ulong, string> ForkNameAt = typeof(Spec)
+        .GetFields(BindingFlags.Public | BindingFlags.Static)
+        .Where(f =>
+            f is { IsLiteral: true, IsInitOnly: false } &&
+            f.FieldType == typeof(ulong) &&
+            f.Name.EndsWith("timestamp", StringComparison.OrdinalIgnoreCase)
+        ).ToFrozenDictionary(f => (ulong)f.GetRawConstantValue()!, f => f.Name[..^("timestamp".Length)]);
 
     public static readonly IOptimismSpecHelper Instance =
         new OptimismSpecHelper(new OptimismChainSpecEngineParameters
