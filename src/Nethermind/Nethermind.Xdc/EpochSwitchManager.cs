@@ -45,7 +45,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             return false;
         }
 
-        var round = header.ExtraConsensusData.CurrentRound;
+        var round = header.ExtraConsensusData.BlockRound;
         var qc = header.ExtraConsensusData.QuorumCert;
 
         ulong parentRound = qc.ProposedBlockInfo.Round;
@@ -85,7 +85,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             return false;
         }
 
-        var parentRound = parent.ExtraConsensusData.CurrentRound;
+        var parentRound = parent.ExtraConsensusData.BlockRound;
         if (currentRound <= parentRound)
         {
             return false;
@@ -113,7 +113,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
         if (header.Number == xdcSpec.SwitchBlock)
         {
-            masterNodes = XdcExtensions.ExtractAddresses(header.ExtraData[XdcConstants.ExtraVanity..^XdcConstants.ExtraSeal]).Value.ToArray();
+            masterNodes = xdcSpec.GenesisMasterNodes;
         }
         else
         {
@@ -125,8 +125,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             masterNodes = header.ValidatorsAddress.Value.ToArray();
         }
 
-
-        var snap = _snapshotManager.GetSnapshot(header.Hash);
+        var snap = _snapshotManager.GetSnapshotByBlockNumber(header.Number, xdcSpec);
         if (snap is null)
         {
             return null;
@@ -145,13 +144,12 @@ internal class EpochSwitchManager : IEpochSwitchManager
                 .ToArray();
         }
 
-        epochSwitchInfo = new EpochSwitchInfo(masterNodes, stanbyNodes, penalties, new BlockRoundInfo(header.Hash, header.ExtraConsensusData?.CurrentRound ?? 0, header.Number));
+        epochSwitchInfo = new EpochSwitchInfo(masterNodes, stanbyNodes, penalties, new BlockRoundInfo(header.Hash, header.ExtraConsensusData?.BlockRound ?? 0, header.Number));
 
         if (header.ExtraConsensusData?.QuorumCert is not null)
         {
             epochSwitchInfo.EpochSwitchParentBlockInfo = header.ExtraConsensusData.QuorumCert.ProposedBlockInfo;
         }
-
 
         _epochSwitches.Set(header.Hash, epochSwitchInfo);
         return epochSwitchInfo;
@@ -262,7 +260,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             }
 
             bool isEpochSwitch = IsEpochSwitchAtBlock(header);
-            ulong epochNum = (ulong)xdcSpec.SwitchEpoch + (header.ExtraConsensusData?.CurrentRound ?? 0) / (ulong)xdcSpec.EpochLength;
+            ulong epochNum = (ulong)xdcSpec.SwitchEpoch + (header.ExtraConsensusData?.BlockRound ?? 0) / (ulong)xdcSpec.EpochLength;
 
             if (epochNum == targetEpochNumber)
             {
@@ -272,7 +270,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
                     return false;
                 }
 
-                ulong round = header.ExtraConsensusData.CurrentRound;
+                ulong round = header.ExtraConsensusData.BlockRound;
 
                 if (isEpochSwitch)
                 {
@@ -337,8 +335,11 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
     public BlockRoundInfo? GetBlockByEpochNumber(ulong targetEpoch)
     {
-        var headHeader = _tree.Head.Header as XdcBlockHeader;
-
+        var headHeader = _tree.Head?.Header as XdcBlockHeader;
+        if (headHeader is null)
+        {
+            return null;
+        }
         var xdcSpec = _xdcSpecProvider.GetXdcSpec(headHeader);
 
         EpochSwitchInfo epochSwitchInfo = GetEpochSwitchInfo(headHeader);

@@ -143,6 +143,9 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers) : IBlo
     public BlockInfo FindCanonicalBlockInfo(long blockNumber)
         => throw new NotSupportedException();
 
+    public Hash256 FindHash(long blockNumber)
+        => throw new NotSupportedException();
+
     public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
         => throw new NotSupportedException();
 

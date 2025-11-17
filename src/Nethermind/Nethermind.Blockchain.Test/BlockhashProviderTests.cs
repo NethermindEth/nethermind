@@ -10,11 +10,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Evm.State;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
@@ -80,8 +81,7 @@ public class BlockhashProviderTests
         BlockhashProvider provider = CreateBlockHashProvider(tree, Frontier.Instance);
 
         BlockHeader notCanonParent = tree.FindHeader(chainLength - 4, BlockTreeLookupOptions.None)!;
-        Block expected = tree.FindBlock(chainLength - 3, BlockTreeLookupOptions.None)!;
-
+        BlockHeader expectedHeader = tree.FindHeader(chainLength - 3, BlockTreeLookupOptions.None)!;
         Block headParent = tree.FindBlock(chainLength - 2, BlockTreeLookupOptions.None)!;
         Block head = tree.FindBlock(chainLength - 1, BlockTreeLookupOptions.None)!;
 
@@ -89,12 +89,12 @@ public class BlockhashProviderTests
         tree.Insert(branch, BlockTreeInsertBlockOptions.SaveHeader).Should().Be(AddBlockResult.Added);
         tree.UpdateMainChain(branch); // Update branch
 
-        tree.UpdateMainChain([expected, headParent, head], true); // Update back to original again, but skipping the branch block.
+        tree.UpdateMainChain([headParent, head], true); // Update back to original again, but skipping the branch block.
 
         Block current = Build.A.Block.WithParent(head).TestObject; // At chainLength
 
         Hash256? result = provider.GetBlockhash(current.Header, chainLength - 3);
-        Assert.That(result, Is.EqualTo(expected.Header.Hash));
+        Assert.That(result, Is.EqualTo(expectedHeader.Hash));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -351,5 +351,72 @@ public class BlockhashProviderTests
         // 3. Try to retrieve the parent hash from the state
         var result = store.GetBlockHashFromState(current.Header, current.Header.Number - 1);
         Assert.That(result, Is.EqualTo(current.Header.ParentHash));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockhashStore_uses_custom_ring_buffer_size()
+    {
+        const int customRingBufferSize = 100;
+        const int chainLength = 150;
+
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
+        BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+
+        (IWorldState worldState, Hash256 stateRoot) = CreateWorldState();
+        Block current = Build.A.Block.WithParent(head!).WithStateRoot(stateRoot).TestObject;
+        tree.SuggestHeader(current.Header);
+
+        // Custom spec with non-standard ring buffer size
+        ReleaseSpec customSpec = new()
+        {
+            IsEip2935Enabled = true,
+            IsEip7709Enabled = true,
+            Eip2935RingBufferSize = customRingBufferSize
+        };
+
+        var specProvider = new CustomSpecProvider(
+            (new ForkActivation(0, genesis.Timestamp), customSpec));
+        BlockhashStore store = new(specProvider, worldState);
+
+        using IDisposable _ = worldState.BeginScope(current.Header);
+
+        // Insert code (account already created by CreateWorldState)
+        byte[] code = [1, 2, 3];
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, customSpec);
+
+        // Process current block (150) - stores block 149's hash
+        store.ApplyBlockhashStateChanges(current.Header);
+
+        // Simulate processing blocks 51-149 to fill the ring buffer
+        // At block 150 with buffer size 100, we need hashes for blocks 50-149
+        // Block 150 stores block 149's hash (already done above)
+        // Now process blocks 51-149 from the tree to store blocks 50-148
+        for (long blockNum = chainLength - customRingBufferSize + 1; blockNum < chainLength; blockNum++)
+        {
+            BlockHeader? header = tree.FindHeader(blockNum, BlockTreeLookupOptions.None);
+            Assert.That(header, Is.Not.Null, $"Block {blockNum} should exist in tree");
+
+            store.ApplyBlockhashStateChanges(header!);
+        }
+
+        // Now verify all blocks behave correctly with custom ring buffer size
+        // At block 150 with buffer size 100, only blocks [50, 149] should be retrievable
+        for (long blockNum = 1; blockNum < chainLength - customRingBufferSize; blockNum++)
+        {
+            Hash256? result = store.GetBlockHashFromState(current.Header, blockNum, customSpec);
+
+            Assert.That(result, Is.Null,
+                $"Block {blockNum} should be outside custom ring buffer of size {customRingBufferSize} (proves custom size is used, not default 8191)");
+        }
+
+        for (long blockNum = chainLength - customRingBufferSize; blockNum < chainLength; blockNum++)
+        {
+            BlockHeader? expectedHeader = tree.FindHeader(blockNum, BlockTreeLookupOptions.None);
+            Hash256? result = store.GetBlockHashFromState(current.Header, blockNum, customSpec);
+
+            Assert.That(result, Is.EqualTo(expectedHeader!.Hash),
+                $"Block {blockNum} should be retrievable within custom ring buffer of size {customRingBufferSize}");
+        }
     }
 }

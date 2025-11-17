@@ -29,7 +29,7 @@ public sealed class TxDecoder : TxDecoder<Transaction>
 public sealed class SystemTxDecoder : TxDecoder<SystemTransaction>;
 public sealed class GeneratedTxDecoder : TxDecoder<GeneratedTransaction>;
 
-public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : Transaction, new()
+public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
 {
     private readonly ITxDecoder?[] _decoders = new ITxDecoder?[Transaction.MaxTxType + 1];
 
@@ -45,7 +45,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
 
     public void RegisterDecoder(ITxDecoder decoder) => _decoders[(int)decoder.Type] = decoder;
 
-    public T? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override T? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         static void ThrowIfLegacy(TxType txType1)
         {
@@ -88,7 +88,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
             ? decoder
             : throw new RlpException($"Unknown transaction type {txType}") { Data = { { "txType", txType } } };
 
-    public T? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override T? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         T transaction = null;
         Decode(ref decoderContext, ref transaction, rlpBehaviors);
@@ -131,16 +131,16 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         GetDecoder(txType).Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
+    public override void Encode(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        EncodeTx(stream, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
+    }
+
     public Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);
         return new Rlp(rlpStream.Data.ToArray() ?? []);
-    }
-
-    public void Encode(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        EncodeTx(stream, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
     }
 
     public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
@@ -153,7 +153,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2718
     /// </summary>
-    public int GetLength(T tx, RlpBehaviors rlpBehaviors) => GetLength(tx, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
+    public override int GetLength(T tx, RlpBehaviors rlpBehaviors) => GetLength(tx, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
 
     public void EncodeTx(RlpStream stream, T? item, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
     {

@@ -38,7 +38,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
 
         // keys arrive 5 seconds before slot start
         // waits for previous block to timeout then loads txs
-        chain.Api!.AdvanceSlot(20);
+        chain.Api.AdvanceSlot(20);
 
         // no events loaded initially
         var txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
@@ -46,8 +46,8 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
 
         // after timeout they should be loaded
         using CancellationTokenSource cts = new();
-        await chain.Api.TxSource.WaitForTransactions((ulong)BuildingSlot, cts.Token);
-        txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
+        await chain.Api.TxSource.WaitForTransactions(BuildingSlot, cts.Token);
+        txs = chain.Api.TxSource.GetTransactions(chain.BlockTree.Head!.Header, 0, payloadAttributes).ToList();
         Assert.That(txs, Has.Count.EqualTo(20));
 
         // late block arrives, then next block should contain loaded transactions
@@ -71,10 +71,10 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, BuildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
-        ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
+        ExecutionPayload lastPayload = executionPayloads[^1];
 
         // no events loaded initially
-        var txs = chain.Api!.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
+        var txs = chain.Api.TxSource.GetTransactions(chain.BlockTree.Head!.Header, 0, payloadAttributes).ToList();
         Assert.That(txs, Has.Count.EqualTo(0));
 
         chain.Api.AdvanceSlot(20);
@@ -82,7 +82,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
 
-        txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
+        txs = chain.Api.TxSource.GetTransactions(chain.BlockTree.Head!.Header, 0, payloadAttributes).ToList();
         Assert.That(txs, Has.Count.EqualTo(20));
 
         payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);

@@ -22,10 +22,10 @@ on:
           - world-mainnet
           - joc-mainnet
           - joc-testnet
-          - linea-mainnet
-          - linea-sepolia
+          # - linea-mainnet
+          # - linea-sepolia
           - taiko-alethia
-          - taiko-hekla
+          - taiko-hoodi
           - energyweb
           - volta
       cl_client:
