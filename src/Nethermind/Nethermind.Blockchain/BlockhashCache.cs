@@ -40,7 +40,8 @@ public class BlockhashCache : IDisposable, IBlockhashCache
 
     private CacheNode? Load(BlockHeader blockHeader, int depth, CancellationToken cancellationToken = default)
     {
-        depth = Math.Min(depth, MaxDepth);
+        if (depth > MaxDepth) return null;
+
         using ArrayPoolListRef<(CacheNode Node, bool NeedToAdd)> blocks = new(depth + 1);
         Hash256 currentHash = blockHeader.Hash!;
         CacheNode currentNode = null;
@@ -76,8 +77,8 @@ public class BlockhashCache : IDisposable, IBlockhashCache
 
             if (i != depth)
             {
-                currentHash = currentNode!.ParentHash;
-                currentNode = currentNode!.Parent;
+                currentHash = currentNode.ParentHash;
+                currentNode = currentNode.Parent;
             }
         }
 
@@ -103,7 +104,7 @@ public class BlockhashCache : IDisposable, IBlockhashCache
         }
 
         int index = depth - skipped;
-        return index < 0 ? currentNode
+        return index < 0 ? currentNode // if index <0 then we skipped everything and got it from cache
             : blocks.Count > index
                 ? blocks[index].Node
                 : null;
