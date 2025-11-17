@@ -28,13 +28,14 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         transaction.Hash = transaction.CalculateHash();
 
         TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
+
+        // Keep track of gas left
         if (result == TransactionResult.Ok)
         {
             simulateRequestState.TotalGasLeft -= transaction.SpentGas;
             simulateRequestState.BlockGasLeft -= transaction.SpentGas;
         }
 
-        // Keep track of gas left
         _currentTxIndex++;
         return result;
     }
