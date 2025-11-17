@@ -24,6 +24,7 @@
     <PackageVersion Include="Google.Protobuf.Tools" Version="3.33.1" />
     <PackageVersion Include="Grpc" Version="2.46.6" />
     <PackageVersion Include="Grpc.Tools" Version="2.76.0" />
+    <PackageVersion Include="HdrHistogram" Version="2.5.0" />
     <PackageVersion Include="HexMate" Version="0.0.3" />
     <PackageVersion Include="MathNet.Numerics.FSharp" Version="5.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.0" />
