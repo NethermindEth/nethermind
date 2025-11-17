@@ -35,6 +35,20 @@ internal class XdcBlockTree : BlockTree
         long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
     {
         _xdcConsensus = xdcConsensus;
+        NewHeadBlock += XdcBlockTree_NewHeadBlock;
+    }
+
+    private void XdcBlockTree_NewHeadBlock(object? sender, BlockEventArgs e)
+    {
+        UpdateMasterNodes((XdcBlockHeader)e.Block.Header);
+    }
+
+    private void UpdateMasterNodes(XdcBlockHeader header)
+    {
+        var spec = SpecProvider.GetXdcSpec(header, header.ExtraConsensusData.BlockRound);
+        if (!ISnapshotManager.IsTimeforSnapshot(header.Number, spec))
+            return;
+
     }
 
     protected override AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
