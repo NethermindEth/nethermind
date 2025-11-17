@@ -975,7 +975,7 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public async Task Will_NotRemove_ReCommittedNode()
+        public void Will_NotRemove_ReCommittedNode()
         {
             MemDb memDb = new();
 
@@ -999,8 +999,7 @@ namespace Nethermind.Trie.Test.Pruning
                     committer.CommitNode(ref emptyPath, node);
                 }
 
-                // Pruning is done in background
-                await Task.Delay(TimeSpan.FromMilliseconds(10));
+                fullTrieStore.WaitForPruning();
             }
 
             fullTrieStore.PersistCache(default);
