@@ -227,43 +227,68 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
     private class StorageTreeBulkWriteBatch(int estimatedEntries, StorageTree storageTree, WorldStateWriteBatch worldStateWriteBatch, AddressAsKey address) : IWorldStateScopeProvider.IStorageWriteBatch
     {
+        // Slight optimization on small contract as the index hash can be precalculated in some case.
+        private const int MIN_ENTRIES_TO_BATCH = 16;
+
         private bool _hasSelfDestruct;
         private bool _wasSetCalled = false;
 
-        ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
+        private ArrayPoolList<PatriciaTree.BulkSetEntry>? _bulkWrite =
+            estimatedEntries > MIN_ENTRIES_TO_BATCH
+                ? new(estimatedEntries)
+                : null;
+
         private ValueHash256 _keyBuff = new ValueHash256();
 
         public void Set(in UInt256 index, byte[] value)
         {
-            StorageTree.ComputeKeyWithLookup(index, _keyBuff.BytesAsSpan);
-            _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, value));
+            _wasSetCalled = true;
+            if (_bulkWrite is null)
+            {
+                storageTree.Set(index, value);
+            }
+            else
+            {
+                StorageTree.ComputeKeyWithLookup(index, _keyBuff.BytesAsSpan);
+                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, value));
+            }
         }
 
         public void Clear()
         {
-            if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
-            _hasSelfDestruct = true;
+            if (_bulkWrite is null)
+            {
+                storageTree.RootHash = Keccak.EmptyTreeHash;
+            }
+            else
+            {
+                if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
+                _hasSelfDestruct = true;
+            }
         }
 
         public void Dispose()
         {
-            bool hasSet = false;
-            if (_hasSelfDestruct)
+            bool hasSet = (_wasSetCalled || _hasSelfDestruct);
+            if (_bulkWrite is not null)
             {
-                hasSet = true;
-                storageTree.RootHash = Keccak.EmptyTreeHash;
+                if (_hasSelfDestruct)
+                {
+                    storageTree.RootHash = Keccak.EmptyTreeHash;
+                }
+
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef =
+                    new ArrayPoolListRef<PatriciaTree.BulkSetEntry>(_bulkWrite.AsSpan());
+                storageTree.BulkSet(asRef);
+
+                _bulkWrite?.Dispose();
             }
-            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = new ArrayPoolListRef<PatriciaTree.BulkSetEntry>(_bulkWrite.AsSpan());
-            storageTree.BulkSet(asRef);
-            if (_bulkWrite.Count > 0) hasSet = true;
 
             if (hasSet)
             {
-                storageTree.UpdateRootHash(_bulkWrite.Count > 64);
+                storageTree.UpdateRootHash(_bulkWrite?.Count > 64);
                 worldStateWriteBatch.MarkDirty(address, storageTree.RootHash);
             }
-
-            _bulkWrite.Dispose();
         }
     }
 
