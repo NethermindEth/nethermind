@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            return blockhashCache.GetHash(currentBlock, depth)
+            return blockhashCache.GetHash(currentBlock, (int)depth)
                    ?? throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation");
         }
     }
