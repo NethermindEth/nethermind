@@ -76,7 +76,7 @@ internal class MineModuleTests
         var _hotstuff = (XdcHotStuff)xdcBlockchain.BlockProducerRunner;
 
         var blocksProposed = 0;
-        xdcBlockchain.ConsensusModule.BlockProduced += (sender, args) => 
+        xdcBlockchain.ConsensusModule.BlockProduced += (sender, args) =>
         {
             blocksProposed++;
         };
@@ -87,7 +87,7 @@ internal class MineModuleTests
             newRoundWaitHandle.TrySetResult();
         };
 
-        xdcBlockchain.StartHotStuffModule();  
+        xdcBlockchain.StartHotStuffModule();
 
         var parentBlock = tree.Head!.Header!;
         var masterNodesAddresses = xdcBlockchain.MasterNodeCandidates.Select(pv => pv.Address).ToArray();
