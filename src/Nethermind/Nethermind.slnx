@@ -128,4 +128,7 @@
   <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
   <Project Path="Nethermind.Xdc/Nethermind.Xdc.csproj" />
   <Project Path="Paprika/src/Paprika/Paprika.csproj" />
+  <Project Path="Paprika\src\Paprika.Runner\Paprika.Runner.csproj" Type="Classic C#" />
+  <Project Path="Paprika\src\Paprika.Tests\Paprika.Tests.csproj" Type="Classic C#" />
+  <Project Path="Paprika\src\PaprikaPlugin\PaprikaPlugin.csproj" Type="Classic C#" />
 </Solution>
