@@ -94,7 +94,8 @@ namespace Nethermind.State
 
             public void Dispose()
             {
-                tree.BulkSet(_bulkWrite);
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = new ArrayPoolListRef<BulkSetEntry>(_bulkWrite.AsSpan());
+                tree.BulkSet(asRef);
                 _bulkWrite.Dispose();
             }
         }

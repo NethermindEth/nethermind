@@ -97,10 +97,9 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder WithGenesisPostProcessor(this ContainerBuilder builder,
         Action<Block, IWorldState, ISpecProvider> postProcessor)
     {
-        return builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) => new FunctionalGenesisPostProcessor(worldState,
-            (block, state) =>
+        return builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) => new FunctionalGenesisPostProcessor((block) =>
             {
-                postProcessor(block, state, specProvider);
+                postProcessor(block, worldState, specProvider);
             }));
     }
 }

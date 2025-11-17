@@ -25,6 +25,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -152,7 +153,7 @@ public partial class BlockProducerBaseTests
         DevBlockProducer blockProducer = new(
             Substitute.For<ITxSource>(),
             testRpc.BlockchainProcessor,
-            testRpc.WorldStateManager.GlobalWorldState,
+            new WorldState(testRpc.WorldStateManager.GlobalWorldState, testRpc.LogManager),
             testRpc.BlockTree,
             testRpc.Timestamper,
             testRpc.SpecProvider,

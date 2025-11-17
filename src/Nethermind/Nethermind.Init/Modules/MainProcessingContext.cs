@@ -32,13 +32,11 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IBlockTree blockTree,
         ILogManager logManager)
     {
-
-        IWorldState mainWorldState = worldStateManager.GlobalWorldState;
         ILifetimeScope innerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
             builder
                 // These are main block processing specific
-                .AddSingleton<IWorldStateScopeProvider>(mainWorldState)
+                .AddSingleton<IWorldStateScopeProvider>(worldStateManager.GlobalWorldState)
                 .AddModule(blockValidationModules)
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)

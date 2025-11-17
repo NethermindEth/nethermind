@@ -253,7 +253,8 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 hasSet = true;
                 storageTree.RootHash = Keccak.EmptyTreeHash;
             }
-            storageTree.BulkSet(_bulkWrite);
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = new ArrayPoolListRef<PatriciaTree.BulkSetEntry>(_bulkWrite.AsSpan());
+            storageTree.BulkSet(asRef);
             if (_bulkWrite.Count > 0) hasSet = true;
 
             if (hasSet)
