@@ -61,7 +61,10 @@ public class LatencyAndMessageSizeBasedRequestSizer
         {
             long startTime = Stopwatch.GetTimestamp();
             long affectiveRequestSize = Math.Min(adjustedRequestSize, request.Count);
-            (TResponse result, long messageSize) = await func(request.Slice(0, Math.Min(adjustedRequestSize, request.Count)));
+            IReadOnlyList<TRequest> cappedRequest = affectiveRequestSize == request.Count
+                ? request
+                : request.Slice(0, (int)affectiveRequestSize);
+            (TResponse result, long messageSize) = await func(cappedRequest);
             TimeSpan duration = Stopwatch.GetElapsedTime(startTime);
             if (messageSize > _maxResponseSize)
             {
