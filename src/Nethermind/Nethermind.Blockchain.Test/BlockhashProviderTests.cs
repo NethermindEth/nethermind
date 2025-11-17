@@ -35,7 +35,7 @@ public class BlockhashProviderTests
     private static BlockhashProvider CreateBlockHashProvider(IHeaderFinder headerFinder, IReleaseSpec spec)
     {
         (IWorldState worldState, Hash256 _) = CreateWorldState();
-        BlockhashProvider provider = new(new BlockhashCache(headerFinder, LimboLogs.Instance), new TestSpecProvider(spec), worldState, LimboLogs.Instance);
+        BlockhashProvider provider = new(new BlockhashCache(headerFinder, new ManualBlockFinalizationManager(), LimboLogs.Instance), new TestSpecProvider(spec), worldState, LimboLogs.Instance);
         return provider;
     }
 
@@ -307,7 +307,7 @@ public class BlockhashProviderTests
         var specProvider = new CustomSpecProvider(
             (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
             (new ForkActivation(0, current.Timestamp), Prague.Instance));
-        BlockhashProvider provider = new(new BlockhashCache(blockTreeBuilder.HeaderStore, LimboLogs.Instance), specProvider, worldState, LimboLogs.Instance);
+        BlockhashProvider provider = new(new BlockhashCache(blockTreeBuilder.HeaderStore, new ManualBlockFinalizationManager(), LimboLogs.Instance), specProvider, worldState, LimboLogs.Instance);
         BlockhashStore store = new(specProvider, worldState);
 
         using var _ = worldState.BeginScope(current.Header);

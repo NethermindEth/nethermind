@@ -150,12 +150,25 @@ public class BlockhashCacheTests
     }
 
     [Test]
+    public async Task Concurrent_Prefetch_loads_correctly()
+    {
+        (BlockTree tree, BlockhashCache cache) = BuildTest(100);
+
+        BlockHeader head = tree.FindHeader(99, BlockTreeLookupOptions.None)!;
+        BlockHeader block90 = tree.FindHeader(90, BlockTreeLookupOptions.None)!;
+        BlockHeader block1 = tree.FindHeader(1, BlockTreeLookupOptions.None)!;
+        Task prefetch99 = cache.Prefetch(head);
+        Task prefetch90 = cache.Prefetch(block90);
+        await Task.WhenAll(prefetch99, prefetch90);
+
+        cache.GetHash(head, 98).Should().Be(block1.Hash!);
+        cache.GetHash(block90, 89).Should().Be(block1.Hash!);
+    }
+
+    [Test]
     public void Sequential_queries_work_correctly()
     {
-        Block genesis = Build.A.Block.Genesis.TestObject;
-        BlockTreeBuilder builder = Build.A.BlockTree(genesis).WithoutSettingHead.OfChainLength(512);
-        BlockTree tree = builder.TestObject;
-        BlockhashCache cache = new(builder.HeaderStore, LimboLogs.Instance);
+        (BlockTree tree, BlockhashCache cache) = BuildTest(512);
 
         for (int blockNum = 256; blockNum < 512; blockNum += 50)
         {
@@ -173,10 +186,7 @@ public class BlockhashCacheTests
     [Test]
     public void Periodic_pruning_maintains_cache_size()
     {
-        Block genesis = Build.A.Block.Genesis.TestObject;
-        BlockTreeBuilder builder = Build.A.BlockTree(genesis).WithoutSettingHead.OfChainLength(1000);
-        BlockTree tree = builder.TestObject;
-        BlockhashCache cache = new(builder.HeaderStore, LimboLogs.Instance);
+        (BlockTree tree, BlockhashCache cache) = BuildTest(1000);
 
         for (int i = 100; i < 1000; i += 100)
         {
@@ -196,7 +206,7 @@ public class BlockhashCacheTests
         Block genesis = Build.A.Block.Genesis.TestObject;
         BlockTreeBuilder builder = Build.A.BlockTree(genesis).WithoutSettingHead.OfChainLength(chainLength);
         BlockTree tree = builder.TestObject;
-        BlockhashCache cache = new(builder.HeaderStore, LimboLogs.Instance);
+        BlockhashCache cache = new(builder.HeaderStore, new ManualBlockFinalizationManager(), LimboLogs.Instance);
         return (tree, cache);
     }
 }

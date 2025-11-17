@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
@@ -13,30 +14,46 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain;
 
-public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) : IDisposable, IBlockhashCache
+public class BlockhashCache : IDisposable, IBlockhashCache
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger;
     private readonly ConcurrentDictionary<Hash256AsKey, CacheNode> _blocks = new();
+    private readonly IHeaderFinder _headerFinder;
+    private readonly IBlockFinalizationManager _blockFinalizationManager;
     const int MaxDepth = 256;
+
+    public BlockhashCache(IHeaderFinder headerFinder, IBlockFinalizationManager blockFinalizationManager, ILogManager logManager)
+    {
+        _headerFinder = headerFinder;
+        _blockFinalizationManager = blockFinalizationManager;
+        _logger = logManager.GetClassLogger();
+        _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
+    }
+
+    private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
+    {
+        PruneBefore(e.FinalizedBlocks[^1].Number);
+    }
 
     public Hash256? GetHash(BlockHeader headBlock, int depth) =>
         depth == 0 ? headBlock.Hash : Load(headBlock, depth)?.Hash;
 
-    private CacheNode? Load(BlockHeader blockHeader, int depth)
+    private CacheNode? Load(BlockHeader blockHeader, int depth, CancellationToken cancellationToken = default)
     {
         depth = Math.Min(depth, MaxDepth);
         using ArrayPoolListRef<(CacheNode Node, bool NeedToAdd)> blocks = new(depth + 1);
         Hash256 currentHash = blockHeader.Hash!;
         CacheNode currentNode = null;
         bool needToAddAny = false;
-        for (int i = 0; i <= depth; i++)
+        int skipped = 0;
+        for (int i = 0; i <= depth && !cancellationToken.IsCancellationRequested; i++)
         {
             bool needToAdd = false;
             if (currentNode is null)
             {
                 if (!_blocks.TryGetValue(currentHash, out currentNode))
                 {
-                    BlockHeader? currentHeader = i == 0 ? blockHeader : headerFinder.Get(currentHash, blockHeader.Number - i);
+                    BlockHeader? currentHeader = i == 0 ? blockHeader : _headerFinder.Get(currentHash, blockHeader.Number - i);
                     if (currentHeader is null)
                     {
                         break;
@@ -48,19 +65,30 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                 }
             }
 
-            blocks.Add((currentNode, needToAdd));
-            currentHash = currentNode!.ParentHash;
-            currentNode = currentNode!.Parent;
+            if (blocks.Count != 0 || needToAdd || currentNode.Parent is null)
+            {
+                blocks.Add((currentNode, needToAdd));
+            }
+            else
+            {
+                skipped++;
+            }
+
+            if (i != depth)
+            {
+                currentHash = currentNode!.ParentHash;
+                currentNode = currentNode!.Parent;
+            }
         }
 
-        if (needToAddAny)
+        if (needToAddAny && !cancellationToken.IsCancellationRequested)
         {
             (CacheNode? Node, bool NeedToAdd) parentNode = blocks[^1];
-            for (int i = blocks.Count - 2; i >= 0; i--)
+            for (int i = blocks.Count - 2; i >= 0 && !cancellationToken.IsCancellationRequested; i--)
             {
                 if (parentNode.NeedToAdd)
                 {
-                    _blocks.TryAdd(parentNode.Node.Hash, parentNode.Node);
+                    parentNode.Node = _blocks.GetOrAdd(parentNode.Node.Hash, parentNode.Node);
                 }
 
                 (CacheNode Node, bool NeedToAdd) current = blocks[i];
@@ -74,16 +102,23 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             }
         }
 
-        return blocks.Count > depth ? blocks[depth].Node : null;
+        int index = depth - skipped;
+        return index < 0 ? currentNode
+            : blocks.Count > index
+                ? blocks[index].Node
+                : null;
     }
 
-    public Task Prefetch(BlockHeader blockHeader)
+    public Task Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
             try
             {
-                Load(blockHeader, MaxDepth);
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    Load(blockHeader, MaxDepth, cancellationToken);
+                }
             }
             catch (Exception ex)
             {
@@ -122,6 +157,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 
     public void Dispose()
     {
+        _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
         Clear();
     }
 

@@ -193,6 +193,7 @@ namespace Nethermind.AuRa.Test
                 HoodiSpecProvider.Instance,
                 stateProvider,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+                Substitute.For<IBlockhashCache>(),
                 LimboLogs.Instance);
 
             return (branchProcessor, stateProvider);
