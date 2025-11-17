@@ -1390,12 +1390,10 @@ namespace Nethermind.Blockchain
             return chainLevelInfo is null ? (null, null) : (chainLevelInfo.FindBlockInfo(blockHash), chainLevelInfo);
         }
 
-        private ChainLevelInfo? LoadLevel(long number, bool forceLoad = true)
-        {
-            return number > Math.Max(BestKnownNumber, BestKnownBeaconNumber) && !forceLoad
+        private ChainLevelInfo? LoadLevel(long number, bool forceLoad = true) =>
+            number > Math.Max(BestKnownNumber, BestKnownBeaconNumber) && !forceLoad
                 ? null
                 : _chainLevelInfoRepository.LoadLevel(number);
-        }
 
         /// <summary>
         /// To make cache useful even when we handle sync requests

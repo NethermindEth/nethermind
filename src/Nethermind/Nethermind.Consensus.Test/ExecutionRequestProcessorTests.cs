@@ -188,42 +188,4 @@ public class ExecutionProcessorTests
     {
         Assert.That(ExecutionRequestsProcessor.DepositEventAbi.Hash, Is.EqualTo(new Hash256("0x649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5")));
     }
-
-    [Test]
-    public void X()
-    {
-        var abi = new AbiSignature(
-            "DepositEvent",
-            AbiType.DynamicBytes,
-            AbiType.DynamicBytes,
-            AbiType.DynamicBytes,
-            AbiType.DynamicBytes,
-            AbiType.DynamicBytes
-        );
-
-// Malformed ABI: declares length=200 but insufficient data.
-        var data = new byte[256];
-        data[31] = 160;  // First offset.
-        data[191] = 200; // Length = 200 (oversized for available data).
-
-        try
-        {
-            var result = new AbiEncoder().Decode(AbiEncodingStyle.None, abi, data);
-            Console.WriteLine("Decode succeeded");
-        }
-        catch (AbiException e)
-        {
-            Console.WriteLine("Caught AbiException: {0}", e.Message);
-        }
-        catch (OverflowException e)
-        {
-            Console.WriteLine("Caught OverflowException: {0}", e.Message);
-        }
-        catch (ArgumentException e)
-        {
-            Console.WriteLine("ArgumentException escapes the catch block at line 133");
-            Console.WriteLine("Message: {0}", e.Message);
-            Console.WriteLine("\nFix: Add ArgumentException to the when clause.");
-        }
-    }
 }
