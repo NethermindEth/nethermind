@@ -26,10 +26,9 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Builders
 {
-    public class BlockTreeBuilder : BuilderBase<BlockTree>
+    public class BlockTreeBuilder(Block genesisBlock, ISpecProvider specProvider) : BuilderBase<BlockTree>
     {
-        private readonly Block _genesisBlock;
-        private ISpecProvider _specProvider;
+        private ISpecProvider _specProvider = specProvider;
         private IReceiptStorage? _receiptStorage;
         private IEthereumEcdsa? _ecdsa;
         private Hash256? _stateRoot;
@@ -42,19 +41,6 @@ namespace Nethermind.Core.Test.Builders
         public BlockTreeBuilder(ISpecProvider specProvider)
             : this(Build.A.Block.Genesis.TestObject, specProvider)
         {
-        }
-
-        public BlockTreeBuilder(Block genesisBlock, ISpecProvider specProvider)
-        {
-            BlocksDb = new TestMemDb();
-            HeadersDb = new TestMemDb();
-            BlockNumbersDb = new TestMemDb();
-            BlockInfoDb = new TestMemDb();
-            MetadataDb = new TestMemDb();
-            BadBlocksDb = new TestMemDb();
-
-            _genesisBlock = genesisBlock;
-            _specProvider = specProvider;
         }
 
         public BlockTreeBuilder WithoutSettingHead
@@ -107,8 +93,8 @@ namespace Nethermind.Core.Test.Builders
 
         public ISyncConfig SyncConfig { get; set; } = new SyncConfig();
 
-        public IDb BlocksDb { get; set; }
-        public IDb BadBlocksDb { get; set; }
+        public IDb BlocksDb { get; set; } = new TestMemDb();
+        public IDb BadBlocksDb { get; set; } = new TestMemDb();
 
         private IBlockStore? _blockStore;
         public IBlockStore BlockStore
@@ -123,8 +109,8 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public IDb HeadersDb { get; set; }
-        public IDb BlockNumbersDb { get; set; }
+        public IDb HeadersDb { get; set; } = new TestMemDb();
+        public IDb BlockNumbersDb { get; set; } = new TestMemDb();
 
         private IHeaderStore? _headerStore;
         public IHeaderStore HeaderStore
@@ -139,9 +125,9 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public IDb BlockInfoDb { get; set; }
+        public IDb BlockInfoDb { get; set; } = new TestMemDb();
 
-        public IDb MetadataDb { get; set; }
+        public IDb MetadataDb { get; set; } = new TestMemDb();
 
         private IBadBlockStore? _badBlockStore;
         public IBadBlockStore BadBlockStore
@@ -215,8 +201,8 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
-            Block current = _genesisBlock;
-            headBlock = _genesisBlock;
+            Block current = genesisBlock;
+            headBlock = genesisBlock;
 
             bool skipGenesis = BlockTree.Genesis is not null;
             for (int i = 0; i < chainLength; i++)
@@ -342,7 +328,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockTreeBuilder WithOnlySomeBlocksProcessed(int chainLength, int processedChainLength)
         {
-            Block current = _genesisBlock;
+            Block current = genesisBlock;
             for (int i = 0; i < chainLength; i++)
             {
                 BlockTree.SuggestBlock(current);

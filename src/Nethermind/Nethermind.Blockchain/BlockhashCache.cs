@@ -15,7 +15,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain;
 
-public class BlockhashCache(IHeaderStore headerStore, ILogManager logManager) : IDisposable
+public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) : IDisposable, IBlockhashCache
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ConcurrentDictionary<Hash256AsKey, BlockData> _blocks = new();
@@ -50,7 +50,7 @@ public class BlockhashCache(IHeaderStore headerStore, ILogManager logManager) : 
         _minBlock = Math.Min(blockHeader.Number, _minBlock);
         _blocks[blockHeader.Hash!] = new BlockData
         {
-            Block = new BlockInfo(blockHeader),
+            Number = blockHeader.Number,
             SnapshotId = snapshotId
         };
     }
@@ -175,10 +175,11 @@ public class BlockhashCache(IHeaderStore headerStore, ILogManager logManager) : 
 
     private BlockData LoadFromStore(BlockHeader blockHeader)
     {
-        using ArrayPoolListRef<BlockHeader> blocksToAdd = new(SegmentSize);
+        using ArrayPoolListRef<BlockHeader> blocksToAdd = new(SegmentSize + 1);
         BlockHeader? currentHeader = blockHeader;
 
-        for (int i = 0; i < SegmentSize; i++)
+        // Load SegmentSize + 1 blocks to ensure we can answer queries at depth SegmentSize
+        for (int i = 0; i <= SegmentSize; i++)
         {
             if (_blocks.ContainsKey(currentHeader.Hash!))
                 break;
@@ -188,7 +189,7 @@ public class BlockhashCache(IHeaderStore headerStore, ILogManager logManager) : 
             if (currentHeader.ParentHash is null)
                 break;
 
-            BlockHeader? parent = headerStore.Get(currentHeader.ParentHash, true, currentHeader.Number - 1);
+            BlockHeader? parent = headerFinder.Get(currentHeader.ParentHash, currentHeader.Number - 1);
             if (parent is null)
                 break;
 
@@ -320,17 +321,9 @@ public class BlockhashCache(IHeaderStore headerStore, ILogManager logManager) : 
         Clear();
     }
 
-    private readonly struct BlockInfo(BlockHeader blockHeader)
-    {
-        public long Number { get; } = blockHeader.Number;
-        public Hash256? ParentHash { get; } = blockHeader.ParentHash;
-    }
-
     private readonly struct BlockData
     {
-        public BlockInfo Block { get; init; }
-        public long Number => Block.Number;
-        public Hash256? ParentHash => Block.ParentHash;
+        public long Number { get; init; }
         public int SnapshotId { get; init; }
     }
 

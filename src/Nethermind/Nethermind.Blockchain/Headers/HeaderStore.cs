@@ -110,4 +110,6 @@ public class HeaderStore(
             blockNumberDb.DangerousReleaseMemory(numberSpan);
         }
     }
+
+    BlockHeader? IHeaderFinder.Get(Hash256 blockHash, long? blockNumber) => Get(blockHash, true, blockNumber);
 }

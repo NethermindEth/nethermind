@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
@@ -47,8 +51,11 @@ public class StatelessBlockProcessingEnv(
 
     private IBlockProcessor GetProcessor()
     {
-        IBlockTree statelessBlockTree = new StatelessBlockTree(witness.DecodedHeaders);
-        ITransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, statelessBlockTree);
+        Dictionary<Hash256, BlockHeader> headersByHash = witness.DecodedHeaders.ToDictionary(header => header.Hash ?? throw new ArgumentNullException(), header => header);
+        Dictionary<long, BlockHeader> headersByNumber = witness.DecodedHeaders.ToDictionary(header => header.Number, header => header);
+
+        IBlockTree statelessBlockTree = new StatelessBlockTree(headersByHash, headersByNumber);
+        ITransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, new StatelessHeaderFinder(headersByHash));
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =
             new BlockProcessor.BlockValidationTransactionsExecutor(
                 new ExecuteTransactionProcessorAdapter(txProcessor),
@@ -74,10 +81,10 @@ public class StatelessBlockProcessingEnv(
     }
 
 
-    private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockFinder blockFinder)
+    private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IHeaderFinder headerFinder)
     {
-        var blockhashProvider = new BlockhashProvider(blockFinder, specProvider, state, logManager);
-        var vm = new VirtualMachine(blockhashProvider, specProvider, logManager);
+        BlockhashProvider blockhashProvider = new(new BlockhashCache(headerFinder, logManager), specProvider, state, logManager);
+        VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
         return new TransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
     }
 }

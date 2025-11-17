@@ -67,4 +67,6 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
 
     public long? GetBlockNumber(Hash256 blockHash) =>
         _blockNumberDict.TryGetValue(blockHash, out var blockNumber) ? blockNumber : readonlyBaseHeaderStore.GetBlockNumber(blockHash);
+
+    public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null) => Get(blockHash, true, blockNumber);
 }
