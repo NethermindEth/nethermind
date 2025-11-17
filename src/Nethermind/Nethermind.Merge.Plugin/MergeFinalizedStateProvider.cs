@@ -30,7 +30,7 @@ public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheSe
                 if (blockCacheService.FinalizedHash is { } blockCacheFinalizedHash)
                 {
                     BlockHeader? fromBlockCache = blockTree.FindHeader(blockCacheFinalizedHash);
-                    if (fromBlockCache != null)
+                    if (fromBlockCache is not null)
                     {
                         if (currentFinalized is null || fromBlockCache.Number > currentFinalized.Number)
                         {
