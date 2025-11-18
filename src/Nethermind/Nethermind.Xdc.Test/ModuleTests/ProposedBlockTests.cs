@@ -67,11 +67,11 @@ internal class ProposedBlockTests
     {
         var blockChain = await XdcTestBlockchain.Create(2, true);
 
-        await blockChain.AddBlockWithoutCommitQc();
+        await blockChain.AddBlock();
 
         blockChain.StartHotStuffModule();
 
-        await blockChain.TriggerAndSimulateBlockProposalAndVoting();
+        await blockChain.TriggerBlockProposal();
 
         await blockChain.SimulateVoting();
 
@@ -149,8 +149,7 @@ internal class ProposedBlockTests
             s.Gap = 45;
         });
 
-        await blockChain.AddBlocks(2);
-        await blockChain.AddBlockWithoutCommitQc();
+        await blockChain.AddBlocks(3);
 
         blockChain.StartHotStuffModule();
 
@@ -160,8 +159,8 @@ internal class ProposedBlockTests
         {
             await blockChain.TriggerAndSimulateBlockProposalAndVoting();
             blockChain.BlockTree.Head.Number.Should().Be(startBlock.Number + i);
-            blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber.Should().Be(startBlock.Number + i - 1);
-            blockChain.XdcContext.HighestCommitBlock.BlockNumber.Should().Be(startBlock.Number + i - 3);
+            blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber.Should().Be(startBlock.Number + i);
+            blockChain.XdcContext.HighestCommitBlock.BlockNumber.Should().Be(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber - 2);
         }
     }
 

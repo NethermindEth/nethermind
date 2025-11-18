@@ -257,7 +257,7 @@ namespace Nethermind.Xdc
         /// <summary>
         /// Build block with parentQC.
         /// </summary>
-        private async Task BuildAndProposeBlock(XdcBlockHeader parent, ulong currentRound, IXdcReleaseSpec spec, CancellationToken ct)
+        internal async Task BuildAndProposeBlock(XdcBlockHeader parent, ulong currentRound, IXdcReleaseSpec spec, CancellationToken ct)
         {
             DateTime now = DateTime.UtcNow;
 
