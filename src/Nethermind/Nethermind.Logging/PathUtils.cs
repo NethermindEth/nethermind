@@ -4,7 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Reflection;
 
 namespace Nethermind.Logging;

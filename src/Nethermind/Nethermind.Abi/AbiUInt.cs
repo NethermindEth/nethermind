@@ -3,7 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Numerics;
 using System.Text.Json;
 

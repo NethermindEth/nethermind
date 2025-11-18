@@ -3,7 +3,7 @@
 
 using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Security;
 using FluentAssertions;
 using Nethermind.Core;

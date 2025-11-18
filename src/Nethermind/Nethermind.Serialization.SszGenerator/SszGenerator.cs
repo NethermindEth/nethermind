@@ -91,7 +91,7 @@ public partial class SszGenerator : IIncrementalGenerator
             string result = FixWhitespace(decl.IsSszListItself ?
 $@"using Nethermind.Merkleization;
 using System.Collections.Generic;
-using System.Linq;
+using Nethermind.CoreOfCore;
 {string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x)).Select(n => $"using {n};"))}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
@@ -256,7 +256,7 @@ public partial class SszEncoding
 " :
 decl.Kind == Kind.Container ? $@"using Nethermind.Merkleization;
 using System.Collections.Generic;
-using System.Linq;
+using Nethermind.CoreOfCore;
 {string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x)).Select(n => $"using {n};"))}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
@@ -461,7 +461,7 @@ public partial class SszEncoding
 // Unions
 $@"using Nethermind.Merkleization;
 using System.Collections.Generic;
-using System.Linq;
+using Nethermind.CoreOfCore;
 {string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x)).Select(n => $"using {n};"))}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
+using Nethermind.CoreOfCore;
 
 namespace Nethermind.Trie.Pruning;
 

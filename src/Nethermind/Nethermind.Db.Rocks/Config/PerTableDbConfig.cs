@@ -3,7 +3,7 @@
 
 using System;
 using System.IO;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Reflection;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;

@@ -4,7 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Text;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
+using Nethermind.CoreOfCore;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 

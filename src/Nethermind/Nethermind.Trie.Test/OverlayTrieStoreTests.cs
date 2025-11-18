@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;

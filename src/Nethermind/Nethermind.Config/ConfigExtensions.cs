@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.ComponentModel;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Reflection;
 
 namespace Nethermind.Config;

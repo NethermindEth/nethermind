@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Runtime.Intrinsics;
 
 using Nethermind.Core.Attributes;

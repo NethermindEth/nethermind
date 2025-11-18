@@ -4,7 +4,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Linq;
+using Nethermind.CoreOfCore;
 
 namespace Nethermind.Core.Crypto;
 

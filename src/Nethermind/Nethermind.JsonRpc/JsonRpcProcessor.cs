@@ -9,7 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;

@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Abstractions;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;

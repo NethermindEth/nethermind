@@ -3,7 +3,7 @@
 
 extern alias BouncyCastle;
 using System;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;

@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Net;
 using System.Threading.Tasks;
 using FluentAssertions;

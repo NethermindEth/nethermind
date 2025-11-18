@@ -9,7 +9,7 @@ using System.CommandLine.Invocation;
 using System.CommandLine.Parsing;
 using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Reflection;
 using System.Runtime;
 using System.Text.RegularExpressions;

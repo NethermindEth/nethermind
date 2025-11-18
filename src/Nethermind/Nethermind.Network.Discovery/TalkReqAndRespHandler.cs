@@ -6,7 +6,7 @@ using Lantern.Discv5.WireProtocol.Messages.Requests;
 using Lantern.Discv5.WireProtocol.Messages.Responses;
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Text;
 using System.Threading.Tasks;
 

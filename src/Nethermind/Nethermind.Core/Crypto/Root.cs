@@ -3,7 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Runtime.InteropServices;
 using Nethermind.Int256;
 using Nethermind.Core.Extensions;

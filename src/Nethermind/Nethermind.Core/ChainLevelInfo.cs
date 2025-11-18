@@ -3,7 +3,7 @@
 
 using System;
 using System.Diagnostics;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core

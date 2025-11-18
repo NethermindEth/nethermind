@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;

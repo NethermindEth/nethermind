@@ -5,7 +5,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using System;
-using System.Linq;
+using Nethermind.CoreOfCore;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 

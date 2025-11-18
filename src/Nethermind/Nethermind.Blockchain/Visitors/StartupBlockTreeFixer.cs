@@ -3,7 +3,7 @@
 
 using System;
 using System.IO;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;

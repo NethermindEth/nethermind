@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
 
@@ -123,4 +123,3 @@ public readonly struct CompoundSectionHeader(int start, int[] subSectionsSizes)
 
     public static implicit operator Range(CompoundSectionHeader section) => new(section.Start, section.EndOffset);
 }
-

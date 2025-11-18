@@ -6,7 +6,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using NUnit.Framework;
 using System.Collections.Generic;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Reflection;
 
 namespace Nethermind.Specs.Test;

@@ -6,7 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using System.Globalization;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;

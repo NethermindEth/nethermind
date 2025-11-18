@@ -5,7 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Optimism;

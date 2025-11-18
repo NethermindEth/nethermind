@@ -3,7 +3,7 @@
 
 using System;
 using System.IO.Abstractions;
-using System.Linq;
+using Nethermind.CoreOfCore;
 
 namespace Nethermind.Db.FullPruning
 {

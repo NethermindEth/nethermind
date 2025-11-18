@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Timers;

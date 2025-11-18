@@ -4,7 +4,7 @@
 using System;
 using NonBlocking;
 using System.Collections.Generic;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;

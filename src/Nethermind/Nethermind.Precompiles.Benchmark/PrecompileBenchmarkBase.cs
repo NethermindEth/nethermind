@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;

@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;

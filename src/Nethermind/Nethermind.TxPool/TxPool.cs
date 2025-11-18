@@ -16,7 +16,7 @@ using Nethermind.TxPool.Filters;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
@@ -1105,4 +1105,3 @@ Db usage:
         }
     }
 }
-

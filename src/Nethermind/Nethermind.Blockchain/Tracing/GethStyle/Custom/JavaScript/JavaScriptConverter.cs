@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Numerics;
 using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core;

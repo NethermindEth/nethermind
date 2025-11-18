@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;

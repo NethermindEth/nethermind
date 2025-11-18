@@ -3,7 +3,7 @@
 
 #nullable enable
 using System;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Net;
 using System.Net.Sockets;
 using Nethermind.Core;

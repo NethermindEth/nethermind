@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 using System.IO.Abstractions;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;

@@ -3,7 +3,7 @@
 
 using System;
 using System.Buffers;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using Nethermind.Core.Collections;

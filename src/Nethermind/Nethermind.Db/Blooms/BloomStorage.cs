@@ -4,7 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
@@ -422,7 +422,7 @@ namespace Nethermind.Db.Blooms
                     levels.Add(level);
                 }
 
-                return levels.Select(static l => (l, l.CreateReader())).AsParallel().ToArray();
+                return levels.Select(static l => (l, l.CreateReader())).ToArray();
             }
 
             public void Reset()

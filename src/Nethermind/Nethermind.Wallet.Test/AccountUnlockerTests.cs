@@ -7,7 +7,7 @@ using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;

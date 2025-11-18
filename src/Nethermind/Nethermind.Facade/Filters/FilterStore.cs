@@ -5,7 +5,7 @@ using System;
 using NonBlocking;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Threading;
 
 using Nethermind.Blockchain.Filters.Topics;

@@ -20,6 +20,7 @@
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.CoreOfCore\Nethermind.CoreOfCore.csproj" />
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
   </ItemGroup>
 </Project>

@@ -5,7 +5,7 @@
 // Licensed under the MIT License
 
 using System;
-using System.Linq;
+using Nethermind.CoreOfCore;
 
 namespace Nethermind.Core.Cpu;
 

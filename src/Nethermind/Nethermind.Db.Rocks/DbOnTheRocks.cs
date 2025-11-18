@@ -9,7 +9,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;

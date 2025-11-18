@@ -4,7 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using Nethermind.Core;
 
 namespace Nethermind.Db.Blooms

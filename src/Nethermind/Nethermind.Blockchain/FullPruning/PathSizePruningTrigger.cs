@@ -4,13 +4,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using Nethermind.Core.Timers;
 
 namespace Nethermind.Blockchain.FullPruning
 {
     /// <summary>
-    /// Allows to trigger full pruning based on size of the path (by default state database). 
+    /// Allows to trigger full pruning based on size of the path (by default state database).
     /// </summary>
     /// <remarks>
     /// It checks the size of the path every 5 minutes.

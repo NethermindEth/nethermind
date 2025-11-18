@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Runtime.CompilerServices;
 using System.Security;
 using Nethermind.Core;

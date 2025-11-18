@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Threading;
 
 namespace Nethermind.JsonRpc

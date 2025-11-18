@@ -7,7 +7,7 @@ using Nethermind.Libp2p.Protocols;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
+using Nethermind.CoreOfCore;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
