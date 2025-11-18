@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Optimism.CL;
@@ -67,7 +68,7 @@ public sealed record L1BlockRef
             Hash = block.Value.Hash,
             Number = block.Value.Number,
             ParentHash = block.Value.ParentHash,
-            Timestamp = (ulong)block.Value.Timestamp // TODO: Potential unsafe cast
+            Timestamp = block.Value.Timestamp.ToUInt64(null)
         };
     }
 }
