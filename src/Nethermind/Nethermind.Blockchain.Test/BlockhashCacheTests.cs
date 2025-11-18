@@ -21,7 +21,7 @@ public class BlockhashCacheTests
         (BlockTree tree, BlockhashCache cache) = BuildTest(1);
         Hash256? result = cache.GetHash(tree.Genesis!, 0);
         result.Should().Be(tree.Genesis!.Hash!);
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(0, 0));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(0, 0, 0));
     }
 
     [Test]
@@ -44,7 +44,7 @@ public class BlockhashCacheTests
         Hash256? result9 = cache.GetHash(head!, 9);
         result9.Should().Be(tree.Genesis!.Hash!);
 
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(10, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(10, 1, 0));
     }
 
     [Test]
@@ -54,7 +54,7 @@ public class BlockhashCacheTests
         BlockHeader? head = tree.FindHeader(4, BlockTreeLookupOptions.None);
         Hash256? result = cache.GetHash(head!, 10);
         result.Should().BeNull();
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(5, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(5, 1, 0));
     }
 
     [Test]
@@ -67,7 +67,7 @@ public class BlockhashCacheTests
         cache.Contains(head!.Hash!).Should().BeTrue();
         BlockHeader? ancestor = tree.FindHeader(4, BlockTreeLookupOptions.None);
         cache.Contains(ancestor!.Hash!).Should().BeTrue();
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(6, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(6, 1, 0));
     }
 
     [Test]
@@ -79,7 +79,7 @@ public class BlockhashCacheTests
 
         BlockHeader? expected = tree.FindHeader(43, BlockTreeLookupOptions.None);
         result.Should().Be(expected!.Hash!);
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(257, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(257, 1, 1));
     }
 
     [Test]
@@ -93,7 +93,7 @@ public class BlockhashCacheTests
 
         result300.Should().BeNull();
         result256.Should().NotBeNull();
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(257, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(257, 1, 1));
     }
 
     [Test]
@@ -105,7 +105,7 @@ public class BlockhashCacheTests
         cache.GetHash(head!, 5);
 
         cache.Contains(head!.Hash!).Should().BeTrue();
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(6, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(6, 1, 0));
     }
 
     [Test]
@@ -123,7 +123,7 @@ public class BlockhashCacheTests
 
         BlockHeader? head = tree.FindHeader(99, BlockTreeLookupOptions.None);
         cache.GetHash(head!, 50);
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(51, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(51, 1, 0));
         int removed = cache.PruneBefore(60);
 
         removed.Should().BeGreaterThan(0);
@@ -131,7 +131,7 @@ public class BlockhashCacheTests
         BlockHeader? kept = tree.FindHeader(60, BlockTreeLookupOptions.None);
         cache.Contains(old!.Hash!).Should().BeFalse();
         cache.Contains(kept!.Hash!).Should().BeTrue();
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(40, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(40, 1, 0));
     }
 
     [Test]
@@ -144,7 +144,7 @@ public class BlockhashCacheTests
         cache.Clear();
 
         cache.Contains(head!.Hash!).Should().BeFalse();
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(0, 0));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(0, 0, 0));
     }
 
     [Test]
@@ -158,7 +158,7 @@ public class BlockhashCacheTests
 
         cache.Contains(head!.Hash!).Should().BeTrue();
         cache.Contains(block1!.Hash!).Should().BeTrue();
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(100, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(100, 1, 1));
     }
 
     [Test]
@@ -175,7 +175,7 @@ public class BlockhashCacheTests
 
         cache.GetHash(head, 98).Should().Be(block1.Hash!);
         cache.GetHash(block90, 89).Should().Be(block1.Hash!);
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(100, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(100, 1, 2));
     }
 
     [Test]
@@ -210,7 +210,7 @@ public class BlockhashCacheTests
             {
                 int pruned = cache.PruneBefore(i - 400);
                 pruned.Should().BeGreaterThan(0);
-                cache.GetStats().Should().Be(new BlockhashCache.Stats(401, 1));
+                cache.GetStats().Should().Be(new BlockhashCache.Stats(401, 1, 5));
             }
         }
     }
@@ -226,7 +226,7 @@ public class BlockhashCacheTests
             cache.GetHash(block, 50);
         }
 
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(255, 5));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(255, 5, 0));
 
         for (int i = 100; i <= 500; i += 100)
         {
@@ -234,7 +234,7 @@ public class BlockhashCacheTests
             cache.GetHash(block, BlockhashCache.MaxDepth);
         }
 
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(501, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(501, 1, 5));
     }
 
     [Test]
@@ -251,9 +251,9 @@ public class BlockhashCacheTests
         await cache.Prefetch(head1.Header);
         await cache.Prefetch(head2.Header);
         await cache.Prefetch(head3.Header);
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(255 + 200 + 200, 3));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(255 + 200 + 200, 3, 3));
         cache.PruneBefore(800);
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(200 + 199 + 199, 3));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(200 + 199 + 199, 3, 3));
     }
 
     [Test]
@@ -266,10 +266,10 @@ public class BlockhashCacheTests
             cache.GetHash(tree.FindHeader(i, BlockTreeLookupOptions.RequireCanonical)!, BlockhashCache.MaxDepth);
         }
 
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(depth, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(depth, 1, 5));
         await cache.Prefetch(tree.FindHeader(depth - 1, BlockTreeLookupOptions.RequireCanonical)!);
         await Task.Delay(100);
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(BlockhashCache.MaxDepth * 2 + 1, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(BlockhashCache.MaxDepth * 2 + 1, 1, 3));
     }
 
     [Test]
@@ -286,9 +286,9 @@ public class BlockhashCacheTests
         await cache.Prefetch(head1.Header);
         await cache.Prefetch(head2.Header);
         await cache.Prefetch(head3.Header);
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(257 + 257 + 257, 3));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(257 + 257 + 257, 3, 3));
         cache.PruneBefore(800);
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(200, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(200, 1, 1));
     }
 
     private static (BlockTree, BlockhashCache) BuildTest(int chainLength)
