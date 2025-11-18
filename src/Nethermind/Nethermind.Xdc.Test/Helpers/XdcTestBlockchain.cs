@@ -182,7 +182,8 @@ public class XdcTestBlockchain : TestBlockchain
             {
                 var spec = ctx.Resolve<ISpecProvider>();
                 var logmanager = ctx.Resolve<ILogManager>();
-                return new Signer(spec.ChainId, MasterNodeCandidates[1], logmanager);
+                //Set the first signer to be a non master node to avoid accidental block proposals
+                return new Signer(spec.ChainId, TestItem.PrivateKeyA, logmanager);
             })
             .AddSingleton((_) => BlockProducer)
             //.AddSingleton((_) => BlockProducerRunner)
@@ -408,8 +409,8 @@ public class XdcTestBlockchain : TestBlockchain
 
     public async Task TriggerAndSimulateBlockProposalAndVoting()
     {
-        await SimulateVoting();
         await TriggerBlockProposal();
+        await SimulateVoting();
     }
 
     public async Task SimulateVoting()
@@ -448,7 +449,7 @@ public class XdcTestBlockchain : TestBlockchain
                 var voteTask = this.VotesManager.OnReceiveVote(vote);
             }
             //Voting will trigger QC creation which triggers new round
-            var finishedTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(10_000));
+            var finishedTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(5_000));
             if (finishedTask != newRoundWaitHandle.Task)
                 Assert.Fail("After 300 votes no new head could be detected. Something is wrong.");
         }
