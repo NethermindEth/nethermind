@@ -71,6 +71,10 @@ namespace Nethermind.Trie
             set => SetRootHash(value, true);
         }
 
+        public static long DebugBlockNumber { get; set; }
+
+        public static bool Debug = false;
+
         public PatriciaTree()
             : this(NullTrieStore.Instance, EmptyTreeHash, true, NullLogManager.Instance)
         {

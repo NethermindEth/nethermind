@@ -52,7 +52,17 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         var trieStoreCloser = _trieStore.BeginScope(baseBlock);
         _backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
 
-        return new TrieStoreWorldStateBackendScope(_backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
+        IWorldStateScopeProvider.IScope scope = new TrieStoreWorldStateBackendScope(_backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
+        PatriciaTree.Debug = false;
+        PatriciaTree.DebugBlockNumber = baseBlock?.Number ?? 0;
+        if (baseBlock?.Number == 46348)
+        {
+            PatriciaTree.Debug = true;
+            Console.Error.WriteLine($"Starting root {baseBlock?.StateRoot}");
+            scope = new ScoreProviderLogger(scope);
+        }
+
+        return scope;
     }
 
     protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot)
