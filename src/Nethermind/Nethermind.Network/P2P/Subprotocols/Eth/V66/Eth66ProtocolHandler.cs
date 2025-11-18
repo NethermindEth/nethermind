@@ -270,7 +270,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         public override void HandleMessage(PooledTransactionRequestMessage message)
         {
-            ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
+            using ArrayPoolList<Hash256> hashesToRetry = new(1);
+            hashesToRetry.Add(new Hash256(message.TxHash));
             RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
         }
     }
