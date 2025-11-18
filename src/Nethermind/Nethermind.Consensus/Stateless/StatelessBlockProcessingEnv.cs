@@ -83,7 +83,7 @@ public class StatelessBlockProcessingEnv(
 
     private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IHeaderFinder headerFinder)
     {
-        BlockhashProvider blockhashProvider = new(new BlockhashCache(headerFinder, new ManualBlockFinalizationManager(), logManager), specProvider, state, logManager);
+        BlockhashProvider blockhashProvider = new(new BlockhashCache(headerFinder, logManager), specProvider, state, logManager);
         VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
         return new TransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
     }

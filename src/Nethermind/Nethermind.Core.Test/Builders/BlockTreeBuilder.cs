@@ -201,39 +201,32 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
-            Block current = genesisBlock;
-            headBlock = genesisBlock;
-
+            bool fromGenesis = splitFrom == 0;
+            Block current = fromGenesis
+                ? genesisBlock
+                : BlockTree.FindBlock(splitFrom, BlockTreeLookupOptions.RequireCanonical) ?? throw new ArgumentException("Cannot find split block");
             bool skipGenesis = BlockTree.Genesis is not null;
             for (int i = 0; i < chainLength; i++)
             {
                 Address beneficiary = blockBeneficiaries.Length == 0 ? Address.Zero : blockBeneficiaries[i % blockBeneficiaries.Length];
-                headBlock = current;
-                if (_onlyHeaders)
+                if ((fromGenesis || i > 0) && !(current.IsGenesis && skipGenesis))
                 {
-                    if (!(current.IsGenesis && skipGenesis))
+                    if (_onlyHeaders)
                     {
                         BlockTree.SuggestHeader(current.Header);
                     }
-
-                    Block parent = current;
-                    current = CreateBlock(splitVariant, splitFrom, i, parent, withWithdrawals, beneficiary);
-                }
-                else
-                {
-                    if (!(current.IsGenesis && skipGenesis))
+                    else
                     {
                         AddBlockResult result = BlockTree.SuggestBlock(current);
                         Assert.That(result, Is.EqualTo(AddBlockResult.Added), $"Adding {current.ToString(Block.Format.Short)} at split variant {splitVariant}");
-
                         BlockTree.UpdateMainChain(current);
                     }
-
-                    Block parent = current;
-
-                    current = CreateBlock(splitVariant, splitFrom, i, parent, withWithdrawals, beneficiary);
                 }
+
+                current = CreateBlock(splitVariant, splitFrom, i, current, withWithdrawals, beneficiary);
             }
+
+            headBlock = current;
 
             return this;
         }
@@ -242,27 +235,32 @@ namespace Nethermind.Core.Test.Builders
         {
             Block currentBlock;
             BlockBuilder currentBlockBuilder = Build.A.Block
-                .WithNumber(blockIndex + 1)
+                .WithNumber(parent.Number + 1)
                 .WithParent(parent)
-                .WithWithdrawals(withWithdrawals ? new[] { TestItem.WithdrawalA_1Eth } : null)
+                .WithWithdrawals(withWithdrawals ? [TestItem.WithdrawalA_1Eth] : null)
                 .WithBaseFeePerGas(withWithdrawals ? UInt256.One : UInt256.Zero)
-                .WithBeneficiary(beneficiary);
+                .WithBeneficiary(beneficiary)
+                .WithExtraData(BitConverter.GetBytes(splitFrom));
 
-            if (_stateRoot != null)
+            if (_stateRoot is not null)
             {
                 currentBlockBuilder.WithStateRoot(_stateRoot);
             }
 
             if (PostMergeBlockTree)
+            {
                 currentBlockBuilder.WithPostMergeRules();
+            }
             else
+            {
                 currentBlockBuilder.WithDifficulty(BlockHeaderBuilder.DefaultDifficulty -
                                                    (splitFrom > parent.Number ? 0 : (ulong)splitVariant));
+            }
 
             if (_receiptStorage is not null && blockIndex % 3 == 0)
             {
-                Transaction[] transactions = new[]
-                {
+                Transaction[] transactions =
+                [
                     Build.A.Transaction
                         .WithValue(1)
                         .WithData(Rlp.Encode(blockIndex).Bytes)
@@ -275,7 +273,7 @@ namespace Nethermind.Core.Test.Builders
                         .WithGasLimit(GasCostOf.Transaction * 2)
                         .Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1, null).IsEip155Enabled)
                         .TestObject
-                };
+                ];
 
                 currentBlock = currentBlockBuilder
                     .WithTransactions(transactions)

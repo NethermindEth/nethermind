@@ -4,36 +4,25 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain;
 
-public class BlockhashCache : IDisposable, IBlockhashCache
+public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) : IDisposable, IBlockhashCache
 {
-    private readonly ILogger _logger;
+    private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ConcurrentDictionary<Hash256AsKey, CacheNode> _blocks = new();
-    private readonly IHeaderFinder _headerFinder;
-    private readonly IBlockFinalizationManager _blockFinalizationManager;
-    const int MaxDepth = 256;
-
-    public BlockhashCache(IHeaderFinder headerFinder, IBlockFinalizationManager blockFinalizationManager, ILogManager logManager)
-    {
-        _headerFinder = headerFinder;
-        _blockFinalizationManager = blockFinalizationManager;
-        _logger = logManager.GetClassLogger();
-        _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
-    }
-
-    private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
-    {
-        PruneBefore(e.FinalizedBlocks[^1].Number);
-    }
+    public const int MaxDepth = 256;
+    private long _minBlock = int.MaxValue;
+    private Task _pruningTask = Task.CompletedTask;
 
     public Hash256? GetHash(BlockHeader headBlock, int depth) =>
         depth == 0 ? headBlock.Hash : Load(headBlock, depth)?.Hash;
@@ -54,7 +43,7 @@ public class BlockhashCache : IDisposable, IBlockhashCache
             {
                 if (!_blocks.TryGetValue(currentHash, out currentNode))
                 {
-                    BlockHeader? currentHeader = i == 0 ? blockHeader : _headerFinder.Get(currentHash, blockHeader.Number - i);
+                    BlockHeader? currentHeader = i == 0 ? blockHeader : headerFinder.Get(currentHash, blockHeader.Number - i);
                     if (currentHeader is null)
                     {
                         break;
@@ -84,7 +73,8 @@ public class BlockhashCache : IDisposable, IBlockhashCache
 
         if (needToAddAny && !cancellationToken.IsCancellationRequested)
         {
-            (CacheNode? Node, bool NeedToAdd) parentNode = blocks[^1];
+            (CacheNode Node, bool NeedToAdd) parentNode = blocks[^1];
+            InterlockedEx.Min(ref _minBlock, parentNode.Node.Number);
             for (int i = blocks.Count - 2; i >= 0 && !cancellationToken.IsCancellationRequested; i--)
             {
                 if (parentNode.NeedToAdd)
@@ -120,17 +110,48 @@ public class BlockhashCache : IDisposable, IBlockhashCache
                 {
                     Load(blockHeader, MaxDepth, cancellationToken);
                 }
+
+                PruneInBackground(blockHeader);
             }
-            catch (Exception ex)
+            catch (Exception e)
             {
-                if (_logger.IsWarn) _logger.Warn($"Background fetch failed for block {blockHeader.Number}: {ex.Message}");
+                if (_logger.IsWarn) _logger.Warn($"Background fetch failed for block {blockHeader.Number}: {e.Message}");
             }
         });
+    }
+
+    private void PruneInBackground(BlockHeader blockHeader)
+    {
+        if (ShouldPrune())
+        {
+            lock (_pruningTask)
+            {
+                if (ShouldPrune())
+                {
+                    _pruningTask = Task.Run(() =>
+                    {
+                        try
+                        {
+                            PruneBefore(blockHeader.Number - MaxDepth * 2);
+                        }
+                        catch (Exception e)
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"Background pruning failed for block {blockHeader.Number}: {e.Message}");
+                        }
+                    });
+                }
+            }
+        }
+
+        bool ShouldPrune() => _minBlock + MaxDepth * 4 < blockHeader.Number && _pruningTask.IsCompleted;
     }
 
     public int PruneBefore(long blockNumber)
     {
         int removed = 0;
+        long minBlockNumber = long.MaxValue;
+
+        Interlocked.Exchange(ref _minBlock, blockNumber);
 
         foreach (KeyValuePair<Hash256AsKey, CacheNode> kvp in _blocks)
         {
@@ -144,7 +165,13 @@ public class BlockhashCache : IDisposable, IBlockhashCache
                 _blocks.TryRemove(kvp.Key, out _);
                 removed++;
             }
+            else
+            {
+                minBlockNumber = Math.Min(minBlockNumber, kvp.Value.Number);
+            }
         }
+
+        InterlockedEx.Min(ref _minBlock, minBlockNumber);
 
         return removed;
     }
@@ -158,8 +185,25 @@ public class BlockhashCache : IDisposable, IBlockhashCache
 
     public void Dispose()
     {
-        _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
         Clear();
+    }
+
+    public Stats GetStats()
+    {
+        Dictionary<CacheNode, int> parents = new();
+        int nodes = 0;
+        foreach (CacheNode node in _blocks.Values)
+        {
+            parents.GetOrAdd(node, static _ => 0);
+            if (node.Parent is not null)
+            {
+                parents.GetOrAdd(node.Parent, static _ => 0)++;
+            }
+
+            nodes++;
+        }
+
+        return new Stats(nodes, parents.Values.Count(p => p == 0));
     }
 
     /// <summary>
@@ -172,4 +216,6 @@ public class BlockhashCache : IDisposable, IBlockhashCache
         public Hash256 ParentHash { get; } = blockHeader.ParentHash!;
         public CacheNode? Parent { get; set;  } = parent;
     }
+
+    public record struct Stats(int Nodes, int Roots);
 }

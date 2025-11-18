@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -21,6 +22,7 @@ public class BlockhashCacheTests
         (BlockTree tree, BlockhashCache cache) = BuildTest(1);
         Hash256? result = cache.GetHash(tree.Genesis!, 0);
         result.Should().Be(tree.Genesis!.Hash!);
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(0, 0));
     }
 
     [Test]
@@ -42,6 +44,8 @@ public class BlockhashCacheTests
         // depth=9 should return block 0 (genesis)
         Hash256? result9 = cache.GetHash(head!, 9);
         result9.Should().Be(tree.Genesis!.Hash!);
+
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(10, 1));
     }
 
     [Test]
@@ -51,6 +55,7 @@ public class BlockhashCacheTests
         BlockHeader? head = tree.FindHeader(4, BlockTreeLookupOptions.None);
         Hash256? result = cache.GetHash(head!, 10);
         result.Should().BeNull();
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(5, 1));
     }
 
     [Test]
@@ -63,6 +68,7 @@ public class BlockhashCacheTests
         cache.Contains(head!.Hash!).Should().BeTrue();
         BlockHeader? ancestor = tree.FindHeader(4, BlockTreeLookupOptions.None);
         cache.Contains(ancestor!.Hash!).Should().BeTrue();
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(6, 1));
     }
 
     [Test]
@@ -74,10 +80,11 @@ public class BlockhashCacheTests
 
         BlockHeader? expected = tree.FindHeader(43, BlockTreeLookupOptions.None);
         result.Should().Be(expected!.Hash!);
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(257, 1));
     }
 
     [Test]
-    public void GetHash_clamps_depth_beyond_256()
+    public void GetHash_doesnt_go_beyond_depth_256()
     {
         (BlockTree tree, BlockhashCache cache) = BuildTest(300);
 
@@ -85,8 +92,9 @@ public class BlockhashCacheTests
         Hash256? result300 = cache.GetHash(head!, 300);
         Hash256? result256 = cache.GetHash(head!, 256);
 
-        result300.Should().Be(result256!);
+        result300.Should().BeNull();
         result256.Should().NotBeNull();
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(257, 1));
     }
 
     [Test]
@@ -98,6 +106,7 @@ public class BlockhashCacheTests
         cache.GetHash(head!, 5);
 
         cache.Contains(head!.Hash!).Should().BeTrue();
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(6, 1));
     }
 
     [Test]
@@ -115,6 +124,7 @@ public class BlockhashCacheTests
 
         BlockHeader? head = tree.FindHeader(99, BlockTreeLookupOptions.None);
         cache.GetHash(head!, 50);
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(51, 1));
         int removed = cache.PruneBefore(60);
 
         removed.Should().BeGreaterThan(0);
@@ -122,6 +132,7 @@ public class BlockhashCacheTests
         BlockHeader? kept = tree.FindHeader(60, BlockTreeLookupOptions.None);
         cache.Contains(old!.Hash!).Should().BeFalse();
         cache.Contains(kept!.Hash!).Should().BeTrue();
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(40, 1));
     }
 
     [Test]
@@ -134,6 +145,7 @@ public class BlockhashCacheTests
         cache.Clear();
 
         cache.Contains(head!.Hash!).Should().BeFalse();
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(0,0));
     }
 
     [Test]
@@ -147,6 +159,7 @@ public class BlockhashCacheTests
 
         cache.Contains(head!.Hash!).Should().BeTrue();
         cache.Contains(block1!.Hash!).Should().BeTrue();
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(100,1));
     }
 
     [Test]
@@ -163,6 +176,7 @@ public class BlockhashCacheTests
 
         cache.GetHash(head, 98).Should().Be(block1.Hash!);
         cache.GetHash(block90, 89).Should().Be(block1.Hash!);
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(100,1));
     }
 
     [Test]
@@ -184,21 +198,82 @@ public class BlockhashCacheTests
     }
 
     [Test]
-    public void Periodic_pruning_maintains_cache_size()
+    public async Task Periodic_pruning_maintains_cache_size()
     {
         (BlockTree tree, BlockhashCache cache) = BuildTest(1000);
 
         for (int i = 100; i < 1000; i += 100)
         {
-            BlockHeader? block = tree.FindHeader(i, BlockTreeLookupOptions.None);
-            cache.GetHash(block!, 50);
+            BlockHeader block = tree.FindHeader(i, BlockTreeLookupOptions.None)!;
+            await cache.Prefetch(block);
 
             if (i > 500)
             {
                 int pruned = cache.PruneBefore(i - 400);
                 pruned.Should().BeGreaterThan(0);
+                cache.GetStats().Should().Be(new BlockhashCache.Stats(401, 1));
             }
         }
+    }
+
+    [Test]
+    public void Can_stich_block_ranges()
+    {
+        (BlockTree tree, BlockhashCache cache) = BuildTest(1000);
+
+        for (int i = 100; i <= 500; i += 100)
+        {
+            BlockHeader block = tree.FindHeader(i, BlockTreeLookupOptions.None)!;
+            cache.GetHash(block, 50);
+        }
+
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(255, 5));
+
+        for (int i = 100; i <= 500; i += 100)
+        {
+            BlockHeader block = tree.FindHeader(i, BlockTreeLookupOptions.None)!;
+            cache.GetHash(block, BlockhashCache.MaxDepth);
+        }
+
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(501, 1));
+    }
+
+    [Test]
+    public async Task Can_support_multiple_forks()
+    {
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTreeBuilder builder = Build.A.BlockTree(genesis).WithoutSettingHead
+            .OfChainLength(out Block head1, 1000)
+            .OfChainLength(out Block head2, 200, 1, 800)
+            .OfChainLength(out Block head3, 200, 2, 800);
+
+        BlockhashCache cache = new(builder.HeaderStore, LimboLogs.Instance);
+
+        await cache.Prefetch(head1.Header);
+        await cache.Prefetch(head2.Header);
+        await cache.Prefetch(head3.Header);
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(257 + 200 + 200, 3));
+        cache.PruneBefore(801);
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(200 + 200 + 200, 3));
+    }
+
+    [Test]
+    public async Task Can_prune_old_forks()
+    {
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTreeBuilder builder = Build.A.BlockTree(genesis).WithoutSettingHead
+            .OfChainLength(out Block head1, 1000)
+            .OfChainLength(out Block head2, 300, 1, 300)
+            .OfChainLength(out Block head3, 300, 2, 300);
+
+        BlockhashCache cache = new(builder.HeaderStore, LimboLogs.Instance);
+
+        await cache.Prefetch(head1.Header);
+        await cache.Prefetch(head2.Header);
+        await cache.Prefetch(head3.Header);
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(257 + 257 + 257, 3));
+        cache.PruneBefore(801);
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(200, 1));
     }
 
     private static (BlockTree, BlockhashCache) BuildTest(int chainLength)
@@ -206,7 +281,7 @@ public class BlockhashCacheTests
         Block genesis = Build.A.Block.Genesis.TestObject;
         BlockTreeBuilder builder = Build.A.BlockTree(genesis).WithoutSettingHead.OfChainLength(chainLength);
         BlockTree tree = builder.TestObject;
-        BlockhashCache cache = new(builder.HeaderStore, new ManualBlockFinalizationManager(), LimboLogs.Instance);
+        BlockhashCache cache = new(builder.HeaderStore, LimboLogs.Instance);
         return (tree, cache);
     }
 }

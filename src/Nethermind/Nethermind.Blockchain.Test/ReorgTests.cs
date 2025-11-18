@@ -89,7 +89,7 @@ public class ReorgTests
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
             transactionComparerProvider.GetDefaultComparer());
-        BlockhashCache blockhashCache = new(blockTreeBuilder.HeaderStore, new ManualBlockFinalizationManager(), LimboLogs.Instance);
+        BlockhashCache blockhashCache = new(blockTreeBuilder.HeaderStore, LimboLogs.Instance);
         BlockhashProvider blockhashProvider = new(blockhashCache, specProvider, stateProvider, LimboLogs.Instance);
         VirtualMachine virtualMachine = new(
             blockhashProvider,
