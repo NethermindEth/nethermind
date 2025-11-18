@@ -193,15 +193,15 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
+        public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, bool properSplit = false, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
-            OfChainLength(out _, chainLength, splitVariant, splitFrom, withWithdrawals, blockBeneficiaries);
+            OfChainLength(out _, chainLength, splitVariant, splitFrom, properSplit, withWithdrawals, blockBeneficiaries);
             return this;
         }
 
-        public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
+        public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, bool properSplit = false, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
-            bool fromGenesis = splitFrom == 0;
+            bool fromGenesis = !properSplit || splitFrom == 0;
             Block current = fromGenesis
                 ? genesisBlock
                 : BlockTree.FindBlock(splitFrom, BlockTreeLookupOptions.RequireCanonical) ?? throw new ArgumentException("Cannot find split block");
@@ -242,8 +242,7 @@ namespace Nethermind.Core.Test.Builders
                 .WithParent(parent)
                 .WithWithdrawals(withWithdrawals ? [TestItem.WithdrawalA_1Eth] : null)
                 .WithBaseFeePerGas(withWithdrawals ? UInt256.One : UInt256.Zero)
-                .WithBeneficiary(beneficiary)
-                .WithExtraData(splitFrom == 0 ? [] : BitConverter.GetBytes(splitFrom));
+                .WithBeneficiary(beneficiary);
 
             if (_stateRoot is not null)
             {
