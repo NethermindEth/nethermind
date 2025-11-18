@@ -223,7 +223,10 @@ namespace Nethermind.Core.Test.Builders
                     }
                 }
 
-                current = CreateBlock(splitVariant, splitFrom, i, current, withWithdrawals, beneficiary);
+                if (i < chainLength - 1)
+                {
+                    current = CreateBlock(splitVariant, splitFrom, i, current, withWithdrawals, beneficiary);
+                }
             }
 
             headBlock = current;
@@ -240,7 +243,7 @@ namespace Nethermind.Core.Test.Builders
                 .WithWithdrawals(withWithdrawals ? [TestItem.WithdrawalA_1Eth] : null)
                 .WithBaseFeePerGas(withWithdrawals ? UInt256.One : UInt256.Zero)
                 .WithBeneficiary(beneficiary)
-                .WithExtraData(BitConverter.GetBytes(splitFrom));
+                .WithExtraData(splitFrom == 0 ? [] : BitConverter.GetBytes(splitFrom));
 
             if (_stateRoot is not null)
             {

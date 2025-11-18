@@ -145,7 +145,7 @@ public class BlockhashCacheTests
         cache.Clear();
 
         cache.Contains(head!.Hash!).Should().BeFalse();
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(0,0));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(0, 0));
     }
 
     [Test]
@@ -159,7 +159,7 @@ public class BlockhashCacheTests
 
         cache.Contains(head!.Hash!).Should().BeTrue();
         cache.Contains(block1!.Hash!).Should().BeTrue();
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(100,1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(100, 1));
     }
 
     [Test]
@@ -176,7 +176,7 @@ public class BlockhashCacheTests
 
         cache.GetHash(head, 98).Should().Be(block1.Hash!);
         cache.GetHash(block90, 89).Should().Be(block1.Hash!);
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(100,1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(100, 1));
     }
 
     [Test]
@@ -259,6 +259,22 @@ public class BlockhashCacheTests
 
     [Test]
     public async Task Can_prune_old_forks()
+    {
+        const int depth = BlockhashCache.MaxDepth * 5 + 1;
+        (BlockTree tree, BlockhashCache cache) = BuildTest(depth);
+        for (int i = BlockhashCache.MaxDepth; i < depth; i += BlockhashCache.MaxDepth)
+        {
+            cache.GetHash(tree.FindHeader(i, BlockTreeLookupOptions.RequireCanonical)!, BlockhashCache.MaxDepth);
+        }
+
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(depth, 1));
+        await cache.Prefetch(tree.FindHeader(depth - 1, BlockTreeLookupOptions.RequireCanonical)!);
+        await Task.Delay(100);
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(BlockhashCache.MaxDepth * 2 + 1, 1));
+    }
+
+    [Test]
+    public async Task Prefetch_prunes()
     {
         Block genesis = Build.A.Block.Genesis.TestObject;
         BlockTreeBuilder builder = Build.A.BlockTree(genesis).WithoutSettingHead

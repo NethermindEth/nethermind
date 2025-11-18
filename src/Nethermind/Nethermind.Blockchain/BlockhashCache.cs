@@ -214,7 +214,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
         public Hash256 Hash { get; } = blockHeader.Hash!;
         public long Number { get; } = blockHeader.Number;
         public Hash256 ParentHash { get; } = blockHeader.ParentHash!;
-        public CacheNode? Parent { get; set;  } = parent;
+        public CacheNode? Parent { get; set; } = parent;
     }
 
     public record struct Stats(int Nodes, int Roots);

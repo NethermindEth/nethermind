@@ -176,14 +176,7 @@ public class ProofRpcModuleTests
         Assert.That(receiptWithProof.Receipt, Is.Not.Null);
         Assert.That(receiptWithProof.ReceiptProof.Length, Is.EqualTo(2));
 
-        if (withHeader)
-        {
-            Assert.That(receiptWithProof.BlockHeader, Is.Not.Null);
-        }
-        else
-        {
-            Assert.That(receiptWithProof.BlockHeader, Is.Null);
-        }
+        Assert.That(receiptWithProof.BlockHeader, withHeader ? Is.Not.Null : Is.Null);
 
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, withHeader);
         response.Should().Be(expectedResult);
