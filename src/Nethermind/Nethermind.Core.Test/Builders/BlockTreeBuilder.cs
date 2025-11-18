@@ -277,7 +277,7 @@ namespace Nethermind.Core.Test.Builders
         {
             Block currentBlock;
             BlockBuilder currentBlockBuilder = Build.A.Block
-                .WithNumber(parent.Number + 1)
+                .WithNumber(blockIndex + 1)
                 .WithParent(parent)
                 .WithWithdrawals(withWithdrawals ? [TestItem.WithdrawalA_1Eth] : null)
                 .WithBaseFeePerGas(withWithdrawals ? UInt256.One : UInt256.Zero)
