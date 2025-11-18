@@ -40,19 +40,16 @@ namespace Nethermind.TxPool.Comparison
                     : TxComparisonResult.KeepOld;
             }
 
-            /* MaxFeePerGas for legacy will be GasPrice and MaxPriorityFeePerGas will be GasPrice too
-            so we can compare legacy txs without any problems */
-            oldTx.MaxFeePerGas.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpMaxFeePerGas);
-            if (oldTx.MaxFeePerGas + bumpMaxFeePerGas > newTx.MaxFeePerGas) return TxComparisonResult.KeepOld;
+            if (newTx.GasBottleneck is null) return TxComparisonResult.KeepOld;
+            if (oldTx.GasBottleneck is null) return TxComparisonResult.TakeNew;
 
-            oldTx.MaxPriorityFeePerGas.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpMaxPriorityFeePerGas);
-            int result = (oldTx.MaxPriorityFeePerGas + bumpMaxPriorityFeePerGas).CompareTo(newTx.MaxPriorityFeePerGas);
+            ((UInt256)oldTx.GasBottleneck).Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpGasBottleneck);
+            int result = ((UInt256)oldTx.GasBottleneck + bumpGasBottleneck).CompareTo(newTx.GasBottleneck);
             // return TakeNew if fee bump is exactly by PartOfFeeRequiredToIncrease
             // never return NotDecided - it's allowed or not
-            return result != 0 ? result : (bumpMaxFeePerGas > 0 && bumpMaxPriorityFeePerGas > 0)
+            return result != 0 ? result : (bumpGasBottleneck > 0)
                 ? TxComparisonResult.TakeNew
                 : TxComparisonResult.KeepOld;
         }
-
     }
 }
