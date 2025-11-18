@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -243,18 +242,18 @@ public class BlockhashCacheTests
     {
         Block genesis = Build.A.Block.Genesis.TestObject;
         BlockTreeBuilder builder = Build.A.BlockTree(genesis).WithoutSettingHead
-            .OfChainLength(out Block head1, 1000)
-            .OfChainLength(out Block head2, 200, 1, 800)
-            .OfChainLength(out Block head3, 200, 2, 800);
+            .OfChainLengthWithSharedSplits(out Block head1, 1000)
+            .OfChainLengthWithSharedSplits(out Block head2, 200, 1, 800)
+            .OfChainLengthWithSharedSplits(out Block head3, 200, 2, 800);
 
         BlockhashCache cache = new(builder.HeaderStore, LimboLogs.Instance);
 
         await cache.Prefetch(head1.Header);
         await cache.Prefetch(head2.Header);
         await cache.Prefetch(head3.Header);
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(257 + 200 + 200, 3));
-        cache.PruneBefore(801);
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(200 + 200 + 200, 3));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(255 + 200 + 200, 3));
+        cache.PruneBefore(800);
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(200 + 199 + 199, 3));
     }
 
     [Test]
@@ -278,9 +277,9 @@ public class BlockhashCacheTests
     {
         Block genesis = Build.A.Block.Genesis.TestObject;
         BlockTreeBuilder builder = Build.A.BlockTree(genesis).WithoutSettingHead
-            .OfChainLength(out Block head1, 1000)
-            .OfChainLength(out Block head2, 300, 1, 300)
-            .OfChainLength(out Block head3, 300, 2, 300);
+            .OfChainLengthWithSharedSplits(out Block head1, 1000)
+            .OfChainLengthWithSharedSplits(out Block head2, 300, 1, 300)
+            .OfChainLengthWithSharedSplits(out Block head3, 300, 2, 300);
 
         BlockhashCache cache = new(builder.HeaderStore, LimboLogs.Instance);
 
@@ -288,7 +287,7 @@ public class BlockhashCacheTests
         await cache.Prefetch(head2.Header);
         await cache.Prefetch(head3.Header);
         cache.GetStats().Should().Be(new BlockhashCache.Stats(257 + 257 + 257, 3));
-        cache.PruneBefore(801);
+        cache.PruneBefore(800);
         cache.GetStats().Should().Be(new BlockhashCache.Stats(200, 1));
     }
 

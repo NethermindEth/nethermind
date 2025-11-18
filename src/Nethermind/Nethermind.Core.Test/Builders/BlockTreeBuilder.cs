@@ -193,15 +193,54 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, bool properSplit = false, bool withWithdrawals = false, params Address[] blockBeneficiaries)
+        public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
-            OfChainLength(out _, chainLength, splitVariant, splitFrom, properSplit, withWithdrawals, blockBeneficiaries);
+            OfChainLength(out _, chainLength, splitVariant, splitFrom, withWithdrawals, blockBeneficiaries);
             return this;
         }
 
-        public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, bool properSplit = false, bool withWithdrawals = false, params Address[] blockBeneficiaries)
+        public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
-            bool fromGenesis = !properSplit || splitFrom == 0;
+            Block current = genesisBlock;
+            headBlock = genesisBlock;
+
+            bool skipGenesis = BlockTree.Genesis is not null;
+            for (int i = 0; i < chainLength; i++)
+            {
+                Address beneficiary = blockBeneficiaries.Length == 0 ? Address.Zero : blockBeneficiaries[i % blockBeneficiaries.Length];
+                headBlock = current;
+                if (_onlyHeaders)
+                {
+                    if (!(current.IsGenesis && skipGenesis))
+                    {
+                        BlockTree.SuggestHeader(current.Header);
+                    }
+
+                    Block parent = current;
+                    current = CreateBlock(splitVariant, splitFrom, i, parent, withWithdrawals, beneficiary);
+                }
+                else
+                {
+                    if (!(current.IsGenesis && skipGenesis))
+                    {
+                        AddBlockResult result = BlockTree.SuggestBlock(current);
+                        Assert.That(result, Is.EqualTo(AddBlockResult.Added), $"Adding {current.ToString(Block.Format.Short)} at split variant {splitVariant}");
+
+                        BlockTree.UpdateMainChain(current);
+                    }
+
+                    Block parent = current;
+
+                    current = CreateBlock(splitVariant, splitFrom, i, parent, withWithdrawals, beneficiary);
+                }
+            }
+
+            return this;
+        }
+
+        public BlockTreeBuilder OfChainLengthWithSharedSplits(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
+        {
+            bool fromGenesis = splitFrom == 0;
             Block current = fromGenesis
                 ? genesisBlock
                 : BlockTree.FindBlock(splitFrom, BlockTreeLookupOptions.RequireCanonical) ?? throw new ArgumentException("Cannot find split block");
