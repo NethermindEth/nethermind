@@ -147,7 +147,7 @@ namespace Nethermind.AuRa.Test
 
             blockTreeBuilder
                 .OfChainLength(out Block headBlock, chainLength, 1, 0, false, TestItem.Addresses.Take(validators).ToArray())
-                .OfChainLength(out Block alternativeHeadBlock, chainLength, 0, splitFrom: 0, false, TestItem.Addresses.Skip(validators).Take(validators).ToArray());
+                .OfChainLength(out Block alternativeHeadBlock, chainLength, 0, splitFrom: 2, false, TestItem.Addresses.Skip(validators).Take(validators).ToArray());
 
             for (int i = 0; i < chainLength - 1; i++)
             {
