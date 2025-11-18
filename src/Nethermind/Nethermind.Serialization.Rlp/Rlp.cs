@@ -118,6 +118,7 @@ namespace Nethermind.Serialization.Rlp
             _decoders = null;
         }
 
+        [RequiresUnreferencedCode("This method uses reflection to discover and instantiate RLP decoders. Ensure all decoder types are preserved during trimming.")]
         public static void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false)
         {
             foreach (Type? type in assembly.GetExportedTypes())
@@ -149,25 +150,25 @@ namespace Nethermind.Serialization.Rlp
                         foreach (DecoderAttribute rlpDecoderAttr in type.GetCustomAttributes<DecoderAttribute>())
                         {
                             RlpDecoderKey key = new(implementedInterface.GenericTypeArguments[0], rlpDecoderAttr.Key);
-                            AddEncoder(key);
+                            AddEncoder(key, type);
 
                             isSetForAnyAttribute = true;
                         }
 
                         if (!isSetForAnyAttribute)
                         {
-                            AddEncoder(new(implementedInterface.GenericTypeArguments[0]));
+                            AddEncoder(new(implementedInterface.GenericTypeArguments[0]), type);
                         }
 
-                        void AddEncoder(RlpDecoderKey key)
+                        void AddEncoder(RlpDecoderKey key, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.Interfaces)] Type decoderType)
                         {
                             using Lock.Scope _ = _decoderLock.EnterScope();
                             if (!_decoderBuilder.TryGetValue(key, out IRlpDecoder? value) || canOverrideExistingDecoders)
                             {
 
-                                    _decoderBuilder[key] = instance ??= (IRlpDecoder)(type.GetConstructor(Type.EmptyTypes) is not null ?
-                                        Activator.CreateInstance(type) :
-                                        Activator.CreateInstance(type, BindingFlags.CreateInstance | BindingFlags.OptionalParamBinding, null, [Type.Missing], null));
+                                    _decoderBuilder[key] = instance ??= (IRlpDecoder)(decoderType.GetConstructor(Type.EmptyTypes) is not null ?
+                                        Activator.CreateInstance(decoderType) :
+                                        Activator.CreateInstance(decoderType, BindingFlags.CreateInstance | BindingFlags.OptionalParamBinding, null, [Type.Missing], null));
 
                             }
                             else
