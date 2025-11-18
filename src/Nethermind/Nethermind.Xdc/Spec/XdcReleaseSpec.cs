@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Specs;
 using System.Collections.Generic;
 
@@ -12,7 +12,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public int EpochLength { get; set; }
     public int Gap { get; set; }
     public int SwitchEpoch { get; set; }
-    public UInt256 SwitchBlock { get; set; }
+    public long SwitchBlock { get; set; }
     public int MaxMasternodes { get; set; }              // v2 max masternodes
     public int MaxProtectorNodes { get; set; }           // v2 max ProtectorNodes
     public int MaxObserverNodes { get; set; }            // v2 max ObserverNodes
@@ -27,8 +27,9 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public int MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
     public int LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
-    public List<V2ConfigParams> V2Configs { get; set; }
+    public List<V2ConfigParams> V2Configs { get; set; } = new List<V2ConfigParams>();
 
+    public Address[] GenesisMasterNodes { get; set; }
 
     public void ApplyV2Config(ulong round)
     {
@@ -53,6 +54,24 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
         }
         return list[lo];
     }
+
+    public static XdcReleaseSpec FromReleaseSpec(IReleaseSpec spec)
+    {
+        var xdcSpec = new XdcReleaseSpec();
+
+        var baseType = typeof(ReleaseSpec);
+        var properties = baseType.GetProperties();
+        foreach (var property in properties)
+        {
+            if (property.CanRead && property.CanWrite)
+            {
+                var value = property.GetValue(spec);
+                property.SetValue(xdcSpec, value);
+            }
+        }
+
+        return xdcSpec;
+    }
 }
 
 public interface IXdcReleaseSpec : IReleaseSpec
@@ -60,7 +79,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int EpochLength { get; }
     public int Gap { get; }
     public int SwitchEpoch { get; set; }
-    public UInt256 SwitchBlock { get; set; }
+    public long SwitchBlock { get; set; }
     public int MaxMasternodes { get; set; }          // v2 max masternodes
     public int MaxProtectorNodes { get; set; }       // v2 max ProtectorNodes
     public int MaxObserverNodes { get; set; }        // v2 max ObserverNodes
@@ -76,5 +95,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; }
+    Address[] GenesisMasterNodes { get; set; }
+
     public void ApplyV2Config(ulong round);
 }

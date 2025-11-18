@@ -5,7 +5,6 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
 using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
@@ -30,35 +29,28 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     [SkipLocalsInit]
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsG1AddPrecompile++;
 
         const int expectedInputLength = 2 * BlsConst.LenG1;
-        if (inputData.Length != expectedInputLength)
-        {
-            return IPrecompile.Failure;
-        }
+        if (inputData.Length != expectedInputLength) return Errors.InvalidInputLength;
 
         G1 x = new(stackalloc long[G1.Sz]);
         G1 y = new(stackalloc long[G1.Sz]);
-        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) || !y.TryDecodeRaw(inputData[BlsConst.LenG1..].Span))
+        Result result = x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) &&
+                        y.TryDecodeRaw(inputData[BlsConst.LenG1..].Span);
+
+        if (result)
         {
-            return IPrecompile.Failure;
+            // adding to infinity point has no effect
+            if (x.IsInf()) return inputData[BlsConst.LenG1..].ToArray();
+            if (y.IsInf()) return inputData[..BlsConst.LenG1].ToArray();
+
+            G1 res = x.Add(y);
+            return res.EncodeRaw();
         }
 
-        // adding to infinity point has no effect
-        if (x.IsInf())
-        {
-            return (inputData[BlsConst.LenG1..].ToArray(), true);
-        }
-
-        if (y.IsInf())
-        {
-            return (inputData[..BlsConst.LenG1].ToArray(), true);
-        }
-
-        G1 res = x.Add(y);
-        return (res.EncodeRaw(), true);
+        return result.Error!;
     }
 }

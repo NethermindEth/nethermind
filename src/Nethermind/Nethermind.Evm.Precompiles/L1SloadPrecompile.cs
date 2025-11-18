@@ -35,37 +35,24 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => L1SloadConstants.FixedGasCost;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
+        inputData.Length != L1SloadConstants.ExpectedInputLength ? 0L : L1SloadConstants.PerLoadGasCost;
+
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        if (inputData.Length != L1SloadConstants.ExpectedInputLength)
-        {
-            return 0L;
-        }
+        if (inputData.Length != L1SloadConstants.ExpectedInputLength) return Errors.InvalidInputLength;
 
-        return L1SloadConstants.PerLoadGasCost;
-    }
-
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        if (inputData.Length != L1SloadConstants.ExpectedInputLength)
-        {
-            return IPrecompile.Failure;
-        }
-
-        Address contractAddress = new Address(inputData.Span[..L1SloadConstants.AddressBytes]);
-        UInt256 storageKey = new UInt256(inputData.Span[L1SloadConstants.AddressBytes..L1SloadConstants.ExpectedInputLength], isBigEndian: true);
+        Address contractAddress = new(inputData.Span[..L1SloadConstants.AddressBytes]);
+        UInt256 storageKey = new(inputData.Span[L1SloadConstants.AddressBytes..(L1SloadConstants.AddressBytes + L1SloadConstants.StorageKeyBytes)], isBigEndian: true);
 
         UInt256? storageValue = GetL1StorageValue(contractAddress, storageKey);
-        if (storageValue == null)
-        {
-            return IPrecompile.Failure; // L1 storage access failed
-        }
+        if (storageValue is null) return Errors.L1StorageAccessFailed;
 
         // Convert storage value to output bytes
         byte[] output = new byte[32];
         storageValue.Value.ToBigEndian().CopyTo(output.AsSpan());
 
-        return (output, true);
+        return output;
     }
 
     /// <summary>

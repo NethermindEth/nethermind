@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -63,7 +64,7 @@ namespace Nethermind.Consensus.Processing
             blockTree.NewHeadBlock += GenesisProcessed;
 
             blockTree.SuggestBlock(genesis);
-            bool genesisLoaded = genesisProcessedEvent.Wait(genesisConfig.GenesisTimeout);
+            bool genesisLoaded = genesisProcessedEvent.Wait(Debugger.IsAttached ? TimeSpan.FromMilliseconds(Timeout.Infinite) : genesisConfig.GenesisTimeout);
             if (!genesisLoaded)
             {
                 throw new TimeoutException($"Genesis block was not processed after {genesisConfig.GenesisTimeout.TotalSeconds} seconds. If you are running custom chain with very big genesis file consider increasing {nameof(BlocksConfig)}.{nameof(IBlocksConfig.GenesisTimeoutMs)}.");
