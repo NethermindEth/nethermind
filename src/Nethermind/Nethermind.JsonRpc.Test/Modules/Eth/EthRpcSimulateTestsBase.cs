@@ -171,7 +171,7 @@ public class EthRpcSimulateTestsBase
 
     public static Address? EcRecoverCall(TestRpcBlockchain testRpcBlockchain, Address senderAddress, byte[] bytes, Address? toAddress = null)
     {
-        SystemTransaction transaction = new() { Data = bytes, To = toAddress, SenderAddress = senderAddress};
+        SystemTransaction transaction = new() { Data = bytes, To = toAddress, SenderAddress = senderAddress };
         transaction.Hash = transaction.CalculateHash();
         TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
         transactionForRpc.Gas = null;
