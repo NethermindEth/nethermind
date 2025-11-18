@@ -5,12 +5,15 @@ using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State;
+using Nethermind.Xdc.Contracts;
 using System;
+using System.Linq;
 
 namespace Nethermind.Xdc;
 internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
@@ -72,6 +75,37 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     private UInt256 CalculateArrayKey(UInt256 slot, ulong index, ulong size)
     {
         return slot + new UInt256(index * size);
+    }
+
+    /// <summary>
+    /// Returns an array of masternode candidates sorted by stake
+    /// </summary>
+    /// <param name="blockHeader"></param>
+    /// <returns></returns>
+    public Address[] GetCandidatesByStake(BlockHeader blockHeader)
+    {
+        var candidates = GetCandidates(blockHeader);
+
+        using var candidatesAndStake = new ArrayPoolList<CandidateStake>(candidates.Length);
+        foreach (var candidate in candidates)
+        {
+            if (candidate == Address.Zero)
+                continue;
+
+            new CandidateStake()
+            {
+                Address = candidate,
+                Stake = GetCandidateStake(blockHeader, candidate)
+            };
+        }
+        candidatesAndStake.Sort((x, y) => y.Stake.CompareTo(x.Stake));
+
+        Address[] sortedCandidates = new Address[candidatesAndStake.Count];
+        for (int i = 0; i < candidatesAndStake.Count; i++)
+        {
+            sortedCandidates[i] = candidatesAndStake[i].Address;
+        }   
+        return sortedCandidates;
     }
 
     private enum CandidateContractSlots : byte

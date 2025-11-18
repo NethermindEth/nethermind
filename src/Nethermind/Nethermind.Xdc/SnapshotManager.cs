@@ -63,6 +63,7 @@ internal class SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHan
         var rlpEncodedSnapshot = _snapshotDecoder.Encode(snapshot);
 
         snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
+        _snapshotCache.Set(snapshot.HeaderHash, snapshot);
     }
 
     public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec)
