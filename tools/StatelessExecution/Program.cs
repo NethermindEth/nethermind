@@ -8,7 +8,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Crypto;
@@ -351,7 +350,6 @@ class Program
             Keys = ToByteArrays(keys),
             State = ToByteArrays(state)
         };
-        var serializer = new EthereumJsonSerializer();
 
         BlockHeader suggestedBlockHeader = new BlockHeader(
             suggestedBlockForRpc.ParentHash,
