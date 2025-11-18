@@ -12,7 +12,7 @@ using BlockRoundInfo = Nethermind.Xdc.Types.BlockRoundInfo;
 namespace Nethermind.Xdc;
 internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertificate>
 {
-    private XdcBlockInfoDecoder _blockInfoDecoder = new XdcBlockInfoDecoder();
+    private readonly XdcBlockInfoDecoder _blockInfoDecoder = new XdcBlockInfoDecoder();
     protected override QuorumCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int sequenceLength = decoderContext.ReadSequenceLength();
