@@ -175,7 +175,7 @@ execute-riscv:
 	DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 ./Program
 
 execute-zisk:
-	RUST_BACKTRACE=full ziskemu -a -e ./Program
+	RUST_BACKTRACE=full ziskemu -a -e ./Program.patched
 
 publish-aot:
 	dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishAot=true
