@@ -45,6 +45,7 @@
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.14.0" />
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.0.6" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.Retry" Version="2.0.2" />
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
     <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.0.5" />
     <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.5.0" />
