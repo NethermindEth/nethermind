@@ -51,11 +51,8 @@ public class StatelessBlockProcessingEnv(
 
     private IBlockProcessor GetProcessor()
     {
-        Dictionary<Hash256, BlockHeader> headersByHash = witness.DecodedHeaders.ToDictionary(header => header.Hash ?? throw new ArgumentNullException(), header => header);
-        Dictionary<long, BlockHeader> headersByNumber = witness.DecodedHeaders.ToDictionary(header => header.Number, header => header);
-
-        IBlockTree statelessBlockTree = new StatelessBlockTree(headersByHash, headersByNumber);
-        ITransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, new StatelessHeaderFinder(headersByHash));
+        StatelessBlockTree statelessBlockTree = new(witness.DecodedHeaders);
+        ITransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, statelessBlockTree);
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =
             new BlockProcessor.BlockValidationTransactionsExecutor(
                 new ExecuteTransactionProcessorAdapter(txProcessor),
