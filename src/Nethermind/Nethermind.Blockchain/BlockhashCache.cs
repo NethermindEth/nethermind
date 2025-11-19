@@ -118,7 +118,10 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             {
                 if (!cancellationToken.IsCancellationRequested)
                 {
-                    Load(blockHeader, MaxDepth, cancellationToken);
+                    if (!_flatCache.Contains(blockHeader.Hash))
+                    {
+                        Load(blockHeader, MaxDepth, cancellationToken);
+                    }
                 }
 
                 PruneInBackground(blockHeader);
