@@ -30,9 +30,9 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
 
         // Keep track of gas left
-        if (result == TransactionResult.Ok)
+        simulateRequestState.TotalGasLeft -= transaction.SpentGas;
+        if (simulateRequestState.BlockGasLeft >= transaction.SpentGas)
         {
-            simulateRequestState.TotalGasLeft -= transaction.SpentGas;
             simulateRequestState.BlockGasLeft -= transaction.SpentGas;
         }
 
