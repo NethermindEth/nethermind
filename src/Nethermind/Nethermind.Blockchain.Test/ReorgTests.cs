@@ -120,7 +120,7 @@ public class ReorgTests
             MainnetSpecProvider.Instance,
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            blockhashCache,
+            blockhashProvider,
             LimboLogs.Instance);
 
         _blockchainProcessor = new BlockchainProcessor(

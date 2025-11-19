@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,6 +21,8 @@ public sealed class SimulateBlockhashProvider(IBlockhashProvider blockhashProvid
             ? blockhashProvider.GetBlockhash(blockTree.BestSuggestedHeader!, bestKnown, spec)
             : blockhashProvider.GetBlockhash(currentBlock, number, spec);
     }
+
+    public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => blockhashProvider.Prefetch(currentBlock, token);
 
     public Hash256? GetBlockhash(BlockHeader currentBlock, long number)
     {

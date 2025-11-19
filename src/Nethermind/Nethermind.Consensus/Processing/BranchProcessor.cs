@@ -10,6 +10,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -23,7 +24,7 @@ public class BranchProcessor(
     ISpecProvider specProvider,
     IWorldState stateProvider,
     IBeaconBlockRootHandler beaconBlockRootHandler,
-    IBlockhashCache blockhashCache,
+    IBlockhashProvider blockhashProvider,
     ILogManager logManager,
     IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
@@ -78,7 +79,7 @@ public class BranchProcessor(
         IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
         CancellationTokenSource backgroundCancellation = new();
         Task? preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
-        Task? prefetchBlockhash = blockhashCache.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+        Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
@@ -102,7 +103,7 @@ public class BranchProcessor(
                 // and started prewarming at method entry, so don't start it again
                 backgroundCancellation ??= new CancellationTokenSource();
                 preWarmTask ??= PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
-                prefetchBlockhash ??= blockhashCache.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+                prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
                 if (blocksCount > 64 && i % 8 == 0)
                 {

@@ -14,6 +14,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Logging;
+using Nethermind.Specs;
 
 namespace Nethermind.Blockchain;
 
@@ -26,14 +27,15 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
     private long _minBlock = int.MaxValue;
     private Task _pruningTask = Task.CompletedTask;
 
-    public Hash256? GetHash(BlockHeader headBlock, int depth) => depth == 0
-        ? headBlock.Hash
-        : _flatCache.TryGet(headBlock.Hash!, out Hash256[] array)
-            ? array[depth]
-            : Load(headBlock, depth)?.Hash;
+    public Hash256? GetHash(BlockHeader headBlock, int depth) =>
+        depth == 0 ? headBlock.Hash
+        : depth > MaxDepth ? null
+        : _flatCache.TryGet(headBlock.Hash!, out Hash256[] array) ? array[depth]
+        : Load(headBlock, depth, out _)?.Hash;
 
-    private CacheNode? Load(BlockHeader blockHeader, int depth, CancellationToken cancellationToken = default)
+    private CacheNode? Load(BlockHeader blockHeader, int depth, out Hash256[]? hashes, CancellationToken cancellationToken = default)
     {
+        hashes = null;
         if (depth > MaxDepth) return null;
         bool alwaysAdd = depth == MaxDepth;
         using ArrayPoolListRef<(CacheNode Node, bool NeedToAdd)> blocks = new(depth + 1);
@@ -100,7 +102,12 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 
         if (alwaysAdd)
         {
-            _flatCache.Set(blockHeader.Hash, blocks.Select(b => b.Node.Hash).ToArray());
+            hashes = new Hash256[blocks.Count];
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                hashes[i] = blocks[i].Node.Hash;
+            }
+            _flatCache.Set(blockHeader.Hash, hashes);
         }
 
         int index = depth - skipped;
@@ -110,17 +117,18 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                 : null;
     }
 
-    public Task Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken = default)
+    public Task<Hash256[]> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
+            Hash256[]? hashes = null;
             try
             {
                 if (!cancellationToken.IsCancellationRequested)
                 {
                     if (!_flatCache.Contains(blockHeader.Hash))
                     {
-                        Load(blockHeader, MaxDepth, cancellationToken);
+                        Load(blockHeader, MaxDepth, out hashes, cancellationToken);
                     }
                 }
 
@@ -130,6 +138,8 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             {
                 if (_logger.IsWarn) _logger.Warn($"Background fetch failed for block {blockHeader.Number}: {e.Message}");
             }
+
+            return hashes;
         });
     }
 
