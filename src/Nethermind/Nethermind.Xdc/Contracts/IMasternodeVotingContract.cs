@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Int256;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.Contracts;
 internal interface IMasternodeVotingContract
 {
     Address[] GetCandidates(BlockHeader blockHeader);

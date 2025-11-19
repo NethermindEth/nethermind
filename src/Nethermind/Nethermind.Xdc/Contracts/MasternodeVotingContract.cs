@@ -12,7 +12,7 @@ using Nethermind.Int256;
 using Nethermind.State;
 using System;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.Contracts;
 internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 {
     private readonly IWorldState _worldState;
