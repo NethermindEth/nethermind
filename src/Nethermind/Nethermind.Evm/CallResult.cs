@@ -57,7 +57,7 @@ public unsafe partial class VirtualMachine
             StateToExecute = null;
             Output = (null, StatusCode.FailureBytes);
             PrecompileSuccess = null;
-            ShouldRevert = false;
+            ShouldRevert = exceptionType == EvmExceptionType.Revert;
             ExceptionType = exceptionType;
         }
 
