@@ -17,9 +17,11 @@ using NUnit.Framework;
 namespace Nethermind.Optimism.Test;
 
 [Parallelizable(ParallelScope.All)]
-[TestFixtureSource(typeof(TestFixtures), nameof(TestFixtures.Forks))]
-public class OptimismHeaderValidatorTests(ulong timestamp)
+[TestFixtureSource(typeof(Fork), nameof(Fork.AllAndNextToGenesis))]
+public class OptimismHeaderValidatorTests(Fork fork)
 {
+    private readonly ulong _timestamp = fork.Timestamp;
+
     private static readonly Hash256 PostCanyonWithdrawalsRoot = Keccak.OfAnEmptySequenceRlp;
 
     private (BlockHeader genesis, BlockHeader header) BuildHeaders(Action<BlockHeaderBuilder>? postBuild = null)
@@ -32,18 +34,18 @@ public class OptimismHeaderValidatorTests(ulong timestamp)
         BlockHeaderBuilder builder = Build.A.BlockHeader
             .WithNumber(1)
             .WithParent(genesis)
-            .WithTimestamp(timestamp)
+            .WithTimestamp(_timestamp)
             .WithDifficulty(0)
             .WithNonce(0)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
             .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
             .WithWithdrawalsRoot(PostCanyonWithdrawalsRoot)
-            .WithRequestsHash(timestamp >= Spec.IsthmusTimeStamp
+            .WithRequestsHash(_timestamp >= Spec.IsthmusTimeStamp
                 ? OptimismPostMergeBlockProducer.PostIsthmusRequestHash
                 : null
             )
-            .WithExtraDataHex(timestamp >= Spec.JovianTimeStamp
+            .WithExtraDataHex(_timestamp >= Spec.JovianTimeStamp
                 ? "0x0100000001000001bc0000000000000000"
                 : "0x0000000001000001bc"
             );
@@ -53,7 +55,7 @@ public class OptimismHeaderValidatorTests(ulong timestamp)
         return (genesis, builder.TestObject);
     }
 
-    private static IEnumerable<(string data, Valid valid)> EIP1559ParametersExtraData => new (string data, Valid valid)[]
+    private static IEnumerable<(string data, Valid isValid)> EIP1559ParametersExtraData => new (string data, Valid isValid)[]
     {
         new("0x0100000001000000000000000000000000", Valid.Since(Spec.JovianTimeStamp)),
         new("0x0100000001000001bc0000000000000001", Valid.Since(Spec.JovianTimeStamp)),
@@ -78,11 +80,11 @@ public class OptimismHeaderValidatorTests(ulong timestamp)
         new("0x01ffffffff000001bc00000000000000", Valid.Never),
         new("0x01ffffffff000001bc000000000000000000", Valid.Never),
     }.Select(x =>
-        (x.data, Valid.Before(Spec.HoloceneTimeStamp) | x.valid) // No validation before Holocene
+        (x.data, Valid.Before(Spec.HoloceneTimeStamp) | x.isValid) // No validation before Holocene
     );
 
     [TestCaseSource(nameof(EIP1559ParametersExtraData))]
-    public void Validates_EIP1559Parameters_InExtraData((string hexString, Valid valid) testCase)
+    public void Validates_EIP1559Parameters_InExtraData((string hexString, Valid isValid) testCase)
     {
         (BlockHeader genesis, BlockHeader header) = BuildHeaders(b => b.WithExtraDataHex(testCase.hexString));
 
@@ -92,10 +94,10 @@ public class OptimismHeaderValidatorTests(ulong timestamp)
             Always.Valid, Spec.Instance, Spec.BuildFor(header),
             TestLogManager.Instance);
 
-        Assert.That(() => validator.Validate(header, genesis), Is.EqualTo(testCase.valid.On(timestamp)));
+        Assert.That(() => validator.Validate(header, genesis), Is.EqualTo(testCase.isValid.On(_timestamp)));
     }
 
-    private static IEnumerable<(Hash256? requestHash, Valid valid)> WithdrawalsRequestHashTestCases()
+    private static IEnumerable<(Hash256? requestHash, Valid isValid)> WithdrawalsRequestHashTestCases()
     {
         yield return (null, Valid.Before(Spec.IsthmusTimeStamp));
         yield return (TestItem.KeccakA, Valid.Before(Spec.IsthmusTimeStamp));
@@ -103,7 +105,7 @@ public class OptimismHeaderValidatorTests(ulong timestamp)
     }
 
     [TestCaseSource(nameof(WithdrawalsRequestHashTestCases))]
-    public void ValidateRequestHash((Hash256? requestHash, Valid valid) testCase)
+    public void ValidateRequestHash((Hash256? requestHash, Valid isValid) testCase)
     {
         var (genesis, header) = BuildHeaders(b => b.WithRequestsHash(testCase.requestHash));
 
@@ -114,10 +116,10 @@ public class OptimismHeaderValidatorTests(ulong timestamp)
             TestLogManager.Instance);
 
         string? error = null;
-        Assert.That(() => validator.Validate(header, genesis, false, out error), Is.EqualTo(testCase.valid.On(timestamp)), () => error!);
+        Assert.That(() => validator.Validate(header, genesis, false, out error), Is.EqualTo(testCase.isValid.On(_timestamp)), () => error!);
     }
 
-    private static IEnumerable<(long gasLimit, long gasUsed, long? blobGasUsed, Valid valid)> GasLimitTestCases()
+    private static IEnumerable<(long gasLimit, long gasUsed, long? blobGasUsed, Valid isValid)> GasLimitTestCases()
     {
         yield return (1_000, 500, 0, Valid.Always);
         yield return (1_000, 1_000, 0, Valid.Always);
@@ -135,7 +137,7 @@ public class OptimismHeaderValidatorTests(ulong timestamp)
     }
 
     [TestCaseSource(nameof(GasLimitTestCases))]
-    public void ValidateGasLimit((long gasLimit, long gasUsed, long? blobGasUsed, Valid valid) testCase)
+    public void ValidateGasLimit((long gasLimit, long gasUsed, long? blobGasUsed, Valid isValid) testCase)
     {
         (BlockHeader genesis, BlockHeader header) = BuildHeaders(b => b
             .WithGasLimit(testCase.gasLimit)
@@ -150,6 +152,6 @@ public class OptimismHeaderValidatorTests(ulong timestamp)
             TestLogManager.Instance);
 
         string? error = null;
-        Assert.That(() => validator.Validate(header, genesis, false, out error), Is.EqualTo(testCase.valid.On(timestamp)), () => error!);
+        Assert.That(() => validator.Validate(header, genesis, false, out error), Is.EqualTo(testCase.isValid.On(_timestamp)), () => error!);
     }
 }

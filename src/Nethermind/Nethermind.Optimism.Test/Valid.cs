@@ -15,7 +15,7 @@ public class Valid
 {
     // From - inclusive, To - exclusive
     // Null in From means negative infinity, in To - positive infinity
-    internal readonly record struct Interval(ulong? From, ulong? To): IComparable<Interval>
+    internal readonly record struct Interval(ulong? From, ulong? To) : IComparable<Interval>
     {
         public static readonly Interval Empty = new(0, 0);
         public static readonly Interval Full = new(null, null);
@@ -73,12 +73,12 @@ public class Valid
         };
     }
 
-    private static string ForkName(ulong value) => Spec.ForkNameAt.TryGetValue(value, out var name) ? name : $"{value}";
+    private static string ForkName(ulong value) => Fork.At.TryGetValue(value, out Fork? fork) ? fork.Name : $"{value}";
 
     private readonly List<Interval> _intervals;
 
     private Valid(List<Interval> intervals) => _intervals = intervals;
-    private Valid(Interval interval): this([interval]) { }
+    private Valid(Interval interval) : this([interval]) { }
 
     public static readonly Valid Always = new(Interval.Full);
     public static readonly Valid Never = new(Interval.Empty);

@@ -3,167 +3,144 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
 
-public class OptimismBlockValidatorTests
+[Parallelizable(ParallelScope.All)]
+[TestFixtureSource(typeof(Fork), nameof(Fork.AllAndNextToGenesis))]
+public class OptimismBlockValidatorTests(Fork fork)
 {
+    private readonly ulong _timestamp = fork.Timestamp;
+
+    private Hash256? GetWithdrawalsRoot() => _timestamp switch
+    {
+        >= Spec.IsthmusTimeStamp => TestWithdrawalsRoot,
+        >= Spec.CanyonTimestamp => Keccak.EmptyTreeHash,
+        _ => null
+    };
+
     private static readonly Hash256 TestWithdrawalsRoot =
         new("0x1234567890123456789012345678901234567890123456789012345678901234");
+
+    private (BlockHeader parentHeader, Block header) BuildBlock(Action<BlockBuilder>? postBuild = null)
+    {
+        var parentBlock = Build.A.BlockHeader.TestObject;
+        var builder = Build.A.Block
+            .WithWithdrawals(_timestamp >= Spec.IsthmusTimeStamp ? [] : null)
+            .WithHeader(Build.A.BlockHeader
+                .WithParent(parentBlock)
+                .WithTimestamp(_timestamp)
+                .WithBlobGasUsed(0)
+                .WithWithdrawalsRoot(GetWithdrawalsRoot())
+                .TestObject);
+
+        postBuild?.Invoke(builder);
+
+        return (parentBlock, builder.TestObject);
+    }
 
     private static IEnumerable<TestCaseData> WithdrawalsRootTestCases()
     {
         // Pre-Canyon: WithdrawalsRoot should be null
-        yield return new TestCaseData(Spec.CanyonTimestamp - 1, null, true)
-            .SetName("Pre-Canyon: Valid null withdrawals root");
-        yield return new TestCaseData(Spec.CanyonTimestamp - 1, TestWithdrawalsRoot, false)
-            .SetName("Pre-Canyon: Invalid non-null withdrawals root");
+        yield return new TestCaseData(null, Valid.Before(Spec.CanyonTimestamp))
+            .SetName("Null withdrawals root");
 
         // Canyon: WithdrawalsRoot should be Keccak.EmptyTreeHash
-        yield return new TestCaseData(Spec.CanyonTimestamp, Keccak.EmptyTreeHash, true)
-            .SetName("Canyon: Valid empty tree hash withdrawals root");
-        yield return new TestCaseData(Spec.CanyonTimestamp, null, false)
-            .SetName("Canyon: Invalid null withdrawals root");
-        yield return new TestCaseData(Spec.CanyonTimestamp, TestWithdrawalsRoot, false)
-            .SetName("Canyon: Invalid non-empty tree hash withdrawals root");
+        yield return new TestCaseData(Keccak.EmptyTreeHash, Valid.Between(Spec.CanyonTimestamp, Spec.IsthmusTimeStamp))
+            .SetName("Empty tree hash withdrawals root");
 
         // Isthmus: WithdrawalsRoot should be 32 bytes non-null
-        yield return new TestCaseData(Spec.IsthmusTimeStamp, TestWithdrawalsRoot, true)
-            .SetName("Isthmus: Valid non-null withdrawals root");
-        yield return new TestCaseData(Spec.IsthmusTimeStamp, null, false)
-            .SetName("Isthmus: Invalid null withdrawals root");
-        yield return new TestCaseData(Spec.IsthmusTimeStamp, Keccak.EmptyTreeHash, false)
-            .SetName("Isthmus: Invalid withdrawals root of an empty tree");
+        yield return new TestCaseData(TestWithdrawalsRoot, Valid.Since(Spec.IsthmusTimeStamp))
+            .SetName("Non-null withdrawals root");
     }
 
     [TestCaseSource(nameof(WithdrawalsRootTestCases))]
-    public void ValidateSuggestedBlock_ValidateWithdrawalsRoot(ulong timestamp, Hash256? withdrawalsRoot, bool isValid)
+    public void ValidateSuggestedBlock_ValidateWithdrawalsRoot(Hash256? withdrawalsRoot, Valid isValid)
     {
-        var specProvider = Substitute.For<ISpecProvider>();
-        var specHelper = Substitute.For<IOptimismSpecHelper>();
-        specHelper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(timestamp >= Spec.IsthmusTimeStamp);
-        specHelper.IsCanyon(Arg.Any<BlockHeader>()).Returns(timestamp >= Spec.CanyonTimestamp);
-
-        var parentBlock = Build.A.BlockHeader.TestObject;
-        var block = Build.A.Block
-            .WithWithdrawals(timestamp >= Spec.IsthmusTimeStamp ? [] : null)
-            .WithHeader(Build.A.BlockHeader
-                .WithParent(parentBlock)
-                .WithTimestamp(timestamp)
-                .WithWithdrawalsRoot(withdrawalsRoot)
-                .TestObject)
-            .TestObject;
+        (BlockHeader parentHeader, Block block) = BuildBlock(b => b
+            .WithWithdrawalsRoot(withdrawalsRoot)
+        );
 
         var validator = new OptimismBlockValidator(
             Always.Valid,
             Always.Valid,
             Always.Valid,
-            specProvider,
-            specHelper,
+            Spec.BuildFor(block.Header),
+            Spec.Instance,
             TestLogManager.Instance);
 
-        var result = validator.ValidateSuggestedBlock(block, parentBlock, out string? error);
-
-        result.Should().Be(isValid);
-        if (!isValid)
-        {
-            error.Should().NotBeNull();
-        }
+        Assert.That(
+            validator.ValidateSuggestedBlock(block, parentHeader, out string? error),
+            Is.EqualTo(isValid.On(_timestamp)),
+            () => error!);
     }
 
     private static IEnumerable<TestCaseData> WithdrawalsListTestCases()
     {
-        yield return new TestCaseData(Array.Empty<Withdrawal>(), true)
-            .SetName("Valid empty withdrawals list");
-        yield return new TestCaseData(null, false)
-            .SetName("Invalid null withdrawals list");
-        yield return new TestCaseData(new[] { TestItem.WithdrawalA_1Eth }, false)
-            .SetName("Invalid non-empty withdrawals list");
+        yield return new TestCaseData(Array.Empty<Withdrawal>(), Valid.Always)
+            .SetName("Empty withdrawals list");
+        yield return new TestCaseData(null, Valid.Before(Spec.IsthmusTimeStamp))
+            .SetName("Null withdrawals list");
+        yield return new TestCaseData(new[] { TestItem.WithdrawalA_1Eth }, Valid.Before(Spec.IsthmusTimeStamp))
+            .SetName("Non-empty withdrawals list");
     }
 
     [TestCaseSource(nameof(WithdrawalsListTestCases))]
-    public void ValidateSuggestedBlock_ValidateWithdrawalsList_PostIsthmus(Withdrawal[]? withdrawals, bool isValid)
+    public void ValidateSuggestedBlock_ValidateWithdrawalsList(Withdrawal[]? withdrawals, Valid isValid)
     {
-        var specProvider = Substitute.For<ISpecProvider>();
-        var specHelper = Substitute.For<IOptimismSpecHelper>();
-        specHelper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(true);
-        specHelper.IsCanyon(Arg.Any<BlockHeader>()).Returns(true);
-
-        var parentBlock = Build.A.BlockHeader.TestObject;
-        var block = Build.A.Block
+        (BlockHeader parentHeader, Block block) = BuildBlock(b => b
             .WithWithdrawals(withdrawals)
-            .WithHeader(Build.A.BlockHeader
-                .WithParent(parentBlock)
-                .WithTimestamp(Spec.IsthmusTimeStamp)
-                .WithWithdrawalsRoot(TestWithdrawalsRoot)
-                .TestObject)
-            .TestObject;
+            .WithWithdrawalsRoot(GetWithdrawalsRoot())
+        );
 
         var validator = new OptimismBlockValidator(
             Always.Valid,
             Always.Valid,
             Always.Valid,
-            specProvider,
-            specHelper,
-            TestLogManager.Instance);
-
-        var result = validator.ValidateSuggestedBlock(block, parentBlock, out string? error);
-
-        result.Should().Be(isValid);
-        if (!isValid)
-        {
-            error.Should().NotBeNull();
-        }
-    }
-
-    [TestCase(Spec.GenesisTimestamp, 0, true)]
-    [TestCase(Spec.GenesisTimestamp, 10_000, false)]
-    [TestCase(Spec.CanyonTimestamp, 0, true)]
-    [TestCase(Spec.CanyonTimestamp, 20_000, false)]
-    [TestCase(Spec.EcotoneTimestamp, 0, true)]
-    [TestCase(Spec.EcotoneTimestamp, 90_000, true)]
-    [TestCase(Spec.HoloceneTimeStamp, 0, true)]
-    [TestCase(Spec.HoloceneTimeStamp, 70_000, true)]
-    [TestCase(Spec.JovianTimeStamp, 0, true)]
-    [TestCase(Spec.JovianTimeStamp, 80_000, true)]
-    public void ValidateSuggestedBlock_ValidatesBlobGasUsed_BeforeEcotone(ulong timestamp, int blobGasUsed, bool isValid)
-    {
-        var parentBlock = Build.A.BlockHeader.TestObject;
-        var block = Build.A.Block
-            .WithWithdrawals(timestamp >= Spec.IsthmusTimeStamp ? [] : null)
-            .WithHeader(Build.A.BlockHeader
-                .WithParent(parentBlock)
-                .WithTimestamp(timestamp)
-                .WithWithdrawalsRoot(timestamp switch
-                {
-                    >= Spec.IsthmusTimeStamp => TestWithdrawalsRoot,
-                    >= Spec.CanyonTimestamp => Keccak.EmptyTreeHash,
-                    _ => null
-                })
-                .TestObject)
-            .WithBlobGasUsed((ulong)blobGasUsed)
-            .TestObject;
-
-        var specProvider = Spec.BuildFor(block.Header);
-
-        var validator = new OptimismBlockValidator(
-            Always.Valid,
-            Always.Valid,
-            Always.Valid,
-            specProvider,
+            Spec.BuildFor(block.Header),
             Spec.Instance,
             TestLogManager.Instance);
 
-        string? error = null;
-        Assert.That(() => validator.ValidateSuggestedBlock(block, parentBlock, out error), Is.EqualTo(isValid), () => error!);
+        Assert.That(
+            validator.ValidateSuggestedBlock(block, parentHeader, out string? error),
+            Is.EqualTo(isValid.On(_timestamp)),
+            () => error!);
+    }
+
+    private static IEnumerable<TestCaseData> BlobGasUsedTestCases()
+    {
+        yield return new TestCaseData(null, Valid.Since(Spec.EcotoneTimestamp))
+            .SetName("Null blob gas used");
+        yield return new TestCaseData(0, Valid.Always)
+            .SetName("Zero blob gas used");
+        yield return new TestCaseData(10_000, Valid.Since(Spec.EcotoneTimestamp))
+            .SetName("Positive blob gas used");
+    }
+
+    [TestCaseSource(nameof(BlobGasUsedTestCases))]
+    public void ValidateSuggestedBlock_ValidatesBlobGasUsed(int? blobGasUsed, Valid isValid)
+    {
+        (BlockHeader parentHeader, Block block) = BuildBlock(b => b
+            .WithBlobGasUsed((ulong?)blobGasUsed)
+        );
+
+        var validator = new OptimismBlockValidator(
+            Always.Valid,
+            Always.Valid,
+            Always.Valid,
+            Spec.BuildFor(block.Header),
+            Spec.Instance,
+            TestLogManager.Instance);
+
+        Assert.That(
+            validator.ValidateSuggestedBlock(block, parentHeader, out string? error),
+            Is.EqualTo(isValid.On(_timestamp)),
+            () => error!);
     }
 }

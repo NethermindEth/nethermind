@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Optimism.Rpc;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
@@ -48,24 +47,24 @@ public class OptimismPayloadAttributesTests
             EIP1559Params = Bytes.FromHexString(testCase.HexStringEIP1559Params)
         };
 
-        var payloadId = payloadAttributes.GetPayloadId(blockHeader);
-
-        payloadId.Should().Be(testCase.PayloadId);
+        Assert.That(payloadAttributes.GetPayloadId(blockHeader), Is.EqualTo(testCase.PayloadId));
     }
 
-    private static IEnumerable<(byte[]?, PayloadAttributesValidationResult, PayloadAttributesValidationResult, PayloadAttributesValidationResult)> Validate_EIP1559Params_Holocene_Jovian_TestCases()
+    private static IEnumerable<(int? length, Valid isValid)> Validate_EIP1559Params_TestCases()
     {
-        yield return (null, PayloadAttributesValidationResult.Success, PayloadAttributesValidationResult.InvalidPayloadAttributes, PayloadAttributesValidationResult.InvalidPayloadAttributes);
-        yield return (new byte[7], PayloadAttributesValidationResult.InvalidPayloadAttributes, PayloadAttributesValidationResult.InvalidPayloadAttributes, PayloadAttributesValidationResult.InvalidPayloadAttributes);
-        yield return (new byte[8], PayloadAttributesValidationResult.InvalidPayloadAttributes, PayloadAttributesValidationResult.Success, PayloadAttributesValidationResult.InvalidPayloadAttributes);
-        yield return (new byte[9], PayloadAttributesValidationResult.InvalidPayloadAttributes, PayloadAttributesValidationResult.InvalidPayloadAttributes, PayloadAttributesValidationResult.InvalidPayloadAttributes);
-        yield return (new byte[15], PayloadAttributesValidationResult.InvalidPayloadAttributes, PayloadAttributesValidationResult.InvalidPayloadAttributes, PayloadAttributesValidationResult.InvalidPayloadAttributes);
-        yield return (new byte[16], PayloadAttributesValidationResult.InvalidPayloadAttributes, PayloadAttributesValidationResult.InvalidPayloadAttributes, PayloadAttributesValidationResult.Success);
-        yield return (new byte[17], PayloadAttributesValidationResult.InvalidPayloadAttributes, PayloadAttributesValidationResult.InvalidPayloadAttributes, PayloadAttributesValidationResult.InvalidPayloadAttributes);
+        yield return (null, Valid.Before(Spec.HoloceneTimeStamp));
+        yield return (7, Valid.Never);
+        yield return (8, Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp));
+        yield return (9, Valid.Never);
+        yield return (15, Valid.Never);
+        yield return (16, Valid.Since(Spec.JovianTimeStamp));
+        yield return (17, Valid.Never);
     }
-    [TestCaseSource(nameof(Validate_EIP1559Params_Holocene_Jovian_TestCases))]
-    public void Validate_EIP1559Params_Holocene_Jovian((byte[]? Eip1559Params, PayloadAttributesValidationResult BeforeHolocene,
-        PayloadAttributesValidationResult AfterHolocene, PayloadAttributesValidationResult AfterJovian) testCase
+
+    [Test]
+    public void Validate_EIP1559Params(
+        [ValueSource(nameof(Validate_EIP1559Params_TestCases))] (int? length, Valid isValid) testCase,
+        [ValueSource(typeof(Fork), nameof(Fork.AllAndNextToGenesis))] Fork fork
     )
     {
         var payloadAttributes = new OptimismPayloadAttributes
@@ -74,26 +73,20 @@ public class OptimismPayloadAttributesTests
             Transactions = [],
             PrevRandao = Hash256.Zero,
             SuggestedFeeRecipient = TestItem.AddressA,
-            EIP1559Params = testCase.Eip1559Params
+            Timestamp = fork.Timestamp,
+            EIP1559Params = testCase.length is { } length ? new byte[length] : null,
+            ParentBeaconBlockRoot = Hash256.Zero,
+            Withdrawals = []
         };
 
-        static ISpecProvider BuildSpecProvider(bool isHolocene, bool isJovian = false)
-        {
-            var releaseSpec = Substitute.For<IReleaseSpec>();
-            releaseSpec.IsOpHoloceneEnabled.Returns(isHolocene);
-            releaseSpec.IsOpJovianEnabled.Returns(isHolocene && isJovian);
-            var specProvider = Substitute.For<ISpecProvider>();
-            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-            return specProvider;
-        }
+        ISpecProvider spec = Spec.BuildFor(fork.Timestamp);
 
-        var beforeHolocene = payloadAttributes.Validate(BuildSpecProvider(isHolocene: false), 1, out var _);
-        beforeHolocene.Should().Be(testCase.BeforeHolocene);
-
-        var afterHolocene = payloadAttributes.Validate(BuildSpecProvider(isHolocene: true), 1, out var _);
-        afterHolocene.Should().Be(testCase.AfterHolocene);
-
-        var afterJovian = payloadAttributes.Validate(BuildSpecProvider(isHolocene: true, isJovian: true), 1, out var _);
-        afterJovian.Should().Be(testCase.AfterJovian);
+        Assert.That(
+            payloadAttributes.Validate(spec, EngineApiVersions.Cancun, out var error),
+            testCase.isValid.On(fork.Timestamp)
+                ? Is.EqualTo(PayloadAttributesValidationResult.Success)
+                : Is.EqualTo(PayloadAttributesValidationResult.InvalidPayloadAttributes),
+            () => error!
+        );
     }
 }
