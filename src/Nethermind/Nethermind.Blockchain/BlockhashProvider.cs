@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain
         ILogManager? logManager)
         : IBlockhashProvider
     {
-        private const int MaxDepth = 256;
+        public const int MaxDepth = 256;
         private readonly IBlockhashStore _blockhashStore = new BlockhashStore(worldState);
         private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         private Hash256[]? _hashes;

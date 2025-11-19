@@ -23,7 +23,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ConcurrentDictionary<Hash256AsKey, CacheNode> _blocks = new();
     private readonly LruCache<Hash256AsKey, Hash256[]> _flatCache = new(32, nameof(BlockhashCache));
-    public const int MaxDepth = 256;
+    public const int MaxDepth = BlockhashProvider.MaxDepth;
     private long _minBlock = int.MaxValue;
     private Task _pruningTask = Task.CompletedTask;
 

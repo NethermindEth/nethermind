@@ -26,7 +26,7 @@ public class StatelessBlockhashCache(Dictionary<Hash256, BlockHeader> headersByH
                 result[i] = header.Hash;
             }
         }
-        
+
         return Task.FromResult(result);
     }
 }
