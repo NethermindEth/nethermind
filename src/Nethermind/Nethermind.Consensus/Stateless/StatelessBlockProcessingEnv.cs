@@ -4,8 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -88,26 +86,5 @@ public class StatelessBlockProcessingEnv(
         BlockhashProvider blockhashProvider = new(blockhashCache, state, logManager);
         VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
         return new TransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
-    }
-}
-
-public class StatelessBlockhashCache(Dictionary<Hash256, BlockHeader> headersByHash, Dictionary<long, BlockHeader> headersByNumber) : IBlockhashCache
-{
-    public Hash256? GetHash(BlockHeader headBlock, int depth) => headersByHash[headBlock.Hash!].Hash;
-
-    public Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken)
-    {
-        const int length = BlockhashCache.MaxDepth + 1;
-        Hash256[] result = new Hash256[length];
-        result[0] = blockHeader.Hash;
-        for (int i = 1; i < length; i++)
-        {
-            if (headersByNumber.TryGetValue(i, out BlockHeader header))
-            {
-                result[i] = header.Hash;
-            }
-        }
-        
-        return Task.FromResult(result);
     }
 }
