@@ -1,0 +1,56 @@
+Nethermind Non-Commercial Software License
+Version 1.2
+
+Copyright © [2025] [Demerzel Solutions Limited t/a Nethermind]
+
+1. Grant of Rights
+
+The Licensor grants you a worldwide, royalty-free, non-exclusive, revocable license to:
+- Use the Software for non-commercial purposes only.
+- Modify the Software for non-commercial purposes only.
+- Distribute the Software, in original or modified form, for non-commercial purposes only, provided that you comply with this License.
+- Reference and attribute the Software in works, publications, or derivative projects, provided that attribution is given as set forth in Section 3.
+
+2. Restrictions
+
+You may not:
+a. Use the Software, or any modified version, for commercial purposes, including but not limited to sale, licensing, or use within for-profit services.
+b. Re-license, sublicense, or otherwise distribute the Software or modified versions under a different license. All modifications must remain subject to this License.
+c. Remove, obscure, or alter any copyright, license, or attribution notices in the Software.
+d. Assert or imply any sponsorship, endorsement, or affiliation with the Licensor without prior written consent.
+
+3. Attribution Requirement
+
+Any distribution, modification, or public use of the Software must include:
+- The original author's name: Demerzel Solutions Limited t/a Nethermind
+- The title of the Software: nethermind
+- A link to the source or project homepage, if available
+
+This attribution must be reasonably visible in the medium of distribution.
+
+4. No Patent Grant
+
+This License does not grant you any rights under any patent held by the Licensor or contributors. If your use of the Software requires a patent license, you must obtain such license separately.
+
+5. License Change Requests
+
+If you believe this License does not accurately reflect your intended use of the Software, you may contact the Licensor to request a custom license.
+- Contact: legalnotices@nethermind.io
+
+The Licensor reserves the right to approve, deny, or negotiate such requests.
+
+6. Disclaimer of Warranty
+
+The Software is provided "AS IS," without warranty of any kind, express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, or non-infringement.
+
+7. Limitation of Liability
+
+To the maximum extent permitted by law, the Licensor shall not be liable for any direct, indirect, incidental, consequential, or special damages arising from the use of, or inability to use, the Software, even if advised of the possibility of such damages.
+
+8. Termination
+
+This License terminates automatically if you violate any of its terms. Upon termination, you must immediately cease all use, modification, and distribution of the Software.
+
+9. Governing Law
+
+This License shall be governed by and construed in accordance with the laws of England and Wales.
