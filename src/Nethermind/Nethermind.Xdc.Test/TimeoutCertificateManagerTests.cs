@@ -1,24 +1,25 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
+using Nethermind.Consensus;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Consensus;
-using Nethermind.Crypto;
-using Nethermind.Xdc.Spec;
-using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class TimeoutCertificateManagerTests
 {
 

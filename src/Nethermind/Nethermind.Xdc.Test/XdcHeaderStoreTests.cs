@@ -8,11 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using NUnit.Framework;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
 

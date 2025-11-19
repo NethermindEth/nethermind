@@ -4,15 +4,8 @@
 using Autofac;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Test.Blockchain;
-using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using NUnit.Framework;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;

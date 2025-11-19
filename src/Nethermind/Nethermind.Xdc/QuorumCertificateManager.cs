@@ -1,26 +1,19 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Linq;
-using System.Threading.Tasks;
-
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
-using System.Collections.Generic;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading;
+using System;
 using System.Diagnostics.CodeAnalysis;
-using Nethermind.Logging;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
@@ -41,13 +34,13 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     }
 
     private IXdcConsensusContext _context { get; }
-    private IBlockTree _blockTree;
+    private readonly IBlockTree _blockTree;
     private IEpochSwitchManager _epochSwitchManager { get; }
 
     private ILogger _logger;
 
     private ISpecProvider _specProvider { get; }
-    private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
+    private readonly EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
     private readonly static VoteDecoder _voteDecoder = new();
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;

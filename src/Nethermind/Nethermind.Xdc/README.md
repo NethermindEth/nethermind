@@ -728,7 +728,7 @@ Round N-2          Round N-1          Round N
    ▼                  ▼                  ▼
 ┌────────┐        ┌────────┐        ┌────────┐
 │Block B │◀───────│Block C │◀───────│Block D │
-│QC(B)   │        │QC(C)   │        │QC(D)   │
+│QC(A)   │        │QC(B)   │        │QC(C)   │
 └────────┘        └────────┘        └────────┘
     ▲
     │
@@ -1133,53 +1133,6 @@ Performance:
 - Network Message Rate
 ```
 
-### Log Events
-
-```csharp
-Important log points:
-─────────────────────
-✓ Round advanced
-✓ Block proposed (with hash)
-✓ Vote cast
-✓ QC formed
-✓ Block finalized
-✓ Epoch switched
-✓ Timeout sent
-✓ TC formed
-✗ Validation failures
-✗ Fork detected
-```
-
----
-
-## Future Enhancements
-
-### 1. Pipelining
-
-Currently sequential: Propose → Vote → QC → Next Round
-
-Future: Overlap rounds for higher throughput
-
-```
-Round N:     [Propose] ──▶ [Vote] ──▶ [QC]
-Round N+1:              [Propose] ──▶ [Vote] ──▶ [QC]
-Round N+2:                         [Propose] ──▶ [Vote] ──▶ [QC]
-```
-
-### 2. Optimistic Responsiveness
-
-Fast path when all nodes agree (0 timeouts):
-- Reduce MinePeriod
-- Immediate voting
-- Faster finalization
-
-### 3. Forensics Implementation
-
-Currently stub `PenaltyHandler`:
-- Detect double signing
-- Slash malicious validators
-- Reward honest participants
-
 ---
 
 ## References
@@ -1218,13 +1171,6 @@ Currently stub `PenaltyHandler`:
 - [x] XdcBlockTree - Chain management
 - [x] XdcHeaderValidator - Header validation
 - [x] XdcSealValidator - Seal validation
-
-### TODO Components
-
-- [ ] ForensicsProcessor - Slashing logic
-- [ ] PenaltyHandler - Penalty calculation (currently stub)
-- [ ] SyncInfoManager - Advanced sync (skeleton)
-- [ ] Reward calculator - Block rewards
 
 ---
 
@@ -1265,7 +1211,3 @@ Snapshot  // Validator candidates
 ```
 
 ---
-
-**End of Document**
-
-*This architecture overview provides a comprehensive guide to understanding the XDC consensus module implementation in Nethermind. For implementation details, refer to the source code in `src/Nethermind/Nethermind.Xdc/`.*
