@@ -26,7 +26,6 @@ public class OptimismPayloadAttributesTests
         yield return ("0x00ffffffff000001bc", "0x2cb414f72aac7824");
         yield return ("0x00ffffffffffffffff", "0xe411646692277df5");
         // V1
-        //TODO: source of expected results?
         yield return ("0x0100000001000000000000000000000001", "0xb1be2b369ffc937d");
         yield return ("0x0100000001000001bc0000000000000abc", "0x3227f4be2903c6ec");
         yield return ("0x0100000001000001bc0000000000000def", "0xe471f88f2ef8553d");

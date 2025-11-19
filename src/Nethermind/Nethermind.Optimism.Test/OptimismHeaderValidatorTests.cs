@@ -119,30 +119,30 @@ public class OptimismHeaderValidatorTests(Fork fork)
         Assert.That(() => validator.Validate(header, genesis, false, out error), Is.EqualTo(testCase.isValid.On(_timestamp)), () => error!);
     }
 
-    private static IEnumerable<(long gasLimit, long gasUsed, long? blobGasUsed, Valid isValid)> GasLimitTestCases()
+    private static IEnumerable<TestCaseData> GasLimitTestCases()
     {
-        yield return (1_000, 500, 0, Valid.Always);
-        yield return (1_000, 1_000, 0, Valid.Always);
-        yield return (1_000, 1_000, 500, Valid.Always);
-        yield return (1_000, 1_000, 1_000, Valid.Always);
+        yield return new(1_000, 500, 0, Valid.Always);
+        yield return new(1_000, 1_000, 0, Valid.Always);
+        yield return new(1_000, 1_000, 500, Valid.Always);
+        yield return new(1_000, 1_000, 1_000, Valid.Always);
 
-        yield return (1_000, 500, null, Valid.Never); // blobGasUsed missing
-        yield return (1_000, 1_000, null, Valid.Never); // blobGasUsed missing
+        yield return new TestCaseData(1_000, 500, null, Valid.Never).SetName("blobGasUsed missing");
+        yield return new TestCaseData(1_000, 1_000, null, Valid.Never).SetName("blobGasUsed missing, gasUsed = gasLimit");
 
-        yield return (1_000, 1_000 + 1, 500, Valid.Never); // gasUsed > gasLimit
-        yield return (1_000, 1_000 + 1, 1_000, Valid.Never); // gasUsed > gasLimit
-        yield return (1_000, 1_000 + 1, 1_000 + 1, Valid.Never); // blobGasUsed & gasUsed > gasLimit
+        yield return new TestCaseData(1_000, 1_000 + 1, 500, Valid.Never).SetName("gasUsed > gasLimit");
+        yield return new TestCaseData(1_000, 1_000 + 1, 1_000, Valid.Never).SetName("gasUsed > gasLimit, blobGasUsed = gasLimit");
+        yield return new TestCaseData(1_000, 1_000 + 1, 1_000 + 1, Valid.Never).SetName("blobGasUsed & gasUsed > gasLimit");
 
-        yield return (1_000, 1_000, 1_000 + 1, Valid.Before(Spec.JovianTimeStamp)); // blobGasUsed should be below gasLimit post Jovian
+        yield return new TestCaseData(1_000, 1_000, 1_000 + 1, Valid.Before(Spec.JovianTimeStamp)).SetName("blobGasUsed > gasLimit post Jovian");
     }
 
     [TestCaseSource(nameof(GasLimitTestCases))]
-    public void ValidateGasLimit((long gasLimit, long gasUsed, long? blobGasUsed, Valid isValid) testCase)
+    public void ValidateGasLimit(int gasLimit, int gasUsed, int? blobGasUsed, Valid isValid)
     {
         (BlockHeader genesis, BlockHeader header) = BuildHeaders(b => b
-            .WithGasLimit(testCase.gasLimit)
-            .WithBlobGasUsed((ulong?)testCase.blobGasUsed)
-            .WithGasUsed(testCase.gasUsed)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed((ulong?)blobGasUsed)
+            .WithGasUsed(gasUsed)
         );
 
         var validator = new OptimismHeaderValidator(
@@ -152,6 +152,6 @@ public class OptimismHeaderValidatorTests(Fork fork)
             TestLogManager.Instance);
 
         string? error = null;
-        Assert.That(() => validator.Validate(header, genesis, false, out error), Is.EqualTo(testCase.isValid.On(_timestamp)), () => error!);
+        Assert.That(() => validator.Validate(header, genesis, false, out error), Is.EqualTo(isValid.On(_timestamp)), () => error!);
     }
 }
