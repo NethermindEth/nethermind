@@ -3,8 +3,8 @@
   "dataDir": "taiko-hoodi",
   "engine": {
     "Taiko": {
-      "ontakeTransition": "0xcd340",
-      "pacayaTransition": "0x13d5b0",
+      "ontakeTransition": "0x0",
+      "pacayaTransition": "0x0",
       "taikoL2Address": "0x1670130000000000000000000000000000010001"
     }
   },

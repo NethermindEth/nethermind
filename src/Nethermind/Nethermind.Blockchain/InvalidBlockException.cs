@@ -6,13 +6,11 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain;
 
-public class InvalidBlockException : BlockchainException
+public class InvalidBlockException(BlockHeader block, string message, Exception? innerException = null)
+    : BlockchainException(message, innerException)
 {
     public InvalidBlockException(Block block, string message, Exception? innerException = null)
-        : base(message, innerException) => InvalidBlock = block.Header;
+        : this(block.Header, message, innerException) { }
 
-    public InvalidBlockException(BlockHeader block, string message, Exception? innerException = null)
-        : base(message, innerException) => InvalidBlock = block;
-
-    public BlockHeader InvalidBlock { get; }
+    public BlockHeader InvalidBlock { get; } = block;
 }
