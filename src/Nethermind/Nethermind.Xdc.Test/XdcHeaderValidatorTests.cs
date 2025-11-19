@@ -16,7 +16,7 @@ using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Test;
-
+[Parallelizable(ParallelScope.All)]
 public class Tests
 {
     [Test]
@@ -63,6 +63,17 @@ public class Tests
         //Invalid uncles hash
         blockHeaderBuilder = CreateValidHeader();
         blockHeaderBuilder.WithUnclesHash(Hash256.FromBytesWithPadding([0x01]));
+        yield return [blockHeaderBuilder, false];
+
+        //Invalid difficulty
+        blockHeaderBuilder = CreateValidHeader();
+        blockHeaderBuilder.WithDifficulty(2);
+        yield return [blockHeaderBuilder, false];
+
+        //Invalid total difficulty
+        blockHeaderBuilder = CreateValidHeader();
+        blockHeaderBuilder.WithDifficulty(2);
+        blockHeaderBuilder.WithTotalDifficulty(1);
         yield return [blockHeaderBuilder, false];
 
         static XdcBlockHeaderBuilder CreateValidHeader()

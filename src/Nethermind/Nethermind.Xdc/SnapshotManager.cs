@@ -4,82 +4,78 @@
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-internal class SnapshotManager : ISnapshotManager
+internal class SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHandler penaltyHandler) : ISnapshotManager
 {
 
-    private LruCache<Hash256, Snapshot> _snapshotCache = new(128, 128, "XDC Snapshot cache");
-    private IDb _snapshotDb { get; }
-    private IPenaltyHandler _penaltyHandler { get; }
+    private readonly LruCache<Hash256, Snapshot> _snapshotCache = new(128, 128, "XDC Snapshot cache");
 
     private readonly SnapshotDecoder _snapshotDecoder = new();
 
-    public SnapshotManager(IDb snapshotDb, IPenaltyHandler penaltyHandler)
+    public Snapshot? GetSnapshotByGapNumber(ulong gapNumber)
     {
-        _snapshotDb = snapshotDb;
-        _penaltyHandler = penaltyHandler;
-    }
+        var gapBlockHeader = blockTree.FindHeader((long)gapNumber) as XdcBlockHeader;
 
-    public Snapshot? GetSnapshot(Hash256 hash)
-    {
-        Snapshot? snapshot = _snapshotCache.Get(hash);
+        if (gapBlockHeader is null)
+            return null;
+
+        Snapshot? snapshot = _snapshotCache.Get(gapBlockHeader.Hash);
         if (snapshot is not null)
         {
             return snapshot;
         }
 
-        Span<byte> key = hash.Bytes;
-        if (!_snapshotDb.KeyExists(key))
+        Span<byte> key = gapBlockHeader.Hash.Bytes;
+        if (!snapshotDb.KeyExists(key))
             return null;
-        Span<byte> value = _snapshotDb.Get(key);
+        Span<byte> value = snapshotDb.Get(key);
         if (value.IsEmpty)
             return null;
 
-        var decoded = _snapshotDecoder.Decode(value, RlpBehaviors.None);
+        var decoded = _snapshotDecoder.Decode(value);
         snapshot = decoded;
-        _snapshotCache.Set(hash, snapshot);
+        _snapshotCache.Set(gapBlockHeader.Hash, snapshot);
         return snapshot;
+    }
+
+    public Snapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec)
+    {
+        var gapBlockNum = Math.Max(0, blockNumber - blockNumber % spec.EpochLength - spec.Gap);
+        return GetSnapshotByGapNumber((ulong)gapBlockNum);
     }
 
     public void StoreSnapshot(Snapshot snapshot)
     {
         Span<byte> key = snapshot.HeaderHash.Bytes;
 
-        if (_snapshotDb.KeyExists(key))
+        if (snapshotDb.KeyExists(key))
             return;
 
-        var rlpEncodedSnapshot = _snapshotDecoder.Encode(snapshot, RlpBehaviors.None);
+        var rlpEncodedSnapshot = _snapshotDecoder.Encode(snapshot);
 
-        _snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
+        snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
     }
 
-    public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(XdcBlockHeader header, IXdcReleaseSpec spec)
+    public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec)
     {
         int maxMasternodes = spec.MaxMasternodes;
-        var previousSnapshot = GetSnapshot(header.Hash);
+        var previousSnapshot = GetSnapshotByBlockNumber(blockNumber, spec);
 
         if (previousSnapshot is null)
-            throw new InvalidOperationException($"No snapshot found for header {header.Number}:{header.Hash.ToShortString()}");
+            throw new InvalidOperationException($"No snapshot found for header #{blockNumber}");
 
         var candidates = previousSnapshot.NextEpochCandidates;
 
-        if (header.Number == spec.SwitchBlock + 1)
+        if (blockNumber == spec.SwitchBlock + 1)
         {
             if (candidates.Length > maxMasternodes)
             {
@@ -90,7 +86,7 @@ internal class SnapshotManager : ISnapshotManager
             return (candidates, []);
         }
 
-        var penalties = _penaltyHandler.HandlePenalties(header.Number, header.ParentHash, candidates);
+        Address[] penalties = penaltyHandler.HandlePenalties(blockNumber, parentHash, candidates);
 
         candidates = candidates
             .Except(penalties)        // remove penalties
