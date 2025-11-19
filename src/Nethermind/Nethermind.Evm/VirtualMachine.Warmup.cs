@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -195,5 +197,7 @@ public unsafe partial class VirtualMachine
                 ? (Eip2935Constants.RingBufferSize + number).ToString()
                 : number.ToString());
         }
+
+        public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => Task.CompletedTask;
     }
 }

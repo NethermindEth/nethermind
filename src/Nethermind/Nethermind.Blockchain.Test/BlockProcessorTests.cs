@@ -34,6 +34,7 @@ using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Evm;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test;
@@ -61,7 +62,7 @@ public class BlockProcessorTests
             HoodiSpecProvider.Instance,
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            Substitute.For<IBlockhashCache>(),
+            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -97,7 +98,7 @@ public class BlockProcessorTests
             HoodiSpecProvider.Instance,
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            Substitute.For<IBlockhashCache>(),
+            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;

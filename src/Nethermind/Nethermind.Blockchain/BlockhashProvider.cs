@@ -3,9 +3,9 @@
 
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -17,23 +17,20 @@ namespace Nethermind.Blockchain
 {
     public class BlockhashProvider(
         IBlockhashCache blockhashCache,
-        ISpecProvider specProvider,
         IWorldState worldState,
         ILogManager? logManager)
         : IBlockhashProvider
     {
         private const int MaxDepth = 256;
-        private readonly IBlockhashStore _blockhashStore = new BlockhashStore(specProvider, worldState);
+        private readonly IBlockhashStore _blockhashStore = new BlockhashStore(worldState);
         private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-
-        public Hash256? GetBlockhash(BlockHeader currentBlock, long number)
-            => GetBlockhash(currentBlock, number, specProvider.GetSpec(currentBlock));
+        private Hash256[]? _hashes;
 
         public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
         {
             if (spec.IsBlockHashInStateAvailable)
             {
-                return _blockhashStore.GetBlockHashFromState(currentBlock, number);
+                return _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
             }
 
             long current = currentBlock.Number;
@@ -44,8 +41,16 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            return blockhashCache.GetHash(currentBlock, (int)depth)
-                   ?? throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation");
+            return _hashes is not null
+                ? _hashes[depth]
+                : blockhashCache.GetHash(currentBlock, (int)depth)
+                  ?? throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation");
+        }
+
+        public async Task Prefetch(BlockHeader currentBlock, CancellationToken token)
+        {
+            _hashes = null;
+            _hashes = await blockhashCache.Prefetch(currentBlock, token);
         }
     }
 }

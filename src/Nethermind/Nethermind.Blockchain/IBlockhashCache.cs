@@ -11,5 +11,5 @@ namespace Nethermind.Blockchain;
 public interface IBlockhashCache
 {
     Hash256? GetHash(BlockHeader headBlock, int depth);
-    Task Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken);
+    Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken);
 }
