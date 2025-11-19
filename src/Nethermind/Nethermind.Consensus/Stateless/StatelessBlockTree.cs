@@ -7,7 +7,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -18,13 +17,8 @@ namespace Nethermind.Consensus.Stateless;
 /// <summary>
 /// This class is part of the StatelessExecution tool. It's intended to be used only inside the processing pipeline.
 /// </summary>
-public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers) : IBlockTree, IHeaderFinder
+public class StatelessBlockTree(Dictionary<Hash256, BlockHeader> hashToHeader, Dictionary<long, BlockHeader> numberToHeader) : IBlockTree
 {
-    private readonly Dictionary<Hash256, BlockHeader> _hashToHeader = headers.ToDictionary(header => header.Hash ?? throw new ArgumentNullException(), header => header);
-    private readonly Dictionary<long, BlockHeader> _numberToHeader = headers.ToDictionary(header => header.Number, header => header);
-
-    public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null) => _hashToHeader.GetValueOrDefault(blockHash);
-
     public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
         throw new NotSupportedException();
 
@@ -35,19 +29,19 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers) : IBlo
         throw new NotSupportedException();
 
     public BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
-         => _hashToHeader.GetValueOrDefault(blockHash);
+         => hashToHeader.GetValueOrDefault(blockHash);
 
     public BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options)
-        => _numberToHeader.GetValueOrDefault(blockNumber);
+        => numberToHeader.GetValueOrDefault(blockNumber);
 
     public Hash256? FindBlockHash(long blockNumber)
-        => _numberToHeader.GetValueOrDefault(blockNumber)?.Hash;
+        => numberToHeader.GetValueOrDefault(blockNumber)?.Hash;
 
     public bool IsMainChain(BlockHeader blockHeader)
-        => blockHeader.Hash is not null && _hashToHeader.ContainsKey(blockHeader.Hash);
+        => blockHeader.Hash is not null && hashToHeader.ContainsKey(blockHeader.Hash);
 
     public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true)
-        => _hashToHeader.ContainsKey(blockHash) ? true : throw new InvalidOperationException();
+        => hashToHeader.ContainsKey(blockHash) ? true : throw new InvalidOperationException();
 
     public BlockHeader FindBestSuggestedHeader()
         => throw new NotSupportedException();
