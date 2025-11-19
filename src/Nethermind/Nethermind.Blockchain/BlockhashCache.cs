@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -20,17 +21,21 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ConcurrentDictionary<Hash256AsKey, CacheNode> _blocks = new();
+    private readonly LruCache<Hash256AsKey, Hash256[]> _flatCache = new(32, nameof(BlockhashCache));
     public const int MaxDepth = 256;
     private long _minBlock = int.MaxValue;
     private Task _pruningTask = Task.CompletedTask;
 
-    public Hash256? GetHash(BlockHeader headBlock, int depth) =>
-        depth == 0 ? headBlock.Hash : Load(headBlock, depth)?.Hash;
+    public Hash256? GetHash(BlockHeader headBlock, int depth) => depth == 0
+        ? headBlock.Hash
+        : _flatCache.TryGet(headBlock.Hash!, out Hash256[] array)
+            ? array[depth]
+            : Load(headBlock, depth)?.Hash;
 
     private CacheNode? Load(BlockHeader blockHeader, int depth, CancellationToken cancellationToken = default)
     {
         if (depth > MaxDepth) return null;
-
+        bool alwaysAdd = depth == MaxDepth;
         using ArrayPoolListRef<(CacheNode Node, bool NeedToAdd)> blocks = new(depth + 1);
         Hash256 currentHash = blockHeader.Hash!;
         CacheNode currentNode = null;
@@ -55,7 +60,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                 }
             }
 
-            if (blocks.Count != 0 || needToAdd || currentNode.Parent is null)
+            if (alwaysAdd || blocks.Count != 0 || needToAdd || currentNode.Parent is null)
             {
                 blocks.Add((currentNode, needToAdd));
             }
@@ -91,6 +96,11 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             {
                 _blocks.TryAdd(parentNode.Node.Hash, parentNode.Node);
             }
+        }
+
+        if (alwaysAdd)
+        {
+            _flatCache.Set(blockHeader.Hash, blocks.Select(b => b.Node.Hash).ToArray());
         }
 
         int index = depth - skipped;
@@ -162,8 +172,12 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 
             if (kvp.Value.Number < blockNumber)
             {
-                _blocks.TryRemove(kvp.Key, out _);
-                removed++;
+                if (_blocks.TryRemove(kvp.Key, out CacheNode node))
+                {
+                    _flatCache.Delete(node.Hash);
+                    removed++;
+
+                }
             }
             else
             {
@@ -203,7 +217,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             nodes++;
         }
 
-        return new Stats(nodes, parents.Values.Count(p => p == 0));
+        return new Stats(nodes, parents.Values.Count(p => p == 0), _flatCache.Count);
     }
 
     /// <summary>
@@ -217,5 +231,5 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
         public CacheNode? Parent { get; set; } = parent;
     }
 
-    public record struct Stats(int Nodes, int Roots);
+    public record struct Stats(int Nodes, int Roots, int FlatCache);
 }
