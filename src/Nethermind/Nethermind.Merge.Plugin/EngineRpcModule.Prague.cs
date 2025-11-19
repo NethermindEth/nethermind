@@ -12,7 +12,7 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    readonly IAsyncHandler<byte[], GetPayloadV4Result?> _getPayloadHandlerV4;
+    readonly IAsyncHandler<byte[], GetPayloadV4Result?> _getPayloadHandlerV4 = getPayloadHandlerV4;
 
     /// <summary>
     /// Method parameter list is extended with <see cref="ExecutionRequets"/> parameter.

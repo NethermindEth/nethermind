@@ -19,14 +19,14 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    private readonly IAsyncHandler<byte[], ExecutionPayload?> _getPayloadHandlerV1;
-    private readonly IAsyncHandler<ExecutionPayload, PayloadStatusV1> _newPayloadV1Handler;
-    private readonly IForkchoiceUpdatedHandler _forkchoiceUpdatedV1Handler;
-    private readonly IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfigurationHandler;
-    private readonly IEngineRequestsTracker _engineRequestsTracker;
+    private readonly IAsyncHandler<byte[], ExecutionPayload?> _getPayloadHandlerV1 = getPayloadHandlerV1;
+    private readonly IAsyncHandler<ExecutionPayload, PayloadStatusV1> _newPayloadV1Handler = newPayloadV1Handler;
+    private readonly IForkchoiceUpdatedHandler _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
+    private readonly IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfigurationHandler = transitionConfigurationHandler;
+    private readonly IEngineRequestsTracker _engineRequestsTracker = engineRequestsTracker;
     private readonly SemaphoreSlim _locker = new(1, 1);
     private readonly TimeSpan _timeout = TimeSpan.FromSeconds(8);
-    private readonly GCKeeper _gcKeeper;
+    private readonly GCKeeper _gcKeeper = gcKeeper;
 
     public ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
         TransitionConfigurationV1 beaconTransitionConfiguration) => _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);

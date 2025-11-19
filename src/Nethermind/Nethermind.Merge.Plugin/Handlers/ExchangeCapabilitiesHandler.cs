@@ -4,12 +4,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumerable<string>>
+public class ExchangeCapabilitiesHandler : IHandler<ISet<string>, IEnumerable<string>>
 {
     private readonly ILogger _logger;
     private readonly IRpcCapabilitiesProvider _engineRpcCapabilitiesProvider;
@@ -22,7 +23,7 @@ public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumer
         _engineRpcCapabilitiesProvider = engineRpcCapabilitiesProvider;
     }
 
-    public ResultWrapper<IEnumerable<string>> Handle(IEnumerable<string> methods)
+    public ResultWrapper<IEnumerable<string>> Handle(ISet<string> methods)
     {
         IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
         CheckCapabilities(methods, capabilities);
@@ -30,29 +31,19 @@ public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumer
         return ResultWrapper<IEnumerable<string>>.Success(capabilities.Where(static x => x.Value.Enabled).Select(static x => x.Key));
     }
 
-    private void CheckCapabilities(IEnumerable<string> methods, IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities)
+    private void CheckCapabilities(ISet<string> methods, IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities)
     {
-        List<string> missing = new();
+        using ArrayPoolListRef<string?> missing = new(capabilities.Count);
 
         foreach (KeyValuePair<string, (bool Enabled, bool WarnIfMissing)> capability in capabilities)
         {
-            bool found = false;
-
-            foreach (string method in methods)
-                if (method.Equals(capability.Key, StringComparison.Ordinal))
-                {
-                    found = true;
-                    break;
-                }
-
-            // Warn if not found and capability activated
-            if (!found && capability.Value is { Enabled: true, WarnIfMissing: true })
+            if (!methods.Contains(capability.Key) && capability.Value is { Enabled: true, WarnIfMissing: true })
                 missing.Add(capability.Key);
         }
 
         if (missing.Count > 0)
         {
-            if (_logger.IsWarn) _logger.Warn($"Consensus client missing capabilities: {string.Join(", ", missing)}");
+            if (_logger.IsWarn) _logger.Warn($"Consensus client missing capabilities: {string.Join(", ", missing.AsSpan())}");
         }
     }
 }

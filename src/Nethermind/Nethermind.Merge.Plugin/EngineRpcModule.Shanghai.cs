@@ -14,9 +14,9 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    private readonly IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> _executionGetPayloadBodiesByHashV1Handler;
-    private readonly IGetPayloadBodiesByRangeV1Handler _executionGetPayloadBodiesByRangeV1Handler;
-    private readonly IAsyncHandler<byte[], GetPayloadV2Result?> _getPayloadHandlerV2;
+    private readonly IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> _executionGetPayloadBodiesByHashV1Handler = executionGetPayloadBodiesByHashV1Handler;
+    private readonly IGetPayloadBodiesByRangeV1Handler _executionGetPayloadBodiesByRangeV1Handler = executionGetPayloadBodiesByRangeV1Handler;
+    private readonly IAsyncHandler<byte[], GetPayloadV2Result?> _getPayloadHandlerV2 = getPayloadHandlerV2;
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Shanghai);
