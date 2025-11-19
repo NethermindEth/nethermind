@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -34,19 +35,21 @@ namespace Nethermind.Xdc.Test;
 internal class XdcContractTests
 {
     private ISpecProvider _specProvider;
-    private IEthereumEcdsa _ethereumEcdsa;
     private ITransactionProcessor _transactionProcessor;
-    private IWorldState _stateProvider;
+    private IWorldState _worldStateForContract;
+    private IWorldState _worldState;
 
     [SetUp]
-    public void Setup()
+    public async Task Setup()
     {
+        var dbProvider = await TestMemDbProvider.InitAsync();
+
         _specProvider = new TestSpecProvider(Shanghai.Instance);
-        _stateProvider = TestWorldStateFactory.CreateForTest();
-        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        _worldState = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, NullLogManager.Instance).GlobalWorldState;
+        _worldStateForContract = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, NullLogManager.Instance).GlobalWorldState;
+        EthereumCodeInfoRepository codeInfoRepository = new(_worldState);
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
-        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
+        _transactionProcessor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _worldState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
     }
 
     [Test]
@@ -55,23 +58,18 @@ internal class XdcContractTests
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
-        var scope = _stateProvider.BeginScope(IWorldState.PreGenesis);
-        _stateProvider.CreateAccount(sender.Address, 1.Ether());
         //Save caller in storage slot 0
+
+        var masterVoting = new MasternodeVotingContract(_worldState, new AbiEncoder(), codeSource, new AutoReadOnlyTxProcessingEnv(_transactionProcessor, _worldState, Substitute.For<ILifetimeScope>()));
+
+        var scope = _worldState.BeginScope(IWorldState.PreGenesis);
+        _worldState.CreateAccount(sender.Address, 1.Ether());
         byte[] code = XdcContractData.XDCValidatorBin();
-
-        DeployCode(codeSource, code);
-        scope.Dispose();
-
-        var masterVoting = new MasternodeVotingContract(_stateProvider, new AbiEncoder(), codeSource, new AutoReadOnlyTxProcessingEnv(_transactionProcessor, _stateProvider, Substitute.For<ILifetimeScope>()));
+        _worldState.CreateAccountIfNotExists(codeSource, 0);
+        _worldState.InsertCode(codeSource, ValueKeccak.Compute(code), code, Shanghai.Instance);
+        _worldState.Commit (Shanghai.Instance, true);
 
         var header = Build.A.BlockHeader.TestObject;
         var candidates = masterVoting.GetCandidates(header);
-    }
-
-    private void DeployCode(Address codeSource, byte[] code)
-    {
-        _stateProvider.CreateAccountIfNotExists(codeSource, 0);
-        _stateProvider.InsertCode(codeSource, ValueKeccak.Compute(code), code, Shanghai.Instance);
     }
 }

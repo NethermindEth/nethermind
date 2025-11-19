@@ -4,6 +4,7 @@
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -32,9 +33,8 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 
     private static AbiDefinition CreateAbiDefinition()
     {
-        var abiDefinition = new AbiDefinition();
-
-        return abiDefinition;
+        var abiDefinitionParser = new AbiDefinitionParser();
+        return abiDefinitionParser.Parse(typeof(MasternodeVotingContract));
     }
 
     public UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate)
