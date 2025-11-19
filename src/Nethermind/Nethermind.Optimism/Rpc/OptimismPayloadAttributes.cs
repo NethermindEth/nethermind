@@ -127,14 +127,16 @@ public class OptimismPayloadAttributes : PayloadAttributes
                 error = decodeError;
                 return PayloadAttributesValidationResult.InvalidPayloadAttributes;
             }
-            if (!releaseSpec.IsOpJovianEnabled && parameters.Version != 0)
+
+            (int version, string reason) versionCheck = parameters switch
             {
-                error = $"{nameof(EIP1559Params)} version should be 0 before Jovian";
-                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
-            }
-            if (releaseSpec.IsOpJovianEnabled && parameters.Version != 1)
+                // Newer forks should be added on top
+                _ when releaseSpec.IsOpJovianEnabled => (1, "since Jovian"),
+                _ => (0, "before Jovian")
+            };
+            if (versionCheck.version != parameters.Version)
             {
-                error = $"{nameof(EIP1559Params)} version should be 1 post Jovian";
+                error = $"{nameof(EIP1559Params)} version should be {versionCheck.version} {versionCheck.reason}";
                 return PayloadAttributesValidationResult.InvalidPayloadAttributes;
             }
         }
