@@ -46,4 +46,6 @@ done
 echo -e "\n  Unexpected passes: ${#should_not_pass[@]}"
 echo "  Unexpected fails: ${#should_pass[@]}"
 
-(( ${#should_pass[@]} + ${#should_not_pass[@]} > 0 )) && exit 1 || exit 0
+[[ ${#should_pass[@]} -gt 0 || ${#should_not_pass[@]} -gt 0 ]] && exit 1
+
+exit 0
