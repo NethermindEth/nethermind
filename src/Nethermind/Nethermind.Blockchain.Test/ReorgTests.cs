@@ -90,7 +90,7 @@ public class ReorgTests
             LimboLogs.Instance,
             transactionComparerProvider.GetDefaultComparer());
         BlockhashCache blockhashCache = new(blockTreeBuilder.HeaderStore, LimboLogs.Instance);
-        BlockhashProvider blockhashProvider = new(blockhashCache, specProvider, stateProvider, LimboLogs.Instance);
+        BlockhashProvider blockhashProvider = new(blockhashCache, stateProvider, LimboLogs.Instance);
         VirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
@@ -111,7 +111,7 @@ public class ReorgTests
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            new BlockhashStore(MainnetSpecProvider.Instance, stateProvider),
+            new BlockhashStore(stateProvider),
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor));

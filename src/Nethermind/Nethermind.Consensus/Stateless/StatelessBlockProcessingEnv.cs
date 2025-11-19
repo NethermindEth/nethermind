@@ -73,7 +73,7 @@ public class StatelessBlockProcessingEnv(
             WorldState,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(txProcessor, WorldState),
-            new BlockhashStore(specProvider, WorldState),
+            new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
             new ExecutionRequestsProcessor(txProcessor)
@@ -83,7 +83,7 @@ public class StatelessBlockProcessingEnv(
 
     private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IHeaderFinder headerFinder)
     {
-        BlockhashProvider blockhashProvider = new(new BlockhashCache(headerFinder, logManager), specProvider, state, logManager);
+        BlockhashProvider blockhashProvider = new(new BlockhashCache(headerFinder, logManager), state, logManager);
         VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
         return new TransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
     }

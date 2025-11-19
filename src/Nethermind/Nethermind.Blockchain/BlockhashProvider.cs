@@ -17,24 +17,20 @@ namespace Nethermind.Blockchain
 {
     public class BlockhashProvider(
         IBlockhashCache blockhashCache,
-        ISpecProvider specProvider,
         IWorldState worldState,
         ILogManager? logManager)
         : IBlockhashProvider
     {
         private const int MaxDepth = 256;
-        private readonly IBlockhashStore _blockhashStore = new BlockhashStore(specProvider, worldState);
+        private readonly IBlockhashStore _blockhashStore = new BlockhashStore(worldState);
         private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         private Hash256[]? _hashes;
-
-        public Hash256? GetBlockhash(BlockHeader currentBlock, long number)
-            => GetBlockhash(currentBlock, number, specProvider.GetSpec(currentBlock));
 
         public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
         {
             if (spec.IsBlockHashInStateAvailable)
             {
-                return _blockhashStore.GetBlockHashFromState(currentBlock, number);
+                return _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
             }
 
             long current = currentBlock.Number;

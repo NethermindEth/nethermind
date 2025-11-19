@@ -23,12 +23,4 @@ public sealed class SimulateBlockhashProvider(IBlockhashProvider blockhashProvid
     }
 
     public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => blockhashProvider.Prefetch(currentBlock, token);
-
-    public Hash256? GetBlockhash(BlockHeader currentBlock, long number)
-    {
-        long bestKnown = blockTree.BestKnownNumber;
-        return bestKnown < number && blockTree.BestSuggestedHeader is not null
-            ? blockhashProvider.GetBlockhash(blockTree.BestSuggestedHeader!, bestKnown)
-            : blockhashProvider.GetBlockhash(currentBlock, number);
-    }
 }
