@@ -43,7 +43,7 @@ namespace Nethermind.TxPool
 
         [CounterMetric]
         [Description("Number of pending transactions received that were ignored because of fee per blob gas lower than minimal requirement.")]
-        public static long PendingTransactionsTooFeePerBlobGas { get; set; }
+        public static long PendingTransactionsTooLowFeePerBlobGas { get; set; }
 
         [CounterMetric]
         [Description("Number of pending transactions received that were ignored because of fee lower than the lowest fee in transaction pool.")]

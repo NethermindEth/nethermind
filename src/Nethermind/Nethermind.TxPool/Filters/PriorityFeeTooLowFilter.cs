@@ -48,7 +48,7 @@ public class PriorityFeeTooLowFilter : IIncomingTxFilter
         UInt256.Divide(minFeePerBlobGas, 100, out minFeePerBlobGas);
         if (!overflow && tx.MaxFeePerBlobGas < minFeePerBlobGas)
         {
-            Metrics.PendingTransactionsTooFeePerBlobGas++;
+            Metrics.PendingTransactionsTooLowFeePerBlobGas++;
             if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low blob fee per gas with options {handlingOptions} from {new StackTrace()}");
             return AcceptTxResult.FeeTooLow.WithMessage($"MaxFeePerBlobGas needs to be at least {_minBlobBaseFeePercent} percent of CurrentFeePerBlobGas ({_chainHeadInfoProvider.CurrentFeePerBlobGas}), is {tx.MaxFeePerBlobGas}.");
         }

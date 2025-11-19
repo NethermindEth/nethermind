@@ -1081,7 +1081,7 @@ Discarded at Filter Stage:
 2.  Tx Too Large:       {Metrics.PendingTransactionsSizeTooLarge,24:N0}
 3.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,24:N0}
 4.  TooLow PriorityFee: {Metrics.PendingTransactionsTooLowPriorityFee,24:N0}
-5.  TooLow FeePerBlobGa:{Metrics.PendingTransactionsTooFeePerBlobGas,24:N0}
+5.  TooLow FeePerBlobGa:{Metrics.PendingTransactionsTooLowFeePerBlobGas,24:N0}
 6.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,24:N0}
 7.  Malformed:          {Metrics.PendingTransactionsMalformed,24:N0}
 8.  Null Hash:          {Metrics.PendingTransactionsNullHash,24:N0}
