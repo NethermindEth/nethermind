@@ -16,7 +16,7 @@ using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Test;
-
+[Parallelizable(ParallelScope.All)]
 public class Tests
 {
     [Test]

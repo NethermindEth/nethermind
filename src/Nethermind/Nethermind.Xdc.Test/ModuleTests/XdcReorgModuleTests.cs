@@ -2,18 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
-using Nethermind.Consensus;
 using Nethermind.Xdc.Test.Helpers;
-using Nethermind.Xdc.Types;
 using NUnit.Framework;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
+[Parallelizable(ParallelScope.All)]
 internal class XdcReorgModuleTests
 {
     [Test]

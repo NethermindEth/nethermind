@@ -71,7 +71,7 @@ public class ValidateSubmissionHandler
             return FlashbotsResult.Invalid("Parent beacon block root must be set in the request");
         }
 
-        payload.ParentBeaconBlockRoot = new Hash256(request.ParentBeaconBlockRoot);
+        payload.ParentBeaconBlockRoot = request.ParentBeaconBlockRoot;
 
         BlobsBundleV1 blobsBundle = request.BlobsBundle;
 
