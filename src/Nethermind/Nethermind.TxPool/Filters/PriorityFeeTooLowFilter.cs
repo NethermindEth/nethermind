@@ -1,27 +1,19 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters;
 
-public class PriorityFeeTooLowFilter : IIncomingTxFilter
+public class PriorityFeeTooLowFilter(IChainHeadInfoProvider chainHeadInfoProvider, ITxPoolConfig txPoolConfig, ILogger logger) : IIncomingTxFilter
 {
-    private readonly ILogger _logger;
-    private readonly IChainHeadInfoProvider _chainHeadInfoProvider;
-    private static readonly UInt256 _minBlobsPriorityFee = 1.GWei();
-    private static int _minBlobBaseFeePercent;
-
-    public PriorityFeeTooLowFilter(IChainHeadInfoProvider chainHeadInfoProvider, ITxPoolConfig txPoolConfig, ILogger logger)
-    {
-        _chainHeadInfoProvider = chainHeadInfoProvider;
-        _logger = logger;
-        _minBlobBaseFeePercent = txPoolConfig.MinFeePerBlobGasPercentRequirement;
-    }
+    private readonly ILogger _logger = logger;
+    private readonly IChainHeadInfoProvider _chainHeadInfoProvider = chainHeadInfoProvider;
+    private readonly UInt256 _minBlobsPriorityFee = txPoolConfig.MinBlobTxPriorityFee;
+    private static int _minBlobBaseFeePercent = txPoolConfig.MinFeePerBlobGasPercentRequirement;
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
     {
