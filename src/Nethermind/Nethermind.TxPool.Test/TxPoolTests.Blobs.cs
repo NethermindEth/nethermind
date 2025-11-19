@@ -242,8 +242,8 @@ namespace Nethermind.TxPool.Test
             blobTxFromDb.Should().BeNull();
         }
 
-        [TestCase(1, null, false)]
-        [TestCase(999_999_999, null, false)]
+        [TestCase(1, null, true)]
+        [TestCase(999_999_999, null, true)]
         [TestCase(1_000_000_000, null, true)]
         [TestCase(1_000_000_001, null, true)]
         [TestCase(1, 0ul, true)]
