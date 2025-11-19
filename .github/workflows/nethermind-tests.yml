@@ -105,7 +105,7 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         run: >
           dotnet test --project ${{ matrix.project }}.csproj -c release
-            --retry-failed-tests --retry-failed-tests-max-percentage 25
+            --retry-failed-tests 5 --retry-failed-tests-max-percentage 25
             ${{ env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}
 
       - name: Save test outcome
