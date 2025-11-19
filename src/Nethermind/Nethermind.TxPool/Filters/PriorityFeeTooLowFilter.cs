@@ -20,7 +20,7 @@ public class PriorityFeeTooLowFilter : IIncomingTxFilter
     {
         _chainHeadInfoProvider = chainHeadInfoProvider;
         _logger = logger;
-        _minBlobBaseFeePercent = txPoolConfig.MinBlobBaseFeePercentRequirement;
+        _minBlobBaseFeePercent = txPoolConfig.MinFeePerBlobGasPercentRequirement;
     }
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
