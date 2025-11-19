@@ -24,10 +24,17 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
         IAbiEncoder abiEncoder,
         Address contractAddress,
         IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-        : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), new AbiDefinition())
+        : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), CreateAbiDefinition())
     {
         _constant = GetConstant(readOnlyTxProcessorSource);
         _worldState = worldState;
+    }
+
+    private static AbiDefinition CreateAbiDefinition()
+    {
+        var abiDefinition = new AbiDefinition();
+
+        return abiDefinition;
     }
 
     public UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate)
