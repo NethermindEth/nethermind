@@ -27,6 +27,6 @@ public class TxPoolConfig : ITxPoolConfig
     public int? ReportMinutes { get; set; } = null;
     public bool AcceptTxWhenNotSynced { get; set; } = false;
     public bool PersistentBroadcastEnabled { get; set; } = true;
-    public int MinFeePerBlobGasPercentRequirement { get; set; } = 50;
+    public bool MaxFeePerBlobGasRequirementEnabled { get; set; } = true;
     public UInt256 MinBlobTxPriorityFee { get; set; } = 0;
 }
