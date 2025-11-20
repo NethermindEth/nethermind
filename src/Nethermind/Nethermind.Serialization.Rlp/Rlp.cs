@@ -49,6 +49,14 @@ namespace Nethermind.Serialization.Rlp
         internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
 
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
+        private static readonly (Type KeyType, IRlpDecoder Decoder, string? AttrKey)[] _nativeAotDecoders =
+        {
+            (typeof(BlockHeader), new HeaderDecoder(), null),
+            (typeof(Block),       new BlockDecoder(),  null),
+            (typeof(Transaction), TxDecoder.Instance, null),
+            /* (typeof(Transaction), new TxDecoder(null), null), */
+        };
+
         static Rlp()
         {
             RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
@@ -96,14 +104,14 @@ namespace Nethermind.Serialization.Rlp
 
         private static FrozenDictionary<RlpDecoderKey, IRlpDecoder> CreateDecoders()
         {
-            using Lock.Scope _ = _decoderLock.EnterScope();
+            //using Lock.Scope _ = _decoderLock.EnterScope();
             // Recreate, if not already recreated
             return _decoders ??= _decoderBuilder.ToFrozenDictionary();
         }
 
         public static void ResetDecoders()
         {
-            using Lock.Scope _ = _decoderLock.EnterScope();
+            //using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder.Clear();
             _decoders = null;
             RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
@@ -112,7 +120,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static void RegisterDecoder(RlpDecoderKey key, IRlpDecoder decoder)
         {
-            using Lock.Scope _ = _decoderLock.EnterScope();
+            //using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder[key] = decoder;
             // Mark FrozenDictionary as null to force re-creation
             _decoders = null;
@@ -120,6 +128,24 @@ namespace Nethermind.Serialization.Rlp
 
         public static void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false)
         {
+            foreach (var (keyType, decoder, attrKey) in _nativeAotDecoders)
+            {
+                var key = attrKey is null
+                    ? new RlpDecoderKey(keyType)
+                    : new RlpDecoderKey(keyType, attrKey);
+
+                if (!_decoderBuilder.TryGetValue(key, out var existing) || canOverrideExistingDecoders)
+                {
+                    _decoderBuilder[key] = decoder;
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"Unable to override decoder for {key}, because the following decoder is already set: {existing}.");
+                }
+            }
+
+#if false
             foreach (Type? type in assembly.GetExportedTypes())
             {
                 if (!type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
@@ -179,6 +205,7 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
+#endif
             // Mark FrozenDictionary as null to force re-creation
             _decoders = null;
         }
