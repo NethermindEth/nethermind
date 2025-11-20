@@ -806,7 +806,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 VERSION_OFFSET // magic + version
                 + Eof1.MINIMUM_HEADER_SECTION_SIZE // type section : (1 byte of separator + 2 bytes for size)
                 + ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
-                + (ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.ContainerSections?.Count ?? 0) // container section :  (0 bytes if no container section is available) ?? container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
+                + (ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.ContainerSections?.Count ?? 0) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size) ?? (0 bytes if no container section is available)
                 + ONE_BYTE_LENGTH; // data section separator
 
             ushort dataSize = (ushort)(deployCodeInfo.DataSection.Length + auxExtraData.Length);
