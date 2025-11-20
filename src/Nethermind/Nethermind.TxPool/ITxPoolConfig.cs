@@ -52,8 +52,8 @@ public interface ITxPoolConfig : IConfig
         Description = "The max blob transaction size allowed, excluding blobs, in bytes.")]
     long? MaxBlobTxSize { get; set; }
 
-    [ConfigItem(DefaultValue = "true", Description = "Whether to require the max fee per blob to be greater than or equal to the blob base fee when adding a blob transaction to the pool.")]
-    bool MaxFeePerBlobGasRequirementEnabled { get; set; }
+    [ConfigItem(DefaultValue = "true", Description = "Whether to require the max fee per blob gas to be greater than or equal to the current blob base fee when adding a blob transaction to the pool.")]
+    bool MinBlobBaseFeeRequired { get; set; }
 
     [ConfigItem(DefaultValue = "false",
         Description = "Enable transformation of blob txs with network wrapper in version 0x0 (blob proof) to version 0x1 (cell proofs)",

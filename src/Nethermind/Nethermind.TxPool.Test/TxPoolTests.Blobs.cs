@@ -283,7 +283,7 @@ namespace Nethermind.TxPool.Test
             {
                 BlobsSupport = BlobsSupportMode.InMemory,
                 Size = 10,
-                MaxFeePerBlobGasRequirementEnabled = isRequirementEnabled
+                MinBlobBaseFeeRequired = isRequirementEnabled
             };
 
             UInt256 currentFeePerBlobGas = 100;
@@ -437,7 +437,7 @@ namespace Nethermind.TxPool.Test
             {
                 BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
                 Size = 10,
-                MaxFeePerBlobGasRequirementEnabled = false
+                MinBlobBaseFeeRequired = false
             };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);

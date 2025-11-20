@@ -11,7 +11,7 @@ namespace Nethermind.TxPool.Filters;
 public class PriorityFeeTooLowFilter(IChainHeadInfoProvider chainHeadInfoProvider, ITxPoolConfig txPoolConfig, ILogger logger) : IIncomingTxFilter
 {
     private readonly UInt256 _minBlobsPriorityFee = txPoolConfig.MinBlobTxPriorityFee;
-    private readonly bool _maxFeePerBlobGasRequirementEnabled = txPoolConfig.MaxFeePerBlobGasRequirementEnabled;
+    private readonly bool _minBlobBaseFeeRequired = txPoolConfig.MinBlobBaseFeeRequired;
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
     {
@@ -27,7 +27,7 @@ public class PriorityFeeTooLowFilter(IChainHeadInfoProvider chainHeadInfoProvide
             return AcceptTxResult.FeeTooLow.WithMessage($"MaxPriorityFeePerGas for blob transaction needs to be at least {_minBlobsPriorityFee} (1 GWei), is {tx.MaxPriorityFeePerGas}.");
         }
 
-        if (_maxFeePerBlobGasRequirementEnabled && tx.MaxFeePerBlobGas < chainHeadInfoProvider.CurrentFeePerBlobGas)
+        if (_minBlobBaseFeeRequired && tx.MaxFeePerBlobGas < chainHeadInfoProvider.CurrentFeePerBlobGas)
         {
             Metrics.PendingTransactionsTooLowFeePerBlobGas++;
             if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low blob fee per gas with options {handlingOptions} from {new StackTrace()}");
