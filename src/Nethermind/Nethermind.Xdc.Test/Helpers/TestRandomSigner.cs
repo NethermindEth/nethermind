@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test.Helpers;
+
 internal class TestRandomSigner(List<PrivateKey> masternodeCandidates) : ISigner
 {
     private readonly Random _rnd = new Random();

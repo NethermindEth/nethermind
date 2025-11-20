@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using ISigner = Nethermind.Consensus.ISigner;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
+
 internal class HeaderVerificationTests
 {
     private XdcTestBlockchain xdcTestBlockchain;

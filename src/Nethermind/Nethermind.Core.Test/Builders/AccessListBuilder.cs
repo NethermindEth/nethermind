@@ -5,6 +5,7 @@ using System.Linq;
 using Nethermind.Core.Eip2930;
 
 namespace Nethermind.Core.Test.Builders;
+
 public class TestAccessListBuilder : BuilderBase<AccessList>
 {
     public TestAccessListBuilder()

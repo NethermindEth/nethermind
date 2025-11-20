@@ -11,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.IO;
 
 namespace Nethermind.Era1.Test;
+
 internal class EraWriterTests
 {
     [Test]

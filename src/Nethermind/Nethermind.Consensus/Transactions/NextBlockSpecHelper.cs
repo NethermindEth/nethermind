@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Transactions;
+
 internal static class NextBlockSpecHelper
 {
     public static IReleaseSpec GetSpec(ISpecProvider specProvider, BlockHeader parentHeader,

@@ -7,6 +7,7 @@ using System;
 using System.Threading;
 
 namespace Nethermind.Xdc;
+
 public class XdcConsensusContext : IXdcConsensusContext
 {
     private ulong _currentRound;
