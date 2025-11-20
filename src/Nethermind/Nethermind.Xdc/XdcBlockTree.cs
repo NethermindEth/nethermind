@@ -12,9 +12,9 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
-using System;
 
 namespace Nethermind.Xdc;
+
 internal class XdcBlockTree : BlockTree
 {
     private const int MaxSearchDepth = 1024;

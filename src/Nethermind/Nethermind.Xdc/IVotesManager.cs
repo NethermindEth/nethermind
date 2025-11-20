@@ -6,6 +6,7 @@ using Nethermind.Xdc.Types;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 public interface IVotesManager
 {
     Task CastVote(BlockRoundInfo blockInfo);

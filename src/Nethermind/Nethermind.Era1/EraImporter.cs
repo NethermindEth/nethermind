@@ -18,6 +18,7 @@ using Nethermind.Logging;
 
 
 namespace Nethermind.Era1;
+
 public class EraImporter(
     IFileSystem fileSystem,
     IBlockTree blockTree,

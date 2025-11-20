@@ -1,31 +1,20 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Consensus.Validators;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
+using System.Threading.Tasks;
 
-namespace Nethermind.Xdc.Test.ModuleTest;
+namespace Nethermind.Xdc.Test;
+
+[Parallelizable(ParallelScope.All)]
 internal class BlockInfoTests
 {
-    private XdcTestBlockchain xdcTestBlockchain;
-
-    [SetUp]
-    public async Task Setup()
-    {
-        xdcTestBlockchain = await XdcTestBlockchain.Create();
-    }
-
     [Test]
-    public void VerifyGenesisV2Block()
+    public async Task VerifyGenesisV2Block()
     {
+        XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
         XdcBlockHeader genesisBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(xdcTestBlockchain.BlockTree.Genesis!.Number + 1)!;
 
         BlockRoundInfo blockInfo = new BlockRoundInfo(genesisBlock.Hash!, 1, genesisBlock.Number);
@@ -36,8 +25,9 @@ internal class BlockInfoTests
     }
 
     [Test]
-    public void RoundMismatch_Fails()
+    public async Task RoundMismatch_Fails()
     {
+        XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
         XdcBlockHeader headBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header!;
 
         BlockRoundInfo blockInfo = new BlockRoundInfo(headBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound - 1, headBlock.Number);
@@ -49,8 +39,9 @@ internal class BlockInfoTests
 
 
     [Test]
-    public void HashMismatch_Fails()
+    public async Task HashMismatch_Fails()
     {
+        XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
         XdcBlockHeader headBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header!;
         XdcBlockHeader parentBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(headBlock.ParentHash!)!;
 
@@ -63,8 +54,9 @@ internal class BlockInfoTests
 
 
     [Test]
-    public void NumberMismatch_Fails()
+    public async Task NumberMismatch_Fails()
     {
+        XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
         XdcBlockHeader headBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header!;
         XdcBlockHeader parentBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(headBlock.ParentHash!)!;
 
@@ -77,8 +69,9 @@ internal class BlockInfoTests
 
 
     [Test]
-    public void NoMismatch_Pass()
+    public async Task NoMismatch_Pass()
     {
+        XdcTestBlockchain xdcTestBlockchain = await XdcTestBlockchain.Create();
         XdcBlockHeader headBlock = (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header!;
 
         BlockRoundInfo blockInfo = new BlockRoundInfo(headBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound, headBlock.Number);
