@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Logging;
 
 namespace Nethermind.Network.Dns;
@@ -13,7 +14,7 @@ public class EnrTreeCrawler
     {
         _logger = logger;
     }
-    public IAsyncEnumerable<string> SearchTree(string domain)
+    public IAsyncEnumerable<string> SearchTree(string domain, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (domain.StartsWith("enrtree://", StringComparison.OrdinalIgnoreCase))
         {
@@ -33,33 +34,34 @@ public class EnrTreeCrawler
         }
         DnsClient client = new(domain);
         SearchContext searchContext = new(string.Empty);
-        return SearchTree(client, searchContext);
+        return SearchTree(client, searchContext, cancellationToken);
     }
 
-    private async IAsyncEnumerable<string> SearchTree(DnsClient client, SearchContext searchContext)
+    private async IAsyncEnumerable<string> SearchTree(DnsClient client, SearchContext searchContext, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         while (searchContext.RefsToVisit.Count > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string reference = searchContext.RefsToVisit.Dequeue();
-            await foreach (string nodeRecordText in SearchNode(client, reference, searchContext))
+            await foreach (string nodeRecordText in SearchNode(client, reference, searchContext, cancellationToken).WithCancellation(cancellationToken))
             {
                 yield return nodeRecordText;
             }
         }
     }
 
-    private async IAsyncEnumerable<string> SearchNode(IDnsClient client, string query, SearchContext searchContext)
+    private async IAsyncEnumerable<string> SearchNode(IDnsClient client, string query, SearchContext searchContext, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (searchContext.VisitedRefs.Add(query))
         {
-            IEnumerable<string> lookupResult = await client.Lookup(query);
+            IEnumerable<string> lookupResult = await client.Lookup(query, cancellationToken);
             foreach (string node in lookupResult)
             {
                 EnrTreeNode treeNode = EnrTreeParser.ParseNode(node);
                 foreach (string link in treeNode.Links)
                 {
                     DnsClient linkedTreeLookup = new(link);
-                    await foreach (string nodeRecordText in SearchTree(linkedTreeLookup, searchContext))
+                    await foreach (string nodeRecordText in SearchTree(linkedTreeLookup, searchContext, cancellationToken).WithCancellation(cancellationToken))
                     {
                         yield return nodeRecordText;
                     }
