@@ -168,7 +168,7 @@ build-zisk-sim:
     				-r /nethermind/System.Security.Cryptography.Xml.dll \
     				-r /nethermind/TestableIO.System.IO.Abstractions.Wrappers.dll \
     				-r /nethermind/Testably.Abstractions.FileSystem.Interface.dll \
-    				--stdlib dotnet -O0 ./Program.cs
+    				--stdlib dotnet ./Program.cs
 
 build-riscv:
 		docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk-test bflat build --arch riscv64 --os linux --no-debug-info -x --no-pthread --no-pie --libc musl \
