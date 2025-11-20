@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Db;
 
 namespace Nethermind.Xdc;
+
 internal class XdcBlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : BlockStore(blockDb, new XdcHeaderDecoder())
 {
 }

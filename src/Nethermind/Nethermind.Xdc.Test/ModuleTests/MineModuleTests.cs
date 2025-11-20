@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
+
 [Parallelizable(ParallelScope.All)]
 internal class MineModuleTests
 {

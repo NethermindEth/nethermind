@@ -9,6 +9,7 @@ using NUnit.Framework;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
+
 internal class XdcTestBlockchainTests
 {
     private XdcTestBlockchain _blockchain;

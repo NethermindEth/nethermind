@@ -14,6 +14,7 @@ using System;
 using System.Linq;
 
 namespace Nethermind.Xdc;
+
 internal class SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHandler penaltyHandler) : ISnapshotManager
 {
 

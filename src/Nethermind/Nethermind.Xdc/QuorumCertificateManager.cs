@@ -16,6 +16,7 @@ using System.Linq;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 internal class QuorumCertificateManager : IQuorumCertificateManager
 {
     public QuorumCertificateManager(
