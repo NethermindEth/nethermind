@@ -279,8 +279,12 @@ namespace Nethermind.TxPool.Test
             ISpecProvider specProvider = GetCancunSpecProvider();
             ChainHeadInfoProvider chainHeadInfoProvider = new(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, _stateProvider);
 
-            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, Size = 10 };
-            txPoolConfig.MaxFeePerBlobGasRequirementEnabled = isRequirementEnabled;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.InMemory,
+                Size = 10,
+                MaxFeePerBlobGasRequirementEnabled = isRequirementEnabled
+            };
 
             UInt256 currentFeePerBlobGas = 100;
             chainHeadInfoProvider.CurrentFeePerBlobGas = currentFeePerBlobGas;
@@ -432,7 +436,8 @@ namespace Nethermind.TxPool.Test
             TxPoolConfig txPoolConfig = new()
             {
                 BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
-                Size = 10
+                Size = 10,
+                MaxFeePerBlobGasRequirementEnabled = false
             };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
