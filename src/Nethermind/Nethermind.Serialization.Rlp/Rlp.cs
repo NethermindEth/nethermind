@@ -49,13 +49,6 @@ namespace Nethermind.Serialization.Rlp
         internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
 
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
-        private static readonly (Type KeyType, IRlpDecoder Decoder, string? AttrKey)[] _nativeAotDecoders =
-        {
-            (typeof(BlockHeader), new HeaderDecoder(), null),
-            (typeof(Block),       new BlockDecoder(),  null),
-            (typeof(Transaction), TxDecoder.Instance, null),
-            /* (typeof(Transaction), new TxDecoder(null), null), */
-        };
 
         static Rlp()
         {
@@ -126,6 +119,14 @@ namespace Nethermind.Serialization.Rlp
             _decoders = null;
         }
 
+        private static readonly (Type KeyType, IRlpDecoder Decoder, string? AttrKey)[] _nativeAotDecoders =
+        {
+            (typeof(BlockHeader), new HeaderDecoder(), null),
+            (typeof(Block),       new BlockDecoder(),  null),
+            (typeof(Transaction), TxDecoder.Instance, null),
+            /* (typeof(Transaction), new TxDecoder(null), null), */
+        };
+
         public static void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false)
         {
             foreach (var (keyType, decoder, attrKey) in _nativeAotDecoders)
@@ -187,7 +188,7 @@ namespace Nethermind.Serialization.Rlp
 
                         void AddEncoder(RlpDecoderKey key)
                         {
-                            using Lock.Scope _ = _decoderLock.EnterScope();
+                            //using Lock.Scope _ = _decoderLock.EnterScope();
                             if (!_decoderBuilder.TryGetValue(key, out IRlpDecoder? value) || canOverrideExistingDecoders)
                             {
 
