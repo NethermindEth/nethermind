@@ -173,16 +173,16 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas))) return result;
 
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, in header.BaseFeePerGas);
-            UInt256 overridableEffectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas);
+            UInt256 virtualEffectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas);
 
             VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice));
 
-            UpdateMetrics(opts, overridableEffectiveGasPrice);
+            UpdateMetrics(opts, virtualEffectiveGasPrice);
 
-            bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, overridableEffectiveGasPrice);
+            bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, virtualEffectiveGasPrice);
 
             if (!(result = ValidateSender(tx, header, spec, tracer, opts))) return result;
-            if (!(result = BuyGas(tx, spec, tracer, opts, overridableEffectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee))) return result;
+            if (!(result = BuyGas(tx, spec, tracer, opts, virtualEffectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee))) return result;
             if (!(result = IncrementNonce(tx, header, spec, tracer, opts))) return result;
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
