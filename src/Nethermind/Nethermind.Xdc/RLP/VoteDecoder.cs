@@ -70,7 +70,12 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         _xdcBlockInfoDecoder.Encode(stream, item.ProposedBlockInfo, rlpBehaviors);
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
-            stream.Encode(item.Signature.BytesWithRecovery);
+        {
+            stream.StartByteArray(65, false);
+            stream.Write(item.Signature.RAsSpan);
+            stream.Write(item.Signature.SAsSpan);
+            stream.WriteByte(item.Signature.RecoveryId);
+        }
         stream.Encode(item.GapNumber);
     }
 
