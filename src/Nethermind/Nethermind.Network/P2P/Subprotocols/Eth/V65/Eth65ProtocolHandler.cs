@@ -176,7 +176,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        protected virtual void RequestPooledTransactions<TMessage>(IOwnedReadOnlyList<Hash256> hashes)
+        protected void RequestPooledTransactions<TMessage>(IOwnedReadOnlyList<Hash256> hashes)
             where TMessage : P2PMessage, INew<IOwnedReadOnlyList<Hash256>, TMessage>
         {
             AddNotifiedTransactions(hashes);
