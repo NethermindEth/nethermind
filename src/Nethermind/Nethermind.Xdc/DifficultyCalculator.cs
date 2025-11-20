@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Nethermind.Xdc;
+
 internal class DifficultyCalculator : IDifficultyCalculator
 {
     public UInt256 Calculate(BlockHeader header, BlockHeader parent)
