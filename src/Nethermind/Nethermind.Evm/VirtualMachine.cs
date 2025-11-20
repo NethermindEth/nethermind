@@ -782,7 +782,7 @@ public unsafe partial class VirtualMachine(
         CallResult callResult = RunPrecompile(currentState);
 
         if (Out.IsTargetBlock)
-            Out.Log($"precompile gasLeft={callResult.StateToExecute?.GasAvailable}");
+            Out.Log($"precompile gasLeft={currentState.GasAvailable} shouldRevert={callResult.ShouldRevert} err={callResult.ExceptionType}");
 
         // If the precompile did not succeed, handle the failure conditions.
         if (!callResult.PrecompileSuccess.Value)
@@ -1003,6 +1003,9 @@ public unsafe partial class VirtualMachine(
         {
             _parityTouchBugAccount.ShouldDelete = true;
         }
+
+        if (Out.IsTargetBlock)
+            Out.Log($"precompile eth gasAvailable={gasAvailable} baseGasCost={baseGasCost} dataGasCost={dataGasCost} codeSource={state.Env.CodeSource} executingAccount={state.Env.ExecutingAccount}");
 
         if (!UpdateGas(checked(baseGasCost + dataGasCost), ref gasAvailable))
         {
