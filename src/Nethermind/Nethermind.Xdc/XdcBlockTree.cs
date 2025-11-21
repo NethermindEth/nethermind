@@ -20,12 +20,9 @@ internal class XdcBlockTree : BlockTree
 {
     private const int MaxSearchDepth = 1024;
     private readonly IXdcConsensusContext _xdcConsensus;
-    private readonly ISnapshotManager _snapshotManager;
-    private readonly IMasternodeVotingContract _votingContract;
 
     public XdcBlockTree(
         IXdcConsensusContext xdcConsensus,
-        ISnapshotManager snapshotManager,
         IBlockStore? blockStore,
         IHeaderStore? headerDb,
         [KeyFilter("blockInfos")] IDb? blockInfoDb,
@@ -35,30 +32,10 @@ internal class XdcBlockTree : BlockTree
         ISpecProvider? specProvider,
         IBloomStorage? bloomStorage,
         ISyncConfig? syncConfig,
-        IMasternodeVotingContract votingContract,
         ILogManager? logManager,
         long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
     {
         _xdcConsensus = xdcConsensus;
-        this._snapshotManager = snapshotManager;
-        this._votingContract = votingContract;
-        NewHeadBlock += XdcBlockTree_NewHeadBlock;
-    }
-
-    private void XdcBlockTree_NewHeadBlock(object? sender, BlockEventArgs e)
-    {
-        UpdateMasterNodes((XdcBlockHeader)e.Block.Header);
-    }
-
-    private void UpdateMasterNodes(XdcBlockHeader header)
-    {
-        var spec = SpecProvider.GetXdcSpec(header, header.ExtraConsensusData.BlockRound);
-        if (!ISnapshotManager.IsTimeforSnapshot(header.Number, spec))
-            return;
-        var candidates = _votingContract.GetCandidatesByStake(header);
-
-        var snapshot = new Snapshot(header.Number, header.Hash, candidates);
-        _snapshotManager.StoreSnapshot(snapshot);
     }
 
     protected override AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)

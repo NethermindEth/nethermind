@@ -4,8 +4,10 @@
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
@@ -29,9 +31,9 @@ internal class SnapshotManagerTests
 
         _snapshotDb = new MemDb();
 
-        IPenaltyHandler penaltyHandler = NSubstitute.Substitute.For<IPenaltyHandler>();
+        IPenaltyHandler penaltyHandler = Substitute.For<IPenaltyHandler>();
         _blockTree = Substitute.For<IBlockTree>();
-        _snapshotManager = new SnapshotManager(_snapshotDb, _blockTree, penaltyHandler);
+        _snapshotManager = new SnapshotManager(_snapshotDb, _blockTree, penaltyHandler, Substitute.For<IMasternodeVotingContract>(), Substitute.For<ISpecProvider>());
     }
 
     [Test]

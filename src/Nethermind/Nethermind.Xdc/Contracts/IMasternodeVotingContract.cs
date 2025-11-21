@@ -7,7 +7,7 @@ using Nethermind.Xdc.Contracts;
 using System;
 
 namespace Nethermind.Xdc.Contracts;
-internal interface IMasternodeVotingContract
+public interface IMasternodeVotingContract
 {
     Address[] GetCandidatesByStake(BlockHeader blockHeader);
     Address[] GetCandidates(BlockHeader blockHeader);

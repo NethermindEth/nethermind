@@ -5,6 +5,7 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -21,6 +22,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.Xdc.Contracts;
 using NSubstitute;
 using NUnit.Framework;
@@ -40,8 +42,8 @@ internal class MasternodeVotingContractTests
 
         ISpecProvider specProvider = new TestSpecProvider(Shanghai.Instance);
         IDbProvider memDbProvider = TestMemDbProvider.Init();
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(memDbProvider, LimboLogs.Instance);
-
+        IWorldStateManager stateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(memDbProvider, LimboLogs.Instance);
+        var stateProvider = stateManager.CreateResettableWorldState();
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
         BlockHeader genesis;
         using (IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis))
@@ -68,7 +70,7 @@ internal class MasternodeVotingContractTests
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
-        MasternodeVotingContract masterVoting = new(stateProvider, new AbiEncoder(), codeSource, new AutoReadOnlyTxProcessingEnv(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>()));
+        MasternodeVotingContract masterVoting = new(new AbiEncoder(), codeSource, new AutoReadOnlyTxProcessingEnvFactory(Substitute.For<ILifetimeScope>(), stateManager));
 
         Address[] candidates = masterVoting.GetCandidates(genesis);
         candidates.Length.Should().Be(3);

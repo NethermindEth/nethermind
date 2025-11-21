@@ -5,6 +5,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Contracts.Json;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -19,18 +20,15 @@ using System.Linq;
 namespace Nethermind.Xdc.Contracts;
 internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 {
-    private readonly IWorldState _worldState;
     private IConstantContract _constant;
 
     public MasternodeVotingContract(
-        IWorldState worldState,
         IAbiEncoder abiEncoder,
         Address contractAddress,
-        IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory)
         : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), CreateAbiDefinition())
     {
-        _constant = GetConstant(readOnlyTxProcessorSource);
-        _worldState = worldState;
+        _constant = GetConstant(readOnlyTxProcessingEnvFactory.Create());
     }
 
     private static AbiDefinition CreateAbiDefinition()
@@ -61,22 +59,22 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     /// </summary>
     /// <param name="header"></param>
     /// <returns></returns>
-    public Address[] GetCandidatesFromState(BlockHeader header)
-    {
-        var variableSlot = CandidateContractSlots.Candidates;
-        Span<byte> input = [(byte)variableSlot];
-        var slot = new UInt256(Keccak.Compute(input).Bytes);
-        using var state = _worldState.BeginScope(header);
-        ReadOnlySpan<byte> storageCell = _worldState.Get(new StorageCell(ContractAddress, slot));
-        var length = new UInt256(storageCell);
-        Address[] candidates = new Address[(ulong)length];
-        for (int i = 0; i < length; i++)
-        {
-            var key = CalculateArrayKey(slot, (ulong)i, 1);
-            candidates[i] = new Address(_worldState.Get(new StorageCell(ContractAddress, key)));
-        }
-        return candidates;
-    }
+    //public Address[] GetCandidatesFromState(BlockHeader header)
+    //{
+    //    var variableSlot = CandidateContractSlots.Candidates;
+    //    Span<byte> input = [(byte)variableSlot];
+    //    var slot = new UInt256(Keccak.Compute(input).Bytes);
+    //    using var state = _worldState.BeginScope(header);
+    //    ReadOnlySpan<byte> storageCell = _worldState.Get(new StorageCell(ContractAddress, slot));
+    //    var length = new UInt256(storageCell);
+    //    Address[] candidates = new Address[(ulong)length];
+    //    for (int i = 0; i < length; i++)
+    //    {
+    //        var key = CalculateArrayKey(slot, (ulong)i, 1);
+    //        candidates[i] = new Address(_worldState.Get(new StorageCell(ContractAddress, key)));
+    //    }
+    //    return candidates;
+    //}
 
     private UInt256 CalculateArrayKey(UInt256 slot, ulong index, ulong size)
     {
@@ -110,7 +108,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
         for (int i = 0; i < candidatesAndStake.Count; i++)
         {
             sortedCandidates[i] = candidatesAndStake[i].Address;
-        }   
+        }
         return sortedCandidates;
     }
 
