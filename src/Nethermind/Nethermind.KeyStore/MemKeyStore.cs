@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security;
@@ -56,7 +55,7 @@ namespace Nethermind.KeyStore
 
         public (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses()
         {
-            return (new ReadOnlyCollection<Address>(_privateKeys.Keys.ToList()), Result.Success);
+            return (_privateKeys.Keys, Result.Success);
         }
 
         public (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password)
