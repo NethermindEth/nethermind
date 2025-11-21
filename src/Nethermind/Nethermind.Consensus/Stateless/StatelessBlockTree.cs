@@ -228,7 +228,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
         result[0] = blockHeader.Hash;
         for (int i = 1; i < length; i++)
         {
-            if (_numberToHeader.TryGetValue(i, out BlockHeader header))
+            if (_numberToHeader.TryGetValue(blockHeader.Number - i, out BlockHeader header))
             {
                 result[i] = header.Hash;
             }
