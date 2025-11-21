@@ -58,7 +58,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     /// </summary>
     /// <param name="header"></param>
     /// <returns></returns>
-    public Address[] GetCandidates(XdcBlockHeader header)
+    public Address[] GetCandidatesFromState(BlockHeader header)
     {
         var variableSlot = CandidateContractSlots.Candidates;
         Span<byte> input = [(byte)variableSlot];

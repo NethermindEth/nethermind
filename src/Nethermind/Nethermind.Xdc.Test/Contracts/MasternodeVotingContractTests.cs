@@ -5,7 +5,6 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -17,29 +16,23 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using Nethermind.Xdc.Contracts;
 using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using static Nethermind.Consensus.Processing.AutoReadOnlyTxProcessingEnvFactory;
 
 namespace Nethermind.Xdc.Test;
-internal class XdcContractTests
+internal class MasternodeVotingContractTests
 {
     [Test]
-    public void GetCandidates_GenesisSetup_CanReadExpectedCandidates()
+    public void GetCandidatesAndStake_GenesisSetup_CanReadExpectedCandidates()
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
@@ -51,7 +44,7 @@ internal class XdcContractTests
 
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
         BlockHeader genesis;
-        using (var _ = stateProvider.BeginScope(IWorldState.PreGenesis))
+        using (IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis))
         {
             stateProvider.CreateAccount(sender.Address, 1.Ether());
             byte[] code = XdcContractData.XDCValidatorBin();
@@ -59,7 +52,7 @@ internal class XdcContractTests
             stateProvider.InsertCode(codeSource, ValueKeccak.Compute(code), code, Shanghai.Instance);
 
             Dictionary<string, string> storage = GenesisAllocation();
-            foreach (var kvp in storage)
+            foreach (KeyValuePair<string, string> kvp in storage)
             {
                 StorageCell cell = new(codeSource, UInt256.Parse(kvp.Key));
                 stateProvider.Set(cell, Bytes.FromHexString(kvp.Value));
@@ -68,17 +61,23 @@ internal class XdcContractTests
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
 
-            genesis = (XdcBlockHeader)Build.A.XdcBlockHeader().WithStateRoot(stateProvider.StateRoot).TestObject;
+            genesis = Build.A.XdcBlockHeader().WithStateRoot(stateProvider.StateRoot).TestObject;
         }
 
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-        var transactionProcessor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        TransactionProcessor transactionProcessor = new (BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
-        var masterVoting = new MasternodeVotingContract(stateProvider, new AbiEncoder(), codeSource, new AutoReadOnlyTxProcessingEnv(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>()));
+        MasternodeVotingContract masterVoting = new (stateProvider, new AbiEncoder(), codeSource, new AutoReadOnlyTxProcessingEnv(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>()));
 
-        var candidates = masterVoting.GetCandidates(genesis);
+        Address[] candidates = masterVoting.GetCandidates(genesis);
         candidates.Length.Should().Be(3);
+
+        foreach (Address candidate in candidates)
+        {
+            UInt256 stake = masterVoting.GetCandidateStake(genesis, candidate);
+            stake.Should().Be(10_000_000.Ether());
+        }
     }
 
     private Dictionary<string, string> GenesisAllocation()
