@@ -182,7 +182,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 if (result.InputError)
                 {
-                    return ResultWrapper<AccessListResultForRpc?>.Fail(result.Error, ErrorCodes.InvalidInput);
+                    return ResultWrapper<AccessListResultForRpc?>.Fail(result.Error!, ErrorCodes.InvalidInput);
                 }
 
                 return ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult);
