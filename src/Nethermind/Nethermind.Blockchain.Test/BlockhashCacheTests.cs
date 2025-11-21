@@ -303,7 +303,7 @@ public class BlockhashCacheTests
         (BlockTree tree, BlockhashCache cache) = BuildTest(260, headerStore);
 
         BlockHeader head = tree.FindHeader(257, BlockTreeLookupOptions.None)!;
-        CancellationTokenSource  cts = new(TimeSpan.FromMilliseconds(20));
+        CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(20));
         await cache.Prefetch(head, cts.Token);
         cache.GetStats().Should().Be(new BlockhashCache.Stats(0, 0, 0));
     }
