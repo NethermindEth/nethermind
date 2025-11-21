@@ -66,9 +66,9 @@ internal class MasternodeVotingContractTests
 
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-        TransactionProcessor transactionProcessor = new (BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        TransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
-        MasternodeVotingContract masterVoting = new (stateProvider, new AbiEncoder(), codeSource, new AutoReadOnlyTxProcessingEnv(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>()));
+        MasternodeVotingContract masterVoting = new(stateProvider, new AbiEncoder(), codeSource, new AutoReadOnlyTxProcessingEnv(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>()));
 
         Address[] candidates = masterVoting.GetCandidates(genesis);
         candidates.Length.Should().Be(3);
