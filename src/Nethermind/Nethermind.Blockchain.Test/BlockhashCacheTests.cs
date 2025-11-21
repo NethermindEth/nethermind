@@ -221,7 +221,7 @@ public class BlockhashCacheTests
     }
 
     [Test]
-    public void Can_stich_block_ranges()
+    public void Can_stitch_block_ranges()
     {
         (BlockTree tree, BlockhashCache cache) = BuildTest(1000);
 
