@@ -17,7 +17,6 @@ namespace Nethermind.Xdc.Contracts;
 internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 {
     private readonly IWorldState _worldState;
-
     private IConstantContract _constant;
 
     public MasternodeVotingContract(
@@ -51,7 +50,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     {
         var callInfo = new CallInfo(blockHeader, "getCandidates", Address.SystemUser);
         var result = this._constant.Call(callInfo);
-        return (Address[])result!;
+        return (Address[])result[0]!;
     }
 
     /// <summary>

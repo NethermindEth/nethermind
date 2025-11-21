@@ -545,5 +545,183 @@
     "payable": false,
     "stateMutability": "view",
     "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "name": "_candidates",
+        "type": "address[]"
+      },
+      {
+        "name": "_caps",
+        "type": "uint256[]"
+      },
+      {
+        "name": "_firstOwner",
+        "type": "address"
+      },
+      {
+        "name": "_minCandidateCap",
+        "type": "uint256"
+      },
+      {
+        "name": "_minVoterCap",
+        "type": "uint256"
+      },
+      {
+        "name": "_maxValidatorNumber",
+        "type": "uint256"
+      },
+      {
+        "name": "_candidateWithdrawDelay",
+        "type": "uint256"
+      },
+      {
+        "name": "_voterWithdrawDelay",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "_voter",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "_candidate",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "_cap",
+        "type": "uint256"
+      }
+    ],
+    "name": "Vote",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "_voter",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "_candidate",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "_cap",
+        "type": "uint256"
+      }
+    ],
+    "name": "Unvote",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "_owner",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "_candidate",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "_cap",
+        "type": "uint256"
+      }
+    ],
+    "name": "Propose",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "_owner",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "_candidate",
+        "type": "address"
+      }
+    ],
+    "name": "Resign",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "_owner",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "_blockNumber",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "name": "_cap",
+        "type": "uint256"
+      }
+    ],
+    "name": "Withdraw",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "_owner",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "kycHash",
+        "type": "string"
+      }
+    ],
+    "name": "UploadedKYC",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "_masternodeOwner",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "_masternodes",
+        "type": "address[]"
+      }
+    ],
+    "name": "InvalidatedNode",
+    "type": "event"
   }
 ]
