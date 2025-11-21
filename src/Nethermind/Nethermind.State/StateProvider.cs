@@ -43,7 +43,7 @@ namespace Nethermind.State
         private readonly ClockKeyCacheNonConcurrent<ValueHash256> _persistedCodeInsertFilter = new(1_024);
         private readonly ClockKeyCacheNonConcurrent<ValueHash256> _blockCodeInsertFilter = new(256);
         private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
-        private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
+        private readonly ISingleBlockProcessingCache<AddressAsKey, Account>? _preBlockCache;
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
@@ -62,7 +62,7 @@ namespace Nethermind.State
             IKeyValueStoreWithBatching codeDb,
             ILogManager logManager,
             StateTree? stateTree = null,
-            ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null,
+            ISingleBlockProcessingCache<AddressAsKey, Account>? preBlockCache = null,
             bool populatePreBlockCache = true)
         {
             _preBlockCache = preBlockCache;
