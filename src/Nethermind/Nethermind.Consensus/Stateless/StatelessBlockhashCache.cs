@@ -10,9 +10,14 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Stateless;
 
-public class StatelessBlockhashCache(Dictionary<Hash256, BlockHeader> headersByHash, Dictionary<long, BlockHeader> headersByNumber) : IBlockhashCache
+public class StatelessBlockhashCache(Dictionary<long, BlockHeader> headersByNumber) : IBlockhashCache
 {
-    public Hash256? GetHash(BlockHeader headBlock, int depth) => headersByHash[headBlock.Hash!].Hash;
+    public Hash256? GetHash(BlockHeader headBlock, int depth) =>
+        depth == 0
+            ? headBlock.Hash
+            : headersByNumber.TryGetValue(headBlock.Number - depth, out BlockHeader? header)
+                ? header?.Hash
+                : null;
 
     public Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken)
     {

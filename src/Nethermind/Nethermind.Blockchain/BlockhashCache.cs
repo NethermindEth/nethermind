@@ -117,7 +117,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                 : null;
     }
 
-    public Task<Hash256[]> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken = default)
+    public Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
         {
