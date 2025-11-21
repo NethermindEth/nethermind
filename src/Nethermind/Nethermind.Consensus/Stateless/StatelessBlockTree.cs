@@ -22,7 +22,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
 {
     private readonly Dictionary<Hash256AsKey, BlockHeader> _hashToHeader =
         headers.ToDictionary(header => (Hash256AsKey)(header.Hash ?? throw new ArgumentNullException(nameof(header.Hash))), header => header);
-    
+
     private readonly Dictionary<long, BlockHeader> _numberToHeader =
         headers.ToDictionary(header => header.Number, header => header);
 
