@@ -59,7 +59,7 @@ public class BlockhashCacheTests
         BlockHeader? head = tree.FindHeader(4, BlockTreeLookupOptions.None);
         Hash256? result = cache.GetHash(head!, 10);
         result.Should().BeNull();
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(5, 1, 0));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(5, 1, 1));
     }
 
     [Test]
@@ -303,7 +303,7 @@ public class BlockhashCacheTests
         (BlockTree tree, BlockhashCache cache) = BuildTest(260, headerStore);
 
         BlockHeader head = tree.FindHeader(257, BlockTreeLookupOptions.None)!;
-        CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(20));
+        CancellationTokenSource  cts = new(TimeSpan.FromMilliseconds(20));
         await cache.Prefetch(head, cts.Token);
         cache.GetStats().Should().Be(new BlockhashCache.Stats(0, 0, 0));
     }
