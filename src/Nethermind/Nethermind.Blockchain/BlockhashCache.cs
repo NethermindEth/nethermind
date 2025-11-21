@@ -100,7 +100,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             }
         }
 
-        if (alwaysAdd)
+        if (blocks.Count == MaxDepth + 1)
         {
             hashes = new Hash256[blocks.Count];
             for (int i = 0; i < blocks.Count; i++)
