@@ -17,8 +17,15 @@ namespace Nethermind.Consensus.Stateless;
 /// <summary>
 /// This class is part of the StatelessExecution tool. It's intended to be used only inside the processing pipeline.
 /// </summary>
-public class StatelessBlockTree(Dictionary<Hash256, BlockHeader> hashToHeader, Dictionary<long, BlockHeader> numberToHeader) : IBlockTree
+public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
+    : IBlockTree, IBlockhashCache
 {
+    private readonly Dictionary<Hash256AsKey, BlockHeader> _hashToHeader =
+        headers.ToDictionary(header => (Hash256AsKey)(header.Hash ?? throw new ArgumentNullException(nameof(header.Hash))), header => header);
+    
+    private readonly Dictionary<long, BlockHeader> _numberToHeader =
+        headers.ToDictionary(header => header.Number, header => header);
+
     public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
         throw new NotSupportedException();
 
@@ -29,19 +36,19 @@ public class StatelessBlockTree(Dictionary<Hash256, BlockHeader> hashToHeader, D
         throw new NotSupportedException();
 
     public BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
-         => hashToHeader.GetValueOrDefault(blockHash);
+         => _hashToHeader.GetValueOrDefault(blockHash);
 
     public BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options)
-        => numberToHeader.GetValueOrDefault(blockNumber);
+        => _numberToHeader.GetValueOrDefault(blockNumber);
 
     public Hash256? FindBlockHash(long blockNumber)
-        => numberToHeader.GetValueOrDefault(blockNumber)?.Hash;
+        => _numberToHeader.GetValueOrDefault(blockNumber)?.Hash;
 
     public bool IsMainChain(BlockHeader blockHeader)
-        => blockHeader.Hash is not null && hashToHeader.ContainsKey(blockHeader.Hash);
+        => blockHeader.Hash is not null && _hashToHeader.ContainsKey(blockHeader.Hash);
 
     public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true)
-        => hashToHeader.ContainsKey(blockHash) ? true : throw new InvalidOperationException();
+        => _hashToHeader.ContainsKey(blockHash) ? true : throw new InvalidOperationException();
 
     public BlockHeader FindBestSuggestedHeader()
         => throw new NotSupportedException();
@@ -205,5 +212,28 @@ public class StatelessBlockTree(Dictionary<Hash256, BlockHeader> hashToHeader, D
     {
         add => throw new NotSupportedException();
         remove => throw new NotSupportedException();
+    }
+
+    public Hash256? GetHash(BlockHeader headBlock, int depth) =>
+        depth == 0
+            ? headBlock.Hash
+            : _numberToHeader.TryGetValue(headBlock.Number - depth, out BlockHeader? header)
+                ? header?.Hash
+                : null;
+
+    public Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken)
+    {
+        const int length = BlockhashCache.MaxDepth + 1;
+        Hash256[] result = new Hash256[length];
+        result[0] = blockHeader.Hash;
+        for (int i = 1; i < length; i++)
+        {
+            if (_numberToHeader.TryGetValue(i, out BlockHeader header))
+            {
+                result[i] = header.Hash;
+            }
+        }
+
+        return Task.FromResult(result);
     }
 }
