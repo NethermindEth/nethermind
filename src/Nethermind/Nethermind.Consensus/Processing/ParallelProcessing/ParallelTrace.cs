@@ -32,7 +32,7 @@ public class ParallelTrace<TLogger> where TLogger : struct, IIsTracing
 
     public (long, DateTime, string)[]? GetTraces() => typeof(TLogger) == typeof(IsTracing) ? Traces.OrderBy(t => t.Item1).ToArray() : null;
 
-    public string Format<TData>(TData data) => data is byte[]  bytes ? bytes.ToHexString() : data?.ToString() ?? "";
+    public string Format<TData>(TData data) => data is byte[] bytes ? bytes.ToHexString() : data?.ToString() ?? "";
 }
 
 
