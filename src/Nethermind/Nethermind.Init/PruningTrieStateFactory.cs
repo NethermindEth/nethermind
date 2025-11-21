@@ -11,7 +11,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Utils;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
@@ -33,7 +32,6 @@ public class PruningTrieStateFactory(
     ISyncConfig syncConfig,
     IInitConfig initConfig,
     IPruningConfig pruningConfig,
-    IBlocksConfig blockConfig,
     IDbProvider dbProvider,
     IBlockTree blockTree,
     IFileSystem fileSystem,
@@ -45,7 +43,8 @@ public class PruningTrieStateFactory(
     ChainSpec chainSpec,
     IDisposableStack disposeStack,
     Lazy<IPathRecovery> pathRecovery,
-    ILogManager logManager
+    ILogManager logManager,
+    NodeStorageCache? nodeStorageCache = null
 )
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PruningTrieStateFactory>();
@@ -55,35 +54,29 @@ public class PruningTrieStateFactory(
         CompositePruningTrigger compositePruningTrigger = new CompositePruningTrigger();
 
         IPruningTrieStore trieStore = mainPruningTrieStoreFactory.PruningTrieStore;
+
         ITrieStore mainWorldTrieStore = trieStore;
-        PreBlockCaches? preBlockCaches = null;
-        if (blockConfig.PreWarmStateOnBlockProcessing)
+
+        if (nodeStorageCache is not null)
         {
-            preBlockCaches = new PreBlockCaches();
-            mainWorldTrieStore = new PreCachedTrieStore(trieStore, preBlockCaches.RlpCache);
+            mainWorldTrieStore = new PreCachedTrieStore(mainWorldTrieStore, nodeStorageCache);
         }
 
         IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
-        IWorldState worldState = syncConfig.TrieHealing
-            ? new HealingWorldState(
+        IWorldStateScopeProvider scopeProvider = syncConfig.TrieHealing
+            ? new HealingWorldStateScopeProvider(
                 mainWorldTrieStore,
+                codeDb,
                 mainNodeStorage,
-                codeDb,
                 pathRecovery,
-                logManager,
-                preBlockCaches,
-                // Main thread should only read from prewarm caches, not spend extra time updating them.
-                populatePreBlockCache: false)
-            : new WorldState(
+                logManager)
+            : new TrieStoreScopeProvider(
                 mainWorldTrieStore,
                 codeDb,
-                logManager,
-                preBlockCaches,
-                // Main thread should only read from prewarm caches, not spend extra time updating them.
-                populatePreBlockCache: false);
+                logManager);
 
         IWorldStateManager stateManager = new WorldStateManager(
-            worldState,
+            scopeProvider,
             trieStore,
             dbProvider,
             logManager,
@@ -102,8 +95,7 @@ public class PruningTrieStateFactory(
             mainNodeStorage,
             nodeStorageFactory,
             trieStore,
-            compositePruningTrigger,
-            preBlockCaches
+            compositePruningTrigger
         );
 
         var verifyTrieStarter = new VerifyTrieStarter(stateManager, processExit!, logManager);
@@ -124,8 +116,7 @@ public class PruningTrieStateFactory(
         INodeStorage mainNodeStorage,
         INodeStorageFactory nodeStorageFactory,
         IPruningTrieStore trieStore,
-        CompositePruningTrigger compositePruningTrigger,
-        PreBlockCaches? preBlockCaches)
+        CompositePruningTrigger compositePruningTrigger)
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
