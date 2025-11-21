@@ -30,7 +30,7 @@ public class PrewarmerScopeProvider(
         bool populatePreBlockCache)
         : IWorldStateScopeProvider.IScope
     {
-        ConcurrentDictionary<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
+        ISingleBlockProcessingCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
 
         public void Dispose() => baseScope.Dispose();
 
@@ -98,7 +98,7 @@ public class PrewarmerScopeProvider(
 
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
-        ConcurrentDictionary<StorageCell, byte[]> preBlockCache,
+        ISingleBlockProcessingCache<StorageCell, byte[]> preBlockCache,
         Address address,
         bool populatePreBlockCache
     ) : IWorldStateScopeProvider.IStorageTree
@@ -107,17 +107,17 @@ public class PrewarmerScopeProvider(
 
         public byte[] Get(in UInt256 index)
         {
-            StorageCell storageCell = new StorageCell(address, in index); // TODO: Make the dictionary use UInt256 directly
+            StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
             if (populatePreBlockCache)
             {
-                long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
+                long priorReads = Metrics.ThreadLocalStorageTreeReads;
 
                 byte[] value = preBlockCache.GetOrAdd(storageCell, LoadFromTreeStorage);
 
-                if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
+                if (Metrics.ThreadLocalStorageTreeReads == priorReads)
                 {
                     // Read from Concurrent Cache
-                    Db.Metrics.IncrementStorageTreeCache();
+                    Metrics.IncrementStorageTreeCache();
                 }
                 return value;
             }
@@ -126,7 +126,7 @@ public class PrewarmerScopeProvider(
                 if (preBlockCache?.TryGetValue(storageCell, out byte[] value) ?? false)
                 {
                     baseStorageTree.HintGet(index, value);
-                    Db.Metrics.IncrementStorageTreeCache();
+                    Metrics.IncrementStorageTreeCache();
                 }
                 else
                 {
@@ -140,7 +140,7 @@ public class PrewarmerScopeProvider(
 
         private byte[] LoadFromTreeStorage(StorageCell storageCell)
         {
-            Db.Metrics.IncrementStorageTreeReads();
+            Metrics.IncrementStorageTreeReads();
 
             return !storageCell.IsHash
                 ? baseStorageTree.Get(storageCell.Index)

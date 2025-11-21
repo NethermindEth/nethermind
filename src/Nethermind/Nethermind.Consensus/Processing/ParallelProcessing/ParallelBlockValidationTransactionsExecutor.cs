@@ -18,7 +18,7 @@ public class ParallelBlockValidationTransactionsExecutor() : IBlockProcessor.IBl
         for (int i = 0; i < block.Transactions.Length; i++)
         {
             Transaction tx = block.Transactions[i];
-            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, tx, new TxReceipt()));
+            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, tx, block.Header, new TxReceipt()));
         }
 
         return [];
