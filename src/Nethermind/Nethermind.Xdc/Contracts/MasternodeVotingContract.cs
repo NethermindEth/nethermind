@@ -98,11 +98,11 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
             if (candidate == Address.Zero)
                 continue;
 
-            new CandidateStake()
+            candidatesAndStake.Add(new CandidateStake()
             {
                 Address = candidate,
                 Stake = GetCandidateStake(blockHeader, candidate)
-            };
+            });
         }
         candidatesAndStake.Sort((x, y) => y.Stake.CompareTo(x.Stake));
 
