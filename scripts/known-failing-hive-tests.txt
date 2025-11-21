@@ -2,7 +2,6 @@
 
 eth_getStorageAt/get-storage-invalid-key (nethermind)
 eth_getStorageAt/get-storage-invalid-key-too-large (nethermind)
-eth_createAccessList/create-al-abi-revert (nethermind)
 eth_simulateV1/ethSimulate-two-blocks-with-complete-eth-sends (nethermind)
 eth_simulateV1/ethSimulate-use-as-many-features-as-possible (nethermind)
 
