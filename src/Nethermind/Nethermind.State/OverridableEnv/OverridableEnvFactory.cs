@@ -12,6 +12,7 @@ using Nethermind.Evm.State;
 using Nethermind.Logging;
 
 namespace Nethermind.State.OverridableEnv;
+
 public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetimeScope, ISpecProvider specProvider) : IOverridableEnvFactory
 {
     public IOverridableEnv Create()
