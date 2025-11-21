@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -24,6 +25,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
 using Nethermind.State;
 using Nethermind.Config;
+using Nethermind.Db;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
@@ -51,7 +53,9 @@ namespace Nethermind.Facade
         ILogFinder logFinder,
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
-        IMiningConfig miningConfig)
+        IMiningConfig miningConfig,
+        IPruningConfig pruningConfig,
+        ISyncConfig syncConfig)
         : IBlockchainBridge
     {
         private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
@@ -385,6 +389,20 @@ namespace Nethermind.Facade
 
         public bool HasStateForBlock(BlockHeader baseBlock)
         {
+            // Archive node
+            if (!syncConfig.FastSync && !syncConfig.SnapSync && pruningConfig.Mode == PruningMode.None)
+            {
+                return true;
+            }
+
+            // Pruning node - check boundary
+            if (pruningConfig.Mode != PruningMode.None)
+            {
+                long headNumber = blockTree.Head?.Number ?? 0;
+                long requestedNumber = baseBlock.Number;
+                return requestedNumber <= headNumber - pruningConfig.PruningBoundary;
+            }
+
             return stateReader.HasStateForBlock(baseBlock);
         }
 
