@@ -8,14 +8,14 @@ namespace Nethermind.Taiko;
 
 public class L1Origin(UInt256 blockId,
     ValueHash256? l2BlockHash,
-    long l1BlockHeight,
+    long? l1BlockHeight,
     ValueHash256 l1BlockHash,
     int[]? buildPayloadArgsId,
     int[]? signature = null)
 {
     public UInt256 BlockId { get; set; } = blockId;
     public ValueHash256? L2BlockHash { get; set; } = l2BlockHash;
-    public long L1BlockHeight { get; set; } = l1BlockHeight;
+    public long? L1BlockHeight { get; set; } = l1BlockHeight;
     public ValueHash256 L1BlockHash { get; set; } = l1BlockHash;
 
     // Taiko uses int-like serializer (Go's default encoding for byte arrays)
@@ -25,5 +25,5 @@ public class L1Origin(UInt256 blockId,
     /// <summary>
     /// IsPreconfBlock returns true if the L1Origin is for a preconfirmation block.
     /// </summary>
-    public bool IsPreconfBlock => L1BlockHeight == 0;
+    public bool IsPreconfBlock => L1BlockHeight == 0 || L1BlockHeight == null;
 }

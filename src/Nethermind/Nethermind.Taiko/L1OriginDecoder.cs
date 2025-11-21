@@ -20,7 +20,7 @@ public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
 
         UInt256 blockId = rlpStream.DecodeUInt256();
         Hash256? l2BlockHash = rlpStream.DecodeKeccak();
-        var l1BlockHeight = rlpStream.DecodeLong();
+        long? l1BlockHeight = rlpStream.DecodeLong();
         Hash256 l1BlockHash = rlpStream.DecodeKeccak() ?? throw new RlpException("L1BlockHash is null");
 
         int[]? buildPayloadArgsId = null;
@@ -52,7 +52,7 @@ public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
 
         stream.Encode(item.BlockId);
         stream.Encode(item.L2BlockHash);
-        stream.Encode(item.L1BlockHeight);
+        stream.Encode(item.L1BlockHeight ?? 0);
         stream.Encode(item.L1BlockHash);
 
         // If both the optional remaining fields are missing, nothing to encode
@@ -97,7 +97,7 @@ public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
         return Rlp.LengthOfSequence(
             Rlp.LengthOf(item.BlockId)
             + Rlp.LengthOf(item.L2BlockHash)
-            + Rlp.LengthOf(item.L1BlockHeight)
+            + Rlp.LengthOf(item.L1BlockHeight ?? 0)
             + Rlp.LengthOf(item.L1BlockHash)
             + buildPayloadLength
             + (item.Signature is null ? 0 : Rlp.LengthOfByteString(SignatureLength, 0))

@@ -173,5 +173,19 @@ public class L1OriginStoreTests
         retrieved.Signature!.Length.Should().Be(65);
         retrieved.Signature.Should().BeEquivalentTo(signature);
     }
+
+    [Test]
+    public void Can_write_and_read_l1_origin_with_null_block_height()
+    {
+        UInt256 blockId = 456;
+        L1Origin origin = new(blockId, Hash256.Zero, null, Hash256.Zero, null);
+
+        _store.WriteL1Origin(blockId, origin);
+        L1Origin? retrieved = _store.ReadL1Origin(blockId);
+
+        retrieved.Should().NotBeNull();
+        retrieved!.L1BlockHeight.Should().Be(0);
+        retrieved.IsPreconfBlock.Should().BeTrue();
+    }
 }
 
