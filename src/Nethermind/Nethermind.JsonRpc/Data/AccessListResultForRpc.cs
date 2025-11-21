@@ -12,9 +12,12 @@ public readonly struct AccessListResultForRpc
 
     public UInt256 GasUsed { get; init; }
 
-    public AccessListResultForRpc(AccessListForRpc accessList, in UInt256 gasUsed)
+    public string? Error { get; init; }
+
+    public AccessListResultForRpc(AccessListForRpc accessList, in UInt256 gasUsed,  string? error)
     {
         AccessList = accessList;
         GasUsed = gasUsed;
+        Error = error;
     }
 }

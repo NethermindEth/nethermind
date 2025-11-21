@@ -177,9 +177,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 var rpcAccessListResult = new AccessListResultForRpc(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
-                    gasUsed: GetResultGas(tx, result));
+                    gasUsed: GetResultGas(tx, result),
+                    result.Error);
 
-                return CreateResultWrapper(result.InputError, result.Error, rpcAccessListResult, false, null);
+                if (result.InputError)
+                {
+                    return ResultWrapper<AccessListResultForRpc?>.Fail(result.Error, ErrorCodes.InvalidInput);
+                }
+
+                return ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult);
             }
 
             private static UInt256 GetResultGas(Transaction transaction, CallOutput result)
