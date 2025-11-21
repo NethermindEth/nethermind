@@ -8,6 +8,7 @@
     <GarbageCollectionAdaptationMode>0</GarbageCollectionAdaptationMode>
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <TieredPGO>true</TieredPGO>
+    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
     <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
     <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
     <PublishIISAssets>false</PublishIISAssets>
@@ -32,6 +33,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
     <PackageReference Include="NLog.Targets.Seq" />
     <PackageReference Include="Pyroscope" />
@@ -89,9 +91,8 @@
     <None Remove="keystore\**" />
     <Content Remove="runtimeconfig.template.json" />
     <None Include="runtimeconfig.template.json" />
-    <Content Update="wwwroot\**">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <Content Remove="wwwroot\**" />
+    <EmbeddedResource Include="wwwroot\**" />
     <None Update="NLog.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
