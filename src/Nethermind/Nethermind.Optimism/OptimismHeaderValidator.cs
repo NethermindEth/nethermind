@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
@@ -9,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
+using Nethermind.Optimism.ExtraParams;
 
 namespace Nethermind.Optimism;
 
@@ -41,7 +41,7 @@ public class OptimismHeaderValidator(
     {
         if (specHelper.IsHolocene(header))
         {
-            if (!header.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out var decodeError))
+            if (!HoloceneExtraParams.TryParse(header, out HoloceneExtraParams parameters, out var decodeError))
             {
                 error = decodeError;
                 return false;
@@ -49,10 +49,27 @@ public class OptimismHeaderValidator(
 
             if (parameters.IsZero())
             {
-                error = $"{nameof(EIP1559Parameters)} is zero";
+                error = $"{nameof(HoloceneExtraParams)} is zero";
                 return false;
             }
         }
+
+        if (false /* specHelper.IsJovian(header) */)
+#pragma warning disable CS0162 // Unreachable code detected
+        {
+            if (!JovianExtraParams.TryParse(header, out JovianExtraParams parameters, out var decodeError))
+            {
+                error = decodeError;
+                return false;
+            }
+
+            if (parameters.IsZero())
+            {
+                error = $"{nameof(JovianExtraParams)} is zero";
+                return false;
+            }
+        }
+#pragma warning restore CS0162 // Unreachable code detected
 
         return base.Validate<TOrphaned>(header, parent, isUncle, out error);
     }

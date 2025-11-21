@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Optimism.ExtraParams;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -34,8 +35,8 @@ public class OptimismBaseFeeCalculatorTests
             BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp, new DefaultBaseFeeCalculator())
         };
 
-        var extraData = new byte[EIP1559Parameters.ByteLength];
-        var parameters = new EIP1559Parameters(0, denominator, elasticity);
+        var extraData = new byte[HoloceneExtraParams.BinaryLength];
+        var parameters = new HoloceneExtraParams { Denominator = denominator, Elasticity = elasticity };
         parameters.WriteTo(extraData);
 
         BlockHeader blockHeader = Build.A.BlockHeader
