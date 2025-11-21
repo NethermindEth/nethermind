@@ -108,6 +108,8 @@ namespace Nethermind.Specs
         public int Eip7934MaxRlpBlockSize { get; set; }
         public bool IsEip7907Enabled { get; set; }
 
+        public bool IsEip7904Enabled { get; set; }
+
         public ulong TargetBlobCount { get; set; }
         public ulong MaxBlobCount { get; set; }
         public ulong MaxBlobsPerTx => IsEip7594Enabled ? Math.Min(Eip7594Constants.MaxBlobsPerTx, MaxBlobCount) : MaxBlobCount;

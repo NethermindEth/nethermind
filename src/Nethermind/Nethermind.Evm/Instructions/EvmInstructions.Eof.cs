@@ -70,7 +70,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct base gas cost for this instruction.
-        gasAvailable -= GasCostOf.Base;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Base;
 
         // Push the length of the return data buffer (as a 32-bit unsigned integer) onto the stack.
         stack.PushUInt32<TTracingInst>((uint)vm.ReturnDataBuffer.Length);
@@ -104,7 +104,8 @@ internal static partial class EvmInstructions
         }
 
         // Deduct the fixed gas cost and the memory cost based on the size (rounded up to 32-byte words).
-        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
+        gasAvailable -= (vm.Spec.IsEip7904Enabled ? GasCostOf.CopyPerWord : GasCostOf.Memory) * EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
