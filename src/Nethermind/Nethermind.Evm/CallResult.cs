@@ -6,9 +6,9 @@ using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm;
 
-public sealed unsafe partial class VirtualMachine
+public unsafe partial class VirtualMachine
 {
-    internal readonly ref struct CallResult
+    protected readonly ref struct CallResult
     {
         public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
         public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
@@ -70,5 +70,6 @@ public sealed unsafe partial class VirtualMachine
         //EvmExceptionType.Revert is returned when the top frame encounters a REVERT opcode, which is not an exception.
         public bool IsException => ExceptionType != EvmExceptionType.None && ExceptionType != EvmExceptionType.Revert;
         public int FromVersion { get; }
+        public string? SubstateError { get; init; }
     }
 }

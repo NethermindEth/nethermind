@@ -3,18 +3,24 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>
+public class GetBlobsHandler(ITxPool txPool, IChainHeadSpecProvider chainHeadSpecProvider) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>
 {
     private const int MaxRequest = 128;
 
     public Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>> HandleAsync(byte[][] request)
     {
+        if (chainHeadSpecProvider.GetCurrentHeadSpec().IsEip7594Enabled)
+        {
+            return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
+        }
+
         if (request.Length > MaxRequest)
         {
             var error = $"The number of requested blobs must not exceed {MaxRequest}";

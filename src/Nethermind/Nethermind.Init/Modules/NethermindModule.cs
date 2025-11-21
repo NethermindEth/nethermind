@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api;
@@ -13,6 +14,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1;
@@ -47,11 +49,12 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
                 configProvider.GetConfig<ISyncConfig>()
             ))
             .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
+            .AddModule(new PrewarmerModule(configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BuiltInStepsModule())
             .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
             .AddModule(new EraModule())
             .AddSource(new ConfigRegistrationSource())
-            .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>()))
+            .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>()))
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
@@ -68,6 +71,10 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
 
             .AddSingleton<IHardwareInfo, HardwareInfo>()
+
+            .AddSingleton<ITimestamper>(_ => Core.Timestamper.Default)
+            .AddSingleton<ITimerFactory>(_ => Core.Timers.TimerFactory.Default)
+            .AddSingleton<IFileSystem>(_ => new FileSystem())
             ;
 
         if (!configProvider.GetConfig<ITxPoolConfig>().BlobsSupport.IsPersistentStorage())

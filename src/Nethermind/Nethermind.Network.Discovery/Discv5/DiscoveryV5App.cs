@@ -118,22 +118,9 @@ public class DiscoveryV5App : IDiscoveryApp
             });
 
         _discv5Protocol = NetworkHelper.HandlePortTakenError(discv5Builder.Build, networkConfig.DiscoveryPort);
-        _discv5Protocol.NodeRemoved += NodeRemovedByDiscovery;
 
         _serviceProvider = discv5Builder.GetServiceProvider();
         _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
-    }
-
-    private void NodeRemovedByDiscovery(NodeTableEntry removedEntry)
-    {
-        if (!TryGetNodeFromEnr(removedEntry.Record, out Node? removedNode))
-        {
-            return;
-        }
-
-        NodeRemoved?.Invoke(this, new NodeEventArgs(removedNode));
-
-        if (_logger.IsDebug) _logger.Debug($"Node removed from discovered via discv5: {removedEntry.Record} = {removedNode}.");
     }
 
     private bool TryGetNodeFromEnr(IEnr enr, [NotNullWhen(true)] out Node? node)
@@ -201,7 +188,7 @@ public class DiscoveryV5App : IDiscoveryApp
         .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.Address.Port))
         .Build();
 
-    public event EventHandler<NodeEventArgs>? NodeRemoved;
+    public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
 
     public void InitializeChannel(IChannel channel)
     {

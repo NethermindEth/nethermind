@@ -28,8 +28,7 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
         GasSpent += gasSpent.SpentGas;
     }
 
-    public override void ReportAccess(IReadOnlyCollection<Address> accessedAddresses,
-        IReadOnlyCollection<StorageCell> accessedStorageCells)
+    public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
     {
         Dictionary<Address, ISet<UInt256>> dictionary = new();
         foreach (Address address in accessedAddresses)

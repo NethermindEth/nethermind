@@ -2,15 +2,15 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-export GPG_TTY=$(tty)
-
 set -e
+
+export GPG_TTY=$(tty)
 
 echo "Publishing packages to Downloads page"
 
 cd $GITHUB_WORKSPACE/$PACKAGE_DIR
 
-for rid in "linux-x64" "linux-arm64" "windows-x64" "macos-x64" "macos-arm64"; do
+for rid in "linux-arm64" "linux-x64" "macos-arm64" "macos-x64" "windows-x64"; do
   file_name=$(basename *$rid*)
 
   echo "Signing $file_name"

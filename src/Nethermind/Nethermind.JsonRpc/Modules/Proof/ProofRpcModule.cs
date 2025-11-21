@@ -61,14 +61,14 @@ namespace Nethermind.JsonRpc.Modules.Proof
             {
                 TxRoot = Keccak.EmptyTreeHash,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
-                Author = Address.SystemUser
+                Author = Address.Zero
             };
 
             callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
             callHeader.Hash = callHeader.CalculateHash();
 
             Transaction transaction = tx.ToTransaction();
-            transaction.SenderAddress ??= Address.SystemUser;
+            transaction.SenderAddress ??= Address.Zero;
 
             if (transaction.GasLimit == 0)
             {
@@ -77,7 +77,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             Block block = new(callHeader, new[] { transaction }, []);
 
-            ProofBlockTracer proofBlockTracer = new(null, transaction.SenderAddress == Address.SystemUser);
+            ProofBlockTracer proofBlockTracer = new(null, transaction.SenderAddress == Address.Zero);
             scope.Component.Trace(block, proofBlockTracer);
 
             CallResultWithProof callResultWithProof = new();
@@ -153,7 +153,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             int logIndexStart = receiptFinder.Get(block).GetBlockLogFirstIndex(receipt.Index);
 
-            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, tx?.GetGasInfo(spec, block.Header) ?? new(), logIndexStart);
+            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, block.Timestamp, tx?.GetGasInfo(spec, block.Header) ?? new(), logIndexStart);
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, receipts, receipt.Index);
             receiptWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), receipt.Index);
 

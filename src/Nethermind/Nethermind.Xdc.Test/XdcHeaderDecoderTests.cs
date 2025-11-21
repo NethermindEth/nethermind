@@ -1,18 +1,17 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using FluentAssertions;
-using NUnit.Framework;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-
-using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
-using Nethermind.Xdc;
-using Nethermind.Core.Crypto;
+using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class XdcHeaderDecoderTests
     {
         private static (XdcBlockHeader Header, byte[] Bytes) BuildHeaderAndDefaultEncode(XdcHeaderDecoder codec, bool includeBaseFee = true)
@@ -87,7 +86,7 @@ namespace Nethermind.Xdc.Test
         {
             var decoder = new XdcHeaderDecoder();
 
-            BlockHeader? unencoded = decoder.Decode(new RlpStream(Bytes.FromHexString(hexRlp)));
+            XdcBlockHeader? unencoded = (XdcBlockHeader?)decoder.Decode(new RlpStream(Bytes.FromHexString(hexRlp)));
 
             string encoded = decoder.Encode(unencoded).ToString();
 

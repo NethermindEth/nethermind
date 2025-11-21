@@ -3,25 +3,20 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using System.Text.Json.Serialization;
+using RlpBehaviors = Nethermind.Serialization.Rlp.RlpBehaviors;
 
 namespace Nethermind.Xdc.Types;
 
-public class Vote(Address signer, BlockInfo proposedBlockInfo, Signature signature, long gapNumber)
+public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature signature = null) : IXdcPoolItem
 {
-    public Vote(BlockInfo proposedBlockInfo, Signature signature, long gapNumber)
-        : this(default, proposedBlockInfo, signature, gapNumber)
-    {
-    }
-
-    private Address _signer = signer;
-    public BlockInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
-    public Signature Signature { get; set; } = signature;
-    public long GapNumber { get; set; } = gapNumber;
+    private readonly VoteDecoder _decoder = new();
+    public BlockRoundInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
+    public ulong GapNumber { get; set; } = gapNumber;
+    public Signature? Signature { get; set; } = signature;
+    public Address? Signer { get; set; }
 
     public override string ToString() =>
-        $"{ProposedBlockInfo.Round}:{GapNumber}:{ProposedBlockInfo.Number}:{ProposedBlockInfo.SigHash()}";
+        $"{ProposedBlockInfo.Round}:{GapNumber}:{ProposedBlockInfo.BlockNumber}";
 
-    public Address GetSigner() => _signer;
-    public void SetSigner(Address signer) => _signer = signer;
+    public (ulong Round, Hash256 hash) PoolKey() => (ProposedBlockInfo.Round, Keccak.Compute(_decoder.Encode(this, RlpBehaviors.ForSealing).Bytes));
 }

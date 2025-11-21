@@ -14,12 +14,33 @@ namespace Nethermind.Core.Test;
 
 public static class TestWorldStateFactory
 {
-    public static WorldStateManager CreateForTest()
+    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null)
     {
-        return CreateForTest(TestMemDbProvider.Init(), LimboLogs.Instance);
+        dbProvider ??= TestMemDbProvider.Init();
+        logManager ??= LimboLogs.Instance;
+        IPruningTrieStore trieStore = new TrieStore(
+            new NodeStorage(dbProvider.StateDb),
+            No.Pruning,
+            Persist.EveryBlock,
+            new PruningConfig(),
+            LimboLogs.Instance);
+        return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
     }
 
-    public static WorldStateManager CreateForTest(IDbProvider dbProvider, ILogManager logManager)
+    public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)
+    {
+        if (dbProvider is null) dbProvider = TestMemDbProvider.Init();
+        if (logManager is null) logManager = LimboLogs.Instance;
+        IPruningTrieStore trieStore = new TrieStore(
+            new NodeStorage(dbProvider.StateDb),
+            No.Pruning,
+            Persist.EveryBlock,
+            new PruningConfig(),
+            LimboLogs.Instance);
+        return (new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
+    }
+
+    public static WorldStateManager CreateWorldStateManagerForTest(IDbProvider dbProvider, ILogManager logManager)
     {
         IPruningTrieStore trieStore = new TrieStore(
             new NodeStorage(dbProvider.StateDb),
@@ -27,7 +48,7 @@ public static class TestWorldStateFactory
             Persist.EveryBlock,
             new PruningConfig(),
             LimboLogs.Instance);
-        var worldState = new WorldState(trieStore, dbProvider.CodeDb, logManager);
+        var worldState = new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager);
 
         return new WorldStateManager(worldState, trieStore, dbProvider, logManager);
     }

@@ -93,12 +93,5 @@ namespace Nethermind.TxPool
             => IsOverflowWhenAddingTxCostToCumulative(tx, UInt256.Zero, out txCost);
 
         public static bool IsInMempoolForm(this Transaction tx) => tx.NetworkWrapper is not null;
-
-        public static ProofVersion GetProofVersion(this Transaction mempoolTx) => mempoolTx switch
-        {
-            LightTransaction lt => lt.ProofVersion,
-            { NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion v } } => v,
-            _ => ProofVersion.V0,
-        };
     }
 }

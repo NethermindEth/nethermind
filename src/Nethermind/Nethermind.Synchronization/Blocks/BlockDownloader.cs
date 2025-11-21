@@ -162,6 +162,8 @@ namespace Nethermind.Synchronization.Blocks
                 if (cancellation.IsCancellationRequested) return null; // check before every heavy operation
                 if (headers is null || headers.Count <= 1) return null;
 
+                if (_logger.IsTrace) _logger.Trace($"Prepared request from block {headers[0].Number} to {headers[^1].Number}");
+
                 if (previousStartingHeaderNumber == headers[0].Number)
                 {
                     // When the block is suggested right between a `NewPayload` and `ForkChoiceUpdatedHandler` the block is not added because it was added already
@@ -214,7 +216,7 @@ namespace Nethermind.Synchronization.Blocks
                     if (!_blockValidator.ValidateSuggestedBlock(currentBlock, entry.ParentHeader, out string? errorMessage))
                     {
                         PeerInfo peer = entry.PeerInfo;
-                        if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, {errorMessage}");
+                        if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer}, {errorMessage}");
 
                         if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {currentBlock.Header.ToString(BlockHeader.Format.Short)}");
                         entry.RetryBlockRequest();
@@ -381,7 +383,7 @@ namespace Nethermind.Synchronization.Blocks
             response.OwnedBodies?.Disown();
 
             SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
-            using ArrayPoolList<Block> blocks = new ArrayPoolList<Block>(response.BodiesRequests?.Count ?? 0);
+            using ArrayPoolListRef<Block> blocks = new(response.BodiesRequests?.Count ?? 0);
             int bodiesCount = 0;
             int receiptsCount = 0;
 
@@ -408,7 +410,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (!_blockValidator.ValidateBodyAgainstHeader(entry.Header, body, out string errorMessage))
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, {errorMessage}");
+                    if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer}, {errorMessage}");
 
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {entry.Header.ToString(BlockHeader.Format.Short)}");
                     result = SyncResponseHandlingResult.LesserQuality;

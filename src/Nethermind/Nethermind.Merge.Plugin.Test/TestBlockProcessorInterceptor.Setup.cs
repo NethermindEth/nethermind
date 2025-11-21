@@ -55,10 +55,4 @@ public class TestBranchProcessorInterceptor : IBranchProcessor
         add => _blockProcessorImplementation.BlockProcessed += value;
         remove => _blockProcessorImplementation.BlockProcessed -= value;
     }
-
-    public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
-    {
-        add => _blockProcessorImplementation.TransactionProcessed += value;
-        remove => _blockProcessorImplementation.TransactionProcessed -= value;
-    }
 }

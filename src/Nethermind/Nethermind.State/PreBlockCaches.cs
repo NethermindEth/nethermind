@@ -23,7 +23,7 @@ public class PreBlockCaches
     private readonly ISingleBlockProcessingCache<StorageCell, byte[]> _storageCache = new ConcurrentDictionaryCache<StorageCell, byte[]>(LockPartitions, InitialCapacity);
     private readonly ISingleBlockProcessingCache<AddressAsKey, Account> _stateCache = new ConcurrentDictionaryCache<AddressAsKey, Account>(LockPartitions, InitialCapacity);
     private readonly ConcurrentDictionary<NodeKey, byte[]?> _rlpCache = new(LockPartitions, InitialCapacity);
-    private readonly ConcurrentDictionary<PrecompileCacheKey, (byte[], bool)> _precompileCache = new(LockPartitions, InitialCapacity);
+    private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
 
     public PreBlockCaches()
     {
@@ -31,7 +31,6 @@ public class PreBlockCaches
         [
             () => _storageCache.NoResizeClear() ? CacheType.Storage : CacheType.None,
             () => _stateCache.NoResizeClear() ? CacheType.State : CacheType.None,
-            () => _rlpCache.NoResizeClear() ? CacheType.Rlp : CacheType.None,
             () => _precompileCache.NoResizeClear() ? CacheType.Precompile : CacheType.None
         ];
     }
@@ -39,7 +38,7 @@ public class PreBlockCaches
     public ISingleBlockProcessingCache<StorageCell, byte[]> StorageCache => _storageCache;
     public ISingleBlockProcessingCache<AddressAsKey, Account> StateCache => _stateCache;
     public ConcurrentDictionary<NodeKey, byte[]?> RlpCache => _rlpCache;
-    public ConcurrentDictionary<PrecompileCacheKey, (byte[], bool)> PrecompileCache => _precompileCache;
+    public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
 
     public CacheType ClearCaches()
     {

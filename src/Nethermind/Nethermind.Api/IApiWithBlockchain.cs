@@ -24,7 +24,6 @@ namespace Nethermind.Api
         (IApiWithBlockchain GetFromApi, IApiWithBlockchain SetInApi) ForProducer => (this, this);
 
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
-        IGenesisPostProcessor GenesisPostProcessor { get; set; }
         IBlockProcessingQueue BlockProcessingQueue { get; }
         IBlockProducer? BlockProducer { get; set; }
         IBlockProducerRunner BlockProducerRunner { get; set; }

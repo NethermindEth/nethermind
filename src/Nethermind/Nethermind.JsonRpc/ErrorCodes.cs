@@ -8,6 +8,11 @@ namespace Nethermind.JsonRpc
         public const int None = 0;
 
         /// <summary>
+        /// Execution reverted (Geth compatibility)
+        /// </summary>
+        public const int ExecutionReverted = 3;
+
+        /// <summary>
         /// Invalid JSON
         /// </summary>
         public const int ParseError = -32700;
@@ -40,7 +45,7 @@ namespace Nethermind.JsonRpc
         /// <summary>
         /// Requested resource not found
         /// </summary>
-        public const int ResourceNotFound = -32001;
+        public const int ResourceNotFound = -32000;
 
         /// <summary>
         /// Requested resource not available
@@ -121,5 +126,67 @@ namespace Nethermind.JsonRpc
         /// Block is not available due to history expirty policy
         /// </summary>
         public const int PrunedHistoryUnavailable = 4444;
+
+        /// <summary>
+        /// Default error code
+        /// </summary>
+        public const int Default = -32000;
+
+        /// <summary>
+        /// Transaction.Nonce is bigger than expected nonce
+        /// </summary>
+        public const int NonceTooHigh = -38011;
+
+        /// <summary>
+        /// Transaction.Nonce is smaller than expected nonce
+        /// </summary>
+        public const int NonceTooLow = -38010;
+
+        /// <summary>
+        /// Invalid intrinsic gas. Miner premium is negative
+        /// </summary>
+        public const int IntrinsicGas = -38013;
+
+        /// <summary>
+        /// Not enough value to cover transaction costs
+        /// </summary>
+        public const int InsufficientFunds = -38014;
+
+        /// <summary>
+        /// Gas limit reached
+        /// </summary>
+        public const int BlockGasLimitReached = -38015;
+
+        /// <summary>
+        /// Invalid block number
+        /// </summary>
+        public const int BlockNumberInvalid = -38020;
+
+        /// <summary>
+        /// Invalid block timestamp
+        /// </summary>
+        public const int BlockTimestampInvalid = -38021;
+
+        /// <summary>
+        /// Transaction.Sender is not an EOA
+        /// </summary>
+        public const int SenderIsNotEOA = -38024;
+
+        /// <summary>
+        /// EIP-3860. Code size is to big
+        /// </summary>
+        public const int MaxInitCodeSizeExceeded = -38025;
+
+        /// <summary>
+        /// Transaction reverted. Geth sets it to -32000 in simulate but suppose to 3. We kepp it as geth for now
+        /// </summary>
+        public const int RevertedSimulate = -32000;
+
+        /// <summary>
+        /// Error during EVM execution
+        /// </summary>
+        public const int VMError = -32015;
+        public const int TxSyncTimeout = 4;
+        public const int ClientLimitExceeded = -38026;
     }
 }

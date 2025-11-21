@@ -50,20 +50,7 @@ public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
 
         IBlockTree blockTree = ctx.Resolve<IBlockTree>();
         if (blockTree.Genesis is not null) return;
-
-        GenesisLoader genesisLoader = ctx.Resolve<GenesisLoader>();
-
-        using var _ = ctx.Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
-
-        Task newHeadTask = Wait.ForEventCondition<BlockEventArgs>(
-            cancellation,
-            (h) => blockTree.NewHeadBlock += h,
-            (h) => blockTree.NewHeadBlock -= h,
-            (e) => true);
-
-        Block genesis = genesisLoader.Load();
-        blockTree.SuggestBlock(genesis);
-        newHeadTask.Wait();
+        ctx.Resolve<IMainProcessingContext>().GenesisLoader.Load();
     }
 
     public async Task StartNetwork(CancellationToken cancellationToken)

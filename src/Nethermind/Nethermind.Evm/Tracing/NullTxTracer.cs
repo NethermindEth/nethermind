@@ -105,7 +105,7 @@ public class NullTxTracer : TxTracer
     public override void ReportExtraGasPressure(long extraGasPressure)
         => ThrowInvalidOperationException();
 
-    public override void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
+    public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
         => ThrowInvalidOperationException();
 
     public override void ReportFees(UInt256 fees, UInt256 burntFees)

@@ -93,17 +93,7 @@ public class DisposableScopeOverridableEnvTests
             throw new System.NotImplementedException();
         }
 
-        public TransactionResult Execute(Transaction transaction, BlockHeader header, ITxTracer txTracer)
-        {
-            throw new System.NotImplementedException();
-        }
-
         public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public TransactionResult CallAndRestore(Transaction transaction, BlockHeader header, ITxTracer txTracer)
         {
             throw new System.NotImplementedException();
         }
@@ -119,6 +109,11 @@ public class DisposableScopeOverridableEnvTests
         }
 
         public TransactionResult Warmup(Transaction transaction, ITxTracer txTracer)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public void SetBlockExecutionContext(BlockHeader blockHeader)
         {
             throw new System.NotImplementedException();
         }

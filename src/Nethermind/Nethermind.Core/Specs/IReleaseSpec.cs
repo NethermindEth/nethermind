@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
+using System.Collections.Frozen;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -307,6 +307,12 @@ namespace Nethermind.Core.Specs
         Address Eip2935ContractAddress { get; }
 
         /// <summary>
+        /// EIP-2935 ring buffer size for historical block hash storage.
+        /// Defaults to 8,191 blocks for Ethereum mainnet.
+        /// </summary>
+        long Eip2935RingBufferSize => Eip2935Constants.RingBufferSize;
+
+        /// <summary>
         /// SELFDESTRUCT only in same transaction
         /// </summary>
         bool IsEip6780Enabled { get; }
@@ -508,7 +514,7 @@ namespace Nethermind.Core.Specs
         /// Gets a cached set of all precompiled contract addresses for this release specification.
         /// Chain-specific implementations can override this to include their own precompiled contracts.
         /// </summary>
-        HashSet<AddressAsKey> Precompiles { get; }
+        FrozenSet<AddressAsKey> Precompiles { get; }
 
         public ProofVersion BlobProofVersion => IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
 

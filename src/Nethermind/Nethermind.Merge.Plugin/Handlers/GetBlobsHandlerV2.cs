@@ -55,7 +55,7 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumer
             }
 
             Metrics.GetBlobsRequestsSuccessTotal++;
-            return ResultWrapper<IEnumerable<BlobAndProofV2>?>.Success(response.ToList());
+            return ResultWrapper<IEnumerable<BlobAndProofV2>?>.Success(response);
         }
         catch
         {

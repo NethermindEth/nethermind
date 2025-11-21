@@ -7,9 +7,6 @@
     <Project Path="Nethermind.Seq/Nethermind.Seq.csproj" />
   </Folder>
   <Folder Name="/Plugins/" />
-  <Folder Name="/Plugins/Analytics/">
-    <Project Path="Nethermind.Analytics/Nethermind.Analytics.csproj" />
-  </Folder>
   <Folder Name="/Plugins/Flashbots/">
     <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
     <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
@@ -49,7 +46,7 @@
     <Project Path="Nethermind.Consensus.Test/Nethermind.Consensus.Test.csproj" />
     <Project Path="Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
     <Project Path="Nethermind.Db.Test/Nethermind.Db.Test.csproj" />
-    <Project Path="Nethermind.Era.Test/Nethermind.Era1.Test.csproj" />
+    <Project Path="Nethermind.Era1.Test/Nethermind.Era1.Test.csproj" />
     <Project Path="Nethermind.Ethash.Test/Nethermind.Ethash.Test.csproj" />
     <Project Path="Nethermind.EthStats.Test/Nethermind.EthStats.Test.csproj" />
     <Project Path="Nethermind.Evm.Test/Nethermind.Evm.Test.csproj" />
@@ -66,7 +63,6 @@
     <Project Path="Nethermind.Network.Enr.Test/Nethermind.Network.Enr.Test.csproj" />
     <Project Path="Nethermind.Network.Test/Nethermind.Network.Test.csproj" />
     <Project Path="Nethermind.Optimism.Test/Nethermind.Optimism.Test.csproj" />
-    <Project Path="Nethermind.Overseer.Test/Nethermind.Overseer.Test.csproj" />
     <Project Path="Nethermind.Runner.Test/Nethermind.Runner.Test.csproj" />
     <Project Path="Nethermind.Serialization.Ssz.Test/Nethermind.Serialization.Ssz.Test.csproj" />
     <Project Path="Nethermind.Serialization.SszGenerator.Test/Nethermind.Serialization.SszGenerator.Test.csproj" />
@@ -79,7 +75,7 @@
     <Project Path="Nethermind.Trie.Test/Nethermind.Trie.Test.csproj" />
     <Project Path="Nethermind.TxPool.Test/Nethermind.TxPool.Test.csproj" />
     <Project Path="Nethermind.Wallet.Test/Nethermind.Wallet.Test.csproj" />
-    <Project Path="Nethermind.Xdc.Test\Nethermind.Xdc.Test.csproj" />
+    <Project Path="Nethermind.Xdc.Test/Nethermind.Xdc.Test.csproj" />
   </Folder>
   <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="Nethermind.Api/Nethermind.Api.csproj" />

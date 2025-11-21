@@ -8,13 +8,14 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public interface IHeaderDecoder : IRlpValueDecoder<BlockHeader>, IRlpStreamDecoder<BlockHeader> { }
+    public interface IHeaderDecoder : IBlockHeaderDecoder<BlockHeader> { }
+    public interface IBlockHeaderDecoder<T> : IRlpValueDecoder<T>, IRlpStreamDecoder<T> where T : BlockHeader { }
 
-    public class HeaderDecoder : IHeaderDecoder
+    public sealed class HeaderDecoder : RlpValueDecoder<BlockHeader>, IHeaderDecoder
     {
         public const int NonceLength = 8;
 
-        public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext,
+        protected override BlockHeader? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
@@ -84,7 +85,7 @@ namespace Nethermind.Serialization.Rlp
             return blockHeader;
         }
 
-        public BlockHeader? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override BlockHeader? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -154,7 +155,7 @@ namespace Nethermind.Serialization.Rlp
             return blockHeader;
         }
 
-        public void Encode(RlpStream rlpStream, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream rlpStream, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (header is null)
             {
@@ -288,7 +289,7 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        public int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
         {
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }

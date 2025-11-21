@@ -50,6 +50,12 @@ public class DbModule(
                 return new NoopTunableDb();
             })
             .AddKeyedAdapter<IReadOnlyKeyValueStore, IKeyValueStore>((kv) => kv)
+            .AddKeyedAdapter<ISortedKeyValueStore, IKeyValueStore>((key, kv) =>
+            {
+                if (kv is not ISortedKeyValueStore sortedKeyValue)
+                    throw new InvalidOperationException($"{nameof(IKeyValueStore)}:{key} is not of type {nameof(ISortedKeyValueStore)}");
+                return sortedKeyValue;
+            })
 
             // Monitoring use these to track active db. We intercept db factory to keep them lazy. Does not
             // track db that is not created by db factory though...

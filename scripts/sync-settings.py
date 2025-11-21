@@ -13,7 +13,7 @@ SUPERCHAIN_CHAINS = ["op-mainnet", "op-sepolia", "base-mainnet", "base-sepolia",
 configs = {
     # fast sync section
     "mainnet": {
-        "url": "api.etherscan.io",
+        "url": "https://api.etherscan.io/v2/api?chainid=1",
         "blockReduced": 1000,
         "multiplierRequirement": 1000,
         "isPoS": True
@@ -31,22 +31,10 @@ configs = {
         "isPoS": True
     },
     "sepolia": {
-        "url": "api-sepolia.etherscan.io",
+        "url": "https://api.etherscan.io/v2/api?chainid=11155111",
         "blockReduced": 1000,
         "multiplierRequirement": 1000,
         "isPoS": True
-    },
-    "energyweb": {
-        "url": "https://rpc.energyweb.org",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000,
-        "isPoS": False
-    },
-    "volta": {
-        "url": "https://volta-rpc.energyweb.org",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000,
-        "isPoS": False
     },
     "joc-mainnet": {
         "url": "https://rpc-1.japanopenchain.org:8545",
@@ -117,7 +105,7 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
             'action': 'eth_blockNumber',
             'apikey': key,
         }
-        response = requests.get(f'https://{apiUrl}/api', params=params)
+        response = requests.get(apiUrl, params=params)
     else:
         data_req = '{"id":0,"jsonrpc":"2.0","method": "eth_blockNumber","params": []}'
         response = requests.post(apiUrl, headers=APPLICATION_JSON, data=data_req)
@@ -134,7 +122,7 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
             'boolean': 'true',
             'apikey': key,
         }
-        response = requests.get(f'https://{apiUrl}/api', params=params)
+        response = requests.get(apiUrl, params=params)
     else:
         data_req = f'{{"id":0,"jsonrpc":"2.0","method": "eth_getBlockByNumber","params": ["{hex(baseBlock)}", false]}}'
         response = requests.post(apiUrl, headers=APPLICATION_JSON, data=data_req)

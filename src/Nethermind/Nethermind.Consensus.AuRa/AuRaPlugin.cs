@@ -11,6 +11,7 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
@@ -103,7 +104,6 @@ namespace Nethermind.Consensus.AuRa
 
                 // Steps override
                 .AddStep(typeof(InitializeBlockchainAuRa))
-                .AddStep(typeof(LoadGenesisBlockAuRa))
 
                 // Block processing components
                 .AddSingleton<IBlockValidationModule, AuraValidationModule>()
@@ -119,6 +119,7 @@ namespace Nethermind.Consensus.AuRa
                 .Bind<ISealValidator, AuRaSealValidator>()
                 .AddSingleton<ISealer, AuRaSealer>()
                 .AddSingleton<AuRaGasLimitOverrideFactory>()
+                .AddScoped<IGenesisPostProcessor, AuraGenesisPostProcessor>()
 
                 // Rpcs
                 .AddSingleton<IHealthHintService, AuraHealthHintService>()

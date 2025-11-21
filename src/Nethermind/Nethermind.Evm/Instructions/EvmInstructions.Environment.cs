@@ -12,6 +12,7 @@ using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
+
 using Int256;
 
 internal static partial class EvmInstructions
@@ -505,7 +506,7 @@ internal static partial class EvmInstructions
         if (address is null) goto StackUnderflow;
 
         // Charge gas for account access. If insufficient gas remains, abort.
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
+        if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
 
         ref readonly UInt256 result = ref vm.WorldState.GetBalance(address);
         stack.PushUInt256<TTracingInst>(in result);
@@ -564,7 +565,7 @@ internal static partial class EvmInstructions
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
         // Check if enough gas for account access and charge accordingly.
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
+        if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
         // For dead accounts, the specification requires pushing zero.
@@ -609,7 +610,7 @@ internal static partial class EvmInstructions
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
-        if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
+        if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
         if (state.IsDeadAccount(address))

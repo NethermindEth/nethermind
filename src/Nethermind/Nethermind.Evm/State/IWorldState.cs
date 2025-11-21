@@ -24,6 +24,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     IDisposable BeginScope(BlockHeader? baseBlock);
     bool IsInScope { get; }
+    IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);
     new ref readonly ValueHash256 GetCodeHash(Address address);
     bool HasStateForBlock(BlockHeader? baseBlock);
@@ -97,6 +98,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
     void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default);
+    void CreateEmptyAccountIfDeleted(Address address);
 
     /// <summary>
     /// Inserts the given smart contract code into the system at the specified address,
@@ -117,8 +119,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
-    void UpdateStorageRoot(Address address, Hash256 storageRoot);
-
     void IncrementNonce(Address address, UInt256 delta);
 
     void DecrementNonce(Address address, UInt256 delta);
@@ -130,9 +130,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void SetNonce(Address address, in UInt256 nonce);
 
     /* snapshots */
-
-    void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true);
-
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);
 
     /// <summary>

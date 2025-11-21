@@ -10,6 +10,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -45,7 +46,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                     StateOverrides = blockStateCall.StateOverrides,
                     Calls = blockStateCall.Calls?.Select(callTransactionModel =>
                     {
-                        callTransactionModel = UpdateTxType(callTransactionModel);
                         LegacyTransactionForRpc asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
@@ -55,8 +55,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
 
                         Transaction tx = callTransactionModel.ToTransaction();
 
-                        // The RPC set SystemUser as default, but we want to set it to zero to follow hive test.
-                        if (tx.SenderAddress == Address.SystemUser) tx.SenderAddress = Address.Zero;
                         tx.ChainId = _blockchainBridge.GetChainId();
 
                         TransactionWithSourceDetails? result = new()
@@ -73,30 +71,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         };
 
         return result;
-    }
-
-    private static TransactionForRpc UpdateTxType(TransactionForRpc rpcTransaction)
-    {
-        // TODO: This is a bit messy since we're changing the transaction type
-        if (rpcTransaction is LegacyTransactionForRpc legacy && rpcTransaction is not EIP1559TransactionForRpc)
-        {
-            rpcTransaction = new EIP1559TransactionForRpc
-            {
-                Nonce = legacy.Nonce,
-                To = legacy.To,
-                From = legacy.From,
-                Gas = legacy.Gas,
-                Value = legacy.Value,
-                Input = legacy.Input,
-                GasPrice = legacy.GasPrice,
-                ChainId = legacy.ChainId,
-                V = legacy.V,
-                R = legacy.R,
-                S = legacy.S,
-            };
-        }
-
-        return rpcTransaction;
     }
 
     public override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
@@ -120,8 +94,8 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         BlockHeader header = searchResult.Value.Object;
 
         if (!_blockchainBridge.HasStateForBlock(header!))
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"No state available for block {header.Hash}",
-                ErrorCodes.ResourceUnavailable);
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
+                ErrorCodes.ResourceNotFound);
 
         if (call.BlockStateCalls?.Count > _blocksLimit)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
@@ -133,7 +107,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
             long lastBlockNumber = header.Number;
             ulong lastBlockTime = header.Timestamp;
 
-            using ArrayPoolList<BlockStateCall<TransactionForRpc>> completeBlockStateCalls = new(call.BlockStateCalls.Count);
+            using ArrayPoolListRef<BlockStateCall<TransactionForRpc>> completeBlockStateCalls = new(call.BlockStateCalls.Count);
 
             foreach (BlockStateCall<TransactionForRpc>? blockToSimulate in call.BlockStateCalls)
             {
@@ -210,28 +184,57 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                 {
                     if (call is { Error: not null } simulateResult && !string.IsNullOrEmpty(simulateResult.Error.Message))
                     {
-                        simulateResult.Error.Code = ErrorCodes.ExecutionError;
+                        var exception = simulateResult.Error.EvmException;
+                        call.Error.Code = MapEvmExceptionType(exception);
+                        if (exception != EvmExceptionType.Revert)
+                        {
+                            call.Error.Message = call.Error.EvmException.GetEvmExceptionDescription();
+                            call.Error.Data = null;
+                        }
                     }
                 }
             }
         }
 
-        if (results.Error is not null)
+        int? errorCode = results.TransactionResult.TransactionExecuted
+            ? null
+            : MapSimulateErrorCode(results.TransactionResult);
+        if (results.IsInvalidInput) errorCode = ErrorCodes.Default;
+        return results.Error is null
+            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success([.. results.Items])
+            : errorCode is not null
+                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error!, errorCode.Value)
+                : ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error);
+    }
+
+    private static int MapSimulateErrorCode(TransactionResult txResult)
+    {
+        if (txResult.Error != TransactionResult.ErrorType.None)
         {
-            results.ErrorCode = results.Error switch
+            return txResult.Error switch
             {
-                var e when e.Contains("invalid transaction", StringComparison.OrdinalIgnoreCase) => ErrorCodes.InvalidTransaction,
-                var e when e.Contains("InsufficientBalanceException", StringComparison.OrdinalIgnoreCase) => ErrorCodes.InvalidTransaction,
-                var e when e.Contains("InvalidBlockException", StringComparison.OrdinalIgnoreCase) => ErrorCodes.InvalidParams,
-                var e when e.Contains("below intrinsic gas", StringComparison.OrdinalIgnoreCase) => ErrorCodes.InsufficientIntrinsicGas,
-                _ => results.ErrorCode
+                TransactionResult.ErrorType.BlockGasLimitExceeded => ErrorCodes.BlockGasLimitReached,
+                TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => ErrorCodes.IntrinsicGas,
+                TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance
+                    or TransactionResult.ErrorType.InsufficientSenderBalance => ErrorCodes.InsufficientFunds,
+                TransactionResult.ErrorType.MalformedTransaction => ErrorCodes.InternalError,
+                TransactionResult.ErrorType.MinerPremiumNegative => ErrorCodes.InvalidParams,
+                TransactionResult.ErrorType.NonceOverflow => ErrorCodes.InternalError,
+                TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.InvalidParams,
+                TransactionResult.ErrorType.SenderNotSpecified => ErrorCodes.InternalError,
+                TransactionResult.ErrorType.TransactionSizeOverMaxInitCodeSize => ErrorCodes.MaxInitCodeSizeExceeded,
+                TransactionResult.ErrorType.WrongTransactionNonce => ErrorCodes.InternalError,
+                _ => ErrorCodes.InternalError
             };
         }
 
-        return results.Error is null
-            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success([.. results.Items])
-            : results.ErrorCode is not null
-                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error!, results.ErrorCode!.Value)
-                : ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error);
+        return MapEvmExceptionType(txResult.EvmExceptionType);
     }
+
+
+    private static int MapEvmExceptionType(EvmExceptionType type) => type switch
+    {
+        EvmExceptionType.Revert => ErrorCodes.RevertedSimulate,
+        _ => ErrorCodes.VMError
+    };
 }
