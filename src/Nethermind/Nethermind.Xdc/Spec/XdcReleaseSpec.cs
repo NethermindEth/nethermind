@@ -102,6 +102,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     long BlackListHFNumber { get; set; }
     long EpochBlockOpening { get; set; }
     long EpochBlockRandomize { get; set; }
+    long MergeSignRange { get; set; }
 
     public void ApplyV2Config(ulong round);
 }
