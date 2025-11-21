@@ -91,22 +91,22 @@ public static class EIP1559ParametersExtensions
         parameters = default;
 
         ReadOnlySpan<byte> data = header.ExtraData;
-        var dataLength = data.Length;
+        int dataLength = data.Length;
         if (dataLength == 0)
         {
             error = $"{nameof(header.ExtraData)} must not be empty";
             return false;
         }
 
-        var maxVersion = EIP1559Parameters.ByteLengthByVersion.Length - 1;
-        var version = data.TakeAndMove(1)[0];
+        int maxVersion = EIP1559Parameters.ByteLengthByVersion.Length - 1;
+        byte version = data.TakeAndMove(1)[0];
         if (version > maxVersion)
         {
             error = $"{nameof(version)} must be between 0 and {maxVersion}";
             return false;
         }
 
-        var expLength = EIP1559Parameters.ByteLengthByVersion[version];
+        byte expLength = EIP1559Parameters.ByteLengthByVersion[version];
         if (dataLength != expLength)
         {
             error = $"{nameof(header.ExtraData)} must be {expLength} bytes long on version {version}";
@@ -130,14 +130,14 @@ public static class EIP1559ParametersExtensions
         parameters = default;
 
         ReadOnlySpan<byte> data = attributes.EIP1559Params;
-        var dataLength = data.Length;
+        int dataLength = data.Length;
         if (dataLength == 0)
         {
             error = $"{nameof(attributes.EIP1559Params)} must not be empty";
             return false;
         }
 
-        var version = Array.IndexOf(EIP1559Parameters.ByteLengthByVersion, (byte)(dataLength + 1));
+        int version = Array.IndexOf(EIP1559Parameters.ByteLengthByVersion, (byte)(dataLength + 1));
         if (version < 0)
         {
             error = $"{nameof(attributes.EIP1559Params)} has invalid length";
