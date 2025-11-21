@@ -32,14 +32,14 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 
     private static AbiDefinition CreateAbiDefinition()
     {
-        var abiDefinitionParser = new AbiDefinitionParser();
+        AbiDefinitionParser abiDefinitionParser = new AbiDefinitionParser();
         return abiDefinitionParser.Parse(typeof(MasternodeVotingContract));
     }
 
     public UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate)
     {
-        var callInfo = new CallInfo(blockHeader, "getCandidateCap", Address.SystemUser, candidate);
-        var result = this._constant.Call(callInfo);
+        CallInfo callInfo = new CallInfo(blockHeader, "getCandidateCap", Address.SystemUser, candidate);
+        object[] result = _constant.Call(callInfo);
         if (result.Length != 1)
             throw new InvalidOperationException("Expected 'getCandidateCap' to return exactly one result.");
 
@@ -48,8 +48,8 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 
     public Address[] GetCandidates(BlockHeader blockHeader)
     {
-        var callInfo = new CallInfo(blockHeader, "getCandidates", Address.SystemUser);
-        var result = this._constant.Call(callInfo);
+        CallInfo callInfo = new CallInfo(blockHeader, "getCandidates", Address.SystemUser);
+        object[] result = _constant.Call(callInfo);
         return (Address[])result[0]!;
     }
 
@@ -60,16 +60,16 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     /// <returns></returns>
     public Address[] GetCandidatesFromState(BlockHeader header)
     {
-        var variableSlot = CandidateContractSlots.Candidates;
+        CandidateContractSlots variableSlot = CandidateContractSlots.Candidates;
         Span<byte> input = [(byte)variableSlot];
         var slot = new UInt256(Keccak.Compute(input).Bytes);
-        using var state = _worldState.BeginScope(header);
+        using IDisposable state = _worldState.BeginScope(header);
         ReadOnlySpan<byte> storageCell = _worldState.Get(new StorageCell(ContractAddress, slot));
-        var length = new UInt256(storageCell);
+        UInt256 length = new UInt256(storageCell);
         Address[] candidates = new Address[(ulong)length];
         for (int i = 0; i < length; i++)
         {
-            var key = CalculateArrayKey(slot, (ulong)i, 1);
+            UInt256 key = CalculateArrayKey(slot, (ulong)i, 1);
             candidates[i] = new Address(_worldState.Get(new StorageCell(ContractAddress, key)));
         }
         return candidates;
