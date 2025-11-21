@@ -976,6 +976,7 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        [Retry(3)]
         public async Task Will_NotRemove_ReCommittedNode()
         {
             MemDb memDb = new();

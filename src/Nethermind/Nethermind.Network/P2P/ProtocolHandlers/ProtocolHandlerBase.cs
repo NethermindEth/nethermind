@@ -172,7 +172,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected void ReportIn(string messageInfo, int size)
         {
             if (Logger.IsTrace)
-                Logger.Trace($"OUT {Counter:D5} {messageInfo}");
+                Logger.Trace($"IN {Counter:D5} {messageInfo}");
 
             if (NetworkDiagTracer.IsEnabled)
                 NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo, size);
