@@ -4,6 +4,7 @@
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -15,11 +16,10 @@ using Nethermind.Xdc.Contracts;
 using System;
 using System.Linq;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.Contracts;
 internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 {
     private readonly IWorldState _worldState;
-
     private IConstantContract _constant;
 
     public MasternodeVotingContract(
@@ -27,10 +27,16 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
         IAbiEncoder abiEncoder,
         Address contractAddress,
         IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-        : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), new AbiDefinition())
+        : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), CreateAbiDefinition())
     {
         _constant = GetConstant(readOnlyTxProcessorSource);
         _worldState = worldState;
+    }
+
+    private static AbiDefinition CreateAbiDefinition()
+    {
+        var abiDefinitionParser = new AbiDefinitionParser();
+        return abiDefinitionParser.Parse(typeof(MasternodeVotingContract));
     }
 
     public UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate)
@@ -47,7 +53,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     {
         var callInfo = new CallInfo(blockHeader, "getCandidates", Address.SystemUser);
         var result = this._constant.Call(callInfo);
-        return (Address[])result!;
+        return (Address[])result[0]!;
     }
 
     /// <summary>
@@ -55,7 +61,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     /// </summary>
     /// <param name="header"></param>
     /// <returns></returns>
-    public Address[] GetCandidates(XdcBlockHeader header)
+    public Address[] GetCandidatesFromState(BlockHeader header)
     {
         var variableSlot = CandidateContractSlots.Candidates;
         Span<byte> input = [(byte)variableSlot];

@@ -15,6 +15,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Nethermind.Xdc.Test;
+[Parallelizable(ParallelScope.All)]
 internal class XdcSealValidatorTests
 {
     private static bool IsEpochSwitch(XdcBlockHeader header, IXdcReleaseSpec spec)

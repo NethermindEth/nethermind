@@ -15,8 +15,8 @@ namespace Nethermind.Xdc;
 public static class XdcExtensions
 {
     //TODO can we wire up this so we can use Rlp.Encode()?
-    private static XdcHeaderDecoder _headerDecoder = new();
-    private static VoteDecoder _voteDecoder = new();
+    private static readonly XdcHeaderDecoder _headerDecoder = new();
+    private static readonly VoteDecoder _voteDecoder = new();
     public static Signature Sign(this IEthereumEcdsa ecdsa, PrivateKey privateKey, XdcBlockHeader header)
     {
         ValueHash256 hash = ValueKeccak.Compute(_headerDecoder.Encode(header, RlpBehaviors.ForSealing).Bytes);

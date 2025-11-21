@@ -10,12 +10,10 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
+using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Types;
-using System;
-using System.Collections;
 
 namespace Nethermind.Xdc;
 internal class XdcBlockTree : BlockTree
@@ -65,7 +63,7 @@ internal class XdcBlockTree : BlockTree
 
     protected override AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
     {
-        Types.BlockRoundInfo finalizedBlockInfo = _xdcConsensus.HighestCommitBlock;
+        BlockRoundInfo finalizedBlockInfo = _xdcConsensus.HighestCommitBlock;
         if (finalizedBlockInfo is null)
             return base.Suggest(block, header, options);
         if (finalizedBlockInfo.Hash == header.Hash)

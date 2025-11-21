@@ -17,7 +17,7 @@ namespace Nethermind.Xdc;
 internal class SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHandler penaltyHandler) : ISnapshotManager
 {
 
-    private LruCache<Hash256, Snapshot> _snapshotCache = new(128, 128, "XDC Snapshot cache");
+    private readonly LruCache<Hash256, Snapshot> _snapshotCache = new(128, 128, "XDC Snapshot cache");
 
     private readonly SnapshotDecoder _snapshotDecoder = new();
 
