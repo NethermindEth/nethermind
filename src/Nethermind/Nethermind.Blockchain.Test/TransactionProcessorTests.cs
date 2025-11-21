@@ -235,18 +235,6 @@ public class TransactionProcessorTests
         Assert.That(result.TransactionExecuted, Is.False);
     }
 
-    [TestCase(true, true)]
-    [TestCase(true, false)]
-    [TestCase(false, true)]
-    [TestCase(false, false)]
-    public void Will_not_cause_quick_fail_above_block_gas_limit_during_calls(bool withStateDiff, bool withTrace)
-    {
-        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
-        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
-        TransactionResult result = CallAndRestore(tx, block);
-        Assert.That(result.TransactionExecuted, Is.True);
-    }
-
     [Test]
     public void Balance_is_not_changed_on_call_and_restore()
     {

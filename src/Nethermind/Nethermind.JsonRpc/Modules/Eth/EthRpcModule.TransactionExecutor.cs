@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Threading;
 using Nethermind.Blockchain.Find;
@@ -66,6 +64,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override Transaction Prepare(TransactionForRpc call)
             {
+                if (_rpcConfig.GasCap is not null)
+                {
+                    call.EnsureDefaults(_rpcConfig.GasCap);
+                }
                 var tx = call.ToTransaction();
                 tx.ChainId = _blockchainBridge.GetChainId();
                 return tx;
@@ -149,6 +151,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
+                if (_rpcConfig.GasCap is not null)
+                {
+                    tx.GasLimit = long.Min(tx.GasLimit, _rpcConfig.GasCap.Value);
+                }
+
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
 
                 return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true), result.ExecutionReverted, result.OutputData);
