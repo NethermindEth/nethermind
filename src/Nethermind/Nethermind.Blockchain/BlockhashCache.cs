@@ -29,6 +29,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 
     public Hash256? GetHash(BlockHeader headBlock, int depth) =>
         depth == 0 ? headBlock.Hash
+        : depth == 1 ? headBlock.ParentHash
         : depth > MaxDepth ? null
         : _flatCache.TryGet(headBlock.Hash!, out Hash256[] array) ? array[depth]
         : Load(headBlock, depth, out _)?.Hash;

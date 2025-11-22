@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
@@ -391,8 +393,7 @@ public class BlockhashProviderTests
             Eip2935RingBufferSize = customRingBufferSize
         };
 
-        var specProvider = new CustomSpecProvider(
-            (new ForkActivation(0, genesis.Timestamp), customSpec));
+        var specProvider = new CustomSpecProvider((new ForkActivation(0, genesis.Timestamp), customSpec));
         BlockhashStore store = new(worldState);
 
         using IDisposable _ = worldState.BeginScope(current.Header);
@@ -434,5 +435,30 @@ public class BlockhashProviderTests
             Assert.That(result, Is.EqualTo(expectedHeader!.Hash),
                 $"Block {blockNum} should be retrievable within custom ring buffer of size {customRingBufferSize}");
         }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Prefetches_come_in_wrong_order()
+    {
+        const int chainLength = 261;
+
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis)
+            .OfHeadersOnly
+            .OfChainLength(chainLength);
+        SlowHeaderStore slowHeaderStore = new(blockTreeBuilder.HeaderStore) { SlowBlockNumber = 2 };
+        BlockTree tree = blockTreeBuilder.TestObject;
+        BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
+        long expectedBlockNumber = head.Number - 2;
+        BlockHeader expected = tree.FindHeader(expectedBlockNumber, BlockTreeLookupOptions.None)!;
+        BlockHeader previousHead = tree.FindHeader(chainLength - 4, BlockTreeLookupOptions.None)!;
+        BlockhashProvider provider = CreateBlockHashProvider(slowHeaderStore, Frontier.Instance);
+        CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(5));
+        Task previousHeadTask = provider.Prefetch(previousHead, cts.Token);
+        Task headTask = provider.Prefetch(head, CancellationToken.None);
+        await Task.WhenAll(previousHeadTask, headTask);
+
+        Hash256? result = provider.GetBlockhash(head, expectedBlockNumber, Frontier.Instance);
+        Assert.That(result, Is.EqualTo(expected.Hash));
     }
 }

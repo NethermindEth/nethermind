@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -306,23 +305,6 @@ public class BlockhashCacheTests
         CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(20));
         await cache.Prefetch(head, cts.Token);
         cache.GetStats().Should().Be(new BlockhashCache.Stats(0, 0, 0));
-    }
-
-    private class SlowHeaderStore(IHeaderStore headerStore) : IHeaderStore
-    {
-        public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null)
-        {
-            if (blockNumber < 100) Thread.Sleep(10);
-            return headerStore.Get(blockHash, blockNumber);
-        }
-
-        public void Insert(BlockHeader header) => headerStore.Insert(header);
-        public void BulkInsert(IReadOnlyList<BlockHeader> headers) => headerStore.BulkInsert(headers);
-        public BlockHeader? Get(Hash256 blockHash, bool shouldCache, long? blockNumber = null) => headerStore.Get(blockHash, shouldCache, blockNumber);
-        public void Cache(BlockHeader header) => headerStore.Cache(header);
-        public void Delete(Hash256 blockHash) => headerStore.Delete(blockHash);
-        public void InsertBlockNumber(Hash256 blockHash, long blockNumber) => headerStore.InsertBlockNumber(blockHash, blockNumber);
-        public long? GetBlockNumber(Hash256 blockHash) => headerStore.GetBlockNumber(blockHash);
     }
 
     private static (BlockTree, BlockhashCache) BuildTest(int chainLength, IHeaderStore? headerStore = null)

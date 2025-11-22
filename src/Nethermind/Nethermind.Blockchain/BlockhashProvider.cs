@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            Hash256[] hashes = _hashes;
+            Hash256[] hashes = Volatile.Read(ref _hashes);
             return hashes is not null
                 ? hashes[depth]
                 : blockhashCache.GetHash(currentBlock, (int)depth)
@@ -51,7 +51,19 @@ namespace Nethermind.Blockchain
         public async Task Prefetch(BlockHeader currentBlock, CancellationToken token)
         {
             _hashes = null;
-            _hashes = await blockhashCache.Prefetch(currentBlock, token);
+            Hash256[]? hashes = await blockhashCache.Prefetch(currentBlock, token);
+
+            // This leverages that branch processing is single threaded
+            // If the cancellation was requested it means block processing finished before prefetching is done
+            // This means we don't want to set hashes, as next block might already be prefetching
+            // This allows us to avoid await on Prefetch in BranchProcessor
+            lock (_blockhashStore)
+            {
+                if (!token.IsCancellationRequested)
+                {
+                    _hashes = hashes;
+                }
+            }
         }
     }
 }
