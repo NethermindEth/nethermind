@@ -60,7 +60,7 @@ public static class BaseFlatPersistence
 
             if (!EnableReadCoalescing)
             {
-                return state.GetSpanCopy(key, outBuffer);
+                return state.Get(key, outBuffer);
             }
 
             (bool ok, int outSize) = state.TryGetSpanCached(key, outBuffer);
@@ -90,7 +90,7 @@ public static class BaseFlatPersistence
             // 3. Handle Shard Collision (Different key using the same lock)
             if (!keyMatch)
             {
-                return state.GetSpanCopy(key, outBuffer);
+                return state.Get(key, outBuffer);
             }
 
             if (isLeader)
@@ -99,7 +99,7 @@ public static class BaseFlatPersistence
                 {
                     // 4. LEADER: Perform the expensive read
                     // This presumably populates the cache internally
-                    return state.GetSpanCopy(key, outBuffer);
+                    return state.Get(key, outBuffer);
                 }
                 finally
                 {
@@ -126,7 +126,7 @@ public static class BaseFlatPersistence
                 }
 
                 // Do a standard read, block should be cached
-                return state.GetSpanCopy(key, outBuffer);
+                return state.Get(key, outBuffer);
             }
         }
 
@@ -167,7 +167,7 @@ public static class BaseFlatPersistence
         {
             if (!EnableReadCoalescing)
             {
-                return storage.GetSpanCopy(key, outBuffer);
+                return storage.Get(key, outBuffer);
             }
 
             (bool ok, int outSize) = storage.TryGetSpanCached(key, outBuffer);
@@ -197,7 +197,7 @@ public static class BaseFlatPersistence
             // 3. Handle Shard Collision (Different key using the same lock)
             if (!keyMatch)
             {
-                return storage.GetSpanCopy(key, outBuffer);
+                return storage.Get(key, outBuffer);
             }
 
             if (isLeader)
@@ -206,7 +206,7 @@ public static class BaseFlatPersistence
                 {
                     // 4. LEADER: Perform the expensive read
                     // This presumably populates the cache internally
-                    return storage.GetSpanCopy(key, outBuffer);
+                    return storage.Get(key, outBuffer);
                 }
                 finally
                 {
@@ -233,7 +233,7 @@ public static class BaseFlatPersistence
                 }
 
                 // Do a standard read, block should be cached
-                return storage.GetSpanCopy(key, outBuffer);
+                return storage.Get(key, outBuffer);
             }
         }
     }

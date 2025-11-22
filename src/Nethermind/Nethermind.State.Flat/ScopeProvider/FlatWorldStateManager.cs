@@ -97,16 +97,7 @@ public class FlatWorldStateManager : IWorldStateManager
         using IPersistence.IPersistenceReader reader = _flatDiffRepository.CreateReader();
         FlatVerifyTrieVisitor trieVisitor = new FlatVerifyTrieVisitor(_codeDb, reader, _logManager, cancellationToken);
 
-        // Just a bit hacky due to mistmatch with best persisted state and actually persisted state.
-        StateId? stateId = _flatDiffRepository.FindLatestAvailableState();
-
-        if (stateId is null)
-        {
-            return true;
-        }
-
-        // StateId? stateId = _flatDiffRepository.FindStateIdForStateRoot(stateAtBlock.StateRoot);
-        _flatStateReader.RunTreeVisitor(trieVisitor, stateId.Value.stateRoot.ToHash256(), new VisitingOptions()
+        _flatStateReader.RunTreeVisitor(trieVisitor, stateAtBlock, new VisitingOptions()
         {
         });
 

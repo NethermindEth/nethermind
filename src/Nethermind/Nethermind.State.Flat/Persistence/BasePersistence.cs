@@ -102,7 +102,7 @@ public static class BasePersistence
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
         {
             ValueHash256 hashBuffer = ValueKeccak.Zero;
-            StorageTree.ComputeKeyWithLookup(slot, hashBuffer.BytesAsSpan);
+            StorageTree.ComputeKeyWithLookup(slot, ref hashBuffer);
             flatWriteBatch.SetStorage(addr.ToAccountPath, hashBuffer, value);
         }
 
@@ -144,7 +144,7 @@ public static class BasePersistence
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
         {
             ValueHash256 slotHash = ValueKeccak.Zero;
-            StorageTree.ComputeKeyWithLookup(slot, slotHash.BytesAsSpan);
+            StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
 
             return TryGetSlotRaw(address.ToAccountPath, slotHash, ref outValue);
         }

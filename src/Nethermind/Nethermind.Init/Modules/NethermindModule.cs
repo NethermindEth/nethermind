@@ -16,6 +16,7 @@ using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Era1;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;

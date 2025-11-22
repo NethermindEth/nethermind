@@ -225,7 +225,7 @@ public class PreimageRocksdbPersistence : IPersistence
             ValueHash256 computed = addr.ToAccountPath;
             preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], addr.Bytes);
 
-            StorageTree.ComputeKeyWithLookup(slot,  computed.BytesAsSpan);
+            StorageTree.ComputeKeyWithLookup(slot,  ref computed);
             preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], slot.ToBigEndian());
 
             _flatWriteBatch.SetStorage(fakeAddrHash, fakeSlotHash, value);

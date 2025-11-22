@@ -58,24 +58,20 @@ public class FlatStateReader(
 
     public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : codeDb[codeHash.Bytes];
 
-    public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
+    public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
     {
-        StateId? stateId = flatDiffRepository.FindStateIdForStateRoot(stateRoot);
-        if (stateId is null)
-        {
-            throw new InvalidOperationException($"State root {stateRoot} not found");
-        }
+        StateId stateId = new StateId(baseBlock);
 
-        using ReadOnlySnapshotBundle? reader = flatDiffRepository.GatherReadOnlyReaderAtBaseBlock(stateId.Value);
+        using ReadOnlySnapshotBundle? reader = flatDiffRepository.GatherReadOnlyReaderAtBaseBlock(stateId);
         if (reader is null)
         {
-            throw new InvalidOperationException($"State root {stateRoot} not found");
+            throw new InvalidOperationException($"State at {baseBlock} not found");
         }
 
         ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
 
         PatriciaTree patriciaTree = new PatriciaTree(trieStoreAdapter, logManager);
-        patriciaTree.Accept(treeVisitor, stateRoot, visitingOptions);
+        patriciaTree.Accept(treeVisitor, stateId.stateRoot.ToCommitment(), visitingOptions);
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock)

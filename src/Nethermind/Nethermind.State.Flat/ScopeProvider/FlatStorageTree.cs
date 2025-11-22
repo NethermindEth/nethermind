@@ -152,7 +152,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
         // this is just to warm up the nodes.
         ValueHash256 key = ValueKeccak.Zero;
-        StorageTree.ComputeKeyWithLookup(index, key.BytesAsSpan);
+        StorageTree.ComputeKeyWithLookup(index, ref key);
 
         long sw = Stopwatch.GetTimestamp();
         _warmupStorageTree.WarmUpPath(key.BytesAsSpan, isWrite);
