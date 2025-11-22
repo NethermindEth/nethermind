@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Abi;
@@ -48,7 +49,6 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
                 configProvider.GetConfig<IReceiptConfig>(),
                 configProvider.GetConfig<ISyncConfig>()
             ))
-            .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
             .AddModule(new PrewarmerModule(configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BuiltInStepsModule())
             .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
@@ -81,6 +81,11 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
         {
             builder.AddSingleton<IBlobTxStorage>(NullBlobTxStorage.Instance);
         }
+
+        if (configProvider.GetConfig<IFlatDbConfig>().Enabled)
+            builder.AddModule(new FlatWorldStateModule());
+        else
+            builder.AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()));
     }
 
     // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.

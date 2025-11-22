@@ -1,0 +1,29 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
+
+namespace Nethermind.State.Flat;
+
+public class NoopPersistenceReader: IPersistenceReader
+{
+    public void Dispose()
+    {
+    }
+
+    public bool TryGetAccount(Address address, out Account acc)
+    {
+        acc = null;
+        return false;
+    }
+
+    public bool TryGetSlot(Address address, in UInt256 index, out byte[] value)
+    {
+        value = null;
+        return false;
+    }
+
+    public StateId CurrentState => new StateId(0, Keccak.EmptyTreeHash);
+}
