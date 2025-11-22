@@ -66,6 +66,8 @@ public interface IWorldStateScopeProvider
         /// first.
         /// </summary>
         void Commit(long blockNumber);
+
+        void HintSet(Address address);
     }
 
     public interface ICodeDb
@@ -89,6 +91,8 @@ public interface IWorldStateScopeProvider
         /// <param name="hash"></param>
         /// <returns></returns>
         byte[] Get(in ValueHash256 hash);
+
+        void HintSet(UInt256 index) { }
     }
 
     public interface IWorldStateWriteBatch : IDisposable

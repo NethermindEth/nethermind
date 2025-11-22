@@ -47,7 +47,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public void Set(in StorageCell storageCell, byte[] newValue)
+        public virtual void Set(in StorageCell storageCell, byte[] newValue)
         {
             PushUpdate(in storageCell, newValue);
         }
