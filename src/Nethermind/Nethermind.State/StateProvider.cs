@@ -177,9 +177,17 @@ namespace Nethermind.State
                 => throw new InvalidOperationException($"Account {address} is null when updating code hash");
         }
 
+        // 0x9290084cde3cfc1085e5e8aa6ff1fb141b3cebc4ac64f4ce937a2c9b5cd85a69, // Hash
+        private Address importantAddress = new Address("0xf664829682daf488be5318dae198a69ce27fb31b");
+
         private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
         {
             _needsStateRootUpdate = true;
+
+            if (address == importantAddress)
+            {
+                Console.Error.WriteLine($"Balance change {balanceChange}, {isSubtracting}");
+            }
 
             Account GetThroughCacheCheckExists()
             {
@@ -327,6 +335,10 @@ namespace Nethermind.State
 
         public void DeleteAccount(Address address)
         {
+            if (address == importantAddress)
+            {
+                Console.Error.WriteLine($"delete address");
+            }
             _needsStateRootUpdate = true;
             PushDelete(address);
         }
@@ -789,6 +801,10 @@ namespace Nethermind.State
                 return;
             }
 
+            if (address == importantAddress)
+            {
+                Console.Error.WriteLine($"Push {changeType}, {touchedAccount}");
+            }
             stack.Push(_changes.Count);
             _changes.Add(new Change(address, touchedAccount, changeType));
         }
@@ -798,12 +814,21 @@ namespace Nethermind.State
             StackList<int> stack = SetupCache(address);
             stack.Push(_changes.Count);
             _changes.Add(new Change(address, account, ChangeType.New));
+            if (address == importantAddress)
+            {
+                Console.Error.WriteLine($"Push new {account}");
+            }
+            _tree.HintSet(address);
         }
 
         private void PushRecreateEmpty(Address address, Account account, StackList<int> stack)
         {
             stack.Push(_changes.Count);
             _changes.Add(new Change(address, account, ChangeType.RecreateEmpty));
+            if (address == importantAddress)
+            {
+                Console.Error.WriteLine($"Push recreate empty {account}");
+            }
         }
 
         private StackList<int> SetupCache(Address address)

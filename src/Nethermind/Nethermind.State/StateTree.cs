@@ -68,8 +68,14 @@ namespace Nethermind.State
             return bytes.IsEmpty ? null : _decoder.Decode(bytes);
         }
 
+        private Address importantAddress = new Address("0xf664829682daf488be5318dae198a69ce27fb31b");
+
         public void Set(Address address, Account? account)
         {
+            if (address == importantAddress)
+            {
+                Console.Error.WriteLine($"Set {address} to {account}");
+            }
             KeccakCache.ComputeTo(address.Bytes, out ValueHash256 keccak);
             Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }

@@ -31,8 +31,8 @@ public class StartMonitoring(
     ISyncConfig syncConfig,
     IServiceStopper serviceStopper,
     ILogManager logManager,
-    IMetricsConfig metricsConfig,
-    ChainHeadInfoProvider chainHeadInfoProvider
+    IMetricsConfig metricsConfig
+    // ChainHeadInfoProvider chainHeadInfoProvider
 ) : IStep
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
@@ -112,16 +112,18 @@ public class StartMonitoring(
         {
             try
             {
-                if (Environment.TickCount64 - _lastDbMetricsUpdate < 60_000)
+                if (Environment.TickCount64 - _lastDbMetricsUpdate < 5_000)
                 {
                     // Update max every minute
                     return;
                 }
+                /*
                 if (chainHeadInfoProvider.IsProcessingBlock)
                 {
                     // Do not update db metrics while processing a block
                     return;
                 }
+                */
 
                 foreach (KeyValuePair<string, IDbMeta> kv in dbTracker.GetAllDbMeta())
                 {

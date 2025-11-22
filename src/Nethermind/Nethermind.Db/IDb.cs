@@ -18,6 +18,15 @@ namespace Nethermind.Db
         public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);
     }
 
+    public interface ISnapshottableKeyValueStore
+    {
+        IDbSnapshot CreateSnapshot();
+    }
+
+    public interface IDbSnapshot: IReadOnlyKeyValueStore, IDisposable
+    {
+    }
+
     // Some metadata options
     public interface IDbMeta
     {

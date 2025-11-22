@@ -22,7 +22,7 @@ namespace Nethermind.Trie;
 /// </summary>
 [Todo("check if its worth it to change the length to byte, or if it actually make things slower.")]
 [Todo("check if its worth it to not clear byte during TruncateMut, but will need proper comparator, span copy, etc.")]
-public struct TreePath : IEquatable<TreePath>
+public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
 {
     public const int MemorySize = 36;
     public ValueHash256 Path;
@@ -314,6 +314,8 @@ public struct TreePath : IEquatable<TreePath>
 
         return Length.CompareTo(otherTree.Length);
     }
+
+    int IComparable<TreePath>.CompareTo(TreePath otherTree) => CompareTo(in otherTree);
 
     /// <summary>
     /// Compare with otherTree, as if this TreePath was truncated to `length`.

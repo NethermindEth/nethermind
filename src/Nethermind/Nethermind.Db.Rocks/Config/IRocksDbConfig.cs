@@ -7,6 +7,7 @@ public interface IRocksDbConfig
 {
     ulong? WriteBufferSize { get; }
     ulong? WriteBufferNumber { get; }
+    bool SkipDefaultDbOptions => false;
     string RocksDbOptions { get; }
     string AdditionalRocksDbOptions { get; }
     int? MaxOpenFiles { get; }

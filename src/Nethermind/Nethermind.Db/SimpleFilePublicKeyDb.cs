@@ -116,6 +116,10 @@ namespace Nethermind.Db
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _cache.Keys;
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Values;
+        public IDbSnapshot CreateSnapshot()
+        {
+            throw new NotImplementedException();
+        }
 
         public IWriteBatch StartWriteBatch()
         {

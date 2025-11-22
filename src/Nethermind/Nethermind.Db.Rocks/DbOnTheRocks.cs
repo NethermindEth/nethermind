@@ -29,7 +29,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISortedKeyValueStore, IMergeableKeyValueStore
+public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISnapshottableKeyValueStore, ISortedKeyValueStore, IMergeableKeyValueStore
 {
     protected ILogger _logger;
 
@@ -199,6 +199,29 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 WarmupFile(_fullPath, db);
             }
 
+            /*
+            if (Name == "FlatState")
+            {
+                Console.Error.WriteLine("Reading all from flat state");
+                long keyCount = 0;
+                using (var it = db.NewIterator())
+                {
+                    it.SeekToFirst();
+
+                    while (it.Valid())
+                    {
+                        keyCount++;
+                        if (keyCount % 1000000 == 0)
+                        {
+                            Console.Error.WriteLine($"{keyCount} keys");
+                        }
+                        it.Next();
+                    }
+                }
+                Console.Error.WriteLine($"{keyCount} keys");
+            }
+            */
+
             return db;
         }
         catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
@@ -215,7 +238,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             CreateMarkerIfCorrupt(x);
             throw;
         }
-
     }
 
     private void WarmupFile(string basePath, RocksDb db)
@@ -250,15 +272,15 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         long totalSize = 0;
         fileMetadatas = fileMetadatas.TakeWhile(metadata =>
-        {
-            availableMemory -= (long)metadata.metadata.FileSize;
-            bool take = availableMemory > 0;
-            if (take)
             {
-                totalSize += (long)metadata.metadata.FileSize;
-            }
-            return take;
-        })
+                availableMemory -= (long)metadata.metadata.FileSize;
+                bool take = availableMemory > 0;
+                if (take)
+                {
+                    totalSize += (long)metadata.metadata.FileSize;
+                }
+                return take;
+            })
             // We reverse them again so that lower level goes last so that it is the freshest.
             // Not all of the available memory is actually available so we are probably over reading things.
             .Reverse()
@@ -436,7 +458,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return 0;
     }
 
-    [GeneratedRegex("(?<optionName>[^; ]+)\\=(?<optionValue>[^; ]+);", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
+    [GeneratedRegex("(?<optionName>[A-Za-z0-9_]+)\\=(?<optionValue>[^; ]+);", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractDbOptionsRegex();
 
     public static IDictionary<string, string> ExtractOptions(string dbOptions)
@@ -467,8 +489,29 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _writeBufferSize = ulong.Parse(optionsAsDict["write_buffer_size"]);
         _maxWriteBufferNumber = int.Parse(optionsAsDict["max_write_buffer_number"]);
 
-        BlockBasedTableOptions tableOptions = new();
-        options.SetBlockBasedTableFactory(tableOptions);
+        var isUsingPlainTable = optionsAsDict.ContainsKey("plain_table_factory");
+        BlockBasedTableOptions? tableOptions = null;
+        if (isUsingPlainTable)
+        {
+            // It just need to set the default factory.
+            // settings can be changed via the option string later, but this need to be set first.
+            options.SetPlainTableFactory(
+                user_key_len: 0,
+                bloom_bits_per_key: 10,
+                hash_table_ratio: 0.75,
+                index_sparseness: 16,
+                huge_page_tlb_size: 0,
+                encoding_type: (char)0,
+                full_scan_mode: false,
+                store_index_in_file: true
+            );
+        }
+        else
+        {
+            tableOptions = new();
+            options.SetBlockBasedTableFactory(tableOptions);
+        }
+
         IntPtr optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.RocksDbOptions);
         try
         {
@@ -485,7 +528,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             blockCacheSize = ulong.Parse(blockCacheSizeStr);
         }
 
-        if (sharedCache is not null && blockCacheSize == 0)
+        if (sharedCache is not null && blockCacheSize == 0 && tableOptions is not null)
         {
             tableOptions.SetBlockCache(sharedCache.Value);
         }
@@ -502,6 +545,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             options.SetMaxWriteBufferNumber(_maxWriteBufferNumber);
         }
         if (_maxWriteBufferNumber < 1) throw new InvalidConfigurationException($"Error initializing {Name} db. Max write buffer number must be more than 1. max write buffer number: {_maxWriteBufferNumber}", ExitCodes.GeneralError);
+
+        options.SetAllowConcurrentMemtableWrite(false);
 
         #endregion
 
@@ -707,8 +752,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         fixed (byte* ptr = &MemoryMarshal.GetReference(key))
         {
             handle = cf is null
-                        ? Native.Instance.rocksdb_get_pinned(db, read_options, ptr, skLength, out errPtr)
-                        : Native.Instance.rocksdb_get_pinned_cf(db, read_options, cf.Handle, ptr, skLength, out errPtr);
+                ? Native.Instance.rocksdb_get_pinned(db, read_options, ptr, skLength, out errPtr)
+                : Native.Instance.rocksdb_get_pinned_cf(db, read_options, cf.Handle, ptr, skLength, out errPtr);
         }
 
         if (errPtr != IntPtr.Zero) ThrowRocksDbException(errPtr);
@@ -876,7 +921,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return GetSpanWithColumnFamily(key, null, flags);
     }
 
+
     internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadFlags flags)
+    {
+        ReadOptions options = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions;
+        return GetSpanWithColumnFamily(key, cf, options);
+    }
+
+    internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOptions readOptions)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
 
@@ -884,7 +936,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         try
         {
-            Span<byte> span = _db.GetSpan(key, cf, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions);
+            Span<byte> span = _db.GetSpan(key, cf, readOptions);
 
             if (!span.IsNullOrEmpty())
             {
@@ -1062,6 +1114,19 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         Iterator iterator = CreateIterator(ordered);
         return GetAllValuesCore(iterator);
+    }
+
+    public IDbSnapshot CreateSnapshot()
+    {
+        ReadOptions readOptions = new();
+        Snapshot snapshot = _db.CreateSnapshot();
+        readOptions.SetSnapshot(snapshot);
+
+        return new DbSnapshot(
+            this,
+            readOptions,
+            null,
+            snapshot);
     }
 
     internal IEnumerable<byte[]> GetAllValuesCore(Iterator iterator)
@@ -1940,5 +2005,85 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         Iterator iterator = CreateIterator(readOptions, cf);
         return new RocksdbSortedView(iterator);
+    }
+
+    public class DbSnapshot(
+        DbOnTheRocks mainDb,
+        ReadOptions options,
+        ColumnFamilyHandle? columnFamily,
+        Snapshot snapshot
+    ) : IDbSnapshot, ISortedKeyValueStore
+    {
+
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            ReadOnlySpan<byte> value = default;
+            try
+            {
+                value = GetSpan(key, flags);
+
+                if (value.IsNull()) return null;
+                return value.ToArray();
+            }
+            finally
+            {
+                DangerousReleaseMemory(value);
+            }
+        }
+
+        public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return mainDb.GetSpanWithColumnFamily(key, columnFamily, options);
+        }
+
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
+        {
+            mainDb.DangerousReleaseMemory(span);
+        }
+
+        public byte[]? FirstKey
+        {
+            get
+            {
+                using Iterator iterator = mainDb.CreateIterator(options);
+                iterator.SeekToFirst();
+                return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+            }
+        }
+
+        public byte[]? LastKey
+        {
+            get
+            {
+                using Iterator iterator = mainDb.CreateIterator(options);
+                iterator.SeekToLast();
+                return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+            }
+        }
+
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
+        {
+            ReadOptions readOptions = new ReadOptions();
+            readOptions.SetSnapshot(snapshot);
+
+            unsafe
+            {
+                IntPtr iterateLowerBound = Marshal.AllocHGlobal(firstKey.Length);
+                firstKey.CopyTo(new Span<byte>(iterateLowerBound.ToPointer(), firstKey.Length));
+                Native.Instance.rocksdb_readoptions_set_iterate_lower_bound(readOptions.Handle, iterateLowerBound, (UIntPtr)firstKey.Length);
+
+                IntPtr iterateUpperBound = Marshal.AllocHGlobal(lastKey.Length);
+                lastKey.CopyTo(new Span<byte>(iterateUpperBound.ToPointer(), lastKey.Length));
+                Native.Instance.rocksdb_readoptions_set_iterate_upper_bound(readOptions.Handle, iterateUpperBound, (UIntPtr)lastKey.Length);
+            }
+
+            Iterator iterator = mainDb.CreateIterator(readOptions, columnFamily);
+            return new RocksdbSortedView(iterator);
+        }
+
+        public void Dispose()
+        {
+            snapshot.Dispose();
+        }
     }
 }
