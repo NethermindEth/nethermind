@@ -491,7 +491,7 @@ namespace Nethermind.Evm.TransactionProcessing
             premiumPerGas = UInt256.Zero;
             senderReservedGasPayment = UInt256.Zero;
             blobBaseFee = UInt256.Zero;
-            bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
+            bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation) || tx.MaxFeePerGas != 0 || tx.MaxPriorityFeePerGas != 0;
 
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
             if (validate)
