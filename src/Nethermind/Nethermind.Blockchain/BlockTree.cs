@@ -786,6 +786,7 @@ namespace Nethermind.Blockchain
 
         public void DeleteInvalidBlock(Block invalidBlock)
         {
+            /*
             if (invalidBlock.Hash is null)
             {
                 if (Logger.IsWarn) Logger.Warn($"{nameof(DeleteInvalidBlock)} call has been made for a block without a null hash.");
@@ -810,6 +811,7 @@ namespace Nethermind.Blockchain
             {
                 ReleaseAcceptingNewBlocks();
             }
+            */
         }
 
         public void DeleteOldBlock(long blockNumber, Hash256 blockHash)

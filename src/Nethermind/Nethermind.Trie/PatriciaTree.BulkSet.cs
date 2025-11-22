@@ -10,12 +10,13 @@ using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
+using Prometheus;
 
 namespace Nethermind.Trie;
 
 public partial class PatriciaTree
 {
-    public const int MinEntriesToParallelizeThreshold = 256;
+    public const int MinEntriesToParallelizeThreshold = 64;
     private const int BSearchThreshold = 128;
     private const int FullBranch = (1 << TrieNode.BranchesCount) - 1;
 
@@ -99,6 +100,8 @@ public partial class PatriciaTree
         internal BulkSetEntry[] originalSortBufferArray;
     }
 
+    private Counter _isParallel = Prometheus.Metrics.CreateCounter("bulkset_parallel", "parallel");
+
     /// <param name="ctx">Just to reduce the param count</param>
     /// <param name="traverseStack">Stack used in set. Parallel call use different stack.</param>
     /// <param name="entries">The entries</param>
@@ -172,6 +175,8 @@ public partial class PatriciaTree
             BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.originalEntriesArray : ctx.originalSortBufferArray;
             BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.originalSortBufferArray : ctx.originalEntriesArray;
             TrieNode.ChildIterator childIterator = node.CreateChildIterator();
+
+            _isParallel.Inc();
 
             while (nibMask != 0)
             {

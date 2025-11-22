@@ -29,7 +29,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISortedKeyValueStore, IMergeableKeyValueStore
+public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISortedKeyValueStore, IMergeableKeyValueStore, ISnapshottableKeyValueStore
 {
     protected ILogger _logger;
 
@@ -250,15 +250,15 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         long totalSize = 0;
         fileMetadatas = fileMetadatas.TakeWhile(metadata =>
-        {
-            availableMemory -= (long)metadata.metadata.FileSize;
-            bool take = availableMemory > 0;
-            if (take)
             {
-                totalSize += (long)metadata.metadata.FileSize;
-            }
-            return take;
-        })
+                availableMemory -= (long)metadata.metadata.FileSize;
+                bool take = availableMemory > 0;
+                if (take)
+                {
+                    totalSize += (long)metadata.metadata.FileSize;
+                }
+                return take;
+            })
             // We reverse them again so that lower level goes last so that it is the freshest.
             // Not all of the available memory is actually available so we are probably over reading things.
             .Reverse()
@@ -641,6 +641,61 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         set => Set(key, value, WriteFlags.None);
     }
 
+    public IReadOnlySnapshot CreateSnapshot()
+    {
+        return new RocksdbSnapshot(_db.CreateSnapshot(), _db);
+    }
+
+    private class RocksdbSnapshot : IReadOnlySnapshot
+    {
+        private readonly Snapshot _snapshot;
+        private readonly RocksDb _db;
+        private readonly ReadOptions _readOptions;
+
+        public RocksdbSnapshot(Snapshot snapshot, RocksDb db)
+        {
+            _snapshot = snapshot;
+            _db = db;
+            _readOptions = new ReadOptions();
+            _readOptions.SetSnapshot(_snapshot);
+        }
+
+        public void Dispose()
+        {
+            _snapshot.Dispose();
+        }
+
+        Span<byte> DoGetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags)
+        {
+            Span<byte> span = _db.GetSpan(key, null, _readOptions);
+
+            if (!span.IsNullOrEmpty())
+            {
+                GC.AddMemoryPressure(span.Length);
+            }
+            return span;
+        }
+
+        Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags)
+        {
+            return DoGetSpan(key, flags);
+        }
+
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return DoGetSpan(key, flags).ToArray();
+        }
+
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
+        {
+            if (!span.IsNullOrEmpty())
+            {
+                GC.RemoveMemoryPressure(span.Length);
+            }
+            _db.DangerousReleaseMemory(span);
+        }
+    }
+
     public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
         return GetWithColumnFamily(key, null, _iteratorManager, flags);
@@ -707,8 +762,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         fixed (byte* ptr = &MemoryMarshal.GetReference(key))
         {
             handle = cf is null
-                        ? Native.Instance.rocksdb_get_pinned(db, read_options, ptr, skLength, out errPtr)
-                        : Native.Instance.rocksdb_get_pinned_cf(db, read_options, cf.Handle, ptr, skLength, out errPtr);
+                ? Native.Instance.rocksdb_get_pinned(db, read_options, ptr, skLength, out errPtr)
+                : Native.Instance.rocksdb_get_pinned_cf(db, read_options, cf.Handle, ptr, skLength, out errPtr);
         }
 
         if (errPtr != IntPtr.Zero) ThrowRocksDbException(errPtr);

@@ -1529,7 +1529,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             int count = 0;
             while (_commitSetQueueBuffer.TryDequeue(out BlockCommitSet commitSet))
             {
-                _trieStore._commitSetQueue.Enqueue(commitSet);
                 _trieStore.PushToMainCommitSetQueue(commitSet);
                 count++;
             }
