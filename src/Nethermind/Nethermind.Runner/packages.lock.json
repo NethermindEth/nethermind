@@ -786,7 +786,7 @@
           "Nethermind.Api": "[1.36.0-unstable, )",
           "Nethermind.Db": "[1.36.0-unstable, )",
           "NonBlocking": "[2.1.2, )",
-          "RocksDB": "[10.2.1.58549, 10.2.1.58549]"
+          "RocksDB": "[10.4.2.62659, 10.4.2.62659]"
         }
       },
       "nethermind.db.rpc": {
@@ -1571,9 +1571,9 @@
       },
       "RocksDB": {
         "type": "CentralTransitive",
-        "requested": "[10.2.1.58549, 10.2.1.58549]",
-        "resolved": "10.2.1.58549",
-        "contentHash": "36w64uL0J4wZFAxzQPVjS02adqIrhQJkIfpnjoAcETB2YmT8l5oORGBPK58nnS3tlajfGg68xJi7FzCycWA/LA=="
+        "requested": "[10.4.2.62659, 10.4.2.62659]",
+        "resolved": "10.4.2.62659",
+        "contentHash": "+ZY7koKclaRz7+3QiCbXprWK4++Cwh0Hhqj+5Z5fcZpQvoIoo+iM9iAdCo+W5ha9XOLeI0YWbi9nZt12dNVBMg=="
       },
       "SCrypt": {
         "type": "CentralTransitive",
@@ -1715,9 +1715,9 @@
       },
       "RocksDB": {
         "type": "CentralTransitive",
-        "requested": "[10.2.1.58549, 10.2.1.58549]",
-        "resolved": "10.2.1.58549",
-        "contentHash": "36w64uL0J4wZFAxzQPVjS02adqIrhQJkIfpnjoAcETB2YmT8l5oORGBPK58nnS3tlajfGg68xJi7FzCycWA/LA=="
+        "requested": "[10.4.2.62659, 10.4.2.62659]",
+        "resolved": "10.4.2.62659",
+        "contentHash": "+ZY7koKclaRz7+3QiCbXprWK4++Cwh0Hhqj+5Z5fcZpQvoIoo+iM9iAdCo+W5ha9XOLeI0YWbi9nZt12dNVBMg=="
       }
     },
     "net10.0/linux-x64": {
@@ -1807,9 +1807,9 @@
       },
       "RocksDB": {
         "type": "CentralTransitive",
-        "requested": "[10.2.1.58549, 10.2.1.58549]",
-        "resolved": "10.2.1.58549",
-        "contentHash": "36w64uL0J4wZFAxzQPVjS02adqIrhQJkIfpnjoAcETB2YmT8l5oORGBPK58nnS3tlajfGg68xJi7FzCycWA/LA=="
+        "requested": "[10.4.2.62659, 10.4.2.62659]",
+        "resolved": "10.4.2.62659",
+        "contentHash": "+ZY7koKclaRz7+3QiCbXprWK4++Cwh0Hhqj+5Z5fcZpQvoIoo+iM9iAdCo+W5ha9XOLeI0YWbi9nZt12dNVBMg=="
       }
     },
     "net10.0/osx-arm64": {
@@ -1899,9 +1899,9 @@
       },
       "RocksDB": {
         "type": "CentralTransitive",
-        "requested": "[10.2.1.58549, 10.2.1.58549]",
-        "resolved": "10.2.1.58549",
-        "contentHash": "36w64uL0J4wZFAxzQPVjS02adqIrhQJkIfpnjoAcETB2YmT8l5oORGBPK58nnS3tlajfGg68xJi7FzCycWA/LA=="
+        "requested": "[10.4.2.62659, 10.4.2.62659]",
+        "resolved": "10.4.2.62659",
+        "contentHash": "+ZY7koKclaRz7+3QiCbXprWK4++Cwh0Hhqj+5Z5fcZpQvoIoo+iM9iAdCo+W5ha9XOLeI0YWbi9nZt12dNVBMg=="
       }
     },
     "net10.0/osx-x64": {
@@ -1991,9 +1991,9 @@
       },
       "RocksDB": {
         "type": "CentralTransitive",
-        "requested": "[10.2.1.58549, 10.2.1.58549]",
-        "resolved": "10.2.1.58549",
-        "contentHash": "36w64uL0J4wZFAxzQPVjS02adqIrhQJkIfpnjoAcETB2YmT8l5oORGBPK58nnS3tlajfGg68xJi7FzCycWA/LA=="
+        "requested": "[10.4.2.62659, 10.4.2.62659]",
+        "resolved": "10.4.2.62659",
+        "contentHash": "+ZY7koKclaRz7+3QiCbXprWK4++Cwh0Hhqj+5Z5fcZpQvoIoo+iM9iAdCo+W5ha9XOLeI0YWbi9nZt12dNVBMg=="
       }
     },
     "net10.0/win-x64": {
@@ -2083,9 +2083,9 @@
       },
       "RocksDB": {
         "type": "CentralTransitive",
-        "requested": "[10.2.1.58549, 10.2.1.58549]",
-        "resolved": "10.2.1.58549",
-        "contentHash": "36w64uL0J4wZFAxzQPVjS02adqIrhQJkIfpnjoAcETB2YmT8l5oORGBPK58nnS3tlajfGg68xJi7FzCycWA/LA=="
+        "requested": "[10.4.2.62659, 10.4.2.62659]",
+        "resolved": "10.4.2.62659",
+        "contentHash": "+ZY7koKclaRz7+3QiCbXprWK4++Cwh0Hhqj+5Z5fcZpQvoIoo+iM9iAdCo+W5ha9XOLeI0YWbi9nZt12dNVBMg=="
       }
     }
   }
