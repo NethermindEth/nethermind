@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            Hash256[] hashes = Volatile.Read(ref _hashes);
+            Hash256[] hashes = _hashes;
             return hashes is not null
                 ? hashes[depth]
                 : blockhashCache.GetHash(currentBlock, (int)depth)
