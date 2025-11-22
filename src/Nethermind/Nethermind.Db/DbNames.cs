@@ -7,6 +7,7 @@ namespace Nethermind.Db
     {
         public const string Storage = "storage";
         public const string State = "state";
+        public const string Flat = "flat";
         public const string Code = "code";
         public const string Blocks = "blocks";
         public const string Headers = "headers";
@@ -19,5 +20,14 @@ namespace Nethermind.Db
         public const string BlobTransactions = "blobTransactions";
         public const string DiscoveryNodes = "discoveryNodes";
         public const string PeersDb = "peers";
+        public const string Preimage = "preimage";
+
+        public const string FlatMetadata = "flatMetadata";
+        public const string FlatState = "flatState";
+        public const string FlatStorage = "flatStorage";
+        public const string FlatStateNodes = "flatStateNodes";
+        public const string FlatStateTopNodes = "flatStateNodesTop";
+        public const string FlatStorageNodes = "flatStorageNodes";
+        public const string FlatStorageTopNodes = "flatStorageTopNodes";
     }
 }

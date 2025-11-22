@@ -74,7 +74,7 @@ namespace Nethermind.Core
         void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None);
     }
 
-    public interface ISortedKeyValueStore : IKeyValueStore
+    public interface ISortedKeyValueStore : IReadOnlyKeyValueStore
     {
         byte[]? FirstKey { get; }
         byte[]? LastKey { get; }

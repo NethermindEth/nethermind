@@ -110,6 +110,13 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         return value;
     }
 
+    public override void Set(in StorageCell storageCell, byte[] newValue)
+    {
+        base.Set(storageCell, newValue);
+        GetOrCreateStorage(storageCell.Address).HintSet(storageCell);
+    }
+
+
     public Hash256 GetStorageRoot(Address address)
     {
         return GetOrCreateStorage(address).StorageRoot;
@@ -292,28 +299,37 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
                 static (i, state) =>
                 {
-                    ref var kvp = ref state.storages.GetRef(i);
-                    if (!state.toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
+                    try
                     {
-                        // Wasn't updated don't recalculate
+
+                        ref var kvp = ref state.storages.GetRef(i);
+                        if (!state.toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
+                        {
+                            // Wasn't updated don't recalculate
+                            return state;
+                        }
+
+                        (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
+                        if (writes == 0)
+                        {
+                            // Mark as no changes; we set as false rather than removing so
+                            // as not to modify the non-concurrent collection without synchronization
+                            state.toUpdateRoots[kvp.Key] = false;
+                        }
+                        else
+                        {
+                            state.writes += writes;
+                        }
+
+                        state.skips += skipped;
+
                         return state;
                     }
-
-                    (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
-                    if (writes == 0)
+                    catch (Exception ex)
                     {
-                        // Mark as no changes; we set as false rather than removing so
-                        // as not to modify the non-concurrent collection without synchronization
-                        state.toUpdateRoots[kvp.Key] = false;
+                        Console.Error.WriteLine($"The error {ex}");
+                        throw;
                     }
-                    else
-                    {
-                        state.writes += writes;
-                    }
-
-                    state.skips += skipped;
-
-                    return state;
                 },
                 (state) => ReportMetrics(state.writes, state.skips));
         }
@@ -635,6 +651,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         public void RemoveStorageTree()
         {
             _backend = null;
+        }
+
+        public void HintSet(in StorageCell storageCell)
+        {
+            EnsureStorageTree();
+            _backend.HintSet(storageCell.Index);
         }
 
         internal static PerContractState Rent(Address address, PersistentStorageProvider persistentStorageProvider)

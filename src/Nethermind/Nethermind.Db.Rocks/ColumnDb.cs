@@ -83,6 +83,19 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore
         return _mainDb.GetAllValuesCore(iterator);
     }
 
+    public IDbSnapshot CreateSnapshot()
+    {
+        ReadOptions readOptions = new();
+        Snapshot snapshot = _mainDb._db.CreateSnapshot();
+        readOptions.SetSnapshot(snapshot);
+
+        return new DbOnTheRocks.DbSnapshot(
+            _mainDb,
+            readOptions,
+            _columnFamily,
+            snapshot);
+    }
+
     public IWriteBatch StartWriteBatch()
     {
         return new ColumnsDbWriteBatch(this, (DbOnTheRocks.RocksDbWriteBatch)_mainDb.StartWriteBatch());

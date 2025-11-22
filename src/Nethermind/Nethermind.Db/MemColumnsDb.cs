@@ -38,6 +38,12 @@ namespace Nethermind.Db
         {
             return new InMemoryColumnWriteBatch<TKey>(this);
         }
+
+        public IColumnDbSnapshot<TKey> CreateSnapshot()
+        {
+            throw new Exception("Snapshot not supported");
+        }
+
         public void Dispose() { }
         public void Flush(bool onlyWal = false) { }
     }
