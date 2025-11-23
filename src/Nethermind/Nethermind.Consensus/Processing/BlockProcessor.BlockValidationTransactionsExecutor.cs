@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.Processing
                 transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
             }
 
-            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+            public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
             {
                 Metrics.ResetBlockStats();
 
