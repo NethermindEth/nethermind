@@ -37,13 +37,18 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         IOverridableEnv overridableEnv = overridableEnvFactory.Create();
 
-        BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider);
+        IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb);
+        SimulateDictionaryHeaderStore tmpHeaderStore = new(mainHeaderStore);
+        BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider, tmpHeaderStore);
         BlockTreeOverlay overrideBlockTree = new BlockTreeOverlay(baseBlockTree, tempBlockTree);
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddModule(overridableEnv) // worldstate related override here
             .AddSingleton<IBlockTree>(overrideBlockTree)
             .AddSingleton<BlockTreeOverlay>(overrideBlockTree)
+            .AddSingleton<IHeaderStore>(tmpHeaderStore)
+            .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
+            .AddSingleton<IBlockhashCache, BlockhashCache>()
             .AddModule(validationModules)
             .AddDecorator<IBlockhashProvider, SimulateBlockhashProvider>()
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
@@ -59,11 +64,14 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         return envLifetimeScope.Resolve<SimulateReadOnlyBlocksProcessingEnv>();
     }
 
-    private static BlockTree CreateTempBlockTree(IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider? specProvider, ILogManager logManager, IReadOnlyDbProvider editableDbProvider)
+    private static BlockTree CreateTempBlockTree(
+        IReadOnlyDbProvider readOnlyDbProvider,
+        ISpecProvider? specProvider,
+        ILogManager logManager,
+        IReadOnlyDbProvider editableDbProvider,
+        SimulateDictionaryHeaderStore tmpHeaderStore)
     {
         IBlockStore mainblockStore = new BlockStore(editableDbProvider.BlocksDb);
-        IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb);
-        SimulateDictionaryHeaderStore tmpHeaderStore = new(mainHeaderStore);
         const int badBlocksStored = 1;
 
         SimulateDictionaryBlockStore tmpBlockStore = new(mainblockStore);

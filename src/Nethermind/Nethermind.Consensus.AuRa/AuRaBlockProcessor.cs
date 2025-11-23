@@ -57,7 +57,7 @@ namespace Nethermind.Consensus.AuRa
                 stateProvider,
                 receiptStorage,
                 beaconBlockRootHandler,
-                new BlockhashStore(specProvider, stateProvider),
+                new BlockhashStore(stateProvider),
                 logManager,
                 withdrawalProcessor,
                 executionRequestsProcessor)

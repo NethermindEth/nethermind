@@ -22,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -193,6 +194,7 @@ namespace Nethermind.AuRa.Test
                 HoodiSpecProvider.Instance,
                 stateProvider,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+                Substitute.For<IBlockhashProvider>(),
                 LimboLogs.Instance);
 
             return (branchProcessor, stateProvider);

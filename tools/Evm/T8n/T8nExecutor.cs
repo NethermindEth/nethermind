@@ -135,17 +135,8 @@ public static class T8nExecutor
             blockReceiptsTracer, test.SpecProvider, transactionExecutionReport);
     }
 
-    private static IBlockhashProvider ConstructBlockHashProvider(T8nTest test)
-    {
-        var t8NBlockHashProvider = new T8nBlockHashProvider();
-
-        foreach (KeyValuePair<string, Hash256> blockHash in test.BlockHashes)
-        {
-            t8NBlockHashProvider.Insert(blockHash.Value, long.Parse(blockHash.Key));
-        }
-
-        return t8NBlockHashProvider;
-    }
+    private static IBlockhashProvider ConstructBlockHashProvider(T8nTest test) =>
+        new T8nBlockHashProvider(test.BlockHashes.ToDictionary<KeyValuePair<string, Hash256>, long, Hash256?>(kvp => long.Parse(kvp.Key), kvp => kvp.Value));
 
     private static void ApplyRewards(Block block, IWorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
     {
