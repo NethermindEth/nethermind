@@ -14,7 +14,6 @@ public class PeerEventResponse
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Type { get; set; }
-    [JsonConverter(typeof(PublicKeyHashedConverter))]
     public PublicKey? Peer { get; set; }
     public string? Protocol { get; set; }
     public int? MsgPacketType { get; set; }
