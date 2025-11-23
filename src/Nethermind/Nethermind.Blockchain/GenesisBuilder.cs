@@ -57,10 +57,8 @@ public class GenesisBuilder(
             PreallocateAccounts(genesis, chainSpec, specProvider, stateProvider, transactionProcessor);
     }
 
-    /// <summary>
     /// Preallocates accounts according to chain spec allocations.
     /// This method is shared between GenesisBuilder implementations to avoid code duplication.
-    /// </summary>
     public static void PreallocateAccounts(
         Block genesis,
         ChainSpec chainSpec,
