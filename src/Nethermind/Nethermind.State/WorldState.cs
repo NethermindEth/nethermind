@@ -86,12 +86,11 @@ namespace Nethermind.State
             if (!_isInScope) ThrowOutOfScope();
         }
 
+        [Conditional("DEBUG")]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DebugGuardInScope()
         {
-#if DEBUG
             if (!_isInScope) ThrowOutOfScope();
-#endif
         }
 
         [StackTraceHidden, DoesNotReturn]
