@@ -356,11 +356,7 @@ internal class BlobSender
 
         while (true)
         {
-            string blockNumberHex = Hex.ToHexString(lastBlockNumber.ToBigEndian()).TrimStart('0');
-            blockNumberHex = blockNumberHex.Length == 0 ? "0" : blockNumberHex;
-            string blockTag = $"0x{blockNumberHex}";
-
-            var blockResult = await rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", blockTag, false);
+            BlockModel<Hash256>? blockResult = await rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", lastBlockNumber, false);
             if (blockResult is not null)
             {
                 lastBlockNumber = blockResult.Number + 1;
