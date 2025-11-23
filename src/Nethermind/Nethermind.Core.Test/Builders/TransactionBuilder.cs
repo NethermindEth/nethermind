@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test.Builders
 
         public TransactionBuilder<T> WithNonce(UInt256 nonce)
         {
-            TestObjectInternal.Nonce = nonce;
+            TestObjectInternal.Nonce = (ulong)nonce;
             return this;
         }
 
@@ -80,7 +80,7 @@ namespace Nethermind.Core.Test.Builders
 
         public TransactionBuilder<T> WithGasLimit(long gasLimit)
         {
-            TestObjectInternal.GasLimit = gasLimit;
+            TestObjectInternal.GasLimit = (ulong)gasLimit;
             return this;
         }
 

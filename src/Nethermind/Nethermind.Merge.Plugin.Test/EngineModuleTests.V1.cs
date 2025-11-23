@@ -164,7 +164,7 @@ public partial class EngineModuleTests
             Keccak.Zero, startingHead, timestamp, random, feeRecipient);
 
         ExecutionPayload expected = CreateParentBlockRequestOnHead(chain.BlockTree);
-        expected.GasLimit = 4000000L;
+        expected.GasLimit = 4000000UL;
         expected.BlockHash = ExpectedBlockHash;
         expected.LogsBloom = Bloom.Empty;
         expected.FeeRecipient = feeRecipient;
@@ -362,7 +362,7 @@ public partial class EngineModuleTests
             ]);
             yield return GetNewBlockRequestBadDataTestCase(static r => r.LogsBloom, bloom);
             yield return GetNewBlockRequestBadDataTestCase(static r => r.Transactions, [[1]]);
-            yield return GetNewBlockRequestBadDataTestCase(static r => r.GasUsed, 1);
+            yield return GetNewBlockRequestBadDataTestCase(static r => r.GasUsed, 1UL);
         }
     }
 
@@ -1055,7 +1055,7 @@ public partial class EngineModuleTests
             Address to = TestItem.AddressD;
             (_, UInt256 toBalanceAfter) = AddTransactions(chain, executePayloadRequest, from, to, count, 1, out BlockHeader? parentHeader);
 
-            executePayloadRequest.GasUsed = GasCostOf.Transaction * count;
+            executePayloadRequest.GasUsed = (ulong)(GasCostOf.Transaction * count);
             executePayloadRequest.StateRoot = new Hash256("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
             executePayloadRequest.ReceiptsRoot = new Hash256("0xb34a29e4a30ab5d32fdbc0292a97ac1cf1028c085f538dec2d91d91c6d0b0562");
             TryCalculateHash(executePayloadRequest, out Hash256? hash);
@@ -1092,7 +1092,7 @@ public partial class EngineModuleTests
             (_, UInt256 toBalanceAfter) = AddTransactions(chain, executionPayload, from, to, count, 1, out BlockHeader parentHeader);
 
             UInt256 fromBalance = chain.StateReader.GetBalance(parentHeader!, from.Address);
-            executionPayload.GasUsed = GasCostOf.Transaction * count;
+            executionPayload.GasUsed = (ulong)(GasCostOf.Transaction * count);
             executionPayload.StateRoot =
                 new Hash256("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
             executionPayload.ReceiptsRoot =

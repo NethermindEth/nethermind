@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Processing
         public float MedianGas { get; internal set; }
         public float AveGas { get; internal set; }
         public float MaxGas { get; internal set; }
-        public long GasLimit { get; internal set; }
+        public ulong GasLimit { get; internal set; }
     }
     //TODO Consult on disabling of such metrics from configuration
     internal class ProcessingStats

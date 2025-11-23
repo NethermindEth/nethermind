@@ -365,12 +365,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
 
             var txReceiptsArray = new TxReceipt[gasUsedArray.Length];
-            txReceiptsArray[0] = new TxReceipt() { GasUsedTotal = gasUsedArray[0] };
+            txReceiptsArray[0] = new TxReceipt() { GasUsedTotal = (ulong)gasUsedArray[0] };
             for (var i = 1; i < gasUsedArray.Length; i++)
             {
                 txReceiptsArray[i] = new TxReceipt()
                 {
-                    GasUsedTotal = txReceiptsArray[i - 1].GasUsedTotal + gasUsedArray[i]
+                    GasUsedTotal = txReceiptsArray[i - 1].GasUsedTotal + (ulong)gasUsedArray[i]
                 };
             }
             receiptStorage.Get(block).Returns(txReceiptsArray);

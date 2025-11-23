@@ -230,7 +230,7 @@ namespace Nethermind.Facade
             transaction.SenderAddress ??= Address.Zero;
 
             //Ignore nonce on all CallAndRestore calls
-            transaction.Nonce = components.StateReader.GetNonce(blockHeader, transaction.SenderAddress);
+            transaction.Nonce = (ulong)components.StateReader.GetNonce(blockHeader, transaction.SenderAddress);
 
             BlockHeader callHeader = treatBlockHeaderAsParentBlock
                 ? new(

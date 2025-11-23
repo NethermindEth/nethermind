@@ -640,7 +640,7 @@ public class TxValidatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.AsBool, Is.False);
-            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.TxGasLimitCapExceeded(tx.GasLimit, Eip7825Constants.DefaultTxGasLimitCap)));
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.TxGasLimitCapExceeded((long)tx.GasLimit, (long)Eip7825Constants.DefaultTxGasLimitCap)));
         }
     }
 

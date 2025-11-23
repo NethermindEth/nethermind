@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             });
         }
 
-        private readonly record struct RewardInfo(long GasUsed, UInt256 PremiumPerGas);
+        private readonly record struct RewardInfo(ulong GasUsed, UInt256 PremiumPerGas);
 
         private readonly record struct BlockFeeHistorySearchInfo(
             long BlockNumber,
@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             double GasUsedRatio,
             double BlobGasUsedRatio,
             Hash256? ParentHash,
-            long GasUsed,
+            ulong GasUsed,
             int BlockTransactionsLength,
             List<RewardInfo> RewardsInBlocks);
 
@@ -244,12 +244,12 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private List<RewardInfo> GetRewardsInBlock(Block block)
         {
-            static IEnumerable<long> CalculateGasUsed(TxReceipt[] txReceipts)
+            static IEnumerable<ulong> CalculateGasUsed(TxReceipt[] txReceipts)
             {
-                long previousGasUsedTotal = 0;
+                ulong previousGasUsedTotal = 0;
                 foreach (TxReceipt receipt in txReceipts)
                 {
-                    long gasUsedTotal = receipt.GasUsedTotal;
+                    ulong gasUsedTotal = receipt.GasUsedTotal;
                     yield return gasUsedTotal - previousGasUsedTotal;
                     previousGasUsedTotal = gasUsedTotal;
                 }
@@ -257,14 +257,14 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             TxReceipt[] receipts = _receiptStorage.Get(block, false);
             Transaction[] txs = block.Transactions;
-            using ArrayPoolListRef<long> gasUsed = new(txs.Length, receipts.Length == block.Transactions.Length
+            using ArrayPoolListRef<ulong> gasUsed = new(txs.Length, receipts.Length == block.Transactions.Length
                 ? CalculateGasUsed(receipts)
                 // If no receipts available, approximate on GasLimit
                 // We could just go with null here too and just don't return percentiles
                 : txs.Select(static tx => tx.GasLimit));
 
             List<RewardInfo> rewardInfos = new(txs.Length);
-            Span<long> gasUsedSpan = gasUsed.AsSpan();
+            Span<ulong> gasUsedSpan = gasUsed.AsSpan();
             for (int i = 0; i < txs.Length; i++)
             {
                 txs[i].TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
@@ -281,13 +281,13 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             double[] rewardPercentiles,
             List<RewardInfo> rewardsInBlock)
         {
-            long sumGasUsed = rewardsInBlock[0].GasUsed;
+            ulong sumGasUsed = rewardsInBlock[0].GasUsed;
             int txIndex = 0;
             ArrayPoolList<UInt256> percentileValues = new(rewardPercentiles.Length);
 
             foreach (var percentile in rewardPercentiles)
             {
-                double thresholdGasUsed = (ulong)(blockInfo.GasUsed * percentile / 100);
+                double thresholdGasUsed = blockInfo.GasUsed * percentile / 100.0;
                 while (txIndex < rewardsInBlock.Count && sumGasUsed < thresholdGasUsed)
                 {
                     txIndex++;

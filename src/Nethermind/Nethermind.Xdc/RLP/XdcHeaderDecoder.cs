@@ -43,7 +43,7 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
             beneficiary,
             difficulty,
             number,
-            gasLimit,
+            (ulong)gasLimit,
             timestamp,
             extraData)
         {
@@ -51,7 +51,7 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
             TxRoot = transactionsRoot,
             ReceiptsRoot = receiptsRoot,
             Bloom = bloom,
-            GasUsed = gasUsed,
+            GasUsed = (ulong)gasUsed,
             Hash = Keccak.Compute(headerRlp)
         };
 
@@ -107,7 +107,7 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
             beneficiary,
             difficulty,
             number,
-            gasLimit,
+            (ulong)gasLimit,
             timestamp,
             extraData)
         {
@@ -115,7 +115,7 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
             TxRoot = transactionsRoot,
             ReceiptsRoot = receiptsRoot,
             Bloom = bloom,
-            GasUsed = gasUsed,
+            GasUsed = (ulong)gasUsed,
             Hash = Keccak.Compute(headerRlp)
         };
 

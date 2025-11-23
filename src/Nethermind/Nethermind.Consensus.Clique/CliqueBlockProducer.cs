@@ -422,7 +422,7 @@ public class CliqueBlockProducer : IBlockProducer
             Address.Zero,
             1,
             parentHeader.Number + 1,
-            _gasLimitCalculator.GetGasLimit(parentHeader),
+            (ulong)_gasLimitCalculator.GetGasLimit(parentHeader),
             timestamp > parentHeader.Timestamp ? timestamp : parentHeader.Timestamp + 1,
             []);
 
@@ -490,7 +490,7 @@ public class CliqueBlockProducer : IBlockProducer
         header.MixHash = Keccak.Zero;
         header.WithdrawalsRoot = spec.WithdrawalsEnabled ? Keccak.EmptyTreeHash : null;
 
-        IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentHeader, header.GasLimit, null, filterSource: true);
+        IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentHeader, (long)header.GasLimit, null, filterSource: true);
         Block block = new BlockToProduce(
             header,
             selectedTxs,

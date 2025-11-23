@@ -59,8 +59,8 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage) txReceipt.Sender = rlpStream.DecodeAddress();
             if (isStorage) txReceipt.Recipient = rlpStream.DecodeAddress();
             if (isStorage) txReceipt.ContractAddress = rlpStream.DecodeAddress();
-            if (isStorage) txReceipt.GasUsed = (long)rlpStream.DecodeUBigInt();
-            txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
+            if (isStorage) txReceipt.GasUsed = (ulong)rlpStream.DecodeUBigInt();
+            txReceipt.GasUsedTotal = (ulong)rlpStream.DecodeUBigInt();
             txReceipt.Bloom = rlpStream.DecodeBloom();
 
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
@@ -134,8 +134,8 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage) txReceipt.Sender = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.Recipient = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.ContractAddress = decoderContext.DecodeAddress();
-            if (isStorage) txReceipt.GasUsed = (long)decoderContext.DecodeUBigInt();
-            txReceipt.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+            if (isStorage) txReceipt.GasUsed = (ulong)decoderContext.DecodeUBigInt();
+            txReceipt.GasUsedTotal = (ulong)decoderContext.DecodeUBigInt();
             txReceipt.Bloom = decoderContext.DecodeBloom();
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
@@ -371,9 +371,9 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.DecodeAddressStructRef(out item.Sender);
                 decoderContext.DecodeAddressStructRef(out item.Recipient);
                 decoderContext.DecodeAddressStructRef(out item.ContractAddress);
-                item.GasUsed = (long)decoderContext.DecodeUBigInt();
+                item.GasUsed = (ulong)decoderContext.DecodeUBigInt();
             }
-            item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+            item.GasUsedTotal = (ulong)decoderContext.DecodeUBigInt();
             decoderContext.DecodeBloomStructRef(out item.Bloom);
 
             (int PrefixLength, int ContentLength) =

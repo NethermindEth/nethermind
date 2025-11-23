@@ -326,7 +326,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             beneficiary,
             difficulty,
             0,
-            (long)gasLimit,
+            (ulong)gasLimit,
             timestamp,
             extraData);
 

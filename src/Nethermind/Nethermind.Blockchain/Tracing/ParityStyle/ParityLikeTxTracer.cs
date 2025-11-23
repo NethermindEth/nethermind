@@ -225,19 +225,19 @@ public class ParityLikeTxTracer : TxTracer
             To = _tx.To,
             Value = _tx.Value,
             Input = _tx.Data.AsArray(),
-            Gas = _tx.GasLimit,
+            Gas = (long)_tx.GasLimit,
             CallType = _tx.IsMessageCall ? "call" : "init",
             Error = error
         };
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env,
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env,
         int codeSection = 0, int functionDepth = 0)
     {
         ParityVmOperationTrace operationTrace = new();
         _gasAlreadySetForCurrentOp = false;
         operationTrace.Pc = pc + env.CodeInfo.PcOffset();
-        operationTrace.Cost = gas;
+        operationTrace.Cost = (long)gas;
         // skip codeSection
         // skip functionDepth
         _currentOperation = operationTrace;
@@ -254,13 +254,13 @@ public class ParityLikeTxTracer : TxTracer
         }
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
         if (!_gasAlreadySetForCurrentOp)
         {
             _gasAlreadySetForCurrentOp = true;
 
-            _currentOperation!.Cost -= (_treatGasParityStyle ? 0 : gas);
+            _currentOperation!.Cost -= (_treatGasParityStyle ? 0 : (long)gas);
 
             // based on Parity behaviour - adding stipend to the gas cost
             if (_currentOperation.Cost == 7400)
@@ -269,7 +269,7 @@ public class ParityLikeTxTracer : TxTracer
             }
 
             _currentOperation.Push = _currentPushList.ToArray();
-            _currentOperation.Used = gas;
+            _currentOperation.Used = (long)gas;
 
             _treatGasParityStyle = false;
         }
@@ -371,7 +371,7 @@ public class ParityLikeTxTracer : TxTracer
         change = new ParityStateChange<byte[]>(before, after);
     }
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall = false)
     {
         ParityTraceAction action = new()
@@ -383,7 +383,7 @@ public class ParityLikeTxTracer : TxTracer
             To = to,
             Value = value,
             Input = input.ToArray(),
-            Gas = gas,
+            Gas = (long)gas,
             CallType = GetCallType(callType),
             Type = GetActionType(callType),
             CreationMethod = GetCreateMethod(callType)
@@ -392,7 +392,7 @@ public class ParityLikeTxTracer : TxTracer
         if (_currentOperation is not null && callType.IsAnyCreate())
         {
             // another Parity quirkiness
-            _currentOperation.Cost += gas;
+            _currentOperation.Cost += (long)gas;
         }
 
         PushAction(action);
@@ -418,7 +418,7 @@ public class ParityLikeTxTracer : TxTracer
         PopAction();
     }
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         if (_currentAction!.Result is null)
         {
@@ -427,7 +427,8 @@ public class ParityLikeTxTracer : TxTracer
         }
 
         _currentAction.Result.Output = output.ToArray();
-        _currentAction.Result.GasUsed = _currentAction.Gas - gas;
+        long gasUsed = _currentAction.Gas - (long)gas;
+        _currentAction.Result.GasUsed = gasUsed > 0 ? (ulong)gasUsed : 0;
         PopAction();
     }
 
@@ -438,7 +439,7 @@ public class ParityLikeTxTracer : TxTracer
         PopAction();
     }
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         if (_currentAction!.Result is null)
         {
@@ -448,7 +449,8 @@ public class ParityLikeTxTracer : TxTracer
 
         _currentAction.Result.Address = deploymentAddress;
         _currentAction.Result.Code = deployedCode.ToArray();
-        _currentAction.Result.GasUsed = _currentAction.Gas - gas;
+        long gasUsed = _currentAction.Gas - (long)gas;
+        _currentAction.Result.GasUsed = gasUsed > 0 ? (ulong)gasUsed : 0;
         PopAction();
     }
 

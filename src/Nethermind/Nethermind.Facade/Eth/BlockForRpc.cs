@@ -97,8 +97,8 @@ public class BlockForRpc
     public Address? Author { get; set; }
     public UInt256 Difficulty { get; set; }
     public byte[] ExtraData { get; set; }
-    public long GasLimit { get; set; }
-    public long GasUsed { get; set; }
+    public ulong GasLimit { get; set; }
+    public ulong GasUsed { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Hash256 Hash { get; set; }

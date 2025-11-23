@@ -88,9 +88,9 @@ public class Block
 
     public Hash256? ReceiptsRoot => Header.ReceiptsRoot; // do not add setter here
 
-    public long GasLimit => Header.GasLimit; // do not add setter here
+    public ulong GasLimit => Header.GasLimit; // do not add setter here
 
-    public long GasUsed => Header.GasUsed; // do not add setter here
+    public ulong GasUsed => Header.GasUsed; // do not add setter here
 
     public ulong Timestamp => Header.Timestamp; // do not add setter here
 

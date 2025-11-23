@@ -353,10 +353,10 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 // we alter the value stored in memory to force EQ check at the end to fail
-                if (gasAvailable_pre_MSTORE is null) gasAvailable_pre_MSTORE = tracer.CurrentState.GasAvailable;
+                if (gasAvailable_pre_MSTORE is null) gasAvailable_pre_MSTORE = (long?)tracer.CurrentState.GasAvailable;
                 else
                 {
-                    long gasAvailable_post_MSTORE = tracer.CurrentState.GasAvailable;
+                    long gasAvailable_post_MSTORE = (long)tracer.CurrentState.GasAvailable;
                     Assert.That(gasAvailable_pre_MSTORE - gasAvailable_post_MSTORE, Is.EqualTo(GasCostOf.VeryLow));
                 }
                 tracer.MoveNext();

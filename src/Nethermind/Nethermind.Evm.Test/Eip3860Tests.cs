@@ -40,9 +40,9 @@ namespace Nethermind.Evm.Test
 
             byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, 100000).Done;
 
-            var tracer = Execute((BlockNumber, eip3860Enabled ? Timestamp : Timestamp - 1), callCode);
+            var tracer = Execute((BlockNumber, eip3860Enabled ? Timestamp : Timestamp - 1UL), callCode);
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(tracer.GasSpent - _transactionCallCost, Is.EqualTo(expectedGasUsage));
+            Assert.That(tracer.GasSpent - (ulong)_transactionCallCost, Is.EqualTo((ulong)expectedGasUsage));
         }
 
         [TestCase("60006000F0")]

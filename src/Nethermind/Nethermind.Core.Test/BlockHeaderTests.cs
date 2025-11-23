@@ -28,8 +28,8 @@ public class BlockHeaderTests
             Beneficiary = new Address("0x8888f1f195afa192cfee860698584c030f4c9db1"),
             Difficulty = Bytes.FromHexString("0x020000").ToUInt256(),
             ExtraData = [],
-            GasLimit = (long)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger(),
-            GasUsed = (long)Bytes.FromHexString("0x5208").ToUnsignedBigInteger(),
+            GasLimit = (ulong)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger(),
+            GasUsed = (ulong)Bytes.FromHexString("0x5208").ToUnsignedBigInteger(),
             MixHash = new Hash256(Bytes.FromHexString("0x00be1f287e0911ea2f070b3650a1a0346535895b6c919d7e992a0c255a83fc8b")),
             Nonce = (ulong)Bytes.FromHexString("0xa0ddc06c6d7b9f48").ToUnsignedBigInteger(),
             Number = (long)Bytes.FromHexString("0x01").ToUInt256(),
@@ -54,8 +54,8 @@ public class BlockHeaderTests
             Beneficiary = new Address("0x8888f1f195afa192cfee860698584c030f4c9db1"),
             Difficulty = Bytes.FromHexString("0x020080").ToUInt256(),
             ExtraData = [],
-            GasLimit = (long)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger(),
-            GasUsed = (long)Bytes.FromHexString("0x5208").ToUnsignedBigInteger(),
+            GasLimit = (ulong)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger(),
+            GasUsed = (ulong)Bytes.FromHexString("0x5208").ToUnsignedBigInteger(),
             MixHash = new Hash256(Bytes.FromHexString("0x615bbf44eb133eab3cb24d5766ae9617d9e45ee00e7a5667db30672b47d22149")),
             Nonce = (ulong)Bytes.FromHexString("0x4c4f3d3e055cb264").ToUnsignedBigInteger(),
             Number = (long)Bytes.FromHexString("0x03").ToUInt256(),
@@ -118,9 +118,9 @@ public class BlockHeaderTests
 
         BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
         blockHeader.Number = 2001;
-        blockHeader.GasLimit = gasTarget * Eip1559Constants.DefaultElasticityMultiplier;
+        blockHeader.GasLimit = (ulong)(gasTarget * Eip1559Constants.DefaultElasticityMultiplier);
         blockHeader.BaseFeePerGas = (UInt256)baseFee;
-        blockHeader.GasUsed = gasUsed;
+        blockHeader.GasUsed = (ulong)gasUsed;
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
         Assert.That(actualBaseFee, Is.EqualTo((UInt256)expectedBaseFee));
     }
@@ -148,9 +148,9 @@ public class BlockHeaderTests
 
         BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
         blockHeader.Number = 2001;
-        blockHeader.GasLimit = testCase.Info.ParentTargetGasUsed * Eip1559Constants.DefaultElasticityMultiplier;
+        blockHeader.GasLimit = (ulong)(testCase.Info.ParentTargetGasUsed * Eip1559Constants.DefaultElasticityMultiplier);
         blockHeader.BaseFeePerGas = (UInt256)testCase.Info.ParentBaseFee;
-        blockHeader.GasUsed = testCase.Info.ParentGasUsed;
+        blockHeader.GasUsed = (ulong)testCase.Info.ParentGasUsed;
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
         Assert.That(actualBaseFee, Is.EqualTo((UInt256)testCase.Info.ExpectedBaseFee), testCase.Description);
     }

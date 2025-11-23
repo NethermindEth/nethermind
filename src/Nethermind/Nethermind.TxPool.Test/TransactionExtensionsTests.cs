@@ -19,7 +19,7 @@ namespace Nethermind.TxPool.Test
             Transaction tx = new();
             tx.Type = test.Type;
             tx.GasPrice = test.GasPrice;
-            tx.GasLimit = test.GasLimit;
+            tx.GasLimit = (ulong)test.GasLimit;
             tx.Value = test.Value;
             tx.DecodedMaxFeePerGas = test.FeeCap;
 

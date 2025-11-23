@@ -43,7 +43,7 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         _ctx.GasPrice = tx!.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _baseFee);
         _ctx.TxHash = tx.Hash;
         _ctx.txIndex = tx.Hash is not null ? _index++ : null;
-        _ctx.gas = tx.GasLimit;
+        _ctx.gas = (long)tx.GasLimit;
         _ctx.type = "CALL";
         _ctx.From = tx.SenderAddress;
         _ctx.To = tx.To;

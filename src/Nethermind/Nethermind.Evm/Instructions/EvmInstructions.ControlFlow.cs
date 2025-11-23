@@ -26,7 +26,7 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionProgramCounter<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionProgramCounter<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         // Deduct the base gas cost for reading the program counter.
@@ -49,7 +49,7 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJumpDest(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionJumpDest(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
     {
         // Deduct the gas cost specific for a jump destination marker.
         gasAvailable -= GasCostOf.JumpDest;
@@ -71,7 +71,7 @@ internal static partial class EvmInstructions
     /// on failure.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJump(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionJump(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
     {
         // Deduct the gas cost for performing a jump.
         gasAvailable -= GasCostOf.Jump;
@@ -103,7 +103,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionJumpIf(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionJumpIf(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
     {
         // Deduct the high gas cost for a conditional jump.
         gasAvailable -= GasCostOf.JumpI;
@@ -146,7 +146,7 @@ internal static partial class EvmInstructions
     /// In EOFCREATE or TXCREATE executions, the STOP opcode is considered illegal.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionStop(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionStop(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
     {
         // In contract creation contexts, a STOP is not permitted.
         if (vm.EvmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
@@ -163,7 +163,7 @@ internal static partial class EvmInstructions
     /// and returns a revert exception.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionRevert(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionRevert(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
     {
         // Attempt to pop memory offset and length; if either fails, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 position) ||
@@ -195,7 +195,7 @@ internal static partial class EvmInstructions
     /// and marks the executing account for destruction.
     /// </summary>
     [SkipLocalsInit]
-    private static EvmExceptionType InstructionSelfDestruct(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    private static EvmExceptionType InstructionSelfDestruct(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
     {
         // Increment metrics for self-destruct operations.
         Metrics.IncrementSelfDestructs();
@@ -237,7 +237,7 @@ internal static partial class EvmInstructions
         // For certain specs, charge gas if transferring to a dead account.
         if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor))
         {
-            if (!EvmCalculations.UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
+            if (!EvmCalculations.UpdateGas((ulong)GasCostOf.NewAccount, ref gasAvailable))
                 goto OutOfGas;
         }
 
@@ -245,7 +245,7 @@ internal static partial class EvmInstructions
         bool inheritorAccountExists = state.AccountExists(inheritor);
         if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
         {
-            if (!EvmCalculations.UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
+            if (!EvmCalculations.UpdateGas((ulong)GasCostOf.NewAccount, ref gasAvailable))
                 goto OutOfGas;
         }
 
@@ -280,7 +280,7 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Handles invalid opcodes by deducting a high gas cost and returning a BadInstruction error.
     /// </summary>
-    public static EvmExceptionType InstructionInvalid(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionInvalid(VirtualMachine _, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.High;
         return EvmExceptionType.BadInstruction;
@@ -289,7 +289,7 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Default handler for undefined opcodes, always returning a BadInstruction error.
     /// </summary>
-    public static EvmExceptionType InstructionBadInstruction(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBadInstruction(VirtualMachine _, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
         => EvmExceptionType.BadInstruction;
 
     /// <summary>

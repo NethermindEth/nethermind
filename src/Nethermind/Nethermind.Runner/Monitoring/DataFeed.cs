@@ -406,8 +406,8 @@ public class DataFeed
     private class BlockForWeb
     {
         public byte[] ExtraData { get; set; }
-        public long GasLimit { get; set; }
-        public long GasUsed { get; set; }
+        public ulong GasLimit { get; set; }
+        public ulong GasUsed { get; set; }
         public Hash256 Hash { get; set; }
         public Address Beneficiary { get; set; }
         public long Number { get; set; }
@@ -422,7 +422,7 @@ public class DataFeed
     }
     private class ReceiptForWeb
     {
-        public long GasUsed { get; set; }
+        public ulong GasUsed { get; set; }
         public UInt256 EffectiveGasPrice { get; set; }
         public Address? ContractAddress { get; set; }
         public LogEntryForWeb[] Logs { get; set; }
@@ -445,7 +445,7 @@ public class DataFeed
         public UInt256 MaxPriorityFeePerGas { get; set; }
         public UInt256 MaxFeePerGas { get; set; }
         public UInt256 GasPrice { get; set; }
-        public long GasLimit { get; set; }
+        public ulong GasLimit { get; set; }
         public UInt256 Nonce { get; set; }
         public UInt256 Value { get; set; }
         public int DataLength { get; set; }

@@ -15,7 +15,7 @@ public class TransactionExtensionsTests
     {
         Transaction transaction = new();
         transaction.GasPrice = test.GasPrice;
-        transaction.GasLimit = test.GasLimit;
+        transaction.GasLimit = (ulong)test.GasLimit;
         transaction.Value = test.Value;
         transaction.DecodedMaxFeePerGas = test.FeeCap;
         transaction.Type = test.Type;

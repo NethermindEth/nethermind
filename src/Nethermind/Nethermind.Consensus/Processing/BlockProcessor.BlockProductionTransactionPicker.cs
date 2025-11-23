@@ -43,7 +43,9 @@ namespace Nethermind.Consensus.Processing
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
-                long gasRemaining = block.Header.GasLimit - block.GasUsed;
+                long gasRemaining = block.Header.GasLimit >= block.GasUsed
+                    ? (long)(block.Header.GasLimit - block.GasUsed)
+                    : -1;
 
                 // No more gas available in block for any transactions,
                 // the only case we have to really stop
@@ -65,7 +67,7 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, "Null sender");
                 }
 
-                if (currentTx.GasLimit > gasRemaining)
+                if (gasRemaining < 0 || currentTx.GasLimit > (ulong)gasRemaining)
                 {
                     return args.Set(TxAction.Skip, $"Not enough gas in block, gas limit {currentTx.GasLimit} > {gasRemaining}");
                 }

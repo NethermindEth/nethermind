@@ -35,7 +35,7 @@ namespace Nethermind.Evm.Test
         {
             TestAllTracerWithOutput receipt = testBase(repeat, isShanghai);
             receipt.StatusCode.Should().Be(StatusCode.Success);
-            receipt.GasSpent.Should().Be(repeat * GasCostOf.Base + GasCostOf.Transaction);
+            receipt.GasSpent.Should().Be((ulong)(repeat * GasCostOf.Base + GasCostOf.Transaction));
         }
 
 

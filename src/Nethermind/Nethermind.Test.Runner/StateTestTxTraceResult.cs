@@ -11,7 +11,7 @@ namespace Nethermind.Test.Runner
         public byte[] Output { get; set; }
 
         [JsonPropertyName("gasUsed")]
-        public long GasUsed { get; set; }
+        public ulong GasUsed { get; set; }
 
         [JsonPropertyName("time")]
         public double Time { get; set; }

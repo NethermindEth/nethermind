@@ -187,7 +187,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
             Block? block = _blockFinder.FindBlock((long)blockId, BlockTreeLookupOptions.RequireCanonical);
             if (block != null)
             {
-                totalGasUsed += (ulong)block.GasUsed;
+                totalGasUsed += block.GasUsed;
             }
         }
 

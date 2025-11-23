@@ -23,8 +23,8 @@ public class CallOutputTracer : TxTracer
     public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
         Hash256? stateRoot = null)
     {
-        GasSpent = gasSpent.SpentGas;
-        OperationGas = gasSpent.OperationGas;
+        GasSpent = (long)gasSpent.SpentGas;
+        OperationGas = (long)gasSpent.OperationGas;
         ReturnValue = output;
         StatusCode = Evm.StatusCode.Success;
     }
@@ -32,8 +32,8 @@ public class CallOutputTracer : TxTracer
     public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
         Hash256? stateRoot = null)
     {
-        GasSpent = gasSpent.SpentGas;
-        OperationGas = gasSpent.OperationGas;
+        GasSpent = (long)gasSpent.SpentGas;
+        OperationGas = (long)gasSpent.OperationGas;
         Error = error;
         ReturnValue = output;
         StatusCode = Evm.StatusCode.Failure;

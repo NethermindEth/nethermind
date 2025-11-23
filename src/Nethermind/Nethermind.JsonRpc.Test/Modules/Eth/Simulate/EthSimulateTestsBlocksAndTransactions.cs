@@ -147,8 +147,8 @@ public class EthSimulateTestsBlocksAndTransactions
         {
             Type = type,
             Value = amount,
-            Nonce = nonce,
-            GasLimit = 50_000,
+            Nonce = (ulong)nonce,
+            GasLimit = 50_000UL,
             SenderAddress = from.Address,
             To = to,
             GasPrice = 20.GWei()

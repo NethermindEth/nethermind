@@ -44,7 +44,7 @@ namespace Nethermind.Core
         public bool IsOPSystemTransaction { get; set; }
 
         private UInt256 _gasPrice;
-        public UInt256 Nonce { get; set; }
+        public ulong Nonce { get; set; }
         public UInt256 GasPrice { get => _gasPrice; set => _gasPrice = value; }
         public UInt256? GasBottleneck { get; set; }
         public ref readonly UInt256 MaxPriorityFeePerGas => ref _gasPrice;
@@ -54,10 +54,10 @@ namespace Nethermind.Core
         public bool Supports1559 => Type.Supports1559();
         public bool SupportsBlobs => Type.SupportsBlobs();
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
-        public long GasLimit { get; set; }
-        private long _spentGas;
+        public ulong GasLimit { get; set; }
+        private ulong _spentGas;
         [JsonIgnore]
-        public long SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
+        public ulong SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
         public Address? To { get; set; }
         private UInt256 _value;
         public UInt256 Value { get => _value; set => _value = value; }
@@ -349,7 +349,7 @@ namespace Nethermind.Core
     /// </summary>
     public sealed class SystemTransaction : Transaction
     {
-        private new const long GasLimit = 30_000_000L;
+        private new const ulong GasLimit = 30_000_000L;
     }
 
     /// <summary>

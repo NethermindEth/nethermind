@@ -27,7 +27,7 @@ public class BlockOverride
             {
                 throw new OverflowException($"GasLimit value is too large, max value {ulong.MaxValue}");
             }
-            result.GasLimit = (long)GasLimit.Value;
+            result.GasLimit = (ulong)GasLimit.Value;
         }
 
         if (Number is not null) result.Number = (long)Number.Value;

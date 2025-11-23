@@ -59,15 +59,15 @@ public class GasEstimator(
             return additionalGas;
         }
 
-        long lowerBound = IntrinsicGasCalculator.Calculate(tx, releaseSpec).MinimalGas;
+        long lowerBound = (long)IntrinsicGasCalculator.Calculate(tx, releaseSpec).MinimalGas;
 
         // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
         long leftBound = gasTracer.GasSpent != 0 && gasTracer.GasSpent >= lowerBound
             ? gasTracer.GasSpent - 1
             : lowerBound - 1;
-        long rightBound = tx.GasLimit != 0 && tx.GasLimit >= lowerBound
-            ? tx.GasLimit
-            : header.GasLimit;
+        long rightBound = tx.GasLimit != 0 && (long)tx.GasLimit >= lowerBound
+            ? (long)tx.GasLimit
+            : (long)header.GasLimit;
         rightBound = Math.Min(rightBound, releaseSpec.GetTxGasLimitCap());
 
         if (leftBound > rightBound)
@@ -144,7 +144,7 @@ public class GasEstimator(
     {
         Transaction txClone = new Transaction();
         transaction.CopyTo(txClone);
-        txClone.GasLimit = gasLimit;
+        txClone.GasLimit = (ulong)gasLimit;
 
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block, specProvider.GetSpec(block)));
         TransactionResult result = transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));

@@ -294,7 +294,7 @@ public class ValidateSubmissionHandler
 
         long calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit, releaseSpec);
 
-        if (calculatedGasLimit != block.Header.GasLimit)
+        if ((ulong)calculatedGasLimit != block.Header.GasLimit)
         {
             error = $"Gas limit mismatch. Expected {calculatedGasLimit} but got {block.Header.GasLimit}";
             return false;
@@ -305,7 +305,7 @@ public class ValidateSubmissionHandler
 
     private long GetGasLimit(BlockHeader parentHeader, long desiredGasLimit, IReleaseSpec releaseSpec)
     {
-        long parentGasLimit = parentHeader.GasLimit;
+        long parentGasLimit = (long)parentHeader.GasLimit;
         long gasLimit = parentGasLimit;
 
         long? targetGasLimit = desiredGasLimit;

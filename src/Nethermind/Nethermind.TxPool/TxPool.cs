@@ -724,7 +724,7 @@ namespace Nethermind.TxPool
 
             foreach (Transaction tx in transactions)
             {
-                if (tx.Nonce < currentNonce)
+                if (tx.Nonce < (ulong)currentNonce)
                 {
                     MarkForEviction(tx, false);
                     continue;
@@ -751,7 +751,7 @@ namespace Nethermind.TxPool
                     {
                         gasBottleneck = UInt256.Zero;
                     }
-                    else if (tx.Nonce == currentNonce + i)
+                    else if (tx.Nonce == (ulong)currentNonce + (ulong)i)
                     {
                         UInt256 effectiveGasPrice =
                             tx.CalculateEffectiveGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
@@ -809,7 +809,7 @@ namespace Nethermind.TxPool
                 Transaction? tx = null;
                 foreach (Transaction txn in transactions)
                 {
-                    if (txn.Nonce == currentNonce)
+                    if (txn.Nonce == (ulong)currentNonce)
                     {
                         tx = txn;
                         break;

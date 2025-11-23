@@ -15,7 +15,7 @@ namespace Nethermind.Consensus
 
         public long GetGasLimit(BlockHeader parentHeader)
         {
-            long parentGasLimit = parentHeader.GasLimit;
+            long parentGasLimit = (long)parentHeader.GasLimit;
             long gasLimit = parentGasLimit;
 
             long? targetGasLimit = _blocksConfig.TargetBlockGasLimit;

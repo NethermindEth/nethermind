@@ -61,7 +61,7 @@ public class OptimismBlockReceiptTracer : BlockReceiptsTracer
             BlockHash = Block.Hash,
             BlockNumber = Block.Number,
             Index = _currentIndex,
-            GasUsed = spentGas,
+            GasUsed = (ulong)spentGas,
             Sender = transaction.SenderAddress,
             ContractAddress = transaction.IsContractCreation ? recipient : null,
             TxHash = transaction.Hash,

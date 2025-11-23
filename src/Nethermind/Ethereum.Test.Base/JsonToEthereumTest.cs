@@ -66,7 +66,7 @@ namespace Ethereum.Test.Base
             )
             {
                 Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom)),
-                GasUsed = (long)Bytes.FromHexString(headerJson.GasUsed).ToUnsignedBigInteger(),
+                GasUsed = (ulong)Bytes.FromHexString(headerJson.GasUsed).ToUnsignedBigInteger(),
                 Hash = new Hash256(headerJson.Hash),
                 MixHash = new Hash256(headerJson.MixHash),
                 Nonce = (ulong)Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger(),
@@ -105,8 +105,8 @@ namespace Ethereum.Test.Base
                     BlockNumber = (long)Bytes.FromHexString(executionPayload.BlockNumber).ToUnsignedBigInteger(),
                     ExtraData = Bytes.FromHexString(executionPayload.ExtraData),
                     FeeRecipient = new(executionPayload.FeeRecipient),
-                    GasLimit = (long)Bytes.FromHexString(executionPayload.GasLimit).ToUnsignedBigInteger(),
-                    GasUsed = (long)Bytes.FromHexString(executionPayload.GasUsed).ToUnsignedBigInteger(),
+                    GasLimit = (ulong)Bytes.FromHexString(executionPayload.GasLimit).ToUnsignedBigInteger(),
+                    GasUsed = (ulong)Bytes.FromHexString(executionPayload.GasUsed).ToUnsignedBigInteger(),
                     LogsBloom = new(Bytes.FromHexString(executionPayload.LogsBloom)),
                     ParentHash = new(executionPayload.ParentHash),
                     PrevRandao = new(executionPayload.PrevRandao),

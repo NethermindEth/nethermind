@@ -21,7 +21,7 @@ public static class EvmCalculations
     /// <param name="address">The target account address.</param>
     /// <param name="chargeForWarm">If true, charge even if the account is already warm.</param>
     /// <returns>True if gas was successfully charged; otherwise false.</returns>
-    public static bool ChargeAccountAccessGasWithDelegation(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
+    public static bool ChargeAccountAccessGasWithDelegation(ref ulong gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
     {
         IReleaseSpec spec = vm.Spec;
         if (!spec.UseHotAndColdStorage)
@@ -45,7 +45,7 @@ public static class EvmCalculations
     /// <param name="address">The target account address.</param>
     /// <param name="chargeForWarm">If true, applies the warm read gas cost even if the account is warm.</param>
     /// <returns>True if the gas charge was successful; otherwise false.</returns>
-    public static bool ChargeAccountAccessGas(ref long gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
+    public static bool ChargeAccountAccessGas(ref ulong gasAvailable, VirtualMachine vm, Address address, bool chargeForWarm = true)
     {
         bool result = true;
         IReleaseSpec spec = vm.Spec;
@@ -87,7 +87,7 @@ public static class EvmCalculations
     /// <param name="spec">The release specification which governs gas metering and storage access rules.</param>
     /// <returns><c>true</c> if the gas charge was successfully applied; otherwise, <c>false</c> indicating an out-of-gas condition.</returns>
     public static bool ChargeStorageAccessGas(
-        ref long gasAvailable,
+        ref ulong gasAvailable,
         VirtualMachine vm,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
@@ -130,13 +130,13 @@ public static class EvmCalculations
     /// <param name="length">The length of the memory region.</param>
     /// <returns><c>true</c> if sufficient gas was available and deducted; otherwise, <c>false</c>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
+    public static bool UpdateMemoryCost(EvmState vmState, ref ulong gasAvailable, in UInt256 position, in UInt256 length)
     {
-        // Calculate additional gas cost for any memory expansion.
+        // Calculate additional gas cost for memory expansion.
         long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length);
-        if (memoryCost != 0L)
+        if (memoryCost > 0)
         {
-            if (!UpdateGas(memoryCost, ref gasAvailable))
+            if (!UpdateGas((ulong)memoryCost, ref gasAvailable))
             {
                 return false;
             }
@@ -152,7 +152,7 @@ public static class EvmCalculations
     /// <param name="gasAvailable">The remaining gas available.</param>
     /// <returns><c>true</c> if there was sufficient gas; otherwise, <c>false</c>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool UpdateGas(long gasCost, ref long gasAvailable)
+    public static bool UpdateGas(ulong gasCost, ref ulong gasAvailable)
     {
         if (gasAvailable < gasCost)
         {
@@ -169,7 +169,7 @@ public static class EvmCalculations
     /// <param name="refund">The gas amount to refund.</param>
     /// <param name="gasAvailable">The current gas available.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void UpdateGasUp(long refund, ref long gasAvailable)
+    public static void UpdateGasUp(ulong refund, ref ulong gasAvailable)
     {
         gasAvailable += refund;
     }

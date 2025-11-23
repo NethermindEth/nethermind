@@ -36,8 +36,8 @@ namespace Nethermind.Serialization.Rlp
             Bloom? bloom = decoderContext.DecodeBloom();
             UInt256 difficulty = decoderContext.DecodeUInt256();
             long number = decoderContext.DecodeLong();
-            long gasLimit = decoderContext.DecodeLong();
-            long gasUsed = decoderContext.DecodeLong();
+            ulong gasLimit = decoderContext.DecodeULong();
+            ulong gasUsed = decoderContext.DecodeULong();
             ulong timestamp = decoderContext.DecodeULong();
             byte[]? extraData = decoderContext.DecodeByteArray();
 
@@ -106,8 +106,8 @@ namespace Nethermind.Serialization.Rlp
             Bloom? bloom = rlpStream.DecodeBloom();
             UInt256 difficulty = rlpStream.DecodeUInt256();
             long number = rlpStream.DecodeLong();
-            long gasLimit = rlpStream.DecodeLong();
-            long gasUsed = rlpStream.DecodeLong();
+            ulong gasLimit = rlpStream.DecodeULong();
+            ulong gasUsed = rlpStream.DecodeULong();
             ulong timestamp = rlpStream.DecodeULong();
             byte[]? extraData = rlpStream.DecodeByteArray();
 

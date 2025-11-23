@@ -695,7 +695,7 @@ public class TxBroadcasterTests
 
         for (int i = 0; i < pickedTxs.Length; i++)
         {
-            pickedTxs[i].Nonce.Should().Be((UInt256)i);
+            pickedTxs[i].Nonce.Should().Be((ulong)i);
         }
     }
 

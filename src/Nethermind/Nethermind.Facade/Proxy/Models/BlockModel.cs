@@ -35,10 +35,10 @@ namespace Nethermind.Facade.Proxy.Models
         public Block ToBlock()
         {
             Block block = new(new BlockHeader(ParentHash, Sha3Uncles, Miner, Difficulty, (long)Number,
-                (long)GasLimit, Timestamp, ExtraData));
+                (ulong)GasLimit, Timestamp, ExtraData));
 
             block.Header.StateRoot = StateRoot;
-            block.Header.GasUsed = (long)GasUsed;
+            block.Header.GasUsed = (ulong)GasUsed;
             block.Header.Hash = Hash;
             block.Header.MixHash = MixHash;
             block.Header.Nonce = (ulong)Nonce;

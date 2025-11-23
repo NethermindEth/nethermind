@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     searchResult ??= _blockFinder.SearchForHeader(blockParameter);
                     if (!searchResult.Value.IsError)
                     {
-                        transactionCall.Gas = searchResult.Value.Object.GasLimit;
+                        transactionCall.Gas = (long?)searchResult.Value.Object.GasLimit;
                     }
                 }
 

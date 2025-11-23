@@ -49,7 +49,7 @@ public partial class FlashbotsModuleTests
             new RExecutionPayloadV3(ExecutionPayloadV3.Create(block)),
             expectedPayload.BlobsBundle,
             [],
-            block.Header.GasLimit,
+            (long)block.Header.GasLimit,
             new Hash256("0x0000000000000000000000000000000000000000000000000000000000000042")
         );
 

@@ -50,7 +50,7 @@ public class L2Api(
         {
             NoTxPool = true,
             EIP1559Params = block.ExtraData.Length == 0 ? null : block.ExtraData[1..],
-            GasLimit = block.GasLimit,
+            GasLimit = (long)block.GasLimit,
             ParentBeaconBlockRoot = block.ParentBeaconBlockRoot,
             PrevRandao = block.MixHash,
             SuggestedFeeRecipient = block.Miner,

@@ -97,7 +97,7 @@ public class OptimismTransactionProcessor(
             }
 
             UInt256 l1Cost = _currentTxL1Cost ??= costHelper.ComputeL1Cost(tx, header, WorldState);
-            UInt256 maxOperatorCost = costHelper.ComputeOperatorCost(tx.GasLimit, header, WorldState);
+            UInt256 maxOperatorCost = costHelper.ComputeOperatorCost((long)tx.GasLimit, header, WorldState);
 
             if (UInt256.SubtractUnderflow(balanceLeft, l1Cost + maxOperatorCost, out balanceLeft))
             {
@@ -141,7 +141,7 @@ public class OptimismTransactionProcessor(
         tx.IsDeposit() ? TransactionResult.Ok : base.ValidateSender(tx, header, spec, tracer, opts);
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
-        in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobGasFee, int statusCode)
+        in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 blobGasFee, int statusCode)
     {
         if (!tx.IsDeposit())
         {
@@ -156,8 +156,8 @@ public class OptimismTransactionProcessor(
 
             if (opSpecHelper.IsIsthmus(header))
             {
-                UInt256 operatorCostMax = costHelper.ComputeOperatorCost(tx.GasLimit, header, WorldState);
-                UInt256 operatorCostUsed = costHelper.ComputeOperatorCost(spentGas, header, WorldState);
+                UInt256 operatorCostMax = costHelper.ComputeOperatorCost((long)tx.GasLimit, header, WorldState);
+                UInt256 operatorCostUsed = costHelper.ComputeOperatorCost((long)spentGas, header, WorldState);
 
                 if (operatorCostMax > operatorCostUsed)
                 {
@@ -172,7 +172,7 @@ public class OptimismTransactionProcessor(
     }
 
     protected override GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
+        in TransactionSubstate substate, in ulong unspentGas, in UInt256 gasPrice, int codeInsertRefunds, ulong floorGas)
     {
         // if deposit: skip refunds, skip tipping coinbase
         // Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.

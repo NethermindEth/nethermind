@@ -3,8 +3,8 @@
 
 namespace Nethermind.Evm.TransactionProcessing;
 
-public readonly record struct GasConsumed(long SpentGas, long OperationGas)
+public readonly record struct GasConsumed(ulong SpentGas, ulong OperationGas)
 {
-    public static implicit operator long(GasConsumed gas) => gas.SpentGas;
-    public static implicit operator GasConsumed(long spentGas) => new(spentGas, spentGas);
+    public static implicit operator ulong(GasConsumed gas) => gas.SpentGas;
+    public static implicit operator GasConsumed(ulong spentGas) => new(spentGas, spentGas);
 }

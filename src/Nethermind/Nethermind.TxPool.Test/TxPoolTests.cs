@@ -466,8 +466,8 @@ namespace Nethermind.TxPool.Test
             Transaction tx = Build.A.Transaction
                 .WithGasPrice((UInt256)gasPrice)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            tx.Value = (UInt256)(value * tx.GasLimit);
-            EnsureSenderBalance(tx.SenderAddress, (UInt256)(15 * tx.GasLimit));
+            tx.Value = (UInt256)((ulong)value * tx.GasLimit);
+            EnsureSenderBalance(tx.SenderAddress, (UInt256)(15UL * tx.GasLimit));
             _txPool.GetPendingTransactionsCount().Should().Be(30);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.None);
             result.ToString().Should().Contain(expected);
@@ -509,8 +509,8 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas((UInt256)gasPremium)
                 .WithChainId(TestBlockchainIds.ChainId)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            tx.Value = (UInt256)(value * tx.GasLimit);
-            EnsureSenderBalance(tx.SenderAddress, (UInt256)(15 * tx.GasLimit));
+            tx.Value = (UInt256)((ulong)value * tx.GasLimit);
+            EnsureSenderBalance(tx.SenderAddress, (UInt256)(15UL * tx.GasLimit));
             _txPool.GetPendingTransactionsCount().Should().Be(30);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.None);
             _txPool.GetPendingTransactionsCount().Should().Be(30);
@@ -622,7 +622,7 @@ namespace Nethermind.TxPool.Test
 
             int numberOfTxsInTxPool = _txPool.GetPendingTransactionsCount();
             numberOfTxsInTxPool.Should().Be(numberOfTxsPossibleToExecuteBeforeGasExhaustion);
-            _txPool.GetPendingTransactions()[numberOfTxsInTxPool - 1].Nonce.Should().Be((UInt256)(numberOfTxsInTxPool - 1 + numberOfStaleTxsInBucket));
+            _txPool.GetPendingTransactions()[numberOfTxsInTxPool - 1].Nonce.Should().Be((ulong)(numberOfTxsInTxPool - 1 + numberOfStaleTxsInBucket));
         }
 
         [Test]

@@ -55,7 +55,7 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         To = transaction.To;
         Mint = transaction.Mint;
         Value = transaction.Value;
-        Gas = transaction.GasLimit;
+        Gas = (long?)transaction.GasLimit;
         IsSystemTx = transaction.IsOPSystemTransaction;
         Input = transaction.Data.ToArray();
         Nonce = receipt?.DepositNonce ?? 0;
@@ -72,7 +72,7 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         tx.To = To;
         tx.Mint = Mint ?? 0;
         tx.Value = Value ?? throw new ArgumentNullException(nameof(Value));
-        tx.GasLimit = Gas ?? throw new ArgumentNullException(nameof(Gas));
+        tx.GasLimit = (ulong)(Gas ?? throw new ArgumentNullException(nameof(Gas)));
         tx.IsOPSystemTransaction = IsSystemTx ?? false;
         tx.Data = Input ?? throw new ArgumentNullException(nameof(Input));
 

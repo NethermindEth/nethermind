@@ -1285,14 +1285,14 @@ public partial class EthRpcModuleTests
     [TestCase(0)]
     public static void ToTransactionWithDefaults_and_EnsureDefaults_same_GasLimit(long? gasCap)
     {
-        long toTransactionWitDefaultsGasLimit;
+        ulong toTransactionWitDefaultsGasLimit;
         {
             var rpcTx = new LegacyTransactionForRpc();
             Transaction tx = rpcTx.ToTransaction();
             toTransactionWitDefaultsGasLimit = tx.GasLimit;
         }
 
-        long ensureDefaultsGasLimit;
+        ulong ensureDefaultsGasLimit;
         {
             var rpcTx = new LegacyTransactionForRpc();
             rpcTx.EnsureDefaults(gasCap);

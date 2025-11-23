@@ -102,7 +102,7 @@ public class TaikoPayloadPreparationService(
             payloadAttributes.BlockMetadata!.Beneficiary!,
             UInt256.Zero,
             parentHeader.Number + 1,
-            payloadAttributes.BlockMetadata.GasLimit,
+            (ulong)payloadAttributes.BlockMetadata.GasLimit,
             payloadAttributes.Timestamp,
             payloadAttributes.BlockMetadata.ExtraData!)
         {

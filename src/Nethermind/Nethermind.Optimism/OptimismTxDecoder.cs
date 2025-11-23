@@ -25,7 +25,7 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.To = rlpStream.DecodeAddress();
         transaction.Mint = rlpStream.DecodeUInt256();
         transaction.Value = rlpStream.DecodeUInt256();
-        transaction.GasLimit = rlpStream.DecodeLong();
+        transaction.GasLimit = rlpStream.DecodeULong();
         transaction.IsOPSystemTransaction = rlpStream.DecodeBool();
         transaction.Data = rlpStream.DecodeByteArray();
     }
@@ -38,7 +38,7 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.To = decoderContext.DecodeAddress();
         transaction.Mint = decoderContext.DecodeUInt256();
         transaction.Value = decoderContext.DecodeUInt256();
-        transaction.GasLimit = decoderContext.DecodeLong();
+        transaction.GasLimit = decoderContext.DecodeULong();
         transaction.IsOPSystemTransaction = decoderContext.DecodeBool();
         transaction.Data = decoderContext.DecodeByteArray();
     }

@@ -50,7 +50,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionCodeCopy<TOpCodeCopy, TTracingInst>(
         VirtualMachine vm,
         ref EvmStack stack,
-        ref long gasAvailable,
+        ref ulong gasAvailable,
         ref int programCounter)
         where TOpCodeCopy : struct, IOpCodeCopy
         where TTracingInst : struct, IFlag
@@ -63,7 +63,7 @@ internal static partial class EvmInstructions
 
         // Deduct gas for the operation plus the cost for memory expansion.
         // Gas cost is calculated as a fixed "VeryLow" cost plus a per-32-bytes cost.
-        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
+        gasAvailable -= (ulong)(GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas));
         if (outOfGas) goto OutOfGas;
 
         // Only perform the copy if length (result) is non-zero.
@@ -130,7 +130,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionExtCodeCopy<TTracingInst>(
         VirtualMachine vm,
         ref EvmStack stack,
-        ref long gasAvailable,
+        ref ulong gasAvailable,
         ref int programCounter)
         where TTracingInst : struct, IFlag
     {
@@ -145,7 +145,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
-        gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
+        gasAvailable -= (ulong)(spec.GetExtCodeCost() + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas));
         if (outOfGas) goto OutOfGas;
 
         // Charge gas for account access (considering hot/cold storage costs).
@@ -216,13 +216,13 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionExtCodeSize<TTracingInst>(
         VirtualMachine vm,
         ref EvmStack stack,
-        ref long gasAvailable,
+        ref ulong gasAvailable,
         ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct the gas cost for external code access.
-        gasAvailable -= spec.GetExtCodeCost();
+        gasAvailable -= (ulong)spec.GetExtCodeCost();
 
         // Pop the account address from the stack.
         Address address = stack.PopAddress();

@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             To = transaction.IsContractCreation ? null : transaction.To;
             Value = transaction.Value;
             GasPrice = transaction.GasPrice;
-            Gas = transaction.GasLimit;
+            Gas = (long?)transaction.GasLimit;
             Raw = raw;
             Input = transaction.Data.AsArray();
             PublicKey = publicKey;

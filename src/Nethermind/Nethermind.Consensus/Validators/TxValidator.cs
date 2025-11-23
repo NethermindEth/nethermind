@@ -389,8 +389,8 @@ public sealed class GasLimitCapTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
         long gasLimitCap = releaseSpec.GetTxGasLimitCap();
-        return transaction.GasLimit > gasLimitCap ?
-            TxErrorMessages.TxGasLimitCapExceeded(transaction.GasLimit, gasLimitCap) : ValidationResult.Success;
+        return (long)transaction.GasLimit > gasLimitCap ?
+            TxErrorMessages.TxGasLimitCapExceeded((long)transaction.GasLimit, gasLimitCap) : ValidationResult.Success;
     }
 }
 

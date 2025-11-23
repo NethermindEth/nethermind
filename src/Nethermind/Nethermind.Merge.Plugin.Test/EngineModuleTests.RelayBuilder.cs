@@ -115,7 +115,7 @@ public partial class EngineModuleTests
         var expected_logsBloom = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
         var expected_prevRandao = "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760";
         var expected_blockNumber = 1;
-        var expected_gasLimit = 0x3d0900L;
+        var expected_gasLimit = 0x3d0900UL;
         var expected_gasUsed = 0;
         var expected_timestamp = 0x3e9UL;
         var expected_extraData = "0x4e65746865726d696e64"; // Nethermind
@@ -135,7 +135,7 @@ public partial class EngineModuleTests
                 PrevRandao = new(expected_prevRandao),
                 BlockNumber = expected_blockNumber,
                 GasLimit = expected_gasLimit,
-                GasUsed = expected_gasUsed,
+                GasUsed = (ulong)expected_gasUsed,
                 Timestamp = expected_timestamp,
                 ExtraData = Bytes.FromHexString(expected_extraData),
                 BaseFeePerGas = expected_baseFeePerGas,

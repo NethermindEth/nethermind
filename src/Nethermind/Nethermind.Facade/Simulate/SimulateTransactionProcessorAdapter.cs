@@ -18,7 +18,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         // The gas limit per tx go down as the block is processed.
         if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
         {
-            transaction.GasLimit = long.Min(simulateRequestState.BlockGasLeft, simulateRequestState.TotalGasLeft);
+            transaction.GasLimit = (ulong)long.Min(simulateRequestState.BlockGasLeft, simulateRequestState.TotalGasLeft);
         }
 
         if (simulateRequestState.TotalGasLeft < transaction.GasLimit)
@@ -30,9 +30,14 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
 
         // Keep track of gas left
+<<<<<<< HEAD
         simulateRequestState.TotalGasLeft -= transaction.SpentGas;
         simulateRequestState.BlockGasLeft -= transaction.SpentGas;
 
+=======
+        simulateRequestState.TotalGasLeft -= (long)transaction.SpentGas;
+        simulateRequestState.BlockGasLeft -= (long)transaction.SpentGas;
+>>>>>>> 5395b475ab (Unify numeric types for gas, nonce, and block/receipt fields (#9685))
         _currentTxIndex++;
         return result;
     }

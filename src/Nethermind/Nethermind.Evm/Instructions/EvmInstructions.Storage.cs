@@ -31,7 +31,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the result of the operation.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionTLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         // Increment the opcode metric for TLOAD.
@@ -80,7 +80,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or failure.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTStore(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionTStore(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
     {
         // Increment the opcode metric for TSTORE.
         Metrics.TstoreOpcode++;
@@ -137,7 +137,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMStore<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
@@ -182,7 +182,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore8<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMStore8<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
@@ -227,7 +227,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
@@ -272,7 +272,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMCopy<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMCopy<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         // Increment the opcode metric for MCOPY.
@@ -282,7 +282,7 @@ internal static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
 
         // Calculate additional gas cost based on the length (using a division rounding-up method) and deduct the total cost.
-        gasAvailable -= GasCostOf.VeryLow + GasCostOf.VeryLow * EvmCalculations.Div32Ceiling(c, out bool outOfGas);
+        gasAvailable -= (ulong)(GasCostOf.VeryLow + GasCostOf.VeryLow * EvmCalculations.Div32Ceiling(c, out bool outOfGas));
         if (outOfGas) goto OutOfGas;
 
         EvmState vmState = vm.EvmState;
@@ -326,7 +326,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSStoreUnmetered<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    internal static EvmExceptionType InstructionSStoreUnmetered<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         // Increment the SSTORE opcode metric.
@@ -339,7 +339,7 @@ internal static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
 
         // For legacy metering: ensure there is enough gas for the SSTORE reset cost before reading storage.
-        if (!EvmCalculations.UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
+        if (!EvmCalculations.UpdateGas((ulong)spec.GetSStoreResetCost(), ref gasAvailable))
             goto OutOfGas;
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
@@ -380,7 +380,7 @@ internal static partial class EvmInstructions
         // When setting a non-zero value over an existing zero, apply the difference in gas costs.
         else if (currentIsZero)
         {
-            if (!EvmCalculations.UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable))
+            if (!EvmCalculations.UpdateGas((ulong)(GasCostOf.SSet - GasCostOf.SReset), ref gasAvailable))
                 goto OutOfGas;
         }
 
@@ -426,7 +426,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSStoreMetered<TTracingInst, TUseNetGasStipendFix>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    internal static EvmExceptionType InstructionSStoreMetered<TTracingInst, TUseNetGasStipendFix>(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
         where TUseNetGasStipendFix : struct, IFlag
     {
@@ -475,7 +475,7 @@ internal static partial class EvmInstructions
 
         if (newSameAsCurrent)
         {
-            if (!EvmCalculations.UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable))
+            if (!EvmCalculations.UpdateGas((ulong)spec.GetNetMeteredSStoreCost(), ref gasAvailable))
                 goto OutOfGas;
         }
         else
@@ -489,12 +489,12 @@ internal static partial class EvmInstructions
             {
                 if (currentIsZero)
                 {
-                    if (!EvmCalculations.UpdateGas(GasCostOf.SSet, ref gasAvailable))
+                    if (!EvmCalculations.UpdateGas((ulong)GasCostOf.SSet, ref gasAvailable))
                         goto OutOfGas;
                 }
                 else
                 {
-                    if (!EvmCalculations.UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
+                    if (!EvmCalculations.UpdateGas((ulong)spec.GetSStoreResetCost(), ref gasAvailable))
                         goto OutOfGas;
 
                     if (newIsZero)
@@ -508,7 +508,7 @@ internal static partial class EvmInstructions
             else
             {
                 long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
-                if (!EvmCalculations.UpdateGas(netMeteredStoreCost, ref gasAvailable))
+                if (!EvmCalculations.UpdateGas((ulong)netMeteredStoreCost, ref gasAvailable))
                     goto OutOfGas;
 
                 if (!originalIsZero)
@@ -593,7 +593,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter (unused in this instruction).</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the result of the operation.</returns>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    internal static EvmExceptionType InstructionSLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
@@ -602,7 +602,7 @@ internal static partial class EvmInstructions
         Metrics.IncrementSLoadOpcode();
 
         // Deduct the gas cost for performing an SLOAD.
-        gasAvailable -= spec.GetSLoadCost();
+        gasAvailable -= (ulong)spec.GetSLoadCost();
 
         // Pop the key from the stack; if unavailable, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -641,7 +641,7 @@ internal static partial class EvmInstructions
     /// zero-padding if necessary.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCallDataLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionCallDataLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;

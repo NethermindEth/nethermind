@@ -328,7 +328,7 @@ namespace Nethermind.AuRa.Test.Contract
                 for (int index = 0; index < transactions.Length; index++)
                 {
                     Transaction transaction = transactions[index];
-                    transaction.Nonce = (UInt256)index + baseNonce;
+                    transaction.Nonce = (ulong)index + (ulong)baseNonce;
                     ecdsa.Sign(key, transaction, true);
                     transaction.SenderAddress = key.Address;
                     transaction.Hash = transaction.CalculateHash();

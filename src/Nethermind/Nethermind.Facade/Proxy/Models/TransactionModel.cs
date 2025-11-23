@@ -24,12 +24,12 @@ namespace Nethermind.Facade.Proxy.Models
             => new()
             {
                 Hash = Hash,
-                Nonce = Nonce,
+                Nonce = (ulong)Nonce,
                 SenderAddress = From,
                 To = To,
                 Data = Input,
                 Value = Value,
-                GasLimit = (long)Gas,
+                GasLimit = (ulong)Gas,
                 GasPrice = GasPrice
             };
     }

@@ -138,13 +138,13 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
 
     public BlockHeaderBuilder WithGasLimit(long gasLimit)
     {
-        TestObjectInternal.GasLimit = gasLimit;
+        TestObjectInternal.GasLimit = (ulong)gasLimit;
         return this;
     }
 
     public BlockHeaderBuilder WithGasUsed(long gasUsed)
     {
-        TestObjectInternal.GasUsed = gasUsed;
+        TestObjectInternal.GasUsed = (ulong)gasUsed;
         return this;
     }
 

@@ -43,7 +43,7 @@ public class EstimateGasTracer : TxTracer
     public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
         Hash256? stateRoot = null)
     {
-        GasSpent = gasSpent.SpentGas;
+        GasSpent = (long)gasSpent.SpentGas;
         ReturnValue = output;
         StatusCode = Evm.StatusCode.Success;
     }
@@ -51,7 +51,7 @@ public class EstimateGasTracer : TxTracer
     public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
         Hash256? stateRoot = null)
     {
-        GasSpent = gasSpent.SpentGas;
+        GasSpent = (long)gasSpent.SpentGas;
         Error = error;
         ReturnValue = output ?? [];
         StatusCode = Evm.StatusCode.Failure;
@@ -90,9 +90,9 @@ public class EstimateGasTracer : TxTracer
 
     internal long CalculateAdditionalGasRequired(Transaction tx, IReleaseSpec releaseSpec)
     {
-        long intrinsicGas = tx.GasLimit - IntrinsicGasAt;
+        long intrinsicGas = (long)tx.GasLimit - IntrinsicGasAt;
         return _currentGasAndNesting.Peek().AdditionalGasRequired +
-               RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund,
+               (long)RefundHelper.CalculateClaimableRefund((ulong)(intrinsicGas + NonIntrinsicGasSpentBeforeRefund), (ulong)TotalRefund,
                    releaseSpec);
     }
 
@@ -102,19 +102,19 @@ public class EstimateGasTracer : TxTracer
 
     private readonly Stack<GasAndNesting> _currentGasAndNesting = new();
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall = false)
     {
         if (_currentNestingLevel == -1)
         {
             OutOfGas = false;
-            IntrinsicGasAt = gas;
+            IntrinsicGasAt = (long)gas;
         }
 
         if (!isPrecompileCall)
         {
             _currentNestingLevel++;
-            _currentGasAndNesting.Push(new GasAndNesting(gas, _currentNestingLevel));
+            _currentGasAndNesting.Push(new GasAndNesting((long)gas, _currentNestingLevel));
         }
         else
         {
@@ -122,14 +122,14 @@ public class EstimateGasTracer : TxTracer
         }
     }
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
-        UpdateAdditionalGas(gas);
+        UpdateAdditionalGas((long)gas);
     }
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
-        UpdateAdditionalGas(gas);
+        UpdateAdditionalGas((long)gas);
     }
 
     public override void ReportActionError(EvmExceptionType exceptionType)

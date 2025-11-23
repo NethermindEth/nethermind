@@ -48,16 +48,16 @@ namespace Nethermind.Serialization.Rlp
             if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
             {
                 txReceipt.StatusCode = firstItem[0];
-                txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
+                txReceipt.GasUsedTotal = (ulong)ctx.DecodeUBigInt();
             }
             else if (firstItem.Length is >= 1 and <= 4)
             {
-                txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
+                txReceipt.GasUsedTotal = (ulong)firstItem.ToUnsignedBigInteger();
             }
             else
             {
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-                txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
+                txReceipt.GasUsedTotal = (ulong)ctx.DecodeUBigInt();
             }
 
             txReceipt.Bloom = ctx.DecodeBloom();

@@ -14,10 +14,10 @@ using Nethermind.Int256;
 namespace Nethermind.Evm;
 
 
-public readonly record struct IntrinsicGas(long Standard, long FloorGas)
+public readonly record struct IntrinsicGas(ulong Standard, ulong FloorGas)
 {
-    public long MinimalGas { get; } = Math.Max(Standard, FloorGas);
-    public static explicit operator long(IntrinsicGas gas) => gas.MinimalGas;
+    public ulong MinimalGas { get; } = Math.Max(Standard, FloorGas);
+    public static explicit operator ulong(IntrinsicGas gas) => gas.MinimalGas;
 }
 
 public static class IntrinsicGasCalculator
@@ -30,7 +30,7 @@ public static class IntrinsicGasCalculator
                + AccessListCost(transaction, releaseSpec)
                + AuthorizationListCost(transaction, releaseSpec);
         var floorGas = CalculateFloorCost(transaction, releaseSpec);
-        return new IntrinsicGas(intrinsicGas, floorGas);
+        return new IntrinsicGas((ulong)intrinsicGas, (ulong)floorGas);
     }
 
     private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec) =>

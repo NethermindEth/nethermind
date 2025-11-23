@@ -18,7 +18,7 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm;
 
-using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
+using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref ulong, ref int, EvmExceptionType>;
 
 public unsafe partial class VirtualMachine
 {
@@ -154,7 +154,7 @@ public unsafe partial class VirtualMachine
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
         EvmStack stack = new(0, txTracer, evmState.DataStack);
-        long gas = long.MaxValue;
+        ulong gas = ulong.MaxValue;
         int pc = 0;
 
         for (int repeat = 0; repeat < WarmUpIterations; repeat++)

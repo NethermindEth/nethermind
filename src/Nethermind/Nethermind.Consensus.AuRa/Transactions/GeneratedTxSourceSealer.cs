@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 {
                     if (tx is GeneratedTransaction)
                     {
-                        tx.Nonce = CalculateNonce(tx.SenderAddress, parent, _nonces);
+                        tx.Nonce = (ulong)CalculateNonce(tx.SenderAddress, parent, _nonces);
                         _txSealer.Seal(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature);
                         Metrics.SealedTransactions++;
                         if (_logger.IsDebug) _logger.Debug($"Sealed node generated transaction {tx.ToShortString()}");

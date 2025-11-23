@@ -337,7 +337,7 @@ public class SyncServerTests
         Block terminalBlockWithLowerDifficulty = Build.A.Block
             .WithDifficulty((UInt256)difficulty)
             .WithParent(remoteBlockTree.Head!)
-            .WithGasLimit(remoteBlockTree.Head!.GasLimit + 1)
+            .WithGasLimit((long)(remoteBlockTree.Head!.GasLimit + 1))
             .WithTotalDifficulty(remoteBlockTree.Head.TotalDifficulty + (UInt256)difficulty)
             .TestObject;
         remoteBlockTree.SuggestBlock(terminalBlockWithLowerDifficulty);

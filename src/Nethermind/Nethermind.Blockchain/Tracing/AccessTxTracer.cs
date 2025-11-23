@@ -19,13 +19,13 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
     public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs,
         Hash256? stateRoot = null)
     {
-        GasSpent += gasSpent.SpentGas;
+        GasSpent += (long)gasSpent.SpentGas;
     }
 
     public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error,
         Hash256? stateRoot = null)
     {
-        GasSpent += gasSpent.SpentGas;
+        GasSpent += (long)gasSpent.SpentGas;
     }
 
     public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)

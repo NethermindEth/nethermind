@@ -48,12 +48,12 @@ internal static partial class EvmInstructions
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath2Param<TOpMath, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMath2Param<TOpMath, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost for the specific math operation.
-        gasAvailable -= TOpMath.GasCost;
+        gasAvailable -= (ulong)TOpMath.GasCost;
 
         // Pop two operands from the stack. If either pop fails, jump to the underflow handler.
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
@@ -259,7 +259,7 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success; or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExp<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExp<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref ulong gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         // Charge the fixed gas cost for exponentiation.
@@ -283,7 +283,7 @@ internal static partial class EvmInstructions
         {
             int expSize = 32 - leadingZeros;
             // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-            gasAvailable -= vm.Spec.GetExpByteCost() * expSize;
+            gasAvailable -= (ulong)(vm.Spec.GetExpByteCost() * expSize);
 
             if (a.IsZero)
             {

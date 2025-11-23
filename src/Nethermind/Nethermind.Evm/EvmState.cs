@@ -78,7 +78,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 
     public byte[]? DataStack;
     public ReturnState[]? ReturnStack;
-    public long GasAvailable { get; set; }
+    public ulong GasAvailable { get; set; }
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
@@ -108,7 +108,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     /// Rent a top level <see cref="EvmState"/>.
     /// </summary>
     public static EvmState RentTopLevel(
-        long gasAvailable,
+        ulong gasAvailable,
         ExecutionType executionType,
         in ExecutionEnvironment env,
         in StackAccessTracker accessedItems,
@@ -133,7 +133,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     /// Constructor for a frame <see cref="EvmState"/> beneath top level.
     /// </summary>
     public static EvmState RentFrame(
-        long gasAvailable,
+        ulong gasAvailable,
         long outputDestination,
         long outputLength,
         ExecutionType executionType,
@@ -164,7 +164,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 
     [SkipLocalsInit]
     private void Initialize(
-        long gasAvailable,
+        ulong gasAvailable,
         long outputDestination,
         long outputLength,
         ExecutionType executionType,

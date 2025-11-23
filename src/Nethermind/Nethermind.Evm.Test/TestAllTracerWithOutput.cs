@@ -32,7 +32,7 @@ namespace Nethermind.Evm.Test
 
         public byte[]? ReturnValue { get; private set; }
 
-        public long GasSpent { get; private set; }
+        public ulong GasSpent { get; private set; }
 
         public string? Error { get; private set; }
 

@@ -209,7 +209,7 @@ public class CliqueBlockProducerTests
             extraDataHex += "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
             byte[] extraData = Bytes.FromHexString(extraDataHex);
-            BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
+            BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, (ulong)gasLimit, timestamp, extraData);
             Block genesis = new(header);
             genesis.Header.Hash = genesis.Header.CalculateHash();
             genesis.Header.StateRoot = new Hash256("0xba946bf2140ef68f7d9d57ef06a8ac0b28002b62060c462ba398389c97f1f1fa");
@@ -432,8 +432,8 @@ public class CliqueBlockProducerTests
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 30000;
-            transaction.GasPrice = 20.GWei();
-            transaction.Nonce = _currentNonce + 1;
+            transaction.GasPrice = 20_000_000_000UL;
+            transaction.Nonce = (ulong)(_currentNonce + 1);
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
             transaction.Hash = transaction.CalculateHash();
             _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
@@ -449,8 +449,8 @@ public class CliqueBlockProducerTests
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 30000;
-            transaction.GasPrice = 0.GWei();
-            transaction.Nonce = _currentNonce;
+            transaction.GasPrice = 0UL;
+            transaction.Nonce = (ulong)_currentNonce;
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
             transaction.Hash = transaction.CalculateHash();
             _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
@@ -461,7 +461,7 @@ public class CliqueBlockProducerTests
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 30000;
-            transaction.GasPrice = 20.GWei();
+            transaction.GasPrice = 20_000_000_000UL;
             transaction.Nonce = 0;
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
             transaction.Hash = transaction.CalculateHash();
@@ -473,8 +473,8 @@ public class CliqueBlockProducerTests
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 100000000;
-            transaction.GasPrice = 20.GWei();
-            transaction.Nonce = _currentNonce;
+            transaction.GasPrice = 20_000_000_000UL;
+            transaction.Nonce = (ulong)_currentNonce;
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
             transaction.Hash = transaction.CalculateHash();
             _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
@@ -485,8 +485,8 @@ public class CliqueBlockProducerTests
             transaction.Value = 1000000000.Ether();
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 30000;
-            transaction.GasPrice = 20.GWei();
-            transaction.Nonce = _currentNonce;
+            transaction.GasPrice = 20_000_000_000UL;
+            transaction.Nonce = (ulong)_currentNonce;
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
             transaction.Hash = transaction.CalculateHash();
             _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
@@ -502,8 +502,8 @@ public class CliqueBlockProducerTests
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 100000000;
-            transaction.GasPrice = 20.GWei();
-            transaction.Nonce = _currentNonce;
+            transaction.GasPrice = 20_000_000_000UL;
+            transaction.Nonce = (ulong)_currentNonce;
             transaction.Data = Bytes.FromHexString("0xEF");
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
             transaction.Hash = transaction.CalculateHash();
@@ -519,8 +519,8 @@ public class CliqueBlockProducerTests
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 30000;
-            transaction.GasPrice = 20.GWei();
-            transaction.Nonce = _currentNonce + 1000;
+            transaction.GasPrice = 20_000_000_000UL;
+            transaction.Nonce = (ulong)(_currentNonce + 1000);
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
             transaction.Hash = transaction.CalculateHash();
             _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);

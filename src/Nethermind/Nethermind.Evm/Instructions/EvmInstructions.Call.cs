@@ -92,7 +92,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionCall<TOpCall, TTracingInst>(
         VirtualMachine vm,
         ref EvmStack stack,
-        ref long gasAvailable,
+        ref ulong gasAvailable,
         ref int programCounter)
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
@@ -170,10 +170,10 @@ internal static partial class EvmInstructions
         }
 
         // Update gas: call cost, memory expansion for input and output, and extra gas.
-        if (!EvmCalculations.UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
+        if (!EvmCalculations.UpdateGas((ulong)spec.GetCallCost(), ref gasAvailable) ||
             !EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataLength) ||
             !EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in outputOffset, outputLength) ||
-            !EvmCalculations.UpdateGas(gasExtra, ref gasAvailable))
+            !EvmCalculations.UpdateGas((ulong)gasExtra, ref gasAvailable))
             goto OutOfGas;
 
         // Retrieve code information for the call and schedule background analysis if needed.
@@ -195,7 +195,7 @@ internal static partial class EvmInstructions
         // If gasLimit exceeds the host's representable range, treat as out-of-gas.
         if (gasLimit >= long.MaxValue) goto OutOfGas;
 
-        long gasLimitUl = (long)gasLimit;
+        ulong gasLimitUl = (ulong)gasLimit;
         if (!EvmCalculations.UpdateGas(gasLimitUl, ref gasAvailable)) goto OutOfGas;
 
         // Add call stipend if value is being transferred.
@@ -232,7 +232,7 @@ internal static partial class EvmInstructions
             EvmCalculations.UpdateGasUp(gasLimitUl, ref gasAvailable);
             if (TTracingInst.IsActive)
             {
-                vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
+                vm.TxTracer.ReportGasUpdateForVmTrace((long)gasLimitUl, (long)gasAvailable);
             }
             return EvmExceptionType.None;
         }
@@ -304,12 +304,12 @@ internal static partial class EvmInstructions
         return EvmExceptionType.OutOfGas;
     }
 
-    private static bool ChargeForLargeContractAccess(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref long gasAvailable)
+    private static bool ChargeForLargeContractAccess(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref ulong gasAvailable)
     {
         if (accessTracer.WarmUpLargeContract(codeAddress))
         {
             long largeContractCost = GasCostOf.InitCodeWord * EvmCalculations.Div32Ceiling(excessContractSize, out bool outOfGas);
-            if (outOfGas || !EvmCalculations.UpdateGas(largeContractCost, ref gasAvailable)) return false;
+            if (outOfGas || !EvmCalculations.UpdateGas((ulong)largeContractCost, ref gasAvailable)) return false;
         }
 
         return true;
@@ -332,7 +332,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionReturn(
         VirtualMachine vm,
         ref EvmStack stack,
-        ref long gasAvailable,
+        ref ulong gasAvailable,
         ref int programCounter)
     {
         // RETURN is not allowed during contract creation.

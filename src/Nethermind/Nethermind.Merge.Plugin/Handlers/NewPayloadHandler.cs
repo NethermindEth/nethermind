@@ -125,9 +125,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
         {
-            _logger.Info($"Received {requestStr}      | limit {block.Header.GasLimit,13:N0} {GetGasChange(block.Number == _lastBlockNumber + 1 ? block.Header.GasLimit : _lastBlockGasLimit)} | {block.ParsedExtraData()}");
+            _logger.Info($"Received {requestStr}      | limit {block.Header.GasLimit,13:N0} {GetGasChange(block.Number == _lastBlockNumber + 1 ? (long)block.Header.GasLimit : _lastBlockGasLimit)} | {block.ParsedExtraData()}");
             _lastBlockNumber = block.Number;
-            _lastBlockGasLimit = block.Header.GasLimit;
+            _lastBlockGasLimit = (long)block.Header.GasLimit;
         }
 
         if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))

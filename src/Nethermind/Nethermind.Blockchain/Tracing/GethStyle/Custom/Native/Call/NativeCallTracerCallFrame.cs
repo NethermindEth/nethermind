@@ -24,7 +24,7 @@ public class NativeCallTracerCallFrame : IDisposable
 
     public long Gas { get; set; }
 
-    public long GasUsed { get; set; }
+    public ulong GasUsed { get; set; }
 
     public Address? To { get; set; }
 

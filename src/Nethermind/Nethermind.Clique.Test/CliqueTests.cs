@@ -130,7 +130,7 @@ public class CliqueTests
         Address beneficiary = Address.Zero;
         UInt256 difficulty = new(1);
         long number = 0L;
-        int gasLimit = 4700000;
+        ulong gasLimit = 4700000UL;
         ulong timestamp = 1492009146UL;
         byte[] extraData = Bytes.FromHexString("52657370656374206d7920617574686f7269746168207e452e436172746d616e42eb768f2244c8811c63729a21a3569731535f067ffc57839b00206d1ad20c69a1981b489f772031b279182d99e65703f0076e4812653aab85fca0f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
         BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);

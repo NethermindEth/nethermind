@@ -65,7 +65,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         Nonce = transaction.Nonce;
         To = transaction.To;
         From = transaction.SenderAddress;
-        Gas = transaction.GasLimit;
+        Gas = (long?)transaction.GasLimit;
         Value = transaction.Value;
         Input = transaction.Data.AsArray();
         GasPrice = transaction.GasPrice;
@@ -91,9 +91,9 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     {
         var tx = base.ToTransaction();
 
-        tx.Nonce = Nonce ?? 0; // TODO: Should we pick the last nonce?
+        tx.Nonce = (ulong)(Nonce ?? 0); // TODO: Should we pick the last nonce?
         tx.To = To;
-        tx.GasLimit = Gas ?? 90_000;
+        tx.GasLimit = (ulong)(Gas ?? 90_000);
         tx.Value = Value ?? 0;
         tx.Data = Input;
         tx.GasPrice = GasPrice ?? 0;

@@ -70,7 +70,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionCreate<TOpCreate, TTracingInst>(
         VirtualMachine vm,
         ref EvmStack stack,
-        ref long gasAvailable,
+        ref ulong gasAvailable,
         ref int programCounter)
         where TOpCreate : struct, IOpCreate
         where TTracingInst : struct, IFlag
@@ -119,7 +119,7 @@ internal static partial class EvmInstructions
                            : 0);
 
         // Check gas sufficiency: if outOfGas flag was set during gas division or if gas update fails.
-        if (outOfGas || !EvmCalculations.UpdateGas(gasCost, ref gasAvailable))
+        if (outOfGas || !EvmCalculations.UpdateGas((ulong)gasCost, ref gasAvailable))
             goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
@@ -163,7 +163,7 @@ internal static partial class EvmInstructions
 
         // Calculate gas available for the contract creation call.
         // Use the 63/64 gas rule if specified in the current EVM specification.
-        long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
+        ulong callGas = spec.Use63Over64Rule ? gasAvailable - (gasAvailable / 64UL) : gasAvailable;
         if (!EvmCalculations.UpdateGas(callGas, ref gasAvailable))
             goto OutOfGas;
 

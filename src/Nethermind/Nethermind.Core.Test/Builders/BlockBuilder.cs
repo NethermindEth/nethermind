@@ -49,7 +49,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithGasLimit(long gasLimit)
         {
-            TestObjectInternal.Header.GasLimit = gasLimit;
+            TestObjectInternal.Header.GasLimit = (ulong)gasLimit;
             return this;
         }
 
@@ -264,7 +264,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithGasUsed(long gasUsed)
         {
-            TestObjectInternal.Header.GasUsed = gasUsed;
+            TestObjectInternal.Header.GasUsed = (ulong)gasUsed;
             return this;
         }
 

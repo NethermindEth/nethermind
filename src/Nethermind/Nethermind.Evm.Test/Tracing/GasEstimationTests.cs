@@ -151,7 +151,7 @@ namespace Nethermind.Evm.Test.Tracing
             Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-            long gasLeft = gasLimit - 22000;
+            ulong gasLeft = (ulong)(gasLimit - 22000);
             testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
             gasLeft = 63 * gasLeft / 64;
@@ -295,7 +295,7 @@ namespace Nethermind.Evm.Test.Tracing
             Transaction tx = Build.A.Transaction.WithGasLimit(30000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
             EstimateGasTracer tracer = new();
-            tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
+            tracer.MarkAsSuccess(Address.Zero, new GasConsumed((ulong)totalGas, 0), [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
             GasEstimator sut = new GasEstimator(
@@ -331,7 +331,7 @@ namespace Nethermind.Evm.Test.Tracing
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
             EstimateGasTracer tracer = new();
             const int totalGas = Transaction.BaseTxGasCost;
-            tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
+            tracer.MarkAsSuccess(Address.Zero, new GasConsumed((ulong)totalGas, 0), [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
             GasEstimator sut = new GasEstimator(
@@ -356,7 +356,7 @@ namespace Nethermind.Evm.Test.Tracing
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
             EstimateGasTracer tracer = new();
             const int totalGas = Transaction.BaseTxGasCost;
-            tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
+            tracer.MarkAsSuccess(Address.Zero, new GasConsumed((ulong)totalGas, 0), [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
             GasEstimator sut = new GasEstimator(

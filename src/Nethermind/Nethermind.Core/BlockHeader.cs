@@ -22,7 +22,7 @@ public class BlockHeader
         Address beneficiary,
         in UInt256 difficulty,
         long number,
-        long gasLimit,
+        ulong gasLimit,
         ulong timestamp,
         byte[] extraData,
         ulong? blobGasUsed = null,
@@ -57,8 +57,8 @@ public class BlockHeader
     public Bloom? Bloom { get; set; }
     public UInt256 Difficulty;
     public long Number { get; set; }
-    public long GasUsed { get; set; }
-    public long GasLimit { get; set; }
+    public ulong GasUsed { get; set; }
+    public ulong GasLimit { get; set; }
     public ulong Timestamp { get; set; }
     public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
     public byte[] ExtraData { get; set; } = [];

@@ -759,7 +759,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
             .WithGenesisPostProcessor((genesis, state) =>
             {
-                genesis.Header.GasLimit = Eip7825Constants.DefaultTxGasLimitCap * 2;
+                genesis.Header.GasLimit = (ulong)Eip7825Constants.DefaultTxGasLimitCap * 2;
             })
             .AddSingleton<ISpecProvider>(new TestSpecProvider(initialSpec) { NextForkSpec = isForked ? nextBlockSpec : initialSpec }));
 
