@@ -28,7 +28,11 @@ public class GenesisBuilder(
 
     public Block Build()
     {
-        Block genesis = chainSpec.Genesis;
+        return Build(chainSpec.Genesis);
+    }
+
+    public Block Build(Block genesis)
+    {
         Preallocate(genesis);
 
         foreach (IGenesisPostProcessor postProcessor in postProcessors)
