@@ -16,6 +16,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Nethermind.Xdc.Test;
+
 [Parallelizable(ParallelScope.All)]
 public class QuorumCertificateManagerTest
 {

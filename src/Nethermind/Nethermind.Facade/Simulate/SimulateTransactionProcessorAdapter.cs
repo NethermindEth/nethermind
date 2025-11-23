@@ -20,6 +20,11 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         {
             transaction.GasLimit = long.Min(simulateRequestState.BlockGasLeft, simulateRequestState.TotalGasLeft);
         }
+
+        if (simulateRequestState.TotalGasLeft < transaction.GasLimit)
+        {
+            transaction.GasLimit = simulateRequestState.TotalGasLeft;
+        }
         transaction.Hash = transaction.CalculateHash();
 
         TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
@@ -27,6 +32,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         // Keep track of gas left
         simulateRequestState.TotalGasLeft -= transaction.SpentGas;
         simulateRequestState.BlockGasLeft -= transaction.SpentGas;
+
         _currentTxIndex++;
         return result;
     }

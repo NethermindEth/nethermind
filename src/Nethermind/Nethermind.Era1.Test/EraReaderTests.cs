@@ -22,6 +22,7 @@ using Nethermind.Specs;
 using NSubstitute;
 
 namespace Nethermind.Era1.Test;
+
 internal class EraReaderTests
 {
     private class PopulatedTestFile : IDisposable

@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Nethermind.Xdc.Test;
+
 internal static class XdcTestHelper
 {
     private static readonly EthereumEcdsa ecdsa = new EthereumEcdsa(0);

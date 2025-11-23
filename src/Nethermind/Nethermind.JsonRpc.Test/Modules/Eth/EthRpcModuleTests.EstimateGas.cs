@@ -77,7 +77,7 @@ public partial class EthRpcModuleTests
         Address someAccount = new("0x0001020304050607080910111213141516171819");
         ctx.Test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gas\":\"0x100000000\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gas\":\"0x100000\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
         string serialized =
             await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x53b8\",\"id\":67}"));
@@ -240,7 +240,7 @@ public partial class EthRpcModuleTests
 
         string dataStr = code.ToHexString();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $$"""{"from": "0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24", "type": "0x2", "data": "{{dataStr}}", "gas": 100000000}""");
+            $$"""{"from": "0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""");
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
         Assert.That(
             serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: {{errorMessage}}","data":"{{hexEncodedErrorMessage}}"},"id":67}"""));
@@ -270,7 +270,7 @@ public partial class EthRpcModuleTests
 
         string dataStr = code.ToHexString();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $$"""{"from": "0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24", "type": "0x2", "data": "{{dataStr}}", "gas": 100000000}""");
+            $$"""{"from": "0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""");
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
         Assert.That(
             serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: {{errorMessage}}","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
@@ -380,14 +380,14 @@ public partial class EthRpcModuleTests
         string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
         long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
 
-        await TestEstimateGasOutOfGas(ctx, null, blockGasLimit);
+        await TestEstimateGasOutOfGas(ctx, null, blockGasLimit, "out of gas");
     }
 
     [Test]
     public async Task Estimate_gas_uses_specified_gas_limit()
     {
         using Context ctx = await Context.Create();
-        await TestEstimateGasOutOfGas(ctx, 30000000, 30000000);
+        await TestEstimateGasOutOfGas(ctx, 30000000, 30000000, "Block gas limit exceeded");
     }
 
     [Test]
@@ -395,7 +395,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         ctx.Test.RpcConfig.GasCap = 50000000;
-        await TestEstimateGasOutOfGas(ctx, 300000000, 50000000);
+        await TestEstimateGasOutOfGas(ctx, 300000000, 50000000, "Block gas limit exceeded");
     }
 
     [Test]
@@ -440,7 +440,7 @@ public partial class EthRpcModuleTests
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}"));
     }
 
-    private static async Task TestEstimateGasOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit)
+    private static async Task TestEstimateGasOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit, string message)
     {
         string gasParam = specifiedGasLimit.HasValue ? $", \"gas\": \"0x{specifiedGasLimit.Value:X}\"" : "";
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
@@ -448,7 +448,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
         JToken.Parse(serialized).Should().BeEquivalentTo(
-            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"out of gas\"}},\"id\":67}}");
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"{message}\"}},\"id\":67}}");
     }
 
 }

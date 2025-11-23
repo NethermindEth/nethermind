@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Nethermind.Xdc;
+
 internal class EpochSwitchManager : IEpochSwitchManager
 {
     public EpochSwitchManager(ISpecProvider xdcSpecProvider, IBlockTree tree, ISnapshotManager snapshotManager)
