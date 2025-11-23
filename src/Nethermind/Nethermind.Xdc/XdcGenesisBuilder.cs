@@ -28,30 +28,28 @@ public class XdcGenesisBuilder(
     params IGenesisPostProcessor[] postProcessors
 ) : IGenesisBuilder
 {
+    private readonly GenesisBuilder _genesisBuilder = new(
+        chainSpec,
+        specProvider,
+        stateProvider,
+        transactionProcessor,
+        postProcessors);
+
     public Block Build()
     {
         Block genesis = chainSpec.Genesis;
         genesis = genesis.WithReplacedHeader(XdcBlockHeader.FromBlockHeader(genesis.Header));
-        Preallocate(genesis);
 
-        foreach (IGenesisPostProcessor postProcessor in postProcessors)
-        {
-            postProcessor.PostProcess(genesis);
-        }
+        Block builtBlock = _genesisBuilder.Build(genesis);
 
         stateProvider.Commit(specProvider.GenesisSpec, true);
         stateProvider.CommitTree(0);
-        genesis.Header.StateRoot = stateProvider.StateRoot;
-        genesis.Header.Hash = genesis.Header.CalculateHash();
+        builtBlock.Header.StateRoot = stateProvider.StateRoot;
+        builtBlock.Header.Hash = builtBlock.Header.CalculateHash();
 
         var finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
-        snapshotManager.StoreSnapshot(new Types.Snapshot(genesis.Number, genesis.Hash!, finalSpec.GenesisMasterNodes));
+        snapshotManager.StoreSnapshot(new Types.Snapshot(builtBlock.Number, builtBlock.Hash!, finalSpec.GenesisMasterNodes));
 
-        return genesis;
-    }
-    private void Preallocate(Block genesis)
-    {
-        // Use shared preallocation logic from GenesisBuilder to avoid code duplication
-        GenesisBuilder.PreallocateAccounts(genesis, chainSpec, specProvider, stateProvider, transactionProcessor);
+        return builtBlock;
     }
 }
