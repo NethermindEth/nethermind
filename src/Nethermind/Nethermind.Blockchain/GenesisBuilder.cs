@@ -58,7 +58,6 @@ public class GenesisBuilder(
 
     private void Preallocate(Block genesis)
     {
-    {
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(genesis.Header, specProvider.GetSpec(genesis.Header)));
         foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations.OrderBy(static a => a.Key))
         {
