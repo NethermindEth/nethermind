@@ -35,7 +35,7 @@ public class BackgroundTaskSchedulerTests
         TaskCompletionSource tcs = new TaskCompletionSource();
         await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
 
-        scheduler.ScheduleTask(1, (_, token) =>
+        scheduler.TryScheduleTask(1, (_, token) =>
         {
             tcs.SetResult(1);
             return Task.CompletedTask;
@@ -52,13 +52,13 @@ public class BackgroundTaskSchedulerTests
         int counter = 0;
 
         SemaphoreSlim waitSignal = new SemaphoreSlim(0);
-        scheduler.ScheduleTask(1, async (_, token) =>
+        scheduler.TryScheduleTask(1, async (_, token) =>
         {
             Interlocked.Increment(ref counter);
             await waitSignal.WaitAsync(token);
             Interlocked.Decrement(ref counter);
         });
-        scheduler.ScheduleTask(1, async (_, token) =>
+        scheduler.TryScheduleTask(1, async (_, token) =>
         {
             Interlocked.Increment(ref counter);
             await waitSignal.WaitAsync(token);
@@ -77,7 +77,7 @@ public class BackgroundTaskSchedulerTests
         bool wasCancelled = false;
 
         ManualResetEvent waitSignal = new ManualResetEvent(false);
-        scheduler.ScheduleTask(1, async (_, token) =>
+        scheduler.TryScheduleTask(1, async (_, token) =>
         {
             waitSignal.Set();
             try
@@ -107,7 +107,7 @@ public class BackgroundTaskSchedulerTests
         int executionCount = 0;
         for (int i = 0; i < 5; i++)
         {
-            scheduler.ScheduleTask(1, (_, _) =>
+            scheduler.TryScheduleTask(1, (_, token) =>
             {
                 executionCount++;
                 return Task.CompletedTask;
@@ -129,7 +129,7 @@ public class BackgroundTaskSchedulerTests
 
         bool wasCancelled = false;
         ManualResetEvent waitSignal = new ManualResetEvent(false);
-        scheduler.ScheduleTask(1, (_, token) =>
+        scheduler.TryScheduleTask(1, (_, token) =>
         {
             wasCancelled = token.IsCancellationRequested;
             waitSignal.Set();
