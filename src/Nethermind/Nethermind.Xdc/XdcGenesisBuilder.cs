@@ -42,11 +42,6 @@ public class XdcGenesisBuilder(
 
         Block builtBlock = _genesisBuilder.Build(genesis);
 
-        stateProvider.Commit(specProvider.GenesisSpec, true);
-        stateProvider.CommitTree(0);
-        builtBlock.Header.StateRoot = stateProvider.StateRoot;
-        builtBlock.Header.Hash = builtBlock.Header.CalculateHash();
-
         var finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
         snapshotManager.StoreSnapshot(new Types.Snapshot(builtBlock.Number, builtBlock.Hash!, finalSpec.GenesisMasterNodes));
 
