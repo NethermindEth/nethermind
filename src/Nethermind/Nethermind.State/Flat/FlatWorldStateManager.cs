@@ -3,9 +3,7 @@
 
 using System;
 using System.Threading;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
-using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
@@ -14,21 +12,33 @@ namespace Nethermind.State.Flat;
 
 public class FlatWorldStateManager : IWorldStateManager
 {
-    public FlatWorldStateManager([KeyFilter(DbNames.Code)] IDb codeDb)
-    {
+    private readonly IFlatDiffRepository _flatDiffRepository;
+    private readonly FlatStateReader _flatStateReader;
 
+    public FlatWorldStateManager(
+        IFlatDiffRepository flatDiffRepository,
+        FlatStateReader flatStateReader
+    )
+    {
+        _flatDiffRepository = flatDiffRepository;
+        _flatStateReader = flatStateReader;
     }
 
     public IWorldStateScopeProvider GlobalWorldState { get; }
-    public IStateReader GlobalStateReader { get; }
-    public ISnapServer? SnapServer { get; }
-    public IReadOnlyKeyValueStore? HashServer { get; }
+    public IStateReader GlobalStateReader => _flatStateReader;
+    public ISnapServer? SnapServer => null;
+    public IReadOnlyKeyValueStore? HashServer => null;
     public IWorldStateScopeProvider CreateResettableWorldState()
     {
         throw new NotImplementedException();
     }
 
-    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
+    event EventHandler<ReorgBoundaryReached>? IWorldStateManager.ReorgBoundaryReached
+    {
+        add => _flatDiffRepository.ReorgBoundaryReached += value;
+        remove => _flatDiffRepository.ReorgBoundaryReached -= value;
+    }
+
     public IOverridableWorldScope CreateOverridableWorldScope()
     {
         throw new NotImplementedException();
@@ -36,11 +46,12 @@ public class FlatWorldStateManager : IWorldStateManager
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
     {
-        throw new NotImplementedException();
+        Console.Error.WriteLine("Verify trie not implemented");
+        return false;
     }
 
     public void FlushCache(CancellationToken cancellationToken)
     {
-        throw new NotImplementedException();
+        _flatDiffRepository.FlushCache(cancellationToken);
     }
 }

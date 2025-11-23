@@ -11,11 +11,11 @@ using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.State.FlatCache;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 
-public class FlatDiffRepository
+public class FlatDiffRepository : IFlatDiffRepository
 {
     private Lock _repoLock = new Lock(); // Note: lock is for proteccting in memory and compacted states only
     private readonly ICanonicalStateRootFinder _stateRootFinder;
@@ -28,6 +28,8 @@ public class FlatDiffRepository
     private long _compactSize;
     private readonly bool _inlineCompaction;
     private ILogger _logger;
+
+    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
     public record Configuration(
         int MaxInFlightCompactJob = 32,
@@ -142,7 +144,13 @@ public class FlatDiffRepository
         }
     }
 
-    public SnapshotBundle GatherCache(StateId baseBlock, long? earliestExclusive = null)
+    public SnapshotBundle? GatherReaderAtBaseBlock(StateId baseBlock)
+    {
+        // TODO: Throw if not enough or return null
+        return GatherCache(baseBlock, null);
+    }
+
+    private SnapshotBundle GatherCache(StateId baseBlock, long? earliestExclusive = null)
     {
         using var _ = _repoLock.EnterScope();
 
@@ -195,7 +203,7 @@ public class FlatDiffRepository
         return new SnapshotBundle(knownStates, bigCacheReader);
     }
 
-    public void RegisterKnownState(StateId startingBlock, StateId endBlock, Snapshot snapshot)
+    public void AddSnapshot(StateId startingBlock, StateId endBlock, Snapshot snapshot)
     {
         using (_repoLock.EnterScope())
         {
@@ -319,6 +327,24 @@ public class FlatDiffRepository
                 _compactedKnownStates.Remove(pickedSnapshot.Value);
                 _inMemorySnapshotStore.Remove(pickedSnapshot.Value);
             }
+
+            ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(pickedSnapshot.Value.blockNumber));
         }
+    }
+
+    public void FlushCache(CancellationToken cancellationToken)
+    {
+        Console.Error.WriteLine("Flush cache not implemented");
+    }
+
+    public bool HasStateForBlock(StateId stateId)
+    {
+        if (_inMemorySnapshotStore.TryGetValue(stateId, out var snapshot))
+        {
+            return true;
+        }
+
+        if (_persistence.CurrentState == stateId) return true;
+        return false;
     }
 }
