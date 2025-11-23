@@ -71,7 +71,7 @@ jobs:
           echo "BUILDARG=${{ github.event.inputs.buildarg || '' }}" >> $GITHUB_ENV
 
       - name: Check out Nethermind repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           path: nethermind
 
@@ -89,7 +89,7 @@ jobs:
           outputs: type=docker,dest=/tmp/image.tar
 
       - name: Check out Hive repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: ${{ env.HIVE_REPO }}
           ref: ${{ env.HIVE_BRANCH }}
