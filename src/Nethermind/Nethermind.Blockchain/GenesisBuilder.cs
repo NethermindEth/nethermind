@@ -54,6 +54,20 @@ public class GenesisBuilder(
 
     private void Preallocate(Block genesis)
     {
+            PreallocateAccounts(genesis, chainSpec, specProvider, stateProvider, transactionProcessor);
+    }
+
+    /// <summary>
+    /// Preallocates accounts according to chain spec allocations.
+    /// This method is shared between GenesisBuilder implementations to avoid code duplication.
+    /// </summary>
+    public static void PreallocateAccounts(
+        Block genesis,
+        ChainSpec chainSpec,
+        ISpecProvider specProvider,
+        IWorldState stateProvider,
+        ITransactionProcessor transactionProcessor)
+    {
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(genesis.Header, specProvider.GetSpec(genesis.Header)));
         foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations.OrderBy(static a => a.Key))
         {
