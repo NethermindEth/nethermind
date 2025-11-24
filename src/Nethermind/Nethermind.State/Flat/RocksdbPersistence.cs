@@ -104,27 +104,23 @@ public class RocksdbPersistence : IPersistence
             IWriteOnlyKeyValueStore stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
             IWriteOnlyKeyValueStore storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
 
+            foreach (var toSelfDestructStorage in snapshot.SelfDestructedStorages)
+            {
+                SelfDestruct(toSelfDestructStorage, dbSnap, batch);
+            }
+
             // Selfdestruct
             foreach (var kv in snapshot.Accounts)
             {
-                (Address addr, AccountSnapshotInfo? info) = kv;
-                if (info.HasSelfDestruct)
-                {
-                    SelfDestruct(addr, dbSnap, batch);
-                }
-
-                if (kv.Value.NewValue is null)
+                (Address addr, Account? account) = kv;
+                if (account is null)
                 {
                     state.Remove(addr.ToAccountPath.Bytes);
                 }
                 else
                 {
-                    using var stream = _accountDecoder.EncodeToNewNettyStream(info.NewValue);
+                    using var stream = _accountDecoder.EncodeToNewNettyStream(account);
 
-                    if (importantAddr == kv.Key.ToAccountPath)
-                    {
-                        Console.Error.WriteLine($"Writing account {kv.Value.NewValue}. Span is {stream.AsSpan().ToHexString()}");
-                    }
                     state.PutSpan(addr.ToAccountPath.Bytes, stream.AsSpan());
                 }
             }
@@ -174,15 +170,14 @@ public class RocksdbPersistence : IPersistence
         CurrentState = snapshot.To;
     }
 
-    private void SelfDestruct(Address addr, IColumnDbSnapshot<FlatDbColumns> dbSnap, IColumnsWriteBatch<FlatDbColumns> writer)
+    private void SelfDestruct(in ValueHash256 addr, IColumnDbSnapshot<FlatDbColumns> dbSnap, IColumnsWriteBatch<FlatDbColumns> writer)
     {
-        ValueHash256 addHash = addr.ToAccountPath;
         Span<byte> lastKey = stackalloc byte[StorageNodesKeyLength];
         lastKey.Fill(0xff);
-        addHash.Bytes.CopyTo(lastKey);
+        addr.Bytes.CopyTo(lastKey);
 
         using ISortedView storageNodeReader = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.StorageNodes))
-            .GetViewBetween(addHash.Bytes, lastKey);
+            .GetViewBetween(addr.Bytes, lastKey);
 
         var storageNodeWriter = writer.GetColumnBatch(FlatDbColumns.StorageNodes);
         while (storageNodeReader.MoveNext())
@@ -191,7 +186,7 @@ public class RocksdbPersistence : IPersistence
         }
 
         using ISortedView storageReader = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage))
-            .GetViewBetween(addHash.Bytes, lastKey);
+            .GetViewBetween(addr.Bytes, lastKey);
 
         var storageWriter = writer.GetColumnBatch(FlatDbColumns.Storage);
         while (storageReader.MoveNext())

@@ -35,7 +35,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         int MaxInFlightCompactJob = 32,
         int CompactSize = 64,
         int Boundary = 128,
-        bool InlineCompaction = true
+        bool InlineCompaction = false
     )
     {
     }

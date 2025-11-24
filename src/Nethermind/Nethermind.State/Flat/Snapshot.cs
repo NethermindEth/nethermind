@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.State.FlatCache;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
@@ -20,17 +19,10 @@ namespace Nethermind.State.Flat;
 public readonly record struct Snapshot(
     StateId From,
     StateId To,
-    Dictionary<Address, AccountSnapshotInfo> Accounts,
+    Dictionary<Address, Account?> Accounts,
     Dictionary<(Address, UInt256), byte[]> Storages,
-    Dictionary<Hash256, Address> AddressHashes,
+    HashSet<ValueHash256> SelfDestructedStorages,
+    HashSet<Address> SelfDestructedStorageAddresses,
     Dictionary<(Hash256, TreePath), TrieNode> TrieNodes)
 {
-}
-
-public record AccountSnapshotInfo(
-    Account? NewValue,
-    bool hasSelfDestruct
-)
-{
-    public bool HasSelfDestruct { get; set; } = hasSelfDestruct;
 }
