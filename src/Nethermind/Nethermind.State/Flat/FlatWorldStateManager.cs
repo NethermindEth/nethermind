@@ -3,8 +3,11 @@
 
 using System;
 using System.Threading;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 
@@ -14,23 +17,31 @@ public class FlatWorldStateManager : IWorldStateManager
 {
     private readonly IFlatDiffRepository _flatDiffRepository;
     private readonly FlatStateReader _flatStateReader;
+    private readonly FlatTrieStoreScopeProvider _mainWorldState;
+    private readonly IDb _codeDb;
+    private readonly ILogManager _logManager;
 
     public FlatWorldStateManager(
         IFlatDiffRepository flatDiffRepository,
-        FlatStateReader flatStateReader
+        FlatStateReader flatStateReader,
+        [KeyFilter(DbNames.Code)] IDb codeDb,
+        ILogManager logManager
     )
     {
         _flatDiffRepository = flatDiffRepository;
         _flatStateReader = flatStateReader;
+        _codeDb = codeDb;
+        _logManager = logManager;
+        _mainWorldState = new FlatTrieStoreScopeProvider(codeDb, flatDiffRepository, logManager);
     }
 
-    public IWorldStateScopeProvider GlobalWorldState { get; }
+    public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
     public IStateReader GlobalStateReader => _flatStateReader;
     public ISnapServer? SnapServer => null;
     public IReadOnlyKeyValueStore? HashServer => null;
     public IWorldStateScopeProvider CreateResettableWorldState()
     {
-        throw new NotImplementedException();
+        return new FlatTrieStoreScopeProvider(_codeDb, _flatDiffRepository, _logManager, isReadOnly: true);
     }
 
     event EventHandler<ReorgBoundaryReached>? IWorldStateManager.ReorgBoundaryReached
@@ -41,7 +52,8 @@ public class FlatWorldStateManager : IWorldStateManager
 
     public IOverridableWorldScope CreateOverridableWorldScope()
     {
-        throw new NotImplementedException();
+        var scopeProvider = new FlatTrieStoreScopeProvider(_codeDb, _flatDiffRepository, _logManager, isReadOnly: true);
+        return new FakeOverridableWorldScope(scopeProvider, _flatStateReader);
     }
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
@@ -53,5 +65,14 @@ public class FlatWorldStateManager : IWorldStateManager
     public void FlushCache(CancellationToken cancellationToken)
     {
         _flatDiffRepository.FlushCache(cancellationToken);
+    }
+
+    public class FakeOverridableWorldScope(IWorldStateScopeProvider worldState, IStateReader stateReader) : IOverridableWorldScope
+    {
+        public IWorldStateScopeProvider WorldState => worldState;
+        public IStateReader GlobalStateReader => stateReader;
+        public void ResetOverrides()
+        {
+        }
     }
 }
