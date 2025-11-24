@@ -535,7 +535,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.CALLER)
             .PushData(TestItem.AddressD)
             .Op(Instruction.EQ)
-            .PushData(113)
+            .PushData(callType == Instruction.CALL ? 113 : 111)
             .Op(Instruction.JUMPI)
 
             // Non-reentrant, call self after TSTORE 8
@@ -589,7 +589,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             // See if we're at call depth 1
             .PushData(1)
             .Op(Instruction.EQ)
-            .PushData(84)
+            .PushData(callType == Instruction.CALL ? 84 : 82)
             .Op(Instruction.JUMPI)
 
             // See if we're at call depth 2
@@ -597,7 +597,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.MLOAD)
             .PushData(2)
             .Op(Instruction.EQ)
-            .PushData(140)
+            .PushData(callType == Instruction.CALL ? 140 : 138)
             .Op(Instruction.JUMPI)
 
             // Call depth = 0, call self after TSTORE 8
@@ -787,7 +787,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Op(Instruction.CALLER)
             .PushData(TestItem.AddressD)
             .Op(Instruction.EQ)
-            .PushData(114)
+            .PushData(callType == Instruction.CALL ? 114 : 112)
             .Op(Instruction.JUMPI)
 
             // Non-reentrant, call self after TSTORE 8

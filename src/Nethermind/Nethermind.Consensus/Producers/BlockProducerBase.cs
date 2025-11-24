@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.Producers
         protected IBlockTree BlockTree { get; }
         private ITimestamper Timestamper { get; }
 
-        private ISealer Sealer { get; }
+        protected ISealer Sealer { get; }
         private IWorldState StateProvider { get; }
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;

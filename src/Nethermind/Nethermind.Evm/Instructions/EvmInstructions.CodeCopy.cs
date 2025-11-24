@@ -9,6 +9,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm;
+
 using Int256;
 using Nethermind.Evm.State;
 

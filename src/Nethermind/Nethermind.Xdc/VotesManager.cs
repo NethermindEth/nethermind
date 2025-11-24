@@ -28,18 +28,18 @@ internal class VotesManager(
     ISigner signer,
     IForensicsProcessor forensicsProcessor) : IVotesManager
 {
-    private IBlockTree _tree = tree;
-    private IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
-    private ISnapshotManager _snapshotManager = snapshotManager;
-    private IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager;
-    private IXdcConsensusContext _ctx = context;
-    private IForensicsProcessor _forensicsProcessor = forensicsProcessor;
-    private ISpecProvider _specProvider = specProvider;
-    private ISigner _signer = signer;
+    private readonly IBlockTree _blockTree = tree;
+    private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
+    private readonly ISnapshotManager _snapshotManager = snapshotManager;
+    private readonly IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager;
+    private readonly IXdcConsensusContext _ctx = context;
+    private readonly IForensicsProcessor _forensicsProcessor = forensicsProcessor;
+    private readonly ISpecProvider _specProvider = specProvider;
+    private readonly ISigner _signer = signer;
 
-    private XdcPool<Vote> _votePool = new();
-    private static VoteDecoder _voteDecoder = new();
-    private static EthereumEcdsa _ethereumEcdsa = new(0);
+    private readonly XdcPool<Vote> _votePool = new();
+    private static readonly VoteDecoder _voteDecoder = new();
+    private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private readonly ConcurrentDictionary<ulong, byte> _qcBuildStartedByRound = new();
     private const int _maxBlockDistance = 7; // Maximum allowed backward distance from the chain head
     private long _highestVotedRound = -1;
@@ -51,7 +51,7 @@ internal class VotesManager(
             throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(EpochSwitchInfo));
         //Optimize this by fetching with block number and round only
 
-        XdcBlockHeader header = _tree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
+        XdcBlockHeader header = _blockTree.FindHeader(blockInfo.Hash) as XdcBlockHeader;
         if (header is null)
             throw new ArgumentException($"Cannot find block header for block {blockInfo.Hash}");
 
@@ -84,8 +84,7 @@ internal class VotesManager(
         _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotes);
         _ = _forensicsProcessor.ProcessVoteEquivocation(vote);
 
-        //TODO Optimize this by fetching with block number and round only
-        XdcBlockHeader proposedHeader = _tree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) as XdcBlockHeader;
+        XdcBlockHeader proposedHeader = _blockTree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) as XdcBlockHeader;
         if (proposedHeader is null)
         {
             //This is a vote for a block we have not seen yet, just return for now
@@ -167,7 +166,7 @@ internal class VotesManager(
     public Task OnReceiveVote(Vote vote)
     {
         var voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
-        var currentBlockNumber = _tree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
+        var currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
         if (Math.Abs(voteBlockNumber - currentBlockNumber) > _maxBlockDistance)
         {
             // Discarded propagated vote, too far away
@@ -182,12 +181,12 @@ internal class VotesManager(
         return Task.CompletedTask;
     }
 
-    private bool FilterVote(Vote vote)
+    internal bool FilterVote(Vote vote)
     {
         if (vote.ProposedBlockInfo.Round < _ctx.CurrentRound) return false;
 
-        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(_tree, vote.GapNumber);
-        if (snapshot is null) throw new InvalidOperationException($"Failed to get snapshot by gapNumber={vote.GapNumber}");
+        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(vote.GapNumber);
+        if (snapshot is null) return false;
         // Verify message signature
         vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
         return snapshot.NextEpochCandidates.Any(x => x == vote.Signer);
@@ -207,7 +206,7 @@ internal class VotesManager(
 
         for (int i = 0; i < blockNumDiff; i++)
         {
-            XdcBlockHeader parentHeader = _tree.FindHeader(nextBlockHash) as XdcBlockHeader;
+            XdcBlockHeader parentHeader = _blockTree.FindHeader(nextBlockHash) as XdcBlockHeader;
             if (parentHeader is null)
                 return false;
 
@@ -242,5 +241,10 @@ internal class VotesManager(
         _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
         vote.Signature = _signer.Sign(stream.GetValueHash());
         vote.Signer = _signer.Address;
+    }
+
+    public long GetVotesCount(Vote vote)
+    {
+        return _votePool.GetCount(vote);
     }
 }
