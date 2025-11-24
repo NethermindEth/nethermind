@@ -5,6 +5,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
+
 public interface IEpochSwitchManager
 {
     bool IsEpochSwitchAtRound(ulong currentRound, XdcBlockHeader parent);

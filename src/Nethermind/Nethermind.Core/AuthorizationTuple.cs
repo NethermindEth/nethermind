@@ -5,6 +5,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Core;
+
 public class AuthorizationTuple(
     UInt256 chainId,
     Address codeAddress,
