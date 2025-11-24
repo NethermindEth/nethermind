@@ -16,6 +16,7 @@ using System;
 using System.Linq;
 
 namespace Nethermind.Xdc;
+
 internal class SnapshotManager : ISnapshotManager
 {
 

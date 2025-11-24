@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.State;
+
 internal class MasternodeVotingContract : Contract
 {
 

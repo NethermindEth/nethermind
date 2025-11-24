@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Nethermind.Xdc.Contracts;
+
 internal struct CandidateStake
 {
     public Address Address;
