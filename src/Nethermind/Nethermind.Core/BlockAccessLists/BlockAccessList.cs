@@ -111,6 +111,11 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
+        if (Enumerable.SequenceEqual(before, after))
+        {
+            return;
+        }
+
         accountChanges.PopCodeChange(Index, out CodeChange? oldCodeChange);
         _changes.Push(new()
         {
