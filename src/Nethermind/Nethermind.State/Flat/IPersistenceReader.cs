@@ -8,11 +8,3 @@ using Nethermind.Int256;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
-
-public interface IPersistenceReader: IDisposable
-{
-    bool TryGetAccount(Address address, out Account acc);
-    bool TryGetSlot(Address address, in UInt256 index, out byte[] value);
-    StateId CurrentState { get; }
-    byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags);
-}

@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat;
 
 // Reversed order so that its easy to add new KnownState.
 // TODO: We can skip the reverse
-public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistenceReader persistenceReader) : IDisposable
+public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IPersistenceReader persistenceReader) : IDisposable
 {
     Dictionary<Address, StorageSnapshotBundle> _loadedAccounts = new();
     Dictionary<Address, Account> _changedAccounts = new();
@@ -94,7 +94,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistenceRea
         _changedNodes[path] = newNode;
     }
 
-    public void ApplyStateChanges(Dictionary<Address, Account> changedValues)
+    public void ApplyStateChanges(Dictionary<AddressAsKey, Account> changedValues)
     {
         foreach (var kv in changedValues)
         {

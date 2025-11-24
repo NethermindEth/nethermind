@@ -3,10 +3,13 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
@@ -17,6 +20,9 @@ public class RocksdbPersistence : IPersistence
     private static byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
     private const int StateNodesKeyLength = 32 + 1;
     private const int StorageNodesKeyLength = 32 + 32 + 1;
+    private const int StorageKeyLength = 32 + 32;
+    private const int MaxKeyLength = 32 + 32 + 1;
+    private AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
     public StateId CurrentState { get; set; }
 
@@ -55,35 +61,67 @@ public class RocksdbPersistence : IPersistence
         return buffer[..StateNodesKeyLength];
     }
 
-    internal static ReadOnlySpan<byte> EncodeStorageNodeKey(Span<byte> buffer, Hash256 address, in TreePath path)
+    internal static ReadOnlySpan<byte> EncodeStorageNodeKey(Span<byte> buffer, Hash256 addr, in TreePath path)
     {
-        address.Bytes.CopyTo(buffer);
+        addr.Bytes.CopyTo(buffer);
         path.Path.Bytes.CopyTo(buffer[32..]);
         buffer[32 + 32] = (byte)path.Length;
         return buffer[..StorageNodesKeyLength];
     }
 
-    public IPersistenceReader CreateReader()
+    internal static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, ValueHash256 addr, UInt256 slot)
     {
-        return new PersistenceReader(_db.StartSnapshot());
+        addr.Bytes.CopyTo(buffer);
+        slot.ToBigEndian(buffer[32..]);
+        return buffer[..StorageKeyLength];
+    }
+
+    public IPersistence.IPersistenceReader CreateReader()
+    {
+        return new PersistenceReader(_db.StartSnapshot(), this);
     }
 
     public void Add(Snapshot snapshot)
     {
         // TODO: Lock
 
-        if (CurrentState != snapshot.From)
+        using var dbSnap = _db.StartSnapshot();
+        var currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
+        if (currentState != snapshot.From)
         {
             throw new InvalidOperationException(
-                $"Attempted to apply snapshot on top of wrong state. Snapshot from: {snapshot.From}, Db state: {CurrentState}");
+                $"Attempted to apply snapshot on top of wrong state. Snapshot from: {snapshot.From}, Db state: {currentState}");
         }
+
+        Span<byte> keyBuffer = stackalloc byte[MaxKeyLength];
 
         using (var batch = _db.StartWriteBatch())
         {
+            IWriteOnlyKeyValueStore state = batch.GetColumnBatch(FlatDbColumns.State);
+            IWriteOnlyKeyValueStore storage = batch.GetColumnBatch(FlatDbColumns.Storage);
             IWriteOnlyKeyValueStore stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
             IWriteOnlyKeyValueStore storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNode);
 
-            Span<byte> keyBuffer = stackalloc byte[StorageNodesKeyLength];
+            // Selfdestruct
+            foreach (var kv in snapshot.Accounts)
+            {
+                (Address addr, AccountSnapshotInfo? info) = kv;
+                if (info.HasSelfDestruct)
+                {
+                    SelfDestruct(addr, dbSnap, batch);
+                }
+
+                using var stream = _accountDecoder.EncodeToNewNettyStream(info.NewValue);
+
+                state.PutSpan(addr.ToAccountPath.Bytes, stream.AsSpan());
+            }
+
+            foreach (var kv in snapshot.Storages)
+            {
+                ((Address addr, UInt256 slot), byte[] value) = kv;
+
+                storage.PutSpan(EncodeStorageKey(keyBuffer, addr.ToAccountPath, slot), value);
+            }
 
             foreach (var tn in snapshot.TrieNodes)
             {
@@ -110,16 +148,48 @@ public class RocksdbPersistence : IPersistence
         CurrentState = snapshot.To;
     }
 
-    private class PersistenceReader : IPersistenceReader
+    private void SelfDestruct(Address addr, IColumnDbSnapshot<FlatDbColumns> dbSnap, IColumnsWriteBatch<FlatDbColumns> writer)
+    {
+        ValueHash256 addHash = addr.ToAccountPath;
+        Span<byte> lastKey = stackalloc byte[StorageNodesKeyLength];
+        lastKey.Fill(0xff);
+        addHash.Bytes.CopyTo(lastKey);
+
+        using ISortedView storageNodeReader = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.StorageNode))
+            .GetViewBetween(addHash.Bytes, lastKey);
+
+        var storageNodeWriter = writer.GetColumnBatch(FlatDbColumns.StorageNode);
+        while (storageNodeReader.MoveNext())
+        {
+            storageNodeWriter.Remove(storageNodeReader.CurrentKey);
+        }
+
+        using ISortedView storageReader = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage))
+            .GetViewBetween(addHash.Bytes, lastKey);
+
+        var storageWriter = writer.GetColumnBatch(FlatDbColumns.Storage);
+        while (storageReader.MoveNext())
+        {
+            storageWriter.Remove(storageReader.CurrentKey);
+        }
+    }
+
+    private class PersistenceReader : IPersistence.IPersistenceReader
     {
         private readonly IColumnDbSnapshot<FlatDbColumns> _db;
+        private readonly IReadOnlyKeyValueStore _state;
+        private readonly IReadOnlyKeyValueStore _storage;
         private readonly IReadOnlyKeyValueStore _stateNodes;
         private readonly IReadOnlyKeyValueStore _storageNodes;
+        private readonly RocksdbPersistence _mainDb;
 
-        public PersistenceReader(IColumnDbSnapshot<FlatDbColumns> db)
+        public PersistenceReader(IColumnDbSnapshot<FlatDbColumns> db, RocksdbPersistence mainDb)
         {
             _db = db;
+            _mainDb = mainDb;
             CurrentState = ReadCurrentState(db.GetColumn(FlatDbColumns.Metadata));
+            _state = _db.GetColumn(FlatDbColumns.State);
+            _storage = _db.GetColumn(FlatDbColumns.Storage);
             _stateNodes = _db.GetColumn(FlatDbColumns.StateNodes);
             _storageNodes = _db.GetColumn(FlatDbColumns.StorageNode);
         }
@@ -129,14 +199,46 @@ public class RocksdbPersistence : IPersistence
             _db.Dispose();
         }
 
-        public bool TryGetAccount(Address address, out Account acc)
+        public bool TryGetAccount(Address address, out Account? acc)
         {
-            throw new System.NotImplementedException();
+            Span<byte> value = _state.GetSpan(address.ToAccountPath.Bytes);
+            try
+            {
+                if (value.IsNullOrEmpty())
+                {
+                    acc = null;
+                    return false;
+                }
+
+                var ctx = new Rlp.ValueDecoderContext(value);
+                acc = _mainDb._accountDecoder.Decode(ref ctx);
+                return true;
+            }
+            finally
+            {
+                _state.DangerousReleaseMemory(value);
+            }
         }
 
-        public bool TryGetSlot(Address address, in UInt256 index, out byte[] value)
+        public bool TryGetSlot(Address address, in UInt256 index, out byte[] valueBytes)
         {
-            throw new System.NotImplementedException();
+            Span<byte> keySpan = stackalloc byte[StorageKeyLength];
+            Span<byte> value = _storage.GetSpan(EncodeStorageKey(keySpan, address.ToAccountPath, index));
+            try
+            {
+                if (value.IsNullOrEmpty())
+                {
+                    valueBytes = null;
+                    return false;
+                }
+
+                valueBytes = value.ToArray();
+                return true;
+            }
+            finally
+            {
+                _storage.DangerousReleaseMemory(value);
+            }
         }
 
         public StateId CurrentState { get; }

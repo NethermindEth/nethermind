@@ -184,7 +184,7 @@ public class FlatDiffRepository : IFlatDiffRepository
 
         // Note: By the time the previous loop finished checking all state, the big cache may have added new state and removed some
         // entry in `_inMemorySnapshotStore`. Meaning, this need to be here instead oof before the loop.
-        IPersistenceReader bigCacheReader = _persistence.CreateReader();
+        IPersistence.IPersistenceReader bigCacheReader = _persistence.CreateReader();
         if (current != baseBlock && earliestExclusive is null && bigCacheReader.CurrentState.blockNumber != -1 && current.blockNumber > bigCacheReader.CurrentState.blockNumber)
         {
             throw new Exception($"Non consecutive snappshots. Current {current} vs {bigCacheReader.CurrentState}, {bigCacheState}, {baseBlock}, {_inMemorySnapshotStore.TryGetValue(current, out var snapshot)}, {exitReason}");

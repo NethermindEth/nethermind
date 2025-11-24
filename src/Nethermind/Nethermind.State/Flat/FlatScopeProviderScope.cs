@@ -163,7 +163,13 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries)
         {
-            return new StorageTreeBulkWriteBatch(estimatedEntries, scope.CreateStorageTreeImpl(address)._tree, this, address);
+            var storageTreeImpl = scope.CreateStorageTreeImpl(address);
+            return new StorageTreeBulkWriteBatch(
+                estimatedEntries,
+                storageTreeImpl._tree,
+                this,
+                storageTreeImpl._storageSnapshotBundle,
+                address);
         }
 
         public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
@@ -192,6 +198,7 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
                     stateSetter.Set(kv.Key, kv.Value);
                 }
             }
+            scope._snapshotBundle.ApplyStateChanges(_dirtyAccounts);
 
 
             [MethodImpl(MethodImplOptions.NoInlining)]
@@ -204,7 +211,13 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
         }
     }
 
-    private class StorageTreeBulkWriteBatch(int estimatedEntries, StorageTree storageTree, WriteBatch worldStateWriteBatch, AddressAsKey address) : IWorldStateScopeProvider.IStorageWriteBatch
+    private class StorageTreeBulkWriteBatch(
+        int estimatedEntries,
+        StorageTree storageTree,
+        WriteBatch worldStateWriteBatch,
+        StorageSnapshotBundle storageSnapshotBundle,
+        AddressAsKey address
+    ) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // Slight optimization on small contract as the index hash can be precalculated in some case.
         private const int MIN_ENTRIES_TO_BATCH = 16;
@@ -231,6 +244,7 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
                 StorageTree.ComputeKeyWithLookup(index, _keyBuff.BytesAsSpan);
                 _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, value));
             }
+            storageSnapshotBundle.Set(index, value);
         }
 
         public void Clear()
@@ -347,7 +361,7 @@ public class SnapshotBundleStateTrieStore(
 public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldStateScopeProvider.IStorageTree
 {
     private readonly FlatScopeProviderScope _scope;
-    private readonly StorageSnapshotBundle _storageSnapshotBundle;
+    internal readonly StorageSnapshotBundle _storageSnapshotBundle;
     internal readonly StorageTree _tree;
 
     public StorageSnapshotBundleStateTrieStore(

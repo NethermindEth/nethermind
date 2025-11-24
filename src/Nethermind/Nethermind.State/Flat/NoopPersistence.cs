@@ -8,13 +8,13 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
 
-public class NoopPersistenceReader: IPersistenceReader
+public class NoopPersistenceReader: IPersistence.IPersistenceReader
 {
     public void Dispose()
     {
     }
 
-    public bool TryGetAccount(Address address, out Account acc)
+    public bool TryGetAccount(Address address, out Account? acc)
     {
         acc = null;
         return false;
