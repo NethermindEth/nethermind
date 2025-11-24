@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -11,7 +13,6 @@ using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 
 namespace Nethermind.Xdc
 {
@@ -24,19 +25,20 @@ namespace Nethermind.Xdc
     public class XdcRewardCalculator(
         IEpochSwitchManager epochSwitchManager,
         ISpecProvider specProvider,
-        ILogManager logManager,
-        IXdcSignatureTracker signatureTracker,
-        IXdcStakingManager stakingManager) : IRewardCalculator
+        IBlockTree blockTree) : IRewardCalculator
     {
         private readonly ILogger logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
 
+        private LruCache<Hash256, Transaction[]> _signingTxsCache = new LruCache<Hash256, Transaction[]>(9000, "XDC Signing Txs Cache");
         // Reward amount per epoch (5000 XDC in Wei)
         // 1 XDC = 10^18 Wei, so 5000 XDC = 5000 * 10^18 Wei
         private static readonly UInt256 EPOCH_REWARD = UInt256.Parse("5000000000000000000000");
+        private const long BlocksPerYear = 15768000;
+        private const long MergeSignRange = 15;
 
         /// <summary>
         /// Calculates block rewards according to XDPoS consensus rules.
-        /// 
+        ///
         /// For XDPoS, rewards are only distributed at epoch checkpoints (blocks where number % 900 == 0).
         /// At these checkpoints, rewards are calculated based on masternode signature counts during
         /// the previous epoch and distributed according to the 40/50/10 split model.
@@ -50,92 +52,41 @@ namespace Nethermind.Xdc
             if (block.Header is not XdcBlockHeader xdcHeader)
                 throw new InvalidOperationException("Only supports XDC headers");
 
+            var rewards = new List<BlockReward>();
+            var number = xdcHeader.Number;
             IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
+            if(number == spec.SwitchBlock + 1) return rewards.ToArray();
 
-            if (!epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader))
+            var foundationWalletAddr = spec.FoundationWallet;
+            if (foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
+
+            var round = xdcHeader.ExtraConsensusData.BlockRound;
+            var epochNumber = spec.SwitchEpoch + (int) round / spec.EpochLength;
+
+            var signers = GetSigningTxCount(number, xdcHeader, spec);
+
+            //TODO: Check TIPUpdateReward behavior, it appears to be set to infinite for mainnet
+            // The following code is only for when IsTIPUpgradeReward(header.Number) is false
+            var originalReward = (UInt256)spec.Reward * Unit.Ether;
+            var chainReward = RewardInflation(spec, originalReward, number);
+            Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, signers);
+
+            UInt256 totalFoundationWalletReward = UInt256.Zero;
+            foreach (var (signer, reward) in rewardSigners)
             {
-                // Non-checkpoint blocks don't trigger reward distribution in XDPoS
-                // The block producer still gets transaction fees, but no block reward
-                if (logger.IsTrace) logger.Trace($"Block {block.Number} is not an epoch switch, no rewards distributed");
-                return Array.Empty<BlockReward>();
+                (BlockReward holderReward, UInt256 foundationWalletReward) = CalculateRewardForHolders();
+                //TODO: stateBlock.AddBalance(holderReward)
+                totalFoundationWalletReward += foundationWalletReward;
+                rewards.Add(holderReward);
             }
-
-            // Calculate the epoch that just completed
-            long completedEpoch = (block.Number / spec.EpochLength) - 1;
-            long epochStartBlock = completedEpoch * spec.EpochLength + 1;
-            long epochEndBlock = (completedEpoch + 1) * spec.EpochLength;
-
-            var epochNumber = spec.SwitchEpoch + (long)xdcHeader.ExtraConsensusData.BlockRound / spec.EpochLength;
-
-            var originReward = spec.BlockReward * Unit.Ether;
-            try
-            {
-                // Get signature counts for all masternodes in the completed epoch
-                var signatureCounts = signatureTracker.GetSignatureCounts(epochStartBlock, epochEndBlock);
-
-                if (signatureCounts == null || signatureCounts.Count == 0)
-                {
-                    logger.Warn($"No signature data available for epoch {completedEpoch}");
-                    return Array.Empty<BlockReward>();
-                }
-
-                // Calculate total signatures across all masternodes
-                long totalSignatures = signatureCounts.Values.Sum();
-
-                if (totalSignatures == 0)
-                {
-                    logger.Warn($"Total signatures for epoch {completedEpoch} is zero");
-                    return Array.Empty<BlockReward>();
-                }
-
-                // Calculate and distribute rewards
-                var rewards = new List<BlockReward>();
-
-                foreach (var masternodeSignature in signatureCounts)
-                {
-                    Address masternodeAddress = masternodeSignature.Key;
-                    long signatureCount = masternodeSignature.Value;
-
-                    // Calculate this masternode's proportional share of the epoch reward
-                    // Formula: (masternode_signatures / total_signatures) * EPOCH_REWARD
-                    UInt256 masternodeBaseReward = CalculateProportionalReward(
-                        signatureCount,
-                        totalSignatures,
-                        EPOCH_REWARD
-                    );
-
-                    // Split the reward according to XDPoS distribution model
-                    var (infraReward, stakingPool, foundationReward) = SplitReward(masternodeBaseReward);
-
-                    // 1. Infrastructure reward (40%) goes directly to masternode operator
-                    rewards.Add(new BlockReward(masternodeAddress, infraReward, BlockRewardType.Block));
-
-                    // 2. Foundation reward (10%) goes to XDC Foundation
-                    rewards.Add(new BlockReward(spec.FoundationWallet, foundationReward, BlockRewardType.External));
-
-                    // 3. Staking reward (50%) is distributed among delegators proportionally
-                    var delegatorRewards = DistributeStakingRewards(
-                        masternodeAddress,
-                        stakingPool,
-                        block.Number
-                    );
-
-                    rewards.AddRange(delegatorRewards);
-                }
-
-                return rewards.ToArray();
-            }
-            catch (Exception ex)
-            {
-                logger.Error($"Error calculating XDPoS rewards for block {block.Number}", ex);
-                throw;
-            }
+            rewards.Add(new BlockReward(foundationWalletAddr, totalFoundationWalletReward));
+            return rewards.ToArray();
         }
 
         /// <summary>
         /// Calculates a proportional reward based on the number of signatures.
         /// Uses UInt256 arithmetic to maintain precision with large Wei values.
-        /// 
+        ///
         /// Formula: (signatureCount / totalSignatures) * totalReward
         /// </summary>
         private UInt256 CalculateProportionalReward(
@@ -160,149 +111,121 @@ namespace Nethermind.Xdc
             return reward;
         }
 
-        /// <summary>
-        /// Splits a masternode's base reward according to the XDPoS distribution model:
-        /// - 40% Infrastructure (masternode operator)
-        /// - 50% Staking (delegators)
-        /// - 10% Foundation (XDC Foundation)
-        /// </summary>
-        private (UInt256 infrastructure, UInt256 staking, UInt256 foundation) SplitReward(UInt256 baseReward)
+        public Dictionary<Address, long> GetSigningTxCount(long number, XdcBlockHeader header, IXdcReleaseSpec spec)
         {
-            // Calculate each component
-            // Using integer division with appropriate scaling to avoid precision loss
+            long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = number, startBlockNumber = 0;
+            var signers = new Dictionary<Address, long>();
+            var blockNumberToHash = new Dictionary<long, Hash256>();
+            var hashToSigningAddress = new Dictionary<Hash256, List<Address>>();
+            var masternodes = new HashSet<Address>();
 
-            // 40% for infrastructure
-            UInt256 infrastructure = (baseReward * 40) / 100;
-
-            // 50% for staking pool
-            UInt256 staking = (baseReward * 50) / 100;
-
-            // 10% for foundation
-            UInt256 foundation = (baseReward * 10) / 100;
-
-            // Handle any rounding remainder by adding it to infrastructure
-            UInt256 allocated = infrastructure + staking + foundation;
-            if (allocated < baseReward)
+            if (number == 0) return signers;
+            var h = header;
+            for (long i = number - 1; i >= 0; i--)
             {
-                infrastructure += (baseReward - allocated);
-            }
-
-            return (infrastructure, staking, foundation);
-        }
-
-        /// <summary>
-        /// Distributes the staking reward pool among all delegators who have staked with this masternode.
-        /// Each delegator receives a proportion based on their stake amount relative to the total stake.
-        /// 
-        /// Only delegators who were active at the checkpoint block receive rewards.
-        /// </summary>
-        private List<BlockReward> DistributeStakingRewards(
-            Address masternodeAddress,
-            UInt256 stakingPool,
-            long checkpointBlock)
-        {
-            var delegatorRewards = new List<BlockReward>();
-
-            if (stakingPool.IsZero)
-            {
-                return delegatorRewards;
-            }
-
-            // Get all active stakes for this masternode at the checkpoint
-            var stakes = stakingManager.GetActiveStakes(masternodeAddress, checkpointBlock);
-
-            if (stakes == null || stakes.Count == 0)
-            {
-                // No delegators, staking pool could be reallocated to infrastructure
-                // or left undistributed depending on implementation choice
-                if (logger.IsDebug)
+                h = blockTree.FindHeader(h.ParentHash, i) as XdcBlockHeader;
+                if (h == null) throw new InvalidOperationException($"Header with hash {h.ParentHash} not found");
+                if (epochSwitchManager.IsEpochSwitchAtBlock(h) && i != spec.SwitchBlock + 1)
                 {
-                    logger.Debug($"No active delegators for masternode {masternodeAddress}, staking pool: {stakingPool} Wei");
+                    epochCount++;
+                    if (epochCount == signEpochCount) endBlockNumber = i;
+                    if (epochCount == rewardEpochCount)
+                    {
+                        startBlockNumber = i + 1;
+                        // Get masternodes from epoch switch header
+                        masternodes = new HashSet<Address>(h.ValidatorsAddress!);
+                        // Ignore behavior for IsTIPUpgradeReward which calculates protectors and observers
+                        break;
+                    }
                 }
-                return delegatorRewards;
-            }
 
-            // Calculate total stake across all delegators
-            UInt256 totalStake = UInt256.Zero;
-            foreach (var stake in stakes)
-            {
-                totalStake += stake.Amount;
-            }
-
-            if (totalStake.IsZero)
-            {
-                logger.Warn($"Total stake is zero for masternode {masternodeAddress}");
-                return delegatorRewards;
-            }
-
-            // Distribute rewards proportionally to each delegator
-            foreach (var stake in stakes)
-            {
-                // Formula: (delegator_stake / total_stake) * staking_pool
-                UInt256 delegatorReward = (stake.Amount * stakingPool) / totalStake;
-
-                if (!delegatorReward.IsZero)
+                blockNumberToHash[i] = h.Hash;
+                if (!_signingTxsCache.TryGet(h.Hash, out Transaction[] signingTxs))
                 {
-                    delegatorRewards.Add(new BlockReward(
-                        stake.DelegatorAddress,
-                        delegatorReward,
-                        BlockRewardType.External
-                    ));
+                    var block = blockTree.FindBlock(i);
+                    if (block == null) throw new InvalidOperationException($"Block with hash {h.Hash} not found");
+                    var txs = block.Transactions;
+                    signingTxs = CacheSigningTxs(h.Hash!, txs, spec);
+                }
+
+                foreach (var tx in signingTxs)
+                {
+                    Hash256 blockHash = ExtractBlockHashFromSigningTxData(tx.Data);
+                    if (!hashToSigningAddress.ContainsKey(blockHash))
+                        hashToSigningAddress[blockHash] = new List<Address>();
+                    hashToSigningAddress[blockHash].Add(tx.SenderAddress);
                 }
             }
 
-            return delegatorRewards;
+            // Only blocks every MergeSignRange are used to gather signing txs? Or is it that already signing txs are done every MergeSignRange amount of blocks?
+            // Calculate start >= startBlockNumber so that start % MergeSignRange == 0
+            long start = ((startBlockNumber + MergeSignRange - 1) / MergeSignRange) * MergeSignRange;
+            for (long i = start; i < endBlockNumber; i += MergeSignRange)
+            {
+                var addrs = hashToSigningAddress[blockNumberToHash[i]];
+                foreach (var addr in addrs)
+                {
+                    if (!masternodes.Contains(addr)) continue;
+                    if (!signers.ContainsKey(addr)) signers[addr] = 0;
+                    signers[addr] += 1;
+                }
+            }
+            return signers;
         }
 
-        public UInt256 RewardInflation(IXdcReleaseSpec spec, UInt256 chainReward, long number, long blockPerYear)
+        public UInt256 RewardInflation(IXdcReleaseSpec spec, UInt256 chainReward, long number)
         {
+            //TODO: If IsTIPNoHalvingMNReward(blockNumber) is true we should return chainReward immediately
             UInt256 reward = chainReward;
-            if (blockPerYear * 2 <= number && number < blockPerYear * 5)
+            if (BlocksPerYear * 2 <= number && number < BlocksPerYear * 5)
             {
                 reward = chainReward / 2;
             }
-            if (blockPerYear * 5 <= number)
+            if (BlocksPerYear * 5 <= number)
             {
                 reward = chainReward / 4;
             }
             return reward;
         }
-    }
 
-    public class StakePosition
-    {
-        public Address DelegatorAddress { get; set; }
-        public UInt256 Amount { get; set; }
-        public long StakedAtBlock { get; set; }
-
-        public StakePosition(Address delegator, UInt256 amount, long stakedAt)
+        private Transaction[] CacheSigningTxs(Hash256 hash, Transaction[] txs, IXdcReleaseSpec spec)
         {
-            DelegatorAddress = delegator;
-            Amount = amount;
-            StakedAtBlock = stakedAt;
+            var signingTxs = txs.Where(t => IsSigningTransaction(t, spec)).ToArray();
+            _signingTxsCache.Set(hash, signingTxs);
+            return signingTxs;
         }
-    }
 
-    public interface IXdcSignatureTracker
-    {
-        /// <summary>
-        /// Gets the signature count for each masternode between the specified block range.
-        /// </summary>
-        /// <param name="startBlock">Start of the range (inclusive)</param>
-        /// <param name="endBlock">End of the range (inclusive)</param>
-        /// <returns>Dictionary mapping masternode address to signature count</returns>
-        Dictionary<Address, long> GetSignatureCounts(long startBlock, long endBlock);
-    }
+        private bool IsSigningTransaction(Transaction tx, IXdcReleaseSpec spec)
+        {
+            if (tx.To is null || tx.To != spec.BlockSignerContract) return false;
 
-    public interface IXdcStakingManager
-    {
-        /// <summary>
-        /// Gets all active stake positions for a masternode at a specific block.
-        /// Only returns stakes that were active (not withdrawn) at the checkpoint.
-        /// </summary>
-        /// <param name="masternodeAddress">The masternode address</param>
-        /// <param name="atBlock">The block number to check stakes at</param>
-        /// <returns>List of active stake positions</returns>
-        List<StakePosition> GetActiveStakes(Address masternodeAddress, long atBlock);
+            // Check data corresponds to Signing transaction:
+            // function sign(uint256 _blockNumber, bytes32 _blockHash)
+            if (tx.Data.Length != 32 * 2 + 4) return false;
+
+            return ExtractSelectorFromSigningTxData(tx.Data) == "0xe341eaa4";
+        }
+
+        private String ExtractSelectorFromSigningTxData(ReadOnlyMemory<byte> data)
+        {
+            var span = data.Span;
+            if (span.Length == 68)
+                throw new ArgumentException("Signing tx calldata must be exactly 68 bytes (4 + 32 + 32).", nameof(data));
+
+            // 0..3: selector
+            var selBytes = span.Slice(0, 4);
+            return "0x" + Convert.ToHexString(selBytes).ToLowerInvariant();
+        }
+
+        private Hash256 ExtractBlockHashFromSigningTxData(ReadOnlyMemory<byte> data)
+        {
+            var span = data.Span;
+            if (span.Length == 68)
+                throw new ArgumentException("Signing tx calldata must be exactly 68 bytes (4 + 32 + 32).", nameof(data));
+
+            // 36..67: bytes32 blockHash
+            var hashBytes = span.Slice(36, 32);
+            return new Hash256(hashBytes);
+        }
     }
 }
