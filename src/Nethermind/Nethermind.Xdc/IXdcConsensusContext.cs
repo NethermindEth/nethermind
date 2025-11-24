@@ -5,6 +5,7 @@ using Nethermind.Xdc.Types;
 using System;
 
 namespace Nethermind.Xdc;
+
 public interface IXdcConsensusContext
 {
     ulong CurrentRound { get; }

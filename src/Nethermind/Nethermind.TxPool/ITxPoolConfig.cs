@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 
@@ -67,4 +68,8 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "true",
         Description = "Add local transactions to persistent broadcast.")]
     bool PersistentBroadcastEnabled { get; set; }
+
+    [ConfigItem(DefaultValue = "0",
+        Description = "The minimum priority fee in wei for blob transactions to be accepted into the transaction pool.")]
+    UInt256 MinBlobTxPriorityFee { get; set; }
 }

@@ -16,6 +16,7 @@ using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
+
 internal class XdcBlockTree : BlockTree
 {
     private const int MaxSearchDepth = 1024;

@@ -6,6 +6,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.Test.Helpers;
+
 public class QuorumCertificateBuilder : BuilderBase<QuorumCertificate>
 {
     public QuorumCertificateBuilder()

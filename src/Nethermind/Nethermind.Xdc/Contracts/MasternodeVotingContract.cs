@@ -18,6 +18,7 @@ using System;
 using System.Linq;
 
 namespace Nethermind.Xdc.Contracts;
+
 internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 {
     private IConstantContract _constant;
@@ -33,14 +34,14 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 
     private static AbiDefinition CreateAbiDefinition()
     {
-        var abiDefinitionParser = new AbiDefinitionParser();
+        AbiDefinitionParser abiDefinitionParser = new AbiDefinitionParser();
         return abiDefinitionParser.Parse(typeof(MasternodeVotingContract));
     }
 
     public UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate)
     {
-        var callInfo = new CallInfo(blockHeader, "getCandidateCap", Address.SystemUser, candidate);
-        var result = this._constant.Call(callInfo);
+        CallInfo callInfo = new CallInfo(blockHeader, "getCandidateCap", Address.SystemUser, candidate);
+        object[] result = _constant.Call(callInfo);
         if (result.Length != 1)
             throw new InvalidOperationException("Expected 'getCandidateCap' to return exactly one result.");
 
@@ -49,8 +50,8 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 
     public Address[] GetCandidates(BlockHeader blockHeader)
     {
-        var callInfo = new CallInfo(blockHeader, "getCandidates", Address.SystemUser);
-        var result = this._constant.Call(callInfo);
+        CallInfo callInfo = new CallInfo(blockHeader, "getCandidates", Address.SystemUser);
+        object[] result = _constant.Call(callInfo);
         return (Address[])result[0]!;
     }
 

@@ -9,6 +9,7 @@ using NUnit.Framework;
 using System;
 
 namespace Nethermind.Xdc.Test.Contracts;
+
 internal class XdcAbiLoadTests
 {
     [TestCase(typeof(MasternodeVotingContract))]

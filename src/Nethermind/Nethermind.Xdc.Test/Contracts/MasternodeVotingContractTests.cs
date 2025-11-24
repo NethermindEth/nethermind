@@ -31,6 +31,7 @@ using System.Collections.Generic;
 using static Nethermind.Consensus.Processing.AutoReadOnlyTxProcessingEnvFactory;
 
 namespace Nethermind.Xdc.Test;
+
 internal class MasternodeVotingContractTests
 {
     [Test]
@@ -53,7 +54,7 @@ internal class MasternodeVotingContractTests
             stateProvider.CreateAccountIfNotExists(codeSource, 0);
             stateProvider.InsertCode(codeSource, ValueKeccak.Compute(code), code, Shanghai.Instance);
 
-            Dictionary<string, string> storage = GenesisAllocation();
+            Dictionary<string, string> storage = GenesisAllocation;
             foreach (KeyValuePair<string, string> kvp in storage)
             {
                 StorageCell cell = new(codeSource, UInt256.Parse(kvp.Key));
@@ -82,9 +83,8 @@ internal class MasternodeVotingContractTests
         }
     }
 
-    private Dictionary<string, string> GenesisAllocation()
-    {
-        return new Dictionary<string, string>
+    private static Dictionary<string, string> GenesisAllocation =
+        new Dictionary<string, string>
         {
             ["0x0000000000000000000000000000000000000000000000000000000000000007"] = "0x0000000000000000000000000000000000000000000000000000000000000001",
             ["0x0000000000000000000000000000000000000000000000000000000000000008"] = "0x0000000000000000000000000000000000000000000000000000000000000003",
@@ -119,5 +119,4 @@ internal class MasternodeVotingContractTests
             ["0xf4dd36495f675c407ac8f8d6dd8cc40162c854dba3ce4ce8919af34d0b1ed47c"] = "0x000000000000000000000001381047523972c9fdc3aa343e0b96900a8e2fa765",
             ["0xf4dd36495f675c407ac8f8d6dd8cc40162c854dba3ce4ce8919af34d0b1ed47d"] = "0x000000000000000000000000000000000000000000084595161401484a000000"
         };
-    }
 }

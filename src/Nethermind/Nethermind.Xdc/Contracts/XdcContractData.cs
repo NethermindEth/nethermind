@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Contracts;
+
 internal static class XdcContractData
 {
     // XDCValidatorBin is the compiled bytecode used for deploying new contracts.
