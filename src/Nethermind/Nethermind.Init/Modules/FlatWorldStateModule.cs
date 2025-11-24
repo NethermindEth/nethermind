@@ -3,7 +3,9 @@
 
 using System;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.State;
 using Nethermind.State.Flat;
 
@@ -18,7 +20,11 @@ public class FlatWorldStateModule: Module
 
 
         builder
+            .AddSingleton<ICanonicalStateRootFinder, CanonicalStateRootFinder>()
             .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
-            .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader);
+            .AddSingleton<IFlatDiffRepository, FlatDiffRepository>()
+            .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
+            .AddSingleton<IPersistence, RocksdbPersistence>()
+            .AddSingleton<IStateReader, FlatStateReader>();
     }
 }
