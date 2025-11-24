@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -18,6 +19,7 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILifetime
             preBlockCaches,
             populatePreBlockCache: true
         );
+        Console.Error.WriteLine($"Create with {worldState.GetHashCode()} {worldState.IsWarmWorldState}");
 
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {

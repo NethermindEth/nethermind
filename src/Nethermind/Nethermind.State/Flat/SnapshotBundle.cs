@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -17,7 +18,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
 {
     Dictionary<Address, StorageSnapshotBundle> _loadedAccounts = new();
     Dictionary<Address, Account> _changedAccounts = new();
-    Dictionary<TreePath, TrieNode> _changedNodes = new();
+    ConcurrentDictionary<TreePath, TrieNode> _changedNodes = new(); // Bulkset can get nodes concurrently
     public int SnapshotCount => knownStates.Count;
 
     public bool TryGetAccount(Address address, out Account? acc)
