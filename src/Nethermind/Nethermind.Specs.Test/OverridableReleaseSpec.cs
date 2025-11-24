@@ -160,10 +160,43 @@ namespace Nethermind.Specs.Test
             }
         }
 
-        public ulong TargetBlobCount => spec.TargetBlobCount;
-        public ulong MaxBlobCount => spec.MaxBlobCount;
+        private ulong? _overridenTargetBlobCount;
+        public ulong TargetBlobCount
+        {
+            get
+            {
+                return _overridenTargetBlobCount ?? spec.TargetBlobCount;
+            }
+            set
+            {
+                _overridenTargetBlobCount = value;
+            }
+        }
+        private ulong? _overridenMaxBlobCount;
+        public ulong MaxBlobCount
+        {
+            get
+            {
+                return _overridenMaxBlobCount ?? spec.MaxBlobCount;
+            }
+            set
+            {
+                _overridenMaxBlobCount = value;
+            }
+        }
         public ulong MaxBlobsPerTx => spec.MaxBlobsPerTx;
-        public UInt256 BlobBaseFeeUpdateFraction => spec.BlobBaseFeeUpdateFraction;
+        private UInt256? _overridenBlobBaseFeeUpdateFraction;
+        public UInt256 BlobBaseFeeUpdateFraction
+        {
+            get
+            {
+                return _overridenBlobBaseFeeUpdateFraction ?? spec.BlobBaseFeeUpdateFraction;
+            }
+            set
+            {
+                _overridenBlobBaseFeeUpdateFraction = value;
+            }
+        }
         public bool IsEip1153Enabled => spec.IsEip1153Enabled;
         public bool IsEip3651Enabled => spec.IsEip3651Enabled;
         public bool IsEip3855Enabled => spec.IsEip3855Enabled;

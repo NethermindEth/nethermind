@@ -353,8 +353,8 @@ public abstract class BlockchainTestBase
             {
                 RlpStream rlpContext = Bytes.FromHexString(testBlockJson.Rlp!).AsRlpStream();
                 Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
-                // Console.WriteLine("suggested block:");
-                // Console.WriteLine(suggestedBlock.BlockAccessList);
+                Console.WriteLine("suggested block:");
+                Console.WriteLine(suggestedBlock.BlockAccessList);
                 // Hash256 tmp = new(ValueKeccak.Compute(Rlp.Encode(suggestedBlock.BlockAccessList!.Value).Bytes).Bytes);
 
                 if (testBlockJson.BlockHeader is not null)
