@@ -100,6 +100,7 @@ public class RocksdbPersistence : IPersistence
             IWriteOnlyKeyValueStore state = batch.GetColumnBatch(FlatDbColumns.State);
             IWriteOnlyKeyValueStore storage = batch.GetColumnBatch(FlatDbColumns.Storage);
             IWriteOnlyKeyValueStore stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
+            IWriteOnlyKeyValueStore stateNodesTop = batch.GetColumnBatch(FlatDbColumns.StateNodesTop);
             IWriteOnlyKeyValueStore storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
 
             foreach (var toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
@@ -145,7 +146,14 @@ public class RocksdbPersistence : IPersistence
                 // Note: Even if the node already marked as persisted, we still re-persist it
                 if (address is null)
                 {
-                    stateNodes.PutSpan(EncodeStateNodeKey(keyBuffer, path), tn.Value.FullRlp.Span);
+                    if (path.Length <= 5)
+                    {
+                        stateNodesTop.PutSpan(EncodeStateNodeKey(keyBuffer, path), tn.Value.FullRlp.Span);
+                    }
+                    else
+                    {
+                        stateNodes.PutSpan(EncodeStateNodeKey(keyBuffer, path), tn.Value.FullRlp.Span);
+                    }
                     tn.Value.IsPersisted = true;
                 }
                 else
@@ -194,6 +202,7 @@ public class RocksdbPersistence : IPersistence
         private readonly IReadOnlyKeyValueStore _state;
         private readonly IReadOnlyKeyValueStore _storage;
         private readonly IReadOnlyKeyValueStore _stateNodes;
+        private readonly IReadOnlyKeyValueStore _stateNodesTop;
         private readonly IReadOnlyKeyValueStore _storageNodes;
         private readonly RocksdbPersistence _mainDb;
 
@@ -205,6 +214,7 @@ public class RocksdbPersistence : IPersistence
             _state = _db.GetColumn(FlatDbColumns.State);
             _storage = _db.GetColumn(FlatDbColumns.Storage);
             _stateNodes = _db.GetColumn(FlatDbColumns.StateNodes);
+            _stateNodesTop = _db.GetColumn(FlatDbColumns.StateNodesTop);
             _storageNodes = _db.GetColumn(FlatDbColumns.StorageNodes);
         }
 
@@ -267,7 +277,15 @@ public class RocksdbPersistence : IPersistence
             if (address is null)
             {
                 Span<byte> keyBuffer = stackalloc byte[StateNodesKeyLength];
-                return _stateNodes.Get(EncodeStateNodeKey(keyBuffer, in path));
+
+                if (path.Length <= 5)
+                {
+                    return _stateNodesTop.Get(EncodeStateNodeKey(keyBuffer, in path));
+                }
+                else
+                {
+                    return _stateNodes.Get(EncodeStateNodeKey(keyBuffer, in path));
+                }
             }
             Span<byte> keyBuffer2 = stackalloc byte[StorageNodesKeyLength];
             var rlp = _storageNodes.Get(EncodeStorageNodeKey(keyBuffer2, address, in path));

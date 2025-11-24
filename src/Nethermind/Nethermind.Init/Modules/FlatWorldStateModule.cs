@@ -29,7 +29,7 @@ public class FlatWorldStateModule: Module
             {
                 Boundary = 64 * 8,
                 CompactSize = 64,
-                MaxInFlightCompactJob = 512,
+                MaxInFlightCompactJob = 16,
                 InlineCompaction = false
             })
             .AddSingleton<IStateReader, FlatStateReader>();

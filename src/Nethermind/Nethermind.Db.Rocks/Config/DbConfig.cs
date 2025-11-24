@@ -319,6 +319,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.block_cache=256000000;" +
         "optimize_filters_for_hits=false;" +
         "prefix_extractor=capped:32;" +
+        "memtable=prefix_hash:1000000;" +
         "";
 
     public string? FlatStateDbAdditionalRocksDbOptions { get; set; }
@@ -327,6 +328,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.block_cache=256000000;" +
         "optimize_filters_for_hits=false;" +
         "prefix_extractor=capped:32;" +
+        "memtable=prefix_hash:1000000;" +
         "";
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
 
