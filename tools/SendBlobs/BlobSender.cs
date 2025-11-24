@@ -356,7 +356,7 @@ internal class BlobSender
 
         while (true)
         {
-            var blockResult = await rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", lastBlockNumber.ToString() ?? "latest", false);
+            BlockModel<Hash256>? blockResult = await rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", lastBlockNumber, false);
             if (blockResult is not null)
             {
                 lastBlockNumber = blockResult.Number + 1;
