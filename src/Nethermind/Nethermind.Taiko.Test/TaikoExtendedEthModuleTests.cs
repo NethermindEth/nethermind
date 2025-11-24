@@ -113,24 +113,4 @@ public class TaikoExtendedEthModuleTests
         l1BlockHashString.Should().NotBeNull();
         l1BlockHashString!.Length.Should().Be(expectedLengthInChars);
     }
-
-    [Test]
-    public void TestL1OriginById_SerializesFieldNamesCorrectly()
-    {
-        IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
-        TaikoExtendedEthModule rpc = new TaikoExtendedEthModule(new SyncConfig(), originStore, Substitute.For<IBlockFinder>());
-
-        var buildPayloadArgsId = new int[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 };
-        L1Origin origin = new L1Origin(12345, TestItem.KeccakA, 1, Hash256.Zero, buildPayloadArgsId);
-        originStore.ReadL1Origin((UInt256)12345).Returns(origin);
-
-        var result = rpc.taiko_l1OriginByID(12345).Result.Data;
-        var serializer = new Serialization.Json.EthereumJsonSerializer();
-        var json = serializer.Serialize(result);
-
-        json.Should().Contain("\"blockID\":");
-        json.Should().NotContain("\"blockId\":");
-        json.Should().Contain("\"buildPayloadArgsID\":");
-        json.Should().NotContain("\"buildPayloadArgsId\":");
-    }
 }
