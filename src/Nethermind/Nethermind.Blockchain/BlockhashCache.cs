@@ -14,7 +14,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Logging;
-using Nethermind.Specs;
 
 namespace Nethermind.Blockchain;
 
@@ -23,6 +22,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ConcurrentDictionary<Hash256AsKey, CacheNode> _blocks = new();
     private readonly LruCache<Hash256AsKey, Hash256[]> _flatCache = new(32, nameof(BlockhashCache));
+    private readonly Lock _lock = new();
     public const int MaxDepth = BlockhashProvider.MaxDepth;
     private long _minBlock = int.MaxValue;
     private Task _pruningTask = Task.CompletedTask;
@@ -148,7 +148,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
     {
         if (ShouldPrune())
         {
-            lock (_pruningTask)
+            lock (_lock)
             {
                 if (ShouldPrune())
                 {
