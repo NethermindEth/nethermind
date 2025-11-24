@@ -307,7 +307,7 @@ public class BlockhashCacheTests
 
         Hash256[] prevHashes = (await cache.Prefetch(prev, CancellationToken.None))!;
         Hash256[] headHashes = (await cache.Prefetch(head, CancellationToken.None))!;
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(Math.Min(chainDepth - 1 , FlatCacheItemLength), 1, 2));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(Math.Min(chainDepth - 1, FlatCacheItemLength), 1, 2));
         Assert.Multiple(() =>
             {
                 int compareLength = headHashes.Length - 1;
