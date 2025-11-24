@@ -31,7 +31,7 @@ public class XdcModule : Module
             .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>())
 
-            .AddScoped<IGenesisBuilder, XdcGenesisBuilder>()
+            .AddDecorator<IGenesisBuilder, XdcGenesisBuilder>()
             .AddScoped<IBlockProcessor, XdcBlockProcessor>()
 
             // stores
