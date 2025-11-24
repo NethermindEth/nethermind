@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -106,11 +107,40 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
 
     public void Commit(long blockNumber)
     {
+
+        // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
+        // may make it worst. Always check on mainnet.
+        using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
+        foreach (KeyValuePair<Hash256, StorageSnapshotBundleStateTrieStore> storage in _storages)
+        {
+            // TODO: Reenable the parallel.
+            /*
+            if (blockCommitter.TryRequestConcurrencyQuota())
+            {
+                commitTask.Add(Task.Factory.StartNew((ctx) =>
+                {
+                    StorageTree st = (StorageTree)ctx;
+                    st.Commit();
+                    blockCommitter.ReturnConcurrencyQuota();
+                }, storage.Value));
+            }
+            else
+            {
+                storage.Value.Commit();
+            }
+            */
+            storage.Value._tree.Commit();
+        }
+
+        _stateTree.Commit();
+        _storages.Clear();
+
+
         Snapshot newSnapshot = _snapshotBundle.CollectAndApplyKnownState();
         StateId newStateId = new StateId(blockNumber, RootHash);
         if (!_isReadOnly)
         {
-            _flatDiffRepository.AddSnapshot(_currentStateId, newStateId, newSnapshot);
+            if (_currentStateId != newStateId) _flatDiffRepository.AddSnapshot(_currentStateId, newStateId, newSnapshot);
         }
         _currentStateId = newStateId;
     }
