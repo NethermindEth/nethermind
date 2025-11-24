@@ -21,7 +21,6 @@ public readonly record struct Snapshot(
     StateId To,
     Dictionary<Address, Account?> Accounts,
     Dictionary<(Address, UInt256), byte[]> Storages,
-    HashSet<ValueHash256> SelfDestructedStorages,
     HashSet<Address> SelfDestructedStorageAddresses,
     Dictionary<(Hash256, TreePath), TrieNode> TrieNodes)
 {

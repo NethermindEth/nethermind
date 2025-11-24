@@ -44,11 +44,9 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
 
     public int DetermineSelfDestructStateIdx(Address address)
     {
-        ValueHash256 accountPath = address.ToAccountPath;
         for (int i = knownStates.Count - 1; i >= 0; i--)
         {
-            // TODO: This can be optimized  away
-            if (knownStates[i].SelfDestructedStorages.Contains(accountPath))
+            if (knownStates[i].SelfDestructedStorageAddresses.Contains(address))
             {
                 return i;
             }
@@ -135,7 +133,6 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
     {
         Dictionary<Hash256, Address> addressHashes = new();
         Dictionary<Address, Account> accounts = new();
-        HashSet<ValueHash256> selfDestructedAccounts = new();
         HashSet<Address> selfDestructedAccountAddresses = new();
         foreach (var kv in _changedAccounts)
         {
@@ -168,14 +165,12 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
 
                 accounts[gatheredCacheStorage.Key] = account;
             }
-            if (hasSelfDestruct) selfDestructedAccounts.Add(gatheredCacheStorage.Key.ToAccountPath);
             if (hasSelfDestruct) selfDestructedAccountAddresses.Add(gatheredCacheStorage.Key);
         }
 
         var knownState = new Snapshot()
         {
             Accounts = accounts,
-            SelfDestructedStorages = selfDestructedAccounts,
             SelfDestructedStorageAddresses = selfDestructedAccountAddresses,
             Storages = storages,
             TrieNodes = nodes
@@ -208,14 +203,12 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
             new StateId(-1, ValueKeccak.EmptyTreeHash), new StateId(-1, ValueKeccak.EmptyTreeHash),
             new Dictionary<Address, Account>(),
             new Dictionary<(Address, UInt256), byte[]>(),
-            new HashSet<ValueHash256>(),
             new HashSet<Address>(),
             new Dictionary<(Hash256, TreePath), TrieNode>()
         );
 
         Dictionary<Address, Account> accounts = new Dictionary<Address, Account>();
         Dictionary<(Address, UInt256), byte[]> storages = new Dictionary<(Address, UInt256), byte[]>();
-        HashSet<ValueHash256> selfDestructedStorages = new();
         HashSet<Address> selfDestructedStorageAddresses = new();
         Dictionary<(Hash256, TreePath), TrieNode> nodes = new Dictionary<(Hash256, TreePath), TrieNode>();
 
@@ -256,11 +249,6 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
                 }
             }
 
-            foreach (ValueHash256 hash in knownState.SelfDestructedStorages)
-            {
-                selfDestructedStorages.Add(hash);
-            }
-
             foreach (var knownStateStorage in knownState.Storages)
             {
                 storages[knownStateStorage.Key] = knownStateStorage.Value;
@@ -277,7 +265,6 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
             to,
             accounts,
             storages,
-            selfDestructedStorages,
             selfDestructedStorageAddresses,
             nodes);
     }

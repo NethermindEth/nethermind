@@ -102,9 +102,9 @@ public class RocksdbPersistence : IPersistence
             IWriteOnlyKeyValueStore stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
             IWriteOnlyKeyValueStore storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
 
-            foreach (var toSelfDestructStorage in snapshot.SelfDestructedStorages)
+            foreach (var toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
             {
-                SelfDestruct(toSelfDestructStorage, dbSnap, batch);
+                SelfDestruct(toSelfDestructStorage.ToAccountPath, dbSnap, batch);
             }
 
             // Selfdestruct

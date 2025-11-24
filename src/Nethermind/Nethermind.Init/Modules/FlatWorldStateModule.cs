@@ -28,7 +28,9 @@ public class FlatWorldStateModule: Module
             .AddSingleton<FlatDiffRepository.Configuration>(new FlatDiffRepository.Configuration()
             {
                 Boundary = 64 * 8,
-                CompactSize = 64
+                CompactSize = 64,
+                MaxInFlightCompactJob = 512,
+                InlineCompaction = false
             })
             .AddSingleton<IStateReader, FlatStateReader>();
     }
