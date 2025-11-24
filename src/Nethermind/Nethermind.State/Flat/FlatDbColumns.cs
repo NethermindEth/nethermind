@@ -9,5 +9,5 @@ public enum FlatDbColumns
     State,
     Storage,
     StateNodes,
-    StorageNode,
+    StorageNodes,
 }

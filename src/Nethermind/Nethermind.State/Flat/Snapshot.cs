@@ -22,12 +22,13 @@ public readonly record struct Snapshot(
     StateId To,
     Dictionary<Address, AccountSnapshotInfo> Accounts,
     Dictionary<(Address, UInt256), byte[]> Storages,
+    Dictionary<Hash256, Address> AddressHashes,
     Dictionary<(Hash256, TreePath), TrieNode> TrieNodes)
 {
 }
 
 public record AccountSnapshotInfo(
-    Account NewValue,
+    Account? NewValue,
     bool hasSelfDestruct
 )
 {

@@ -78,6 +78,19 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
             {
                 return true;
             }
+
+            if (address != null && knownStates[i].AddressHashes.ContainsKey(address))
+            {
+                Address addr = knownStates[i].AddressHashes[address];
+                if (addr is not null)
+                {
+                    if (knownStates[i].Accounts.TryGetValue(addr, out var accountInfo) && accountInfo.HasSelfDestruct)
+                    {
+                        node = null;
+                        return false;
+                    }
+                }
+            }
         }
 
         node = null;
@@ -87,6 +100,11 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
     public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags)
     {
         return persistenceReader.TryLoadRlp(null, path, hash, flags);
+    }
+
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
+    {
+        return persistenceReader.TryLoadRlp(address, path, hash, flags);
     }
 
     public void SetStateNode(in TreePath path, TrieNode newNode)
@@ -109,9 +127,11 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
 
     public Snapshot CollectAndApplyKnownState()
     {
+        Dictionary<Hash256, Address> addressHashes = new();
         Dictionary<Address, AccountSnapshotInfo> accounts = new();
         foreach (var kv in _changedAccounts)
         {
+            addressHashes[kv.Key.ToAccountPath.ToCommitment()] = kv.Key;
             accounts[kv.Key] = new AccountSnapshotInfo(kv.Value, false);
         }
 
@@ -125,16 +145,31 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
 
         foreach (var gatheredCacheStorage in _loadedAccounts)
         {
-            bool hasSelfDestruct = gatheredCacheStorage.Value
+            (bool hasSelfDestruct, bool hasChange) = gatheredCacheStorage.Value
                 .CollectAndApplyKnownState(
                     storages,
                     nodes);
-            accounts[gatheredCacheStorage.Key].HasSelfDestruct = hasSelfDestruct;
+            if (!hasChange) continue;
+
+            if (!accounts.ContainsKey(gatheredCacheStorage.Key))
+            {
+                if (!TryGetAccount(gatheredCacheStorage.Key, out var account))
+                {
+                    Console.Error.WriteLine($"Cannot get account on storage {gatheredCacheStorage.Key} {hasSelfDestruct}");
+                }
+
+                accounts[gatheredCacheStorage.Key] = new AccountSnapshotInfo(account, hasSelfDestruct);
+            }
+            else
+            {
+                accounts[gatheredCacheStorage.Key].HasSelfDestruct = hasSelfDestruct;
+            }
         }
 
         var knownState = new Snapshot()
         {
             Accounts = accounts,
+            AddressHashes = addressHashes,
             Storages = storages,
             TrieNodes = nodes
         };
@@ -162,16 +197,18 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
 
     public Snapshot CompactToKnownState()
     {
-        Dictionary<Address, AccountSnapshotInfo> accounts = new Dictionary<Address, AccountSnapshotInfo>();
-        Dictionary<(Address, UInt256), byte[]> storages = new Dictionary<(Address, UInt256), byte[]>();
-        Dictionary<(Hash256, TreePath), TrieNode> nodes = new Dictionary<(Hash256, TreePath), TrieNode>();
-
         if (knownStates.Count == 0) return new Snapshot(
             new StateId(-1, ValueKeccak.EmptyTreeHash), new StateId(-1, ValueKeccak.EmptyTreeHash),
             new Dictionary<Address, AccountSnapshotInfo>(),
             new Dictionary<(Address, UInt256), byte[]>(),
+            new Dictionary<Hash256, Address>(),
             new Dictionary<(Hash256, TreePath), TrieNode>()
         );
+
+        Dictionary<Address, AccountSnapshotInfo> accounts = new Dictionary<Address, AccountSnapshotInfo>();
+        Dictionary<(Address, UInt256), byte[]> storages = new Dictionary<(Address, UInt256), byte[]>();
+        Dictionary<Hash256, Address> addressHashes = new();
+        Dictionary<(Hash256, TreePath), TrieNode> nodes = new Dictionary<(Hash256, TreePath), TrieNode>();
 
         if (knownStates.Count == 1) return knownStates[0];
 
@@ -184,6 +221,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
             foreach (var knownStateAccount in knownState.Accounts)
             {
                 Address address = knownStateAccount.Key;
+                addressHashes[address.ToAccountPath.ToCommitment()] = address;
                 accounts[address] = knownStateAccount.Value;
 
                 // Clear
@@ -224,6 +262,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
             to,
             accounts,
             storages,
+            addressHashes,
             nodes);
     }
 
@@ -233,6 +272,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
         {
             gatheredCacheStorage.Value.Dispose();
         }
+        knownStates.Dispose();
     }
 }
 
@@ -245,13 +285,14 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
 
     public bool TryGet(in UInt256 index, out byte[]? value)
     {
+        if (_changedSlots.TryGetValue(index, out value))
+        {
+            return true;
+        }
+
         if (_hasSelfDestruct)
         {
             value = null;
-            return true;
-        }
-        if (_changedSlots.TryGetValue(index, out value))
-        {
             return true;
         }
 
@@ -260,14 +301,14 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
 
     public bool TryFindNode(in TreePath path, out TrieNode value)
     {
-        if (_hasSelfDestruct)
+        if (_changedNodes.TryGetValue(path, out value))
         {
-            value = null;
             return true;
         }
 
-        if (_changedNodes.TryGetValue(path, out value))
+        if (_hasSelfDestruct)
         {
+            value = null;
             return true;
         }
 
@@ -276,10 +317,10 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
 
     public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags)
     {
-        return bundle.TryLoadRlp(in path, hash, flags);
+        return bundle.TryLoadRlp(_addressHash, in path, hash, flags);
     }
 
-    public bool CollectAndApplyKnownState(
+    public (bool hasSelfDesruct, bool hasChange) CollectAndApplyKnownState(
         Dictionary<(Address, UInt256), byte[]> storages,
         Dictionary<(Hash256, TreePath), TrieNode> nodes
     )
@@ -294,11 +335,12 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
             nodes[(_addressHash, kv.Key)] = kv.Value;
         }
 
+        bool hadSelfDestruct = _hasSelfDestruct;
+        bool hasChange = hadSelfDestruct || _changedNodes.Count > 0 || _changedSlots.Count > 0;
         _changedSlots.Clear();
         _changedNodes.Clear();
-        bool hadSelfDestruct = _hasSelfDestruct;
         _hasSelfDestruct = false;
-        return hadSelfDestruct;
+        return (hadSelfDestruct, hasChange);
     }
 
     public void SetNode(TreePath path, TrieNode node)
@@ -309,6 +351,13 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
     public void Set(UInt256 slot, byte[] value)
     {
         _changedSlots[slot] = value;
+    }
+
+    public void SelfDestruct()
+    {
+        _hasSelfDestruct = true;
+        _changedSlots.Clear();
+        _changedNodes.Clear();
     }
 
     public void Dispose()

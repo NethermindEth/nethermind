@@ -72,7 +72,7 @@ public class RocksdbPersistence : IPersistence
     internal static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, ValueHash256 addr, UInt256 slot)
     {
         addr.Bytes.CopyTo(buffer);
-        slot.ToBigEndian(buffer[32..]);
+        slot.ToBigEndian(buffer[32..64]);
         return buffer[..StorageKeyLength];
     }
 
@@ -80,6 +80,8 @@ public class RocksdbPersistence : IPersistence
     {
         return new PersistenceReader(_db.StartSnapshot(), this);
     }
+
+    static Hash256 importantAddr = new Address("0x1702c089c3d4b2b8e09232f36114e41c214d6939").ToAccountPath.ToCommitment();
 
     public void Add(Snapshot snapshot)
     {
@@ -100,7 +102,7 @@ public class RocksdbPersistence : IPersistence
             IWriteOnlyKeyValueStore state = batch.GetColumnBatch(FlatDbColumns.State);
             IWriteOnlyKeyValueStore storage = batch.GetColumnBatch(FlatDbColumns.Storage);
             IWriteOnlyKeyValueStore stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
-            IWriteOnlyKeyValueStore storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNode);
+            IWriteOnlyKeyValueStore storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
 
             // Selfdestruct
             foreach (var kv in snapshot.Accounts)
@@ -111,21 +113,41 @@ public class RocksdbPersistence : IPersistence
                     SelfDestruct(addr, dbSnap, batch);
                 }
 
-                using var stream = _accountDecoder.EncodeToNewNettyStream(info.NewValue);
+                if (kv.Value.NewValue is null)
+                {
+                    state.Remove(addr.ToAccountPath.Bytes);
+                }
+                else
+                {
+                    using var stream = _accountDecoder.EncodeToNewNettyStream(info.NewValue);
 
-                state.PutSpan(addr.ToAccountPath.Bytes, stream.AsSpan());
+                    if (importantAddr == kv.Key.ToAccountPath)
+                    {
+                        Console.Error.WriteLine($"Writing account {kv.Value.NewValue}. Span is {stream.AsSpan().ToHexString()}");
+                    }
+                    state.PutSpan(addr.ToAccountPath.Bytes, stream.AsSpan());
+                }
             }
 
             foreach (var kv in snapshot.Storages)
             {
                 ((Address addr, UInt256 slot), byte[] value) = kv;
 
+                ReadOnlySpan<byte> theKey = EncodeStorageKey(keyBuffer, addr.ToAccountPath, slot);
                 storage.PutSpan(EncodeStorageKey(keyBuffer, addr.ToAccountPath, slot), value);
+                if (addr.ToAccountPath == importantAddr) Console.Error.WriteLine($"Persist {slot} to {value.ToHexString()}, {theKey.ToHexString()}");
+
             }
 
             foreach (var tn in snapshot.TrieNodes)
             {
                 (Hash256? address, TreePath path) = tn.Key;
+
+                if (tn.Value.FullRlp.Length == 0)
+                {
+                    // TODO: Need to double check this case. Does it need a rewrite or not?
+                    if (tn.Value.NodeType == NodeType.Unknown) continue;
+                }
 
                 // Note: Even if the node already marked as persisted, we still re-persist it
                 if (address is null)
@@ -135,6 +157,10 @@ public class RocksdbPersistence : IPersistence
                 }
                 else
                 {
+                    if (address == importantAddr)
+                    {
+                        Console.Error.WriteLine($"Writing node {path} to {tn.Value}, {tn.Value.Keccak}");
+                    }
                     storageNodes.PutSpan(EncodeStorageNodeKey(keyBuffer, address, path), tn.Value.FullRlp.Span);
                     tn.Value.IsPersisted = true;
                 }
@@ -155,10 +181,10 @@ public class RocksdbPersistence : IPersistence
         lastKey.Fill(0xff);
         addHash.Bytes.CopyTo(lastKey);
 
-        using ISortedView storageNodeReader = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.StorageNode))
+        using ISortedView storageNodeReader = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.StorageNodes))
             .GetViewBetween(addHash.Bytes, lastKey);
 
-        var storageNodeWriter = writer.GetColumnBatch(FlatDbColumns.StorageNode);
+        var storageNodeWriter = writer.GetColumnBatch(FlatDbColumns.StorageNodes);
         while (storageNodeReader.MoveNext())
         {
             storageNodeWriter.Remove(storageNodeReader.CurrentKey);
@@ -191,7 +217,7 @@ public class RocksdbPersistence : IPersistence
             _state = _db.GetColumn(FlatDbColumns.State);
             _storage = _db.GetColumn(FlatDbColumns.Storage);
             _stateNodes = _db.GetColumn(FlatDbColumns.StateNodes);
-            _storageNodes = _db.GetColumn(FlatDbColumns.StorageNode);
+            _storageNodes = _db.GetColumn(FlatDbColumns.StorageNodes);
         }
 
         public void Dispose()
@@ -214,6 +240,11 @@ public class RocksdbPersistence : IPersistence
                 acc = _mainDb._accountDecoder.Decode(ref ctx);
                 return true;
             }
+            catch (RlpException)
+            {
+                Console.Error.WriteLine($"The value is {address}, {value.ToHexString()}");
+                throw;
+            }
             finally
             {
                 _state.DangerousReleaseMemory(value);
@@ -223,7 +254,8 @@ public class RocksdbPersistence : IPersistence
         public bool TryGetSlot(Address address, in UInt256 index, out byte[] valueBytes)
         {
             Span<byte> keySpan = stackalloc byte[StorageKeyLength];
-            Span<byte> value = _storage.GetSpan(EncodeStorageKey(keySpan, address.ToAccountPath, index));
+            ReadOnlySpan<byte> theKey = EncodeStorageKey(keySpan, address.ToAccountPath, index);
+            Span<byte> value = _storage.GetSpan(theKey);
             try
             {
                 if (value.IsNullOrEmpty())
@@ -233,6 +265,7 @@ public class RocksdbPersistence : IPersistence
                 }
 
                 valueBytes = value.ToArray();
+                if (address.ToAccountPath == importantAddr) Console.Error.WriteLine($"Read {index} got {valueBytes?.ToHexString()}, {theKey.ToHexString()}");
                 return true;
             }
             finally
@@ -250,7 +283,9 @@ public class RocksdbPersistence : IPersistence
                 return _stateNodes.Get(EncodeStateNodeKey(keyBuffer, in path));
             }
             Span<byte> keyBuffer2 = stackalloc byte[StorageNodesKeyLength];
-            return _storageNodes.Get(EncodeStorageNodeKey(keyBuffer2, hash, in path));
+            var rlp = _storageNodes.Get(EncodeStorageNodeKey(keyBuffer2, address, in path));
+            if (address == importantAddr) Console.Error.WriteLine($"LoadRlp {path}, {rlp?.ToHexString()}");
+            return rlp;
         }
     }
 }

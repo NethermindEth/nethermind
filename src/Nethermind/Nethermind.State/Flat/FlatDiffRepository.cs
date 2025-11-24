@@ -35,7 +35,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         int MaxInFlightCompactJob = 32,
         int CompactSize = 64,
         int Boundary = 128,
-        bool InlineCompaction = false
+        bool InlineCompaction = true
     )
     {
     }
@@ -94,6 +94,7 @@ public class FlatDiffRepository : IFlatDiffRepository
             catch (Exception ex)
             {
                 _logger.Error($"job {name} failed", ex);
+                Environment.Exit(1);
                 throw;
             }
         });
@@ -215,6 +216,11 @@ public class FlatDiffRepository : IFlatDiffRepository
                 return;
             }
 
+            snapshot = snapshot with
+            {
+                From = startingBlock,
+                To = endBlock,
+            };
             _inMemorySnapshotStore.AddBlock(endBlock, snapshot);
         }
 

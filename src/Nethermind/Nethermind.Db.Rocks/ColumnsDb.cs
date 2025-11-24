@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -162,13 +163,14 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         {
             ReadOptions options = new ReadOptions();
             options.SetSnapshot(snapshot);
-            return new ColumnSnapshotReader(columnsDb, columnsDb._columnDbs[key]._columnFamily, options);
+            return new ColumnSnapshotReader(columnsDb, columnsDb._columnDbs[key]._columnFamily, options, snapshot);
         }
 
         private class ColumnSnapshotReader(
             DbOnTheRocks mainDb,
             ColumnFamilyHandle columnFamily,
-            ReadOptions options): IReadOnlyKeyValueStore
+            ReadOptions options,
+            Snapshot snapshot): IReadOnlyKeyValueStore, ISortedKeyValueStore
         {
             public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
             {
@@ -194,6 +196,46 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
             {
                 mainDb.DangerousReleaseMemory(span);
+            }
+
+            public byte[]? FirstKey
+            {
+                get
+                {
+                    using Iterator iterator = mainDb.CreateIterator(options);
+                    iterator.SeekToFirst();
+                    return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+                }
+            }
+
+            public byte[]? LastKey
+            {
+                get
+                {
+                    using Iterator iterator = mainDb.CreateIterator(options);
+                    iterator.SeekToLast();
+                    return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+                }
+            }
+
+            public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
+            {
+                ReadOptions readOptions = new ReadOptions();
+                readOptions.SetSnapshot(snapshot);
+
+                unsafe
+                {
+                    IntPtr iterateLowerBound = Marshal.AllocHGlobal(firstKey.Length);
+                    firstKey.CopyTo(new Span<byte>(iterateLowerBound.ToPointer(), firstKey.Length));
+                    Native.Instance.rocksdb_readoptions_set_iterate_lower_bound(readOptions.Handle, iterateLowerBound, (UIntPtr)firstKey.Length);
+
+                    IntPtr iterateUpperBound = Marshal.AllocHGlobal(lastKey.Length);
+                    lastKey.CopyTo(new Span<byte>(iterateUpperBound.ToPointer(), lastKey.Length));
+                    Native.Instance.rocksdb_readoptions_set_iterate_upper_bound(readOptions.Handle, iterateUpperBound, (UIntPtr)lastKey.Length);
+                }
+
+                Iterator iterator = mainDb.CreateIterator(readOptions, columnFamily);
+                return new RocksdbSortedView(iterator);
             }
         }
 
