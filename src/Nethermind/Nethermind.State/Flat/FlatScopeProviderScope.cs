@@ -153,8 +153,6 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
         _currentStateId = newStateId;
     }
 
-    public static Hash256 importantAddr = new Hash256("0x163d03e034038d9d06d3f71ace133ae273bf97108d838c00f66d0eeb3a995612");
-
     internal class WriteBatch(
         FlatScopeProviderScope scope,
         int estimatedAccountCount,
@@ -193,10 +191,6 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
                 if (!_dirtyAccounts.TryGetValue(key, out var account)) account = scope.Get(key);
-                if (key.Value.ToAccountPath == importantAddr)
-                {
-                    Console.Error.WriteLine($"Dirty account set {storageRoot}");
-                }
                 if (account == null && storageRoot == Keccak.EmptyTreeHash) continue;
                 account ??= ThrowNullAccount(key);
                 account = account!.WithChangedStorageRoot(storageRoot);
@@ -239,9 +233,6 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
         private bool _hasSelfDestruct;
         private bool _wasSetCalled = false;
 
-        private bool _important = address.Value.ToAccountPath ==
-                                  FlatScopeProviderScope.importantAddr;
-
         private ArrayPoolList<PatriciaTree.BulkSetEntry>? _bulkWrite =
             estimatedEntries > MIN_ENTRIES_TO_BATCH
                 ? new(estimatedEntries)
@@ -251,7 +242,6 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
 
         public void Set(in UInt256 index, byte[] value)
         {
-            if (_important) Console.Error.WriteLine($"Set {index} to {value?.ToHexString()}");
             _wasSetCalled = true;
             if (_bulkWrite is null)
             {
@@ -267,7 +257,6 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
 
         public void Clear()
         {
-            if (_important) Console.Error.WriteLine($"Self destructted");
             if (_bulkWrite is null)
             {
                 storageTree.RootHash = Keccak.EmptyTreeHash;
@@ -385,7 +374,6 @@ public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldState
     internal readonly StorageSnapshotBundle _storageSnapshotBundle;
     internal readonly StorageTree _tree;
     private readonly Hash256 _address;
-    private readonly bool _isImportant;
 
     public StorageSnapshotBundleStateTrieStore(
         FlatScopeProviderScope scope,
@@ -399,11 +387,6 @@ public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldState
         _tree = new StorageTree(this, storageRoot, logManager);
         _tree.RootHash = storageRoot;
         _address = address;
-        _isImportant = address == FlatScopeProviderScope.importantAddr;
-        if (address == FlatScopeProviderScope.importantAddr)
-        {
-            Console.Error.WriteLine($"Account loaded with root {storageRoot}");
-        }
     }
 
     public Hash256 RootHash => _tree.RootHash;
@@ -432,17 +415,9 @@ public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldState
     {
         if (_storageSnapshotBundle.TryFindNode(path, out var node))
         {
-            if (_isImportant)
-            {
-                Console.Error.WriteLine($"Got node {path}:{node?.Keccak}");
-            }
             return node;
         }
 
-        if (_isImportant)
-        {
-            Console.Error.WriteLine($"Node unknown {path}, {hash}");
-        }
         TrieNode newNode = new TrieNode(NodeType.Unknown, hash);
         _storageSnapshotBundle.SetNode(path, newNode);
         return newNode;
@@ -462,10 +437,6 @@ public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldState
     public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
         var rlp = _storageSnapshotBundle.TryLoadRlp(path, hash, flags);
-        if (_isImportant)
-        {
-            Console.Error.WriteLine($"Fetch rlp {path}, {Keccak.Compute(rlp)}");
-        }
         return rlp;
     }
 

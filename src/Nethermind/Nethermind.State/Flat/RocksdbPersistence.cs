@@ -81,8 +81,6 @@ public class RocksdbPersistence : IPersistence
         return new PersistenceReader(_db.StartSnapshot(), this);
     }
 
-    static Hash256 importantAddr = new Address("0x1702c089c3d4b2b8e09232f36114e41c214d6939").ToAccountPath.ToCommitment();
-
     public void Add(Snapshot snapshot)
     {
         // TODO: Lock
@@ -131,7 +129,6 @@ public class RocksdbPersistence : IPersistence
 
                 ReadOnlySpan<byte> theKey = EncodeStorageKey(keyBuffer, addr.ToAccountPath, slot);
                 storage.PutSpan(EncodeStorageKey(keyBuffer, addr.ToAccountPath, slot), value);
-                if (addr.ToAccountPath == importantAddr) Console.Error.WriteLine($"Persist {slot} to {value.ToHexString()}, {theKey.ToHexString()}");
 
             }
 
@@ -153,10 +150,6 @@ public class RocksdbPersistence : IPersistence
                 }
                 else
                 {
-                    if (address == importantAddr)
-                    {
-                        Console.Error.WriteLine($"Writing node {path} to {tn.Value}, {tn.Value.Keccak}");
-                    }
                     storageNodes.PutSpan(EncodeStorageNodeKey(keyBuffer, address, path), tn.Value.FullRlp.Span);
                     tn.Value.IsPersisted = true;
                 }
@@ -260,7 +253,6 @@ public class RocksdbPersistence : IPersistence
                 }
 
                 valueBytes = value.ToArray();
-                if (address.ToAccountPath == importantAddr) Console.Error.WriteLine($"Read {index} got {valueBytes?.ToHexString()}, {theKey.ToHexString()}");
                 return true;
             }
             finally
@@ -279,7 +271,6 @@ public class RocksdbPersistence : IPersistence
             }
             Span<byte> keyBuffer2 = stackalloc byte[StorageNodesKeyLength];
             var rlp = _storageNodes.Get(EncodeStorageNodeKey(keyBuffer2, address, in path));
-            if (address == importantAddr) Console.Error.WriteLine($"LoadRlp {path}, {rlp?.ToHexString()}");
             return rlp;
         }
     }
