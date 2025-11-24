@@ -41,16 +41,28 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
         return false;
     }
 
-    public bool TryGetSlot(Address address, in UInt256 index, out byte[] value)
+    public int DetermineSelfDestructStateIdx(Address address)
     {
         ValueHash256 accountPath = address.ToAccountPath;
+        for (int i = knownStates.Count - 1; i >= 0; i--)
+        {
+            // TODO: This can be optimized  away
+            if (knownStates[i].SelfDestructedStorages.Contains(accountPath))
+            {
+                return i;
+            }
+        }
 
+        return -1;
+    }
+
+    public bool TryGetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out byte[] value)
+    {
         for (int i = knownStates.Count - 1; i >= 0; i--)
         {
             if (knownStates[i].Storages.TryGetValue((address, index), out value)) return true;
 
-            // TODO: This can be optimized  away
-            if (knownStates[i].SelfDestructedStorages.Contains(accountPath))
+            if (i <= selfDestructStateIdx)
             {
                 value = null;
                 return true;
@@ -67,10 +79,10 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
             return true;
         }
 
-        return TryFindNode(null, path, out node);
+        return TryFindNode(null, path, -1, out node);
     }
 
-    public bool TryFindNode(Hash256? address, in TreePath path, out TrieNode node)
+    public bool TryFindNode(Hash256? address, in TreePath path, int selfDestructStateIdx, out TrieNode node)
     {
         for (int i = knownStates.Count - 1; i >= 0; i--)
         {
@@ -79,7 +91,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
                 return true;
             }
 
-            if (address is not null && knownStates[i].SelfDestructedStorages.Contains(address))
+            if (i <= selfDestructStateIdx)
             {
                 node = null;
                 return false;
@@ -285,6 +297,7 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
     Dictionary<TreePath, TrieNode> _changedNodes = new();
     internal Hash256 _addressHash = address.ToAccountPath.ToCommitment();
     bool _hasSelfDestruct = false;
+    private int _selfDestructKnownStateIdx = bundle.DetermineSelfDestructStateIdx(address);
 
     public bool TryGet(in UInt256 index, out byte[]? value)
     {
@@ -299,7 +312,7 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
             return true;
         }
 
-        return bundle.TryGetSlot(address, index, out value);
+        return bundle.TryGetSlot(address, index, _selfDestructKnownStateIdx, out value);
     }
 
     public bool TryFindNode(in TreePath path, out TrieNode value)
@@ -315,7 +328,7 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
             return true;
         }
 
-        return bundle.TryFindNode(_addressHash, path, out value);
+        return bundle.TryFindNode(_addressHash, path, _selfDestructKnownStateIdx, out value);
     }
 
     public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags)

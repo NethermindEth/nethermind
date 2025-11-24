@@ -283,17 +283,6 @@ public class DbConfig : IDbConfig
     public bool? FlatDbVerifyChecksum { get; set; }
     public bool FlatDbEnableFileWarmer { get; set; }
     public string FlatDbRocksDbOptions { get; set; } =
-        // LZ4 seems to be slightly faster here
-        "compression=kLZ4Compression;" +
-
-        // MaxBytesForLevelMultiplier is 10 by default. Lowering this will deepens the LSM, which may reduce write
-        // amplification (unless the LSM is too deep), at the expense of read performance. But then, you have bloom
-        // filter anyway, and recently written keys are likely to be read and they tend to be at the top of the LSM
-        // tree which means they are more cacheable, so at that point you are trading CPU for cacheability.
-        // These two config make the LSM level to be no more than 3 until the database grow to about 250GB.
-        "max_bytes_for_level_multiplier=30;" +
-        "max_bytes_for_level_base=350000000;" +
-
         // This is basically useless on write only database. However, for halfpath with live pruning, flatdb, or
         // (maybe?) full sync where keys are deleted, replaced, or re-inserted, two memtable can merge together
         // resulting in a reduced total memtable size to be written. This does seems to reduce sync throughput though.
@@ -313,7 +302,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
         "block_based_table_factory.data_block_hash_table_util_ratio=0.7;" +
 
-        "block_based_table_factory.block_size=32000;" +
+        "block_based_table_factory.block_size=16000;" +
 
         "block_based_table_factory.filter_policy=bloomfilter:15;" +
 
@@ -326,12 +315,16 @@ public class DbConfig : IDbConfig
     public string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
 
     public string? FlatStateDbRocksDbOptions { get; set; } =
+        "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;};" +
+        "block_based_table_factory.block_cache=256000000;" +
         "optimize_filters_for_hits=false;" +
         "prefix_extractor=capped:32;" +
         "";
 
     public string? FlatStateDbAdditionalRocksDbOptions { get; set; }
     public string? FlatStorageDbRocksDbOptions { get; set; } =
+        "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;};" +
+        "block_based_table_factory.block_cache=256000000;" +
         "optimize_filters_for_hits=false;" +
         "prefix_extractor=capped:32;" +
         "";

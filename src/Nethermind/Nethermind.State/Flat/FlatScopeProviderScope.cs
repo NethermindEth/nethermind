@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -72,6 +73,11 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
     {
         _snapshotBundle.TryGetAccount(address, out var account);
 
+        if (account != null)
+        {
+            HintGet(address, account);
+        }
+
         if (!_configuration.VerifyWithTrie)
         {
             return account;
@@ -89,6 +95,7 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
 
     public void HintGet(Address address, Account? account)
     {
+        _snapshotBundle.HintAccountRead(address, account);
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
@@ -128,27 +135,27 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
         // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
         // may make it worst. Always check on mainnet.
         using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
+        StorageSnapshotBundleStateTrieStore.ConcurrencyQuota conc =
+            new StorageSnapshotBundleStateTrieStore.ConcurrencyQuota();
         foreach (KeyValuePair<Hash256, StorageSnapshotBundleStateTrieStore> storage in _storages)
         {
             // TODO: Reenable the parallel.
-            /*
-            if (blockCommitter.TryRequestConcurrencyQuota())
+            if (conc.TryRequestConcurrencyQuota())
             {
                 commitTask.Add(Task.Factory.StartNew((ctx) =>
                 {
                     StorageTree st = (StorageTree)ctx;
                     st.Commit();
-                    blockCommitter.ReturnConcurrencyQuota();
-                }, storage.Value));
+                    conc.ReturnConcurrencyQuota();
+                }, storage.Value._tree));
             }
             else
             {
-                storage.Value.Commit();
+                storage.Value._tree.Commit();
             }
-            */
-            storage.Value._tree.Commit();
         }
 
+        Task.WaitAll(commitTask.AsSpan());
         _stateTree.Commit();
         _storages.Clear();
 
@@ -407,6 +414,8 @@ public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldState
         _storageSnapshotBundle.TryGet(index, out var value);
         if (value == null) value = StorageTree.ZeroBytes;
 
+        _storageSnapshotBundle.Set(index, value);
+
         if (!_config.VerifyWithTrie)
         {
             return value;
@@ -422,6 +431,7 @@ public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldState
 
     public void HintGet(in UInt256 index, byte[]? value)
     {
+        _storageSnapshotBundle.Set(index, value);
     }
 
     public byte[] Get(in ValueHash256 hash)
@@ -495,5 +505,23 @@ public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldState
         public void Dispose()
         {
         }
+    }
+
+    public class ConcurrencyQuota()
+    {
+        private int _concurrency = Environment.ProcessorCount;
+
+        public bool TryRequestConcurrencyQuota()
+        {
+            if (Interlocked.Decrement(ref _concurrency) >= 0)
+            {
+                return true;
+            }
+
+            ReturnConcurrencyQuota();
+            return false;
+        }
+
+        public void ReturnConcurrencyQuota() => Interlocked.Increment(ref _concurrency);
     }
 }

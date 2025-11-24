@@ -44,7 +44,7 @@ public class FlatStateReader(
             return Array.Empty<byte>();
         }
 
-        if (reader.TryGetSlot(address, index, out byte[] value))
+        if (reader.TryGetSlot(address, index, reader.DetermineSelfDestructStateIdx(address), out byte[] value))
         {
             return value;
         }
