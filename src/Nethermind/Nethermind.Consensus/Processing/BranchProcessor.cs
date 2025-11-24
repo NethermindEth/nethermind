@@ -74,22 +74,25 @@ public class BranchProcessor(
             worldStateCloser = stateProvider.BeginScope(baseBlock);
         }
 
-        // Start prewarming as early as possible
-        WaitForCacheClear();
-        IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-        CancellationTokenSource backgroundCancellation = new();
-        Task? preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
-        Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+        CancellationTokenSource? backgroundCancellation = new();
+        Task? preWarmTask = null;
 
-        BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
-
-        BlockHeader? preBlockBaseBlock = baseBlock;
-
-        bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-        int blocksCount = suggestedBlocks.Count;
-        Block[] processedBlocks = new Block[blocksCount];
         try
         {
+            // Start prewarming as early as possible
+            WaitForCacheClear();
+            IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
+    	    preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
+        	Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+
+            BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
+
+            BlockHeader? preBlockBaseBlock = baseBlock;
+
+            bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+            int blocksCount = suggestedBlocks.Count;
+            Block[] processedBlocks = new Block[blocksCount];
+
             for (int i = 0; i < blocksCount; i++)
             {
                 WaitForCacheClear();
