@@ -31,7 +31,11 @@ public class TestBlockchainUtil(
 
     private Task _previousAddBlock = Task.CompletedTask;
 
-    public async Task<AcceptTxResult[]> AddBlock(AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
+    public Task<Block> AddBlock(AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
+    {
+        return AddBlock(blockTree.GetProducedBlockParent(null)!, flags, cancellationToken, transactions);
+    }
+    public async Task<Block> AddBlock(BlockHeader parentToBuildOn, AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
     {
         Task waitforHead = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)
             ? Task.CompletedTask
@@ -71,7 +75,7 @@ public class TestBlockchainUtil(
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            block = await blockProducer.BuildBlock(parentHeader: blockTree.GetProducedBlockParent(null), cancellationToken: cancellationToken);
+            block = await blockProducer.BuildBlock(parentHeader: parentToBuildOn, cancellationToken: cancellationToken);
 
             if (invalidBlock is not null) Assert.Fail($"Invalid block {invalidBlock} produced");
 
@@ -110,15 +114,15 @@ public class TestBlockchainUtil(
         await txNewHead; // Wait for tx new head event so that processed tx was removed from txpool
 
         invalidBlockDetector.OnInvalidBlock -= OnInvalidBlock;
-        return txResults;
+        return block;
     }
 
-    public Task AddBlock(CancellationToken cancellationToken)
+    public Task<Block> AddBlock(CancellationToken cancellationToken)
     {
         return AddBlock(AddBlockFlags.None, cancellationToken);
     }
 
-    public async Task<AcceptTxResult[]> AddBlockDoNotWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
+    public async Task<Block> AddBlockDoNotWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
     {
         AddBlockFlags flags = AddBlockFlags.DoNotWaitForHead;
         if (mayMissTx) flags |= AddBlockFlags.MayMissTx;
@@ -126,12 +130,12 @@ public class TestBlockchainUtil(
         return await AddBlock(flags, cancellationToken, transactions);
     }
 
-    public async Task AddBlockAndWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
+    public async Task<Block> AddBlockAndWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
     {
         AddBlockFlags flags = AddBlockFlags.None;
         if (mayMissTx) flags |= AddBlockFlags.MayMissTx;
 
-        await AddBlock(flags, cancellationToken, transactions);
+        return await AddBlock(flags, cancellationToken, transactions);
     }
 
     private static async Task WaitAsync(Task task, string error)

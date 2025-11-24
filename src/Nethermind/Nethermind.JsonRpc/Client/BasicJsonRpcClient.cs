@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Client
             AddAuthorizationHeader();
         }
 
-        public async Task<string> Post(string method, params object[] parameters)
+        public async Task<string?> Post(string method, params object?[] parameters)
         {
             string request = GetJsonRequest(method, parameters);
             HttpResponseMessage response = await _client.PostAsync("", new StringContent(request, Encoding.UTF8, "application/json"));
@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Client
             return content;
         }
 
-        public async Task<T> Post<T>(string method, params object[] parameters)
+        public async Task<T?> Post<T>(string method, params object?[] parameters)
         {
             string responseString = string.Empty;
             try
@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.Client
             }
         }
 
-        private string GetJsonRequest(string method, IEnumerable<object> parameters)
+        private string GetJsonRequest(string method, IEnumerable<object?> parameters)
         {
             var request = new
             {

@@ -13,6 +13,7 @@ using Nethermind.Era1.Exceptions;
 using NonBlocking;
 
 namespace Nethermind.Era1;
+
 public class EraStore : IEraStore
 {
     private readonly char[] _eraSeparator = ['-'];
