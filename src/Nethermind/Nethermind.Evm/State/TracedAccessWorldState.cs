@@ -154,6 +154,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
             {
                 BlockAccessList.AddBalanceChange(address, 0, balance);
             }
+            if (nonce != 0)
+            {
+                BlockAccessList.AddNonceChange(address, (ulong)nonce);
+            }
         }
         _innerWorldState.CreateAccount(address, balance, nonce);
     }
