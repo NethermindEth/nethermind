@@ -32,9 +32,7 @@ public class XdcGenesisBuilder(
         Block genesis = chainSpec.Genesis;
         genesis = genesis.WithReplacedHeader(XdcBlockHeader.FromBlockHeader(genesis.Header));
 
-        Block builtBlock = genesisBuilder is GenesisBuilder gb 
-            ? gb.Build(genesis) 
-            : genesisBuilder.Build();
+        Block builtBlock = genesisBuilder.Build(genesis);
 
         var finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
         snapshotManager.StoreSnapshot(new Types.Snapshot(builtBlock.Number, builtBlock.Hash!, finalSpec.GenesisMasterNodes));
