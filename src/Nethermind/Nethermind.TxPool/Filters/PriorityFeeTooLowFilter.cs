@@ -24,7 +24,7 @@ public class PriorityFeeTooLowFilter(IChainHeadInfoProvider chainHeadInfoProvide
         {
             Metrics.PendingTransactionsTooLowPriorityFee++;
             if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low priority fee with options {handlingOptions} from {new StackTrace()}");
-            return AcceptTxResult.FeeTooLow.WithMessage($"MaxPriorityFeePerGas for blob transaction needs to be at least {_minBlobsPriorityFee} (1 GWei), is {tx.MaxPriorityFeePerGas}.");
+            return AcceptTxResult.FeeTooLow.WithMessage($"MaxPriorityFeePerGas for blob transaction needs to be at least {_minBlobsPriorityFee}, is {tx.MaxPriorityFeePerGas}.");
         }
 
         if (_currentBlobBaseFeeRequired && tx.MaxFeePerBlobGas < chainHeadInfoProvider.CurrentFeePerBlobGas)
