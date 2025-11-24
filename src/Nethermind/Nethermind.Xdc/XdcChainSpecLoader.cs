@@ -1,18 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Xdc;
 
-public class XdcChainSpecLoader(IChainSpecLoader baseLoader) : IChainSpecLoader
+public static class XdcChainSpecLoader
 {
-    public ChainSpec Load(Stream streamData)
+    public static void ProcessChainSpec(ChainSpec chainSpec)
     {
-        ChainSpec chainSpec = baseLoader.Load(streamData);
-        
         if (chainSpec.Genesis is not null)
         {
             Block originalGenesis = chainSpec.Genesis;
@@ -20,7 +17,5 @@ public class XdcChainSpecLoader(IChainSpecLoader baseLoader) : IChainSpecLoader
                 XdcBlockHeader.FromBlockHeader(originalGenesis.Header)
             );
         }
-        
-        return chainSpec;
     }
 }
