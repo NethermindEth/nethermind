@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
 
@@ -26,4 +27,8 @@ public class NoopPersistenceReader: IPersistenceReader
     }
 
     public StateId CurrentState => new StateId(0, Keccak.EmptyTreeHash);
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
+    {
+        return null;
+    }
 }

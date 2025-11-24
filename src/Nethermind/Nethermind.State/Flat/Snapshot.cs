@@ -3,8 +3,10 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.FlatCache;
+using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
 
@@ -19,8 +21,8 @@ public readonly record struct Snapshot(
     StateId From,
     StateId To,
     Dictionary<Address, AccountSnapshotInfo> Accounts,
-    Dictionary<(Address, UInt256), byte[]> Storages
-)
+    Dictionary<(Address, UInt256), byte[]> Storages,
+    Dictionary<(Hash256, TreePath), TrieNode> TrieNodes)
 {
 }
 
