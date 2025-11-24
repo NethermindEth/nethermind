@@ -9,20 +9,14 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Core
 {
     [DebuggerDisplay("Main: {HasBlockOnMainChain}, Blocks: {BlockInfos.Length}")]
-    public class ChainLevelInfo // TODO: move to blockchain namespace
+    public class ChainLevelInfo(bool hasBlockInMainChain, params BlockInfo[] blockInfos)
     {
-        public ChainLevelInfo(bool hasBlockInMainChain, params BlockInfo[] blockInfos)
-        {
-            HasBlockOnMainChain = hasBlockInMainChain;
-            BlockInfos = blockInfos;
-        }
-
         private const int NotFound = -1;
 
         public bool HasNonBeaconBlocks => BlockInfos.Any(static b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) == 0);
         public bool HasBeaconBlocks => BlockInfos.Any(static b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) != 0);
-        public bool HasBlockOnMainChain { get; set; }
-        public BlockInfo[] BlockInfos { get; set; }
+        public bool HasBlockOnMainChain { get; set; } = hasBlockInMainChain;
+        public BlockInfo[] BlockInfos { get; set; } = blockInfos;
         public BlockInfo? MainChainBlock => HasBlockOnMainChain ? BlockInfos[0] : null;
 
         // ToDo we need to rethink this code
