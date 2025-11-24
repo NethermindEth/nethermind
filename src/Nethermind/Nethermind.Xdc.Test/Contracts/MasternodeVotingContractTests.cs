@@ -29,6 +29,7 @@ using System.Collections.Generic;
 using static Nethermind.Consensus.Processing.AutoReadOnlyTxProcessingEnvFactory;
 
 namespace Nethermind.Xdc.Test;
+
 internal class MasternodeVotingContractTests
 {
     [Test]
