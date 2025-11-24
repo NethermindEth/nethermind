@@ -21,18 +21,13 @@ namespace Nethermind.Xdc;
 
 public class XdcGenesisBuilder(
     IGenesisBuilder genesisBuilder,
-    ChainSpec chainSpec,
     ISpecProvider specProvider,
     ISnapshotManager snapshotManager
 ) : IGenesisBuilder
 {
-
     public Block Build()
     {
-        Block genesis = chainSpec.Genesis;
-        genesis = genesis.WithReplacedHeader(XdcBlockHeader.FromBlockHeader(genesis.Header));
-
-        Block builtBlock = genesisBuilder.Build(genesis);
+        Block builtBlock = genesisBuilder.Build();
 
         var finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
         snapshotManager.StoreSnapshot(new Types.Snapshot(builtBlock.Number, builtBlock.Hash!, finalSpec.GenesisMasterNodes));
