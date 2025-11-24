@@ -8,7 +8,6 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
@@ -19,7 +18,7 @@ namespace Nethermind.Xdc
     /// <summary>
     /// Rewards are distributed at epoch boundaries (every 900 blocks) based on:
     /// - Masternode signature count during the epoch
-    /// - 40% infrastructure / 50% staking / 10% foundation split
+    /// - 90% masternode / 10% foundation split
     /// - Proportional distribution among delegators based on stake
     /// </summary>
     public class XdcRewardCalculator(
@@ -27,12 +26,8 @@ namespace Nethermind.Xdc
         ISpecProvider specProvider,
         IBlockTree blockTree) : IRewardCalculator
     {
-        private readonly ILogger logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
 
-        private LruCache<Hash256, Transaction[]> _signingTxsCache = new LruCache<Hash256, Transaction[]>(9000, "XDC Signing Txs Cache");
-        // Reward amount per epoch (5000 XDC in Wei)
-        // 1 XDC = 10^18 Wei, so 5000 XDC = 5000 * 10^18 Wei
-        private static readonly UInt256 EPOCH_REWARD = UInt256.Parse("5000000000000000000000");
+        private LruCache<Hash256, Transaction[]> _signingTxsCache = new(9000, "XDC Signing Txs Cache");
         private const long BlocksPerYear = 15768000;
         private const long MergeSignRange = 15;
 
@@ -63,18 +58,18 @@ namespace Nethermind.Xdc
             var round = xdcHeader.ExtraConsensusData.BlockRound;
             var epochNumber = spec.SwitchEpoch + (int) round / spec.EpochLength;
 
-            var signers = GetSigningTxCount(number, xdcHeader, spec);
+            var (signers, count) = GetSigningTxCount(number, xdcHeader, spec);
 
             //TODO: Check TIPUpdateReward behavior, it appears to be set to infinite for mainnet
             // The following code is only for when IsTIPUpgradeReward(header.Number) is false
             var originalReward = (UInt256)spec.Reward * Unit.Ether;
             var chainReward = RewardInflation(spec, originalReward, number);
-            Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, signers);
+            Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, signers, count);
 
             UInt256 totalFoundationWalletReward = UInt256.Zero;
             foreach (var (signer, reward) in rewardSigners)
             {
-                (BlockReward holderReward, UInt256 foundationWalletReward) = CalculateRewardForHolders();
+                (BlockReward holderReward, UInt256 foundationWalletReward) = DistributeRewards(spec.FoundationWallet, signer, reward);
                 //TODO: stateBlock.AddBalance(holderReward)
                 totalFoundationWalletReward += foundationWalletReward;
                 rewards.Add(holderReward);
@@ -83,43 +78,15 @@ namespace Nethermind.Xdc
             return rewards.ToArray();
         }
 
-        /// <summary>
-        /// Calculates a proportional reward based on the number of signatures.
-        /// Uses UInt256 arithmetic to maintain precision with large Wei values.
-        ///
-        /// Formula: (signatureCount / totalSignatures) * totalReward
-        /// </summary>
-        private UInt256 CalculateProportionalReward(
-            long signatureCount,
-            long totalSignatures,
-            UInt256 totalReward)
+        public (Dictionary<Address, long> Signers, long Count) GetSigningTxCount(long number, XdcBlockHeader header, IXdcReleaseSpec spec)
         {
-            if (signatureCount <= 0 || totalSignatures <= 0)
-            {
-                return UInt256.Zero;
-            }
-
-            // Convert to UInt256 for precision
-            UInt256 signatures = (UInt256)signatureCount;
-            UInt256 total = (UInt256)totalSignatures;
-
-            // Calculate: (signatures * totalReward) / total
-            // Order of operations matters to maintain precision
-            UInt256 numerator = signatures * totalReward;
-            UInt256 reward = numerator / total;
-
-            return reward;
-        }
-
-        public Dictionary<Address, long> GetSigningTxCount(long number, XdcBlockHeader header, IXdcReleaseSpec spec)
-        {
-            long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = number, startBlockNumber = 0;
+            long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = number, startBlockNumber = 0, signingCount = 0;
             var signers = new Dictionary<Address, long>();
             var blockNumberToHash = new Dictionary<long, Hash256>();
             var hashToSigningAddress = new Dictionary<Hash256, List<Address>>();
             var masternodes = new HashSet<Address>();
 
-            if (number == 0) return signers;
+            if (number == 0) return (signers, signingCount);
             var h = header;
             for (long i = number - 1; i >= 0; i--)
             {
@@ -168,9 +135,10 @@ namespace Nethermind.Xdc
                     if (!masternodes.Contains(addr)) continue;
                     if (!signers.ContainsKey(addr)) signers[addr] = 0;
                     signers[addr] += 1;
+                    signingCount++;
                 }
             }
-            return signers;
+            return (signers, signingCount);
         }
 
         public UInt256 RewardInflation(IXdcReleaseSpec spec, UInt256 chainReward, long number)
@@ -226,6 +194,67 @@ namespace Nethermind.Xdc
             // 36..67: bytes32 blockHash
             var hashBytes = span.Slice(36, 32);
             return new Hash256(hashBytes);
+        }
+
+        private Dictionary<Address, UInt256> CalculateRewardForSigners(UInt256 totalReward,
+            Dictionary<Address, long> signers, long totalSigningCount)
+        {
+            var rewardSigners = new Dictionary<Address, UInt256>();
+            foreach (var (signer, count) in signers)
+            {
+                UInt256 reward = CalculateProportionalReward(count, totalSigningCount, totalReward);
+                rewardSigners.Add(signer, reward);
+            }
+            return rewardSigners;
+        }
+
+        /// <summary>
+        /// Calculates a proportional reward based on the number of signatures.
+        /// Uses UInt256 arithmetic to maintain precision with large Wei values.
+        ///
+        /// Formula: (signatureCount / totalSignatures) * totalReward
+        /// </summary>
+        private UInt256 CalculateProportionalReward(
+            long signatureCount,
+            long totalSignatures,
+            UInt256 totalReward)
+        {
+            if (signatureCount <= 0 || totalSignatures <= 0)
+            {
+                return UInt256.Zero;
+            }
+
+            // Convert to UInt256 for precision
+            UInt256 signatures = (UInt256)signatureCount;
+            UInt256 total = (UInt256)totalSignatures;
+
+            // Calculate: (signatures * totalReward) / total
+            // Order of operations matters to maintain precision
+            UInt256 numerator = signatures * totalReward;
+            UInt256 reward = numerator / total;
+
+            return reward;
+        }
+
+        private (BlockReward HolderReward, UInt256 FoundationWalletReward) DistributeRewards(
+            Address foundationWalletAddress, Address masternodeAddress, UInt256 reward)
+        {
+            Address owner = GetCandidatesOwnerBySigner(masternodeAddress);
+
+            // 90% of the reward goes to the masternode
+            UInt256 masterReward = reward * 90 / 100;
+
+            // 10% of the reward goes to the foundation wallet
+            UInt256 foundationReward = reward / 10;
+
+            //TODO: Is it possible owner address is the same as foundation wallet address?
+            return (new BlockReward(owner, masterReward),  foundationReward);
+        }
+
+        private Address GetCandidatesOwnerBySigner(Address signerAddress)
+        {
+            // Use state to get candidate
+            return signerAddress;
         }
     }
 }
