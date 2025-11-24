@@ -7,5 +7,5 @@ namespace Nethermind.Blockchain;
 
 public interface IGenesisBuilder
 {
-    Block Build(Block genesis);
+    Block Build();
 }
