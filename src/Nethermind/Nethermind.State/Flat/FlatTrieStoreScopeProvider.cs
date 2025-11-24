@@ -48,6 +48,7 @@ public class FlatTrieStoreScopeProvider : IWorldStateScopeProvider
             currentState,
             snapshotBundle,
             _codeDb,
+            _flatDiffRepository,
             _logManager,
             _isReadOnly
         );

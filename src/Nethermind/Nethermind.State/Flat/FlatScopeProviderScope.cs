@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -17,9 +21,10 @@ namespace Nethermind.State.Flat;
 
 public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
 {
-    private readonly StateId _currentStateId;
+    private StateId _currentStateId;
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IWorldStateScopeProvider.ICodeDb _codeDb;
+    private readonly IFlatDiffRepository _flatDiffRepository;
     internal readonly SnapshotBundleStateTrieStore _stateTrieStore;
     private readonly Dictionary<Hash256, StorageSnapshotBundleStateTrieStore> _storages = new();
     private readonly StateTree _stateTree;
@@ -30,12 +35,14 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
         StateId currentStateId,
         SnapshotBundle snapshotBundle,
         IWorldStateScopeProvider.ICodeDb codeDb,
+        IFlatDiffRepository flatDiffRepository,
         ILogManager logManager,
         bool isReadOnly = false)
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
         _codeDb = codeDb;
+        _flatDiffRepository = flatDiffRepository;
         _stateTrieStore = new SnapshotBundleStateTrieStore(snapshotBundle);
         _stateTree = new StateTree(
             _stateTrieStore,
@@ -51,7 +58,7 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
         _snapshotBundle.Dispose();
     }
 
-    public Hash256 RootHash => _currentStateId.stateRoot.ToHash256();
+    public Hash256 RootHash => _stateTree.RootHash;
     public void UpdateRootHash()
     {
         _stateTree.UpdateRootHash();
@@ -94,14 +101,146 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
-        throw new NotImplementedException();
+        return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
     public void Commit(long blockNumber)
     {
-        if (_isReadOnly) return;
-        throw new NotImplementedException();
+        Snapshot newSnapshot = _snapshotBundle.CollectAndApplyKnownState();
+        StateId newStateId = new StateId(blockNumber, RootHash);
+        if (!_isReadOnly)
+        {
+            _flatDiffRepository.AddSnapshot(_currentStateId, newStateId, newSnapshot);
+        }
+        _currentStateId = newStateId;
     }
+
+    internal class WriteBatch(
+        FlatScopeProviderScope scope,
+        int estimatedAccountCount,
+        ILogger logger
+    ) : IWorldStateScopeProvider.IWorldStateWriteBatch
+    {
+        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
+        private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
+
+        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
+
+        public void Set(Address key, Account? account)
+        {
+            _dirtyAccounts[key] = account;
+        }
+
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries)
+        {
+            return new StorageTreeBulkWriteBatch(estimatedEntries, scope.CreateStorageTreeImpl(address)._tree, this, address);
+        }
+
+        public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
+        {
+            _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
+        }
+
+        public void Dispose()
+        {
+            while (_dirtyStorageTree.TryDequeue(out var entry))
+            {
+                (AddressAsKey key, Hash256 storageRoot) = entry;
+                if (!_dirtyAccounts.TryGetValue(key, out var account)) account = scope.Get(key);
+                if (account == null && storageRoot == Keccak.EmptyTreeHash) continue;
+                account ??= ThrowNullAccount(key);
+                account = account!.WithChangedStorageRoot(storageRoot);
+                _dirtyAccounts[key] = account;
+                OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
+                if (logger.IsTrace) Trace(key, storageRoot, account);
+            }
+
+            using (var stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count))
+            {
+                foreach (var kv in _dirtyAccounts)
+                {
+                    stateSetter.Set(kv.Key, kv.Value);
+                }
+            }
+
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace(Address address, Hash256 storageRoot, Account? account)
+                => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static Account ThrowNullAccount(Address address)
+                => throw new InvalidOperationException($"Account {address} is null when updating storage hash");
+        }
+    }
+
+    private class StorageTreeBulkWriteBatch(int estimatedEntries, StorageTree storageTree, WriteBatch worldStateWriteBatch, AddressAsKey address) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        // Slight optimization on small contract as the index hash can be precalculated in some case.
+        private const int MIN_ENTRIES_TO_BATCH = 16;
+
+        private bool _hasSelfDestruct;
+        private bool _wasSetCalled = false;
+
+        private ArrayPoolList<PatriciaTree.BulkSetEntry>? _bulkWrite =
+            estimatedEntries > MIN_ENTRIES_TO_BATCH
+                ? new(estimatedEntries)
+                : null;
+
+        private ValueHash256 _keyBuff = new ValueHash256();
+
+        public void Set(in UInt256 index, byte[] value)
+        {
+            _wasSetCalled = true;
+            if (_bulkWrite is null)
+            {
+                storageTree.Set(index, value);
+            }
+            else
+            {
+                StorageTree.ComputeKeyWithLookup(index, _keyBuff.BytesAsSpan);
+                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, value));
+            }
+        }
+
+        public void Clear()
+        {
+            if (_bulkWrite is null)
+            {
+                storageTree.RootHash = Keccak.EmptyTreeHash;
+            }
+            else
+            {
+                if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
+                _hasSelfDestruct = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            bool hasSet = (_wasSetCalled || _hasSelfDestruct);
+            if (_bulkWrite is not null)
+            {
+                if (_hasSelfDestruct)
+                {
+                    storageTree.RootHash = Keccak.EmptyTreeHash;
+                }
+
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef =
+                    new ArrayPoolListRef<PatriciaTree.BulkSetEntry>(_bulkWrite.AsSpan());
+                storageTree.BulkSet(asRef);
+
+                _bulkWrite?.Dispose();
+            }
+
+            if (hasSet)
+            {
+                storageTree.UpdateRootHash(_bulkWrite?.Count > 64);
+                worldStateWriteBatch.MarkDirty(address, storageTree.RootHash);
+            }
+        }
+    }
+
 }
 
 public class SnapshotBundleStateTrieStore(
@@ -179,7 +318,7 @@ public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldState
 {
     private readonly FlatScopeProviderScope _scope;
     private readonly StorageSnapshotBundle _storageSnapshotBundle;
-    private readonly StorageTree _tree;
+    internal readonly StorageTree _tree;
 
     public StorageSnapshotBundleStateTrieStore(
         FlatScopeProviderScope scope,
@@ -274,5 +413,3 @@ public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldState
         }
     }
 }
-
-
