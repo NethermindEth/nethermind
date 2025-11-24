@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FastEnumUtility;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
@@ -143,6 +144,62 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
         {
             _writeBatch._writeBatch.Merge(key, value, _column._columnFamily, flags);
+        }
+    }
+
+    public IColumnDbSnapshot<T> StartSnapshot()
+    {
+        Snapshot snapshot = _db.CreateSnapshot();
+        return new ColumnDbSnapshot(this, snapshot);
+    }
+
+    private class ColumnDbSnapshot(
+        ColumnsDb<T> columnsDb,
+        Snapshot snapshot
+    ) : IColumnDbSnapshot<T>
+    {
+        public IReadOnlyKeyValueStore GetColumn(T key)
+        {
+            ReadOptions options = new ReadOptions();
+            options.SetSnapshot(snapshot);
+            return new ColumnSnapshotReader(columnsDb, columnsDb._columnDbs[key]._columnFamily, options);
+        }
+
+        private class ColumnSnapshotReader(
+            DbOnTheRocks mainDb,
+            ColumnFamilyHandle columnFamily,
+            ReadOptions options): IReadOnlyKeyValueStore
+        {
+            public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+            {
+                ReadOnlySpan<byte> value = default;
+                try
+                {
+                    value = GetSpan(key, flags);
+
+                    if (value.IsNull()) return null;
+                    return value.ToArray();
+                }
+                finally
+                {
+                    DangerousReleaseMemory(value);
+                }
+            }
+
+            public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+            {
+                return mainDb.GetSpanWithColumnFamily(key, columnFamily, options);
+            }
+
+            public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
+            {
+                mainDb.DangerousReleaseMemory(span);
+            }
+        }
+
+        public void Dispose()
+        {
+            snapshot.Dispose();
         }
     }
 }
