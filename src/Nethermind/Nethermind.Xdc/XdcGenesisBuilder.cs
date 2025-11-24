@@ -20,6 +20,7 @@ using System.Linq;
 namespace Nethermind.Xdc;
 
 public class XdcGenesisBuilder(
+    IGenesisBuilder genesisBuilder,
     ChainSpec chainSpec,
     ISpecProvider specProvider,
     IWorldState stateProvider,
@@ -28,19 +29,13 @@ public class XdcGenesisBuilder(
     params IGenesisPostProcessor[] postProcessors
 ) : IGenesisBuilder
 {
-    private readonly GenesisBuilder _genesisBuilder = new(
-        chainSpec,
-        specProvider,
-        stateProvider,
-        transactionProcessor,
-        postProcessors);
 
     public Block Build()
     {
         Block genesis = chainSpec.Genesis;
         genesis = genesis.WithReplacedHeader(XdcBlockHeader.FromBlockHeader(genesis.Header));
 
-        Block builtBlock = _genesisBuilder.Build(genesis);
+        Block builtBlock = genesisBuilder.Build(genesis);
 
         var finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
         snapshotManager.StoreSnapshot(new Types.Snapshot(builtBlock.Number, builtBlock.Hash!, finalSpec.GenesisMasterNodes));
