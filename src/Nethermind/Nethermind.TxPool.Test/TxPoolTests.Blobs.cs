@@ -242,11 +242,22 @@ namespace Nethermind.TxPool.Test
             blobTxFromDb.Should().BeNull();
         }
 
-        [TestCase(999_999_999, false)]
-        [TestCase(1_000_000_000, true)]
-        public void should_not_allow_to_add_blob_tx_with_MaxPriorityFeePerGas_lower_than_1GWei(int maxPriorityFeePerGas, bool expectedResult)
+        [TestCase(1, null, true)]
+        [TestCase(999_999_999, null, true)]
+        [TestCase(1_000_000_000, null, true)]
+        [TestCase(1_000_000_001, null, true)]
+        [TestCase(1, 0ul, true)]
+        [TestCase(1_000_000_000, 0ul, true)]
+        [TestCase(1, 10ul, false)]
+        public void should_allow_to_add_blob_tx_with_MaxPriorityFeePerGas_lower_than_1GWei(int maxPriorityFeePerGas, ulong? configuredMinPriorityFee, bool expectedResult)
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, Size = 10 };
+
+            if (configuredMinPriorityFee is not null)
+            {
+                txPoolConfig.MinBlobTxPriorityFee = configuredMinPriorityFee.Value;
+            }
+
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 

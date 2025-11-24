@@ -4,6 +4,7 @@
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
+
 public interface ISyncInfoManager
 {
     void ProcessSyncInfo(SyncInfo syncInfo);

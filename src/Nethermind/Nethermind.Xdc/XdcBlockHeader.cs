@@ -12,6 +12,7 @@ using System;
 using System.Collections.Immutable;
 
 namespace Nethermind.Xdc;
+
 public class XdcBlockHeader : BlockHeader, IHashResolver
 {
     private static readonly XdcHeaderDecoder _headerDecoder = new();
