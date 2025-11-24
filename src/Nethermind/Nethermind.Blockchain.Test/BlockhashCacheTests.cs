@@ -296,6 +296,25 @@ public class BlockhashCacheTests
     }
 
     [Test]
+    public async Task Prefetch_reuses_parent_data()
+    {
+        (BlockTree tree, BlockhashCache cache) = BuildTest(300);
+        BlockHeader head = tree.FindHeader(299, BlockTreeLookupOptions.None)!;
+        BlockHeader prev = tree.FindHeader(298, BlockTreeLookupOptions.None)!;
+
+        Hash256[]? prevHashes = await cache.Prefetch(prev, CancellationToken.None);
+        Hash256[]? headHashes = await cache.Prefetch(head, CancellationToken.None);
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(257, 1, 2));
+        Assert.Multiple(() =>
+            {
+                Assert.That(prevHashes.AsSpan(0, BlockhashCache.MaxDepth)
+                    .SequenceEqual(headHashes.AsSpan(1, BlockhashCache.MaxDepth)));
+                Assert.That(headHashes![0], Is.EqualTo(head.Hash));
+            }
+        );
+    }
+
+    [Test]
     public async Task Doesnt_cache_cancelled_searches()
     {
         SlowHeaderStore headerStore = new(new HeaderStore(new MemDb(), new MemDb()));
