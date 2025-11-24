@@ -76,7 +76,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
         return candidates;
     }
 
-    private UInt256 CalculateArrayKey(UInt256 slot, ulong index, ulong size)
+    private static UInt256 CalculateArrayKey(UInt256 slot, ulong index, ulong size)
     {
         return slot + new UInt256(index * size);
     }
