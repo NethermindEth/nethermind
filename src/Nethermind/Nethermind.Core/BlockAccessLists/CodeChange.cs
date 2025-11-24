@@ -4,12 +4,15 @@
 
 using System;
 using System.Linq;
+using System.Text.Json.Serialization;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
 public readonly struct CodeChange(ushort blockAccessIndex, byte[] newCode) : IEquatable<CodeChange>, IIndexedChange
 {
     public ushort BlockAccessIndex { get; init; } = blockAccessIndex;
+    [JsonConverter(typeof(ByteArrayConverter))]
     public byte[] NewCode { get; init; } = newCode;
 
     public readonly bool Equals(CodeChange other) =>

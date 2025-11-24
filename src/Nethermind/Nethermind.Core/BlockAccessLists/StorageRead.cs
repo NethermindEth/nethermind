@@ -3,12 +3,15 @@
 
 using System;
 using System.Linq;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
 public readonly struct StorageRead(byte[] key) : IEquatable<StorageRead>, IComparable<StorageRead>
 {
+    [JsonConverter(typeof(ByteArrayConverter))]
     public byte[] Key { get; init; } = key;
 
     public int CompareTo(StorageRead other)
