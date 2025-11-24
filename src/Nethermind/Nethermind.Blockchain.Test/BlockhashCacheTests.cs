@@ -19,6 +19,8 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockhashCacheTests
 {
+    private const int FlatCacheItemLength = BlockhashCache.MaxDepth + 1;
+
     [Test]
     public void GetHash_with_depth_zero_returns_block_hash()
     {
@@ -83,7 +85,7 @@ public class BlockhashCacheTests
 
         BlockHeader? expected = tree.FindHeader(43, BlockTreeLookupOptions.None);
         result.Should().Be(expected!.Hash!);
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(257, 1, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(FlatCacheItemLength, 1, 1));
     }
 
     [Test]
@@ -97,7 +99,7 @@ public class BlockhashCacheTests
 
         result300.Should().BeNull();
         result256.Should().NotBeNull();
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(257, 1, 1));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(FlatCacheItemLength, 1, 1));
     }
 
     [Test]
@@ -290,26 +292,28 @@ public class BlockhashCacheTests
         await cache.Prefetch(head1.Header);
         await cache.Prefetch(head2.Header);
         await cache.Prefetch(head3.Header);
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(257 + 257 + 257, 3, 3));
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(FlatCacheItemLength + FlatCacheItemLength + FlatCacheItemLength, 3, 3));
         cache.PruneBefore(800);
         cache.GetStats().Should().Be(new BlockhashCache.Stats(200, 1, 1));
     }
 
-    [Test]
-    public async Task Prefetch_reuses_parent_data()
+    [TestCase(300)]
+    [TestCase(50)]
+    public async Task Prefetch_reuses_parent_data(int chainDepth)
     {
-        (BlockTree tree, BlockhashCache cache) = BuildTest(300);
-        BlockHeader head = tree.FindHeader(299, BlockTreeLookupOptions.None)!;
-        BlockHeader prev = tree.FindHeader(298, BlockTreeLookupOptions.None)!;
+        (BlockTree tree, BlockhashCache cache) = BuildTest(chainDepth);
+        BlockHeader head = tree.FindHeader(chainDepth - 1, BlockTreeLookupOptions.None)!;
+        BlockHeader prev = tree.FindHeader(chainDepth - 2, BlockTreeLookupOptions.None)!;
 
-        Hash256[]? prevHashes = await cache.Prefetch(prev, CancellationToken.None);
-        Hash256[]? headHashes = await cache.Prefetch(head, CancellationToken.None);
-        cache.GetStats().Should().Be(new BlockhashCache.Stats(257, 1, 2));
+        Hash256[] prevHashes = (await cache.Prefetch(prev, CancellationToken.None))!;
+        Hash256[] headHashes = (await cache.Prefetch(head, CancellationToken.None))!;
+        cache.GetStats().Should().Be(new BlockhashCache.Stats(Math.Min(chainDepth - 1 , FlatCacheItemLength), 1, 2));
         Assert.Multiple(() =>
             {
-                Assert.That(prevHashes.AsSpan(0, BlockhashCache.MaxDepth)
-                    .SequenceEqual(headHashes.AsSpan(1, BlockhashCache.MaxDepth)));
-                Assert.That(headHashes![0], Is.EqualTo(head.Hash));
+                int compareLength = headHashes.Length - 1;
+                Assert.That(prevHashes.AsSpan(0, compareLength)
+                    .SequenceEqual(headHashes.AsSpan(1, compareLength)));
+                Assert.That(headHashes[0], Is.EqualTo(head.Hash));
             }
         );
     }
@@ -320,7 +324,7 @@ public class BlockhashCacheTests
         SlowHeaderStore headerStore = new(new HeaderStore(new MemDb(), new MemDb()));
         (BlockTree tree, BlockhashCache cache) = BuildTest(260, headerStore);
 
-        BlockHeader head = tree.FindHeader(257, BlockTreeLookupOptions.None)!;
+        BlockHeader head = tree.FindHeader(FlatCacheItemLength, BlockTreeLookupOptions.None)!;
         CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(20));
         await cache.Prefetch(head, cts.Token);
         cache.GetStats().Should().Be(new BlockhashCache.Stats(0, 0, 0));
