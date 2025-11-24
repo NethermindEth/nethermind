@@ -23,10 +23,7 @@ public class XdcGenesisBuilder(
     IGenesisBuilder genesisBuilder,
     ChainSpec chainSpec,
     ISpecProvider specProvider,
-    IWorldState stateProvider,
-    ITransactionProcessor transactionProcessor,
-    ISnapshotManager snapshotManager,
-    params IGenesisPostProcessor[] postProcessors
+    ISnapshotManager snapshotManager
 ) : IGenesisBuilder
 {
 
@@ -35,7 +32,9 @@ public class XdcGenesisBuilder(
         Block genesis = chainSpec.Genesis;
         genesis = genesis.WithReplacedHeader(XdcBlockHeader.FromBlockHeader(genesis.Header));
 
-        Block builtBlock = genesisBuilder.Build(genesis);
+        Block builtBlock = genesisBuilder is GenesisBuilder gb 
+            ? gb.Build(genesis) 
+            : genesisBuilder.Build();
 
         var finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
         snapshotManager.StoreSnapshot(new Types.Snapshot(builtBlock.Number, builtBlock.Hash!, finalSpec.GenesisMasterNodes));
