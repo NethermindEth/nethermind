@@ -300,9 +300,10 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
-            _txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(isRequirementEnabled && !isMaxFeePerBlobGasHighEnough
-                ? AcceptTxResult.FeeTooLow
-                : AcceptTxResult.Accepted);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None),
+                Is.EqualTo(isRequirementEnabled && !isMaxFeePerBlobGasHighEnough
+                    ? AcceptTxResult.FeeTooLow
+                    : AcceptTxResult.Accepted));
         }
 
         [Test]
