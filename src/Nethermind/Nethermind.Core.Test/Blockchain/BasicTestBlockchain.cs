@@ -4,9 +4,9 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
-using Nethermind.Specs;
 using Nethermind.State;
 
 namespace Nethermind.Core.Test.Blockchain;
