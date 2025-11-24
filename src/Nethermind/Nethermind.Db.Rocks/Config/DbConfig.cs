@@ -41,7 +41,11 @@ public class DbConfig : IDbConfig
         "max_compaction_bytes=4000000000;" +
 
         "compression=kSnappyCompression;" +
-        "optimize_filters_for_hits=true;" +
+
+        // Note, if this is set, then other Db cannot override it. It save a little bit of space by not creating
+        // bloom filter for the last level.
+        // "optimize_filters_for_hits=true;"
+
         "advise_random_on_open=true;" +
 
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
@@ -233,6 +237,8 @@ public class DbConfig : IDbConfig
         // Default is 1 MB.
         "max_write_batch_group_size_bytes=4000000;" +
 
+        "optimize_filters_for_hits=true;" +
+
         "";
 
     public string StateDbLargeMemoryRocksDbOptions { get; set; } =
@@ -288,11 +294,6 @@ public class DbConfig : IDbConfig
         "max_bytes_for_level_multiplier=30;" +
         "max_bytes_for_level_base=350000000;" +
 
-        // Multiply the target size of SST file by this much every level down, reduce number of file.
-        // Does not have much downside on hash based DB, but might disable some move optimization on db with
-        // blocknumber key, or halfpath/flatdb layout.
-        "target_file_size_multiplier=2;" +
-
         // This is basically useless on write only database. However, for halfpath with live pruning, flatdb, or
         // (maybe?) full sync where keys are deleted, replaced, or re-inserted, two memtable can merge together
         // resulting in a reduced total memtable size to be written. This does seems to reduce sync throughput though.
@@ -310,30 +311,32 @@ public class DbConfig : IDbConfig
         // This reduce CPU and therefore latency under high block cache hit scenario.
         // It seems to increase disk space use by about 1 GB.
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
-        "block_based_table_factory.data_block_hash_table_util_ratio=0.5;" +
+        "block_based_table_factory.data_block_hash_table_util_ratio=0.7;" +
 
         "block_based_table_factory.block_size=32000;" +
 
         "block_based_table_factory.filter_policy=bloomfilter:15;" +
-
-        // Note: This causes write batch to not be atomic. A concurrent read may read item on start of batch, but not end of batch.
-        // With state, this is fine as writes are done in parallel batch and therefore, not atomic, and the read goes
-        // through triestore first anyway.
-        "unordered_write=true;" +
 
         // Default is 1 MB.
         "max_write_batch_group_size_bytes=4000000;" +
 
         "";
     public string? FlatDbAdditionalRocksDbOptions { get; set; }
-
-
     public string? FlatMetadataDbRocksDbOptions { get; set; }
     public string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
-    public string? FlatStateDbRocksDbOptions { get; set; }
+
+    public string? FlatStateDbRocksDbOptions { get; set; } =
+        "optimize_filters_for_hits=false;" +
+        "prefix_extractor=capped:32;" +
+        "";
+
     public string? FlatStateDbAdditionalRocksDbOptions { get; set; }
-    public string? FlatStorageDbRocksDbOptions { get; set; }
+    public string? FlatStorageDbRocksDbOptions { get; set; } =
+        "optimize_filters_for_hits=false;" +
+        "prefix_extractor=capped:32;" +
+        "";
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
+
     public string? FlatStateNodesDbRocksDbOptions { get; set; }
     public string? FlatStateNodesDbAdditionalRocksDbOptions { get; set; }
     public string? FlatStorageNodesDbRocksDbOptions { get; set; }
