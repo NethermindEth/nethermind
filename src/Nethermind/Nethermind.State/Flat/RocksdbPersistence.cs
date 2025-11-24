@@ -18,7 +18,7 @@ public class RocksdbPersistence : IPersistence
     private const int StateNodesKeyLength = 32 + 1;
     private const int StorageNodesKeyLength = 32 + 32 + 1;
 
-    public StateId CurrentState { get; }
+    public StateId CurrentState { get; set; }
 
     public RocksdbPersistence(IColumnsDb<FlatDbColumns> db)
     {
@@ -37,6 +37,15 @@ public class RocksdbPersistence : IPersistence
         long blockNumber = BinaryPrimitives.ReadInt64BigEndian(bytes);
         Hash256 stateHash = new Hash256(bytes[8..]);
         return new StateId(blockNumber, stateHash);
+    }
+
+    internal static void SetCurrentState(IWriteOnlyKeyValueStore kv, StateId stateId)
+    {
+        Span<byte> bytes = stackalloc byte[8 + 32];
+        BinaryPrimitives.WriteInt64BigEndian(bytes[..8], stateId.blockNumber);
+        stateId.stateRoot.BytesAsSpan.CopyTo(bytes[8..]);
+
+        kv.PutSpan(CurrentStateKey, bytes);
     }
 
     internal static ReadOnlySpan<byte> EncodeStateNodeKey(Span<byte> buffer, in TreePath path)
@@ -61,7 +70,44 @@ public class RocksdbPersistence : IPersistence
 
     public void Add(Snapshot snapshot)
     {
-        throw new System.NotImplementedException();
+        // TODO: Lock
+
+        if (CurrentState != snapshot.From)
+        {
+            throw new InvalidOperationException(
+                $"Attempted to apply snapshot on top of wrong state. Snapshot from: {snapshot.From}, Db state: {CurrentState}");
+        }
+
+        using (var batch = _db.StartWriteBatch())
+        {
+            IWriteOnlyKeyValueStore stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
+            IWriteOnlyKeyValueStore storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNode);
+
+            Span<byte> keyBuffer = stackalloc byte[StorageNodesKeyLength];
+
+            foreach (var tn in snapshot.TrieNodes)
+            {
+                (Hash256? address, TreePath path) = tn.Key;
+
+                // Note: Even if the node already marked as persisted, we still re-persist it
+                if (address is null)
+                {
+                    stateNodes.PutSpan(EncodeStateNodeKey(keyBuffer, path), tn.Value.FullRlp.Span);
+                    tn.Value.IsPersisted = true;
+                }
+                else
+                {
+                    storageNodes.PutSpan(EncodeStorageNodeKey(keyBuffer, address, path), tn.Value.FullRlp.Span);
+                    tn.Value.IsPersisted = true;
+                }
+
+                tn.Value.PrunePersistedRecursively(1);
+            }
+
+            SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), snapshot.To);
+        }
+
+        CurrentState = snapshot.To;
     }
 
     private class PersistenceReader : IPersistenceReader
