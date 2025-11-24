@@ -129,7 +129,10 @@ public class FlatDiffRepository : IFlatDiffRepository
             long startingBlockNumber = ((blockNumber - 1) / _compactSize) * _compactSize;
 
             using SnapshotBundle gatheredCache = GatherCache(stateId, startingBlockNumber);
-            if (gatheredCache.SnapshotCount == 1) return;
+            if (gatheredCache.SnapshotCount == 1)
+            {
+                return;
+            }
 
             if (_logger.IsDebug) _logger.Debug($"Compacting {stateId}");
             Snapshot snapshot = gatheredCache.CompactToKnownState();
@@ -165,7 +168,6 @@ public class FlatDiffRepository : IFlatDiffRepository
         string exitReason = "";
         StateId current = baseBlock;
         while(_compactedKnownStates.TryGetValue(current, out var entry) || _inMemorySnapshotStore.TryGetValue(current, out entry))
-            // while(_inMemorySnapshotStore.TryGetValue(current, out var entry))
         {
             Snapshot state = entry;
             if (_logger.IsTrace) _logger.Trace($"Got {state.From} -> {state.To}");
@@ -251,6 +253,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         {
             Snapshot pickedState;
             StateId? pickedSnapshot = null;
+            List<StateId> toRemoveStates = new List<StateId>();
             using (_repoLock.EnterScope())
             {
                 long lastSnapshotNumber = _inMemorySnapshotStore.GetLast()?.blockNumber ?? 0;
@@ -261,21 +264,72 @@ public class FlatDiffRepository : IFlatDiffRepository
                 }
 
                 List<StateId> candidateToAdd = new List<StateId>();
+
                 long? blockNumber = null;
-                foreach (var stateId in _inMemorySnapshotStore.GetStatesAfterBlock(currentState.blockNumber))
+                bool persistCompactedStates = false;
+                //  Note: Need to verify that this is finalized
+                foreach (var stateId in _inMemorySnapshotStore.GetStatesAfterBlock(currentState.blockNumber + _compactSize - 1))
                 {
-                    if (blockNumber is null)
+                    if (stateId.blockNumber > currentState.blockNumber + _compactSize)
                     {
-                        blockNumber = stateId.blockNumber;
-                        candidateToAdd.Add(stateId);
+                        break;
                     }
-                    else if (blockNumber == stateId.blockNumber)
+                    if (_compactedKnownStates.TryGetValue(stateId, out var existingState))
                     {
-                        candidateToAdd.Add(stateId);
+                        if (blockNumber is null)
+                        {
+                            if (existingState.From != currentState)
+                            {
+                                if (_logger.IsDebug) _logger.Debug($"Not using compacted state. Mismatch. {existingState.From}, query {stateId} vs {currentState}");
+                                break;
+                            }
+
+                            if (_logger.IsDebug) _logger.Debug($"Setting compacted state");
+                            persistCompactedStates = true;
+                            blockNumber = stateId.blockNumber;
+                            candidateToAdd.Add(stateId);
+                        }
+                        else if (blockNumber == stateId.blockNumber)
+                        {
+                            candidateToAdd.Add(stateId);
+                        }
+                        else
+                        {
+                            break;
+                        }
                     }
                     else
                     {
+                        if (_logger.IsDebug) _logger.Debug($"Cancelling setting compacted state, {stateId}");
+                        persistCompactedStates = false;
+                        candidateToAdd.Clear();
+                        blockNumber = null;
                         break;
+                    }
+                }
+
+                if (persistCompactedStates)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Using compacted state. {blockNumber}, vs {currentState}");
+                }
+
+                if (blockNumber is null)
+                {
+                    foreach (var stateId in _inMemorySnapshotStore.GetStatesAfterBlock(currentState.blockNumber))
+                    {
+                        if (blockNumber is null)
+                        {
+                            blockNumber = stateId.blockNumber;
+                            candidateToAdd.Add(stateId);
+                        }
+                        else if (blockNumber == stateId.blockNumber)
+                        {
+                            candidateToAdd.Add(stateId);
+                        }
+                        else
+                        {
+                            break;
+                        }
                     }
                 }
 
@@ -305,6 +359,7 @@ public class FlatDiffRepository : IFlatDiffRepository
 
                 if (!pickedSnapshot.HasValue)
                 {
+                    // Ah, probably filter the compacted state here instead
                     _logger.Warn($"Unable to determine canonicaal snapshot");
                     return;
                 }
@@ -322,7 +377,20 @@ public class FlatDiffRepository : IFlatDiffRepository
                     }
                 }
 
-                _inMemorySnapshotStore.TryGetValue(pickedSnapshot.Value, out pickedState);
+                if (persistCompactedStates)
+                {
+                    _compactedKnownStates.TryGetValue(pickedSnapshot.Value, out pickedState);
+                    if (_logger.IsDebug) _logger.Debug($"Picking compacted state {pickedState.From} to {pickedState.To}");
+
+                    foreach (var stateId in _inMemorySnapshotStore.GetStatesAfterBlock(currentState.blockNumber))
+                    {
+                        if (stateId.blockNumber < pickedSnapshot.Value.blockNumber) toRemoveStates.Add(stateId);
+                    }
+                }
+                else
+                {
+                    _inMemorySnapshotStore.TryGetValue(pickedSnapshot.Value, out pickedState);
+                }
             }
 
             // Add the canon snapshot
@@ -333,6 +401,12 @@ public class FlatDiffRepository : IFlatDiffRepository
             {
                 _compactedKnownStates.Remove(pickedSnapshot.Value);
                 _inMemorySnapshotStore.Remove(pickedSnapshot.Value);
+
+                foreach (var stateId in toRemoveStates)
+                {
+                    _compactedKnownStates.Remove(stateId);
+                    _inMemorySnapshotStore.Remove(stateId);
+                }
             }
 
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(pickedSnapshot.Value.blockNumber));

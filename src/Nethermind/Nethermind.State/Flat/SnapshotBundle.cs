@@ -209,7 +209,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
         if (knownStates.Count == 1) return knownStates[0];
 
         StateId to = knownStates[^1].To;
-        StateId from = knownStates[1].From;
+        StateId from = knownStates[0].From;
 
         for (int i = 0; i < knownStates.Count; i++)
         {

@@ -27,6 +27,7 @@ public class FlatWorldStateModule: Module
             .AddSingleton<IPersistence, RocksdbPersistence>()
             .AddSingleton<FlatDiffRepository.Configuration>(new FlatDiffRepository.Configuration()
             {
+                Boundary = 128 * 8,
             })
             .AddSingleton<IStateReader, FlatStateReader>();
     }
