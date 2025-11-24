@@ -25,6 +25,9 @@ public class FlatWorldStateModule: Module
             .AddSingleton<IFlatDiffRepository, FlatDiffRepository>()
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
             .AddSingleton<IPersistence, RocksdbPersistence>()
+            .AddSingleton<FlatDiffRepository.Configuration>(new FlatDiffRepository.Configuration()
+            {
+            })
             .AddSingleton<IStateReader, FlatStateReader>();
     }
 }

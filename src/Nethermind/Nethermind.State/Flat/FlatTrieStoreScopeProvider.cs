@@ -1,18 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
-using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 
@@ -22,14 +15,17 @@ public class FlatTrieStoreScopeProvider : IWorldStateScopeProvider
     private readonly ILogManager _logManager;
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb;
     private readonly bool _isReadOnly;
+    private readonly FlatDiffRepository.Configuration _configuration;
 
     public FlatTrieStoreScopeProvider(
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IFlatDiffRepository flatDiffRepository,
+        FlatDiffRepository.Configuration configuration,
         ILogManager logManager,
         bool isReadOnly = false)
     {
         _flatDiffRepository = flatDiffRepository;
+        _configuration = configuration;
         _logManager = logManager;
         _codeDb = new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(codeDb);
         _isReadOnly = isReadOnly;
@@ -49,6 +45,7 @@ public class FlatTrieStoreScopeProvider : IWorldStateScopeProvider
             snapshotBundle,
             _codeDb,
             _flatDiffRepository,
+            _configuration,
             _logManager,
             _isReadOnly
         );

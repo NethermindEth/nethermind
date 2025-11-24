@@ -31,12 +31,14 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
     private readonly StateTree _stateTree;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
+    private FlatDiffRepository.Configuration _configuration;
 
     public FlatScopeProviderScope(
         StateId currentStateId,
         SnapshotBundle snapshotBundle,
         IWorldStateScopeProvider.ICodeDb codeDb,
         IFlatDiffRepository flatDiffRepository,
+        FlatDiffRepository.Configuration configuration,
         ILogManager logManager,
         bool isReadOnly = false)
     {
@@ -49,6 +51,7 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
             _stateTrieStore,
             logManager
         );
+        _configuration = configuration;
         _stateTree.RootHash = currentStateId.stateRoot.ToCommitment();
         _logManager = logManager;
         _isReadOnly = isReadOnly;
@@ -68,6 +71,11 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
     public Account? Get(Address address)
     {
         _snapshotBundle.TryGetAccount(address, out var account);
+
+        if (!_configuration.VerifyWithTrie)
+        {
+            return account;
+        }
 
         // TODO: To snapshot bundler
         Account? accTrie = _stateTree.Get(address);
@@ -101,6 +109,7 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
         StorageSnapshotBundleStateTrieStore newTrieStore = new StorageSnapshotBundleStateTrieStore(
             this,
             _snapshotBundle.GatherStorageCache(address),
+            _configuration,
             storageRoot,
             addressHash,
             _logManager);
@@ -374,10 +383,12 @@ public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldState
     internal readonly StorageSnapshotBundle _storageSnapshotBundle;
     internal readonly StorageTree _tree;
     private readonly Hash256 _address;
+    private readonly FlatDiffRepository.Configuration _config;
 
     public StorageSnapshotBundleStateTrieStore(
         FlatScopeProviderScope scope,
         StorageSnapshotBundle storageSnapshotBundle,
+        FlatDiffRepository.Configuration config,
         Hash256 storageRoot,
         Hash256 address,
         ILogManager logManager)
@@ -386,6 +397,7 @@ public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldState
         _storageSnapshotBundle = storageSnapshotBundle;
         _tree = new StorageTree(this, storageRoot, logManager);
         _tree.RootHash = storageRoot;
+        _config = config;
         _address = address;
     }
 
@@ -394,6 +406,12 @@ public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldState
     {
         _storageSnapshotBundle.TryGet(index, out var value);
         if (value == null) value = StorageTree.ZeroBytes;
+
+        if (!_config.VerifyWithTrie)
+        {
+            return value;
+        }
+
         var treeValue = _tree.Get(index);
         if (!Bytes.AreEqual(treeValue, value))
         {

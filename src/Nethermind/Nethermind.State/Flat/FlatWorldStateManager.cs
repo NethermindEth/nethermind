@@ -20,9 +20,11 @@ public class FlatWorldStateManager : IWorldStateManager
     private readonly FlatTrieStoreScopeProvider _mainWorldState;
     private readonly IDb _codeDb;
     private readonly ILogManager _logManager;
+    private readonly FlatDiffRepository.Configuration _configuration;
 
     public FlatWorldStateManager(
         IFlatDiffRepository flatDiffRepository,
+        FlatDiffRepository.Configuration configuration,
         FlatStateReader flatStateReader,
         [KeyFilter(DbNames.Code)] IDb codeDb,
         ILogManager logManager
@@ -32,7 +34,8 @@ public class FlatWorldStateManager : IWorldStateManager
         _flatStateReader = flatStateReader;
         _codeDb = codeDb;
         _logManager = logManager;
-        _mainWorldState = new FlatTrieStoreScopeProvider(codeDb, flatDiffRepository, logManager);
+        _configuration = configuration;
+        _mainWorldState = new FlatTrieStoreScopeProvider(codeDb, flatDiffRepository, configuration, logManager);
     }
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
@@ -41,7 +44,7 @@ public class FlatWorldStateManager : IWorldStateManager
     public IReadOnlyKeyValueStore? HashServer => null;
     public IWorldStateScopeProvider CreateResettableWorldState()
     {
-        return new FlatTrieStoreScopeProvider(_codeDb, _flatDiffRepository, _logManager, isReadOnly: true);
+        return new FlatTrieStoreScopeProvider(_codeDb, _flatDiffRepository, _configuration, _logManager, isReadOnly: true);
     }
 
     event EventHandler<ReorgBoundaryReached>? IWorldStateManager.ReorgBoundaryReached
@@ -52,7 +55,7 @@ public class FlatWorldStateManager : IWorldStateManager
 
     public IOverridableWorldScope CreateOverridableWorldScope()
     {
-        var scopeProvider = new FlatTrieStoreScopeProvider(_codeDb, _flatDiffRepository, _logManager, isReadOnly: true);
+        var scopeProvider = new FlatTrieStoreScopeProvider(_codeDb, _flatDiffRepository, _configuration, _logManager, isReadOnly: true);
         return new FakeOverridableWorldScope(scopeProvider, _flatStateReader);
     }
 
