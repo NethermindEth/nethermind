@@ -16,6 +16,7 @@ using Nethermind.Merge.Plugin.Test;
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 public class ShutterIntegrationTests : BaseEngineModuleTests
 {
     private const int BuildingSlot = (int)ShutterTestsCommon.InitialSlot;
