@@ -63,7 +63,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
                     eip1559Parameters = new EIP1559Parameters(eip1559Parameters.Version, (UInt32)spec.BaseFeeMaxChangeDenominator, (UInt32)spec.ElasticityMultiplier);
                 }
 
-                currentBestBlock.Header.ExtraData = new byte[EIP1559Parameters.ByteLength];
+                currentBestBlock.Header.ExtraData = new byte[eip1559Parameters.ByteLength];
                 eip1559Parameters.WriteTo(currentBestBlock.Header.ExtraData);
 
                 // NOTE: Since we updated the `Header` we need to recalculate the hash.
