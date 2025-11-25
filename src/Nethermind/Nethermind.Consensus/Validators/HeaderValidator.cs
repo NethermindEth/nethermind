@@ -352,7 +352,7 @@ namespace Nethermind.Consensus.Validators
                 ulong? expectedExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
                 if (header.ExcessBlobGas != expectedExcessBlobGas)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
+                    if (_logger.IsWarn) _logger.Warn($"[BAL TEST] ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}. Target was {spec.TargetBlobCount}");
                     error = BlockErrorMessages.IncorrectExcessBlobGas(expectedExcessBlobGas, header.ExcessBlobGas);
                     return false;
                 }

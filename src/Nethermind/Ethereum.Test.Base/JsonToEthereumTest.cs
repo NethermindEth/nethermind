@@ -454,6 +454,7 @@ namespace Ethereum.Test.Base
             }
 
             BlobScheduleEntryJson blobCount = blobSchedule[name];
+            Console.WriteLine($"[BAL TEST] Overriding blob schedule to {blobCount.Target}/{blobCount.Max}");
             return new OverridableReleaseSpec(spec)
             {
                 MaxBlobCount = System.Convert.ToUInt64(blobCount.Max, 16),

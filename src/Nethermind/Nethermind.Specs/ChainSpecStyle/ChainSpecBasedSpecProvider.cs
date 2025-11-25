@@ -115,6 +115,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                         throw new ArgumentException($"Blob schedule target ({settings.Target}) should not exceed max ({settings.Max}).");
                     }
 
+                    Console.WriteLine($"[BAL TEST] Loaded blob schedule transition t{settings.Timestamp} {settings.TargetBlobCount}/{settings.MaxBlobCount}");
                     transitions.Add(settings.Timestamp);
                 }
             }
