@@ -533,14 +533,22 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             double totalAllLargeStorageProgress = 0;
                             // totalLargeStorage changes over time, but thats fine.
-                            double totalLargeStorage = queuedStorage;
+                            long totalLargeStorage = queuedStorage;
                             foreach (var keyValuePair in _largeStorageProgress)
                             {
                                 totalAllLargeStorageProgress += keyValuePair.Value.CalculateProgress();
                                 totalLargeStorage++;
                             }
 
-                            progress = (float)(totalAllLargeStorageProgress / totalLargeStorage);
+                            if (totalLargeStorage == 0)
+                            {
+                                progress = 1;
+                            }
+                            else
+                            {
+                                progress = (float)(totalAllLargeStorageProgress / totalLargeStorage);
+                            }
+
 
                             stateRangesReport = $"Snap         Large storage left: {totalLargeStorage} ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
                         }
