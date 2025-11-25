@@ -63,5 +63,6 @@ namespace Nethermind.Db
         public long MaxUnpersistedBlockCount { get; set; } = 300; // About 1 hour on mainnet
         public long MinUnpersistedBlockCount { get; set; } = 8; // About slightly more than 1 minute
         public int MaxBufferedCommitCount { get; set; } = 128;
+        public int SimulateLongFinalizationDepth { get; set; } = 0;
     }
 }
