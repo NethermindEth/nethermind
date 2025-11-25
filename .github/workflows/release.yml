@@ -24,7 +24,7 @@ jobs:
       prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Detect version
         id: version
@@ -114,7 +114,7 @@ jobs:
     needs: [approval, build]
     steps:
       - name: Check out Nethermind repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Authenticate App
         id: gh-app
@@ -146,7 +146,7 @@ jobs:
     if: needs.build.outputs.prerelease == 'false'
     steps:
       - name: Check out Nethermind repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -175,7 +175,7 @@ jobs:
     needs: [approval, build]
     steps:
       - name: Check out Nethermind repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Authenticate App
         id: gh-app
