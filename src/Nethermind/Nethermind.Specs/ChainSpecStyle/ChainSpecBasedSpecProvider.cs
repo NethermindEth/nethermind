@@ -101,6 +101,9 @@ namespace Nethermind.Specs.ChainSpecStyle
                 foreach (BlobScheduleSettings settings in chainSpec.Parameters.BlobSchedule)
                 {
                     Console.WriteLine($"[BAL TEST] Loading blob schedule transition t{settings.Timestamp} {settings.Target}/{settings.Max}. Genesis t={genesisTimestamp}");
+                    settings.Max = 9;
+                    settings.Target = 6;
+                    settings.BaseFeeUpdateFraction = 5007716;
                     if (settings.Timestamp <= genesisTimestamp)
                     {
                         continue;
