@@ -222,4 +222,24 @@ public class EciesCipherTests
         (_, byte[] deciphered) = _eciesCipher.Decrypt(privateKey, cipherText);
         Assert.That(deciphered, Is.EqualTo(plainText));
     }
+
+    [Test]
+    [TestCase(17)]
+    [TestCase(32)]
+    public void Decrypt_rejects_cipher_body_length_less_or_equal_to_mac_size(int bodyLen)
+    {
+        byte[] ephem = NetTestVectors.EphemeralKeyA.PublicKey.PrefixedBytes;
+        byte[] iv = new byte[16];
+        byte[] body = new byte[bodyLen];
+
+        byte[] cipherText = new byte[ephem.Length + iv.Length + body.Length];
+        Span<byte> span = cipherText;
+        ephem.AsSpan().CopyTo(span);
+        span = span[ephem.Length..];
+        iv.AsSpan().CopyTo(span);
+        span = span[iv.Length..];
+        body.AsSpan().CopyTo(span);
+
+        Assert.That(() => _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, cipherText), Throws.Exception);
+    }
 }
