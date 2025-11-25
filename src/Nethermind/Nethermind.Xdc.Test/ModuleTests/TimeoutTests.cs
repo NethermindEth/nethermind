@@ -1,19 +1,17 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using FluentAssertions;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Xdc.Test.Helpers;
+using Nethermind.Xdc.Types;
+using NUnit.Framework;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
-using Nethermind.Consensus;
-using Nethermind.Core.Crypto;
-using Nethermind.Logging;
-using Nethermind.Xdc.Types;
-using Nethermind.Xdc.Test.Helpers;
-using NUnit.Framework;
-using Nethermind.Core.Test.Builders;
 
-namespace Nethermind.Xdc.Test.ModuleTests;
+namespace Nethermind.Xdc.Test;
 
 public class TimeoutTests
 {

@@ -3,8 +3,11 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -12,9 +15,6 @@ using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Xdc.Spec;
-using Nethermind.Blockchain.Headers;
-using Nethermind.Blockchain;
-using Nethermind.Consensus.Processing;
 
 namespace Nethermind.Xdc;
 

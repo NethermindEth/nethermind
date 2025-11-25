@@ -7,6 +7,7 @@ using Nethermind.Specs;
 using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Spec;
+
 public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
 {
     public int EpochLength { get; set; }
@@ -33,6 +34,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public Address[] GenesisMasterNodes { get; set; }
     public Address FoundationWallet { get; set; }
     public Address BlockSignerContract { get; set; }
+    public Address MasternodeVotingContract { get; set; }
 
     public void ApplyV2Config(ulong round)
     {
@@ -102,6 +104,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     Address[] GenesisMasterNodes { get; set; }
     Address FoundationWallet { get; set; }
     public Address BlockSignerContract { get; set; }
+    Address MasternodeVotingContract { get; set; }
 
     public void ApplyV2Config(ulong round);
 }
