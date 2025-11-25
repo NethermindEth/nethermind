@@ -85,6 +85,8 @@ namespace Nethermind.Blockchain.Filters
 
         public IEnumerable<T> GetFilters<T>() where T : FilterBase
         {
+            // Return Array.Empty<T>() to avoid allocating enumerator
+            // and which has a fast-path for foreach
             if (_filters.IsEmpty) return Array.Empty<T>();
 
             return GetFiltersEnumerate<T>();
@@ -149,19 +151,12 @@ namespace Nethermind.Blockchain.Filters
             }
         }
 
+        // Used by tests
         public void SaveFilters(IEnumerable<FilterBase> filters)
         {
-            lock (_locker)
+            foreach (FilterBase filter in filters)
             {
-                foreach (FilterBase filter in filters)
-                {
-                    if (!_filters.TryAdd(filter.Id, filter))
-                    {
-                        throw new InvalidOperationException($"Filter with ID {filter.Id} already exists");
-                    }
-
-                    _currentFilterId = Math.Max(filter.Id, _currentFilterId);
-                }
+                SaveFilter(filter);
             }
         }
 
