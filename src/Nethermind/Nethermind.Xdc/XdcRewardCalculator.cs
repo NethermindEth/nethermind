@@ -12,6 +12,7 @@ using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Xdc.Contracts;
 
 namespace Nethermind.Xdc
 {
@@ -24,7 +25,8 @@ namespace Nethermind.Xdc
     public class XdcRewardCalculator(
         IEpochSwitchManager epochSwitchManager,
         ISpecProvider specProvider,
-        IBlockTree blockTree) : IRewardCalculator
+        IBlockTree blockTree,
+        IMasternodeVotingContract masternodeVotingContract) : IRewardCalculator
     {
 
         private LruCache<Hash256, Transaction[]> _signingTxsCache = new(9000, "XDC Signing Txs Cache");
@@ -69,7 +71,7 @@ namespace Nethermind.Xdc
             UInt256 totalFoundationWalletReward = UInt256.Zero;
             foreach (var (signer, reward) in rewardSigners)
             {
-                (BlockReward holderReward, UInt256 foundationWalletReward) = DistributeRewards(spec.FoundationWallet, signer, reward);
+                (BlockReward holderReward, UInt256 foundationWalletReward) = DistributeRewards(signer, reward, xdcHeader);
                 //TODO: stateBlock.AddBalance(holderReward)
                 totalFoundationWalletReward += foundationWalletReward;
                 rewards.Add(holderReward);
@@ -237,9 +239,9 @@ namespace Nethermind.Xdc
         }
 
         private (BlockReward HolderReward, UInt256 FoundationWalletReward) DistributeRewards(
-            Address foundationWalletAddress, Address masternodeAddress, UInt256 reward)
+            Address masternodeAddress, UInt256 reward, XdcBlockHeader header)
         {
-            Address owner = GetCandidatesOwnerBySigner(masternodeAddress);
+            Address owner = masternodeVotingContract.GetCandidateOwner(header, masternodeAddress);
 
             // 90% of the reward goes to the masternode
             UInt256 masterReward = reward * 90 / 100;
@@ -249,12 +251,6 @@ namespace Nethermind.Xdc
 
             //TODO: Is it possible owner address is the same as foundation wallet address?
             return (new BlockReward(owner, masterReward),  foundationReward);
-        }
-
-        private Address GetCandidatesOwnerBySigner(Address signerAddress)
-        {
-            // Use state to get candidate
-            return signerAddress;
         }
     }
 }
