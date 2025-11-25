@@ -64,10 +64,34 @@ public class FlatDiffRepository : IFlatDiffRepository
         _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
         _boundary = config.Boundary;
 
-        using var reader = persistedPersistence.CreateReader();
+        using var reader = LeaseReader();
         _currentPersistedState = reader.CurrentState;
 
         _ = RunCompactor(exitSource.Token);
+    }
+
+    private Lock _readerCacheLock = new Lock();
+    private RefCountingPersistenceReader? _cachedReader = null;
+
+    private RefCountingPersistenceReader LeaseReader()
+    {
+        using var _ = _readerCacheLock.EnterScope();
+        var cachedReader = _cachedReader;
+        if (cachedReader is null)
+        {
+            _cachedReader = cachedReader = new RefCountingPersistenceReader(_persistence.CreateReader());
+        }
+
+        cachedReader.AcquireLease();
+        return cachedReader;
+    }
+
+    private void ClearReaderCache()
+    {
+        using var _ = _readerCacheLock.EnterScope();
+        RefCountingPersistenceReader? cachedReader = _cachedReader;
+        _cachedReader = null;
+        cachedReader?.Dispose();
     }
 
     private async Task RunCompactor(CancellationToken cancellationToken)
@@ -191,7 +215,7 @@ public class FlatDiffRepository : IFlatDiffRepository
 
         // Note: By the time the previous loop finished checking all state, the big cache may have added new state and removed some
         // entry in `_inMemorySnapshotStore`. Meaning, this need to be here instead oof before the loop.
-        IPersistence.IPersistenceReader bigCacheReader = _persistence.CreateReader();
+        IPersistence.IPersistenceReader bigCacheReader = LeaseReader();
         if (current != baseBlock && earliestExclusive is null && bigCacheReader.CurrentState.blockNumber != -1 && current.blockNumber > bigCacheReader.CurrentState.blockNumber)
         {
             throw new Exception($"Non consecutive snappshots. Current {current} vs {bigCacheReader.CurrentState}, {bigCacheState}, {baseBlock}, {_inMemorySnapshotStore.TryGetValue(current, out var snapshot)}, {exitReason}");
@@ -460,6 +484,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         }
 
         _currentPersistedState = snapshot.To;
+        ClearReaderCache();
     }
 
 
