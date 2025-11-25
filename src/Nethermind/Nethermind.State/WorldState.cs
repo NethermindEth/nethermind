@@ -33,6 +33,7 @@ namespace Nethermind.State
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
         private IWorldStateScopeProvider.IScope? _currentScope;
+        private bool _isInScope;
         private readonly ILogger _logger;
 
         public Hash256 StateRoot
@@ -243,7 +244,6 @@ namespace Nethermind.State
             {
                 throw new InvalidOperationException("Cannot create nested worldstate scope.");
             }
-            // if (_currentScope is not null) throw new InvalidOperationException("Cannot create nested worldstate scope.");
 
             if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
 
@@ -257,6 +257,7 @@ namespace Nethermind.State
                 _stateProvider.SetScope(null);
                 _currentScope.Dispose();
                 _currentScope = null;
+                _isInScope = false;
                 if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
             });
         }
