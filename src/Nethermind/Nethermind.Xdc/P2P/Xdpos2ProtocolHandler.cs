@@ -26,11 +26,8 @@ internal class Xdpos2ProtocolHandler(
     IMessageSerializationService serializer,
     INodeStatsManager statsManager,
     ISyncServer syncServer,
-    ITxPool txPool,
-    IGossipPolicy gossipPolicy,
     IBackgroundTaskScheduler backgroundTaskScheduler,
-    ILogManager logManager,
-    ITxGossipPolicy? transactionsGossipPolicy = null) : Eth63ProtocolHandler(session, serializer, statsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy), IZeroProtocolHandler
+    ILogManager logManager) : SyncPeerProtocolHandlerBase(session, serializer, statsManager, syncServer, backgroundTaskScheduler, logManager), IZeroProtocolHandler
 {
     private readonly IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager;
     private readonly ITimeoutCertificateManager _timeoutCertificateManager = timeoutCertificateManager;
@@ -81,6 +78,18 @@ internal class Xdpos2ProtocolHandler(
         }
     }
 
+    public override void Init()
+    {
+    }
+
+    public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
+    {
+    }
+
+    protected override void OnDisposed()
+    {
+    }
+
     private void Handle(VoteMsg voteMsg)
     {
         _votesManager.HandleVote(voteMsg.Vote);
@@ -90,22 +99,6 @@ internal class Xdpos2ProtocolHandler(
         _timeoutCertificateManager.HandleTimeoutVote(timeoutMsg.Timeout);
     }
     private void Handle(SyncInfoMsg syncInfoMsg)
-    {
-        throw new NotImplementedException();
-    }
-
-
-    public override void Init()
-    {
-        CheckProtocolInitTimeout();
-    }
-
-    public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
-    {
-        throw new NotImplementedException();
-    }
-
-    protected override void OnDisposed()
     {
         throw new NotImplementedException();
     }
