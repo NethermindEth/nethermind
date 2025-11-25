@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
 
@@ -20,7 +21,7 @@ public class ParallelRunner<TLocation, TData, TLogger>(
     MultiVersionMemory<TLocation, TData, TLogger> memory,
     ParallelTrace<TLogger> parallelTrace,
     IVm<TLocation, TData> vm,
-    int? concurrencyLevel = null) where TLogger : struct, IIsTracing where TLocation : notnull
+    int? concurrencyLevel = null) where TLogger : struct, IFlag where TLocation : notnull
 {
     private int _threadIndex = -1;
 
@@ -35,7 +36,7 @@ public class ParallelRunner<TLocation, TData, TLogger>(
         // TODO: revisit when integrated with block processing
 
         int concurrency = concurrencyLevel ?? Environment.ProcessorCount;
-        using ArrayPoolList<Task> tasks = new ArrayPoolList<Task>(concurrency);
+        using ArrayPoolList<Task> tasks = new(concurrency);
         for (int i = 0; i < concurrency; i++)
         {
 
@@ -61,7 +62,7 @@ public class ParallelRunner<TLocation, TData, TLogger>(
         TxTask task = scheduler.NextTask();
         do
         {
-            if (typeof(TLogger) == typeof(IsTracing) && !task.IsEmpty) parallelTrace.Add($"NextTask: {task} on thread {threadIndex}");
+            if (typeof(TLogger) == typeof(OnFlag) && !task.IsEmpty) parallelTrace.Add($"NextTask: {task} on thread {threadIndex}");
             // There can be 3 kinds of tasks
             // Only 1 task per transaction should be run at the same time
             task = task switch
@@ -72,7 +73,7 @@ public class ParallelRunner<TLocation, TData, TLogger>(
             };
         } while (!scheduler.Done);
 
-        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Thread {threadIndex} finished in {Stopwatch.GetElapsedTime(start)}");
+        if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Thread {threadIndex} finished in {Stopwatch.GetElapsedTime(start)}");
     }
 
     /// <summary>
@@ -86,7 +87,7 @@ public class ParallelRunner<TLocation, TData, TLogger>(
     ///
     /// If dependency was added, we return empty task, for the main loop to fetch next one.
     ///
-    /// If execution succeeds, we record read and write sets of it in <see cref="MultiVersionMemory{TLocation,TLogger}"/>
+    /// If execution succeeds, we record read and write sets of it in <see cref="MultiVersionMemory{TLocation,TData,TLogger}"/>
     /// and inform <see cref="ParallelScheduler{TLogger}"/> that it finished.
     /// Scheduler may return a validation task for this transaction as it will be next high-priority.
     /// </remarks>
@@ -102,7 +103,7 @@ public class ParallelRunner<TLocation, TData, TLogger>(
     /// Checks if transaction need to be re-executed.
     /// </summary>
     /// <remarks>
-    /// First the <see cref="MultiVersionMemory{TLocation,TLogger}.ValidateReadSet"/> is called to check if any of transaction reads are still dependent of pending writes.
+    /// First the <see cref="MultiVersionMemory{TLocation,TData,TLogger}.ValidateReadSet"/> is called to check if any of transaction reads are still dependent of pending writes.
     /// If that is the case it uses <see cref="ParallelScheduler{TLogger}.TryValidationAbort"/> to abort the execution and marks all the transaction writes as estimates.
     ///
     /// After that is calls <see cref="ParallelScheduler{TLogger}.FinishValidation"/> to progress the work. This potentially can return a transaction task to execute.

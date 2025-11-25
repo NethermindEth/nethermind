@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Consensus.Processing.ParallelProcessing;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 using Version = Nethermind.Consensus.Processing.ParallelProcessing.Version;
@@ -127,43 +128,39 @@ public class ParallelRunnerTests
     private static Operation[][] O(params IEnumerable<IEnumerable<Operation>> operations) => operations.Select(o => o.ToArray()).ToArray();
 
     // W - Write
-    private static Operation W(int location, byte value) =>
-        new(OperationType.Write, location, [value]);
+    private static Operation W(int location, byte value) => new(OperationType.Write, location, [value]);
 
     // WL - Write last read value
-    private static Operation WL(int location, byte diff = 0) =>
-        new(OperationType.Write, location, [Operation.LastRead, diff]);
+    private static Operation WL(int location, byte diff = 0) => new(OperationType.Write, location, [Operation.LastRead, diff]);
 
     // R - Read
-    private static Operation R(int location, byte value) =>
-        new(OperationType.Read, location, [value]);
+    private static Operation R(int location, byte value) => new(OperationType.Read, location, [value]);
 
     // D - Delay
-    private static Operation D(int milliseconds = 100) =>
-        new(OperationType.Delay, milliseconds);
+    private static Operation D(int milliseconds = 100) => new(OperationType.Delay, milliseconds);
 
     [TestCaseSource(nameof(GetDependantTestCases))]
     public Task RunDependant(int blockSize, Operation[][] operationsPerTx, Dictionary<int, byte[]> expected) =>
-        Run<IsTracing>(blockSize, operationsPerTx, expected);
+        Run<OnFlag>(blockSize, operationsPerTx, expected);
 
     [TestCaseSource(nameof(GetIndependantTestCases))]
     public Task RunIndependant(int blockSize, Operation[][] operationsPerTx, Dictionary<int, byte[]> expected) =>
-        Run<NotTracing>(blockSize, operationsPerTx, expected);
+        Run<OffFlag>(blockSize, operationsPerTx, expected);
 
-    private async Task Run<T>(int blockSize, Operation[][] operationsPerTx, Dictionary<int, byte[]> expected) where T : struct, IIsTracing
+    private async Task Run<T>(int blockSize, Operation[][] operationsPerTx, Dictionary<int, byte[]> expected) where T : struct, IFlag
     {
-        ParallelTrace<T> parallelTrace = new ParallelTrace<T>();
-        MultiVersionMemory<int, byte[], T> multiVersionMemory = new MultiVersionMemory<int, byte[], T>(blockSize, parallelTrace);
+        ParallelTrace<T> parallelTrace = new();
+        MultiVersionMemory<int, byte[], T> multiVersionMemory = new(blockSize, parallelTrace);
         ObjectPool<HashSet<int>> setObjectPool = new DefaultObjectPool<HashSet<int>>(new DefaultPooledObjectPolicy<HashSet<int>>(), 1024);
-        ParallelScheduler<T> parallelScheduler = new ParallelScheduler<T>(blockSize, parallelTrace, setObjectPool);
+        ParallelScheduler<T> parallelScheduler = new(blockSize, parallelTrace, setObjectPool);
         VmMock<T> vmMock = new VmMock<T>(blockSize, multiVersionMemory, operationsPerTx);
-        ParallelRunner<int, byte[], T> runner = new ParallelRunner<int, byte[], T>(parallelScheduler, multiVersionMemory, parallelTrace, vmMock, 12);
+        ParallelRunner<int, byte[], T> runner = new(parallelScheduler, multiVersionMemory, parallelTrace, vmMock, 12);
 
         long start = Stopwatch.GetTimestamp();
         Task runnerTask = runner.Run();
         Task completedTask = await Task.WhenAny(runnerTask, Task.Delay(TimeSpan.FromSeconds(20)));
         Dictionary<int, byte[]> result = multiVersionMemory.Snapshot();
-        if (typeof(T) == typeof(IsTracing)) await PrintInfo(parallelTrace, result, expected);
+        if (typeof(T) == typeof(OnFlag)) await PrintInfo(parallelTrace, result, expected);
         TimeSpan time = Stopwatch.GetElapsedTime(start);
         await TestContext.Out.WriteLineAsync($"Execution time: {time.TotalMilliseconds}ms");
 
@@ -177,7 +174,7 @@ public class ParallelRunnerTests
         }
     }
 
-    private static async Task PrintInfo<T>(ParallelTrace<T> parallelTrace, Dictionary<int, byte[]> result, Dictionary<int, byte[]> expected) where T : struct, IIsTracing
+    private static async Task PrintInfo<T>(ParallelTrace<T> parallelTrace, Dictionary<int, byte[]> result, Dictionary<int, byte[]> expected) where T : struct, IFlag
     {
         foreach ((long, DateTime, string) trace in parallelTrace.GetTraces() ?? [])
         {
@@ -193,7 +190,7 @@ public class ParallelRunnerTests
 
     }
 
-    public class VmMock<TLogger>(int blockSize, MultiVersionMemory<int, byte[], TLogger> memory, Operation[][] operationsPerTx) : IVm<int, byte[]> where TLogger : struct, IIsTracing
+    private class VmMock<TLogger>(int blockSize, MultiVersionMemory<int, byte[], TLogger> memory, Operation[][] operationsPerTx) : IVm<int, byte[]> where TLogger : struct, IFlag
     {
         private readonly HashSet<Read<int>>[] _readSets = Enumerable.Range(0, blockSize).Select(_ => new HashSet<Read<int>>()).ToArray();
         private readonly Dictionary<int, byte[]>[] _writeSets = Enumerable.Range(0, blockSize).Select(_ => new Dictionary<int, byte[]>()).ToArray();

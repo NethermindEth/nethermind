@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
+using Nethermind.Core;
 using Nethermind.Core.Threading;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
@@ -24,7 +25,7 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing;
 /// Priority is to always schedule the lowest possible transaction that needs work.
 /// When transactions finish out-of-order or dependency is detected then corresponding indexes are decreased and transactions are re-validated or re-executed depending on the need.
 /// </remarks>
-public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> parallelTrace, ObjectPool<HashSet<int>> setPool) where TLogger : struct, IIsTracing
+public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> parallelTrace, ObjectPool<HashSet<int>> setPool) where TLogger : struct, IFlag
 {
     /// <summary>
     /// Index to fetch next transaction to execute
@@ -76,11 +77,11 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
         long id = parallelTrace.ReserveId();
         int value = InterlockedEx.MutateValue(ref index, targetValue, Mutator);
 
-        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"WorkAvailable.Set from DecreaseIndex {name} to {value}");
+        if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"WorkAvailable.Set from DecreaseIndex {name} to {value}");
 
         // increase the counter of decreases
         int decreaseCount = Interlocked.Increment(ref _decreaseCount);
-        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Decreased {name} index to {value}, decrease count: {decreaseCount}");
+        if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add(id, $"Decreased {name} index to {value}, decrease count: {decreaseCount}");
     }
 
     /// <summary>
@@ -97,7 +98,7 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
             if (done)
             {
                 _done = true;
-                if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add("Done");
+                if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add("Done");
             }
         }
     }
@@ -145,7 +146,7 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
             if (Interlocked.CompareExchange(ref state.Status, newStatus, requiredStatus) == requiredStatus)
             {
                 // return new incarnation
-                if (typeof(TLogger) == typeof(IsTracing) && newStatus != requiredStatus) parallelTrace.Add($"Set Tx {nextTx} status to {TxStatus.GetName(requiredStatus)}");
+                if (typeof(TLogger) == typeof(OnFlag) && newStatus != requiredStatus) parallelTrace.Add($"Set Tx {nextTx} status to {TxStatus.GetName(requiredStatus)}");
                 return new Version(nextTx, state.Incarnation);
             }
         }
@@ -187,14 +188,14 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
         // If blocking transaction is now executed, we shouldn't add dependency, we should just re-execute dependent transaction
         if (blockingTxStatus == TxStatus.Executed)
         {
-            if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Can't add dependency for tx {txIndex} on {blockingTxIndex}, because it is already executed");
+            if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Can't add dependency for tx {txIndex} on {blockingTxIndex}, because it is already executed");
             return false;
         }
 
-        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Adding dependency for tx {txIndex} on {blockingTxIndex}, Tx {blockingTxIndex} status is {TxStatus.GetName(blockingTxStatus)}");
+        if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Adding dependency for tx {txIndex} on {blockingTxIndex}, Tx {blockingTxIndex} status is {TxStatus.GetName(blockingTxStatus)}");
         ref TxState txState = ref _txStates[txIndex];
         Interlocked.Exchange(ref txState.Status, TxStatus.Aborting);
-        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Set Tx {txIndex} status to Aborting");
+        if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Set Tx {txIndex} status to Aborting");
 
         HashSet<int> set = GetDependencySet(blockingTxIndex);
         lock (set)
@@ -202,7 +203,7 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
             set.Add(txIndex);
         }
 
-        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Dependency added for tx {txIndex} on {blockingTxIndex} to set {set.GetHashCode()}");
+        if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Dependency added for tx {txIndex} on {blockingTxIndex} to set {set.GetHashCode()}");
 
         // if blocking transaction finished execution while we were adding the dependency then we need to now call resume dependencies ASAP
         // This missing was one of issues in original paper
@@ -210,11 +211,11 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
         if (blockingTxStatus == TxStatus.Executed)
         {
             ResumeDependencies(set, blockingTxIndex);
-            if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Resume dependencies by Tx {blockingTxIndex} while adding for {txIndex} on race condition");
+            if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Resume dependencies by Tx {blockingTxIndex} while adding for {txIndex} on race condition");
         }
         else
         {
-            if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Can't resume dependencies by Tx {blockingTxIndex}, because Tx {blockingTxIndex} status is {TxStatus.GetName(blockingTxStatus)}");
+            if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Can't resume dependencies by Tx {blockingTxIndex}, because Tx {blockingTxIndex} status is {TxStatus.GetName(blockingTxStatus)}");
         }
 
         // This task execution has ended
@@ -260,7 +261,7 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
                 }
 
                 // Clear dependencies, they can be re-added when transactions are executed again
-                if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Resumed dependencies by Tx {blockingTxIndex}: {string.Join(", ", dependentTxs)}");
+                if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Resumed dependencies by Tx {blockingTxIndex}: {string.Join(", ", dependentTxs)}");
                 dependentTxs.Clear();
                 setPool.Return(dependentTxs);
             }
@@ -282,7 +283,7 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
     {
         ref TxState state = ref _txStates[txIndex];
         Interlocked.Exchange(ref state.Status, TxStatus.Ready);
-        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Set Tx {txIndex} status to Ready");
+        if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Set Tx {txIndex} status to Ready");
         state.Incarnation++;
     }
 
@@ -300,7 +301,7 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
         int txIndex = version.TxIndex;
         ref TxState state = ref _txStates[txIndex];
         Interlocked.Exchange(ref state.Status, TxStatus.Executed);
-        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Set Tx {txIndex} status to Executed");
+        if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Set Tx {txIndex} status to Executed");
 
         HashSet<int> dependencies = Interlocked.Exchange(ref _txDependencies[txIndex], null);
         ResumeDependencies(dependencies, txIndex);
@@ -315,7 +316,7 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
             }
             else
             {
-                if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"WorkAvailable.Set from FinishExecution of {version}");
+                if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"WorkAvailable.Set from FinishExecution of {version}");
                 // validate this transaction
                 // don't decrement _activeTasks as we spawn new one
                 return new TxTask(version, true);
@@ -343,7 +344,7 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
 
         // hacky way of atomically updating both status and incarnation
         bool abort = Interlocked.CompareExchange(ref stateInt, valueInt, requiredInt) == requiredInt;
-        if (typeof(TLogger) == typeof(IsTracing) && abort)
+        if (typeof(TLogger) == typeof(OnFlag) && abort)
         {
             parallelTrace.Add($"Set Tx {version.TxIndex} status to Aborting");
         }

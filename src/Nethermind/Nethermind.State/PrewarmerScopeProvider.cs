@@ -30,7 +30,7 @@ public class PrewarmerScopeProvider(
         bool populatePreBlockCache)
         : IWorldStateScopeProvider.IScope
     {
-        ISingleBlockProcessingCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
+        private readonly ISingleBlockProcessingCache<AddressAsKey, Account> _preBlockCache = preBlockCaches.StateCache;
 
         public void Dispose() => baseScope.Dispose();
 
@@ -45,19 +45,14 @@ public class PrewarmerScopeProvider(
                 populatePreBlockCache);
         }
 
-        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
-        {
-            return baseScope.StartWriteBatch(estimatedAccountNum);
-        }
+        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
+            baseScope.StartWriteBatch(estimatedAccountNum);
 
         public void Commit(long blockNumber) => baseScope.Commit(blockNumber);
 
         public Hash256 RootHash => baseScope.RootHash;
 
-        public void UpdateRootHash()
-        {
-            baseScope.UpdateRootHash();
-        }
+        public void UpdateRootHash() => baseScope.UpdateRootHash();
 
         public Account? Get(Address address)
         {
@@ -65,7 +60,7 @@ public class PrewarmerScopeProvider(
             if (populatePreBlockCache)
             {
                 long priorReads = Metrics.ThreadLocalStateTreeReads;
-                Account? account = preBlockCache.GetOrAdd(address, GetFromBaseTree);
+                Account? account = _preBlockCache.GetOrAdd(address, GetFromBaseTree);
 
                 if (Metrics.ThreadLocalStateTreeReads == priorReads)
                 {
@@ -75,7 +70,7 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                if (preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
+                if (_preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
                 {
                     baseScope.HintGet(address, account);
                     Metrics.IncrementStateTreeCacheHits();
@@ -90,10 +85,7 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        private Account? GetFromBaseTree(AddressAsKey address)
-        {
-            return baseScope.Get(address);
-        }
+        private Account? GetFromBaseTree(AddressAsKey address) => baseScope.Get(address);
     }
 
     private sealed class StorageTreeWrapper(

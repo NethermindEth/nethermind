@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 
@@ -20,7 +21,7 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing;
 /// <typeparam name="TLocation">Location key type</typeparam>
 /// <typeparam name="TLogger">Should log trace</typeparam>
 /// <typeparam name="TData">Data type</typeparam>
-public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, ParallelTrace<TLogger> parallelTrace) where TLogger : struct, IIsTracing where TLocation : notnull
+public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, ParallelTrace<TLogger> parallelTrace) where TLogger : struct, IFlag where TLocation : notnull
 {
     /// <summary>
     /// Information about stored value for a given location
@@ -117,7 +118,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     /// <returns>If any new location was written, that wasn't written by previous incarnation</returns>
     public bool Record(Version version, HashSet<Read<TLocation>> readSet, Dictionary<TLocation, TData> writeSet)
     {
-        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"{version} Record read-set: {{{string.Join(",", readSet.Select(r => $"{r.Location}:{r.Version}"))}}}, write-set: {{{string.Join(",", writeSet.Select(r => $"{r.Key}:{parallelTrace.Format(r.Value)}"))}}}.");
+        if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"{version} Record read-set: {{{string.Join(",", readSet.Select(r => $"{r.Location}:{r.Version}"))}}}, write-set: {{{string.Join(",", writeSet.Select(r => $"{r.Key}:{parallelTrace.Format(r.Value)}"))}}}.");
         bool wroteNewLocation = ApplyWriteSet(version, writeSet);
         _lastReads[version.TxIndex] = readSet;
         return wroteNewLocation;
@@ -133,7 +134,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     /// </remarks>
     public void ConvertWritesToEstimates(int txIndex)
     {
-        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Tx {txIndex} ConvertWritesToEstimates.");
+        if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Tx {txIndex} ConvertWritesToEstimates.");
         HashSet<TLocation>? previousLocations = _lastWrittenLocations[txIndex];
         if (previousLocations is not null)
         {
@@ -177,14 +178,14 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
                     {
                         // if estimate (prevTx needs re-execution) return ReadError.
                         value = default;
-                        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.ReadError} with blocking {version}.");
+                        if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.ReadError} with blocking {version}.");
                         return Status.ReadError;
                     }
                     else
                     {
                         // else we can return the value
                         value = v.Data;
-                        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.Ok} with value {parallelTrace.Format(value)} from {version}.");
+                        if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.Ok} with value {parallelTrace.Format(value)} from {version}.");
                         return Status.Ok;
                     }
                 }
@@ -198,7 +199,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
         // we iterated through all transactions and didn't find any
         version = Version.Empty;
         value = default;
-        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.NotFound}.");
+        if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add(id, $"Tx {txIndex} TryRead at location {location} returned {Status.NotFound}.");
         return Status.NotFound;
     }
 
@@ -253,14 +254,14 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
                     // Read error, we know previous transaction that written to this location will be re-executed, so we cannot be certain about validity of this tx reads
                     case Status.ReadError:
                         {
-                            if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Tx {txIndex} ValidateReadSet failed.");
+                            if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Tx {txIndex} ValidateReadSet failed.");
                             return false;
                         }
                 }
             }
         }
 
-        if (typeof(TLogger) == typeof(IsTracing)) parallelTrace.Add($"Tx {txIndex} ValidateReadSet succeeded.");
+        if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Tx {txIndex} ValidateReadSet succeeded.");
         return true;
     }
 
