@@ -17,7 +17,7 @@ using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.Blockchain.Filters
 {
-    public class FilterStore : IFilterStore
+    public sealed class FilterStore
     {
         private readonly TimeSpan _timeout;
         private int _currentFilterId = -1;
@@ -85,6 +85,13 @@ namespace Nethermind.Blockchain.Filters
 
         public IEnumerable<T> GetFilters<T>() where T : FilterBase
         {
+            if (_filters.IsEmpty) return Array.Empty<T>();
+
+            return GetFiltersEnumerate<T>();
+        }
+
+        private IEnumerable<T> GetFiltersEnumerate<T>() where T : FilterBase
+        {
             // Reuse the enumerator
             var enumerator = Interlocked.Exchange(ref _enumerator, null) ?? _filters.GetEnumerator();
 
@@ -131,7 +138,7 @@ namespace Nethermind.Blockchain.Filters
 
         public void SaveFilter(FilterBase filter)
         {
-            if (_filters.ContainsKey(filter.Id))
+            if (!_filters.TryAdd(filter.Id, filter))
             {
                 throw new InvalidOperationException($"Filter with ID {filter.Id} already exists");
             }
@@ -140,8 +147,31 @@ namespace Nethermind.Blockchain.Filters
             {
                 _currentFilterId = Math.Max(filter.Id, _currentFilterId);
             }
+        }
 
-            _filters[filter.Id] = filter;
+        public void SaveFilters(IEnumerable<FilterBase> filters)
+        {
+            int currentFilterId = Volatile.Read(ref _currentFilterId);
+
+            try
+            {
+                foreach (FilterBase filter in filters)
+                {
+                    if (!_filters.TryAdd(filter.Id, filter))
+                    {
+                        throw new InvalidOperationException($"Filter with ID {filter.Id} already exists");
+                    }
+
+                    currentFilterId = Math.Max(filter.Id, currentFilterId);
+                }
+            }
+            finally
+            {
+                lock (_locker)
+                {
+                    _currentFilterId = Math.Max(currentFilterId, _currentFilterId);
+                }
+            }
         }
 
         private int GetFilterId(bool generateId)
