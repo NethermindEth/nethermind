@@ -559,11 +559,6 @@
         "resolved": "1.8.5",
         "contentHash": "EaCgmntbH1sOzemRTqyXSqYjB6pLH7VCYHhhDYZ59guHSD5qPwhIYa7kfy0QUlmTRt9IXhaXdFhNuBUArp70Ng=="
       },
-      "prometheus-net": {
-        "type": "Transitive",
-        "resolved": "8.2.1",
-        "contentHash": "3wVgdEPOCBF752s2xps5T+VH+c9mJK8S8GKEDg49084P6JZMumTZI5Te6aJ9MQpX0sx7om6JOnBpIi7ZBmmiDQ=="
-      },
       "SimpleBase": {
         "type": "Transitive",
         "resolved": "4.0.2",
@@ -1145,7 +1140,8 @@
           "Nethermind.Db": "[1.36.0-unstable, )",
           "Nethermind.Evm": "[1.36.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.36.0-unstable, )",
-          "Nethermind.Trie": "[1.36.0-unstable, )"
+          "Nethermind.Trie": "[1.36.0-unstable, )",
+          "prometheus-net": "[8.2.1, )"
         }
       },
       "nethermind.synchronization": {
@@ -1559,6 +1555,12 @@
         "dependencies": {
           "Polly.Core": "8.6.4"
         }
+      },
+      "prometheus-net": {
+        "type": "CentralTransitive",
+        "requested": "[8.2.1, )",
+        "resolved": "8.2.1",
+        "contentHash": "3wVgdEPOCBF752s2xps5T+VH+c9mJK8S8GKEDg49084P6JZMumTZI5Te6aJ9MQpX0sx7om6JOnBpIi7ZBmmiDQ=="
       },
       "prometheus-net.AspNetCore": {
         "type": "CentralTransitive",

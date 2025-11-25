@@ -19,9 +19,9 @@ namespace Nethermind.State.Flat;
 public readonly record struct Snapshot(
     StateId From,
     StateId To,
-    Dictionary<Address, Account?> Accounts,
-    Dictionary<(Address, UInt256), byte[]> Storages,
-    HashSet<Address> SelfDestructedStorageAddresses,
-    Dictionary<(Hash256, TreePath), TrieNode> TrieNodes)
+    Dictionary<AddressPrefixAsKey, Account?> Accounts,
+    Dictionary<(AddressPrefixAsKey, UInt256), byte[]> Storages,
+    HashSet<AddressPrefixAsKey> SelfDestructedStorageAddresses,
+    Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode> TrieNodes)
 {
 }

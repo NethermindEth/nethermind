@@ -16,8 +16,8 @@ namespace Nethermind.State.Flat;
 // TODO: We can skip the reverse
 public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IPersistenceReader persistenceReader) : IDisposable
 {
-    Dictionary<Address, StorageSnapshotBundle> _loadedAccounts = new();
-    Dictionary<Address, Account> _changedAccounts = new();
+    Dictionary<AddressPrefixAsKey, StorageSnapshotBundle> _loadedAccounts = new();
+    Dictionary<AddressPrefixAsKey, Account> _changedAccounts = new();
     ConcurrentDictionary<TreePath, TrieNode> _changedNodes = new(); // Bulkset can get nodes concurrently
     public int SnapshotCount => knownStates.Count;
 
@@ -116,7 +116,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
         _changedNodes[path] = newNode;
     }
 
-    public void ApplyStateChanges(Dictionary<AddressAsKey, Account> changedValues)
+    public void ApplyStateChanges(Dictionary<AddressPrefixAsKey, Account> changedValues)
     {
         foreach (var kv in changedValues)
         {
@@ -131,22 +131,22 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
 
     public Snapshot CollectAndApplyKnownState()
     {
-        Dictionary<Hash256, Address> addressHashes = new();
-        Dictionary<Address, Account> accounts = new();
-        HashSet<Address> selfDestructedAccountAddresses = new();
+        Dictionary<Hash256PrefixAsKey, Address> addressHashes = new();
+        Dictionary<AddressPrefixAsKey, Account> accounts = new();
+        HashSet<AddressPrefixAsKey> selfDestructedAccountAddresses = new();
         foreach (var kv in _changedAccounts)
         {
-            addressHashes[kv.Key.ToAccountPath.ToCommitment()] = kv.Key;
+            addressHashes[kv.Key.Value.ToAccountPath.ToCommitment()] = kv.Key;
             accounts[kv.Key] = kv.Value;
         }
 
-        Dictionary<(Hash256, TreePath), TrieNode> nodes = new();
+        Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode> nodes = new();
         foreach (var kv in _changedNodes)
         {
             nodes[(null, kv.Key)] = kv.Value;
         }
 
-        Dictionary<(Address, UInt256), byte[]> storages = new ();
+        Dictionary<(AddressPrefixAsKey, UInt256), byte[]> storages = new ();
 
         foreach (var gatheredCacheStorage in _loadedAccounts)
         {
@@ -201,16 +201,16 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
     {
         if (knownStates.Count == 0) return new Snapshot(
             new StateId(-1, ValueKeccak.EmptyTreeHash), new StateId(-1, ValueKeccak.EmptyTreeHash),
-            new Dictionary<Address, Account>(),
-            new Dictionary<(Address, UInt256), byte[]>(),
-            new HashSet<Address>(),
-            new Dictionary<(Hash256, TreePath), TrieNode>()
+            new Dictionary<AddressPrefixAsKey, Account>(),
+            new Dictionary<(AddressPrefixAsKey, UInt256), byte[]>(),
+            new HashSet<AddressPrefixAsKey>(),
+            new Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode>()
         );
 
-        Dictionary<Address, Account> accounts = new Dictionary<Address, Account>();
-        Dictionary<(Address, UInt256), byte[]> storages = new Dictionary<(Address, UInt256), byte[]>();
-        HashSet<Address> selfDestructedStorageAddresses = new();
-        Dictionary<(Hash256, TreePath), TrieNode> nodes = new Dictionary<(Hash256, TreePath), TrieNode>();
+        Dictionary<AddressPrefixAsKey, Account> accounts = new();
+        Dictionary<(AddressPrefixAsKey, UInt256), byte[]> storages = new();
+        HashSet<AddressPrefixAsKey> selfDestructedStorageAddresses = new();
+        Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode> nodes = new();
 
         if (knownStates.Count == 1) return knownStates[0];
 
@@ -325,8 +325,8 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
     }
 
     public (bool hasSelfDesruct, bool hasChange) CollectAndApplyKnownState(
-        Dictionary<(Address, UInt256), byte[]> storages,
-        Dictionary<(Hash256, TreePath), TrieNode> nodes
+        Dictionary<(AddressPrefixAsKey, UInt256), byte[]> storages,
+        Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode> nodes
     )
     {
         foreach (var kv in _changedSlots)

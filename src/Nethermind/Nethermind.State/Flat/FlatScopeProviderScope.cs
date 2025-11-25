@@ -175,8 +175,8 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
         ILogger logger
     ) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
-        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
-        private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
+        private readonly Dictionary<AddressPrefixAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
+        private readonly ConcurrentQueue<(AddressPrefixAsKey, Hash256)> _dirtyStorageTree = new();
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
@@ -196,7 +196,7 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
                 address);
         }
 
-        public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
+        public void MarkDirty(AddressPrefixAsKey address, Hash256 storageTreeRootHash)
         {
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
         }
@@ -205,7 +205,7 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
         {
             while (_dirtyStorageTree.TryDequeue(out var entry))
             {
-                (AddressAsKey key, Hash256 storageRoot) = entry;
+                (AddressPrefixAsKey key, Hash256 storageRoot) = entry;
                 if (!_dirtyAccounts.TryGetValue(key, out var account)) account = scope.Get(key);
                 if (account == null && storageRoot == Keccak.EmptyTreeHash) continue;
                 account ??= ThrowNullAccount(key);
@@ -240,7 +240,7 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
         StorageTree storageTree,
         WriteBatch worldStateWriteBatch,
         StorageSnapshotBundle storageSnapshotBundle,
-        AddressAsKey address
+        Address address
     ) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // Slight optimization on small contract as the index hash can be precalculated in some case.

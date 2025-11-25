@@ -421,7 +421,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         {
             foreach (var toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
             {
-                batch.SelfDestruct(toSelfDestructStorage.ToAccountPath);
+                batch.SelfDestruct(toSelfDestructStorage.Value.ToAccountPath);
             }
 
             foreach (var kv in snapshot.Accounts)
