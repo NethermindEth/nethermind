@@ -17,7 +17,7 @@ using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.Blockchain.Filters
 {
-    public sealed class FilterStore
+    public sealed class FilterStore : IDisposable
     {
         private readonly TimeSpan _timeout;
         private int _currentFilterId = -1;
@@ -151,9 +151,7 @@ namespace Nethermind.Blockchain.Filters
 
         public void SaveFilters(IEnumerable<FilterBase> filters)
         {
-            int currentFilterId = Volatile.Read(ref _currentFilterId);
-
-            try
+            lock (_locker)
             {
                 foreach (FilterBase filter in filters)
                 {
@@ -162,14 +160,7 @@ namespace Nethermind.Blockchain.Filters
                         throw new InvalidOperationException($"Filter with ID {filter.Id} already exists");
                     }
 
-                    currentFilterId = Math.Max(filter.Id, currentFilterId);
-                }
-            }
-            finally
-            {
-                lock (_locker)
-                {
-                    _currentFilterId = Math.Max(currentFilterId, _currentFilterId);
+                    _currentFilterId = Math.Max(filter.Id, _currentFilterId);
                 }
             }
         }
