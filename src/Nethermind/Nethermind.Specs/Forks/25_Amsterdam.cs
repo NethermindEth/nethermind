@@ -6,7 +6,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs.Forks;
 
-public class Amsterdam : BPO5
+public class Amsterdam : Osaka
 {
     private static IReleaseSpec _instance;
 
