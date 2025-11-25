@@ -54,6 +54,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IVirtualMachine, VirtualMachine>()
             .AddScoped<IWorldState, WorldState>()
             .AddScoped<IBlockhashProvider, BlockhashProvider>()
+            .AddSingleton<IBlockhashCache, BlockhashCache>()
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
             .AddScoped<IBlockhashStore, BlockhashStore>()
             .AddScoped<IBranchProcessor, BranchProcessor>()

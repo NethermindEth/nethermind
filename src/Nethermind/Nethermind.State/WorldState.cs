@@ -1,10 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -31,6 +32,7 @@ namespace Nethermind.State
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
         private IWorldStateScopeProvider.IScope? _currentScope;
+        private bool _isInScope = false;
         private readonly ILogger _logger;
 
         public Hash256 StateRoot
@@ -237,7 +239,10 @@ namespace Nethermind.State
 
         public IDisposable BeginScope(BlockHeader? baseBlock)
         {
-            if (_currentScope is not null) throw new InvalidOperationException("Cannot create nested worldstate scope.");
+            if (Interlocked.CompareExchange(ref _isInScope, true, false))
+            {
+                throw new InvalidOperationException("Cannot create nested worldstate scope.");
+            }
 
             if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
 
@@ -251,6 +256,7 @@ namespace Nethermind.State
                 _stateProvider.SetScope(null);
                 _currentScope.Dispose();
                 _currentScope = null;
+                _isInScope = false;
                 if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
             });
         }

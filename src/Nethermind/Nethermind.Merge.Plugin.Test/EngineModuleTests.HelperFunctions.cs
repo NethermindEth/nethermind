@@ -134,8 +134,8 @@ namespace Nethermind.Merge.Plugin.Test
             IWorldState globalWorldState = chain.MainWorldState;
             using (globalWorldState.BeginScope(parent.TryGetBlock().Block!.Header))
             {
-                var blockHashStore = new BlockhashStore(chain.SpecProvider, globalWorldState);
-                blockHashStore.ApplyBlockhashStateChanges(block!.Header);
+                var blockHashStore = new BlockhashStore(globalWorldState);
+                blockHashStore.ApplyBlockhashStateChanges(block!.Header, chain.SpecProvider.GetSpec(block.Header));
                 chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
                 globalWorldState.Commit(chain.SpecProvider.GenesisSpec);
@@ -161,8 +161,8 @@ namespace Nethermind.Merge.Plugin.Test
             beaconBlockRootHandler.StoreBeaconRoot(block!, spec, NullTxTracer.Instance);
             IWorldState globalWorldState = chain.MainWorldState;
             Snapshot before = globalWorldState.TakeSnapshot();
-            var blockHashStore = new BlockhashStore(chain.SpecProvider, globalWorldState);
-            blockHashStore.ApplyBlockhashStateChanges(block!.Header);
+            var blockHashStore = new BlockhashStore(globalWorldState);
+            blockHashStore.ApplyBlockhashStateChanges(block.Header, chain.SpecProvider.GetSpec(block.Header));
 
             chain.TxProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, chain.SpecProvider.GenesisSpec));
             chain.MainExecutionRequestsProcessor.ProcessExecutionRequests(block!, globalWorldState, [], chain.SpecProvider.GenesisSpec);
