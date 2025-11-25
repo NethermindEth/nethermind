@@ -86,7 +86,8 @@ namespace Nethermind.Blockchain.Filters
         public IEnumerable<T> GetFilters<T>() where T : FilterBase
         {
             // Return Array.Empty<T>() to avoid allocating enumerator
-            // and which has a fast-path for foreach
+            // and which has a non-allocating fast-path for
+            // foreach via IEnumerable<T>
             if (_filters.IsEmpty) return Array.Empty<T>();
 
             return GetFiltersEnumerate<T>();
