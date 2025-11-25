@@ -64,11 +64,6 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     public void AddBalanceChange(Address address, UInt256 before, UInt256 after)
     {
-        if (address == Address.SystemUser)
-        {
-            return;
-        }
-
         BalanceChange balanceChange = new()
         {
             BlockAccessIndex = Index,
