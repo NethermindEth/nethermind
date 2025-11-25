@@ -23,7 +23,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
     SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
-    private long _gasCapBudget = rpcConfig.GasCap ?? long.MaxValue;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
     protected override SimulatePayload<TransactionWithSourceDetails> Prepare(SimulatePayload<TransactionForRpc> call)
@@ -35,11 +34,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
             ReturnFullTransactionObjects = call.ReturnFullTransactionObjects,
             BlockStateCalls = call.BlockStateCalls?.Select(blockStateCall =>
             {
-                if (blockStateCall.BlockOverrides?.GasLimit is not null)
-                {
-                    blockStateCall.BlockOverrides.GasLimit = (ulong)Math.Min((long)blockStateCall.BlockOverrides.GasLimit!.Value, _gasCapBudget);
-                }
-
                 return new BlockStateCall<TransactionWithSourceDetails>
                 {
                     BlockOverrides = blockStateCall.BlockOverrides,
@@ -49,9 +43,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                         LegacyTransactionForRpc asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
-                        asLegacy!.EnsureDefaults(_gasCapBudget);
-                        _gasCapBudget -= asLegacy.Gas!.Value;
-                        _gasCapBudget = Math.Max(0, _gasCapBudget);
 
                         Transaction tx = callTransactionModel.ToTransaction();
 
