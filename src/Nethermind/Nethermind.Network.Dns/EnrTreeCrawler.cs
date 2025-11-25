@@ -14,7 +14,7 @@ public class EnrTreeCrawler
     {
         _logger = logger;
     }
-    public IAsyncEnumerable<string> SearchTree(string domain, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<string> SearchTree(string domain, CancellationToken cancellationToken = default)
     {
         if (domain.StartsWith("enrtree://", StringComparison.OrdinalIgnoreCase))
         {
