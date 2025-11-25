@@ -12,8 +12,7 @@ namespace Nethermind.State.Flat;
 public interface IPersistence
 {
     IPersistenceReader CreateReader();
-    void Add(Snapshot snapshot);
-    StateId CurrentState { get; }
+    IWriteBatch CreateWriteBatch(StateId from, StateId to);
 
     public interface IPersistenceReader: IDisposable
     {
@@ -21,5 +20,14 @@ public interface IPersistence
         bool TryGetSlot(Address address, in UInt256 index, out byte[] value);
         StateId CurrentState { get; }
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags);
+    }
+
+    public interface IWriteBatch: IDisposable
+    {
+        void SelfDestruct(in ValueHash256 toAccountPath);
+        void RemoveAccount(Address addr);
+        void SetAccount(Address addr, Account account);
+        void SetStorage(Address addr, UInt256 slot, byte[] value);
+        void SetTrieNodes(Hash256 address, TreePath path, TrieNode tnValue);
     }
 }

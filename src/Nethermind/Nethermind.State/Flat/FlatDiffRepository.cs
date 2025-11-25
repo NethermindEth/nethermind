@@ -8,9 +8,12 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
@@ -28,6 +31,7 @@ public class FlatDiffRepository : IFlatDiffRepository
     private long _compactSize;
     private readonly bool _inlineCompaction;
     private ILogger _logger;
+    private StateId _currentPersistedState;
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
@@ -58,13 +62,11 @@ public class FlatDiffRepository : IFlatDiffRepository
 
         _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
         _boundary = config.Boundary;
-        WarmUp();
+
+        using var reader = persistedPersistence.CreateReader();
+        _currentPersistedState = reader.CurrentState;
 
         _ = RunCompactor(exitSource.Token);
-    }
-
-    private void WarmUp()
-    {
     }
 
     private async Task RunCompactor(CancellationToken cancellationToken)
@@ -163,7 +165,7 @@ public class FlatDiffRepository : IFlatDiffRepository
 
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}. Earliest is {earliestExclusive}");
 
-        StateId bigCacheState = _persistence.CurrentState;
+        StateId bigCacheState = _currentPersistedState;
 
         string exitReason = "";
         StateId current = baseBlock;
@@ -203,7 +205,7 @@ public class FlatDiffRepository : IFlatDiffRepository
 
         knownStates.Reverse();
 
-        if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestExclusive}, Got {knownStates.Count} known states, {_persistence.CurrentState}");
+        if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestExclusive}, Got {knownStates.Count} known states, {_currentPersistedState}");
         return new SnapshotBundle(knownStates, bigCacheReader);
     }
 
@@ -212,10 +214,10 @@ public class FlatDiffRepository : IFlatDiffRepository
         using (_repoLock.EnterScope())
         {
             if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.blockNumber} to {endBlock.blockNumber}");
-            if (endBlock.blockNumber <= _persistence.CurrentState.blockNumber)
+            if (endBlock.blockNumber <= _currentPersistedState.blockNumber)
             {
                 _logger.Warn(
-                    $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.blockNumber}, bigcache number: {_persistence.CurrentState}");
+                    $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.blockNumber}, bigcache number: {_currentPersistedState}");
                 return;
             }
 
@@ -257,7 +259,7 @@ public class FlatDiffRepository : IFlatDiffRepository
             using (_repoLock.EnterScope())
             {
                 long lastSnapshotNumber = _inMemorySnapshotStore.GetLast()?.blockNumber ?? 0;
-                StateId currentState = _persistence.CurrentState;
+                StateId currentState = _currentPersistedState;
                 if (lastSnapshotNumber - currentState.blockNumber <= _boundary)
                 {
                     break;
@@ -394,7 +396,7 @@ public class FlatDiffRepository : IFlatDiffRepository
             }
 
             // Add the canon snapshot
-            _persistence.Add(pickedState);
+            Add(pickedState);
 
             // And we remove it
             using (_repoLock.EnterScope())
@@ -413,6 +415,53 @@ public class FlatDiffRepository : IFlatDiffRepository
         }
     }
 
+    public void Add(Snapshot snapshot)
+    {
+        using (var batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
+        {
+            foreach (var toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
+            {
+                batch.SelfDestruct(toSelfDestructStorage.ToAccountPath);
+            }
+
+            foreach (var kv in snapshot.Accounts)
+            {
+                (Address addr, Account? account) = kv;
+                if (account is null)
+                    batch.RemoveAccount(addr);
+                else
+                    batch.SetAccount(addr, account);
+            }
+
+            foreach (var kv in snapshot.Storages)
+            {
+                ((Address addr, UInt256 slot), byte[] value) = kv;
+
+                batch.SetStorage(addr, slot, value);
+            }
+
+            foreach (var tn in snapshot.TrieNodes)
+            {
+                (Hash256? address, TreePath path) = tn.Key;
+
+                if (tn.Value.FullRlp.Length == 0)
+                {
+                    // TODO: Need to double check this case. Does it need a rewrite or not?
+                    if (tn.Value.NodeType == NodeType.Unknown) continue;
+                }
+
+                // Note: Even if the node already marked as persisted, we still re-persist it
+                batch.SetTrieNodes(address, path, tn.Value);
+
+                tn.Value.IsPersisted = true;
+                tn.Value.PrunePersistedRecursively(1);
+            }
+        }
+
+        _currentPersistedState = snapshot.To;
+    }
+
+
     public void FlushCache(CancellationToken cancellationToken)
     {
         Console.Error.WriteLine("Flush cache not implemented");
@@ -425,7 +474,7 @@ public class FlatDiffRepository : IFlatDiffRepository
             return true;
         }
 
-        if (_persistence.CurrentState == stateId) return true;
+        if (_currentPersistedState == stateId) return true;
         return false;
     }
 }

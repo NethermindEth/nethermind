@@ -21,15 +21,11 @@ public class RocksdbPersistence : IPersistence
     private const int StateNodesKeyLength = 32 + 1;
     private const int StorageNodesKeyLength = 32 + 32 + 1;
     private const int StorageKeyLength = 32 + 32;
-    private const int MaxKeyLength = 32 + 32 + 1;
     private AccountDecoder _accountDecoder = AccountDecoder.Instance;
-
-    public StateId CurrentState { get; set; }
 
     public RocksdbPersistence(IColumnsDb<FlatDbColumns> db)
     {
         _db = db;
-        CurrentState = ReadCurrentState(db.GetColumnDb(FlatDbColumns.Metadata));
     }
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
@@ -81,118 +77,100 @@ public class RocksdbPersistence : IPersistence
         return new PersistenceReader(_db.StartSnapshot(), this);
     }
 
-    public void Add(Snapshot snapshot)
+    public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to)
     {
-        // TODO: Lock
-
-        using var dbSnap = _db.StartSnapshot();
+        var dbSnap = _db.StartSnapshot();
         var currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
-        if (currentState != snapshot.From)
+        if (currentState != from)
         {
+            dbSnap.Dispose();
             throw new InvalidOperationException(
-                $"Attempted to apply snapshot on top of wrong state. Snapshot from: {snapshot.From}, Db state: {currentState}");
+                $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        Span<byte> keyBuffer = stackalloc byte[MaxKeyLength];
-
-        using (var batch = _db.StartWriteBatch())
-        {
-            IWriteOnlyKeyValueStore state = batch.GetColumnBatch(FlatDbColumns.State);
-            IWriteOnlyKeyValueStore storage = batch.GetColumnBatch(FlatDbColumns.Storage);
-            IWriteOnlyKeyValueStore stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
-            IWriteOnlyKeyValueStore stateNodesTop = batch.GetColumnBatch(FlatDbColumns.StateNodesTop);
-            IWriteOnlyKeyValueStore storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
-
-            foreach (var toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
-            {
-                SelfDestruct(toSelfDestructStorage.ToAccountPath, dbSnap, batch);
-            }
-
-            // Selfdestruct
-            foreach (var kv in snapshot.Accounts)
-            {
-                (Address addr, Account? account) = kv;
-                if (account is null)
-                {
-                    state.Remove(addr.ToAccountPath.Bytes);
-                }
-                else
-                {
-                    using var stream = _accountDecoder.EncodeToNewNettyStream(account);
-
-                    state.PutSpan(addr.ToAccountPath.Bytes, stream.AsSpan());
-                }
-            }
-
-            foreach (var kv in snapshot.Storages)
-            {
-                ((Address addr, UInt256 slot), byte[] value) = kv;
-
-                ReadOnlySpan<byte> theKey = EncodeStorageKey(keyBuffer, addr.ToAccountPath, slot);
-                storage.PutSpan(EncodeStorageKey(keyBuffer, addr.ToAccountPath, slot), value);
-
-            }
-
-            foreach (var tn in snapshot.TrieNodes)
-            {
-                (Hash256? address, TreePath path) = tn.Key;
-
-                if (tn.Value.FullRlp.Length == 0)
-                {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (tn.Value.NodeType == NodeType.Unknown) continue;
-                }
-
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                if (address is null)
-                {
-                    if (path.Length <= 5)
-                    {
-                        stateNodesTop.PutSpan(EncodeStateNodeKey(keyBuffer, path), tn.Value.FullRlp.Span);
-                    }
-                    else
-                    {
-                        stateNodes.PutSpan(EncodeStateNodeKey(keyBuffer, path), tn.Value.FullRlp.Span);
-                    }
-                    tn.Value.IsPersisted = true;
-                }
-                else
-                {
-                    storageNodes.PutSpan(EncodeStorageNodeKey(keyBuffer, address, path), tn.Value.FullRlp.Span);
-                    tn.Value.IsPersisted = true;
-                }
-
-                tn.Value.PrunePersistedRecursively(1);
-            }
-
-            SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), snapshot.To);
-        }
-
-        CurrentState = snapshot.To;
+        return new WriteBatch(_db.StartWriteBatch(), dbSnap, to);
     }
 
-    private void SelfDestruct(in ValueHash256 addr, IColumnDbSnapshot<FlatDbColumns> dbSnap, IColumnsWriteBatch<FlatDbColumns> writer)
+    private class WriteBatch(
+        IColumnsWriteBatch<FlatDbColumns> batch,
+        IColumnDbSnapshot<FlatDbColumns> dbSnap,
+        StateId to
+    ): IPersistence.IWriteBatch
     {
-        Span<byte> lastKey = stackalloc byte[StorageNodesKeyLength];
-        lastKey.Fill(0xff);
-        addr.Bytes.CopyTo(lastKey);
+        IWriteOnlyKeyValueStore state = batch.GetColumnBatch(FlatDbColumns.State);
+        IWriteOnlyKeyValueStore storage = batch.GetColumnBatch(FlatDbColumns.Storage);
+        IWriteOnlyKeyValueStore stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
+        IWriteOnlyKeyValueStore stateNodesTop = batch.GetColumnBatch(FlatDbColumns.StateNodesTop);
+        IWriteOnlyKeyValueStore storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
+        private AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
-        using ISortedView storageNodeReader = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.StorageNodes))
-            .GetViewBetween(addr.Bytes, lastKey);
-
-        var storageNodeWriter = writer.GetColumnBatch(FlatDbColumns.StorageNodes);
-        while (storageNodeReader.MoveNext())
+        public void Dispose()
         {
-            storageNodeWriter.Remove(storageNodeReader.CurrentKey);
+            SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), to);
+            batch.Dispose();
+            dbSnap.Dispose();
         }
 
-        using ISortedView storageReader = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage))
-            .GetViewBetween(addr.Bytes, lastKey);
-
-        var storageWriter = writer.GetColumnBatch(FlatDbColumns.Storage);
-        while (storageReader.MoveNext())
+        public void SelfDestruct(in ValueHash256 addr)
         {
-            storageWriter.Remove(storageReader.CurrentKey);
+            Span<byte> lastKey = stackalloc byte[StorageNodesKeyLength];
+            lastKey.Fill(0xff);
+            addr.Bytes.CopyTo(lastKey);
+
+            using ISortedView storageNodeReader = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.StorageNodes))
+                .GetViewBetween(addr.Bytes, lastKey);
+
+            var storageNodeWriter = storageNodes;
+            while (storageNodeReader.MoveNext())
+            {
+                storageNodeWriter.Remove(storageNodeReader.CurrentKey);
+            }
+
+            using ISortedView storageReader = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage))
+                .GetViewBetween(addr.Bytes, lastKey);
+
+            var storageWriter = storage;
+            while (storageReader.MoveNext())
+            {
+                storageWriter.Remove(storageReader.CurrentKey);
+            }
+        }
+
+        public void RemoveAccount(Address addr)
+        {
+            state.Remove(addr.ToAccountPath.Bytes);
+        }
+
+        public void SetAccount(Address addr, Account account)
+        {
+            using var stream = _accountDecoder.EncodeToNewNettyStream(account);
+
+            state.PutSpan(addr.ToAccountPath.Bytes, stream.AsSpan());
+        }
+
+        public void SetStorage(Address addr, UInt256 slot, byte[] value)
+        {
+            ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addr.ToAccountPath, slot);
+            storage.PutSpan(theKey, value);
+        }
+
+        public void SetTrieNodes(Hash256? address, TreePath path, TrieNode tn)
+        {
+            if (address is null)
+            {
+                if (path.Length <= 5)
+                {
+                    stateNodesTop.PutSpan(EncodeStateNodeKey(stackalloc byte[StateNodesKeyLength], path), tn.FullRlp.Span);
+                }
+                else
+                {
+                    stateNodes.PutSpan(EncodeStateNodeKey(stackalloc byte[StateNodesKeyLength], path), tn.FullRlp.Span);
+                }
+            }
+            else
+            {
+                storageNodes.PutSpan(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, path), tn.FullRlp.Span);
+            }
         }
     }
 
@@ -217,6 +195,8 @@ public class RocksdbPersistence : IPersistence
             _stateNodesTop = _db.GetColumn(FlatDbColumns.StateNodesTop);
             _storageNodes = _db.GetColumn(FlatDbColumns.StorageNodes);
         }
+
+        public StateId CurrentState { get; }
 
         public void Dispose()
         {
@@ -271,7 +251,6 @@ public class RocksdbPersistence : IPersistence
             }
         }
 
-        public StateId CurrentState { get; }
         public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
         {
             if (address is null)
