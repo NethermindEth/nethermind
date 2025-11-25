@@ -151,7 +151,7 @@ namespace Nethermind.TxPool
                 new NotSupportedTxFilter(txPoolConfig, _logger),
                 new SizeTxFilter(txPoolConfig, _logger),
                 new GasLimitTxFilter(_headInfo, txPoolConfig, logManager),
-                new PriorityFeeTooLowFilter(_logger),
+                new PriorityFeeTooLowFilter(_logger, txPoolConfig),
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
                 new MalformedTxFilter(_specProvider, validator, _logger)
             ];

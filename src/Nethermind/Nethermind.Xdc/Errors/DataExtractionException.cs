@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.Xdc.Errors;
 
-public class ConsensusHeaderDataExtractionException(string fieldType, Exception? innerException = null)
+public class DataExtractionException(string fieldType, Exception? innerException = null)
     : Exception($"Failed to get {fieldType} from header", innerException)
 {
     public string FieldType { get; } = fieldType;
