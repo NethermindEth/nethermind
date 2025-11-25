@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -194,6 +195,12 @@ public class RocksdbSeparatePersistence : IPersistence
         {
             ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addr.ToAccountPath, slot);
             storage.PutSpan(theKey, value);
+        }
+
+        public void RemoveStorage(Address addr, UInt256 slot)
+        {
+            ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addr.ToAccountPath, slot);
+            storage.Remove(theKey);
         }
 
         public void SetTrieNodes(Hash256? address, TreePath path, TrieNode tn)

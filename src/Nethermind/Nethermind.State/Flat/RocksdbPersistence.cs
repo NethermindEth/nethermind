@@ -154,6 +154,12 @@ public class RocksdbPersistence : IPersistence
             storage.PutSpan(theKey, value);
         }
 
+        public void RemoveStorage(Address addr, UInt256 slot)
+        {
+            ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addr.ToAccountPath, slot);
+            storage.Remove(theKey);
+        }
+
         public void SetTrieNodes(Hash256? address, TreePath path, TrieNode tn)
         {
             if (address is null)

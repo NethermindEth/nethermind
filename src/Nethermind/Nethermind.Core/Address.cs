@@ -304,7 +304,7 @@ namespace Nethermind.Core
         public override int GetHashCode()
         {
             if (_key is null) return 0;
-            return BinaryPrimitives.ReadInt32LittleEndian(_key.Bytes);
+            return BinaryPrimitives.ReadInt32LittleEndian(_key.Bytes.AsSpan().Slice(16, 4));
         }
 
         public override string ToString()

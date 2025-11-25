@@ -29,5 +29,6 @@ public interface IPersistence
         void SetAccount(Address addr, Account account);
         void SetStorage(Address addr, UInt256 slot, byte[] value);
         void SetTrieNodes(Hash256 address, TreePath path, TrieNode tnValue);
+        void RemoveStorage(Address addr, UInt256 slot);
     }
 }

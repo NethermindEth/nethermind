@@ -467,8 +467,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _writeBufferSize = ulong.Parse(optionsAsDict["write_buffer_size"]);
         _maxWriteBufferNumber = int.Parse(optionsAsDict["max_write_buffer_number"]);
 
-        BlockBasedTableOptions tableOptions = new();
-        options.SetBlockBasedTableFactory(tableOptions);
+        var isUsingPlainTable = optionsAsDict.ContainsKey("plain_table_factory");
+        BlockBasedTableOptions? tableOptions = null;
+        if (!isUsingPlainTable)
+        {
+            tableOptions = new();
+            options.SetBlockBasedTableFactory(tableOptions);
+        }
+
         IntPtr optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.RocksDbOptions);
         try
         {
@@ -485,7 +491,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             blockCacheSize = ulong.Parse(blockCacheSizeStr);
         }
 
-        if (sharedCache is not null && blockCacheSize == 0)
+        if (sharedCache is not null && blockCacheSize == 0 && tableOptions is not null)
         {
             tableOptions.SetBlockCache(sharedCache.Value);
         }

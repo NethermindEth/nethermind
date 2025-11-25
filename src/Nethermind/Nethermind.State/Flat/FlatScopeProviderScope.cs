@@ -18,6 +18,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Prometheus;
+using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State.Flat;
 
@@ -33,6 +35,16 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
     private FlatDiffRepository.Configuration _configuration;
+
+    private static Histogram _flatScopeTimer = Metrics.CreateHistogram("flat_scope_timer", "timer",
+        new HistogramConfiguration()
+        {
+            LabelNames = ["part"],
+            Buckets = Histogram.PowersOfTenDividedBuckets(5, 10, 5)
+        });
+
+    private Histogram.Child _stateTreeGet = _flatScopeTimer.WithLabels("statetree_get");
+    private Histogram.Child _flatGet = _flatScopeTimer.WithLabels("flat_get");
 
     public FlatScopeProviderScope(
         StateId currentStateId,
@@ -71,12 +83,16 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
 
     public Account? Get(Address address)
     {
+        long sw = Stopwatch.GetTimestamp();
         if (_configuration.ReadWithTrie)
         {
-            return _stateTree.Get(address);
+            var acc = _stateTree.Get(address);
+            _stateTreeGet.Observe(Stopwatch.GetTimestamp() - sw);
+            return acc;
         }
 
         _snapshotBundle.TryGetAccount(address, out var account);
+        _flatGet.Observe(Stopwatch.GetTimestamp() - sw);
 
         if (account != null)
         {
@@ -89,11 +105,13 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
         }
 
         // TODO: To snapshot bundler
+        sw = Stopwatch.GetTimestamp();
         Account? accTrie = _stateTree.Get(address);
         if (accTrie != account)
         {
             Console.Error.WriteLine($"Incorrect account {accTrie} vs {account}");
         }
+        _stateTreeGet.Observe(Stopwatch.GetTimestamp() - sw);
 
         return account;
     }
@@ -165,11 +183,11 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
         _storages.Clear();
 
 
-        Snapshot newSnapshot = _snapshotBundle.CollectAndApplyKnownState();
         StateId newStateId = new StateId(blockNumber, RootHash);
+        Snapshot newSnapshot = _snapshotBundle.CollectAndApplyKnownState(_currentStateId, newStateId);
         if (!_isReadOnly)
         {
-            if (_currentStateId != newStateId) _flatDiffRepository.AddSnapshot(_currentStateId, newStateId, newSnapshot);
+            if (_currentStateId != newStateId) _flatDiffRepository.AddSnapshot(newSnapshot);
         }
         _currentStateId = newStateId;
     }
@@ -324,7 +342,7 @@ public class SnapshotBundleStateTrieStore(
 {
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        if (bundle.TryFindNode(path, out var node))
+        if (bundle.TryFindNode(path, hash, out var node))
         {
             return node;
         }
@@ -451,7 +469,7 @@ public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldState
 
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        if (_storageSnapshotBundle.TryFindNode(path, out var node))
+        if (_storageSnapshotBundle.TryFindNode(path, hash, out var node))
         {
             return node;
         }
@@ -485,7 +503,7 @@ public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldState
         throw new Exception("Should not happen");
     }
 
-    public INodeStorage.KeyScheme Scheme { get; }
+    public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
     {
         return new Committer(this);

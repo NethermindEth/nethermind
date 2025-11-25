@@ -48,12 +48,24 @@ public class PerTableDbConfig : IRocksDbConfig
     public ulong? WriteBufferSize => ReadConfig<ulong?>(nameof(WriteBufferSize));
     public ulong? WriteBufferNumber => ReadConfig<ulong?>(nameof(WriteBufferNumber));
 
-    public string RocksDbOptions => ReadRocksdbOptions(_dbConfig, nameof(RocksDbOptions), _prefixes);
+    public string RocksDbOptions
+    {
+        get
+        {
+            if (SkipDefaultDbOptions)
+            {
+                return ReadRocksdbOptions(_dbConfig, nameof(RocksDbOptions), _prefixes[1..]);
+            }
+            return ReadRocksdbOptions(_dbConfig, nameof(RocksDbOptions), _prefixes);
+        }
+    }
+
     public string AdditionalRocksDbOptions => ReadRocksdbOptions(_dbConfig, nameof(AdditionalRocksDbOptions), _prefixes);
 
     public int? MaxOpenFiles => ReadConfig<int?>(nameof(MaxOpenFiles));
     public bool WriteAheadLogSync => ReadConfig<bool>(nameof(WriteAheadLogSync));
     public ulong? ReadAheadSize => ReadConfig<ulong?>(nameof(ReadAheadSize));
+    public bool SkipDefaultDbOptions  => ReadConfig<bool>(nameof(SkipDefaultDbOptions));
     public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;
     public uint StatsDumpPeriodSec => _dbConfig.StatsDumpPeriodSec;
     public bool? VerifyChecksum => ReadConfig<bool?>(nameof(VerifyChecksum));

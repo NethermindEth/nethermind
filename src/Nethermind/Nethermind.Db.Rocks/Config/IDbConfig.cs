@@ -33,6 +33,7 @@ public interface IDbConfig : IConfig
     bool EnableFileWarmer { get; set; }
     double CompressibilityHint { get; set; }
     bool FlushOnExit { get; set; }
+    bool SkipDefaultDbOptions { get; set; }
 
     string BadBlocksDbRocksDbOptions { get; set; }
     string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
@@ -113,10 +114,12 @@ public interface IDbConfig : IConfig
     string? FlatMetadataDbRocksDbOptions { get; set; }
     ulong? FlatMetadataDbRowCacheSize { get; set; }
     string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
+    bool FlatStateDbSkipDefaultDbOptions { get; set; }
     ulong FlatStateDbWriteBufferSize { get; set; }
     ulong FlatStateDbWriteBufferNumber { get; set; }
     string? FlatStateDbRocksDbOptions { get; set; }
     string? FlatStateDbAdditionalRocksDbOptions { get; set; }
+    bool FlatStorageDbSkipDefaultDbOptions { get; set; }
     ulong FlatStorageDbWriteBufferSize { get; set; }
     ulong FlatStorageDbWriteBufferNumber { get; set; }
     string? FlatStorageDbRocksDbOptions { get; set; }
@@ -125,6 +128,10 @@ public interface IDbConfig : IConfig
     ulong FlatStateNodesDbWriteBufferNumber { get; set; }
     string? FlatStateNodesDbRocksDbOptions { get; set; }
     string? FlatStateNodesDbAdditionalRocksDbOptions { get; set; }
+    ulong FlatStateNodesTopDbWriteBufferSize { get; set; }
+    ulong FlatStateNodesTopDbWriteBufferNumber { get; set; }
+    string? FlatStateNodesTopDbRocksDbOptions { get; set; }
+    string? FlatStateNodesTopDbAdditionalRocksDbOptions { get; set; }
     ulong FlatStorageNodesDbWriteBufferSize { get; set; }
     ulong FlatStorageNodesDbWriteBufferNumber { get; set; }
     string? FlatStorageNodesDbRocksDbOptions { get; set; }

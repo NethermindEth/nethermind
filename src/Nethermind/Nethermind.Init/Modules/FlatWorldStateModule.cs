@@ -5,6 +5,7 @@ using System;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.State;
 using Nethermind.State.Flat;
@@ -34,10 +35,12 @@ public class FlatWorldStateModule: Module
             .AddDatabase(DbNames.FlatStorageNodes)
             .AddSingleton<FlatDiffRepository.Configuration>(new FlatDiffRepository.Configuration()
             {
-                Boundary = 64 * 8,
+                Boundary = 128,
                 CompactSize = 64,
                 MaxInFlightCompactJob = 16,
                 ReadWithTrie = false,
+                VerifyWithTrie = false,
+                TrieCacheMemoryTarget = 2.GiB(),
                 InlineCompaction = false
             })
             .AddSingleton<IStateReader, FlatStateReader>();

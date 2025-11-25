@@ -11,10 +11,13 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Prometheus;
+using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State.Flat;
 
@@ -39,6 +42,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         int MaxInFlightCompactJob = 32,
         int CompactSize = 64,
         int Boundary = 128,
+        long TrieCacheMemoryTarget = 2_000_000_000,
         bool VerifyWithTrie = false,
         bool ReadWithTrie = false,
         bool InlineCompaction = false
@@ -66,12 +70,14 @@ public class FlatDiffRepository : IFlatDiffRepository
 
         using var reader = LeaseReader();
         _currentPersistedState = reader.CurrentState;
+        _trieNodeCache = new TrieNodeCache(config.TrieCacheMemoryTarget, logManager);
 
         _ = RunCompactor(exitSource.Token);
     }
 
     private Lock _readerCacheLock = new Lock();
     private RefCountingPersistenceReader? _cachedReader = null;
+    private readonly TrieNodeCache _trieNodeCache;
 
     private RefCountingPersistenceReader LeaseReader()
     {
@@ -182,6 +188,12 @@ public class FlatDiffRepository : IFlatDiffRepository
         return GatherCache(baseBlock, null);
     }
 
+    private static Histogram _knownStatesSize = Metrics.CreateHistogram("flatdiff_known_state_size", "timer",
+        new HistogramConfiguration()
+        {
+            LabelNames = ["part"],
+            Buckets = Histogram.LinearBuckets(0, 1, 100)
+        });
     private SnapshotBundle GatherCache(StateId baseBlock, long? earliestExclusive = null)
     {
         using var _ = _repoLock.EnterScope();
@@ -213,6 +225,8 @@ public class FlatDiffRepository : IFlatDiffRepository
             if (state.From.blockNumber <= earliestExclusive) break;
         }
 
+        _knownStatesSize.Observe(knownStates.Count);
+
         // Note: By the time the previous loop finished checking all state, the big cache may have added new state and removed some
         // entry in `_inMemorySnapshotStore`. Meaning, this need to be here instead oof before the loop.
         IPersistence.IPersistenceReader bigCacheReader = LeaseReader();
@@ -231,11 +245,13 @@ public class FlatDiffRepository : IFlatDiffRepository
         knownStates.Reverse();
 
         if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestExclusive}, Got {knownStates.Count} known states, {_currentPersistedState}");
-        return new SnapshotBundle(knownStates, bigCacheReader);
+        return new SnapshotBundle(knownStates, bigCacheReader, _trieNodeCache);
     }
 
-    public void AddSnapshot(StateId startingBlock, StateId endBlock, Snapshot snapshot)
+    public void AddSnapshot(Snapshot snapshot)
     {
+        StateId startingBlock = snapshot.From;
+        StateId endBlock = snapshot.To;
         using (_repoLock.EnterScope())
         {
             if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.blockNumber} to {endBlock.blockNumber}");
@@ -246,11 +262,6 @@ public class FlatDiffRepository : IFlatDiffRepository
                 return;
             }
 
-            snapshot = snapshot with
-            {
-                From = startingBlock,
-                To = endBlock,
-            };
             _inMemorySnapshotStore.AddBlock(endBlock, snapshot);
         }
 
@@ -272,6 +283,14 @@ public class FlatDiffRepository : IFlatDiffRepository
     {
         await NotifyWhenSlow("add to bigcache", () => AddToBigCache());
     }
+
+    private Histogram _addTime = Metrics.CreateHistogram("flatdiff_repo_time", "times", new HistogramConfiguration()
+    {
+        LabelNames = ["part"],
+        Buckets = Histogram.PowersOfTenDividedBuckets(4, 12, 10)
+    });
+
+    private static Counter _flushCount = Metrics.CreateCounter("flatdiff_flush", "flush", "type");
 
     private void AddToBigCache()
     {
@@ -421,7 +440,14 @@ public class FlatDiffRepository : IFlatDiffRepository
             }
 
             // Add the canon snapshot
+            long ss = Stopwatch.GetTimestamp();
             Add(pickedState);
+            _addTime.WithLabels("snapshot_save").Observe(Stopwatch.GetTimestamp() - ss);
+
+            // TODO: Determine if selfdestruct handling is required here.
+            ss = Stopwatch.GetTimestamp();
+            _trieNodeCache.Add(pickedState);
+            _addTime.WithLabels("add_trie_cache").Observe(Stopwatch.GetTimestamp() - ss);
 
             // And we remove it
             using (_repoLock.EnterScope())
@@ -440,14 +466,22 @@ public class FlatDiffRepository : IFlatDiffRepository
         }
     }
 
+    private Counter.Child _accountWrites = _flushCount.WithLabels("account");
+    private Counter.Child _storageWrites = _flushCount.WithLabels("account");
+    private Counter.Child _nodesWrites = _flushCount.WithLabels("account");
+
     public void Add(Snapshot snapshot)
     {
+        long sw = Stopwatch.GetTimestamp();
+        if (snapshot.To.blockNumber - snapshot.From.blockNumber != _compactSize) _logger.Warn($"Snapshot size write is {snapshot.To.blockNumber - snapshot.From.blockNumber}");
         using (var batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
             foreach (var toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
             {
                 batch.SelfDestruct(toSelfDestructStorage.Value.ToAccountPath);
             }
+            _addTime.WithLabels("self_destruct").Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
 
             foreach (var kv in snapshot.Accounts)
             {
@@ -457,13 +491,28 @@ public class FlatDiffRepository : IFlatDiffRepository
                 else
                     batch.SetAccount(addr, account);
             }
+            _accountWrites.Inc(snapshot.AccountsCount);
+
+            _addTime.WithLabels("accounts").Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
 
             foreach (var kv in snapshot.Storages)
             {
                 ((Address addr, UInt256 slot), byte[] value) = kv;
 
-                batch.SetStorage(addr, slot, value);
+                if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
+                {
+                    batch.RemoveStorage(addr, slot);
+                }
+                else
+                {
+                    batch.SetStorage(addr, slot, value);
+                }
             }
+            _storageWrites.Inc(snapshot.StoragesCount);
+
+            _addTime.WithLabels("storage").Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
 
             foreach (var tn in snapshot.TrieNodes)
             {
@@ -481,7 +530,13 @@ public class FlatDiffRepository : IFlatDiffRepository
                 tn.Value.IsPersisted = true;
                 tn.Value.PrunePersistedRecursively(1);
             }
+            _nodesWrites.Inc(snapshot.TrieNodesCount);
+
+            _addTime.WithLabels("nodes").Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
         }
+        _addTime.WithLabels("dispose").Observe(Stopwatch.GetTimestamp() - sw);
+        sw = Stopwatch.GetTimestamp();
 
         _currentPersistedState = snapshot.To;
         ClearReaderCache();

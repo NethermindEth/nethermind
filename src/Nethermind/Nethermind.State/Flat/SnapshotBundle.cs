@@ -4,40 +4,73 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
+using Prometheus;
+using Metrics = Nethermind.Trie.Metrics;
 
 namespace Nethermind.State.Flat;
 
 // Reversed order so that its easy to add new KnownState.
 // TODO: We can skip the reverse
-public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IPersistenceReader persistenceReader) : IDisposable
+public class SnapshotBundle(
+    ArrayPoolList<Snapshot> knownStates,
+    IPersistence.IPersistenceReader persistenceReader,
+    TrieNodeCache trieNodeCache
+) : IDisposable
 {
     Dictionary<AddressPrefixAsKey, StorageSnapshotBundle> _loadedAccounts = new();
     Dictionary<AddressPrefixAsKey, Account> _changedAccounts = new();
     ConcurrentDictionary<TreePath, TrieNode> _changedNodes = new(); // Bulkset can get nodes concurrently
     public int SnapshotCount => knownStates.Count;
 
+    internal static Histogram _snapshotBundleTimer = Prometheus.Metrics.CreateHistogram("snapshot_bundle_timer", "timer",
+        new HistogramConfiguration()
+        {
+            LabelNames = ["part"],
+            Buckets = Histogram.PowersOfTenDividedBuckets(5, 10, 5)
+        });
+
+    private Histogram.Child _snapshotBundleTimerKnownStates = _snapshotBundleTimer.WithLabels("known_states");
+    private Histogram.Child _snapshotBundleTimerPersistence = _snapshotBundleTimer.WithLabels("persistence");
+    private Histogram.Child _snapshotBundleTimerPersistenceNull = _snapshotBundleTimer.WithLabels("persistence_null");
+    private Histogram.Child _snapshotBundleTimerKnownStatesStorage = _snapshotBundleTimer.WithLabels("known_states_storage");
+    private Histogram.Child _snapshotBundleTimerPersistenceStorage = _snapshotBundleTimer.WithLabels("persistence_storage");
+    private Histogram.Child _snapshotBundleTimerPersistenceNullStorage = _snapshotBundleTimer.WithLabels("persistence_null_storage");
+    private Histogram.Child _loadTriePersistence = _snapshotBundleTimer.WithLabels("load_trie_persistence");
+    private Histogram.Child _loadTriePersistenceStorage = _snapshotBundleTimer.WithLabels("load_trie_persistence_storage");
+    private Histogram.Child _loadTrie = _snapshotBundleTimer.WithLabels("load_trie");
+
     public bool TryGetAccount(Address address, out Account? acc)
     {
         if (_changedAccounts.TryGetValue(address, out acc)) return true;
 
+        AddressPrefixAsKey key = address;
+
+        long sw = Stopwatch.GetTimestamp();
         for (int i = knownStates.Count - 1; i >= 0; i--)
         {
-            if (knownStates[i].Accounts.TryGetValue(address, out acc))
+            if (knownStates[i].TryGetAccount(key, out acc))
             {
+                _snapshotBundleTimerKnownStates.Observe(Stopwatch.GetTimestamp() - sw);
                 return true;
             }
         }
+        _snapshotBundleTimerKnownStates.Observe(Stopwatch.GetTimestamp() - sw);
+
+        sw = Stopwatch.GetTimestamp();
 
         if (persistenceReader.TryGetAccount(address, out acc))
         {
+            _snapshotBundleTimerPersistence.Observe(Stopwatch.GetTimestamp() - sw);
             return true;
         }
 
+        _snapshotBundleTimerPersistenceNull.Observe(Stopwatch.GetTimestamp() - sw);
         acc = null;
         return false;
     }
@@ -46,7 +79,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
     {
         for (int i = knownStates.Count - 1; i >= 0; i--)
         {
-            if (knownStates[i].SelfDestructedStorageAddresses.Contains(address))
+            if (knownStates[i].HasSelfDestruct(address))
             {
                 return i;
             }
@@ -57,58 +90,89 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
 
     public bool TryGetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out byte[] value)
     {
+        long sw = Stopwatch.GetTimestamp();
         for (int i = knownStates.Count - 1; i >= 0; i--)
         {
-            if (knownStates[i].Storages.TryGetValue((address, index), out value)) return true;
+            if (knownStates[i].TryGetStorage(address, index, out value)) return true;
 
             if (i <= selfDestructStateIdx)
             {
+                _snapshotBundleTimerKnownStatesStorage.Observe(Stopwatch.GetTimestamp() - sw);
                 value = null;
                 return true;
             }
         }
+        _snapshotBundleTimerKnownStatesStorage.Observe(Stopwatch.GetTimestamp() - sw);
 
-        return persistenceReader.TryGetSlot(address, index, out value);
+        sw = Stopwatch.GetTimestamp();
+        var res = persistenceReader.TryGetSlot(address, index, out value);
+        if (value == null)
+        {
+            _snapshotBundleTimerPersistenceStorage.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+        else
+        {
+            _snapshotBundleTimerPersistenceNullStorage.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+
+        return res;
     }
 
-    public bool TryFindNode(in TreePath path, out TrieNode node)
+    public bool TryFindNode(in TreePath path, Hash256 hash, out TrieNode node)
     {
         if (_changedNodes.TryGetValue(path, out node))
         {
             return true;
         }
 
-        return TryFindNode(null, path, -1, out node);
+        return TryFindNode(null, path, hash, -1, out node);
     }
 
-    public bool TryFindNode(Hash256? address, in TreePath path, int selfDestructStateIdx, out TrieNode node)
+    public bool TryFindNode(Hash256? address, in TreePath path, Hash256 hash, int selfDestructStateIdx, out TrieNode node)
     {
+        long sw = Stopwatch.GetTimestamp();
         for (int i = knownStates.Count - 1; i >= 0; i--)
         {
-            if (knownStates[i].TrieNodes.TryGetValue((address, path), out node))
+            if (knownStates[i].TryGetTrieNodes(address, path, out node))
             {
+                _loadTrie.Observe(Stopwatch.GetTimestamp() - sw);
                 return true;
             }
 
             if (i <= selfDestructStateIdx)
             {
+                _loadTrie.Observe(Stopwatch.GetTimestamp() - sw);
                 node = null;
                 return false;
             }
         }
 
-        node = null;
-        return false;
+        var res = trieNodeCache.TryGet(address, path, hash, out node);
+        _loadTrie.Observe(Stopwatch.GetTimestamp() - sw);
+        return res;
     }
 
     public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags)
     {
-        return persistenceReader.TryLoadRlp(null, path, hash, flags);
+        long sw = Stopwatch.GetTimestamp();
+        var res =  persistenceReader.TryLoadRlp(null, path, hash, flags);
+        _loadTriePersistence.Observe(Stopwatch.GetTimestamp() - sw);
+        return res;
     }
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
-        return persistenceReader.TryLoadRlp(address, path, hash, flags);
+        long sw = Stopwatch.GetTimestamp();
+        var res = persistenceReader.TryLoadRlp(address, path, hash, flags);
+        if (address is null)
+        {
+            _loadTriePersistence.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+        else
+        {
+            _loadTriePersistenceStorage.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+        return res;
     }
 
     public void SetStateNode(in TreePath path, TrieNode newNode)
@@ -129,7 +193,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
         _changedAccounts[address] = account;
     }
 
-    public Snapshot CollectAndApplyKnownState()
+    public Snapshot CollectAndApplyKnownState(StateId from, StateId to)
     {
         Dictionary<Hash256PrefixAsKey, Address> addressHashes = new();
         Dictionary<AddressPrefixAsKey, Account> accounts = new();
@@ -168,13 +232,13 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
             if (hasSelfDestruct) selfDestructedAccountAddresses.Add(gatheredCacheStorage.Key);
         }
 
-        var knownState = new Snapshot()
-        {
-            Accounts = accounts,
-            SelfDestructedStorageAddresses = selfDestructedAccountAddresses,
-            Storages = storages,
-            TrieNodes = nodes
-        };
+        var knownState = new Snapshot(
+            from: from,
+            to: to,
+            accounts: accounts,
+            storages: storages,
+            selfDestructedStorageAddresses: selfDestructedAccountAddresses,
+            trieNodes: nodes);
 
         knownStates.Add(knownState);
 
@@ -235,7 +299,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
                 {
                     if (kv.Key.Item1 == address)
                     {
-                        storages.Remove(kv.Key);
+                        storages.Remove(kv.Key, out _);
                     }
                 }
 
@@ -244,7 +308,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
                 {
                     if (kv.Key.Item1 == accountHash)
                     {
-                        nodes.Remove(kv.Key);
+                        nodes.Remove(kv.Key, out _);
                     }
                 }
             }
@@ -282,7 +346,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
 public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
 {
     Dictionary<UInt256, byte[]> _changedSlots = new();
-    ConcurrentDictionary<TreePath, TrieNode> _changedNodes = new();
+    ConcurrentDictionary<TreePath, TrieNode> _changedNodes = new(); // Trie store may set nodes concurrently
     internal Hash256 _addressHash = address.ToAccountPath.ToCommitment();
     bool _hasSelfDestruct = false;
     private int _selfDestructKnownStateIdx = bundle.DetermineSelfDestructStateIdx(address);
@@ -303,7 +367,7 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
         return bundle.TryGetSlot(address, index, _selfDestructKnownStateIdx, out value);
     }
 
-    public bool TryFindNode(in TreePath path, out TrieNode value)
+    public bool TryFindNode(in TreePath path, Hash256 hash, out TrieNode value)
     {
         if (_changedNodes.TryGetValue(path, out value))
         {
@@ -316,7 +380,7 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
             return true;
         }
 
-        return bundle.TryFindNode(_addressHash, path, _selfDestructKnownStateIdx, out value);
+        return bundle.TryFindNode(_addressHash, path, hash, _selfDestructKnownStateIdx, out value);
     }
 
     public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags)
