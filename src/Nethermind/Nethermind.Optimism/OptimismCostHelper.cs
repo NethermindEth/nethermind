@@ -164,7 +164,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
             UInt256 flzLen = L1CostFastlzCoef * ComputeFlzCompressLen(tx);
             UInt256 daUsageEstimate = UInt256.Max(
                 MinTransactionSizeScaled,
-                flzLen > L1CostInterceptNeg ? flzLen - L1CostInterceptNeg : 0 // avoid uint overflow
+                flzLen > L1CostInterceptNeg ? flzLen - L1CostInterceptNeg : 0 // avoid uint underflow
             ) / DaFootprintScale;
 
             footprint += daUsageEstimate * daFootprintScalar;

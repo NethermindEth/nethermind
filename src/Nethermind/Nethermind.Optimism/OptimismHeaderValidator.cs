@@ -99,7 +99,7 @@ public class OptimismHeaderValidator(
                 return false;
             }
 
-            if ((long)blobGasUsed > header.GasLimit)
+            if (blobGasUsed > (ulong)header.GasLimit)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
                 error = ErrorMessages.DaFootprintExceededGasLimit;
@@ -115,7 +115,7 @@ public class OptimismHeaderValidator(
     private static class ErrorMessages
     {
         public static readonly string RequestHashShouldBeOfShaOfEmpty = $"{nameof(BlockHeader.RequestsHash)} should be {OptimismPostMergeBlockProducer.PostIsthmusRequestHash} for post-Isthmus blocks";
-        public const string DaFootprintMissing = $"DA footprint missing from block header {nameof(BlockHeader.BlobGasUsed)}.";
+        public const string DaFootprintMissing = $"InvalidBlobGasUsed: DA footprint is missing from the block header {nameof(BlockHeader.BlobGasUsed)}.";
         public const string DaFootprintExceededGasLimit = "ExceededGasLimit: DA footprint exceeds gas limit.";
     }
 }

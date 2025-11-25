@@ -51,7 +51,7 @@ public class OptimismBaseFeeCalculatorTests
         actualBaseFee.Should().Be((UInt256)expectedBaseFee);
     }
 
-    private class JovianTest
+    private static class JovianTest
     {
         public const long GasLimit = 30_000_000;
         public const uint Denominator = 50;

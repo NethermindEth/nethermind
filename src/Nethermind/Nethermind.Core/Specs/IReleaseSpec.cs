@@ -354,7 +354,7 @@ namespace Nethermind.Core.Specs
         /// OP Holocene
         bool IsOpHoloceneEnabled { get; }
 
-        /// OP Holocene
+        /// OP Jovian
         bool IsOpJovianEnabled { get; }
 
         // OP Isthmus
