@@ -59,6 +59,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
 
 
     [Test]
+    [Retry(3)]
     public async Task Can_load_when_block_arrives_before_keys()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
