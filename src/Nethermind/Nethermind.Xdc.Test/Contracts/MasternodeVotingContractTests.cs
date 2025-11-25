@@ -44,7 +44,17 @@ internal class MasternodeVotingContractTests
         ISpecProvider specProvider = new TestSpecProvider(Shanghai.Instance);
         IDbProvider memDbProvider = TestMemDbProvider.Init();
         IWorldStateManager stateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(memDbProvider, LimboLogs.Instance);
-        var stateProvider = stateManager.CreateResettableWorldState();
+        IWorldState stateProvider = stateManager.CreateResettableWorldState();
+        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+        TransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+
+        AutoReadOnlyTxProcessingEnv autoReadOnlyTxProcessingEnv = new AutoReadOnlyTxProcessingEnv(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>());
+
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+
+        readOnlyTxProcessingEnvFactory.Create().Returns(autoReadOnlyTxProcessingEnv);
+
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
         BlockHeader genesis;
         using (IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis))
@@ -67,11 +77,7 @@ internal class MasternodeVotingContractTests
             genesis = Build.A.XdcBlockHeader().WithStateRoot(stateProvider.StateRoot).TestObject;
         }
 
-        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-        TransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
-
-        MasternodeVotingContract masterVoting = new(new AbiEncoder(), codeSource, new AutoReadOnlyTxProcessingEnvFactory(Substitute.For<ILifetimeScope>(), stateManager));
+        MasternodeVotingContract masterVoting = new(new AbiEncoder(), codeSource, readOnlyTxProcessingEnvFactory);
 
         Address[] candidates = masterVoting.GetCandidates(genesis);
         candidates.Length.Should().Be(3);

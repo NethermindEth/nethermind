@@ -21,7 +21,7 @@ namespace Nethermind.Xdc.Contracts;
 
 internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 {
-    private IConstantContract _constant;
+    private readonly IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory;
 
     public MasternodeVotingContract(
         IAbiEncoder abiEncoder,
@@ -29,7 +29,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory)
         : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), CreateAbiDefinition())
     {
-        _constant = GetConstant(readOnlyTxProcessingEnvFactory.Create());
+        this.readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
     }
 
     private static AbiDefinition CreateAbiDefinition()
@@ -41,7 +41,8 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     public UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate)
     {
         CallInfo callInfo = new CallInfo(blockHeader, "getCandidateCap", Address.SystemUser, candidate);
-        object[] result = _constant.Call(callInfo);
+        IConstantContract constant = GetConstant(readOnlyTxProcessingEnvFactory.Create());
+        object[] result = constant.Call(callInfo);
         if (result.Length != 1)
             throw new InvalidOperationException("Expected 'getCandidateCap' to return exactly one result.");
 
@@ -51,7 +52,8 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     public Address[] GetCandidates(BlockHeader blockHeader)
     {
         CallInfo callInfo = new CallInfo(blockHeader, "getCandidates", Address.SystemUser);
-        object[] result = _constant.Call(callInfo);
+        IConstantContract constant = GetConstant(readOnlyTxProcessingEnvFactory.Create());
+        object[] result = constant.Call(callInfo);
         return (Address[])result[0]!;
     }
 
@@ -60,22 +62,24 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     /// </summary>
     /// <param name="header"></param>
     /// <returns></returns>
-    //public Address[] GetCandidatesFromState(BlockHeader header)
-    //{
-    //    var variableSlot = CandidateContractSlots.Candidates;
-    //    Span<byte> input = [(byte)variableSlot];
-    //    var slot = new UInt256(Keccak.Compute(input).Bytes);
-    //    using var state = _worldState.BeginScope(header);
-    //    ReadOnlySpan<byte> storageCell = _worldState.Get(new StorageCell(ContractAddress, slot));
-    //    var length = new UInt256(storageCell);
-    //    Address[] candidates = new Address[(ulong)length];
-    //    for (int i = 0; i < length; i++)
-    //    {
-    //        var key = CalculateArrayKey(slot, (ulong)i, 1);
-    //        candidates[i] = new Address(_worldState.Get(new StorageCell(ContractAddress, key)));
-    //    }
-    //    return candidates;
-    //}
+    public Address[] GetCandidatesFromState(BlockHeader header)
+    {
+        CandidateContractSlots variableSlot = CandidateContractSlots.Candidates;
+        Span<byte> input = [(byte)variableSlot];
+        UInt256 slot = new UInt256(Keccak.Compute(input).Bytes);
+        IReadOnlyTxProcessorSource txProcessorSource = readOnlyTxProcessingEnvFactory.Create();        
+        using IReadOnlyTxProcessingScope source = txProcessorSource.Build(header);
+        IWorldState worldState = source.WorldState;
+        ReadOnlySpan<byte> storageCell = worldState.Get(new StorageCell(ContractAddress, slot));
+        var length = new UInt256(storageCell);
+        Address[] candidates = new Address[(ulong)length];
+        for (int i = 0; i < length; i++)
+        {
+            UInt256 key = CalculateArrayKey(slot, (ulong)i, 1);
+            candidates[i] = new Address(worldState.Get(new StorageCell(ContractAddress, key)));
+        }
+        return candidates;
+    }
 
     private UInt256 CalculateArrayKey(UInt256 slot, ulong index, ulong size)
     {
@@ -89,10 +93,10 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     /// <returns></returns>
     public Address[] GetCandidatesByStake(BlockHeader blockHeader)
     {
-        var candidates = GetCandidates(blockHeader);
+        Address[] candidates = GetCandidates(blockHeader);
 
         using var candidatesAndStake = new ArrayPoolList<CandidateStake>(candidates.Length);
-        foreach (var candidate in candidates)
+        foreach (Address candidate in candidates)
         {
             if (candidate == Address.Zero)
                 continue;
