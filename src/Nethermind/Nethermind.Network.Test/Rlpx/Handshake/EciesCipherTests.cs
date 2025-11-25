@@ -232,13 +232,7 @@ public class EciesCipherTests
         byte[] iv = new byte[16];
         byte[] body = new byte[bodyLen];
 
-        byte[] cipherText = new byte[ephem.Length + iv.Length + body.Length];
-        Span<byte> span = cipherText;
-        ephem.AsSpan().CopyTo(span);
-        span = span[ephem.Length..];
-        iv.AsSpan().CopyTo(span);
-        span = span[iv.Length..];
-        body.AsSpan().CopyTo(span);
+byte[] cipherText = ephem.Concat(iv).Concat(body).ToArray();
 
         Assert.That(() => _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, cipherText), Throws.Exception);
     }
