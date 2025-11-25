@@ -71,6 +71,11 @@ public class FlatScopeProviderScope : IWorldStateScopeProvider.IScope
 
     public Account? Get(Address address)
     {
+        if (_configuration.ReadWithTrie)
+        {
+            return _stateTree.Get(address);
+        }
+
         _snapshotBundle.TryGetAccount(address, out var account);
 
         if (account != null)
@@ -411,6 +416,11 @@ public class StorageSnapshotBundleStateTrieStore : IScopedTrieStore, IWorldState
     public Hash256 RootHash => _tree.RootHash;
     public byte[] Get(in UInt256 index)
     {
+        if (_config.ReadWithTrie)
+        {
+            return _tree.Get(index);
+        }
+
         _storageSnapshotBundle.TryGet(index, out var value);
         if (value == null) value = StorageTree.ZeroBytes;
 

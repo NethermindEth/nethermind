@@ -40,6 +40,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         int CompactSize = 64,
         int Boundary = 128,
         bool VerifyWithTrie = false,
+        bool ReadWithTrie = false,
         bool InlineCompaction = false
     )
     {

@@ -37,6 +37,7 @@ public class FlatWorldStateModule: Module
                 Boundary = 64 * 8,
                 CompactSize = 64,
                 MaxInFlightCompactJob = 16,
+                ReadWithTrie = false,
                 InlineCompaction = false
             })
             .AddSingleton<IStateReader, FlatStateReader>();
