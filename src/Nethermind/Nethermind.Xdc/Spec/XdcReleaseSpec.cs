@@ -37,6 +37,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public long EpochBlockOpening { get ; set ; }
     public long EpochBlockRandomize { get ; set ; }
     public long MergeSignRange { get ; set ; }
+    public long TIP2019Block { get ; set ; }
 
     public void ApplyV2Config(ulong round)
     {
@@ -109,6 +110,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     long EpochBlockOpening { get; set; }
     long EpochBlockRandomize { get; set; }
     long MergeSignRange { get; set; }
+    long TIP2019Block { get; set; }
 
     public void ApplyV2Config(ulong round);
 }

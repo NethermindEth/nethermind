@@ -257,7 +257,7 @@ namespace Nethermind.Xdc
                 await CommitCertificateAndVote(roundParent, epochInfo);
             }
 
-            if((spec.MergeSignRange % roundParent.Number == 0)|| spec.IsTIP2019(roundParent.Number))
+            if((spec.MergeSignRange % roundParent.Number == 0)|| spec.TIP2019Block == roundParent.Number)
             {
                 await ContractsUtils.CreateTransactionSign(roundParent, _signer, _stateDb, _txPool, spec);
             }
