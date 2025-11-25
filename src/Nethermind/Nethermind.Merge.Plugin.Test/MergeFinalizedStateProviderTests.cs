@@ -24,7 +24,7 @@ public class MergeFinalizedStateProviderTests
     private IBlockTree _blockTree = null!;
     private IFinalizedStateProvider _baseFinalizedStateProvider = null!;
     private MergeFinalizedStateProvider _provider = null!;
-    private IBlockCacheService _blockCacheService;
+    private IBlockCacheService _blockCacheService = null!;
 
     [SetUp]
     public void Setup()
@@ -33,6 +33,7 @@ public class MergeFinalizedStateProviderTests
         _blockTree = Substitute.For<IBlockTree>();
         _baseFinalizedStateProvider = Substitute.For<IFinalizedStateProvider>();
         _blockCacheService = Substitute.For<IBlockCacheService>();
+        _blockCacheService.BlockCache.Returns(new System.Collections.Concurrent.ConcurrentDictionary<Hash256AsKey, Block>());
         _provider = new MergeFinalizedStateProvider(_poSSwitcher, _blockCacheService, _blockTree, _baseFinalizedStateProvider);
     }
 
@@ -159,6 +160,31 @@ public class MergeFinalizedStateProviderTests
         long result = _provider.FinalizedBlockNumber;
 
         // Assert
+        result.Should().Be(expectedBlockNumber);
+    }
+
+    [Test]
+    public void FinalizedBlockNumber_AfterTransition_HeaderNotInBlockTree_ButInBlockCache_ReturnsBlockCacheNumber()
+    {
+        // This tests the forward sync scenario where the finalized block is in BlockCache but not yet in BlockTree
+        long expectedBlockNumber = 300;
+        Hash256 blockCacheHash = TestItem.KeccakB;
+        BlockHeader blockCacheHeader = Build.A.BlockHeader.WithNumber(expectedBlockNumber).WithHash(blockCacheHash).TestObject;
+        Block cachedBlock = Build.A.Block.WithHeader(blockCacheHeader).TestObject;
+
+        IBlockCacheService realBlockCacheService = new BlockCacheService();
+        realBlockCacheService.FinalizedHash = blockCacheHash;
+        realBlockCacheService.BlockCache[blockCacheHash] = cachedBlock;
+
+        MergeFinalizedStateProvider provider = new MergeFinalizedStateProvider(
+            _poSSwitcher, realBlockCacheService, _blockTree, _baseFinalizedStateProvider);
+
+        _poSSwitcher.TransitionFinished.Returns(true);
+        _blockTree.FinalizedHash.Returns((Hash256?)null);
+        _blockTree.FindHeader(blockCacheHash).Returns((BlockHeader?)null);
+
+        long result = provider.FinalizedBlockNumber;
+
         result.Should().Be(expectedBlockNumber);
     }
 

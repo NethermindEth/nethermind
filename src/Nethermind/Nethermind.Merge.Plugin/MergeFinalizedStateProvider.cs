@@ -30,6 +30,14 @@ public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheSe
                 if (blockCacheService.FinalizedHash is { } blockCacheFinalizedHash)
                 {
                     BlockHeader? fromBlockCache = blockTree.FindHeader(blockCacheFinalizedHash);
+
+                    // If header not in block tree, try the block cache (for forward sync when block isn't suggested yet)
+                    if (fromBlockCache is null &&
+                        blockCacheService.BlockCache.TryGetValue(blockCacheFinalizedHash, out Block? cachedBlock))
+                    {
+                        fromBlockCache = cachedBlock.Header;
+                    }
+
                     if (fromBlockCache is not null)
                     {
                         if (currentFinalized is null || fromBlockCache.Number > currentFinalized.Number)
