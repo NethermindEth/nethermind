@@ -22,7 +22,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using Nethermind.Xdc.Contracts;
 using NSubstitute;
 using NUnit.Framework;

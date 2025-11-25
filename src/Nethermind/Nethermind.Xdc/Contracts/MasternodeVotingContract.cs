@@ -67,7 +67,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
         CandidateContractSlots variableSlot = CandidateContractSlots.Candidates;
         Span<byte> input = [(byte)variableSlot];
         UInt256 slot = new UInt256(Keccak.Compute(input).Bytes);
-        IReadOnlyTxProcessorSource txProcessorSource = readOnlyTxProcessingEnvFactory.Create();        
+        IReadOnlyTxProcessorSource txProcessorSource = readOnlyTxProcessingEnvFactory.Create();
         using IReadOnlyTxProcessingScope source = txProcessorSource.Build(header);
         IWorldState worldState = source.WorldState;
         ReadOnlySpan<byte> storageCell = worldState.Get(new StorageCell(ContractAddress, slot));
