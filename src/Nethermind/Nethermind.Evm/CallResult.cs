@@ -52,7 +52,7 @@ public unsafe partial class VirtualMachine
             FromVersion = fromVersion;
         }
 
-        public CallResult(EvmExceptionType exceptionType)
+        private CallResult(EvmExceptionType exceptionType)
         {
             StateToExecute = null;
             Output = (null, StatusCode.FailureBytes);

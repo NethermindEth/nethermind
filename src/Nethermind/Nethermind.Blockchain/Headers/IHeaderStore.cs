@@ -8,7 +8,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Headers;
 
-public interface IHeaderStore
+public interface IHeaderStore : IHeaderFinder
 {
     void Insert(BlockHeader header);
     void BulkInsert(IReadOnlyList<BlockHeader> headers);
