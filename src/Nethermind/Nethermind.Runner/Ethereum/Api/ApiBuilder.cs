@@ -73,12 +73,6 @@ public class ApiBuilder
         var loader = new ChainSpecFileLoader(ethereumJsonSerializer, _logger);
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(_initConfig.ChainSpecPath);
 
-        // Process XDC-specific chainspec modifications
-        if (chainSpec.SealEngineType == Core.SealEngineType.XDPoS)
-        {
-            Xdc.XdcChainSpecLoader.ProcessChainSpec(chainSpec);
-        }
-
         //overwriting NetworkId which is useful for some devnets (like bloatnet)
         if (_initConfig.NetworkId is not null)
         {
