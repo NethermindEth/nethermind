@@ -64,6 +64,11 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     public void AddBalanceChange(Address address, UInt256 before, UInt256 after)
     {
+        if (address == Address.SystemUser && before == after)
+        {
+            return;
+        }
+
         BalanceChange balanceChange = new()
         {
             BlockAccessIndex = Index,
@@ -242,11 +247,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
         else
         {
-            accountChanges.ClearSlotChangesIfEmpty(storageKey);
-            if (!accountChanges.HasStorageChange(storageKey))
-            {
-                accountChanges.AddStorageRead(storageKey);
-            }
+            accountChanges.ClearEmptySlotChangesAndAddRead(storageKey);
         }
     }
 
@@ -295,16 +296,13 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     StorageChange? previousStorage = change.PreviousValue is null ? null : (StorageChange)change.PreviousValue;
                     accountChanges.TryGetSlotChanges(change.Slot!, out SlotChanges? slotChanges);
 
-                    // replace change with read
-                    accountChanges.AddStorageRead(change.Slot!);
-
                     slotChanges!.PopStorageChange(Index, out _);
                     if (previousStorage is not null)
                     {
                         slotChanges.Changes.Add(previousStorage.Value);
                     }
 
-                    accountChanges.ClearSlotChangesIfEmpty(change.Slot!);
+                    accountChanges.ClearEmptySlotChangesAndAddRead(change.Slot!);
                     break;
             }
         }

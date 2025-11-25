@@ -95,11 +95,12 @@ public class AccountChanges : IEquatable<AccountChanges>
     public bool TryGetSlotChanges(byte[] key, [NotNullWhen(true)] out SlotChanges? slotChanges)
         => _storageChanges.TryGetValue(key, out slotChanges);
     
-    public void ClearSlotChangesIfEmpty(byte[] key)
+    public void ClearEmptySlotChangesAndAddRead(byte[] key)
     {
         if (TryGetSlotChanges(key, out SlotChanges? slotChanges) && slotChanges.Changes.Count == 0)
         {
             _storageChanges.Remove(key);
+            _storageReads.Add(new(key));
         }
     }
 
