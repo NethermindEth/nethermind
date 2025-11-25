@@ -204,9 +204,8 @@ internal class BlobSender
         bool waitForInclusion,
         IReleaseSpec spec)
     {
-        int n = 0;
         data = data
-            .Select((s, i) => (i + n) % 32 != 0 ? [s] : (s < 0x73 ? new byte[] { s } : [(byte)(32), s]))
+            .Select((s, i) => i % 32 != 0 ? [s] : (s < 0x73 ? new byte[] { s } : [(byte)(32), s]))
             .SelectMany(b => b).ToArray();
 
         if (waitForInclusion)
