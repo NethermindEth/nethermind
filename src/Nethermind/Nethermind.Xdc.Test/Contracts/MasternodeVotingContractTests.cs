@@ -43,8 +43,8 @@ internal class MasternodeVotingContractTests
 
         ISpecProvider specProvider = new TestSpecProvider(Shanghai.Instance);
         IDbProvider memDbProvider = TestMemDbProvider.Init();
-        IWorldStateManager stateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(memDbProvider, LimboLogs.Instance);
-        IWorldState stateProvider = stateManager.CreateResettableWorldState();
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(memDbProvider, LimboLogs.Instance);
+
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
