@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -14,18 +15,39 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
 
-public class RocksdbPersistence : IPersistence
+/// <summary>
+/// Use to overcome the missing metric for column. Probably should not be used on prod.
+/// </summary>
+public class RocksdbSeparatePersistence : IPersistence
 {
-    private readonly IColumnsDb<FlatDbColumns> _db;
     private static byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
     private const int StateNodesKeyLength = 32 + 1;
     private const int StorageNodesKeyLength = 32 + 32 + 1;
     private const int StorageKeyLength = 32 + 32;
-    internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
+    private AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
-    public RocksdbPersistence(IColumnsDb<FlatDbColumns> db)
+    private IDb _metadataDb;
+    private IDb _flatStateDb;
+    private IDb _flatStorageDb;
+    private IDb _flatStateNodesDb;
+    private IDb _flatStateTopNodesDb;
+    private IDb _flatStorageNodesDb;
+
+    public RocksdbSeparatePersistence(
+        [KeyFilter(DbNames.FlatMetadata)] IDb metadataDb,
+        [KeyFilter(DbNames.FlatState)] IDb flatStateDb,
+        [KeyFilter(DbNames.FlatStorage)] IDb flatStorageDb,
+        [KeyFilter(DbNames.FlatStateNodes)] IDb flatStateNodesDb,
+        [KeyFilter(DbNames.FlatStateNodesTop)] IDb flatStateTopNodesDb,
+        [KeyFilter(DbNames.FlatStorageNodes)] IDb flatStorageNodesDb
+    )
     {
-        _db = db;
+        _metadataDb = metadataDb;
+        _flatStateDb = flatStateDb;
+        _flatStorageDb = flatStorageDb;
+        _flatStateNodesDb = flatStateNodesDb;
+        _flatStateTopNodesDb = flatStateTopNodesDb;
+        _flatStorageNodesDb = flatStorageNodesDb;
     }
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
@@ -74,41 +96,61 @@ public class RocksdbPersistence : IPersistence
 
     public IPersistence.IPersistenceReader CreateReader()
     {
-        return new PersistenceReader(_db.StartSnapshot(), this);
+        return new PersistenceReader(
+            _metadataDb,
+            _flatStateDb,
+            _flatStorageDb,
+            _flatStateNodesDb,
+            _flatStateTopNodesDb,
+            _flatStorageNodesDb,
+            this);
     }
 
     public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to)
     {
-        var dbSnap = _db.StartSnapshot();
-        var currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
+        var currentState = ReadCurrentState(_metadataDb);
         if (currentState != from)
         {
-            dbSnap.Dispose();
             throw new InvalidOperationException(
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        return new WriteBatch(_db.StartWriteBatch(), dbSnap, to);
+        return new WriteBatch(
+            _flatStorageNodesDb,
+            _flatStorageDb,
+            _metadataDb.StartWriteBatch(),
+            _flatStateDb.StartWriteBatch(),
+            _flatStorageDb.StartWriteBatch(),
+            _flatStateNodesDb.StartWriteBatch(),
+            _flatStateTopNodesDb.StartWriteBatch(),
+            _flatStorageNodesDb.StartWriteBatch(),
+            to
+        );
     }
 
     private class WriteBatch(
-        IColumnsWriteBatch<FlatDbColumns> batch,
-        IColumnDbSnapshot<FlatDbColumns> dbSnap,
+        IDb storageNodesDb,
+        IDb storageDb,
+        IWriteBatch metadata,
+        IWriteBatch state,
+        IWriteBatch storage,
+        IWriteBatch stateNodes,
+        IWriteBatch stateNodesTop,
+        IWriteBatch storageNodes,
         StateId to
     ): IPersistence.IWriteBatch
     {
-        IWriteOnlyKeyValueStore state = batch.GetColumnBatch(FlatDbColumns.State);
-        IWriteOnlyKeyValueStore storage = batch.GetColumnBatch(FlatDbColumns.Storage);
-        IWriteOnlyKeyValueStore stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
-        IWriteOnlyKeyValueStore stateNodesTop = batch.GetColumnBatch(FlatDbColumns.StateNodesTop);
-        IWriteOnlyKeyValueStore storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
         private AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
         public void Dispose()
         {
-            SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), to);
-            batch.Dispose();
-            dbSnap.Dispose();
+            SetCurrentState(metadata, to);
+            metadata.Dispose();
+            state.Dispose();
+            storage.Dispose();
+            stateNodes.Dispose();
+            stateNodesTop.Dispose();
+            storageNodes.Dispose();
         }
 
         public void SelfDestruct(in ValueHash256 addr)
@@ -117,7 +159,7 @@ public class RocksdbPersistence : IPersistence
             lastKey.Fill(0xff);
             addr.Bytes.CopyTo(lastKey);
 
-            using ISortedView storageNodeReader = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.StorageNodes))
+            using ISortedView storageNodeReader = ((ISortedKeyValueStore) storageNodesDb)
                 .GetViewBetween(addr.Bytes, lastKey);
 
             var storageNodeWriter = storageNodes;
@@ -126,7 +168,7 @@ public class RocksdbPersistence : IPersistence
                 storageNodeWriter.Remove(storageNodeReader.CurrentKey);
             }
 
-            using ISortedView storageReader = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage))
+            using ISortedView storageReader = ((ISortedKeyValueStore) storageDb)
                 .GetViewBetween(addr.Bytes, lastKey);
 
             var storageWriter = storage;
@@ -176,31 +218,35 @@ public class RocksdbPersistence : IPersistence
 
     private class PersistenceReader : IPersistence.IPersistenceReader
     {
-        private readonly IColumnDbSnapshot<FlatDbColumns> _db;
         private readonly IReadOnlyKeyValueStore _state;
         private readonly IReadOnlyKeyValueStore _storage;
         private readonly IReadOnlyKeyValueStore _stateNodes;
         private readonly IReadOnlyKeyValueStore _stateNodesTop;
         private readonly IReadOnlyKeyValueStore _storageNodes;
-        private readonly RocksdbPersistence _mainDb;
+        private readonly RocksdbSeparatePersistence _mainDb;
 
-        public PersistenceReader(IColumnDbSnapshot<FlatDbColumns> db, RocksdbPersistence mainDb)
+        public PersistenceReader(
+            IDb metadataDb,
+            IDb flatStateDb,
+            IDb flatStorageDb,
+            IDb flatStateNodesDb,
+            IDb flatStateTopNodesDb,
+            IDb flatStorageNodesDb,
+            RocksdbSeparatePersistence mainDb)
         {
-            _db = db;
             _mainDb = mainDb;
-            CurrentState = ReadCurrentState(db.GetColumn(FlatDbColumns.Metadata));
-            _state = _db.GetColumn(FlatDbColumns.State);
-            _storage = _db.GetColumn(FlatDbColumns.Storage);
-            _stateNodes = _db.GetColumn(FlatDbColumns.StateNodes);
-            _stateNodesTop = _db.GetColumn(FlatDbColumns.StateNodesTop);
-            _storageNodes = _db.GetColumn(FlatDbColumns.StorageNodes);
+            CurrentState = ReadCurrentState(metadataDb);
+            _state = flatStateDb;
+            _storage = flatStorageDb;
+            _stateNodes = flatStateNodesDb;
+            _stateNodesTop = flatStateTopNodesDb;
+            _storageNodes = flatStorageNodesDb;
         }
 
         public StateId CurrentState { get; }
 
         public void Dispose()
         {
-            _db.Dispose();
         }
 
         public bool TryGetAccount(Address address, out Account? acc)

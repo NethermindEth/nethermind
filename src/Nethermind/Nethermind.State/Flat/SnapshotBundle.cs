@@ -282,7 +282,7 @@ public class SnapshotBundle(ArrayPoolList<Snapshot> knownStates, IPersistence.IP
 public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
 {
     Dictionary<UInt256, byte[]> _changedSlots = new();
-    Dictionary<TreePath, TrieNode> _changedNodes = new();
+    ConcurrentDictionary<TreePath, TrieNode> _changedNodes = new();
     internal Hash256 _addressHash = address.ToAccountPath.ToCommitment();
     bool _hasSelfDestruct = false;
     private int _selfDestructKnownStateIdx = bundle.DetermineSelfDestructStateIdx(address);

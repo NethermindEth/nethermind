@@ -24,7 +24,14 @@ public class FlatWorldStateModule: Module
             .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
             .AddSingleton<IFlatDiffRepository, FlatDiffRepository>()
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
-            .AddSingleton<IPersistence, RocksdbPersistence>()
+            // .AddSingleton<IPersistence, RocksdbPersistence>()
+            .AddSingleton<IPersistence, RocksdbSeparatePersistence>()
+            .AddDatabase(DbNames.FlatMetadata)
+            .AddDatabase(DbNames.FlatState)
+            .AddDatabase(DbNames.FlatStorage)
+            .AddDatabase(DbNames.FlatStateNodes)
+            .AddDatabase(DbNames.FlatStateNodesTop)
+            .AddDatabase(DbNames.FlatStorageNodes)
             .AddSingleton<FlatDiffRepository.Configuration>(new FlatDiffRepository.Configuration()
             {
                 Boundary = 64 * 8,
