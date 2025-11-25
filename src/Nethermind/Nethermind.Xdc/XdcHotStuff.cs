@@ -7,7 +7,9 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
@@ -33,6 +35,8 @@ namespace Nethermind.Xdc
         private readonly ISigner _signer;
         private readonly ITimeoutTimer _timeoutTimer;
         private readonly IProcessExitSource _processExit;
+        private readonly IDb _stateDb;
+        private readonly ITxPool _txPool;
         private readonly ILogger _logger;
 
         private CancellationTokenSource? _cancellationTokenSource;
@@ -46,6 +50,7 @@ namespace Nethermind.Xdc
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
 
+
         public XdcHotStuff(
             IBlockTree blockTree,
             IXdcConsensusContext xdcContext,
@@ -58,6 +63,8 @@ namespace Nethermind.Xdc
             ISigner signer,
             ITimeoutTimer timeoutTimer,
             IProcessExitSource processExit,
+            IDb stateDb,
+            ITxPool txPool,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -71,6 +78,8 @@ namespace Nethermind.Xdc
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _timeoutTimer = timeoutTimer;
             _processExit = processExit;
+            _stateDb = stateDb;
+            _txPool = txPool;
             _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
 
             _lastActivityTime = DateTime.UtcNow;
@@ -246,6 +255,11 @@ namespace Nethermind.Xdc
             if (spec.SwitchBlock < roundParent.Number)
             {
                 await CommitCertificateAndVote(roundParent, epochInfo);
+            }
+
+            if((spec.MergeSignRange % roundParent.Number == 0)|| spec.IsTIP2019(roundParent.Number))
+            {
+                await ContractsUtils.CreateTransactionSign(roundParent, _signer, _stateDb, _txPool, spec);
             }
         }
 
