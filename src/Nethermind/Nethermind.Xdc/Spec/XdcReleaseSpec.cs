@@ -112,5 +112,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     long MergeSignRange { get; set; }
     long TIP2019Block { get; set; }
 
+    Address[] BlackListedAddresses { get; set; }
+
     public void ApplyV2Config(ulong round);
 }
