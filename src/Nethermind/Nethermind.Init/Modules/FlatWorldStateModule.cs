@@ -40,6 +40,7 @@ public class FlatWorldStateModule: Module
                 MaxInFlightCompactJob = 32,
                 ReadWithTrie = false,
                 VerifyWithTrie = false,
+                ConcurrentCompactor = 4,
                 TrieCacheMemoryTarget = 2.GiB(),
                 InlineCompaction = false
             })

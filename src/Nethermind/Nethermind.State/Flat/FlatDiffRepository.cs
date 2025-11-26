@@ -41,6 +41,7 @@ public class FlatDiffRepository : IFlatDiffRepository
     public record Configuration(
         int MaxInFlightCompactJob = 32,
         int CompactSize = 64,
+        int ConcurrentCompactor = 4,
         int Boundary = 128,
         long TrieCacheMemoryTarget = 2_000_000_000,
         bool VerifyWithTrie = false,
@@ -72,7 +73,10 @@ public class FlatDiffRepository : IFlatDiffRepository
         _currentPersistedState = reader.CurrentState;
         _trieNodeCache = new TrieNodeCache(config.TrieCacheMemoryTarget, logManager);
 
-        _ = RunCompactor(exitSource.Token);
+        for (int i = 0; i < config.ConcurrentCompactor; i++)
+        {
+            _ = RunCompactor(doPersist: i == 0, exitSource.Token);
+        }
     }
 
     private Lock _readerCacheLock = new Lock();
@@ -100,14 +104,14 @@ public class FlatDiffRepository : IFlatDiffRepository
         cachedReader?.Dispose();
     }
 
-    private async Task RunCompactor(CancellationToken cancellationToken)
+    private async Task RunCompactor(bool doPersist, CancellationToken cancellationToken)
     {
         await foreach (var stateId in _compactorJobs.Reader.ReadAllAsync(cancellationToken))
         {
             try
             {
                 CompactLevel(stateId);
-                await CleanIfNeeded();
+                if (doPersist) await CleanIfNeeded();
             }
             catch (Exception ex)
             {
