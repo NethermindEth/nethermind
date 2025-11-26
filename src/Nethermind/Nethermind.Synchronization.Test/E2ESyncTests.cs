@@ -40,7 +40,6 @@ using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
-using Nethermind.PaprikaPlugin;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;

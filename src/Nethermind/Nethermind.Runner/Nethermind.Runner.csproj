@@ -73,6 +73,7 @@
     <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
     <ProjectReference Include="..\Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.Xdc\Nethermind.Xdc.csproj" />
+    <ProjectReference Include="..\Paprika\src\PaprikaPlugin\PaprikaPlugin.csproj" />
   </ItemGroup>
 
   <ItemGroup>
