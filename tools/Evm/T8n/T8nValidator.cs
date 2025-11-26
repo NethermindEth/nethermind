@@ -4,6 +4,7 @@
 using Evm.T8n.Errors;
 using Evm.T8n.JsonTypes;
 using Nethermind.Consensus.Ethash;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 
