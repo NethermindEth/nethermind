@@ -1,22 +1,20 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
 
 /// <summary>
 /// Keeps track of transactions reads and writes.
-/// It is also used when further transaction wants to read location that was written by previous transaction.
-/// It is also used to validate read set of a transaction to determine if it needs to be re-executed.
+/// It is also used when a further transaction wants to read a location written by a previous transaction.
+/// It is also used to validate a read set of a transaction to determine if it needs to be re-executed.
 /// </summary>
-/// <param name="txCount">How many transactions are in block</param>
+/// <param name="txCount">How many transactions are in the block</param>
 /// <param name="parallelTrace">Tracing helper</param>
 /// <typeparam name="TLocation">Location key type</typeparam>
 /// <typeparam name="TLogger">Should log trace</typeparam>
@@ -42,7 +40,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     /// Each Concurrent Dictionary maps memory location to a written value.
     /// </summary>
     /// <remarks>
-    /// While only one thread should write to each of the dictionary at same point of time, multiple threads could read it.
+    /// While only one thread should write to each of the dictionaries at the same point of time, multiple threads could read it.
     /// </remarks>
     private readonly DataDictionary<TLocation, Value>[] _data =
         Enumerable.Range(0, txCount)
@@ -52,19 +50,19 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     // TODO: Or we could consider to flatten all the dictionaries per transaction to one big ConcurrentDictionary that would keep the highest transaction write per location
 
     /// <summary>
-    /// Mapping between TransactionIndex -> HashSet that will store locations that were written by last incarnation of the transaction.
+    /// Mapping between TransactionIndex -> HashSet that will store locations that were written by the last incarnation of the transaction.
     /// </summary>
     private readonly HashSet<TLocation>?[] _lastWrittenLocations = new HashSet<TLocation>?[txCount];
 
     /// <summary>
-    /// Mapping between TransactionIndex -> HashSet that will store reads by last incarnation of the transaction.
+    /// Mapping between TransactionIndex -> HashSet that will store reads by the last incarnation of the transaction.
     /// </summary>
     private readonly HashSet<Read<TLocation>>?[] _lastReads = new HashSet<Read<TLocation>>[txCount];
 
     // For given transaction incarnation it stores it's writeset into _data and updates _lastWrittenLocations
     private bool ApplyWriteSet(Version version, Dictionary<TLocation, TData> writeSet)
     {
-        DataDictionary<TLocation, Value> txData = _data[version.TxIndex]; // writes of current tx (currently from previous incarnation)
+        DataDictionary<TLocation, Value> txData = _data[version.TxIndex]; // writes of current tx (currently from the previous incarnation)
         ref HashSet<TLocation>? lastWritten = ref _lastWrittenLocations[version.TxIndex];
         lastWritten ??= new HashSet<TLocation>();
 
@@ -81,8 +79,8 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
         // if previous incarnation written locations
         if (lastWritten.Count != 0)
         {
-            // grab all the locations that were written in previous incarnation, but are not written in current incarnation
-            using ArrayPoolList<TLocation> toRemove = new(lastWritten.Count);
+            // grab all the locations that were written in the previous incarnation, but are not written in the current incarnation
+            using ArrayPoolListRef<TLocation> toRemove = new(lastWritten.Count);
             foreach (TLocation id in lastWritten)
             {
                 if (!writeSet.ContainsKey(id))
@@ -129,7 +127,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     /// </summary>
     /// <param name="txIndex"></param>
     /// <remarks>
-    /// Estimates are used, when higher transaction reads a location.
+    /// Estimates are used when a higher transaction reads a location.
     /// It then knows that it needs to add dependency and wait for this transaction to be executed.
     /// </remarks>
     public void ConvertWritesToEstimates(int txIndex)
@@ -163,14 +161,14 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     public Status TryRead(TLocation location, int txIndex, out Version version, out TData value)
     {
         long id = parallelTrace.ReserveId();
-        // start from previous transaction and go back through all the previous transactions
+        // start from the previous transaction and go back through all the previous transactions
         for (int prevTx = txIndex - 1; prevTx >= 0; prevTx--)
         {
             DataDictionary<TLocation, Value> prevTransactionData = _data[prevTx];
             prevTransactionData.Lock.EnterReadLock();
             try
             {
-                // if we find the location written by previous transaction
+                // if we find the location written by the previous transaction
                 if (prevTransactionData.Dictionary.TryGetValue(location, out Value v))
                 {
                     version = new Version(prevTx, v.Incarnation); // return version info
@@ -204,9 +202,9 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     }
 
     /// <summary>
-    /// Grabs the end result write-set of whole block
+    /// Grabs the result write-set of the whole block
     /// </summary>
-    /// <returns>Write set of the block</returns>
+    /// <returns>Write a set of the block</returns>
     public Dictionary<TLocation, TData> Snapshot()
     {
         Dictionary<TLocation, TData> result = new();
@@ -230,8 +228,8 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     /// <param name="txIndex">Transaction index to validate</param>
     /// <returns>true if they are independent and transaction doesn't need re-excecution, false if they are dependent</returns>
     /// <remarks>
-    /// Keep in mind that this validation is only against current known state.
-    /// If new incarnation of lower-index transaction will write new values, then this validation will be done again.
+    /// Keep in mind that this validation is only against the current known state.
+    /// If the new incarnation of a lower-index transaction writes new values, then this validation will be done again.
     /// </remarks>
     public bool ValidateReadSet(int txIndex)
     {
@@ -241,17 +239,17 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
             // for each of transaction reads...
             foreach (Read<TLocation> read in priorReads)
             {
-                // Try do read again on current state
+                // Try to do read again on the current state
                 Status status = TryRead(read.Location, txIndex, out Version version, out _);
                 switch (status)
                 {
                     // if we read different version (so later incarnation of dependent transaction wrote to same slot
                     // TODO: We could potentially also check the value, if the value is the same we can consider it valid? Or not lover incarnation when applying the set
                     case Status.Ok when read.Version != version:
-                    // if currently we don't find the location, but read the version isn't empty
-                    // this means that location was written previously by some lower transaction, but re-execution removed this write
+                    // if currently we don't find the location, but read the version isn't empty,
+                    // this means that the location was written previously by some lower transaction, but re-execution removed this writing
                     case Status.NotFound when !read.Version.IsEmpty:
-                    // Read error, we know previous transaction that written to this location will be re-executed, so we cannot be certain about validity of this tx reads
+                    // Read error, we know a previous transaction that written to this location will be re-executed, so we cannot be certain about the validity of this tx read
                     case Status.ReadError:
                         {
                             if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Tx {txIndex} ValidateReadSet failed.");
@@ -317,7 +315,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
 public readonly record struct Read<TLocation>(TLocation Location, Version Version); // TODO: version->incarnation?
 
 /// <summary>
-/// Information about status of reading a Location
+/// Information about the status of reading a Location
 /// </summary>
 public enum Status
 {
@@ -327,13 +325,16 @@ public enum Status
     Ok,
 
     /// <summary>
-    /// Location wasn't found in memory, needs to be read from database
+    /// Location wasn't found in memory, needs to be read from the database
     /// </summary>
     NotFound,
 
     /// <summary>
-    /// Location was read as estimate.
-    /// This indicates need to add dependency on transaction that has estimate and re-execute later.
+    /// Location was read as an estimate.
+    /// This indicates the need to add dependency on a transaction that has estimated and re-execute later.
     /// </summary>
     ReadError
 }
+
+public sealed class MultiVersionMemory(int txCount, ParallelTrace<OffFlag> parallelTrace)
+    : MultiVersionMemory<StorageCell, object, OffFlag>(txCount, parallelTrace);

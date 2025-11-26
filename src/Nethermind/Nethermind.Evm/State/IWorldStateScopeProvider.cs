@@ -25,7 +25,7 @@ public interface IWorldStateScopeProvider
 
         /// <summary>
         /// Get the account information for the following address.
-        /// Note: Do not rely on <see cref="Account.StorageRoot"/> as it may be modified after write. Instead use <see cref="IStorageTree.RootHash"/>.
+        /// Note: Do not rely on <see cref="Account.StorageRoot"/> as it may be modified after writing. Instead, use <see cref="IStorageTree.RootHash"/>.
         /// </summary>
         /// <param name="address"></param>
         /// <returns></returns>
@@ -44,7 +44,7 @@ public interface IWorldStateScopeProvider
         ICodeDb CodeDb { get; }
 
         /// <summary>
-        /// Create a per address storage tree. Multiple call to the same
+        /// Create a per address storage tree. Multiple calls to the same
         /// address yield the same <see cref="IStorageTree"/>. The returned object
         /// must not be used after <see cref="Commit"/>, and should be re-created.
         /// </summary>
@@ -61,7 +61,7 @@ public interface IWorldStateScopeProvider
 
         /// <summary>
         /// A commit will traverse the dirty nodes in the tree, calculate the hash and save
-        /// the tree to underlying store.
+        /// the tree to the underlying store.
         /// That said, <see cref="WorldState"/> will always call <see cref="IStateTree.UpdateRootHash"/>
         /// first.
         /// </summary>

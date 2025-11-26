@@ -30,7 +30,7 @@ using Nethermind.Core.Cpu;
 /// </summary>
 internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 {
-    private IWorldStateScopeProvider.IScope _currentScope;
+    private IWorldStateScopeProvider.IScope _currentScope = null!;
     private readonly StateProvider _stateProvider;
     private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = new();
@@ -448,29 +448,22 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
-    private sealed class PerContractState
+    private sealed class PerContractState(
+        Address address,
+        PersistentStorageProvider provider)
     {
         private IWorldStateScopeProvider.IStorageTree? _backend;
-        private DefaultableDictionary BlockChange = new DefaultableDictionary();
-        private bool _wasWritten = false;
-        private readonly Address _address;
-        private readonly PersistentStorageProvider _provider;
+        private readonly DefaultableDictionary _blockChange = new();
+        private bool _wasWritten;
 
-        public PerContractState(Address address,
-            PersistentStorageProvider provider)
-        {
-            _address = address;
-            _provider = provider;
-        }
-
-        public int EstimatedChanges => BlockChange.EstimatedSize;
+        public int EstimatedChanges => _blockChange.EstimatedSize;
 
         public Hash256 StorageRoot
         {
             get
             {
                 EnsureStorageTree();
-                return _backend.RootHash;
+                return _backend!.RootHash;
             }
         }
 
@@ -478,26 +471,26 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             if (_backend is not null) return;
 
-            _backend = _provider._currentScope.CreateStorageTree(_address);
+            _backend = provider._currentScope.CreateStorageTree(address);
 
             bool isEmpty = _backend.RootHash == Keccak.EmptyTreeHash;
             if (isEmpty && !_wasWritten)
             {
                 // Slight optimization that skips the tree
-                BlockChange.ClearAndSetMissingAsDefault();
+                _blockChange.ClearAndSetMissingAsDefault();
             }
         }
 
         public void Clear()
         {
             EnsureStorageTree();
-            BlockChange.ClearAndSetMissingAsDefault();
+            _blockChange.ClearAndSetMissingAsDefault();
         }
 
         public void SaveChange(StorageCell storageCell, byte[] value)
         {
             _wasWritten = true;
-            ref ChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
+            ref ChangeTrace valueChanges = ref _blockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
                 valueChanges = new ChangeTrace(value);
@@ -510,7 +503,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
-            ref ChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
+            ref ChangeTrace valueChange = ref _blockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
                 byte[] value = LoadFromTreeStorage(storageCell);
@@ -522,7 +515,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 Db.Metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
+            if (!storageCell.IsHash) provider.PushToRegistryOnly(storageCell, valueChange.After);
             return valueChange.After;
         }
 
@@ -532,8 +525,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             EnsureStorageTree();
             return !storageCell.IsHash
-                ? _backend.Get(storageCell.Index)
-                : _backend.Get(storageCell.Hash);
+                ? _backend!.Get(storageCell.Index)
+                : _backend!.Get(storageCell.Hash);
         }
 
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
@@ -545,18 +538,18 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             int writes = 0;
             int skipped = 0;
 
-            if (BlockChange.HasClear)
+            if (_blockChange.HasClear)
             {
                 storageWriteBatch.Clear();
-                BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
+                _blockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
             }
 
-            foreach (var kvp in BlockChange)
+            foreach (KeyValuePair<UInt256, ChangeTrace> kvp in _blockChange)
             {
                 byte[] after = kvp.Value.After;
                 if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
                 {
-                    BlockChange[kvp.Key] = new(after, after);
+                    _blockChange[kvp.Key] = new(after, after);
                     storageWriteBatch.Set(kvp.Key, after);
 
                     writes++;

@@ -28,8 +28,8 @@ namespace Nethermind.State
 {
     public class WorldState : IWorldState
     {
-        internal readonly StateProvider _stateProvider;
-        internal readonly PersistentStorageProvider _persistentStorageProvider;
+        private readonly StateProvider _stateProvider;
+        private readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
         private IWorldStateScopeProvider.IScope? _currentScope;
         private bool _isInScope = false;
@@ -227,7 +227,7 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _stateProvider.UpdateStateRootIfNeeded();
-            _currentScope.Commit(blockNumber);
+            _currentScope!.Commit(blockNumber);
             _persistentStorageProvider.ClearStorageMap();
         }
 
@@ -326,7 +326,7 @@ namespace Nethermind.State
 
             if (commitRoots)
             {
-                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
+                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope!.StartWriteBatch(_stateProvider.ChangedAccountCount);
                 writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
                 _persistentStorageProvider.FlushToTree(writeBatch);
                 _stateProvider.FlushToTree(writeBatch);
@@ -338,7 +338,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             int persistentSnapshot = _persistentStorageProvider.TakeSnapshot(newTransactionStart);
             int transientSnapshot = _transientStorageProvider.TakeSnapshot(newTransactionStart);
-            Snapshot.Storage storageSnapshot = new Snapshot.Storage(persistentSnapshot, transientSnapshot);
+            Snapshot.Storage storageSnapshot = new(persistentSnapshot, transientSnapshot);
             int stateSnapshot = _stateProvider.TakeSnapshot();
             return new Snapshot(storageSnapshot, stateSnapshot);
         }
