@@ -7,7 +7,6 @@ namespace Nethermind.Evm.Precompiles.Bls;
 
 public static class BlsConst
 {
-    public const bool DisableConcurrency = false;
     public const bool DisableSubgroupChecks = false;
     public const int LenFr = 32;
     public const int LenFp = 64;
