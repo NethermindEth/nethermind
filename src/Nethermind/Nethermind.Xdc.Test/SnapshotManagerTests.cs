@@ -153,4 +153,25 @@ internal class SnapshotManagerTests
         // assert that it was retrieved from db
         result.Should().BeEquivalentTo(snapshot);
     }
+
+    [TestCase(450)]
+    [TestCase(1350)]
+    public void NewHeadBlock_(int gapNumber)
+    {
+        var releaseSpec = Substitute.For<IXdcReleaseSpec>();
+        releaseSpec.EpochLength.Returns(900);
+        releaseSpec.Gap.Returns(450);
+        var blockTree = Substitute.For<IBlockTree>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        var snapshotManager = new SnapshotManager(new MemDb(), blockTree, Substitute.For<IPenaltyHandler>(), Substitute.For<IMasternodeVotingContract>(), specProvider);
+
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithGeneratedExtraConsensusData(1)
+            .WithNumber(gapNumber).TestObject;
+        blockTree.FindHeader(Arg.Any<long>()).Returns(header);
+
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(header)));
+        snapshotManager.GetSnapshotByGapNumber(header.Number)!.HeaderHash.Should().Be(header.Hash!);
+    }
 }

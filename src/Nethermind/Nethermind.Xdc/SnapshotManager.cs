@@ -39,7 +39,7 @@ internal class SnapshotManager : ISnapshotManager
         this.penaltyHandler = penaltyHandler;
     }
 
-    public Snapshot? GetSnapshotByGapNumber(ulong gapNumber)
+    public Snapshot? GetSnapshotByGapNumber(long gapNumber)
     {
         var gapBlockHeader = blockTree.FindHeader((long)gapNumber) as XdcBlockHeader;
 
@@ -68,7 +68,7 @@ internal class SnapshotManager : ISnapshotManager
     public Snapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec)
     {
         var gapBlockNum = Math.Max(0, blockNumber - blockNumber % spec.EpochLength - spec.Gap);
-        return GetSnapshotByGapNumber((ulong)gapBlockNum);
+        return GetSnapshotByGapNumber(gapBlockNum);
     }
 
     public void StoreSnapshot(Snapshot snapshot)
@@ -138,7 +138,7 @@ internal class SnapshotManager : ISnapshotManager
         else
             candidates = votingContract.GetCandidatesByStake(header);
 
-        var snapshot = new Snapshot(header.Number, header.Hash, candidates);
+        Snapshot snapshot = new(header.Number, header.Hash, candidates);
         StoreSnapshot(snapshot);
     }
 }
