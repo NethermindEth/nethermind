@@ -18,15 +18,13 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using NonBlocking;
 
 namespace Nethermind.State;
 
-public sealed class TrieStoreScopeProvider : IWorldStateScopeProvider
+public class TrieStoreScopeProvider : IWorldStateScopeProvider
 {
     private readonly ITrieStore _trieStore;
     private readonly ILogManager _logManager;
-    private readonly StateTree _backingStateTree;
     private readonly KeyValueWithBatchingBackedCodeDb _codeDb;
 
     public TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager)
@@ -35,22 +33,24 @@ public sealed class TrieStoreScopeProvider : IWorldStateScopeProvider
         _logManager = logManager;
         _codeDb = new KeyValueWithBatchingBackedCodeDb(codeDb);
 
-        _backingStateTree = CreateStateTree();
+        BackingStateTree = CreateStateTree();
     }
 
-    private StateTree CreateStateTree() => new(_trieStore.GetTrieStore(null), _logManager);
+    protected StateTree BackingStateTree { get; }
+
+    protected virtual StateTree CreateStateTree() => new(_trieStore.GetTrieStore(null), _logManager);
 
     public bool HasRoot(BlockHeader? baseBlock) => _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
         IDisposable trieStoreCloser = _trieStore.BeginScope(baseBlock);
-        _backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
+        BackingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
 
-        return new TrieStoreWorldStateBackendScope(_backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
+        return new TrieStoreWorldStateBackendScope(BackingStateTree, this, _codeDb, trieStoreCloser, _logManager);
     }
 
-    private StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new(_trieStore.GetTrieStore(address), storageRoot, _logManager);
+    protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new(_trieStore.GetTrieStore(address), storageRoot, _logManager);
 
     private class TrieStoreWorldStateBackendScope(
         StateTree backingStateTree,

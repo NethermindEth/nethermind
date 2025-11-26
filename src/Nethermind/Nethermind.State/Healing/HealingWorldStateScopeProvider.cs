@@ -15,13 +15,8 @@ public class HealingWorldStateScopeProvider(ITrieStore trieStore, IKeyValueStore
     private readonly ILogManager? _logManager = logManager;
     private readonly ITrieStore _trieStore = trieStore;
 
-    protected override StateTree CreateStateTree()
-    {
-        return new HealingStateTree(_trieStore, nodeStorage, recovery, _logManager);
-    }
+    protected override StateTree CreateStateTree() => new HealingStateTree(_trieStore, nodeStorage, recovery, _logManager);
 
-    protected override StorageTree CreateStorageTree(Address address, Hash256 storageRoot)
-    {
-        return new HealingStorageTree(_trieStore.GetTrieStore(address), nodeStorage, storageRoot, _logManager, address, _backingStateTree.RootHash, recovery);
-    }
+    protected override StorageTree CreateStorageTree(Address address, Hash256 storageRoot) =>
+        new HealingStorageTree(_trieStore.GetTrieStore(address), nodeStorage, storageRoot, _logManager, address, BackingStateTree.RootHash, recovery);
 }
