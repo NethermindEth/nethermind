@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 
 namespace Nethermind.Init.Modules;

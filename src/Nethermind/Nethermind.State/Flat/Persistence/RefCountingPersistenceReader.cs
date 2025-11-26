@@ -7,7 +7,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Trie;
 
-namespace Nethermind.State.Flat;
+namespace Nethermind.State.Flat.Persistence;
 
 public class RefCountingPersistenceReader(IPersistence.IPersistenceReader innerReader): RefCountingDisposable, IPersistence.IPersistenceReader
 {

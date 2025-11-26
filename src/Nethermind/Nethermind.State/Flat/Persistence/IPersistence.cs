@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
 
-namespace Nethermind.State.Flat;
+namespace Nethermind.State.Flat.Persistence;
 
 public interface IPersistence
 {
