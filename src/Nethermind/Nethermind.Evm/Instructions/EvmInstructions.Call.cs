@@ -134,9 +134,6 @@ internal static partial class EvmInstructions
             !stack.PopUInt256(out UInt256 outputLength))
             goto StackUnderflow;
 
-        // Charge gas for accessing the account's code (including delegation logic if applicable).
-        if (!EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) goto OutOfGas;
-
         // For non-delegate calls, the transfer value is the call value.
         UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
@@ -170,10 +167,12 @@ internal static partial class EvmInstructions
         }
 
         // Update gas: call cost, memory expansion for input and output, and extra gas.
+        // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!EvmCalculations.UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
             !EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataLength) ||
             !EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in outputOffset, outputLength) ||
-            !EvmCalculations.UpdateGas(gasExtra, ref gasAvailable))
+            !EvmCalculations.UpdateGas(gasExtra, ref gasAvailable) ||
+            !EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource))
             goto OutOfGas;
 
         // Retrieve code information for the call and schedule background analysis if needed.
