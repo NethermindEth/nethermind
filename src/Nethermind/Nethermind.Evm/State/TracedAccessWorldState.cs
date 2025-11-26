@@ -140,7 +140,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     {
         if (Enabled)
         {
-            BlockAccessList.DeleteAccount(address);
+            BlockAccessList.DeleteAccount(address, _innerWorldState.GetBalance(address));
         }
         _innerWorldState.DeleteAccount(address);
     }

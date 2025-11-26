@@ -208,10 +208,11 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
     }
 
-    public readonly void DeleteAccount(Address address)
+    public void DeleteAccount(Address address, UInt256 oldBalance)
     {
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
         accountChanges.SelfDestruct();
+        AddBalanceChange(address, oldBalance, 0);
     }
 
     private void StorageChange(AccountChanges accountChanges, in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> before, in ReadOnlySpan<byte> after)
