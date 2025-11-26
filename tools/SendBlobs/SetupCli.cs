@@ -254,6 +254,7 @@ internal static class SetupCli
         };
 
         command.Add(rpcUrlOption);
+        command.Add(receiverOption);
         command.Add(keyFileOption);
         command.Add(maxPriorityFeeGasOption);
         command.Add(maxFeeOption);
