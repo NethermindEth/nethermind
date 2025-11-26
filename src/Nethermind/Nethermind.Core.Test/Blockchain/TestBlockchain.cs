@@ -253,8 +253,8 @@ public class TestBlockchain : IDisposable
             .AddSingleton<IUnclesValidator>(Always.Valid)
             .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD))
 
-            .AddSingleton<IBlockProducer>((_) => this.BlockProducer)
-            .AddSingleton<IBlockProducerRunner>((_) => this.BlockProducerRunner)
+            .AddSingleton<IBlockProducer>((_) => BlockProducer)
+            .AddSingleton<IBlockProducerRunner>((_) => BlockProducerRunner)
 
             .AddSingleton<TestBlockchainUtil.Config, Configuration>((cfg) => new TestBlockchainUtil.Config(cfg.SlotTime))
 

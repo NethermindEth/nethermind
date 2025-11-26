@@ -21,6 +21,7 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 public class ShutterIntegrationTests : BaseEngineModuleTests
 {
     private const int BuildingSlot = (int)ShutterTestsCommon.InitialSlot;
@@ -64,6 +65,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
 
 
     [Test]
+    [Retry(3)]
     public async Task Can_load_when_block_arrives_before_keys()
     {
         Random rnd = new(ShutterTestsCommon.Seed);

@@ -15,13 +15,9 @@ using Nethermind.Int256;
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
-    : IBlockhashStore
+public class BlockhashStore(IWorldState worldState) : IBlockhashStore
 {
     private static readonly byte[] EmptyBytes = [0];
-
-    public void ApplyBlockhashStateChanges(BlockHeader blockHeader, ITxTracer? tracer = null)
-        => ApplyBlockhashStateChanges(blockHeader, specProvider.GetSpec(blockHeader), tracer);
 
     public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec, ITxTracer? tracer = null)
     {
@@ -40,9 +36,6 @@ public class BlockhashStore(ISpecProvider specProvider, IWorldState worldState)
             tracer.ReportStorageChange(blockHashStoreCell, null, newValue);
         }
     }
-
-    public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber)
-        => GetBlockHashFromState(currentHeader, requiredBlockNumber, specProvider.GetSpec(currentHeader));
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber, IReleaseSpec spec)
     {
