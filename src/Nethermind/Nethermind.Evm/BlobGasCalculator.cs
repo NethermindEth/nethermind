@@ -111,7 +111,6 @@ public static class BlobGasCalculator
         ulong parentBlobGas = excessBlobGas + blobGasUsed;
         ulong targetBlobGasPerBlock = releaseSpec.GetTargetBlobGasPerBlock();
 
-        Console.WriteLine($"[BAL TEST] parent excess={excessBlobGas} used={blobGasUsed} target={targetBlobGasPerBlock}");
         if (parentBlobGas < targetBlobGasPerBlock)
         {
             return 0;
@@ -122,17 +121,14 @@ public static class BlobGasCalculator
             TryCalculateFeePerBlobGas(parentBlockHeader, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
             UInt256 floorCost = Eip7918Constants.BlobBaseCost * parentBlockHeader.BaseFeePerGas;
             UInt256 targetCost = Eip4844Constants.GasPerBlob * feePerBlobGas;
-            Console.WriteLine($"[BAL TEST] floor={floorCost} target={targetCost}");
 
             // if below floor cost then increase excess blob gas
             if (floorCost > targetCost)
             {
-                Console.WriteLine($"[BAL TEST] below floor");
                 ulong target = releaseSpec.TargetBlobCount;
                 ulong max = releaseSpec.MaxBlobCount;
                 return excessBlobGas + (blobGasUsed * (max - target) / max);
             }
-            Console.WriteLine($"[BAL TEST] above floor");
         }
 
         return parentBlobGas - targetBlobGasPerBlock;
