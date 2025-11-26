@@ -103,7 +103,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public List<V2ConfigParams> V2Configs { get; set; }
     Address[] GenesisMasterNodes { get; set; }
     Address FoundationWallet { get; set; }
-    public Address BlockSignerContract { get; set; }
+    Address BlockSignerContract { get; set; }
     Address MasternodeVotingContract { get; set; }
 
     public void ApplyV2Config(ulong round);
