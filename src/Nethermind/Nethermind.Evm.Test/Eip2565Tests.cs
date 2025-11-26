@@ -6,6 +6,7 @@ using System.Linq;
 using System.Numerics;
 using FluentAssertions;
 using MathNet.Numerics.Random;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
@@ -51,6 +52,28 @@ namespace Nethermind.Evm.Test
             Assert.DoesNotThrow(() => ModExpPrecompile.Instance.Run(input.Done.ToArray(), London.Instance));
             long gas = ModExpPrecompile.Instance.DataGasCost(input.Done, London.Instance);
             gas.Should().Be(200);
+        }
+
+        // empty base
+        [TestCase("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000101F0", "00")]
+        // empty exp
+        [TestCase("0000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010001020304050607F0", "01")]
+        // empty mod
+        [TestCase("000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000102030405060701", "")]
+        // empty args
+        [TestCase("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", "")]
+        // empty args (even sizes)
+        [TestCase("", "")]
+        // zero mod
+        [TestCase("00000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000100010203040506070100", "00")]
+
+        public void ModExp_return_expected_values(string inputHex, string expectedResult)
+        {
+            byte[] input = Bytes.FromHexString(inputHex);
+            byte[] expected = Bytes.FromHexString(expectedResult);
+
+            Result<byte[]> result = ModExpPrecompile.Instance.Run(input, Prague.Instance);
+            Assert.That(result.Data, Is.EqualTo(expected));
         }
 
         private static (byte[], bool) BigIntegerModExp(byte[] inputData)
