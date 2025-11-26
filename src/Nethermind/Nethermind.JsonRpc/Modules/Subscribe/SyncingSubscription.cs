@@ -80,7 +80,18 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 using (result)
                 {
                     await JsonRpcDuplexClient.SendJsonRpcResult(result);
+                using (JsonRpcResult result = !isSyncing
+                           ? CreateSubscriptionMessage(false)
+                           : CreateSubscriptionMessage(new SubscriptionSyncingResult()
+                           {
+                               StartingBlock = syncingResult.StartingBlock,
+                               CurrentBlock = syncingResult.CurrentBlock,
+                               HighestBlock = syncingResult.HighestBlock
+                           }))
+                {
+                    await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 }
+
 
                 _logger.Trace($"Syncing subscription {Id} printed SyncingResult object.");
             });
