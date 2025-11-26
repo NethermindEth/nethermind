@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus;
-using Nethermind.Crypto;
+
 using Nethermind.Logging;
 using System.CommandLine;
 using Nethermind.Core.Specs;
@@ -209,7 +208,7 @@ internal static class SetupCli
 
             FundsDistributor distributor = new(
                 rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
-            IEnumerable<string> hashes = await distributor.DitributeFunds(
+            wait distributor.DitributeFunds(
                 signer,
                 parseResult.GetValue(keyNumberOption),
                 parseResult.GetValue(maxFeeOption),
@@ -267,7 +266,7 @@ internal static class SetupCli
             ulong chainId = HexConvert.ToUInt64(chainIdString);
 
             FundsDistributor distributor = new(rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
-            IEnumerable<string> hashes = await distributor.ReclaimFunds(
+            await distributor.ReclaimFunds(
                 new(parseResult.GetValue(receiverOption)!),
                 parseResult.GetValue(maxFeeOption),
                 parseResult.GetValue(maxPriorityFeeGasOption));
