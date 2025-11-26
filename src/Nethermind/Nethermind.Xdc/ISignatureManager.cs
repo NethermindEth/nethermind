@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Xdc;
+
 public interface ISignatureManager
 {
     public ISigner CurrentSigner { get; }

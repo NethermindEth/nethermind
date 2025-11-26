@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM mcr.microsoft.com/dotnet/sdk:9.0.307-noble@sha256:5643129f0c9f09bab23387c57bfeea1e3e42f47c7370fd9e389a5739e5ef383c
+FROM mcr.microsoft.com/dotnet/sdk:10.0.100-noble@sha256:c7445f141c04f1a6b454181bd098dcfa606c61ba0bd213d0a702489e5bd4cd71
 
 ARG COMMIT_HASH
 ARG SOURCE_DATE_EPOCH
@@ -12,11 +12,11 @@ WORKDIR /nethermind
 
 COPY src/Nethermind src/Nethermind
 COPY Directory.*.props .
-COPY nuget.config .
 COPY global.json .
-COPY scripts/build/build.sh .
+COPY nuget.config .
+COPY --chmod=0755 scripts/build/build.sh .
 
-RUN chmod +x build.sh && ./build.sh $COMMIT_HASH
+RUN ./build.sh $COMMIT_HASH
 
 VOLUME /output
 

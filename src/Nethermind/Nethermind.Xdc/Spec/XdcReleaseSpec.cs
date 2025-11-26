@@ -7,6 +7,7 @@ using Nethermind.Specs;
 using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Spec;
+
 public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
 {
     public int EpochLength { get; set; }
@@ -96,6 +97,5 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; }
     Address[] GenesisMasterNodes { get; set; }
-
     public void ApplyV2Config(ulong round);
 }

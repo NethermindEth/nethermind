@@ -10,6 +10,7 @@ using Nethermind.Db;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test;
+
 internal class XdcBlockAndHeaderStoreTests
 {
     IXdcHeaderStore _headerStore;

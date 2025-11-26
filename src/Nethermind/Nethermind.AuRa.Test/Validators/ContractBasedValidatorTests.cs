@@ -568,12 +568,12 @@ public class ContractBasedValidatorTests
                     return new[]
                     {
                             Build.A.LogEntry.WithAddress(_contractAddress)
-                                .WithData(new[] {(byte) (block.Number * 10 + i++)})
+                                .WithData([(byte) (block.Number * 10 + i++)])
                                 .WithTopics(_validatorContract.AbiDefinition.Events[ValidatorContract.InitiateChange].GetHash(), block.ParentHash)
                                 .TestObject
                     };
                 })
-            .OfChainLength(9, 0, 0, false, validators);
+            .OfChainLength(9, blockBeneficiaries: validators);
 
         BlockTree blockTree = blockTreeBuilder.TestObject;
         SetupInitialValidators(blockTree.Head?.Header, blockTree.FindHeader(blockTree.Head?.ParentHash, BlockTreeLookupOptions.None), validators);

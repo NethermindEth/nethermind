@@ -17,11 +17,11 @@ namespace Nethermind.Consensus.Stateless;
 /// <summary>
 /// This class is part of the StatelessExecution tool. It's intended to be used only inside the processing pipeline.
 /// </summary>
-/// <param name="headers"></param>
-public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers) : IBlockTree
+public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
+    : IBlockTree, IBlockhashCache
 {
-    private readonly Dictionary<Hash256, BlockHeader> _hashToHeader =
-        headers.ToDictionary(header => header.Hash ?? throw new ArgumentNullException(), header => header);
+    private readonly Dictionary<Hash256AsKey, BlockHeader> _hashToHeader =
+        headers.ToDictionary(header => (Hash256AsKey)(header.Hash ?? throw new ArgumentNullException(nameof(header.Hash))), header => header);
 
     private readonly Dictionary<long, BlockHeader> _numberToHeader =
         headers.ToDictionary(header => header.Number, header => header);
@@ -212,5 +212,28 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers) : IBlo
     {
         add => throw new NotSupportedException();
         remove => throw new NotSupportedException();
+    }
+
+    public Hash256? GetHash(BlockHeader headBlock, int depth) =>
+        depth == 0
+            ? headBlock.Hash
+            : _numberToHeader.TryGetValue(headBlock.Number - depth, out BlockHeader? header)
+                ? header?.Hash
+                : null;
+
+    public Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken)
+    {
+        const int length = BlockhashCache.MaxDepth + 1;
+        Hash256[] result = new Hash256[length];
+        result[0] = blockHeader.Hash;
+        for (int i = 1; i < length; i++)
+        {
+            if (_numberToHeader.TryGetValue(blockHeader.Number - i, out BlockHeader header))
+            {
+                result[i] = header.Hash;
+            }
+        }
+
+        return Task.FromResult(result);
     }
 }

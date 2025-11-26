@@ -284,6 +284,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             if (_logger.IsInfo) _logger.Info($"Synced Chain Head to {newHeadBlock.ToString(Block.Format.Short)}");
         }
 
+        _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
         return null;
     }
 
