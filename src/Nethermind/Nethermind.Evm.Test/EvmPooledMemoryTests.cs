@@ -59,7 +59,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         EvmPooledMemory memory = new();
         UInt256 dest = (UInt256)destination;
-        long result = memory.CalculateMemoryCost(in dest, (UInt256)memoryAllocation);
+        long result = memory.CalculateMemoryCost(in dest, (UInt256)memoryAllocation, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(false));
         TestContext.Out.WriteLine($"Gas cost of allocating {memoryAllocation} starting from {dest}: {result}");
     }
 
@@ -106,7 +107,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     public void GetTrace_should_not_throw_on_not_initialized_memory()
     {
         EvmPooledMemory memory = new();
-        memory.CalculateMemoryCost(0, 32);
+        memory.CalculateMemoryCost(0, 32, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(false));
         memory.GetTrace().ToHexWordList().Should().BeEquivalentTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" });
     }
 

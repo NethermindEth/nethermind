@@ -17,6 +17,6 @@ public interface IEvmMemory : IDisposable
     Span<byte> LoadSpan(in UInt256 location);
     Span<byte> LoadSpan(in UInt256 location, in UInt256 length);
     ReadOnlyMemory<byte> Load(in UInt256 location, in UInt256 length);
-    long CalculateMemoryCost(in UInt256 location, in UInt256 length);
+    long CalculateMemoryCost(in UInt256 location, in UInt256 length, out bool outOfGas);
     TraceMemory GetTrace();
 }

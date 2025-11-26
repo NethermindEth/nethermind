@@ -67,8 +67,10 @@ public abstract class EvmMemoryTestsBase
     {
         IEvmMemory memory = CreateEvmMemory();
         UInt256 dest = UInt256.One;
-        memory.CalculateMemoryCost(in dest, UInt256.One);
-        long cost = memory.CalculateMemoryCost(in dest, UInt256.One);
+        memory.CalculateMemoryCost(in dest, UInt256.One, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(false));
+        long cost = memory.CalculateMemoryCost(in dest, UInt256.One, out outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(false));
         Assert.That(cost, Is.EqualTo(0L));
     }
 
@@ -77,7 +79,8 @@ public abstract class EvmMemoryTestsBase
     {
         IEvmMemory memory = CreateEvmMemory();
         UInt256 dest = long.MaxValue;
-        long cost = memory.CalculateMemoryCost(in dest, UInt256.Zero);
+        long cost = memory.CalculateMemoryCost(in dest, UInt256.Zero, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(false));
         Assert.That(cost, Is.EqualTo(0L));
     }
 }

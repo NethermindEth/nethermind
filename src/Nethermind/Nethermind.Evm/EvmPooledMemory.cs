@@ -273,18 +273,6 @@ public struct EvmPooledMemory : IEvmMemory
         return 0L;
     }
 
-    public long CalculateMemoryCost(in UInt256 location, in UInt256 length)
-    {
-        long result = CalculateMemoryCost(in location, in length, out bool outOfGas);
-        if (outOfGas)
-        {
-            ThrowOutOfGas();
-        }
-
-        return result;
-
-    }
-
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowOutOfGas() => throw new OutOfGasException();
 
