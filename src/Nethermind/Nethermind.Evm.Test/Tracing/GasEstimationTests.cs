@@ -506,6 +506,7 @@ namespace Nethermind.Evm.Test.Tracing
             TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(100000)
+                .WithGasPrice(0)
                 .WithSenderAddress(Address.Zero)
                 .WithValue(0) // No value transfer - should work even with zero balance
                 .TestObject;
