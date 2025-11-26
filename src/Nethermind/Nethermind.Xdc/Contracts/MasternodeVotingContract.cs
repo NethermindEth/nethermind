@@ -24,7 +24,6 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     private readonly IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory;
 
     public MasternodeVotingContract(
-        IWorldState worldState,
         IAbiEncoder abiEncoder,
         Address contractAddress,
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory)
