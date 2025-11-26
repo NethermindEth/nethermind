@@ -7,9 +7,9 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 
-namespace Nethermind.State.Flat;
+namespace Nethermind.State.Flat.ScopeProvider;
 
-public class FlatTrieStoreScopeProvider : IWorldStateScopeProvider
+public class FlatScopeProvider : IWorldStateScopeProvider
 {
     private readonly IFlatDiffRepository _flatDiffRepository;
     private readonly ILogManager _logManager;
@@ -17,7 +17,7 @@ public class FlatTrieStoreScopeProvider : IWorldStateScopeProvider
     private readonly bool _isReadOnly;
     private readonly FlatDiffRepository.Configuration _configuration;
 
-    public FlatTrieStoreScopeProvider(
+    public FlatScopeProvider(
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IFlatDiffRepository flatDiffRepository,
         FlatDiffRepository.Configuration configuration,
@@ -40,7 +40,7 @@ public class FlatTrieStoreScopeProvider : IWorldStateScopeProvider
     {
         StateId currentState = new StateId(baseBlock);
         SnapshotBundle snapshotBundle = _flatDiffRepository.GatherReaderAtBaseBlock(currentState);
-        return new FlatScopeProviderScope(
+        return new WorldStateScope(
             currentState,
             snapshotBundle,
             _codeDb,

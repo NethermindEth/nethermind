@@ -11,13 +11,13 @@ using Nethermind.Logging;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.State.Flat;
+namespace Nethermind.State.Flat.ScopeProvider;
 
 public class FlatWorldStateManager : IWorldStateManager
 {
     private readonly IFlatDiffRepository _flatDiffRepository;
     private readonly FlatStateReader _flatStateReader;
-    private readonly FlatTrieStoreScopeProvider _mainWorldState;
+    private readonly FlatScopeProvider _mainWorldState;
     private readonly IDb _codeDb;
     private readonly ILogManager _logManager;
     private readonly FlatDiffRepository.Configuration _configuration;
@@ -35,7 +35,7 @@ public class FlatWorldStateManager : IWorldStateManager
         _codeDb = codeDb;
         _logManager = logManager;
         _configuration = configuration;
-        _mainWorldState = new FlatTrieStoreScopeProvider(codeDb, flatDiffRepository, configuration, logManager);
+        _mainWorldState = new FlatScopeProvider(codeDb, flatDiffRepository, configuration, logManager);
     }
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
@@ -44,7 +44,7 @@ public class FlatWorldStateManager : IWorldStateManager
     public IReadOnlyKeyValueStore? HashServer => null;
     public IWorldStateScopeProvider CreateResettableWorldState()
     {
-        return new FlatTrieStoreScopeProvider(_codeDb, _flatDiffRepository, _configuration, _logManager, isReadOnly: true);
+        return new FlatScopeProvider(_codeDb, _flatDiffRepository, _configuration, _logManager, isReadOnly: true);
     }
 
     event EventHandler<ReorgBoundaryReached>? IWorldStateManager.ReorgBoundaryReached
@@ -55,7 +55,7 @@ public class FlatWorldStateManager : IWorldStateManager
 
     public IOverridableWorldScope CreateOverridableWorldScope()
     {
-        var scopeProvider = new FlatTrieStoreScopeProvider(_codeDb, _flatDiffRepository, _configuration, _logManager, isReadOnly: true);
+        var scopeProvider = new FlatScopeProvider(_codeDb, _flatDiffRepository, _configuration, _logManager, isReadOnly: true);
         return new FakeOverridableWorldScope(scopeProvider, _flatStateReader);
     }
 
