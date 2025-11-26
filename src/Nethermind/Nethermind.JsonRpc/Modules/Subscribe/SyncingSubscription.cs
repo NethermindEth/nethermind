@@ -63,23 +63,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 _lastIsSyncing = isSyncing;
                 JsonRpcResult result;
 
-                if (isSyncing == false)
-                {
-                    result = CreateSubscriptionMessage(isSyncing);
-                }
-                else
-                {
-                    result = CreateSubscriptionMessage(new SubscriptionSyncingResult()
-                    {
-                        StartingBlock = syncingResult.StartingBlock,
-                        CurrentBlock = syncingResult.CurrentBlock,
-                        HighestBlock = syncingResult.HighestBlock
-                    });
-                }
-
-                using (result)
-                {
-                    await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 using (JsonRpcResult result = !isSyncing
                            ? CreateSubscriptionMessage(false)
                            : CreateSubscriptionMessage(new SubscriptionSyncingResult()
