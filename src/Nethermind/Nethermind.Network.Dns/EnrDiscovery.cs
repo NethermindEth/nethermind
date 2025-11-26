@@ -35,7 +35,7 @@ public class EnrDiscovery : INodeSource
         if (string.IsNullOrWhiteSpace(_domain)) yield break;
 
         IByteBuffer buffer = NethermindBuffers.Default.Buffer();
-        await using ConfiguredCancelableAsyncEnumerable<string>.Enumerator enumerator = _crawler.SearchTree(_domain)
+        await using ConfiguredCancelableAsyncEnumerable<string>.Enumerator enumerator = _crawler.SearchTree(_domain, cancellationToken)
             .WithCancellation(cancellationToken)
             .GetAsyncEnumerator();
 

@@ -16,4 +16,9 @@
     <PackageReference Include="NUnit3TestAdapter" />
   </ItemGroup>
 
+  <!-- See https://youtrack.jetbrains.com/issue/RSRP-498837 -->
+  <ItemGroup Condition="$(ContinuousIntegrationBuild) != 'true' AND $(BuildingInsideVisualStudio) != 'true'">
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+  </ItemGroup>
+
 </Project>
