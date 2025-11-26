@@ -525,11 +525,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     processingBranch.BlocksToProcess,
                     options,
                     blockTracer);
-                BlockTraceDumper.LogDiagnosticTrace(blockTracer, processingBranch.BlocksToProcess, _logger);
+                BlockTraceDumper.LogDiagnosticTrace(blockTracer, processingBranch.BlocksToProcess, null, _logger);
             }
             catch (InvalidBlockException ex)
             {
-                BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlock.Hash!, _logger);
+                BlockTraceDumper.LogDiagnosticTrace(blockTracer, null, ex.InvalidBlock.Hash, _logger);
             }
             catch (Exception ex)
             {
