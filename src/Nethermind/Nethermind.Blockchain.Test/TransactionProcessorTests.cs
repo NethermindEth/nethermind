@@ -289,10 +289,11 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithParent(_baseBlock).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         EstimateGasTracer tracer = new();
-        Action action = () => _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
+        Func<TransactionResult> action = () => _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
+
         if (!systemUser)
         {
-            action.Should().Throw<InsufficientBalanceException>();
+            action().Should().Be(TransactionResult.InsufficientSenderBalance);
         }
         else
         {

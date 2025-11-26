@@ -41,8 +41,17 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
         }
 
         return base.Execute(tx, tracer, (opts != ExecutionOptions.SkipValidation && !opts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
-            ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
-            : opts);
+            ? opts | (ExecutionOptions)OriginalValidate : opts);
+    }
+
+    protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+        in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
+        out UInt256 blobBaseFee)
+    {
+        premiumPerGas = 0;
+        senderReservedGasPayment = 0;
+        blobBaseFee = 0;
+        return TransactionResult.Ok;
     }
 
     protected override IReleaseSpec GetSpec(BlockHeader header) => SystemTransactionReleaseSpec.GetReleaseSpec(base.GetSpec(header), _isAura, header.IsGenesis);

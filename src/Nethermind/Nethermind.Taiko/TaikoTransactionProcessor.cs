@@ -21,17 +21,25 @@ public class TaikoTransactionProcessor(
     IVirtualMachine virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
     ILogManager? logManager
-    ) : TransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+) : TransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository,
+    logManager)
 {
+    protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec,
+        ExecutionOptions opts,
+        in IntrinsicGas intrinsicGas)
+        => base.ValidateStatic(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.SkipValidationAndCommit : opts, in intrinsicGas);
+
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer,
         ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
         out UInt256 blobBaseFee)
     {
-        if (tx.IsAnchorTx)
+        if (!tx.IsAnchorTx)
         {
-            base.BuyGas(tx, spec, tracer, opts | ExecutionOptions.Commit, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
+            return base.BuyGas(tx, spec, tracer, opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment,
+                out blobBaseFee);
         }
+
         premiumPerGas = UInt256.Zero;
         senderReservedGasPayment = UInt256.Zero;
         blobBaseFee = UInt256.Zero;
@@ -39,13 +47,9 @@ public class TaikoTransactionProcessor(
         return TransactionResult.Ok;
     }
 
-
-    protected override GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
-        => base.Refund(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.Commit : opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas);
-
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
-        in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
+        in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee,
+        int statusCode)
     {
         UInt256 tipFees = (UInt256)spentGas * premiumPerGas;
         UInt256 baseFees = (UInt256)spentGas * header.BaseFeePerGas;
@@ -85,7 +89,8 @@ public class TaikoTransactionProcessor(
             tracer.ReportFees(tipFees, baseFees);
     }
 
-    protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec,
+        ITxTracer tracer, ExecutionOptions opts)
     {
         if (tx.IsAnchorTx)
             WorldState.CreateAccountIfNotExists(tx.SenderAddress!, UInt256.Zero, UInt256.Zero);

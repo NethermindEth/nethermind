@@ -145,7 +145,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem())
+            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
                 return _systemTransactionProcessor.Execute(tx, tracer, opts);
@@ -211,7 +211,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+                    if (senderReservedGasPayment != 0)
                         WorldState.AddToBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
                     DecrementNonce(tx);
 
@@ -915,9 +915,9 @@ namespace Nethermind.Evm.TransactionProcessing
             long operationGas = spentGas;
             spentGas = Math.Max(spentGas, floorGas);
 
-            // If noValidation we didn't charge for gas, so do not refund
-            if (gasPrice != 0)
-                WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - spentGas) * gasPrice, spec);
+            UInt256 refundAmount = (ulong)(tx.GasLimit - spentGas) * gasPrice;
+            if (refundAmount != 0)
+                WorldState.AddToBalance(tx.SenderAddress!, refundAmount, spec);
 
             return new GasConsumed(spentGas, operationGas);
         }
