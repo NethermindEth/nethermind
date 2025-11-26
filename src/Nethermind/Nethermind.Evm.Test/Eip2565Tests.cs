@@ -66,7 +66,6 @@ namespace Nethermind.Evm.Test
         [TestCase("", "")]
         // zero mod
         [TestCase("00000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000100010203040506070100", "00")]
-
         public void ModExp_return_expected_values(string inputHex, string expectedResult)
         {
             byte[] input = Bytes.FromHexString(inputHex);
@@ -74,6 +73,7 @@ namespace Nethermind.Evm.Test
 
             Result<byte[]> result = ModExpPrecompile.Instance.Run(input, Prague.Instance);
             Assert.That(result.Data, Is.EqualTo(expected));
+            Assert.That(result.Error, Is.Null);
         }
 
         private static (byte[], bool) BigIntegerModExp(byte[] inputData)
