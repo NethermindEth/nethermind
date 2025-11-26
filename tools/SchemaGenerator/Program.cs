@@ -3,7 +3,6 @@ using NJsonSchema;
 using System.Reflection;
 using System.Reflection.Emit;
 using Nethermind.Config;
-using Nethermind.Core.Collections;
 
 Type iConfigType = typeof(IConfig);
 
