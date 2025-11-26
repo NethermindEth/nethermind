@@ -49,6 +49,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
                 configProvider.GetConfig<IReceiptConfig>(),
                 configProvider.GetConfig<ISyncConfig>()
             ))
+            .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
             .AddModule(new PrewarmerModule(configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BuiltInStepsModule())
             .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
@@ -83,9 +84,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
         }
 
         if (configProvider.GetConfig<IFlatDbConfig>().Enabled)
-            builder.AddModule(new FlatWorldStateModule());
-        else
-            builder.AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()));
+            builder.AddModule(new FlatWorldStateModule(configProvider.GetConfig<IFlatDbConfig>()));
     }
 
     // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.

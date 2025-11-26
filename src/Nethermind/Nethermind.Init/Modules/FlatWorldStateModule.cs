@@ -3,18 +3,21 @@
 
 using System;
 using Autofac;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Init.Steps;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Importer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 
 namespace Nethermind.Init.Modules;
 
-public class FlatWorldStateModule: Module
+public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -26,6 +29,7 @@ public class FlatWorldStateModule: Module
             .AddSingleton<ICanonicalStateRootFinder, CanonicalStateRootFinder>()
             .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
             .AddSingleton<IFlatDiffRepository, FlatDiffRepository>()
+            .AddSingleton<Importer>()
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
             // .AddSingleton<IPersistence, RocksdbPersistence>()
             .AddSingleton<IPersistence, RocksdbSeparatePersistence>()
@@ -38,14 +42,19 @@ public class FlatWorldStateModule: Module
             .AddSingleton<FlatDiffRepository.Configuration>(new FlatDiffRepository.Configuration()
             {
                 Boundary = 128,
-                CompactSize = 128,
+                CompactSize = 64,
                 MaxInFlightCompactJob = 32,
                 ReadWithTrie = false,
                 VerifyWithTrie = false,
                 ConcurrentCompactor = 4,
-                TrieCacheMemoryTarget = 2.GiB(),
+                TrieCacheMemoryTarget = 1.MiB(),
                 InlineCompaction = false
             })
             .AddSingleton<IStateReader, FlatStateReader>();
+
+        if (flatDbConfig.ImportFromPruningTrieState)
+        {
+            builder.AddStep(typeof(ImportFlatDb));
+        }
     }
 }

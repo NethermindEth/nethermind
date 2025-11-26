@@ -27,8 +27,11 @@ public interface IPersistence
         void SelfDestruct(in ValueHash256 toAccountPath);
         void RemoveAccount(Address addr);
         void SetAccount(Address addr, Account account);
-        void SetStorage(Address addr, UInt256 slot, byte[] value);
-        void SetTrieNodes(Hash256 address, TreePath path, TrieNode tnValue);
+        void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value);
+        void SetTrieNodes(Hash256? address, TreePath path, TrieNode tnValue);
         void RemoveStorage(Address addr, UInt256 slot);
+
+        void SetStorageRaw(Hash256? addrHash, Hash256 slotHash, ReadOnlySpan<byte> value);
+        void SetAccountRaw(Hash256? addrHash, Account account);
     }
 }

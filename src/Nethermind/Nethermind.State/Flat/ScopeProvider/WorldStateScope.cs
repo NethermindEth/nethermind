@@ -154,7 +154,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     {
         StateId newStateId = new StateId(blockNumber, RootHash);
 
-        if (_isReadOnly)
+        if (!_isReadOnly)
         {
             // Commit will copy the trie nodes from the tree to the bundle.
             using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);

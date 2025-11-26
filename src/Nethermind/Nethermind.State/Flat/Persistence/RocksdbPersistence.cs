@@ -66,8 +66,15 @@ public class RocksdbPersistence : IPersistence
 
     internal static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, ValueHash256 addr, UInt256 slot)
     {
+        ValueHash256 hash256 = ValueKeccak.Zero;
+        StorageTree.ComputeKeyWithLookup(slot, hash256.BytesAsSpan);
+        return EncodeStorageKey(buffer, addr, hash256);
+    }
+
+    internal static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, ValueHash256 addr, ValueHash256 slot)
+    {
         addr.Bytes.CopyTo(buffer);
-        slot.ToBigEndian(buffer[32..64]);
+        slot.Bytes.CopyTo(buffer[32..64]);
         return buffer[..StorageKeyLength];
     }
 
@@ -147,7 +154,7 @@ public class RocksdbPersistence : IPersistence
             state.PutSpan(addr.ToAccountPath.Bytes, stream.AsSpan());
         }
 
-        public void SetStorage(Address addr, UInt256 slot, byte[] value)
+        public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
         {
             ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addr.ToAccountPath, slot);
             storage.PutSpan(theKey, value);
@@ -157,6 +164,18 @@ public class RocksdbPersistence : IPersistence
         {
             ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addr.ToAccountPath, slot);
             storage.Remove(theKey);
+        }
+
+        public void SetStorageRaw(Hash256? addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
+        {
+            storage.PutSpan(EncodeStorageKey(stackalloc byte[StorageKeyLength], addrHash, slotHash), value);
+        }
+
+        public void SetAccountRaw(Hash256 addrHash, Account account)
+        {
+            using var stream = _accountDecoder.EncodeToNewNettyStream(account);
+
+            state.PutSpan(addrHash.Bytes, stream.AsSpan());
         }
 
         public void SetTrieNodes(Hash256? address, TreePath path, TrieNode tn)
