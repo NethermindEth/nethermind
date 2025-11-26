@@ -81,4 +81,6 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
         return (sender is null || (spec.IsEip158IgnoredAccount(sender) && !WorldState.AccountExists(sender)))
                && base.RecoverSenderIfNeeded(tx, spec, opts, in effectiveGasPrice);
     }
+
+    protected override void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec) { }
 }

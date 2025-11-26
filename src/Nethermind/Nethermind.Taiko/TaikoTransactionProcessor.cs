@@ -91,4 +91,10 @@ public class TaikoTransactionProcessor(
 
         return base.IncrementNonce(tx, header, spec, tracer, opts);
     }
+
+    protected override void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
+    {
+        if (!tx.IsAnchorTx)
+            base.PayRefund(tx, refundAmount, spec);
+    }
 }

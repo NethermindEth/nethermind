@@ -916,10 +916,15 @@ namespace Nethermind.Evm.TransactionProcessing
             spentGas = Math.Max(spentGas, floorGas);
 
             UInt256 refundAmount = (ulong)(tx.GasLimit - spentGas) * gasPrice;
-            if (refundAmount != 0)
-                WorldState.AddToBalance(tx.SenderAddress!, refundAmount, spec);
+            PayRefund(tx, refundAmount, spec);
 
             return new GasConsumed(spentGas, operationGas);
+        }
+
+        protected virtual void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
+        {
+            if (refundAmount != 0)
+                WorldState.AddToBalance(tx.SenderAddress!, refundAmount, spec);
         }
 
         protected virtual long CalculateClaimableRefund(long spentGas, long totalRefund, IReleaseSpec spec)
