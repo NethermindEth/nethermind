@@ -114,88 +114,38 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch =
+            new TrieStoreScopeProvider.StorageTreeBulkWriteBatch(
+                estimatedEntries,
+                _tree,
+                onRootUpdated,
+                _address);
+
         return new StorageTreeBulkWriteBatch(
-            estimatedEntries,
-            this._tree,
-            onRootUpdated,
-            storageSnapshotBundle: _storageSnapshotBundle,
-            _address
+            storageTreeBulkWriteBatch,
+            _storageSnapshotBundle
         );
     }
 
     private class StorageTreeBulkWriteBatch(
-        int estimatedEntries,
-        State.StorageTree storageTree,
-        Action<Address, Hash256> onRootUpdated,
-        StorageSnapshotBundle storageSnapshotBundle,
-        Address address
-    ) : IWorldStateScopeProvider.IStorageWriteBatch
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch,
+        StorageSnapshotBundle storageSnapshotBundle) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        // Slight optimization on small contract as the index hash can be precalculated in some case.
-        private const int MIN_ENTRIES_TO_BATCH = 16;
-
-        private bool _hasSelfDestruct;
-        private bool _wasSetCalled = false;
-
-        private ArrayPoolList<PatriciaTree.BulkSetEntry>? _bulkWrite =
-            estimatedEntries > MIN_ENTRIES_TO_BATCH
-                ? new(estimatedEntries)
-                : null;
-
-        private ValueHash256 _keyBuff = new ValueHash256();
-
         public void Set(in UInt256 index, byte[] value)
         {
-            _wasSetCalled = true;
-            if (_bulkWrite is null)
-            {
-                storageTree.Set(index, value);
-            }
-            else
-            {
-                State.StorageTree.ComputeKeyWithLookup(index, _keyBuff.BytesAsSpan);
-                _bulkWrite.Add(State.StorageTree.CreateBulkSetEntry(_keyBuff, value));
-            }
+            storageTreeBulkWriteBatch.Set(in index, value);
             storageSnapshotBundle.Set(index, value);
         }
 
         public void Clear()
         {
-            if (_bulkWrite is null)
-            {
-                storageTree.RootHash = Keccak.EmptyTreeHash;
-            }
-            else
-            {
-                if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
-                _hasSelfDestruct = true;
-            }
-
+            storageTreeBulkWriteBatch.Clear();
             storageSnapshotBundle.SelfDestruct();
         }
 
         public void Dispose()
         {
-            bool hasSet = (_wasSetCalled || _hasSelfDestruct);
-            if (_bulkWrite is not null)
-            {
-                if (_hasSelfDestruct)
-                {
-                    storageTree.RootHash = Keccak.EmptyTreeHash;
-                }
-
-                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef =
-                    new ArrayPoolListRef<PatriciaTree.BulkSetEntry>(_bulkWrite.AsSpan());
-                storageTree.BulkSet(asRef);
-
-                _bulkWrite?.Dispose();
-            }
-
-            if (hasSet)
-            {
-                storageTree.UpdateRootHash(_bulkWrite?.Count > 64);
-                onRootUpdated(address, storageTree.RootHash);
-            }
+            storageTreeBulkWriteBatch.Dispose();
         }
     }
 }
