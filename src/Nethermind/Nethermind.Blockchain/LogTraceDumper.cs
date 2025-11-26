@@ -48,11 +48,12 @@ public static class BlockTraceDumper
 
     public static void LogDiagnosticTrace(
         IBlockTracer blockTracer,
-        Either<Hash256, IList<Block>> blocksOrHash,
+        IList<Block>? rerunBlocks,
+        Hash256? invalidBlockHash,
         ILogger logger)
     {
         string fileName = string.Empty;
-        bool isSuccess = GetConditionAndHashString(blocksOrHash, out string logCondition, out string blockHash);
+        bool isSuccess = TryGetConditionAndHashString(rerunBlocks, invalidBlockHash, out string logCondition, out string blockHash);
 
         string state = isSuccess ? "success" : "failed";
         try
@@ -94,29 +95,38 @@ public static class BlockTraceDumper
         }
     }
 
-    private static bool GetConditionAndHashString(Either<Hash256, IList<Block>> blocksOrHash, out string condition, out string blockHash)
+    private static bool TryGetConditionAndHashString(IList<Block>? rerunBlocks, Hash256? invalidBlockHash, out string condition, out string blockHash)
     {
-        if (blocksOrHash.Is(out Hash256 failedBlockHash))
+        if (invalidBlockHash is { } failedBlockHash)
         {
             condition = "invalid";
             blockHash = failedBlockHash.ToString();
             return false;
         }
-        else
-        {
-            blocksOrHash.To(out IList<Block> blocks);
-            condition = "valid on rerun";
 
-            if (blocks.Count == 1)
-            {
-                blockHash = blocks[0].Hash.ToString();
-            }
-            else
-            {
-                blockHash = string.Join("|", blocks.Select(b => b.Hash.ToString()));
-            }
+        if (rerunBlocks is null)
+        {
+            throw new ArgumentNullException(nameof(rerunBlocks));
+        }
+
+        condition = "valid on rerun";
+
+            if (rerunBlocks.Count == 0)
+        {
+            blockHash = string.Empty;
             return true;
         }
+
+        if (rerunBlocks.Count == 1)
+        {
+            blockHash = rerunBlocks[0].Hash.ToString();
+        }
+        else
+        {
+            blockHash = string.Join("|", rerunBlocks.Select(b => b.Hash.ToString()));
+        }
+
+        return true;
     }
 
     private static FileStream GetFileStream(string name) =>
