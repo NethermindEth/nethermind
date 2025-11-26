@@ -66,7 +66,7 @@ namespace Nethermind.Evm.Test
         [TestCase("", "")]
         // zero mod
         [TestCase("000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001010100", "00")]
-        // 65-byte args (empty base, empty exp, one-byte mod input)
+        // 65-byte args (empty base, empty exp, one-byte mod length input)
         [TestCase("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011", "", true)]
         public void ModExp_return_expected_values(string inputHex, string expectedResult, bool isError = false)
         {
