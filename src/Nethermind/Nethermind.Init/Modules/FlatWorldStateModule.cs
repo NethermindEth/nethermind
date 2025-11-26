@@ -36,8 +36,8 @@ public class FlatWorldStateModule: Module
             .AddSingleton<FlatDiffRepository.Configuration>(new FlatDiffRepository.Configuration()
             {
                 Boundary = 128,
-                CompactSize = 64,
-                MaxInFlightCompactJob = 16,
+                CompactSize = 128,
+                MaxInFlightCompactJob = 32,
                 ReadWithTrie = false,
                 VerifyWithTrie = false,
                 TrieCacheMemoryTarget = 2.GiB(),

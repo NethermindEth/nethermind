@@ -304,7 +304,7 @@ public class FlatDiffRepository : IFlatDiffRepository
             {
                 long lastSnapshotNumber = _inMemorySnapshotStore.GetLast()?.blockNumber ?? 0;
                 StateId currentState = _currentPersistedState;
-                if (lastSnapshotNumber - currentState.blockNumber <= _boundary)
+                if (lastSnapshotNumber - currentState.blockNumber <= (_boundary + _compactSize))
                 {
                     break;
                 }

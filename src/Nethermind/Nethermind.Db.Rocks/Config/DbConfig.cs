@@ -21,6 +21,15 @@ public class DbConfig : IDbConfig
     public int? MaxOpenFiles { get; set; }
     public ulong? ReadAheadSize { get; set; } = (ulong)256.KiB();
 
+
+    private const string MinimumBasicOption =
+        "target_file_size_base=64000000;" +
+        "max_bytes_for_level_base=256000000;" +
+        "min_write_buffer_number_to_merge=1;" +
+        "write_buffer_size=250000000;" +
+        "max_write_buffer_number=2;" +
+        "";
+
     public string RocksDbOptions { get; set; } =
 
         // This section affect the write buffer, or memtable. Note, the size of write buffer affect the size of l0
@@ -286,6 +295,8 @@ public class DbConfig : IDbConfig
     public bool? FlatDbVerifyChecksum { get; set; }
     public bool FlatDbEnableFileWarmer { get; set; }
     public string FlatDbRocksDbOptions { get; set; } =
+        MinimumBasicOption +
+
         // This is basically useless on write only database. However, for halfpath with live pruning, flatdb, or
         // (maybe?) full sync where keys are deleted, replaced, or re-inserted, two memtable can merge together
         // resulting in a reduced total memtable size to be written. This does seems to reduce sync throughput though.
@@ -316,6 +327,7 @@ public class DbConfig : IDbConfig
     public string? FlatDbAdditionalRocksDbOptions { get; set; }
 
     public string? FlatMetadataDbRocksDbOptions { get; set; } =
+        MinimumBasicOption +
         // This adds a hashtable-like index per block (the 32kb block)
         // This reduce CPU and therefore latency under high block cache hit scenario.
         // It seems to increase disk space use by about 1 GB.
@@ -328,10 +340,13 @@ public class DbConfig : IDbConfig
     public string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
 
     public ulong FlatStateDbWriteBufferSize { get; set; } = (ulong)64.MiB();
+    public ulong FlatStateDbRowCacheSize { get; set; } = (ulong) 1.GiB();
     public ulong FlatStateDbWriteBufferNumber { get; set; } = 4;
+    public bool FlatStateDbSkipDefaultDbOptions { get; set; } = true;
 
     // Note: No prefix extractor for state.Dont forget.
     public string? FlatStateDbRocksDbOptions { get; set; } =
+        MinimumBasicOption +
         "min_write_buffer_number_to_merge=2;" +
         "block_based_table_factory.block_restart_interval=4;" +
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
@@ -364,11 +379,12 @@ public class DbConfig : IDbConfig
 
     public string? FlatStateDbAdditionalRocksDbOptions { get; set; }
     public bool FlatStorageDbSkipDefaultDbOptions { get; set; } = true;
-    public bool FlatStateDbSkipDefaultDbOptions { get; set; } = true;
+    public ulong FlatStorageDbRowCacheSize { get; set; } = (ulong)1.GiB();
     public ulong FlatStorageDbWriteBufferSize { get; set; }= (ulong)64.MiB();
     public ulong FlatStorageDbWriteBufferNumber { get; set; } = 4;
 
     public string? FlatStorageDbRocksDbOptions { get; set; } =
+        MinimumBasicOption +
         "min_write_buffer_number_to_merge=2;" +
         "block_based_table_factory.block_restart_interval=4;" +
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
