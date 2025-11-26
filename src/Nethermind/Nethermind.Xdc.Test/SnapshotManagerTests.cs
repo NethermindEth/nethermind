@@ -40,7 +40,7 @@ internal class SnapshotManagerTests
     public void GetSnapshot_ShouldReturnNullForNonExistentSnapshot()
     {
         // Act
-        var result = _snapshotManager.GetSnapshotByBlockNumber(0, _xdcReleaseSpec);
+        Snapshot? result = _snapshotManager.GetSnapshotByBlockNumber(0, _xdcReleaseSpec);
 
         // Assert
         result.Should().BeNull();
@@ -57,7 +57,7 @@ internal class SnapshotManagerTests
         _blockTree.FindHeader(gapBlock).Returns(header);
 
         // Act
-        var result = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
+        Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // assert that it was retrieved from cache
         result.Should().BeEquivalentTo(snapshot);
@@ -67,7 +67,7 @@ internal class SnapshotManagerTests
     public void GetSnapshot_ShouldReturnNullForEmptyDb()
     {
         // Act
-        var result = _snapshotManager.GetSnapshotByBlockNumber(0, _xdcReleaseSpec);
+        Snapshot? result = _snapshotManager.GetSnapshotByBlockNumber(0, _xdcReleaseSpec);
         // Assert
         result.Should().BeNull();
     }
@@ -83,7 +83,7 @@ internal class SnapshotManagerTests
         _blockTree.FindHeader(gapBlock).Returns(header);
 
         // Act
-        var saved = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
+        Snapshot? saved = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // Assert
         saved.Should().BeEquivalentTo(snapshot);
@@ -100,7 +100,7 @@ internal class SnapshotManagerTests
 
         // Act
         _snapshotManager.StoreSnapshot(snapshot);
-        var fromDb = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
+        Snapshot? fromDb = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // Assert
         fromDb.Should().BeEquivalentTo(snapshot);
@@ -115,7 +115,7 @@ internal class SnapshotManagerTests
         var snapshot1 = new Snapshot(gapBlock1, header.Hash!, [Address.FromNumber(1)]);
         _snapshotManager.StoreSnapshot(snapshot1);
         _blockTree.FindHeader(gapBlock1).Returns(header);
-        var result = _snapshotManager.GetSnapshotByGapNumber(gapBlock1);
+        Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock1);
 
         // assert that it was retrieved from db
         result.Should().BeEquivalentTo(snapshot1);
@@ -148,7 +148,7 @@ internal class SnapshotManagerTests
         var snapshot = new Snapshot(expectedGapNumber, header.Hash!, [Address.FromNumber(1)]);
         _snapshotManager.StoreSnapshot(snapshot);
         _blockTree.FindHeader(expectedGapNumber).Returns(header);
-        var result = _snapshotManager.GetSnapshotByBlockNumber(blockNumber, _xdcReleaseSpec);
+        Snapshot? result = _snapshotManager.GetSnapshotByBlockNumber(blockNumber, _xdcReleaseSpec);
 
         // assert that it was retrieved from db
         result.Should().BeEquivalentTo(snapshot);
@@ -158,13 +158,13 @@ internal class SnapshotManagerTests
     [TestCase(1350)]
     public void NewHeadBlock_(int gapNumber)
     {
-        var releaseSpec = Substitute.For<IXdcReleaseSpec>();
+        IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
         releaseSpec.EpochLength.Returns(900);
         releaseSpec.Gap.Returns(450);
-        var blockTree = Substitute.For<IBlockTree>();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-        var snapshotManager = new SnapshotManager(new MemDb(), blockTree, Substitute.For<IPenaltyHandler>(), Substitute.For<IMasternodeVotingContract>(), specProvider);
+        SnapshotManager snapshotManager = new SnapshotManager(new MemDb(), blockTree, Substitute.For<IPenaltyHandler>(), Substitute.For<IMasternodeVotingContract>(), specProvider);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithGeneratedExtraConsensusData(1)
