@@ -494,7 +494,8 @@ public class ChainSpecBasedSpecProviderTests
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics(postCancunSpec);
         VerifyGnosisPragueSpecifics(prePragueSpec, postPragueSpec, GnosisSpecProvider.FeeCollector);
-        VerifyGnosisBalancerSpecifics(preBalancerSpec, postBalancerSpec, GnosisSpecProvider.FeeCollector);
+        VerifyGnosisOsakaSpecifics(preBalancerSpec, GnosisSpecProvider.FeeCollector);
+        VerifyGnosisOsakaSpecifics(postBalancerSpec, GnosisSpecProvider.FeeCollector);
 
         using (Assert.EnterMultipleScope())
         {
@@ -517,22 +518,6 @@ public class ChainSpecBasedSpecProviderTests
         }
 
         VerifyGnosisCancunSpecifics(spec);
-    }
-
-    private static void VerifyGnosisBalancerSpecifics(IReleaseSpec preBalancerSpec, IReleaseSpec postBalancerSpec, Address feeCollector)
-    {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(preBalancerSpec.FeeCollector, Is.EqualTo(feeCollector));
-            Assert.That(postBalancerSpec.FeeCollector, Is.EqualTo(feeCollector));
-            Assert.That(preBalancerSpec.CensoredSenders, Is.Null);
-            Assert.That(preBalancerSpec.CensoredTo, Is.Null);
-            Assert.That(postBalancerSpec.CensoredSenders!, Is.EqualTo(BalancerData.Senders));
-            Assert.That(postBalancerSpec.CensoredTo!, Is.EqualTo(BalancerData.To));
-        }
-
-        // should be unchanged
-        VerifyGnosisCancunSpecifics(postBalancerSpec);
     }
 
     private static void VerifyGnosisPragueSpecifics(IReleaseSpec prePragueSpec, IReleaseSpec postPragueSpec, Address feeCollector)
