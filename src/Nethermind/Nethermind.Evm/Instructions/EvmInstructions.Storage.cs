@@ -151,11 +151,11 @@ internal static partial class EvmInstructions
         EvmState vmState = vm.EvmState;
 
         // Update the memory cost for a 32-byte store; if insufficient gas, signal out-of-gas.
-        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
-
-        // Write the 32-byte word into memory.
-        vmState.Memory.SaveWord(in result, bytes, out bool outOfGas);
-        if (outOfGas) goto OutOfGas;
+        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32) ||
+            !vmState.Memory.TrySaveWord(in result, bytes))
+        {
+            goto OutOfGas;
+        }
 
         // Report memory changes if tracing is active.
         if (TTracingInst.IsActive)
@@ -197,11 +197,11 @@ internal static partial class EvmInstructions
         EvmState vmState = vm.EvmState;
 
         // Update the memory cost for a single-byte extension; if insufficient, signal out-of-gas.
-        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in result, in UInt256.One)) goto OutOfGas;
-
-        // Write the single byte to memory.
-        vmState.Memory.SaveByte(in result, data, out bool outOfGas);
-        if (outOfGas) goto OutOfGas;
+        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in result, in UInt256.One) ||
+            !vmState.Memory.TrySaveByte(in result, data))
+        {
+            goto OutOfGas;
+        }
 
         // Report the memory change if tracing is active.
         if (TTracingInst.IsActive)
@@ -240,11 +240,11 @@ internal static partial class EvmInstructions
         EvmState vmState = vm.EvmState;
 
         // Update memory cost for a 32-byte load.
-        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
-
-        // Load the 32-byte word from memory.
-        Span<byte> bytes = vmState.Memory.LoadSpan(in result, out bool outOfGas);
-        if (outOfGas) goto OutOfGas;
+        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32) ||
+            !vmState.Memory.TryLoadSpan(in result, out Span<byte> bytes))
+        {
+            goto OutOfGas;
+        }
 
         // Report the memory load if tracing is active.
         if (TTracingInst.IsActive)
@@ -291,19 +291,18 @@ internal static partial class EvmInstructions
         EvmState vmState = vm.EvmState;
 
         // Update memory cost for the destination area (largest offset among source and destination) over the specified length.
-        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, UInt256.Max(b, a), c)) goto OutOfGas;
-
-        // Load the specified memory segment from the source offset.
-        Span<byte> bytes = vmState.Memory.LoadSpan(in b, c, out outOfGas);
-        if (outOfGas) goto OutOfGas;
+        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, UInt256.Max(b, a), c) ||
+            !vmState.Memory.TryLoadSpan(in b, c, out Span<byte> bytes))
+        {
+            goto OutOfGas;
+        }
 
         // Report the memory change at the source if tracing is active.
         if (TTracingInst.IsActive)
             vm.TxTracer.ReportMemoryChange(b, bytes);
 
         // Write the bytes into memory at the destination offset.
-        vmState.Memory.Save(in a, bytes, out outOfGas);
-        if (outOfGas) goto OutOfGas;
+        if (!vmState.Memory.TrySave(in a, bytes)) goto OutOfGas;
 
         // Report the memory change at the destination if tracing is active.
         if (TTracingInst.IsActive)

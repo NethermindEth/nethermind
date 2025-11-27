@@ -173,14 +173,11 @@ internal static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
-        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
+        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length) ||
+            !vm.EvmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
         {
             goto OutOfGas;
         }
-
-        // Copy the specified memory region as return data.
-        ReadOnlyMemory<byte> returnData = vm.EvmState.Memory.Load(in position, in length, out bool outOfGas);
-        if (outOfGas) goto OutOfGas;
 
         vm.ReturnData = returnData.ToArray();
 

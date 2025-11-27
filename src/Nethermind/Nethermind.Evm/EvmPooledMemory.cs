@@ -23,12 +23,12 @@ public struct EvmPooledMemory : IEvmMemory
     public ulong Length { get; private set; }
     public ulong Size { get; private set; }
 
-    public void SaveWord(in UInt256 location, Span<byte> word, out bool outOfGas)
+    public bool TrySaveWord(in UInt256 location, Span<byte> word)
     {
         if (word.Length != WordSize) ThrowArgumentOutOfRangeException();
 
-        CheckMemoryAccessViolation(in location, WordSize, out ulong newLength, out outOfGas);
-        if (outOfGas) return;
+        CheckMemoryAccessViolation(in location, WordSize, out ulong newLength, out bool outOfGas);
+        if (outOfGas) return false;
 
         UpdateSize(newLength);
 
@@ -39,32 +39,35 @@ public struct EvmPooledMemory : IEvmMemory
             ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory), offset),
             Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(word))
         );
+
+        return true;
     }
 
-    public void SaveByte(in UInt256 location, byte value, out bool outOfGas)
+    public bool TrySaveByte(in UInt256 location, byte value)
     {
-        CheckMemoryAccessViolation(in location, WordSize, out _, out outOfGas);
-        if (outOfGas) return;
+        CheckMemoryAccessViolation(in location, WordSize, out _, out bool outOfGas);
+        if (outOfGas) return false;
 
         UpdateSize(location.u0 + 1);
 
         _memory![(long)location] = value;
+        return true;
     }
 
-    public void Save(in UInt256 location, Span<byte> value, out bool outOfGas)
+    public bool TrySave(in UInt256 location, Span<byte> value)
     {
         if (value.Length == 0)
         {
-            outOfGas = false;
-            return;
+            return true;
         }
 
-        CheckMemoryAccessViolation(in location, (ulong)value.Length, out ulong newLength, out outOfGas);
-        if (outOfGas) return;
+        CheckMemoryAccessViolation(in location, (ulong)value.Length, out ulong newLength, out bool outOfGas);
+        if (outOfGas) return false;
 
         UpdateSize(newLength);
 
         value.CopyTo(_memory.AsSpan((int)location, value.Length));
+        return true;
     }
 
     private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength, out bool outOfGas)
@@ -100,37 +103,36 @@ public struct EvmPooledMemory : IEvmMemory
         newLength = totalSize;
     }
 
-    public void Save(in UInt256 location, byte[] value, out bool outOfGas)
+    public bool TrySave(in UInt256 location, byte[] value)
     {
         if (value.Length == 0)
         {
-            outOfGas = false;
-            return;
+            return true;
         }
 
         ulong length = (ulong)value.Length;
-        CheckMemoryAccessViolation(in location, length, out ulong newLength, out outOfGas);
-        if (outOfGas) return;
+        CheckMemoryAccessViolation(in location, length, out ulong newLength, out bool outOfGas);
+        if (outOfGas) return false;
 
         UpdateSize(newLength);
 
         Array.Copy(value, 0, _memory!, (long)location, value.Length);
+        return true;
     }
 
-    public void Save(in UInt256 location, in ZeroPaddedSpan value, out bool outOfGas)
+    public bool TrySave(in UInt256 location, in ZeroPaddedSpan value)
     {
         if (value.Length == 0)
         {
             // Nothing to do
-            outOfGas = false;
-            return;
+            return true;
         }
 
         ulong length = (ulong)value.Length;
-        CheckMemoryAccessViolation(in location, length, out ulong newLength, out outOfGas);
+        CheckMemoryAccessViolation(in location, length, out ulong newLength, out bool outOfGas);
         outOfGas |= location.u0 > int.MaxValue;
 
-        if (outOfGas) return;
+        if (outOfGas) return false;
 
         UpdateSize(newLength);
 
@@ -141,51 +143,66 @@ public struct EvmPooledMemory : IEvmMemory
             ClearPadding(_memory, intLocation + value.Span.Length, value.PaddingLength);
         }
 
+        return true;
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         static void ClearPadding(byte[] memory, int offset, int length)
             => memory.AsSpan(offset, length).Clear();
     }
 
-    public Span<byte> LoadSpan(scoped in UInt256 location, out bool outOfGas)
+    public bool TryLoadSpan(scoped in UInt256 location, out Span<byte> data)
     {
-        CheckMemoryAccessViolation(in location, WordSize, out ulong newLength, out outOfGas);
-        if (outOfGas) return default;
+        CheckMemoryAccessViolation(in location, WordSize, out ulong newLength, out bool outOfGas);
+        if (outOfGas)
+        {
+            data = default;
+            return false;
+        }
 
         UpdateSize(newLength);
-
-        return _memory.AsSpan((int)location, WordSize);
+        data = _memory.AsSpan((int)location, WordSize);
+        return true;
     }
 
-    public Span<byte> LoadSpan(scoped in UInt256 location, scoped in UInt256 length, out bool outOfGas)
+    public bool TryLoadSpan(scoped in UInt256 location, scoped in UInt256 length, out Span<byte> data)
     {
         if (length.IsZero)
         {
-            outOfGas = false;
-            return [];
+            data = [];
+            return true;
         }
 
-        CheckMemoryAccessViolation(in location, in length, out ulong newLength, out outOfGas);
-        if (outOfGas) return default;
+        CheckMemoryAccessViolation(in location, in length, out ulong newLength, out bool outOfGas);
+        if (outOfGas)
+        {
+            data = default;
+            return false;
+        }
 
         UpdateSize(newLength);
-
-        return _memory.AsSpan((int)location, (int)length);
+        data = _memory.AsSpan((int)location, (int)length);
+        return true;
     }
 
-    public ReadOnlyMemory<byte> Load(in UInt256 location, in UInt256 length, out bool outOfGas)
+    public bool TryLoad(in UInt256 location, in UInt256 length, out ReadOnlyMemory<byte> data)
     {
         if (length.IsZero)
         {
-            outOfGas = false;
-            return default;
+            data = default;
+            return true;
         }
 
-        CheckMemoryAccessViolation(in location, in length, out ulong newLength, out outOfGas);
-        if (outOfGas) return default;
+        CheckMemoryAccessViolation(in location, in length, out ulong newLength, out bool outOfGas);
+        if (outOfGas)
+        {
+            data = default;
+            return false;
+        }
 
         UpdateSize(newLength);
 
-        return _memory.AsMemory((int)location, (int)length);
+        data = _memory.AsMemory((int)location, (int)length);
+        return true;
     }
 
     public ReadOnlyMemory<byte> Inspect(in UInt256 location, in UInt256 length)

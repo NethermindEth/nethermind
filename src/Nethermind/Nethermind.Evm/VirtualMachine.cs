@@ -89,6 +89,7 @@ public unsafe partial class VirtualMachine(
     private OpCode[] _opcodeMethods;
     private static long _txCount;
 
+    private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     protected EvmState _currentState;
     protected ReadOnlyMemory<byte>? _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
@@ -99,7 +100,7 @@ public unsafe partial class VirtualMachine(
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
-    public ReadOnlyMemory<byte> ReturnDataBuffer { get; set; } = Array.Empty<byte>();
+    public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected Stack<EvmState> StateStack => _stateStack;
@@ -1150,8 +1151,7 @@ public unsafe partial class VirtualMachine(
             }
 
             // Save the previous call's output into the VM state's memory.
-            vmState.Memory.Save(in localPreviousDest, previousCallOutput, out bool outOfGas);
-            if (outOfGas) goto OutOfGas;
+            if (!vmState.Memory.TrySave(in localPreviousDest, previousCallOutput)) goto OutOfGas;
         }
 
         // Dispatch the bytecode interpreter.

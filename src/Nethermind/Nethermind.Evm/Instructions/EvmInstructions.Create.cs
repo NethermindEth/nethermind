@@ -136,8 +136,8 @@ internal static partial class EvmInstructions
         }
 
         // Load the initialization code from memory based on the specified position and length.
-        ReadOnlyMemory<byte> initCode = vm.EvmState.Memory.Load(in memoryPositionOfInitCode, in initCodeLength, out outOfGas);
-        if (outOfGas) goto OutOfGas;
+        if (!vm.EvmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
+            goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
         UInt256 balance = state.GetBalance(env.ExecutingAccount);

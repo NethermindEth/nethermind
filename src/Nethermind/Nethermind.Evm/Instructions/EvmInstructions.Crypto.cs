@@ -31,12 +31,11 @@ internal static partial class EvmInstructions
 
         EvmState vmState = vm.EvmState;
         // Charge gas for any required memory expansion.
-        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in a, b))
+        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in a, b) ||
+            !vmState.Memory.TryLoadSpan(in a, b, out Span<byte> bytes))
+        {
             goto OutOfGas;
-
-        // Load the target memory region.
-        Span<byte> bytes = vmState.Memory.LoadSpan(in a, b, out outOfGas);
-        if (outOfGas) goto OutOfGas;
+        }
 
         // Compute the Keccak-256 hash.
         KeccakCache.ComputeTo(bytes, out ValueHash256 keccak);

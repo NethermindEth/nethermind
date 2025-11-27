@@ -252,8 +252,8 @@ internal static partial class EvmInstructions
         }
 
         // Load call data from memory.
-        ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(in dataOffset, dataLength, out bool outOfGas);
-        if (outOfGas) goto OutOfGas;
+        if (!vm.EvmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
+            goto OutOfGas;
         // Construct the execution environment for the call.
         ExecutionEnvironment callEnv = new(
             codeInfo: codeInfo,
@@ -348,16 +348,11 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.
-        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
+        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length) ||
+            !vm.EvmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
         {
             goto OutOfGas;
         }
-
-        // Load the return data from memory and copy it to an array,
-        // so the return value isn't referencing live memory,
-        // which is being unwound in return.
-        ReadOnlyMemory<byte> returnData = vm.EvmState.Memory.Load(in position, in length, out bool outOfGas);
-        if (outOfGas) goto OutOfGas;
 
         vm.ReturnData = returnData.ToArray();
 

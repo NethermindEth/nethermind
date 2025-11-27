@@ -594,8 +594,8 @@ internal static partial class EvmInstructions
                 (long)length * GasCostOf.LogData, ref gasAvailable)) goto OutOfGas;
 
         // Load the log data from memory.
-        ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length, out bool outOfGas);
-        if (outOfGas) goto OutOfGas;
+        if (!vmState.Memory.TryLoad(in position, length, out ReadOnlyMemory<byte> data))
+            goto OutOfGas;
 
         // Prepare the topics array by popping the corresponding number of words from the stack.
         Hash256[] topics = new Hash256[topicsCount];

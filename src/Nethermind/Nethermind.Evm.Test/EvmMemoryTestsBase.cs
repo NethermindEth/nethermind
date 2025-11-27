@@ -18,7 +18,7 @@ public abstract class EvmMemoryTestsBase
     {
         IEvmMemory memory = CreateEvmMemory();
         UInt256 dest = (UInt256)int.MaxValue + 1;
-        memory.Save(in dest, Array.Empty<byte>(), out bool outOfGas);
+        bool outOfGas = !memory.TrySave(in dest, Array.Empty<byte>());
         Assert.That(outOfGas, Is.EqualTo(false));
     }
 
@@ -27,7 +27,7 @@ public abstract class EvmMemoryTestsBase
     {
         IEvmMemory memory = CreateEvmMemory();
         UInt256 dest = UInt256.Zero;
-        memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize], out bool outOfGas);
+        bool outOfGas = !memory.TrySaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
         Assert.That(outOfGas, Is.EqualTo(false));
         var trace = memory.GetTrace();
         Assert.That(trace.ToHexWordList().Count, Is.EqualTo(1));
@@ -38,7 +38,7 @@ public abstract class EvmMemoryTestsBase
     {
         IEvmMemory memory = CreateEvmMemory();
         UInt256 dest = EvmPooledMemory.WordSize;
-        memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize], out bool outOfGas);
+        bool outOfGas = !memory.TrySaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
         Assert.That(outOfGas, Is.EqualTo(false));
         var trace = memory.GetTrace();
         Assert.That(trace.ToHexWordList().Count, Is.EqualTo(2));
@@ -49,9 +49,9 @@ public abstract class EvmMemoryTestsBase
     {
         IEvmMemory memory = CreateEvmMemory();
         UInt256 dest = EvmPooledMemory.WordSize;
-        memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize], out bool outOfGas);
+        bool outOfGas = !memory.TrySaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
         Assert.That(outOfGas, Is.EqualTo(false));
-        memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize], out outOfGas);
+        outOfGas = !memory.TrySaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
         Assert.That(outOfGas, Is.EqualTo(false));
         var trace = memory.GetTrace();
         Assert.That(trace.ToHexWordList().Count, Is.EqualTo(2));
@@ -62,7 +62,7 @@ public abstract class EvmMemoryTestsBase
     {
         IEvmMemory memory = CreateEvmMemory();
         UInt256 dest = EvmPooledMemory.WordSize / 2;
-        memory.SaveByte(in dest, 1, out bool outOfGas);
+        bool outOfGas = !memory.TrySaveByte(in dest, 1);
         Assert.That(outOfGas, Is.EqualTo(false));
         var trace = memory.GetTrace();
         Assert.That(trace.ToHexWordList().Count, Is.EqualTo(1));

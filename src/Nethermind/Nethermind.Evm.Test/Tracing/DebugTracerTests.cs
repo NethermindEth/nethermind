@@ -313,7 +313,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 // we alter the value stored in memory to force EQ check at the end to fail
-                tracer.CurrentState.Memory.SaveByte(31, 0x0A, out _);
+                tracer.CurrentState.Memory.TrySaveByte(31, 0x0A);
 
                 tracer.MoveNext();
             }
