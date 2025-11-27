@@ -4,9 +4,9 @@
 namespace Nethermind.Core;
 
 /// <summary>
-/// Shared constants for L1SLOAD/L1CALL precompile operations.
+/// Constants for L1SLOAD precompile operations.
 /// </summary>
-public static class L1PrecompileConstants
+public static class L1SloadConstants
 {
     /// <summary>
     /// Number of bytes for the L1 contract address in the input
@@ -19,14 +19,9 @@ public static class L1PrecompileConstants
     public const int StorageKeyBytes = 32;
 
     /// <summary>
-    /// Number of bytes for the block number in the input
-    /// </summary>
-    public const int BlockNumberBytes = 32;
-
-    /// <summary>
     /// Total expected input length for L1SLOAD precompile calls
     /// </summary>
-    public const int ExpectedInputLength = AddressBytes + StorageKeyBytes + BlockNumberBytes;
+    public const int ExpectedInputLength = AddressBytes + StorageKeyBytes;
 
     /// <summary>
     /// Fixed gas cost for L1SLOAD precompile calls

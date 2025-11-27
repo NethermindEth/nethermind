@@ -4,9 +4,10 @@
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using System.Threading;
 
 namespace Nethermind.Taiko.BlockTransactionExecutors;
 
@@ -15,10 +16,18 @@ public class TaikoBlockValidationTransactionExecutor(
     IWorldState stateProvider)
     : BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
 {
-    protected override void ProcessTransaction(Block block, Transaction currentTx, int i, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+    public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
     {
-        if ((currentTx.SenderAddress?.Equals(TaikoBlockValidator.GoldenTouchAccount) ?? false) && i == 0)
-            currentTx.IsAnchorTx = true;
-        base.ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+        if (block.Transactions.Length > 0 &&
+            (block.Transactions[0].SenderAddress?.Equals(TaikoBlockValidator.GoldenTouchAccount) ?? false))
+        {
+            block.Transactions[0].IsAnchorTx = true;
+
+            // If L1SLOAD precompile is enabled, set the anchor block ID.
+            if (L1SloadPrecompile.L1StorageProvider is not null)
+                JsonRpcL1StorageProvider.SetAnchorBlockId(block.Transactions[0]);
+        }
+
+        return base.ProcessTransactions(block, processingOptions, receiptsTracer, token);
     }
 }
