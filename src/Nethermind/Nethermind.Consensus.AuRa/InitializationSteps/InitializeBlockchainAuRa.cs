@@ -13,6 +13,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Init;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.TxPool;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Producers;
+using Nethermind.Init;
 using Nethermind.Init.Steps;
 using Nethermind.TxPool;
 
