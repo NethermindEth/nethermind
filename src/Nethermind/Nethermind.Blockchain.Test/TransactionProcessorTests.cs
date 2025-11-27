@@ -257,7 +257,7 @@ public class TransactionProcessorTests
         long gasLimit = 100000;
         Transaction tx = Build.A.Transaction
             .WithValue(0.Ether())
-            .WithGasPrice(0)
+            .WithGasPrice(1)
             .WithGasLimit(gasLimit)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyD, _isEip155Enabled)
             .TestObject;

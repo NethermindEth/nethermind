@@ -180,9 +180,17 @@ namespace Nethermind.Evm.TransactionProcessing
 
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
-            if (!(result = ValidateSender(tx, header, spec, tracer, opts))) return result;
-            if (!(result = BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee))) return result;
-            if (!(result = IncrementNonce(tx, header, spec, tracer, opts))) return result;
+            if (!(result = ValidateSender(tx, header, spec, tracer, opts)) || !(result = BuyGas(tx, spec, tracer, opts,
+                    effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
+                    out UInt256 blobBaseFee)) ||
+                !(result = IncrementNonce(tx, header, spec, tracer, opts)))
+            {
+                if (restore)
+                {
+                    WorldState.Reset(resetBlockChanges: false);
+                }
+                return result;
+            }
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
 
