@@ -4,7 +4,6 @@
 using System.CommandLine;
 using Nethermind.Core;
 using System.Text.Json;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Facade.Eth;
@@ -15,6 +14,7 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Evm;
 
 namespace StatelessExecution;
 
@@ -139,7 +139,7 @@ internal static class SetupCli
     {
         ILogger logger = logManager.GetClassLogger();
         StatelessBlockProcessingEnv blockProcessingEnv =
-            new(witness, specProvider, Always.Valid, logManager);
+            new(witness, specProvider, Always.Valid, new EthereumTransactionProcessorFactory(), logManager);
 
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 

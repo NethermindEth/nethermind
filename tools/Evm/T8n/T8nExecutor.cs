@@ -40,6 +40,7 @@ public static class T8nExecutor
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
 
         IVirtualMachine virtualMachine = new VirtualMachine(
+            new EthereumTransactionProcessorFactory(),
             blockhashProvider,
             test.SpecProvider,
             _logManager);
