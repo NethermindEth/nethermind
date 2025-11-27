@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using Nethermind.Init.Steps;
 using Nethermind.State;
 using Nethermind.State.Flat;
@@ -31,14 +33,27 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddSingleton<IFlatDiffRepository, FlatDiffRepository>()
             .AddSingleton<Importer>()
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
-            // .AddSingleton<IPersistence, RocksdbPersistence>()
-            .AddSingleton<IPersistence, RocksdbSeparatePersistence>()
+            .AddSingleton<IPersistence, RocksdbPersistence>()
+
             .AddDatabase(DbNames.FlatMetadata)
             .AddDatabase(DbNames.FlatState)
             .AddDatabase(DbNames.FlatStorage)
             .AddDatabase(DbNames.FlatStateNodes)
             .AddDatabase(DbNames.FlatStateNodesTop)
             .AddDatabase(DbNames.FlatStorageNodes)
+            .AddSingleton<IColumnsDb<FlatDbColumns>>((ctx) =>
+            {
+                return new FakeColumnsDb<FlatDbColumns>(new Dictionary<FlatDbColumns, IDb>()
+                {
+                    { FlatDbColumns.Metadata, ctx.ResolveKeyed<IDb>(DbNames.FlatMetadata) },
+                    { FlatDbColumns.State, ctx.ResolveKeyed<IDb>(DbNames.FlatState) },
+                    { FlatDbColumns.Storage, ctx.ResolveKeyed<IDb>(DbNames.FlatStorage) },
+                    { FlatDbColumns.StateNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStateNodes) },
+                    { FlatDbColumns.StateNodesTop, ctx.ResolveKeyed<IDb>(DbNames.FlatStateNodesTop) },
+                    { FlatDbColumns.StorageNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStorageNodes) },
+                });
+            })
+
             .AddSingleton<FlatDiffRepository.Configuration>(new FlatDiffRepository.Configuration()
             {
                 Boundary = 128,
