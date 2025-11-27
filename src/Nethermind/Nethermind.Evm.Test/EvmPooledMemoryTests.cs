@@ -65,6 +65,123 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [Test]
+    public void CalculateMemoryCost_LocationExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = new(0, 1, 0, 0); // value larger than ulong max (u1 != 0)
+        long result = memory.CalculateMemoryCost(in location, 32, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_LengthExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 length = new(0, 1, 0, 0); // value larger than ulong max (u1 != 0)
+        long result = memory.CalculateMemoryCost(0, in length, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_LengthExceedsLongMax_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 length = (UInt256)long.MaxValue + 1; // just over long.MaxValue
+        long result = memory.CalculateMemoryCost(0, in length, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_LocationPlusLengthOverflows_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = ulong.MaxValue;
+        long result = memory.CalculateMemoryCost(in location, 1, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_TotalSizeExceedsLongMax_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = (UInt256)long.MaxValue;
+        long result = memory.CalculateMemoryCost(in location, 1, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void Save_LocationExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = new(0, 1, 0, 0);
+        memory.Save(in location, new byte[32], out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+    }
+
+    [Test]
+    public void SaveWord_LocationExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = new(0, 1, 0, 0);
+        memory.SaveWord(in location, new byte[32], out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+    }
+
+    [Test]
+    public void SaveByte_LocationExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = new(0, 1, 0, 0);
+        memory.SaveByte(in location, 0x42, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+    }
+
+    [Test]
+    public void LoadSpan_LocationExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = new(0, 1, 0, 0);
+        Span<byte> result = memory.LoadSpan(in location, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result.IsEmpty, Is.EqualTo(true));
+    }
+
+    [Test]
+    public void LoadSpan_LengthExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 length = new(0, 1, 0, 0);
+        Span<byte> result = memory.LoadSpan(0, in length, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result.IsEmpty, Is.EqualTo(true));
+    }
+
+    [Test]
+    public void Load_LocationExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = new(0, 1, 0, 0);
+        ReadOnlyMemory<byte> result = memory.Load(in location, 32, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result.IsEmpty, Is.EqualTo(true));
+    }
+
+    [Test]
+    public void Load_LengthExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 length = new(0, 1, 0, 0);
+        ReadOnlyMemory<byte> result = memory.Load(0, in length, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result.IsEmpty, Is.EqualTo(true));
+    }
+
+    [Test]
     public void Inspect_should_not_change_evm_memory()
     {
         EvmPooledMemory memory = new();
