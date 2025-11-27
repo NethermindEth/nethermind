@@ -49,8 +49,8 @@ public static class NettyMemoryEstimator
     typeof(InitializeBlockchain))]
 public class InitializeNetwork : IStep
 {
-    private readonly IApiWithNetwork _api;
-    private readonly INodeStatsManager _nodeStatsManager;
+    protected readonly IApiWithNetwork _api;
+    protected readonly INodeStatsManager NodeStatsManager;
     private readonly ISynchronizer _synchronizer;
     private readonly ISyncPeerPool _syncPeerPool;
     private readonly IForkInfo _forkInfo;
@@ -59,7 +59,7 @@ public class InitializeNetwork : IStep
     private readonly IDiscoveryApp _discoveryApp;
     private readonly Lazy<IPeerPool> _peerPool;
 
-    private readonly INetworkConfig _networkConfig;
+    protected readonly INetworkConfig _networkConfig;
     private readonly ISyncConfig _syncConfig;
     private readonly IInitConfig _initConfig;
 
@@ -83,7 +83,7 @@ public class InitializeNetwork : IStep
     )
     {
         _api = api;
-        _nodeStatsManager = nodeStatsManager;
+        NodeStatsManager = nodeStatsManager;
         _synchronizer = synchronizer;
         _syncPeerPool = syncPeerPool;
         _enrDiscoveryAppFeeder = enrDiscoveryAppFeeder;
@@ -294,7 +294,7 @@ public class InitializeNetwork : IStep
         ISyncServer syncServer = _api.SyncServer!;
 
         ProtocolValidator protocolValidator = new(
-          _nodeStatsManager!,
+          NodeStatsManager!,
           _api.BlockTree,
           _forkInfo,
           _api.PeerManager!,
@@ -311,7 +311,7 @@ public class InitializeNetwork : IStep
             _discoveryApp,
             _api.MessageSerializationService,
             _api.RlpxPeer,
-            _nodeStatsManager,
+            NodeStatsManager,
             protocolValidator,
             _peerStorage,
             _forkInfo,

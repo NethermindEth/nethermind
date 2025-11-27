@@ -52,26 +52,27 @@ namespace Nethermind.Network
         private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols =
             new();
 
+        protected readonly ISyncPeerPool _syncPool;
+        protected readonly ISyncServer _syncServer;
+        protected readonly ITxPool _txPool;
+        protected readonly ILogManager _logManager;
+        protected readonly ISpecProvider _specProvider;
+        protected readonly INodeStatsManager _stats;
+        protected readonly IMessageSerializationService _serializer;
+        protected readonly ITxGossipPolicy _txGossipPolicy;
+        protected readonly IForkInfo _forkInfo;
+        protected readonly IGossipPolicy _gossipPolicy;
+        protected readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
+
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
-        private readonly ISyncPeerPool _syncPool;
-        private readonly ISyncServer _syncServer;
-        private readonly ITxPool _txPool;
         private readonly IDiscoveryApp _discoveryApp;
-        private readonly IMessageSerializationService _serializer;
         private readonly IRlpxHost _rlpxHost;
-        private readonly INodeStatsManager _stats;
         private readonly IProtocolValidator _protocolValidator;
         private readonly INetworkStorage _peerStorage;
-        private readonly IForkInfo _forkInfo;
-        private readonly IGossipPolicy _gossipPolicy;
-        private readonly ITxGossipPolicy _txGossipPolicy;
-        private readonly ILogManager _logManager;
         private readonly ITxPoolConfig _txPoolConfdig;
-        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
-        private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
         private readonly ISnapServer? _snapServer;
 
         public ProtocolsManager(
@@ -208,7 +209,7 @@ namespace Nethermind.Network
             _protocolFactories[code] = (session, version) => factory(session, version);
         }
 
-        private IDictionary<string, Func<ISession, int, IProtocolHandler>> GetProtocolFactories()
+        protected virtual IDictionary<string, Func<ISession, int, IProtocolHandler>> GetProtocolFactories()
             => new Dictionary<string, Func<ISession, int, IProtocolHandler>>
             {
                 [Protocol.P2P] = (session, _) =>

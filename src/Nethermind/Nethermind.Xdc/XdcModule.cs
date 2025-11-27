@@ -25,7 +25,7 @@ public class XdcModule : Module
 
     protected override void Load(ContainerBuilder builder)
     {
-        builder.AddStep(typeof(XdcInitNetwork));
+        builder.AddStep(typeof(XdcInitializeNetwork));
 
         base.Load(builder);
 
