@@ -138,6 +138,12 @@
           "0x1bdc1febebf92bffab3a2e49c5cf3b7e35a9e81e"
         ],
         "is7702PatchEnabled": true
+      },
+      {
+        "timestamp": "0x99999999",
+        "senders": [],
+        "to": [],
+        "is7702PatchEnabled": false
       }
     ]
   },

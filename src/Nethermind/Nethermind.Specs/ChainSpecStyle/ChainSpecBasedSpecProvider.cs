@@ -142,10 +142,11 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             (ForkActivation Activation, IReleaseSpec Spec)[] allTransitions = CreateTransitions(_chainSpec, transitionBlockNumbers, transitionTimestamps);
 
+            // on master need to add a new transition from code overwrites
             LoadTransitions(allTransitions);
 
             IEnumerable<ulong> censoringTransitionTimestamps = _chainSpec.Parameters.CensoringSchedule.Select(cs => cs.Timestamp);
-            TransitionActivations = [.. CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps).Where(a => a.Timestamp is null || !censoringTransitionTimestamps.Contains(a.Timestamp.Value))];
+            TransitionActivations = [.. CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps).Where(a => ShouldIncludeTransition(a, censoringTransitionTimestamps))];
 
             if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
@@ -154,6 +155,9 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
+
+        private static bool ShouldIncludeTransition(ForkActivation a, IEnumerable<ulong> censoringTransitionTimestamps)
+            => a.Timestamp is null || a.Timestamp == GnosisSpecProvider.BalancerTimestamp || !censoringTransitionTimestamps.Contains(a.Timestamp.Value);
 
         private (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
             ChainSpec chainSpec,
