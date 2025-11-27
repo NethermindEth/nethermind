@@ -833,7 +833,8 @@
           "Nethermind.Core": "[1.36.0-unstable, )",
           "Nethermind.Crypto": "[1.36.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.36.0-unstable, )",
-          "Nethermind.Specs": "[1.36.0-unstable, )"
+          "Nethermind.Specs": "[1.36.0-unstable, )",
+          "Nethermind.Trie": "[1.36.0-unstable, )"
         }
       },
       "nethermind.evm.precompiles": {

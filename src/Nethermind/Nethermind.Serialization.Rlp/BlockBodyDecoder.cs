@@ -3,6 +3,8 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -11,6 +13,7 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly IHeaderDecoder _headerDecoder;
     private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
+    private readonly BlockAccessListDecoder _blockAccessListDecoder = new();
 
     private static BlockBodyDecoder? _instance = null;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
@@ -28,17 +31,19 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
 
     public int GetBodyLength(BlockBody b)
     {
-        (int txs, int uncles, int? withdrawals) = GetBodyComponentLength(b);
+        (int txs, int uncles, int? withdrawals, int? blockAccessList) = GetBodyComponentLength(b);
         return Rlp.LengthOfSequence(txs) +
                Rlp.LengthOfSequence(uncles) +
-               (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0);
+               (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0) +
+               (blockAccessList is not null ? Rlp.LengthOfSequence(blockAccessList.Value) : 0);
     }
 
-    public (int Txs, int Uncles, int? Withdrawals) GetBodyComponentLength(BlockBody b) =>
+    public (int Txs, int Uncles, int? Withdrawals, int? BlockAccessList) GetBodyComponentLength(BlockBody b) =>
     (
         GetTxLength(b.Transactions),
         GetUnclesLength(b.Uncles),
-        b.Withdrawals is not null ? GetWithdrawalsLength(b.Withdrawals) : null
+        b.Withdrawals is not null ? GetWithdrawalsLength(b.Withdrawals) : null,
+        b.BlockAccessList is not null ? _blockAccessListDecoder.GetLength(b.BlockAccessList.Value, RlpBehaviors.None) : null
     );
 
     private int GetTxLength(Transaction[] transactions)
@@ -92,18 +97,25 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
         return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength);
     }
 
-    public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
+    public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         Transaction[] transactions = ctx.DecodeArray(_txDecoder);
         BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
         Withdrawal[]? withdrawals = null;
+        BlockAccessList? blockAccessList = null;
 
-        if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
+        int remaining = ctx.PeekNumberOfItemsRemaining(lastPosition, 2);
+        if (remaining > 0)
         {
             withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder);
         }
 
-        return new BlockBody(transactions, uncles, withdrawals);
+        if (remaining > 1)
+        {
+            blockAccessList = _blockAccessListDecoder.Decode(ref ctx, rlpBehaviors);
+        }
+
+        return new BlockBody(transactions, uncles, withdrawals, blockAccessList);
     }
 
     protected override BlockBody DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -138,6 +150,11 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
             {
                 stream.Encode(withdrawal);
             }
+        }
+
+        if (body.BlockAccessList is not null)
+        {
+            stream.Encode(body.BlockAccessList.Value);
         }
     }
 }

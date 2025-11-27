@@ -10,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-
 using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing
@@ -23,6 +22,8 @@ namespace Nethermind.Consensus.Processing
             BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
             : IBlockProcessor.IBlockTransactionsExecutor
         {
+            private readonly TracedAccessWorldState? _tracedAccessWorldState = stateProvider as TracedAccessWorldState;
+
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             {
                 transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
@@ -34,10 +35,13 @@ namespace Nethermind.Consensus.Processing
 
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
+                    _tracedAccessWorldState?.BlockAccessList.IncrementBlockAccessIndex();
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                 }
-                return receiptsTracer.TxReceipts.ToArray();
+                _tracedAccessWorldState?.BlockAccessList.IncrementBlockAccessIndex();
+
+                return [.. receiptsTracer.TxReceipts];
             }
 
             protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)

@@ -19,6 +19,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Specs.Test;
 
 namespace Ethereum.Test.Base
 {
@@ -74,7 +75,7 @@ namespace Ethereum.Test.Base
                 StateRoot = new Hash256(headerJson.StateRoot),
                 TxRoot = new Hash256(headerJson.TransactionsTrie),
                 WithdrawalsRoot = headerJson.WithdrawalsRoot is null ? null : new Hash256(headerJson.WithdrawalsRoot),
-                // BlockAccessListHash = headerJson.BlockAccessListHash is null ? null : new Hash256(headerJson.BlockAccessListHash),
+                BlockAccessListHash = headerJson.BlockAccessListHash is null ? null : new Hash256(headerJson.BlockAccessListHash),
             };
 
             if (headerJson.BaseFeePerGas is not null)
@@ -113,7 +114,7 @@ namespace Ethereum.Test.Base
                     ReceiptsRoot = new(executionPayload.ReceiptsRoot),
                     StateRoot = new(executionPayload.StateRoot),
                     Timestamp = (ulong)Bytes.FromHexString(executionPayload.Timestamp).ToUnsignedBigInteger(),
-                    // BlockAccessList = executionPayload.BlockAccessList is null ? null : Bytes.FromHexString(executionPayload.BlockAccessList),
+                    BlockAccessList = executionPayload.BlockAccessList is null ? null : Bytes.FromHexString(executionPayload.BlockAccessList),
                     BlobGasUsed = executionPayload.BlobGasUsed is null ? null : (ulong)Bytes.FromHexString(executionPayload.BlobGasUsed).ToUnsignedBigInteger(),
                     ExcessBlobGas = executionPayload.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(executionPayload.ExcessBlobGas).ToUnsignedBigInteger(),
                     ParentBeaconBlockRoot = parentBeaconBlockRoot is null ? null : new(parentBeaconBlockRoot),
@@ -412,8 +413,9 @@ namespace Ethereum.Test.Base
             {
                 testsInFile = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
             }
-            catch (Exception)
+            catch (Exception e)
             {
+                Console.WriteLine(e);
                 Dictionary<string, HalfBlockchainTestJson> half =
                     _serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json);
                 testsInFile = [];
@@ -429,11 +431,11 @@ namespace Ethereum.Test.Base
                 string[] transitionInfo = testSpec.Network.Split("At");
                 string[] networks = transitionInfo[0].Split("To");
 
-                testSpec.EthereumNetwork = SpecNameParser.Parse(networks[0]);
+                testSpec.EthereumNetwork = LoadSpec(networks[0], testSpec.Config?.BlobSchedule);
                 if (transitionInfo.Length > 1)
                 {
                     testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
-                    testSpec.EthereumNetworkAfterTransition = SpecNameParser.Parse(networks[1]);
+                    testSpec.EthereumNetworkAfterTransition = LoadSpec(networks[1], testSpec.Config?.BlobSchedule);
                 }
 
                 (string name, string category) = GetNameAndCategory(testName);
@@ -441,6 +443,23 @@ namespace Ethereum.Test.Base
             }
 
             return testsByName;
+        }
+
+        private static IReleaseSpec LoadSpec(string name, Dictionary<string, BlobScheduleEntryJson>? blobSchedule)
+        {
+            IReleaseSpec spec = SpecNameParser.Parse(name);
+            if (blobSchedule is null)
+            {
+                return spec;
+            }
+
+            BlobScheduleEntryJson blobCount = blobSchedule[name];
+            return new OverridableReleaseSpec(spec)
+            {
+                MaxBlobCount = System.Convert.ToUInt64(blobCount.Max, 16),
+                TargetBlobCount = System.Convert.ToUInt64(blobCount.Target, 16),
+                BlobBaseFeeUpdateFraction = System.Convert.ToUInt64(blobCount.BaseFeeUpdateFraction, 16)
+            };
         }
 
         private static (string name, string category) GetNameAndCategory(string key)

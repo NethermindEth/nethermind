@@ -11,6 +11,7 @@ using Nethermind.Evm.EvmObjectFormat;
 namespace Nethermind.Evm;
 
 using Int256;
+using Nethermind.Evm.State;
 
 internal static partial class EvmInstructions
 {
@@ -152,6 +153,8 @@ internal static partial class EvmInstructions
         if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address))
             goto OutOfGas;
 
+        (vm.WorldState as TracedAccessWorldState)?.AddAccountRead(address);
+
         if (!result.IsZero)
         {
             // Update memory cost if the destination region requires expansion.
@@ -231,6 +234,8 @@ internal static partial class EvmInstructions
         // Charge gas for accessing the account's state.
         if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address))
             goto OutOfGas;
+
+        (vm.WorldState as TracedAccessWorldState)?.AddAccountRead(address);
 
         // Attempt a peephole optimization when tracing is not active and code is available.
         ReadOnlySpan<byte> codeSection = vm.EvmState.Env.CodeInfo.CodeSpan;

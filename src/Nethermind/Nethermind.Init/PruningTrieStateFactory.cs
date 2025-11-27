@@ -11,10 +11,10 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Utils;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks.Config;
@@ -52,7 +52,7 @@ public class PruningTrieStateFactory(
 
     public (IWorldStateManager, IPruningTrieStateAdminRpcModule) Build()
     {
-        CompositePruningTrigger compositePruningTrigger = new CompositePruningTrigger();
+        CompositePruningTrigger compositePruningTrigger = new();
 
         IPruningTrieStore trieStore = mainPruningTrieStoreFactory.PruningTrieStore;
         ITrieStore mainWorldTrieStore = trieStore;
@@ -82,8 +82,8 @@ public class PruningTrieStateFactory(
                 // Main thread should only read from prewarm caches, not spend extra time updating them.
                 populatePreBlockCache: false);
 
-        IWorldStateManager stateManager = new WorldStateManager(
-            worldState,
+        WorldStateManager stateManager = new(
+            new TracedAccessWorldState(worldState),
             trieStore,
             dbProvider,
             logManager,

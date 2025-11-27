@@ -1,0 +1,33 @@
+
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Linq;
+using System.Text.Json.Serialization;
+using Nethermind.Serialization.Json;
+
+namespace Nethermind.Core.BlockAccessLists;
+
+public readonly struct StorageChange(ushort blockAccessIndex, byte[] newValue) : IEquatable<StorageChange>, IIndexedChange
+{
+    public ushort BlockAccessIndex { get; init; } = blockAccessIndex;
+    [JsonConverter(typeof(ByteArrayConverter))]
+    public byte[] NewValue { get; init; } = newValue;
+
+    public readonly bool Equals(StorageChange other) =>
+        BlockAccessIndex == other.BlockAccessIndex &&
+        NewValue.SequenceEqual(other.NewValue);
+
+    public override readonly bool Equals(object? obj) =>
+        obj is StorageChange other && Equals(other);
+
+    public override readonly int GetHashCode() =>
+        HashCode.Combine(BlockAccessIndex, NewValue);
+
+    public static bool operator ==(StorageChange left, StorageChange right) =>
+        left.Equals(right);
+
+    public static bool operator !=(StorageChange left, StorageChange right) =>
+        !(left == right);
+}

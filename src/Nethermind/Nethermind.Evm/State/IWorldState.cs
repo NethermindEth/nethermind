@@ -24,8 +24,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     IDisposable BeginScope(BlockHeader? baseBlock);
     bool IsInScope { get; }
-    new ref readonly UInt256 GetBalance(Address address);
-    new ref readonly ValueHash256 GetCodeHash(Address address);
+    new UInt256 GetBalance(Address address);
+    new ValueHash256 GetCodeHash(Address address);
     bool HasStateForBlock(BlockHeader? baseBlock);
 
     /// <summary>
@@ -114,11 +114,18 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
+    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
+
     bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+
+    bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
+    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
+
     void IncrementNonce(Address address, UInt256 delta);
+    void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce);
 
     void DecrementNonce(Address address, UInt256 delta);
 
