@@ -152,7 +152,8 @@ namespace Nethermind.Consensus.AuRa
                 ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter());
 
                 IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
-                ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
+                IDictionary<ulong, IDictionary<Address, byte[]>> rewriteBytecodeTimestamp = parameters.RewriteBytecodeTimestamp;
+                ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 
                 AuRaContractGasLimitOverride? gasLimitOverride = gasLimitOverrideFactory.GetGasLimitCalculator();
 

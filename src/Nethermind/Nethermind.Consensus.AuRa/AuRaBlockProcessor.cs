@@ -91,6 +91,12 @@ namespace Nethermind.Consensus.AuRa
         private void RewriteContracts(Block block, IReleaseSpec spec)
         {
             bool wereChanges = _contractRewriter?.RewriteContracts(block.Number, _stateProvider, spec) ?? false;
+            Block? parent = _blockTree.FindBlock(block.ParentHash, block.Number - 1);
+            if (parent is not null)
+            {
+                wereChanges |= _contractRewriter?.RewriteContracts(block.Timestamp, parent.Timestamp, _stateProvider, spec) ?? false;
+            }
+
             if (wereChanges)
             {
                 _stateProvider.Commit(spec, commitRoots: true);
