@@ -33,7 +33,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddSingleton<IFlatDiffRepository, FlatDiffRepository>()
             .AddSingleton<Importer>()
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
-            .AddSingleton<IPersistence, RocksdbPersistence>()
+            // .AddSingleton<IPersistence, RocksdbPersistence>()
+            .AddSingleton<IPersistence, UnifiedRocksdbPersistence>()
 
             .AddDatabase(DbNames.FlatMetadata)
             .AddDatabase(DbNames.FlatState)

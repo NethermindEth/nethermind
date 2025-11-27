@@ -466,7 +466,7 @@ public class DbConfig : IDbConfig
         // Default is 1 MB.
         "max_write_batch_group_size_bytes=4000000;" +
 
-        "optimize_filters_for_hits=true;" +
+        "optimize_filters_for_hits=false;" +
 
         "";
 
@@ -515,7 +515,7 @@ public class DbConfig : IDbConfig
         // Default is 1 MB.
         "max_write_batch_group_size_bytes=4000000;" +
 
-        "optimize_filters_for_hits=true;" +
+        "optimize_filters_for_hits=false;" +
 
         "";
 
@@ -566,7 +566,7 @@ public class DbConfig : IDbConfig
         // Default is 1 MB.
         "max_write_batch_group_size_bytes=4000000;" +
 
-        "optimize_filters_for_hits=true;" +
+        "optimize_filters_for_hits=false;" +
 
         "";
     public string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
