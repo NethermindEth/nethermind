@@ -12,6 +12,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Xdc.Spec;
@@ -65,6 +66,10 @@ public class XdcModule : Module
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
+
+            // block processing
+            .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
+            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, XdcTransactionExecutor>()
             ;
     }
 
