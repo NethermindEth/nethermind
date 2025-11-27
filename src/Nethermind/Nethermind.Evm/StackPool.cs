@@ -55,6 +55,8 @@ internal sealed class StackPool
         }
 
         // Count was positive but we lost the race or the enqueuer has not published yet.
+        // Include extra Vector256<byte>.Count and pin so we can align to 32 bytes.
+        // This ensures the stack is properly aligned for SIMD operations.
         return
         (
             GC.AllocateUninitializedArray<byte>(StackLength + Vector256<byte>.Count, pinned: true),
