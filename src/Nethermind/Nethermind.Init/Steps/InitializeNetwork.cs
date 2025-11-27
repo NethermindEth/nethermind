@@ -98,9 +98,9 @@ public class InitializeNetwork : IStep
         _logger = logManager.GetClassLogger();
     }
 
-    public async Task Execute(CancellationToken cancellationToken)
+    public virtual Task Execute(CancellationToken cancellationToken)
     {
-        await Initialize(cancellationToken);
+        return Initialize(cancellationToken);
     }
 
     private async Task Initialize(CancellationToken cancellationToken)
@@ -253,7 +253,7 @@ public class InitializeNetwork : IStep
         return Task.CompletedTask;
     }
 
-    private async Task InitPeer()
+    protected virtual async Task InitPeer()
     {
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));

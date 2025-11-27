@@ -14,6 +14,7 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -99,7 +100,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         }
     }
 
-    public bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, out string errorMessage)
+    public bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, [NotNullWhen(false)] out string errorMessage)
     {
         if (timeoutCertificate is null) throw new ArgumentNullException(nameof(timeoutCertificate));
         if (timeoutCertificate.Signatures is null) throw new ArgumentNullException(nameof(timeoutCertificate.Signatures));

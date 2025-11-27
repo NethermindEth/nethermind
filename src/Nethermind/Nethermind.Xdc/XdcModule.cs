@@ -3,6 +3,7 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
@@ -24,6 +25,8 @@ public class XdcModule : Module
 
     protected override void Load(ContainerBuilder builder)
     {
+        builder.AddStep(typeof(XdcInitNetwork));
+
         base.Load(builder);
 
         builder

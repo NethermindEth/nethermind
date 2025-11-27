@@ -198,14 +198,14 @@ namespace Nethermind.Network
             protocolHandler.Init();
         }
 
-        public void AddProtocol(string code, Func<ISession, IProtocolHandler> factory)
+        public void AddProtocol(string code, Func<ISession, int, IProtocolHandler> factory)
         {
             if (_protocolFactories.ContainsKey(code))
             {
                 throw new InvalidOperationException($"Protocol {code} was already added.");
             }
 
-            _protocolFactories[code] = (session, _) => factory(session);
+            _protocolFactories[code] = (session, version) => factory(session, version);
         }
 
         private IDictionary<string, Func<ISession, int, IProtocolHandler>> GetProtocolFactories()
