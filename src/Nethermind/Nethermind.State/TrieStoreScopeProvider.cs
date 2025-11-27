@@ -269,7 +269,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public void Dispose()
         {
-            bool hasSet = (_wasSetCalled || _hasSelfDestruct);
+            bool hasSet = _wasSetCalled || _hasSelfDestruct;
             if (_bulkWrite is not null)
             {
                 if (_hasSelfDestruct)
