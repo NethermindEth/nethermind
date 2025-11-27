@@ -26,7 +26,7 @@ public static class StaticPool<T> where T : class, IResettable, new()
     /// Global pool shared between threads.
     /// </summary>
     private static readonly ConcurrentQueue<T> _pool = [];
-    
+
     /// <summary>
     /// Manual count of items in the queue.
     /// We maintain this separately because ConcurrentQueue.Count
