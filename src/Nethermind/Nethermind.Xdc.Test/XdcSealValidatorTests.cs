@@ -15,6 +15,8 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Nethermind.Xdc.Test;
+
+[Parallelizable(ParallelScope.All)]
 internal class XdcSealValidatorTests
 {
     private static bool IsEpochSwitch(XdcBlockHeader header, IXdcReleaseSpec spec)
@@ -198,7 +200,7 @@ internal class XdcSealValidatorTests
 
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         snapshotManager
-            .CalculateNextEpochMasternodes(Arg.Any<XdcBlockHeader>(), Arg.Any<IXdcReleaseSpec>())
+            .CalculateNextEpochMasternodes(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<IXdcReleaseSpec>())
             .Returns((epochCandidates.ToArray(), penalties.ToArray()));
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>()).Returns(new EpochSwitchInfo(epochCandidates.ToArray(), [], [], new BlockRoundInfo(Hash256.Zero, 0, 0)));

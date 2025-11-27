@@ -14,7 +14,7 @@ jobs:
       SCRIPTS_PATH: ${{ github.workspace }}/scripts/build
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Detect version
         id: version

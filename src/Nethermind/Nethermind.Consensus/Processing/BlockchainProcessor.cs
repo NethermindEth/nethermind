@@ -670,7 +670,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
     {
-        BlockHeader branchingPoint = null;
+        BlockHeader? branchingPoint = null;
         ArrayPoolList<Block> blocksToBeAddedToMain = new((int)Reorganization.PersistenceInterval);
 
         bool branchingCondition;
@@ -774,7 +774,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceBranchingPoint(BlockHeader branchingPoint)
+        void TraceBranchingPoint(BlockHeader? branchingPoint)
         {
             if (branchingPoint is not null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {
@@ -800,7 +800,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             => _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceStateRootLookup(Hash256 stateRoot)
+        void TraceStateRootLookup(Hash256? stateRoot)
             => _logger.Trace($"State root lookup: {stateRoot}");
 
         [DoesNotReturn, StackTraceHidden]

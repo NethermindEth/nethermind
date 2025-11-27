@@ -30,6 +30,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig) : Autofac.Module
             .AddKeyedSingleton<IFileStoreFactory>(nameof(BloomStorage), CreateBloomStorageFileStoreFactory)
             .AddSingleton<IBloomStorage, BloomStorage>()
             .AddSingleton<IHeaderStore, HeaderStore>()
+            .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
             .AddSingleton<IBlockStore, BlockStore>()
             .AddSingleton<IReceiptStorage, PersistentReceiptStorage>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)

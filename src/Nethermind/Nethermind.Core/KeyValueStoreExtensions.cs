@@ -22,6 +22,8 @@ namespace Nethermind.Core
             return new FakeWriteBatch(keyValueStore, onDispose);
         }
 
+        #region Getters
+
         public static byte[]? Get(this IReadOnlyKeyValueStore db, Hash256 key)
         {
 #if DEBUG
@@ -86,6 +88,12 @@ namespace Nethermind.Core
             return span.IsNullOrEmpty() ? null : new DbSpanMemoryManager(db, span);
         }
 
+
+        #endregion
+
+
+        #region Setters
+
         public static void Set(this IWriteOnlyKeyValueStore db, Hash256 key, byte[] value, WriteFlags writeFlags = WriteFlags.None)
         {
             if (db.PreferWriteByArray)
@@ -107,15 +115,14 @@ namespace Nethermind.Core
             db.PutSpan(key.Bytes, value.AsSpan(), writeFlags);
         }
 
-        [SkipLocalsInit]
         public static void Set(this IWriteOnlyKeyValueStore db, long blockNumber, Hash256 key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
         {
             Span<byte> blockNumberPrefixedKey = stackalloc byte[40];
-            GetBlockNumPrefixedKey(blockNumber, in key.ValueHash256, blockNumberPrefixedKey);
+            GetBlockNumPrefixedKey(blockNumber, key, blockNumberPrefixedKey);
             db.PutSpan(blockNumberPrefixedKey, value, writeFlags);
         }
 
-        public static void GetBlockNumPrefixedKey(long blockNumber, in ValueHash256 blockHash, Span<byte> output)
+        public static void GetBlockNumPrefixedKey(long blockNumber, ValueHash256 blockHash, Span<byte> output)
         {
             blockNumber.WriteBigEndian(output);
             blockHash!.Bytes.CopyTo(output[8..]);
@@ -140,7 +147,7 @@ namespace Nethermind.Core
         public static void Delete(this IWriteOnlyKeyValueStore db, long blockNumber, Hash256 hash)
         {
             Span<byte> key = stackalloc byte[40];
-            GetBlockNumPrefixedKey(blockNumber, in hash.ValueHash256, key);
+            GetBlockNumPrefixedKey(blockNumber, hash, key);
             db.Remove(key);
         }
 
@@ -148,5 +155,7 @@ namespace Nethermind.Core
         {
             db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
         }
+
+        #endregion
     }
 }

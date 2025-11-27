@@ -24,7 +24,8 @@ public class MetaTests
         "Blockhash",
         "Data",
         "Log",
-        "TestResults"
+        "TestResults",
+        "db"
     ];
 
     [Test]
