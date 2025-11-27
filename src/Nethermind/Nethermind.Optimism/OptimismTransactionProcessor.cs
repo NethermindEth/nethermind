@@ -72,7 +72,7 @@ public class OptimismTransactionProcessor(
         senderReservedGasPayment = UInt256.Zero;
         blobBaseFee = UInt256.Zero;
 
-        bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation) || tx.MaxFeePerGas != 0 || tx.MaxPriorityFeePerGas != 0;
+        bool validate = ShouldValidateGas(tx, opts);
 
         UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
 
@@ -122,7 +122,7 @@ public class OptimismTransactionProcessor(
             senderReservedGasPayment += l1Cost; // no overflow here, otherwise previous check would fail
         }
 
-        if (senderReservedGasPayment != 0)
+        if (!senderReservedGasPayment.IsZero)
             WorldState.SubtractFromBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
 
         return TransactionResult.Ok;

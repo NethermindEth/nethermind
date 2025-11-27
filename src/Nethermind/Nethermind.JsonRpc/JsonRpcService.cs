@@ -278,6 +278,9 @@ public class JsonRpcService : IJsonRpcService
             InvalidTransactionException e =>
                 GetErrorResponse(methodName, ErrorCodes.Default, e.Reason.ErrorDescription, null, request.Id, returnAction),
 
+            InvalidBlockException or { InnerException: InvalidBlockException } =>
+                GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, request.Id, returnAction),
+
             _ => HandleException(ex, methodName, request, returnAction)
         };
 

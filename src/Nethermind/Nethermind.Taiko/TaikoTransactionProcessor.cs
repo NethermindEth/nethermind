@@ -31,16 +31,15 @@ public class TaikoTransactionProcessor(
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
         out UInt256 blobBaseFee)
     {
-        if (!tx.IsAnchorTx)
+        if (tx.IsAnchorTx)
         {
-            return base.BuyGas(tx, spec, tracer, opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment,
-                out blobBaseFee);
+            premiumPerGas = UInt256.Zero;
+            senderReservedGasPayment = UInt256.Zero;
+            blobBaseFee = UInt256.Zero;
+            return TransactionResult.Ok;
         }
 
-        premiumPerGas = UInt256.Zero;
-        senderReservedGasPayment = UInt256.Zero;
-        blobBaseFee = UInt256.Zero;
-        return TransactionResult.Ok;
+        return base.BuyGas(tx, spec, tracer, opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
     }
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
