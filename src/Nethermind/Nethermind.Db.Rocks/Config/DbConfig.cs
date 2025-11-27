@@ -28,6 +28,11 @@ public class DbConfig : IDbConfig
         "min_write_buffer_number_to_merge=1;" +
         "write_buffer_size=250000000;" +
         "max_write_buffer_number=2;" +
+        "memtable_whole_key_filtering=true;" +
+        "block_based_table_factory.block_size=16000;" +
+        "max_compaction_bytes=4000000000;" +
+        "memtable_prefix_bloom_size_ratio=0.02;" +
+        "advise_random_on_open=true;" +
         "";
 
     public string RocksDbOptions { get; set; } =

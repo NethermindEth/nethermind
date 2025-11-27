@@ -69,6 +69,7 @@ public class TrieNodeCache
             }
 
             node = kv.Value;
+            node.PrunePersistedRecursively(1);
             if (_cacheShards[shardIdx].TryAdd(key, node))
             {
                 long memory = node.GetMemorySize(false);
