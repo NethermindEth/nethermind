@@ -27,8 +27,7 @@ internal static partial class EvmInstructions
 
         // Deduct gas: base cost plus additional cost per 32-byte word.
         gasAvailable -= GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in b, out bool outOfGas);
-        if (outOfGas)
-            goto OutOfGas;
+        if (outOfGas) goto OutOfGas;
 
         EvmState vmState = vm.EvmState;
         // Charge gas for any required memory expansion.
@@ -36,7 +35,9 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Load the target memory region.
-        Span<byte> bytes = vmState.Memory.LoadSpan(in a, b);
+        Span<byte> bytes = vmState.Memory.LoadSpan(in a, b, out outOfGas);
+        if (outOfGas) goto OutOfGas;
+
         // Compute the Keccak-256 hash.
         KeccakCache.ComputeTo(bytes, out ValueHash256 keccak);
         // Push the 256-bit hash result onto the stack.

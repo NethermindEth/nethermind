@@ -76,7 +76,8 @@ internal static partial class EvmInstructions
             // Obtain the code slice with zero-padding if needed.
             ZeroPaddedSpan slice = TOpCodeCopy.GetCode(vm).SliceWithZeroPadding(in b, (int)result);
             // Save the slice into memory at the destination offset.
-            vm.EvmState.Memory.Save(in a, in slice);
+            vm.EvmState.Memory.Save(in a, in slice, out outOfGas);
+            if (outOfGas) goto OutOfGas;
 
             // If tracing is enabled, report the memory change.
             if (TTracingInst.IsActive)
@@ -180,7 +181,8 @@ internal static partial class EvmInstructions
             // Slice the external code starting at the source offset with appropriate zero-padding.
             ZeroPaddedSpan slice = externalCode.SliceWithZeroPadding(in b, (int)result);
             // Save the slice into memory at the destination offset.
-            vm.EvmState.Memory.Save(in a, in slice);
+            vm.EvmState.Memory.Save(in a, in slice, out outOfGas);
+            if (outOfGas) goto OutOfGas;
 
             // Report memory changes if tracing is enabled.
             if (TTracingInst.IsActive)

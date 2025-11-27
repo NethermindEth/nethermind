@@ -154,7 +154,8 @@ internal static partial class EvmInstructions
         if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
 
         // Write the 32-byte word into memory.
-        vmState.Memory.SaveWord(in result, bytes);
+        vmState.Memory.SaveWord(in result, bytes, out bool outOfGas);
+        if (outOfGas) goto OutOfGas;
 
         // Report memory changes if tracing is active.
         if (TTracingInst.IsActive)
@@ -199,7 +200,8 @@ internal static partial class EvmInstructions
         if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in result, in UInt256.One)) goto OutOfGas;
 
         // Write the single byte to memory.
-        vmState.Memory.SaveByte(in result, data);
+        vmState.Memory.SaveByte(in result, data, out bool outOfGas);
+        if (outOfGas) goto OutOfGas;
 
         // Report the memory change if tracing is active.
         if (TTracingInst.IsActive)
@@ -241,7 +243,8 @@ internal static partial class EvmInstructions
         if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
 
         // Load the 32-byte word from memory.
-        Span<byte> bytes = vmState.Memory.LoadSpan(in result);
+        Span<byte> bytes = vmState.Memory.LoadSpan(in result, out bool outOfGas);
+        if (outOfGas) goto OutOfGas;
 
         // Report the memory load if tracing is active.
         if (TTracingInst.IsActive)
@@ -291,14 +294,16 @@ internal static partial class EvmInstructions
         if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, UInt256.Max(b, a), c)) goto OutOfGas;
 
         // Load the specified memory segment from the source offset.
-        Span<byte> bytes = vmState.Memory.LoadSpan(in b, c);
+        Span<byte> bytes = vmState.Memory.LoadSpan(in b, c, out outOfGas);
+        if (outOfGas) goto OutOfGas;
 
         // Report the memory change at the source if tracing is active.
         if (TTracingInst.IsActive)
             vm.TxTracer.ReportMemoryChange(b, bytes);
 
         // Write the bytes into memory at the destination offset.
-        vmState.Memory.Save(in a, bytes);
+        vmState.Memory.Save(in a, bytes, out outOfGas);
+        if (outOfGas) goto OutOfGas;
 
         // Report the memory change at the destination if tracing is active.
         if (TTracingInst.IsActive)

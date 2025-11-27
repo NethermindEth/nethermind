@@ -252,7 +252,8 @@ internal static partial class EvmInstructions
         }
 
         // Load call data from memory.
-        ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(in dataOffset, dataLength);
+        ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(in dataOffset, dataLength, out bool outOfGas);
+        if (outOfGas) goto OutOfGas;
         // Construct the execution environment for the call.
         ExecutionEnvironment callEnv = new(
             codeInfo: codeInfo,
@@ -355,7 +356,10 @@ internal static partial class EvmInstructions
         // Load the return data from memory and copy it to an array,
         // so the return value isn't referencing live memory,
         // which is being unwound in return.
-        vm.ReturnData = vm.EvmState.Memory.Load(in position, in length).ToArray();
+        ReadOnlyMemory<byte> returnData = vm.EvmState.Memory.Load(in position, in length, out bool outOfGas);
+        if (outOfGas) goto OutOfGas;
+
+        vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

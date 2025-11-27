@@ -1150,7 +1150,8 @@ public unsafe partial class VirtualMachine(
             }
 
             // Save the previous call's output into the VM state's memory.
-            vmState.Memory.Save(in localPreviousDest, previousCallOutput);
+            vmState.Memory.Save(in localPreviousDest, previousCallOutput, out bool outOfGas);
+            if (outOfGas) goto OutOfGas;
         }
 
         // Dispatch the bytecode interpreter.

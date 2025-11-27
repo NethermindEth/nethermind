@@ -68,7 +68,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     public void Inspect_should_not_change_evm_memory()
     {
         EvmPooledMemory memory = new();
-        memory.Save(3, TestItem.KeccakA.Bytes);
+        memory.Save(3, TestItem.KeccakA.Bytes, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(false));
         ulong initialSize = memory.Size;
         ReadOnlyMemory<byte> result = memory.Inspect(initialSize + 32, 32);
         Assert.That(memory.Size, Is.EqualTo(initialSize));
@@ -82,7 +83,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         byte[] expectedEmptyRead = new byte[32 - offset];
         byte[] expectedKeccakRead = TestItem.KeccakA.BytesToArray();
         EvmPooledMemory memory = new();
-        memory.Save((UInt256)offset, expectedKeccakRead);
+        memory.Save((UInt256)offset, expectedKeccakRead, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(false));
         ulong initialSize = memory.Size;
         ReadOnlyMemory<byte> actualKeccakMemoryRead = memory.Inspect((UInt256)offset, 32);
         ReadOnlyMemory<byte> actualEmptyRead = memory.Inspect(32 + (UInt256)offset, 32 - (UInt256)offset);
@@ -96,9 +98,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         byte[] expectedResult = new byte[32];
         EvmPooledMemory memory = new();
-        memory.Save(3, TestItem.KeccakA.Bytes);
+        memory.Save(3, TestItem.KeccakA.Bytes, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(false));
         ulong initialSize = memory.Size;
-        ReadOnlyMemory<byte> result = memory.Load(initialSize + 32, 32);
+        ReadOnlyMemory<byte> result = memory.Load(initialSize + 32, 32, out outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(false));
         Assert.That(memory.Size, Is.Not.EqualTo(initialSize));
         Assert.That(result.ToArray(), Is.EqualTo(expectedResult));
     }

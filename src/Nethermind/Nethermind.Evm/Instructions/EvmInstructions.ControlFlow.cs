@@ -179,7 +179,10 @@ internal static partial class EvmInstructions
         }
 
         // Copy the specified memory region as return data.
-        vm.ReturnData = vm.EvmState.Memory.Load(in position, in length).ToArray();
+        ReadOnlyMemory<byte> returnData = vm.EvmState.Memory.Load(in position, in length, out bool outOfGas);
+        if (outOfGas) goto OutOfGas;
+
+        vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.Revert;
     // Jump forward to be unpredicted by the branch predictor.

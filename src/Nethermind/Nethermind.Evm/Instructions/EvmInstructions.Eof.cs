@@ -124,7 +124,8 @@ internal static partial class EvmInstructions
 
             // Get the source slice; if the requested range exceeds the buffer length, it is zero-padded.
             ZeroPaddedSpan slice = returnDataBuffer.Span.SliceWithZeroPadding(sourceOffset, (int)size);
-            vm.EvmState.Memory.Save(in destOffset, in slice);
+            vm.EvmState.Memory.Save(in destOffset, in slice, out outOfGas);
+            if (outOfGas) goto OutOfGas;
 
             // Report the memory change if tracing is active.
             if (TTracingInst.IsActive)
@@ -269,7 +270,8 @@ internal static partial class EvmInstructions
                 goto OutOfGas;
             // Retrieve the slice from the data section with zero padding if necessary.
             ZeroPaddedSpan dataSectionSlice = codeInfo.DataSection.SliceWithZeroPadding(offset, (int)size);
-            vm.EvmState.Memory.Save(in memOffset, dataSectionSlice);
+            vm.EvmState.Memory.Save(in memOffset, dataSectionSlice, out outOfGas);
+            if (outOfGas) goto OutOfGas;
 
             if (TTracingInst.IsActive)
             {
@@ -726,7 +728,8 @@ internal static partial class EvmInstructions
         ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, ValidationStrategy.ExtractHeader);
 
         // 8. Prepare the callData from the caller’s memory slice.
-        ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(dataOffset, dataSize);
+        ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(dataOffset, dataSize, out outOfGas);
+        if (outOfGas) goto OutOfGas;
 
         // Set up the execution environment for the new contract.
         ExecutionEnvironment callEnv = new(
@@ -798,7 +801,9 @@ internal static partial class EvmInstructions
         }
 
         // Load the memory slice as the return data buffer.
-        vm.ReturnDataBuffer = vm.EvmState.Memory.Load(a, b);
+        vm.ReturnDataBuffer = vm.EvmState.Memory.Load(a, b, out bool outOfGas);
+        if (outOfGas) goto OutOfGas;
+
         vm.ReturnData = deployCodeInfo;
 
         return EvmExceptionType.None;
@@ -975,7 +980,8 @@ internal static partial class EvmInstructions
         if (!EvmCalculations.UpdateGas(callGas, ref gasAvailable))
             goto OutOfGas;
 
-        ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(in dataOffset, dataLength);
+        ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(in dataOffset, dataLength, out bool outOfGas);
+        if (outOfGas) goto OutOfGas;
 
         // Snapshot the state before the call.
         Snapshot snapshot = state.TakeSnapshot();
