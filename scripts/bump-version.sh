@@ -16,6 +16,36 @@ update_version() {
     rm -f "${file_path}.bak"
 }
 
+# Returns success when ver_a is greater than or equal to ver_b (semantic compare)
+version_ge() {
+    local ver_a=$1
+    local ver_b=$2
+    local IFS='.'
+    local -a parts_a=()
+    local -a parts_b=()
+
+    read -r -a parts_a <<< "$ver_a"
+    read -r -a parts_b <<< "$ver_b"
+
+    local length=${#parts_a[@]}
+    if [ ${#parts_b[@]} -gt $length ]; then
+        length=${#parts_b[@]}
+    fi
+
+    for ((i=0; i<length; i++)); do
+        local part_a=${parts_a[i]:-0}
+        local part_b=${parts_b[i]:-0}
+
+        if ((10#$part_a > 10#$part_b)); then
+            return 0
+        elif ((10#$part_a < 10#$part_b)); then
+            return 1
+        fi
+    done
+
+    return 0
+}
+
 # Create a temporary Directory.Build.props for testing
 create_test_file() {
     local version=$1
@@ -116,7 +146,7 @@ run_tests() {
 
     # Additional test cases
     run_test "Skip when higher version already set" \
-        "refs/heads/release/1.31.0" "1.40.0" "1.32.0" || failed=1
+        "refs/heads/release/1.31.0" "1.40.0" "1.40.0" || failed=1
 
     run_test "Skip when same minor version already set" \
         "refs/heads/release/1.32.0" "1.32.0" "1.33.0" || failed=1
@@ -170,8 +200,13 @@ bump_version() {
     local current_version=$(get_version "$props_path")
     
     # Check if update is needed
-    if [ "$current_version" = "$new_version" ]; then
-        echo "Version $new_version is already set in $props_path"
+    # Skip when we would otherwise downgrade or repeat an existing version
+    if version_ge "$current_version" "$new_version"; then
+        if [ "$current_version" = "$new_version" ]; then
+            echo "Version $new_version is already set in $props_path"
+        else
+            echo "Current version $current_version is newer than computed $new_version, skipping update"
+        fi
         echo "needs_update=false"
         echo "current_version=$current_version"
         echo "new_version=$new_version"
