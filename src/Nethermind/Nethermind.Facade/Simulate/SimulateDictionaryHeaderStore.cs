@@ -22,33 +22,31 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
 
     public void Insert(BlockHeader header)
     {
-        _headerDict[header.Hash] = header;
+        _headerDict[header.Hash!] = header;
         InsertBlockNumber(header.Hash, header.Number);
     }
 
     public void BulkInsert(IReadOnlyList<BlockHeader> headers)
     {
-        foreach (var header in headers)
+        foreach (BlockHeader header in headers)
         {
             Insert(header);
         }
     }
 
-    public BlockHeader? Get(Hash256 blockHash, out bool fromCache, bool shouldCache = false, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
     {
         blockNumber ??= GetBlockNumber(blockHash);
 
         if (blockNumber.HasValue && _headerDict.TryGetValue(blockHash, out BlockHeader? header))
         {
-            fromCache = true;
             if (shouldCache)
             {
-                InsertBlockNumber(header.Hash, header.Number);
+                Cache(header!);
             }
             return header;
         }
 
-        fromCache = false;
         header = readonlyBaseHeaderStore.Get(blockHash, false, blockNumber);
         if (header is not null && shouldCache)
         {
@@ -57,10 +55,7 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         return header;
     }
 
-    public void Cache(BlockHeader header, bool isCanonical = false)
-    {
-        Insert(header);
-    }
+    public void Cache(BlockHeader header) => Insert(header);
 
     public void Delete(Hash256 blockHash)
     {
@@ -68,19 +63,10 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         _blockNumberDict.Remove(blockHash);
     }
 
-    public void InsertBlockNumber(Hash256 blockHash, long blockNumber)
-    {
-        _blockNumberDict[blockHash] = blockNumber;
-    }
+    public void InsertBlockNumber(Hash256 blockHash, long blockNumber) => _blockNumberDict[blockHash] = blockNumber;
 
-    public long? GetBlockNumber(Hash256 blockHash)
-    {
-        return _blockNumberDict.TryGetValue(blockHash, out var blockNumber) ? blockNumber : readonlyBaseHeaderStore.GetBlockNumber(blockHash);
-    }
+    public long? GetBlockNumber(Hash256 blockHash) =>
+        _blockNumberDict.TryGetValue(blockHash, out var blockNumber) ? blockNumber : readonlyBaseHeaderStore.GetBlockNumber(blockHash);
 
-    public Hash256? GetBlockHash(long blockNumber) => null;
-
-    public BlockHeader? GetFromCache(Hash256 blockHash) => null;
-
-    public void CacheBlockHash(long blockNumber, Hash256 blockHash) { }
+    public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null) => Get(blockHash, true, blockNumber);
 }

@@ -91,15 +91,14 @@ namespace Nethermind.Config
 
         public bool BuildBlocksOnMainState { get; set; }
 
-        public byte[] GetExtraDataBytes()
-        {
-            return _extraDataBytes;
-        }
+        public byte[] GetExtraDataBytes() => _extraDataBytes;
 
         public string GasToken { get => GasTokenTicker; set => GasTokenTicker = value; }
 
         public static string GasTokenTicker { get; set; } = "ETH";
 
         public long BlockProductionMaxTxKilobytes { get; set; } = DefaultMaxTxKilobytes;
+
+        public int? BlockProductionBlobLimit { get; set; }
     }
 }

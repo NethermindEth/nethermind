@@ -53,7 +53,7 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 180,
-    "agent": "g6-standard-6"
+    "agent": "g6-standard-8"
   },
   {
     "network": "world-sepolia",
@@ -96,7 +96,7 @@
     "agent": "g6-standard-6"
   },
   {
-    "network": "taiko-hekla",
+    "network": "taiko-hoodi",
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
@@ -113,22 +113,6 @@
   },
   {
     "network": "joc-testnet",
-    "cl": "",
-    "cl_image": "",
-    "checkpoint-sync-url": "",
-    "timeout": 180,
-    "agent": "g6-standard-6"
-  },
-  {
-    "network": "linea-mainnet",
-    "cl": "",
-    "cl_image": "",
-    "checkpoint-sync-url": "",
-    "timeout": 360,
-    "agent": "g6-standard-6"
-  },
-  {
-    "network": "linea-sepolia",
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",

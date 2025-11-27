@@ -82,8 +82,8 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                 .AddSingleton<IBlockchainBridgeFactory, BlockchainBridgeFactory>()
                 .AddScoped<IBlockchainBridge>((ctx) => ctx.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge())
                     .AddSingleton<IFeeHistoryOracle, FeeHistoryOracle>()
-                    .AddSingleton<IFilterStore, ITimerFactory, IJsonRpcConfig>((timerFactory, rpcConfig) => new FilterStore(timerFactory, rpcConfig.FiltersTimeout))
-                    .AddSingleton<IFilterManager, FilterManager>()
+                    .AddSingleton<FilterStore, ITimerFactory, IJsonRpcConfig>((timerFactory, rpcConfig) => new FilterStore(timerFactory, rpcConfig.FiltersTimeout))
+                    .AddSingleton<FilterManager>()
                     .AddSingleton<ISimulateReadOnlyBlocksProcessingEnvFactory, SimulateReadOnlyBlocksProcessingEnvFactory>()
 
             // Proof

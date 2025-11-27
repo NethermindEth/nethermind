@@ -10,26 +10,19 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Frozen;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Collections.ObjectModel;
 using System.Linq;
 
-using static Nethermind.Xdc.XdcExtensions;
-
 namespace Nethermind.Xdc;
+
 internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider) : ISealValidator
 {
-    private EthereumEcdsa _ethereumEcdsa = new(0); //Ignore chainId since we don't sign transactions here
-    private XdcHeaderDecoder _headerDecoder = new();
+    private readonly EthereumEcdsa _ethereumEcdsa = new(0); //Ignore chainId since we don't sign transactions here
+    private readonly XdcHeaderDecoder _headerDecoder = new();
 
     public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
     {
         return ValidateParams(parent, header, out _);
     }
-
-
 
     public bool ValidateParams(BlockHeader parent, BlockHeader header, out string error)
     {
@@ -43,15 +36,13 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
 
         ExtraFieldsV2 extraFieldsV2 = xdcHeader.ExtraConsensusData!;
 
-        if (extraFieldsV2.CurrentRound <= extraFieldsV2.QuorumCert.ProposedBlockInfo.Round)
+        if (extraFieldsV2.BlockRound <= extraFieldsV2.QuorumCert.ProposedBlockInfo.Round)
         {
             error = "Round number is not greater than the round in the QC.";
             return false;
         }
 
-        //TODO verify QC
-
-        IXdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(xdcHeader); // will throw if no spec found  
+        IXdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(xdcHeader); // will throw if no spec found
 
         Address[] masternodes;
 
@@ -74,7 +65,7 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
             }
 
             //TODO init masternodes by reading from most recent checkpoint
-            (masternodes, var penaltiesAddresses) = snapshotManager.CalculateNextEpochMasternodes(xdcHeader, xdcSpec);
+            (masternodes, var penaltiesAddresses) = snapshotManager.CalculateNextEpochMasternodes(xdcHeader.Number, xdcHeader.ParentHash, xdcSpec);
             if (!xdcHeader.ValidatorsAddress.SequenceEqual(masternodes))
             {
                 error = "Validators does not match what's stored in snapshot minus its penalty.";
@@ -108,7 +99,7 @@ internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchMa
                 throw new InvalidOperationException($"Snap shot returned no master nodes for header \n{xdcHeader.ToString()}");
         }
 
-        ulong currentLeaderIndex = (xdcHeader.ExtraConsensusData.CurrentRound % (ulong)xdcSpec.EpochLength % (ulong)masternodes.Length);
+        ulong currentLeaderIndex = (xdcHeader.ExtraConsensusData.BlockRound % (ulong)xdcSpec.EpochLength % (ulong)masternodes.Length);
         if (masternodes[(int)currentLeaderIndex] != header.Author)
         {
             error = $"Block proposer {header.Author} is not the current leader.";

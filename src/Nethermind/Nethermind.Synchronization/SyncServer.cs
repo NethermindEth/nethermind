@@ -416,7 +416,7 @@ namespace Nethermind.Synchronization
         {
             try
             {
-                Hash256? hash = _blockTree.FindBlockHash(number);
+                Hash256? hash = _blockTree.FindHash(number);
                 return hash;
             }
             catch (Exception)
@@ -558,6 +558,7 @@ namespace Nethermind.Synchronization
         private void StopNotifyingPeersAboutBlockRangeUpdates()
         {
             _blockTree.NewHeadBlock -= OnNewRange;
+            _historyPruner.NewOldestBlock -= OnNewRange;
         }
 
         public void Dispose()

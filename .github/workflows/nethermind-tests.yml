@@ -92,47 +92,54 @@ jobs:
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
     steps:
-    - name: Check out repository
-      uses: actions/checkout@v5
-      with:
-        submodules: ${{ startsWith(matrix.project, 'Ethereum.') && 'recursive' || 'false' }}
-    - name: Set up .NET
-      uses: actions/setup-dotnet@v5
-    - name: ${{ matrix.project }}
-      id: test
-      run: |
-        dotnet run --project src/Nethermind/${{ matrix.project }} -c release \
-          ${{ env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}
-    - name: Save test outcome
-      if: success() || failure()
-      run: echo "${{ steps.test.outcome == 'success' }}," >> test.outcome
-    - name: Upload test outcome
-      if: success() || failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ matrix.project }}-outcome
-        path: test.outcome
-        retention-days: 1
-    - name: Upload coverage report
-      if: env.COLLECT_COVERAGE == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ matrix.project }}-coverage
-        path: src/Nethermind/artifacts/bin/${{ matrix.project }}/release/TestResults/*.cobertura.xml
-        retention-days: 1
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          submodules: ${{ startsWith(matrix.project, 'Ethereum.') && 'recursive' || 'false' }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: ${{ matrix.project }}
+        id: test
+        working-directory: src/Nethermind/${{ matrix.project }}
+        run: |
+          dotnet test --project ${{ matrix.project }}.csproj -c release \
+            ${{ env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}
+
+      - name: Save test outcome
+        if: success() || failure()
+        run: echo "${{ steps.test.outcome == 'success' }}," >> test.outcome
+
+      - name: Upload test outcome
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.project }}-outcome
+          path: test.outcome
+          retention-days: 1
+
+      - name: Upload coverage report
+        if: env.COLLECT_COVERAGE == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.project }}-coverage
+          path: src/Nethermind/artifacts/bin/${{ matrix.project }}/release/TestResults/*.cobertura.xml
+          retention-days: 1
 
   tests-summary:
     name: Tests summary
     needs: tests
     runs-on: ubuntu-latest
     steps:
-    - name: Download test outcomes
-      uses: actions/download-artifact@v4
-    - name: Ensure all tests passed
-      run: |
-        data=$(cat **/test.outcome) && data=${data%?}
-        passed=$(echo "[$data]" | jq -r 'all')
-        [ $passed = 'true' ] && exit 0 || exit 1
+      - name: Download test outcomes
+        uses: actions/download-artifact@v4
+
+      - name: Ensure all tests passed
+        run: |
+          data=$(cat **/test.outcome) && data=${data%?}
+          passed=$(echo "[$data]" | jq -r 'all')
+          [[ "$passed" == "true" ]] && exit 0 || exit 1
 
   codecov-upload:
     name: Upload Codecov reports
@@ -145,6 +152,7 @@ jobs:
         with:
           path: .coverage
           pattern: '*-coverage'
+
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
         with:

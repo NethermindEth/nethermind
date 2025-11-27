@@ -22,10 +22,10 @@ on:
           - world-mainnet
           - joc-mainnet
           - joc-testnet
-          - linea-mainnet
-          - linea-sepolia
+          # - linea-mainnet
+          # - linea-sepolia
           - taiko-alethia
-          - taiko-hekla
+          - taiko-hoodi
           - energyweb
           - volta
       cl_client:
@@ -160,7 +160,7 @@ jobs:
       base_tag: ${{ steps.set-base-tag.outputs.base_tag }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.ref }}
 
@@ -258,7 +258,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.ref }}
 
