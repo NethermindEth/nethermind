@@ -311,9 +311,9 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         return sq;
     }
 
-    static readonly ulong IterationCountMultiplierEip2565 = 8;
+    private const ulong IterationCountMultiplierEip2565 = 8;
 
-    static readonly ulong IterationCountMultiplierEip7883 = 16;
+    private const ulong IterationCountMultiplierEip7883 = 16;
 
     /// <summary>
     /// def calculate_iteration_count(exponent_length, exponent):
