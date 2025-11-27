@@ -364,14 +364,14 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 {
                     PerContractState st = (PerContractState)ctx;
                     st.Commit();
-                    st.Reset();
+                    st.Return();
                     blockCommitter.ReturnConcurrencyQuota();
                 }, storage));
             }
             else
             {
                 storage.Commit();
-                storage.Reset();
+                storage.Return();
             }
         }
 
@@ -509,7 +509,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
-    private sealed class PerContractState : IResettable
+    private sealed class PerContractState : IReturnable
     {
         private static readonly Func<StorageCell, PerContractState, byte[]> _loadFromTreeStorageFunc = LoadFromTreeStorage;
 
@@ -576,7 +576,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             BlockChange.ClearAndSetMissingAsDefault();
         }
 
-        public void Reset()
+        public void Return()
         {
             _address = null;
             _provider = null;
