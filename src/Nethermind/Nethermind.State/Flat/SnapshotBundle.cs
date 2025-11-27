@@ -45,6 +45,7 @@ public class SnapshotBundle(
     private Histogram.Child _loadTriePersistence = _snapshotBundleTimer.WithLabels("load_trie_persistence");
     private Histogram.Child _loadTriePersistenceStorage = _snapshotBundleTimer.WithLabels("load_trie_persistence_storage");
     private Histogram.Child _loadTrie = _snapshotBundleTimer.WithLabels("load_trie");
+    private Counter _loadTrieCacheHit = Prometheus.Metrics.CreateCounter("load_trie_cache_hit", "", "hit");
 
     public bool TryGetAccount(Address address, out Account? acc)
     {
@@ -149,6 +150,15 @@ public class SnapshotBundle(
         }
 
         var res = trieNodeCache.TryGet(address, path, hash, out node);
+        if (res)
+        {
+            _loadTrieCacheHit.WithLabels("true").Inc();
+        }
+        else
+        {
+            _loadTrieCacheHit.WithLabels("false").Inc();
+        }
+
         _loadTrie.Observe(Stopwatch.GetTimestamp() - sw);
         return res;
     }

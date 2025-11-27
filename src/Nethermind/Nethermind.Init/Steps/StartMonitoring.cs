@@ -112,7 +112,7 @@ public class StartMonitoring(
         {
             try
             {
-                if (Environment.TickCount64 - _lastDbMetricsUpdate < 60_000)
+                if (Environment.TickCount64 - _lastDbMetricsUpdate < 5_000)
                 {
                     // Update max every minute
                     return;

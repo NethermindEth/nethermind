@@ -166,7 +166,7 @@ public class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
         {
             _jobBuffer[slot] = new Job(scope, path, storageTree, index);
             _jobBuffer.Publish(slot);
-            if ((_pushCount++) % 100 == 0) _resetEvent.Set();
+            if ((_pushCount++) % 10 == 0) _resetEvent.Set();
         }
     }
 }

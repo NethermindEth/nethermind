@@ -62,8 +62,8 @@ public class TrieNodeCache
             int shardIdx = GetShardIdx(key);
             if (_cacheShards[shardIdx].TryRemove(key, out var node))
             {
-                long memory = node.GetMemorySize(false);
                 node.PrunePersistedRecursively(1);
+                long memory = node.GetMemorySize(false);
                 _shardMemoryUsages[shardIdx] -= memory;
                 _estimatedMemoryUsage -= memory;
             }

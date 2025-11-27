@@ -37,7 +37,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
             .AddSingleton<IPersistence, RocksdbPersistence>()
             .AddSingleton<TrieStoreTrieCacheWarmer>()
-            // .AddSingleton<IPersistence, UnifiedRocksdbPersistence>()
 
             .AddDatabase(DbNames.FlatMetadata)
             .AddDatabase(DbNames.FlatState)

@@ -195,9 +195,33 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
 
             if (_perTableDbConfig.EnableFileWarmer || (Name.StartsWith("Flat") && !Name.Contains("Node")))
+            // if (_perTableDbConfig.EnableFileWarmer)
             {
                 WarmupFile(_fullPath, db);
             }
+
+            /*
+            if (Name == "FlatState")
+            {
+                Console.Error.WriteLine("Reading all from flat state");
+                long keyCount = 0;
+                using (var it = db.NewIterator())
+                {
+                    it.SeekToFirst();
+
+                    while (it.Valid())
+                    {
+                        keyCount++;
+                        if (keyCount % 1000000 == 0)
+                        {
+                            Console.Error.WriteLine($"{keyCount} keys");
+                        }
+                        it.Next();
+                    }
+                }
+                Console.Error.WriteLine($"{keyCount} keys");
+            }
+            */
 
             return db;
         }
@@ -215,7 +239,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             CreateMarkerIfCorrupt(x);
             throw;
         }
-
     }
 
     private void WarmupFile(string basePath, RocksDb db)
