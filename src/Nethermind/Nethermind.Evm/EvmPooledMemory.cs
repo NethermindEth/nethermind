@@ -128,15 +128,11 @@ public struct EvmPooledMemory : IEvmMemory
 
         ulong length = (ulong)value.Length;
         CheckMemoryAccessViolation(in location, length, out ulong newLength, out outOfGas);
+        outOfGas |= location.u0 > int.MaxValue;
+
         if (outOfGas) return;
 
         UpdateSize(newLength);
-
-        if (location.u0 > int.MaxValue)
-        {
-            outOfGas = true;
-            return;
-        }
 
         int intLocation = (int)location.u0;
         value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
