@@ -42,6 +42,7 @@ namespace Nethermind.Evm
                 ExecutionType.CREATE => Instruction.CREATE,
                 ExecutionType.CREATE2 => Instruction.CREATE2,
                 ExecutionType.EOFCREATE => Instruction.EOFCREATE,
+                ExecutionType.TXCREATE => Instruction.EOFCREATE,
                 ExecutionType.EOFCALL => Instruction.EXTCALL,
                 ExecutionType.EOFSTATICCALL => Instruction.EXTSTATICCALL,
                 ExecutionType.EOFDELEGATECALL => Instruction.EXTDELEGATECALL,
