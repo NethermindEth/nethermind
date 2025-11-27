@@ -98,12 +98,12 @@ configs = {
     }
 }
 
-def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequirement, isPoS):
+def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequirement, isPoS, apiKey):
     if "etherscan" in apiUrl:
         params = {
             'module': 'proxy',
             'action': 'eth_blockNumber',
-            'apikey': key,
+            'apikey': apiKey,
         }
         response = requests.get(apiUrl, params=params)
     else:
@@ -120,7 +120,7 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
             'action': 'eth_getBlockByNumber',
             'tag': f'{hex(baseBlock)}',
             'boolean': 'true',
-            'apikey': key,
+            'apikey': apiKey,
         }
         response = requests.get(apiUrl, params=params)
     else:
@@ -163,4 +163,4 @@ if __name__ == "__main__":
             continue
 
         print(emoji.emojize(f"{config.capitalize()} section                                     :white_check_mark: "))
-        fastBlocksSettings(config, value['url'], value['blockReduced'], value['multiplierRequirement'], value['isPoS'])
+        fastBlocksSettings(config, value['url'], value['blockReduced'], value['multiplierRequirement'], value['isPoS'], key)
