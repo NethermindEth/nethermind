@@ -70,7 +70,7 @@ namespace Nethermind.Network.Discovery.Test
 
             _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), from, to));
 
-            (await enumerator.MoveNextAsync(cancellationSource.Token)).Should().BeTrue();
+            (await enumerator.MoveNextAsync()).Should().BeTrue();
             UdpReceiveResult forwardedPacket = enumerator.Current;
 
             forwardedPacket.Should().NotBeNull();
@@ -99,9 +99,9 @@ namespace Nethermind.Network.Discovery.Test
             _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])invalidData.Clone()), from, to));
             _handler.Close();
 
-            (await enumerator.MoveNextAsync(cancellationSource.Token)).Should().BeTrue();
+            (await enumerator.MoveNextAsync()).Should().BeTrue();
             enumerator.Current.Buffer.Should().BeEquivalentTo(data);
-            (await enumerator.MoveNextAsync(cancellationSource.Token)).Should().BeFalse();
+            (await enumerator.MoveNextAsync()).Should().BeFalse();
         }
     }
 }

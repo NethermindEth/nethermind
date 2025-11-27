@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,7 +7,7 @@ namespace Nethermind.Xdc
 {
     internal class TimeoutTimer : IDisposable, ITimeoutTimer
     {
-        private System.Timers.Timer timer;
+        private readonly System.Timers.Timer timer;
         private readonly ITimeoutCertificateManager _timeoutCertificateManager;
 
         public TimeoutTimer(ITimeoutCertificateManager timeoutCertificateManager)

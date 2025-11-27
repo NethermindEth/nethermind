@@ -52,12 +52,12 @@ namespace Nethermind.Evm.Test
 
             if (isShanghai && repeat > 1024) // should fail because of stackoverflow (exceeds stack limit of 1024)
             {
-                receipt.Error.Should().Be(EvmExceptionType.StackOverflow.ToString());
+                receipt.Error.Should().Be(nameof(EvmExceptionType.StackOverflow));
             }
 
             if (!isShanghai) // should fail because of bad instruction (push zero is an EIP-3540 new instruction)
             {
-                receipt.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
+                receipt.Error.Should().Be(nameof(EvmExceptionType.BadInstruction));
             }
         }
     }

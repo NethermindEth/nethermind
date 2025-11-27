@@ -5,6 +5,7 @@ using Ethereum.Test.Base.Interfaces;
 using Nethermind.Evm.EvmObjectFormat;
 
 namespace Ethereum.Test.Base;
+
 public class Result
 {
     public string Fork { get; set; }
