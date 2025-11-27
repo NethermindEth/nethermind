@@ -152,15 +152,6 @@ namespace Nethermind.Blockchain.Filters
             }
         }
 
-        // Used by tests
-        public void SaveFilters(IEnumerable<FilterBase> filters)
-        {
-            foreach (FilterBase filter in filters)
-            {
-                SaveFilter(filter);
-            }
-        }
-
         private int GetFilterId(bool generateId)
         {
             if (generateId)

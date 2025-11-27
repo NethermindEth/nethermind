@@ -369,3 +369,15 @@ public class FilterManagerTests
         return builderInstance.TestObject;
     }
 }
+
+file static class FilterExtensions
+{
+    public static void SaveFilters<T>(this FilterStore store, IEnumerable<T> filters)
+        where T : FilterBase
+    {
+        foreach (T filter in filters)
+        {
+            store.SaveFilter(filter);
+        }
+    }
+}
