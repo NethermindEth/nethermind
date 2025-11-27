@@ -498,12 +498,12 @@ namespace Nethermind.Db.LogIndex
             return _rootDb.GatherMetric().Size.SizeToString(useSi: true, addSpace: true);
         }
 
-        public List<int> GetBlockNumbersFor(Address address, int from, int to)
+        public IList<int> GetBlockNumbersFor(Address address, int from, int to)
         {
             return GetBlockNumbersFor(null, address.Bytes, from, to);
         }
 
-        public List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to)
+        public IList<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to)
         {
             return GetBlockNumbersFor(index, topic.Bytes.ToArray(), from, to);
         }

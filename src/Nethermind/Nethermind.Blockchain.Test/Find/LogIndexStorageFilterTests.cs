@@ -211,7 +211,7 @@ public class LogIndexStorageFilterTests
 
         MockLogIndex();
 
-        List<int> blockNums = _logIndexStorage.GetBlockNumbersFor(filter, LogIndexFrom, LogIndexTo, CancellationToken.None);
+        IList<int> blockNums = _logIndexStorage.GetBlockNumbersFor(filter, LogIndexFrom, LogIndexTo, CancellationToken.None);
 
         Assert.That(blockNums, Is.EquivalentTo(expected));
     }

@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override IEnumerable<Hash256> Topics => [];
 
-        public override List<int>? FilterBlockNumbers(IDictionary<Hash256, List<int>> byTopic) => null;
+        public override IList<int>? FilterBlockNumbers(IDictionary<Hash256, IList<int>> byTopic) => null;
 
         public override string ToString() => "null";
     }

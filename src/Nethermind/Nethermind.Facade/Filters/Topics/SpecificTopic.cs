@@ -45,9 +45,9 @@ namespace Nethermind.Blockchain.Filters.Topics
             get { yield return _topic; }
         }
 
-        public override List<int>? FilterBlockNumbers(IDictionary<Hash256, List<int>> byTopic)
+        public override IList<int>? FilterBlockNumbers(IDictionary<Hash256, IList<int>> byTopic)
         {
-            return byTopic.TryGetValue(_topic, out List<int>? result) ? result : [];
+            return byTopic.TryGetValue(_topic, out IList<int>? result) ? result : [];
         }
 
         private bool Equals(SpecificTopic other) => _topic.Equals(other._topic);

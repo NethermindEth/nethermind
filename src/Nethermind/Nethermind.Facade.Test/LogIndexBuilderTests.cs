@@ -51,10 +51,10 @@ public class LogIndexBuilderTests
             init => _maxBlockNumber = value;
         }
 
-        public List<int> GetBlockNumbersFor(Address address, int from, int to) =>
+        public IList<int> GetBlockNumbersFor(Address address, int from, int to) =>
             throw new NotImplementedException();
 
-        public List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to) =>
+        public IList<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to) =>
             throw new NotImplementedException();
 
         public string GetDbSize() => 0L.SizeToString();

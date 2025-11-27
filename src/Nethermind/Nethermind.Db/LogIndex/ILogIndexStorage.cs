@@ -40,8 +40,8 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     int? GetMaxBlockNumber();
     int? GetMinBlockNumber();
 
-    List<int> GetBlockNumbersFor(Address address, int from, int to);
-    List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to);
+    IList<int> GetBlockNumbersFor(Address address, int from, int to);
+    IList<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to);
 
     string GetDbSize();
 

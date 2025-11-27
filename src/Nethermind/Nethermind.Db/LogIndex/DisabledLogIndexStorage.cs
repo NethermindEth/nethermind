@@ -19,8 +19,8 @@ public sealed class DisabledLogIndexStorage : ILogIndexStorage
     public int? GetMaxBlockNumber() => null;
     public int? GetMinBlockNumber() => null;
 
-    public List<int> GetBlockNumbersFor(Address address, int from, int to) => throw new NotSupportedException();
-    public List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to) => throw new NotSupportedException();
+    public IList<int> GetBlockNumbersFor(Address address, int from, int to) => throw new NotSupportedException();
+    public IList<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to) => throw new NotSupportedException();
 
     public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
         throw new NotSupportedException();

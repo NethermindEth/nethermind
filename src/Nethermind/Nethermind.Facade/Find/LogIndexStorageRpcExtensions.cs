@@ -17,13 +17,13 @@ public static class LogIndexStorageRpcExtensions
 {
     // Done sequentially, as with a single address/topic fetching averaging at 0.01s,
     // using parallelization here introduces more problems than it solves.
-    public static List<int> GetBlockNumbersFor(this ILogIndexStorage storage,
+    public static IList<int> GetBlockNumbersFor(this ILogIndexStorage storage,
         LogFilter filter, long fromBlock, long toBlock,
         CancellationToken cancellationToken = default)
     {
         (int from, int to) = ((int)fromBlock, (int)toBlock);
 
-        List<int>? addressNumbers = null;
+        IList<int>? addressNumbers = null;
         if (filter.AddressFilter.Address is { } address)
             addressNumbers = storage.GetBlockNumbersFor(address, from, to);
         else if (filter.AddressFilter.Addresses is { Count: > 0 } addresses)
@@ -31,10 +31,10 @@ public static class LogIndexStorageRpcExtensions
 
         // TODO: consider passing storage directly to keep abstractions
         var topicIndex = 0;
-        Dictionary<Hash256, List<int>>[]? byTopic = null;
+        Dictionary<Hash256, IList<int>>[]? byTopic = null;
         foreach (TopicExpression expression in filter.TopicsFilter.Expressions)
         {
-            byTopic ??= new Dictionary<Hash256, List<int>>[LogIndexStorage.MaxTopics];
+            byTopic ??= new Dictionary<Hash256, IList<int>>[LogIndexStorage.MaxTopics];
             byTopic[topicIndex] = new();
 
             foreach (Hash256 topic in expression.Topics)
@@ -50,7 +50,7 @@ public static class LogIndexStorageRpcExtensions
             return addressNumbers ?? [];
 
         // ReSharper disable once CoVariantArrayConversion
-        List<int> topicNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);
+        IList<int> topicNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);
 
         if (addressNumbers is null)
             return topicNumbers;
