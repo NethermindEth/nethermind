@@ -284,7 +284,7 @@ public class HistoryPruner : IHistoryPruner
                         throw;
                     }
                 }
-            });
+            }, cancellationToken);
         }
     }
 
