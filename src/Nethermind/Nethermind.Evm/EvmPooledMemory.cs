@@ -69,14 +69,26 @@ public struct EvmPooledMemory : IEvmMemory
 
     private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength, out bool outOfGas)
     {
-        if (location.IsLargerThanULong() || length.IsLargerThanULong())
+        if (length.IsLargerThanULong())
         {
             outOfGas = true;
             newLength = 0;
             return;
         }
 
-        ulong totalSize = location.u0 + length.u0;
+        CheckMemoryAccessViolation(in location, length.u0, out newLength, out outOfGas);
+    }
+
+    private static void CheckMemoryAccessViolation(in UInt256 location, ulong length, out ulong newLength, out bool outOfGas)
+    {
+        if (location.IsLargerThanULong() || length > long.MaxValue)
+        {
+            outOfGas = true;
+            newLength = 0;
+            return;
+        }
+
+        ulong totalSize = location.u0 + length;
         if (totalSize < location.u0 || totalSize > long.MaxValue)
         {
             outOfGas = true;
