@@ -194,7 +194,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 }
             }
 
-            if (_perTableDbConfig.EnableFileWarmer)
+            if (_perTableDbConfig.EnableFileWarmer || (Name.StartsWith("Flat") && !Name.Contains("Node")))
             {
                 WarmupFile(_fullPath, db);
             }
@@ -436,7 +436,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return 0;
     }
 
-    [GeneratedRegex("(?<optionName>[^; ]+)\\=(?<optionValue>[^; ]+);", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
+    [GeneratedRegex("(?<optionName>[A-Za-z0-9_]+)\\=(?<optionValue>[^; ]+);", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractDbOptionsRegex();
 
     public static IDictionary<string, string> ExtractOptions(string dbOptions)
@@ -469,7 +469,22 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         var isUsingPlainTable = optionsAsDict.ContainsKey("plain_table_factory");
         BlockBasedTableOptions? tableOptions = null;
-        if (!isUsingPlainTable)
+        if (isUsingPlainTable)
+        {
+            // It just need to set the default factory.
+            // settings can be changed via the option string later, but this need to be set first.
+            options.SetPlainTableFactory(
+                user_key_len: 0,
+                bloom_bits_per_key: 10,
+                hash_table_ratio: 0.75,
+                index_sparseness: 16,
+                huge_page_tlb_size: 0,
+                encoding_type: (char)0,
+                full_scan_mode: false,
+                store_index_in_file: true
+            );
+        }
+        else
         {
             tableOptions = new();
             options.SetBlockBasedTableFactory(tableOptions);

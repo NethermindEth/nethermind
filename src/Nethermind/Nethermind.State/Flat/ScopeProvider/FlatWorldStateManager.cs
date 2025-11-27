@@ -26,6 +26,7 @@ public class FlatWorldStateManager : IWorldStateManager
         IFlatDiffRepository flatDiffRepository,
         FlatDiffRepository.Configuration configuration,
         FlatStateReader flatStateReader,
+        TrieStoreTrieCacheWarmer trieWarmer,
         [KeyFilter(DbNames.Code)] IDb codeDb,
         ILogManager logManager
     )
@@ -35,7 +36,7 @@ public class FlatWorldStateManager : IWorldStateManager
         _codeDb = codeDb;
         _logManager = logManager;
         _configuration = configuration;
-        _mainWorldState = new FlatScopeProvider(codeDb, flatDiffRepository, configuration, logManager);
+        _mainWorldState = new FlatScopeProvider(codeDb, flatDiffRepository, configuration, trieWarmer, logManager);
     }
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
@@ -44,7 +45,7 @@ public class FlatWorldStateManager : IWorldStateManager
     public IReadOnlyKeyValueStore? HashServer => null;
     public IWorldStateScopeProvider CreateResettableWorldState()
     {
-        return new FlatScopeProvider(_codeDb, _flatDiffRepository, _configuration, _logManager, isReadOnly: true);
+        return new FlatScopeProvider(_codeDb, _flatDiffRepository, _configuration, new NoopTrieStoreTrieCacheWarmer(), _logManager, isReadOnly: true);
     }
 
     event EventHandler<ReorgBoundaryReached>? IWorldStateManager.ReorgBoundaryReached
@@ -55,7 +56,13 @@ public class FlatWorldStateManager : IWorldStateManager
 
     public IOverridableWorldScope CreateOverridableWorldScope()
     {
-        var scopeProvider = new FlatScopeProvider(_codeDb, _flatDiffRepository, _configuration, _logManager, isReadOnly: true);
+        var scopeProvider = new FlatScopeProvider(
+            _codeDb,
+            _flatDiffRepository,
+            _configuration,
+            new NoopTrieStoreTrieCacheWarmer(),
+            _logManager,
+            isReadOnly: true);
         return new FakeOverridableWorldScope(scopeProvider, _flatStateReader);
     }
 

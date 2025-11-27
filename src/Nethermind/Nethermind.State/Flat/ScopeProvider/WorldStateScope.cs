@@ -43,6 +43,8 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     private Histogram.Child _stateTreeGet = _flatScopeTimer.WithLabels("statetree_get");
     private Histogram.Child _flatGet = _flatScopeTimer.WithLabels("flat_get");
     private readonly ConcurrencyQuota _concurrencyQuota;
+    private readonly ITrieStoreTrieCacheWarmer _warmer;
+    private bool _isCommitting = false;
 
     public WorldStateScope(
         StateId currentStateId,
@@ -50,6 +52,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         IWorldStateScopeProvider.ICodeDb codeDb,
         IFlatDiffRepository flatDiffRepository,
         FlatDiffRepository.Configuration configuration,
+        ITrieStoreTrieCacheWarmer trieCacheWarmer,
         ILogManager logManager,
         bool isReadOnly = false)
     {
@@ -65,6 +68,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         _configuration = configuration;
         _stateTree.RootHash = currentStateId.stateRoot.ToCommitment();
         _logManager = logManager;
+        _warmer = trieCacheWarmer;
         _isReadOnly = isReadOnly;
     }
 
@@ -117,9 +121,18 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     public void HintGet(Address address, Account? account)
     {
         _snapshotBundle.HintAccountRead(address, account);
+        _warmer.PushJob(this, address, null, null);
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
+    public bool ShouldStillWarmUpTrie => _isCommitting == false;
+
+    public void WarmUpStateTrie(Address address)
+    {
+        ValueHash256 rawHash = address.ToAccountPath;
+        _stateTree.Get(rawHash.Bytes);
+    }
+
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
     {
         return CreateStorageTreeImpl(address);
@@ -135,6 +148,8 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
         Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
         storage = new StorageTree(
+            this,
+            _warmer,
             _snapshotBundle.GatherStorageCache(address),
             _configuration,
             _concurrencyQuota,
@@ -153,6 +168,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     public void Commit(long blockNumber)
     {
         StateId newStateId = new StateId(blockNumber, RootHash);
+        _isCommitting = true;
 
         if (!_isReadOnly)
         {
@@ -180,6 +196,8 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
             _stateTree.Commit();
         }
 
+        _isCommitting = false;
+
         _storages.Clear();
 
         Snapshot newSnapshot = _snapshotBundle.CollectAndApplyKnownState(_currentStateId, newStateId);
@@ -187,6 +205,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         {
             if (_currentStateId != newStateId) _flatDiffRepository.AddSnapshot(newSnapshot);
         }
+
         _currentStateId = newStateId;
     }
 

@@ -23,8 +23,12 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
     internal readonly State.StorageTree _tree;
     private readonly Address _address;
     private readonly FlatDiffRepository.Configuration _config;
+    private readonly ITrieStoreTrieCacheWarmer _trieCacheWarmer;
+    private readonly WorldStateScope _scope;
 
     public StorageTree(
+        WorldStateScope scope,
+        ITrieStoreTrieCacheWarmer trieCacheWarmer,
         StorageSnapshotBundle storageSnapshotBundle,
         FlatDiffRepository.Configuration config,
         ConcurrencyQuota concurrencyQuota,
@@ -32,11 +36,16 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
         Address address,
         ILogManager logManager)
     {
+        _scope = scope;
+        _trieCacheWarmer = trieCacheWarmer;
         _storageSnapshotBundle = storageSnapshotBundle;
         _tree = new State.StorageTree(new TrieStoreAdapter(storageSnapshotBundle, concurrencyQuota), storageRoot, logManager);
         _tree.RootHash = storageRoot;
         _config = config;
         _address = address;
+
+        // In case its all write.
+        _trieCacheWarmer.PushJob(_scope, null, this, 0);
     }
 
     public Hash256 RootHash => _tree.RootHash;
@@ -50,7 +59,7 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
         _storageSnapshotBundle.TryGet(index, out var value);
         if (value == null) value = State.StorageTree.ZeroBytes;
 
-        _storageSnapshotBundle.Set(index, value);
+        HintGet(index, value);
 
         if (!_config.VerifyWithTrie)
         {
@@ -68,6 +77,14 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
     public void HintGet(in UInt256 index, byte[]? value)
     {
         _storageSnapshotBundle.Set(index, value);
+        _trieCacheWarmer.PushJob(_scope, null, this, index);
+    }
+
+    public void WarUpStorageTrie(UInt256 index)
+    {
+        ValueHash256 hash = new ValueHash256();
+        State.StorageTree.ComputeKeyWithLookup(index, hash.BytesAsSpan);
+        _tree.Get(hash);
     }
 
     public byte[] Get(in ValueHash256 hash)

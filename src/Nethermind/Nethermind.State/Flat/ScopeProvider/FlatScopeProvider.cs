@@ -16,16 +16,19 @@ public class FlatScopeProvider : IWorldStateScopeProvider
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb;
     private readonly bool _isReadOnly;
     private readonly FlatDiffRepository.Configuration _configuration;
+    private readonly ITrieStoreTrieCacheWarmer _trieWarmer;
 
     public FlatScopeProvider(
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IFlatDiffRepository flatDiffRepository,
         FlatDiffRepository.Configuration configuration,
+        ITrieStoreTrieCacheWarmer trieWarmer,
         ILogManager logManager,
         bool isReadOnly = false)
     {
         _flatDiffRepository = flatDiffRepository;
         _configuration = configuration;
+        _trieWarmer = trieWarmer;
         _logManager = logManager;
         _codeDb = new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(codeDb);
         _isReadOnly = isReadOnly;
@@ -46,6 +49,7 @@ public class FlatScopeProvider : IWorldStateScopeProvider
             _codeDb,
             _flatDiffRepository,
             _configuration,
+            _trieWarmer,
             _logManager,
             _isReadOnly
         );

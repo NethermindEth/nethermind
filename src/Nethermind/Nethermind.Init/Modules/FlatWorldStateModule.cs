@@ -16,6 +16,8 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.Importer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.Trie.Flat;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Modules;
 
@@ -33,8 +35,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddSingleton<IFlatDiffRepository, FlatDiffRepository>()
             .AddSingleton<Importer>()
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
-            // .AddSingleton<IPersistence, RocksdbPersistence>()
-            .AddSingleton<IPersistence, UnifiedRocksdbPersistence>()
+            .AddSingleton<IPersistence, RocksdbPersistence>()
+            .AddSingleton<TrieStoreTrieCacheWarmer>()
+            // .AddSingleton<IPersistence, UnifiedRocksdbPersistence>()
 
             .AddDatabase(DbNames.FlatMetadata)
             .AddDatabase(DbNames.FlatState)

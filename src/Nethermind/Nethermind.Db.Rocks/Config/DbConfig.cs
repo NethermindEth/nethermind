@@ -29,7 +29,6 @@ public class DbConfig : IDbConfig
         "write_buffer_size=250000000;" +
         "max_write_buffer_number=2;" +
         "memtable_whole_key_filtering=true;" +
-        "block_based_table_factory.block_size=16000;" +
         "max_compaction_bytes=4000000000;" +
         "memtable_prefix_bloom_size_ratio=0.02;" +
         "advise_random_on_open=true;" +
@@ -355,16 +354,16 @@ public class DbConfig : IDbConfig
         "min_write_buffer_number_to_merge=2;" +
         "block_based_table_factory.block_restart_interval=4;" +
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
-        "block_based_table_factory.data_block_hash_table_util_ratio=0.5;" +
+        "block_based_table_factory.data_block_hash_table_util_ratio=0.7;" +
         "block_based_table_factory.block_size=8000;" +
         "block_based_table_factory.filter_policy=bloomfilter:15;" +
-        "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;};" +
+        "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;prepopulate_block_cache=kFlushOnly;};" +
 
         // Default is 1 MB.
         "max_write_batch_group_size_bytes=4000000;" +
         "prefix_extractor=capped:8;" + // So not the whole key, but like the first 8 byte. Its pretty good I think. Take up a lot of memory though.
 
-        "block_based_table_factory.block_cache=256000000;" +
+        "block_based_table_factory.block_cache=1000000000;" +
         "optimize_filters_for_hits=false;";
         /*
         // This is basically useless on write only database. However, for halfpath with live pruning, flatdb, or
@@ -372,6 +371,15 @@ public class DbConfig : IDbConfig
         // resulting in a reduced total memtable size to be written. This does seems to reduce sync throughput though.
         "min_write_buffer_number_to_merge=2;" +
         "compression=kNoCompression;" +
+
+        "allow_mmap_reads=true;" +
+           "plain_table_factory={user_key_len=32;};" +
+           "min_write_buffer_number_to_merge=2;" +
+           "compression=kNoCompression;" +
+
+           "prefix_extractor=capped:8;" + // So not the whole key, but like the first 8 byte. Its pretty good I think. Take up a lot of memory though.
+           "memtable=prefix_hash:1000000;" +
+           "optimize_filters_for_hits=false;"
 
         "plain_table_factory={user_key_len=32;};" +
 
@@ -393,11 +401,11 @@ public class DbConfig : IDbConfig
         "min_write_buffer_number_to_merge=2;" +
         "block_based_table_factory.block_restart_interval=4;" +
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
-        "block_based_table_factory.data_block_hash_table_util_ratio=0.5;" +
+        "block_based_table_factory.data_block_hash_table_util_ratio=0.7;" +
         "block_based_table_factory.block_size=8000;" +
         "block_based_table_factory.filter_policy=bloomfilter:15;" +
-        "block_based_table_factory.block_cache=256000000;" +
-        "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;};" +
+        "block_based_table_factory.block_cache=1000000000;" +
+        "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;prepopulate_block_cache=kFlushOnly;};" +
 
         // Default is 1 MB.
         "max_write_batch_group_size_bytes=4000000;" +
@@ -405,6 +413,16 @@ public class DbConfig : IDbConfig
 
         "optimize_filters_for_hits=false;";
     /*
+
+        "min_write_buffer_number_to_merge=2;" +
+       "compression=kNoCompression;" +
+       "allow_mmap_reads=true;" +
+       "plain_table_factory={user_key_len=64;};" +
+
+       "memtable=prefix_hash:1000000;" +
+       "optimize_filters_for_hits=false;" +
+       "prefix_extractor=capped:40;";
+
     "min_write_buffer_number_to_merge=2;" +
     "compression=kNoCompression;" +
 
