@@ -443,7 +443,7 @@ namespace Nethermind.State
                         // Remove address entry entirely if no more changes
                         if (_intraTxCache.Remove(change.Address, out StackList<int>? removed))
                         {
-                            removed.Reset();
+                            removed.Return();
                         }
                     }
                 }

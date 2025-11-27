@@ -9,7 +9,7 @@ using Nethermind.Core.Resettables;
 
 namespace Nethermind.Core.Collections
 {
-    public sealed class StackList<T> : List<T>, IResettable
+    public sealed class StackList<T> : List<T>, IResettable, IReturnable
         where T : struct, IComparable<T>
     {
         public T Peek() => this[^1];
@@ -82,7 +82,8 @@ namespace Nethermind.Core.Collections
         internal static StackList<T> Rent()
             => StaticPool<StackList<T>>.Rent();
 
-        public void Reset() => Return(this);
+        public void Return() => Return(this);
+        public void Reset() => Clear();
 
         private static void Return(StackList<T> value)
         {
@@ -91,7 +92,6 @@ namespace Nethermind.Core.Collections
             if (value.Capacity > MaxPooledCapacity)
                 return;
 
-            value.Clear();
             StaticPool<StackList<T>>.Return(value);
         }
     }

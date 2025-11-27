@@ -10,11 +10,11 @@ namespace Nethermind.Core.Extensions;
 public static class DictionaryExtensions
 {
     public static void ResetAndClear<TKey, TValue>(this IDictionary<TKey, TValue> dictionary)
-        where TValue : class, IResettable
+        where TValue : class, IReturnable
     {
         foreach (TValue value in dictionary.Values)
         {
-            value.Reset();
+            value.Return();
         }
         dictionary.Clear();
     }

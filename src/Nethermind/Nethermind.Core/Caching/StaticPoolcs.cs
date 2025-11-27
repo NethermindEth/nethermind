@@ -4,10 +4,11 @@
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
+using Nethermind.Core.Resettables;
 
 namespace Nethermind.Core.Caching;
 
-public static class StaticPool<T> where T : class, new()
+public static class StaticPool<T> where T : class, IResettable, new()
 {
     // Hard cap for shared pool growth.
     // Prevents unbounded accumulation under bursty workloads while still allowing per-thread caching.
@@ -50,6 +51,7 @@ public static class StaticPool<T> where T : class, new()
             return;
         }
 
+        item.Reset();
         _pool.Enqueue(item);
     }
 }
