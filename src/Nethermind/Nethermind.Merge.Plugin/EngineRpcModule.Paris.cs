@@ -97,7 +97,7 @@ public partial class EngineRpcModule : IEngineRpcModule
                 }
                 finally
                 {
-                    await region;
+                    (await region).Dispose();
                 }
             }
             catch (BlockchainException exception)
