@@ -182,7 +182,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         protected virtual ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
         {
             ReleaseSpec releaseSpec = CreateEmptyReleaseSpec();
-            releaseSpec.MaximumUncleCount = 2;
+            releaseSpec.MaximumUncleCount = releaseStartTimestamp is not null ? 2 : 0;
             releaseSpec.DifficultyBoundDivisor = 1;
             releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
             releaseSpec.MaximumExtraDataSize = chainSpec.Parameters.MaximumExtraDataSize;

@@ -1,8 +1,9 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -75,7 +76,8 @@ public class BlockValidator(
                ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateHeader<TOrphaned>(block, parent, ref errorMessage) &&
                ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&
-               ValidateWithdrawals(block, spec, validateHashes, ref errorMessage);
+               ValidateWithdrawals(block, spec, validateHashes, ref errorMessage);// &&
+                                                                                  //ValidateDifficulty(block, parent, spec, ref errorMessage);
     }
 
     private bool ValidateHeader<TOrphaned>(Block block, BlockHeader? parent, ref string? errorMessage)
@@ -273,6 +275,130 @@ public class BlockValidator(
         }
 
         return true;
+    }
+
+    //protected virtual bool ValidateDifficulty(Block block, BlockHeader parentBlockHeader, IReleaseSpec spec, ref string? errorMessage)
+    //{
+    //    if (block.Header.IsPostMerge)
+    //    {
+    //        if (block.Difficulty != 0)
+    //        {
+    //            errorMessage = "Bad #1";
+    //            return false;
+    //        }
+
+
+    //        if (block.TotalDifficulty is not null)
+    //        {
+    //            errorMessage = "Bad #2";
+    //            return false;
+    //        }
+    //    }
+    //    else
+    //    {
+    //        if (block.Difficulty == 0)
+    //        {
+    //            errorMessage = "Bad #3";
+    //            return false;
+    //        }
+
+
+    //        if (block.TotalDifficulty == 0)
+    //        {
+    //            errorMessage = "Bad #4";
+    //            return false;
+    //        }
+
+
+    //        if (block.TotalDifficulty is not null && block.TotalDifficulty != block.Header.Difficulty + parentBlockHeader.TotalDifficulty)
+    //        {
+    //            errorMessage = "Bad #5";
+    //            return false;
+    //        }
+
+    //        if (block.TotalDifficulty is not null && new EthashDifficultyCalculator(specProvider).Calculate(block.Header, parentBlockHeader) != block.Difficulty)
+    //        {
+    //            errorMessage = "Bad #6";
+    //            return false;
+    //        }
+    //    }
+
+    //    return true;
+    //}
+
+    internal class EthashDifficultyCalculator : IDifficultyCalculator
+    {
+        // Note: block 200000 is when the difficulty bomb was introduced but we did not spec it in any release info, just hardcoded it
+        public const int InitialDifficultyBombBlock = 200000;
+        private readonly ISpecProvider _specProvider;
+
+        public EthashDifficultyCalculator(ISpecProvider specProvider)
+        {
+            _specProvider = specProvider;
+        }
+
+        private const long OfGenesisBlock = 131_072;
+
+        public UInt256 Calculate(BlockHeader header, BlockHeader parent) =>
+            Calculate(parent.Difficulty,
+                parent.Timestamp,
+                header.Timestamp,
+                header.Number,
+                parent.UnclesHash != Keccak.OfAnEmptySequenceRlp);
+
+        public UInt256 Calculate(
+            in UInt256 parentDifficulty,
+            ulong parentTimestamp,
+            ulong currentTimestamp,
+            long blockNumber,
+            bool parentHasUncles)
+        {
+            IReleaseSpec spec = _specProvider.GetSpec(blockNumber, currentTimestamp);
+            if (spec.FixedDifficulty is not null && blockNumber != 0)
+            {
+                return (UInt256)spec.FixedDifficulty.Value;
+            }
+
+            BigInteger baseIncrease = BigInteger.Divide((BigInteger)parentDifficulty, spec.DifficultyBoundDivisor);
+            BigInteger timeAdjustment = TimeAdjustment(spec, (BigInteger)parentTimestamp, (BigInteger)currentTimestamp, parentHasUncles);
+            BigInteger timeBomb = TimeBomb(spec, blockNumber);
+            return (UInt256)BigInteger.Max(
+                OfGenesisBlock,
+                (BigInteger)parentDifficulty +
+                timeAdjustment * baseIncrease +
+                timeBomb);
+        }
+
+        private static BigInteger TimeAdjustment(
+            IReleaseSpec spec,
+            BigInteger parentTimestamp,
+            BigInteger currentTimestamp,
+            bool parentHasUncles)
+        {
+            if (spec.IsEip100Enabled)
+            {
+                return BigInteger.Max((parentHasUncles ? 2 : BigInteger.One) - BigInteger.Divide(currentTimestamp - parentTimestamp, 9), -99);
+            }
+
+            if (spec.IsEip2Enabled)
+            {
+                return BigInteger.Max(BigInteger.One - BigInteger.Divide(currentTimestamp - parentTimestamp, 10), -99);
+            }
+
+            if (spec.IsTimeAdjustmentPostOlympic)
+            {
+                return currentTimestamp < parentTimestamp + 13 ? BigInteger.One : BigInteger.MinusOne;
+            }
+
+            return currentTimestamp < parentTimestamp + 7 ? BigInteger.One : BigInteger.MinusOne;
+        }
+
+        private static BigInteger TimeBomb(IReleaseSpec spec, long blockNumber)
+        {
+            blockNumber -= spec.DifficultyBombDelay;
+
+            return blockNumber < InitialDifficultyBombBlock ? BigInteger.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
+        }
     }
 
     protected virtual bool ValidateTransactions(Block block, IReleaseSpec spec, ref string? errorMessage)

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
@@ -13,6 +13,7 @@ public class Paris : GrayGlacier
     protected Paris()
     {
         Name = "Paris";
+        MaximumUncleCount = 0;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Paris());

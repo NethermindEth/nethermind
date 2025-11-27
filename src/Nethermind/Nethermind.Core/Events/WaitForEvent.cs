@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -9,18 +9,18 @@ namespace Nethermind.Core.Events;
 
 public static class Wait
 {
-    public static async Task ForEventCondition<T>(
+    public static async Task<T> ForEventCondition<T>(
         CancellationToken cancellationToken,
         Action<EventHandler<T>> register,
         Action<EventHandler<T>> unregister,
         Func<T, bool> condition)
     {
-        TaskCompletionSource completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<T> completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         void handler(object? sender, T t)
         {
             if (condition(t))
             {
-                completion.TrySetResult();
+                completion.TrySetResult(t);
             }
         }
 
@@ -30,7 +30,7 @@ public static class Wait
         {
             await using (cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken)))
             {
-                await completion.Task;
+                return await completion.Task;
             }
         }
         finally

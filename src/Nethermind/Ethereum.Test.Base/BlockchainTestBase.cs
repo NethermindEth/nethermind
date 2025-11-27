@@ -1,13 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Numerics;
-using System.Threading;
-using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -23,19 +16,26 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
+using Nethermind.Init.Modules;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.Evm.State;
-using Nethermind.Init.Modules;
 using NUnit.Framework;
-using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin;
-using Nethermind.JsonRpc;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Numerics;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Ethereum.Test.Base;
 
@@ -50,7 +50,7 @@ public abstract class BlockchainTestBase
     {
         DifficultyCalculator = new DifficultyCalculatorWrapper();
         _logManager ??= LimboLogs.Instance;
-        _logger = _logManager.GetClassLogger();
+        _logger = TestLogManager.Instance.GetClassLogger();
     }
 
     [SetUp]
@@ -133,7 +133,12 @@ public abstract class BlockchainTestBase
             .AddSingleton(specProvider)
             .AddSingleton(_logManager)
             .AddSingleton(rewardCalculator)
-            .AddSingleton<IDifficultyCalculator>(DifficultyCalculator);
+            .AddSingleton<IDifficultyCalculator>(DifficultyCalculator)
+            .AddSingleton<IRewardCalculatorSource, RewardCalculator>()
+            .AddSingleton<IEthash, Ethash>()
+            .AddSingleton<IPoSSwitcher, PoSSwitcher>()
+            .AddSingleton<ISealValidator, EthashSealValidator>()
+            .AddDecorator<ISealValidator, MergeSealValidator>();
 
         if (isEngineTest)
         {
@@ -148,6 +153,7 @@ public abstract class BlockchainTestBase
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
         blockchainProcessor.Start();
+        IPoSSwitcher poSSwitcher = container.Resolve<IPoSSwitcher>();
 
         // Register tracer if provided for blocktest tracing
         if (tracer is not null)
@@ -157,7 +163,7 @@ public abstract class BlockchainTestBase
 
         try
         {
-            BlockHeader parentHeader;
+            Block parentBlock;
             // Genesis processing
             using (stateProvider.BeginScope(null))
             {
@@ -192,7 +198,7 @@ public abstract class BlockchainTestBase
 
                 blockTree.SuggestBlock(genesisBlock);
                 genesisProcessed.WaitOne(_genesisProcessingTimeoutMs);
-                parentHeader = genesisBlock.Header;
+                parentBlock = genesisBlock;
 
                 // Dispose genesis block's AccountChanges
                 genesisBlock.DisposeAccountChanges();
@@ -201,7 +207,7 @@ public abstract class BlockchainTestBase
             if (test.Blocks is not null)
             {
                 // blockchain test
-                parentHeader = SuggestBlocks(test, failOnInvalidRlp, blockValidator, blockTree, parentHeader);
+                await SuggestBlocks(poSSwitcher, test, failOnInvalidRlp, blockValidator, blockTree, blockchainProcessor, parentBlock, isPostMerge);
             }
             else if (test.EngineNewPayloads is not null)
             {
@@ -258,56 +264,123 @@ public abstract class BlockchainTestBase
         }
     }
 
-    private static BlockHeader SuggestBlocks(BlockchainTest test, bool failOnInvalidRlp, IBlockValidator blockValidator, IBlockTree blockTree, BlockHeader parentHeader)
+    private static async Task<BlockHeader> SuggestBlocks(IPoSSwitcher _poSSwitcher, BlockchainTest test, bool failOnInvalidRlp, IBlockValidator blockValidator, IBlockTree blockTree, BlockchainProcessor blockchainProcessor, Block parentBlock, bool isPostMerge)
     {
         List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
+        string? error = null;
+        string? expectsException = null;
+        Block head = parentBlock;
+
         for (int i = 0; i < correctRlp.Count; i++)
         {
+            error = null;
             // Mimic the actual behaviour where block goes through validating sync manager
-            correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
-
-            // For tests with reorgs, find the actual parent header from block tree
-            parentHeader = blockTree.FindHeader(correctRlp[i].Block.ParentHash) ?? parentHeader;
-
+            correctRlp[i].Block.Header.IsPostMerge = _poSSwitcher.IsPostMerge(correctRlp[i].Block.Header);
             Assert.That(correctRlp[i].Block.Hash, Is.Not.Null, $"null hash in {test.Name} block {i}");
-
-            bool expectsException = correctRlp[i].ExpectedException is not null;
-            // Validate block structure first (mimics SyncServer validation)
-            if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out string? validationError))
+            expectsException = correctRlp[i].ExpectedException;
+            try
             {
-                Assert.That(!expectsException, $"Expected block {correctRlp[i].Block.Hash} to fail with '{correctRlp[i].ExpectedException}', but it passed validation");
-                try
+                // For tests with reorgs, find the actual parent header from block tree
+                if (parentBlock.Hash != correctRlp[i].Block.ParentHash)
                 {
-                    // All validations passed, suggest the block
-                    blockTree.SuggestBlock(correctRlp[i].Block);
+                    var oldParentBlock = parentBlock;
+                    parentBlock = blockTree.FindBlock(correctRlp[i].Block.ParentHash);
+                    // repeats new payload handler assertion
+                    if (parentBlock is null)
+                    {
+                        error = $"Parent block {correctRlp[i].Block.ParentHash} not found for block {correctRlp[i].Block.Hash}";
+                        parentBlock = oldParentBlock;
+                        continue;
+                    }
+                    // if (!isPostMerge)
 
+                    blockTree.UpdateMainChain([parentBlock], true, true);
                 }
-                catch (InvalidBlockException e)
+
+                // Validate block structure first (mimics SyncServer validation)
+                bool validationResult = blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentBlock.Header, out string? validationError);
+
+                if (!validationResult)
                 {
-                    // Exception thrown during block processing
-                    Assert.That(expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}, Exception: {e}");
-                    // else: Expected to fail and did fail via exception → this is correct behavior
+                    error = validationError;
+                    continue;
                 }
-                catch (Exception e)
+
+                //if (blockTree.Head.Number >= correctRlp[i].Block.Number)
+                //{
+                //    continue;
+                //}
+
+                bool suggested = false;
+                TaskCompletionSource<BlockRemovedEventArgs> completion = new TaskCompletionSource<BlockRemovedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+                void f(object? s, BlockEventArgs e)
                 {
-                    Assert.Fail($"Unexpected exception during processing: {e}");
+                    suggested = true;
                 }
-                finally
+
+                void f2(object? s, BlockRemovedEventArgs e)
                 {
-                    // Dispose AccountChanges to prevent memory leaks in tests
-                    correctRlp[i].Block.DisposeAccountChanges();
+                    completion.SetResult(e);
+                }
+
+                blockchainProcessor.BlockRemoved += f2;
+                blockTree.NewBestSuggestedBlock += f;
+                blockTree.SuggestBlock(correctRlp[i].Block, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock);
+                blockTree.NewBestSuggestedBlock -= f;
+
+                if (suggested)
+                {
+                    await completion.Task;
+                    if (completion.Task.Result.ProcessingResult is not ProcessingResult.Success)
+                    {
+                        error = $"Error processing block {correctRlp[i].Block.Hash}: {completion.Task.Result.Message ?? completion.Task.Result.Exception?.ToString()}";
+                        break;
+                    }
+                }
+
+                blockchainProcessor.BlockRemoved -= f2;
+
+                parentBlock = correctRlp[i].Block;
+
+                if (!isPostMerge)
+                {
+                    if (head.Number < parentBlock.Number || head.TotalDifficulty < parentBlock.TotalDifficulty || (head.TotalDifficulty is not null && head.TotalDifficulty == parentBlock.TotalDifficulty && parentBlock.Timestamp < head.Timestamp))
+                    {
+                        head = parentBlock;
+                    }
+                }
+                else
+                {
+                    head = parentBlock;
                 }
             }
-            else
+            catch (Exception e)
             {
-                // Validation FAILED
-                Assert.That(expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
-                // else: Expected to fail and did fail → this is correct behavior
+                Assert.Fail($"Unexpected exception during processing: {e} {e.StackTrace}");
             }
+            finally
+            {
+                // Dispose AccountChanges to prevent memory leaks in tests
+                correctRlp[i].Block.DisposeAccountChanges();
 
-            parentHeader = correctRlp[i].Block.Header;
+                if (error is null)
+                {
+                    Assert.That(expectsException, Is.Null, $"Unexpected valid block, expected failure: {expectsException}");
+                }
+                else
+                {
+                    Assert.That(expectsException, Is.Not.Null, $"Unexpected invalid block: {error}");
+                }
+            }
         }
-        return parentHeader;
+        blockTree.UpdateMainChain([head], true, true);
+        return head.Header;
+    }
+
+    private static void BlockTree_NewBestSuggestedBlock(object? sender, BlockEventArgs e)
+    {
+        throw new NotImplementedException();
     }
 
     private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IEngineRpcModule engineRpcModule)
@@ -361,9 +434,9 @@ public abstract class BlockchainTestBase
                     {
                         Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Hash256(testBlockJson.UncleHeaders![uncleIndex].Hash)));
                     }
-
-                    correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
                 }
+
+                correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
             }
             catch (Exception e)
             {
