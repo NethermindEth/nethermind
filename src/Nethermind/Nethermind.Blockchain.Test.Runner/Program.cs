@@ -34,6 +34,7 @@ namespace Nethermind.Blockchain.Test.Runner
                 string[] input = Console.ReadLine().Split();
                 string command = input[0];
                 string testWildcard = input.Length <= 1 ? null : input[1];
+                Console.Error.WriteLine($"Command {command}");
 
                 Stopwatch stopwatch = new Stopwatch();
                 if (command == "p")
@@ -53,6 +54,7 @@ namespace Nethermind.Blockchain.Test.Runner
                 }
                 else
                 {
+                    Console.Error.WriteLine("Break?");
                     break;
                 }
 
@@ -76,6 +78,7 @@ namespace Nethermind.Blockchain.Test.Runner
 
         private static void WrapAndRunDirectoryStateTests(IStateTestRunner stateTest)
         {
+            Console.Error.WriteLine($"Running {stateTest}");
             var result = stateTest.RunTests().ToList();
             var failedTestsInCategory = result.Where(r => !r.Pass).Select(t => t.Name + " " + t.LoadFailure).ToArray();
             AllFailingTests.AddRange(failedTestsInCategory);
@@ -169,7 +172,7 @@ namespace Nethermind.Blockchain.Test.Runner
             WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmLogTests", testWildcard)));
             WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmTests", testWildcard)));
 
-            /* 
+            /*
             await Run(testRunnerBuilder(new DirectoryTestsSource("bcEIP158ToByzantium", testWildcard));
             await Run(testRunnerBuilder(new DirectoryTestsSource("bcFrontierToHomestead", testWildcard));
             await Run(testRunnerBuilder(new DirectoryTestsSource("bcHomesteadToDao", testWildcard));

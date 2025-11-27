@@ -28,6 +28,7 @@ namespace Nethermind.Blockchain.Test.Runner
             bool isNewLine = true;
             foreach (GeneralStateTest test in tests)
             {
+                Console.WriteLine($"RUNNING {test.Name}");
                 if (test.LoadFailure is not null)
                 {
                     continue;

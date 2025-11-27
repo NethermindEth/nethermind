@@ -25,6 +25,9 @@ using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using Paprika;
+using Paprika.Store;
+using PaprikaPlugin;
 
 namespace Ethereum.Test.Base
 {
@@ -82,6 +85,12 @@ namespace Ethereum.Test.Base
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
                 .AddSingleton(specProvider)
                 .AddSingleton(_logManager)
+                .AddModule(new PaprikaPluginModule(new PaprikaConfig()
+                {
+                }))
+                .AddSingleton<IDb>(PagedDb.NativeMemoryDb(
+                    10.MB(),
+                    16))
                 .Build();
 
             IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();

@@ -19,5 +19,6 @@
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
+    <ProjectReference Include="..\Paprika\src\PaprikaPlugin\PaprikaPlugin.csproj" />
   </ItemGroup>
 </Project>

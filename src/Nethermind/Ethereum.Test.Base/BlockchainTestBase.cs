@@ -36,6 +36,9 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin;
 using Nethermind.JsonRpc;
 using System.Reflection;
+using Paprika;
+using Paprika.Store;
+using PaprikaPlugin;
 
 namespace Ethereum.Test.Base;
 
@@ -133,6 +136,12 @@ public abstract class BlockchainTestBase
             .AddSingleton(specProvider)
             .AddSingleton(_logManager)
             .AddSingleton(rewardCalculator)
+            .AddModule(new PaprikaPluginModule(new PaprikaConfig()
+            {
+            }))
+            .AddSingleton<IDb>(PagedDb.NativeMemoryDb(
+                10.MB(),
+                16))
             .AddSingleton<IDifficultyCalculator>(DifficultyCalculator);
 
         if (isEngineTest)

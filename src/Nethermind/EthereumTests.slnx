@@ -67,4 +67,6 @@
   <Project Path="Nethermind.EofParse.Runner/Nethermind.EofParse.Runner.csproj" />
   <Project Path="Nethermind.State.Test.Runner.Test/Nethermind.State.Test.Runner.Test.csproj" />
   <Project Path="Nethermind.Test.Runner/Nethermind.Test.Runner.csproj" />
+  <Project Path="Paprika/src/Paprika/Paprika.csproj" />
+  <Project Path="Paprika/src/PaprikaPlugin/PaprikaPlugin.csproj" />
 </Solution>
