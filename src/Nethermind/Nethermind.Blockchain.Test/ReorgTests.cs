@@ -92,6 +92,7 @@ public class ReorgTests
         BlockhashCache blockhashCache = new(blockTreeBuilder.HeaderStore, LimboLogs.Instance);
         BlockhashProvider blockhashProvider = new(blockhashCache, stateProvider, LimboLogs.Instance);
         VirtualMachine virtualMachine = new(
+            new EthereumTransactionProcessorFactory(),
             blockhashProvider,
             specProvider,
             LimboLogs.Instance);

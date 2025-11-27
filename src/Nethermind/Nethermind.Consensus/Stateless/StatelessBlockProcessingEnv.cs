@@ -33,6 +33,7 @@ public class StatelessBlockProcessingEnv(
     Witness witness,
     ISpecProvider specProvider,
     ISealValidator sealValidator,
+    ITransactionProcessorFactory txProcessorFactory,
     ILogManager logManager)
 {
     private IBlockProcessor? _blockProcessor;
@@ -81,7 +82,7 @@ public class StatelessBlockProcessingEnv(
     private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockhashCache blockhashCache)
     {
         BlockhashProvider blockhashProvider = new(blockhashCache, state, logManager);
-        VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
-        return new TransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
+        VirtualMachine vm = new(txProcessorFactory, blockhashProvider, specProvider, logManager);
+        return txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
     }
 }

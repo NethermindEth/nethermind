@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api;
@@ -18,6 +17,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1;
+using Nethermind.Evm;
 using Nethermind.History;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -25,6 +25,7 @@ using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
+using System.IO.Abstractions;
 
 namespace Nethermind.Init.Modules;
 
@@ -68,6 +69,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
             .AddSingleton<IChainHeadInfoProvider, ChainHeadInfoProvider>()
             .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
+
+            .AddSingleton<ITransactionProcessorFactory, EthereumTransactionProcessorFactory>()
 
             .AddSingleton<IHardwareInfo, HardwareInfo>()
 

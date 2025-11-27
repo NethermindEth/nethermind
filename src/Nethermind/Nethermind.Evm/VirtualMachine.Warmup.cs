@@ -24,11 +24,11 @@ using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int,
 
 public unsafe partial class VirtualMachine
 {
-    public static void WarmUpEvmInstructions(IWorldState state, ICodeInfoRepository codeInfoRepository)
+    public static void WarmUpEvmInstructions(ITransactionProcessorFactory txProcessorFactory, IWorldState state, ICodeInfoRepository codeInfoRepository)
     {
         IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
-        VirtualMachine vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
+        VirtualMachine vm = new(txProcessorFactory, hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
 
         byte[] bytecode = new byte[64];
@@ -65,13 +65,13 @@ public unsafe partial class VirtualMachine
             RunOpCodes<OffFlag>(vm, state, evmState, spec);
         }
 
-        TransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
+        ITransactionProcessor processor = txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
         processor.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
 
         RunTransactions(processor, state, spec);
     }
 
-    private static void RunTransactions(TransactionProcessor processor, IWorldState state, IReleaseSpec spec)
+    private static void RunTransactions(ITransactionProcessor processor, IWorldState state, IReleaseSpec spec)
     {
         const int WarmUpIterations = 40;
 

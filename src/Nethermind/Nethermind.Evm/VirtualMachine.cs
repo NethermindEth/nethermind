@@ -32,14 +32,16 @@ using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int,
 using Int256;
 
 public sealed class EthereumVirtualMachine(
+    ITransactionProcessorFactory txProcessorFactory,
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     ILogManager? logManager
-) : VirtualMachine(blockHashProvider, specProvider, logManager)
+) : VirtualMachine(txProcessorFactory, blockHashProvider, specProvider, logManager)
 {
 }
 
 public unsafe partial class VirtualMachine(
+    ITransactionProcessorFactory txProcessorFactory,
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     ILogManager? logManager) : IVirtualMachine
@@ -118,6 +120,7 @@ public unsafe partial class VirtualMachine(
     public EvmState EvmState { get => _currentState; protected set => _currentState = value; }
     public int SectionIndex { get; set; }
     public int OpCodeCount { get; set; }
+    public ITransactionProcessorFactory TxProcessorFactory { get; } = txProcessorFactory;
 
     /// <summary>
     /// Executes a transaction by iteratively processing call frames until a top-level call returns
