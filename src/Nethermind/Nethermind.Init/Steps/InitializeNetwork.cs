@@ -264,7 +264,7 @@ public class InitializeNetwork : IStep
         await _api.StaticNodesManager.InitAsync();
 
         await _api.TrustedNodesManager.InitAsync();
-  
+
         CreateProtocolManager();
 
         if (_syncConfig.SnapServingEnabled == true)
