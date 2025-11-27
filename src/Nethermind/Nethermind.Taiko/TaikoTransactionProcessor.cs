@@ -95,6 +95,8 @@ public class TaikoTransactionProcessor(
     protected override void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
     {
         if (!tx.IsAnchorTx)
+        {
             base.PayRefund(tx, refundAmount, spec);
+        }
     }
 }
