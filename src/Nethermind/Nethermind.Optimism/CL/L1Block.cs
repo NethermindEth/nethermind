@@ -51,11 +51,13 @@ public sealed record L1BlockRef
 
     public static L1BlockRef From(L1BlockInfo blockInfo)
     {
+        // Note: L1BlockInfo doesn't contain ParentHash information
+        // ParentHash should be obtained separately or set to Zero for incomplete data
         return new L1BlockRef
         {
             Hash = blockInfo.BlockHash,
             Number = blockInfo.Number,
-            ParentHash = blockInfo.BlockHash,
+            ParentHash = Hash256.Zero, // Fixed: Cannot use current block hash as parent hash
             Timestamp = blockInfo.Timestamp
         };
     }
@@ -67,7 +69,7 @@ public sealed record L1BlockRef
             Hash = block.Value.Hash,
             Number = block.Value.Number,
             ParentHash = block.Value.ParentHash,
-            Timestamp = (ulong)block.Value.Timestamp // TODO: Potential unsafe cast
+            Timestamp = block.Value.Timestamp.ToUInt64(null) // Fixed: Use safe conversion method
         };
     }
 }
