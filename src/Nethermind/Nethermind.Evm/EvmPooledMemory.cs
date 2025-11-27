@@ -46,7 +46,7 @@ public struct EvmPooledMemory : IEvmMemory
         CheckMemoryAccessViolation(in location, WordSize, out _, out outOfGas);
         if (outOfGas) return;
 
-        UpdateSize(in location, in UInt256.One);
+        UpdateSize(location.u0 + 1);
 
         _memory![(long)location] = value;
     }
@@ -183,7 +183,7 @@ public struct EvmPooledMemory : IEvmMemory
         CheckMemoryAccessViolation(in location, in length, out ulong newLength, out outOfGas);
         if (outOfGas) return default;
 
-        UpdateSize(in location, in length);
+        UpdateSize(newLength);
 
         return _memory.AsMemory((int)location, (int)length);
     }
@@ -281,11 +281,6 @@ public struct EvmPooledMemory : IEvmMemory
             _memory = null;
             ArrayPool<byte>.Shared.Return(memory);
         }
-    }
-
-    private void UpdateSize(in UInt256 location, in UInt256 length, bool rentIfNeeded = true)
-    {
-        UpdateSize((ulong)(location + length), rentIfNeeded);
     }
 
     private void UpdateSize(ulong length, bool rentIfNeeded = true)
