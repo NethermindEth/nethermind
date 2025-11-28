@@ -54,7 +54,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         ctx.Test.ReadOnlyState.AccountExists(Address.SystemUser).Should().BeFalse();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            "{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            "{\"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "0x0");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
@@ -82,7 +82,7 @@ public partial class EthRpcModuleTests
         Address someAccount = new("0x0001020304050607080910111213141516171819");
         ctx.Test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            "{\"from\":\"0x0001020304050607080910111213141516171819\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "0x0");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
@@ -136,7 +136,8 @@ public partial class EthRpcModuleTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         LegacyTransactionForRpc transaction = new(tx, 1, Keccak.Zero, 1L)
         {
-            To = TestItem.AddressB
+            To = TestItem.AddressB,
+            GasPrice = 0
         };
 
         string serialized =
@@ -248,7 +249,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
+            $"{{\"from\": \"{TestItem.AddressA}\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
@@ -258,7 +259,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
+            $"{{\"from\": \"{TestItem.AddressA}\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x100000000\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
