@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Nethermind.State;
@@ -10,7 +11,6 @@ namespace Nethermind.State;
 /// ChatGPT generated single producer multiple consumer ring buffer
 /// TODO: Check if using full fledge LMAX Distruptor is worth it.
 /// </summary>
-/// <typeparam name="T"></typeparam>
 public sealed class SpmcRingBuffer<T>
 {
     private readonly T[] _entries;
@@ -18,84 +18,132 @@ public sealed class SpmcRingBuffer<T>
     private readonly int _mask;
     private readonly int _capacity;
 
-    private long _head; // consumers increment this
-    private long _tail; // producer increments this
+    public long EstimatedJobCount
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            // Single producer only ever increments _tail
+            long tail = Volatile.Read(ref _tail);
+
+            // Multiple consumers only ever increment _head
+            long head = Volatile.Read(ref _head);
+
+            long count = tail - head;
+            return count < 0 ? 0 : count; // clamp just in case of a race
+        }
+    }
+
+    // --- head (consumers) + padding to avoid false sharing with _tail ---
+    private long _head;
+#pragma warning disable CS0169 // Field is never used
+    private long _headPad1, _headPad2, _headPad3, _headPad4, _headPad5, _headPad6, _headPad7;
+
+    // --- tail (producer) + padding ---
+    private long _tail;
+    private long _tailPad1, _tailPad2, _tailPad3, _tailPad4, _tailPad5, _tailPad6, _tailPad7;
+#pragma warning restore CS0169 // Field is never used
 
     public SpmcRingBuffer(int capacityPowerOfTwo)
     {
+        if (capacityPowerOfTwo <= 0)
+            throw new ArgumentOutOfRangeException(nameof(capacityPowerOfTwo));
+
+        // must be a power of two
         if ((capacityPowerOfTwo & (capacityPowerOfTwo - 1)) != 0)
-            throw new ArgumentException("Capacity must be power of two.");
+            throw new ArgumentException("Capacity must be power of two.", nameof(capacityPowerOfTwo));
 
         _capacity = capacityPowerOfTwo;
         _mask = capacityPowerOfTwo - 1;
         _entries = new T[capacityPowerOfTwo];
         _sequences = new long[capacityPowerOfTwo];
 
-        // initialize sequence numbers so each slot appears available
+        // LMAX / Vyukov-style:
+        // initial state: seq[i] = i, head = 0, tail = 0
+        // - producer at tail = 0 expects seq[0] == 0 to claim
+        // - after publishing item 0: seq[0] = 1 (head+1)
         for (int i = 0; i < capacityPowerOfTwo; i++)
             _sequences[i] = i;
     }
 
-    public long EstimatedJobCount => _tail - _head;
+    /// <summary>
+    /// Approximate number of items in the buffer.
+    /// </summary>
+    public long EstimatedCount =>
+        Volatile.Read(ref _tail) - Volatile.Read(ref _head);
 
+    /// <summary>
+    /// Single producer: enqueue one item if there is space.
+    /// Returns false if the ring is full.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryEnqueue(T item)
     {
-        if (TryClaim(out var slot))
-        {
-            this[slot] = item;
-            Publish(slot);
-            return true;
-        }
-
-        return false;
-    }
-
-    public bool TryClaim(out int slot)
-    {
+        // Single producer: no CAS needed on tail.
         long tail = _tail;
         int index = (int)(tail & _mask);
 
-        // check slot availability
-        if (Volatile.Read(ref _sequences[index]) != tail)
-        {
-            slot = -1;
-            return false; // not ready (buffer full)
-        }
+        // Slot is free only if its sequence equals the current tail.
+        long seq = Volatile.Read(ref _sequences[index]);
+        if (seq != tail)
+            return false; // not yet consumed -> buffer full
 
-        _tail = tail + 1; // claim
-        slot = index;
+        // Write payload first.
+        _entries[index] = item;
+
+        // Publish:
+        // seq = tail + 1 means "item for head == tail is now visible".
+        // Volatile.Write gives us the release fence so consumer
+        // sees the payload after seeing seq.
+        Volatile.Write(ref _sequences[index], tail + 1);
+
+        // Advance tail (only producer touches this).
+        _tail = tail + 1;
+
         return true;
     }
 
-    public void Publish(int slot)
-    {
-        long publishSeq = Volatile.Read(ref _tail);
-        Volatile.Write(ref _sequences[slot], publishSeq);
-    }
-
+    /// <summary>
+    /// Multiple consumers: try to dequeue one item.
+    /// Returns false if buffer appears empty at time of check.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryDequeue(out T item)
     {
         while (true)
         {
             long head = Volatile.Read(ref _head);
             int index = (int)(head & _mask);
-            long seq = Volatile.Read(ref _sequences[index]);
 
-            if (seq <= head)
+            long seq = Volatile.Read(ref _sequences[index]);
+            long expectedSeq = head + 1;
+
+            // Not yet published?
+            if (seq < expectedSeq)
             {
                 item = default!;
-                return false; // not yet published
+                return false;
             }
 
-            if (Interlocked.CompareExchange(ref _head, head + 1, head) == head)
+            // Slot is ready for this consumer, try to claim head.
+            if (seq == expectedSeq &&
+                Interlocked.CompareExchange(ref _head, head + 1, head) == head)
             {
+                // We own this slot now.
                 item = _entries[index];
-                // mark slot as available for producer again
-                Volatile.Write(ref _sequences[index], head + _capacity);
+
+                // Mark slot as free for the next wrap:
+                // when tail reaches head + _capacity, this slot
+                // will again have seq == tail.
+                Volatile.Write(
+                    ref _sequences[index],
+                    head + _capacity
+                );
+
                 return true;
             }
+
+            // Lost race to another consumer, retry with updated head.
         }
     }
-
-    public ref T this[int slot] => ref _entries[slot];
 }

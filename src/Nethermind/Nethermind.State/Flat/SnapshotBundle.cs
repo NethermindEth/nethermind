@@ -5,16 +5,13 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Prometheus;
-using Metrics = Nethermind.Trie.Metrics;
 
 namespace Nethermind.State.Flat;
 
@@ -23,12 +20,10 @@ namespace Nethermind.State.Flat;
 public class SnapshotBundle(
     ArrayPoolList<Snapshot> knownStates,
     IPersistence.IPersistenceReader persistenceReader,
-    TrieNodeCache trieNodeCache
+    TrieNodeCache trieNodeCache,
+    bool isPrewarmer = false
 ) : IDisposable
 {
-
-    public bool _isPrewarmer = false;
-
     Dictionary<AddressPrefixAsKey, StorageSnapshotBundle> _loadedAccounts = new();
     Dictionary<AddressPrefixAsKey, Account> _changedAccounts = new();
     ConcurrentDictionary<TreePath, TrieNode> _changedNodes = new(); // Bulkset can get nodes concurrently
@@ -37,20 +32,34 @@ public class SnapshotBundle(
     internal static Histogram _snapshotBundleTimer = Prometheus.Metrics.CreateHistogram("snapshot_bundle_timer", "timer",
         new HistogramConfiguration()
         {
-            LabelNames = ["part"],
+            LabelNames = ["part", "is_prewarmer"],
             Buckets = Histogram.PowersOfTenDividedBuckets(5, 10, 5)
         });
 
-    private Histogram.Child _snapshotBundleTimerKnownStates = _snapshotBundleTimer.WithLabels("known_states");
-    private Histogram.Child _snapshotBundleTimerPersistence = _snapshotBundleTimer.WithLabels("persistence");
-    private Histogram.Child _snapshotBundleTimerPersistenceNull = _snapshotBundleTimer.WithLabels("persistence_null");
-    private Histogram.Child _snapshotBundleTimerKnownStatesStorage = _snapshotBundleTimer.WithLabels("known_states_storage");
-    private Histogram.Child _snapshotBundleTimerPersistenceStorage = _snapshotBundleTimer.WithLabels("persistence_storage");
-    private Histogram.Child _snapshotBundleTimerPersistenceNullStorage = _snapshotBundleTimer.WithLabels("persistence_null_storage");
-    private Histogram.Child _loadTriePersistence = _snapshotBundleTimer.WithLabels("load_trie_persistence");
-    private Histogram.Child _loadTriePersistenceStorage = _snapshotBundleTimer.WithLabels("load_trie_persistence_storage");
-    private Histogram.Child _loadTrie = _snapshotBundleTimer.WithLabels("load_trie");
+    private Histogram.Child _snapshotBundleTimerKnownStates = _snapshotBundleTimer.WithLabels("known_states", isPrewarmer.ToString());
+    private Histogram.Child _snapshotBundleTimerPersistence = _snapshotBundleTimer.WithLabels("persistence", isPrewarmer.ToString());
+    private Histogram.Child _snapshotBundleTimerPersistenceNull = _snapshotBundleTimer.WithLabels("persistence_null", isPrewarmer.ToString());
+    private Histogram.Child _snapshotBundleTimerKnownStatesStorage = _snapshotBundleTimer.WithLabels("known_states_storage", isPrewarmer.ToString());
+    private Histogram.Child _snapshotBundleTimerPersistenceStorage = _snapshotBundleTimer.WithLabels("persistence_storage", isPrewarmer.ToString());
+    private Histogram.Child _snapshotBundleTimerPersistenceNullStorage = _snapshotBundleTimer.WithLabels("persistence_null_storage", isPrewarmer.ToString());
+    private Histogram.Child _loadTriePersistence = _snapshotBundleTimer.WithLabels("load_trie_persistence", isPrewarmer.ToString());
+    private Histogram.Child _loadTriePersistenceStorage = _snapshotBundleTimer.WithLabels("load_trie_persistence_storage", isPrewarmer.ToString());
+    private Histogram.Child _loadTrie = _snapshotBundleTimer.WithLabels("load_trie", isPrewarmer.ToString());
     private Counter _loadTrieCacheHit = Prometheus.Metrics.CreateCounter("load_trie_cache_hit", "", "hit");
+
+    public void SetPrewarmer()
+    {
+        isPrewarmer = true;
+        _snapshotBundleTimerKnownStates = _snapshotBundleTimer.WithLabels("known_states", isPrewarmer.ToString());
+        _snapshotBundleTimerPersistence = _snapshotBundleTimer.WithLabels("persistence", isPrewarmer.ToString());
+        _snapshotBundleTimerPersistenceNull = _snapshotBundleTimer.WithLabels("persistence_null", isPrewarmer.ToString());
+        _snapshotBundleTimerKnownStatesStorage = _snapshotBundleTimer.WithLabels("known_states_storage", isPrewarmer.ToString());
+        _snapshotBundleTimerPersistenceStorage = _snapshotBundleTimer.WithLabels("persistence_storage", isPrewarmer.ToString());
+        _snapshotBundleTimerPersistenceNullStorage = _snapshotBundleTimer.WithLabels("persistence_null_storage", isPrewarmer.ToString());
+        _loadTriePersistence = _snapshotBundleTimer.WithLabels("load_trie_persistence", isPrewarmer.ToString());
+        _loadTriePersistenceStorage = _snapshotBundleTimer.WithLabels("load_trie_persistence_storage", isPrewarmer.ToString());
+        _loadTrie = _snapshotBundleTimer.WithLabels("load_trie", isPrewarmer.ToString());
+    }
 
     public bool TryGetAccountInMemory(Address address, out Account? acc)
     {
@@ -185,11 +194,6 @@ public class SnapshotBundle(
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
-        if (_isPrewarmer)
-        {
-            Console.Error.WriteLine($"Is warming using loadlp. {address}");
-            throw new Exception($"Is warming using loadlp. {address}");
-        }
         long sw = Stopwatch.GetTimestamp();
         var res = persistenceReader.TryLoadRlp(address, path, hash, flags);
         if (address is null)

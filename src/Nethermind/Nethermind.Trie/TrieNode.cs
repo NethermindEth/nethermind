@@ -1254,6 +1254,7 @@ namespace Nethermind.Trie
 
                                 if (IsPersisted && !child.IsPersisted)
                                 {
+                                    // What is this? Why is this here?
                                     child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
                                         NullLogger.Instance);
                                 }

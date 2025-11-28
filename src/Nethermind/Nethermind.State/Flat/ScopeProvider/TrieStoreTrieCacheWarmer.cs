@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common.Internal;
@@ -39,7 +40,7 @@ public class NoopTrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
     }
 }
 
-public class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
+public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
 {
     private SpmcRingBuffer<Job> _jobBuffer = new SpmcRingBuffer<Job>(1024);
 
@@ -72,7 +73,7 @@ public class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
     {
         _warmerJob = Task.Run<Task>(async () =>
         {
-            ArrayPoolList<Task> tasks = new ArrayPoolList<Task>(Environment.ProcessorCount);
+            using ArrayPoolList<Task> tasks = new ArrayPoolList<Task>(Environment.ProcessorCount);
             for (int i = 0; i < Environment.ProcessorCount; i++)
             {
                 bool isMain = i == 0;
@@ -144,6 +145,7 @@ public class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
 
                     if (mainWarmer.TryDequeue(out var job))
                     {
+                        _spinWait.Reset();
                         mainWarmer.MaybeWakeOpOtherWorker();
 
                         _resetEvent.Set();
@@ -169,10 +171,11 @@ public class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
                                 _resetEvent.Reset();
                                 _resetEvent.Wait(1, cancellationToken);
                             }
+                            _spinWait.Reset();
                         }
                         else
                         {
-                            _spinWait.SpinOnce();
+                            _spinWait.SpinOnce(isMain ? 1_000 : 30);
                         }
                     }
                 }
@@ -208,18 +211,34 @@ public class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
         _awaitingWorkers.Push(worker);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushJob(
         WorldStateScope scope,
         Address? path,
         StorageTree? storageTree,
         UInt256? index)
     {
+        /*
         // WARNING: Very hot!
         if (_jobBuffer.TryClaim(out var slot))
         {
             _jobBuffer[slot] = new Job(scope, path, storageTree, index, Stopwatch.GetTimestamp());
             _jobBuffer.Publish(slot);
             _mainWarmer?.WakeUp();
+        }
+        else
+        {
+            _trieWarmEr.WithLabels("buffer_full").Inc();
+        }
+        */
+
+        if (_jobBuffer.TryEnqueue(new Job(scope, path, storageTree, index, Stopwatch.GetTimestamp())))
+        {
+            _mainWarmer?.WakeUp();
+        }
+        else
+        {
+            _trieWarmEr.WithLabels("buffer_full").Inc();
         }
     }
 

@@ -36,15 +36,16 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     private static Histogram _flatScopeTimer = Metrics.CreateHistogram("flat_scope_timer", "timer",
         new HistogramConfiguration()
         {
-            LabelNames = ["part"],
+            LabelNames = ["part", "is_main"],
             Buckets = Histogram.PowersOfTenDividedBuckets(4, 10, 5)
         });
 
-    private Histogram.Child _stateTreeGet = _flatScopeTimer.WithLabels("statetree_get");
-    private Histogram.Child _flatGet = _flatScopeTimer.WithLabels("flat_get");
+    private Histogram.Child _stateTreeGet;
+    private Histogram.Child _flatGet;
     private readonly ConcurrencyQuota _concurrencyQuota;
     private readonly ITrieStoreTrieCacheWarmer _warmer;
     private bool _isCommitting = false;
+    private readonly bool _isMain;
 
     public WorldStateScope(
         StateId currentStateId,
@@ -71,6 +72,10 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         _warmer = trieCacheWarmer;
         _warmer.OnNewScope();
         _isReadOnly = isReadOnly;
+        _isMain = !isReadOnly;
+
+        _stateTreeGet = _flatScopeTimer.WithLabels("statetree_get", _isMain.ToString());
+        _flatGet = _flatScopeTimer.WithLabels("flat_get", _isMain.ToString());
     }
 
     public void Dispose()

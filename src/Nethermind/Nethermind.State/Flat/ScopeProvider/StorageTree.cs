@@ -15,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NonBlocking;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -26,7 +27,7 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
     private readonly FlatDiffRepository.Configuration _config;
     private readonly ITrieStoreTrieCacheWarmer _trieCacheWarmer;
     private readonly WorldStateScope _scope;
-    private readonly HashSet<UInt256> _wasWarmedUp = new();
+    private readonly ConcurrentDictionary<UInt256, bool> _wasWarmedUp = new();
 
     public StorageTree(
         WorldStateScope scope,
@@ -91,15 +92,15 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
 
     private void WarmUpSlot(UInt256 index)
     {
-        if (!_wasWarmedUp.Contains(index))
-        {
-            _wasWarmedUp.Add(index);
-            _trieCacheWarmer.PushJob(_scope, null, this, index);
-        }
+        _trieCacheWarmer.PushJob(_scope, null, this, index);
     }
 
     public void WarUpStorageTrie(UInt256 index)
     {
+        if (!_wasWarmedUp.TryAdd(index, true))
+        {
+            return;
+        }
         ValueHash256 hash = new ValueHash256();
         State.StorageTree.ComputeKeyWithLookup(index, hash.BytesAsSpan);
         _tree.Get(hash);
