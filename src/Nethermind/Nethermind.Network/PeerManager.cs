@@ -219,27 +219,32 @@ namespace Nethermind.Network
         private async Task RunPeerUpdateLoop()
         {
             Channel<Peer> taskChannel = Channel.CreateBounded<Peer>(1);
-            using ArrayPoolList<Task> tasks = Enumerable.Range(0, _outgoingConnectParallelism).Select(async idx =>
+            using ArrayPoolList<Task> tasks = new(_outgoingConnectParallelism);
+            for (int idx = 0; idx < _outgoingConnectParallelism; idx++)
             {
-                await foreach (Peer peer in taskChannel.Reader.ReadAllAsync(_cancellationTokenSource.Token))
+                int workerIdx = idx;
+                tasks.Add(Task.Run(async () =>
                 {
-                    try
+                    await foreach (Peer peer in taskChannel.Reader.ReadAllAsync(_cancellationTokenSource.Token))
                     {
-                        await SetupOutgoingPeerConnection(peer);
+                        try
+                        {
+                            await SetupOutgoingPeerConnection(peer);
+                        }
+                        catch (TaskCanceledException)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"Connect worker {workerIdx} cancelled");
+                            break;
+                        }
+                        catch (Exception e)
+                        {
+                            // This is strictly speaking not related to the connection, but something outside of it.
+                            if (_logger.IsError) _logger.Error($"Error setting up connection to {peer}, {e}");
+                        }
                     }
-                    catch (TaskCanceledException)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Connect worker {idx} cancelled");
-                        break;
-                    }
-                    catch (Exception e)
-                    {
-                        // This is strictly speaking not related to the connection, but something outside of it.
-                        if (_logger.IsError) _logger.Error($"Error setting up connection to {peer}, {e}");
-                    }
-                }
-                if (_logger.IsDebug) _logger.Debug($"Connect worker {idx} completed");
-            }).ToPooledList(_outgoingConnectParallelism);
+                    if (_logger.IsDebug) _logger.Debug($"Connect worker {workerIdx} completed");
+                }));
+            }
 
             int loopCount = 0;
             long previousActivePeersCount = 0;
