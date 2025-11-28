@@ -51,7 +51,7 @@ namespace Nethermind.Db.Rpc
 
         public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None)
         {
-            throw new InvalidOperationException("RPC DB does not support writes");
+            ThrowWritesNotSupported();
         }
 
         public byte[] Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
@@ -63,7 +63,7 @@ namespace Nethermind.Db.Rpc
 
         public void Remove(ReadOnlySpan<byte> key)
         {
-            throw new InvalidOperationException("RPC DB does not support writes");
+            ThrowWritesNotSupported();
         }
 
         public bool KeyExists(ReadOnlySpan<byte> key)
@@ -85,7 +85,7 @@ namespace Nethermind.Db.Rpc
 
         public IWriteBatch StartWriteBatch()
         {
-            throw new InvalidOperationException("RPC DB does not support writes");
+            ThrowWritesNotSupported();
         }
 
         private byte[] GetThroughRpc(ReadOnlySpan<byte> key)
@@ -113,8 +113,10 @@ namespace Nethermind.Db.Rpc
 
         public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags)
         {
-            throw new InvalidOperationException("RPC DB does not support writes");
+            ThrowWritesNotSupported();
         }
+
+        private static void ThrowWritesNotSupported() => throw new InvalidOperationException("RPC DB does not support writes");
 
         public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
         {
