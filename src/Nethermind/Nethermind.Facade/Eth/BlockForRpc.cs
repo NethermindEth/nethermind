@@ -18,14 +18,13 @@ namespace Nethermind.Facade.Eth;
 public class BlockForRpc
 {
     private static readonly BlockDecoder _blockDecoder = new();
-    private readonly bool _isAuRaBlock;
 
     public BlockForRpc() { }
 
     [SkipLocalsInit]
     public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider, bool skipTxs = false)
     {
-        _isAuRaBlock = block.Header.AuRaSignature is not null;
+        bool isAuRaBlock = block.Header.AuRaSignature is not null;
         Difficulty = block.Difficulty;
         ExtraData = block.ExtraData;
         GasLimit = block.GasLimit;
@@ -33,7 +32,7 @@ public class BlockForRpc
         Hash = block.Hash;
         LogsBloom = block.Bloom;
         Miner = block.Beneficiary;
-        if (!_isAuRaBlock)
+        if (!isAuRaBlock)
         {
             MixHash = block.MixHash;
             Nonce = new byte[8];
