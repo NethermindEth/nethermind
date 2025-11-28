@@ -113,7 +113,7 @@ namespace Nethermind.Db.Rpc
 
         public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags)
         {
-            Set(key, value.ToArray(), writeFlags);
+            throw new InvalidOperationException("RPC DB does not support writes");
         }
 
         public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
