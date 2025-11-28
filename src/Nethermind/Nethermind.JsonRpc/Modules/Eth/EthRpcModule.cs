@@ -802,30 +802,43 @@ public partial class EthRpcModule(
         };
     }
 
-    public ResultWrapper<JsonNode> eth_config()
+    public ResultWrapper<JsonNode> eth_config(bool? showAllForks = null)
     {
         ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
+        IReadOnlyList<ForkConfig>? allForkConfigs = null;
 
-        return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize((new ForkConfigSummary
+        if (showAllForks is true)
         {
-            Current = GetForkConfig(forks.Current, _specProvider)!,
-            Next = GetForkConfig(forks.Next, _specProvider),
-            Last = GetForkConfig(forks.Last, _specProvider)
-        }), UnchangedDictionaryKeyOptions)));
+            IReadOnlyList<Fork> forkSchedule = forkInfo.GetAllForks();
+            List<ForkConfig> forkConfigs = new(forkSchedule.Count);
 
-        static ForkConfig? GetForkConfig(Fork? fork, ISpecProvider specProvider)
-        {
-            if (fork is null)
+            foreach (Fork scheduledFork in forkSchedule)
             {
-                return null;
+                forkConfigs.Add(BuildForkConfig(scheduledFork, _specProvider));
             }
 
-            IReleaseSpec? spec = specProvider.GetSpec(fork.Value.Activation.BlockNumber, fork.Value.Activation.Timestamp);
+            allForkConfigs = forkConfigs;
+        }
+
+        return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize(new ForkConfigSummary
+        {
+            Current = BuildForkConfig(forks.Current, _specProvider),
+            Next = GetForkConfigOrNull(forks.Next, _specProvider),
+            Last = GetForkConfigOrNull(forks.Last, _specProvider),
+            All = allForkConfigs
+        }, UnchangedDictionaryKeyOptions)));
+
+        static ForkConfig? GetForkConfigOrNull(Fork? fork, ISpecProvider specProvider) =>
+            fork is null ? null : BuildForkConfig(fork.Value, specProvider);
+
+        static ForkConfig BuildForkConfig(Fork fork, ISpecProvider specProvider)
+        {
+            IReleaseSpec spec = specProvider.GetSpec(fork.Activation.BlockNumber, fork.Activation.Timestamp);
 
             return new ForkConfig
             {
-                ActivationTime = fork.Value.Activation.Timestamp is not null ? (int)fork.Value.Activation.Timestamp : null,
-                ActivationBlock = fork.Value.Activation.Timestamp is null ? (int)fork.Value.Activation.BlockNumber : null,
+                ActivationTime = fork.Activation.Timestamp is not null ? (int)fork.Activation.Timestamp : null,
+                ActivationBlock = fork.Activation.Timestamp is null ? (int)fork.Activation.BlockNumber : null,
                 BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettingsForRpc
                 {
                     BaseFeeUpdateFraction = (int)spec.BlobBaseFeeUpdateFraction,
@@ -833,7 +846,7 @@ public partial class EthRpcModule(
                     Target = (int)spec.TargetBlobCount,
                 } : null,
                 ChainId = specProvider.ChainId,
-                ForkId = fork.Value.Id.HashBytes,
+                ForkId = fork.Id.HashBytes,
                 Precompiles = spec.ListPrecompiles(),
                 SystemContracts = spec.ListSystemContracts(),
             };

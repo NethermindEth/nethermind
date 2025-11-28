@@ -176,5 +176,11 @@ namespace Nethermind.Network
                 Last = isNextPresent ? new Fork(Forks[^1].Activation, Forks[^1].Id) : null,
             };
         }
+
+        public IReadOnlyList<Fork> GetAllForks()
+        {
+            EnsureInitialized();
+            return Forks;
+        }
     }
 }
