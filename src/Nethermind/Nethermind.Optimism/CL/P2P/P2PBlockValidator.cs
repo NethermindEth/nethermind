@@ -153,7 +153,7 @@ public class P2PBlockValidator : IP2PBlockValidator
         byte[] signedHash = KeccakHash.ComputeHashBytes(sequencerSignedData);
 
         Span<byte> publicKey = stackalloc byte[65];
-        bool success = SpanSecP256k1.RecoverKeyFromCompact(
+        bool success = SecP256k1.RecoverKeyFromCompact(
             publicKey,
             signedHash,
             signature.Slice(0, 64),
