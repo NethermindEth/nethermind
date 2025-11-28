@@ -20,8 +20,8 @@ public class PreBlockCaches
 
     private readonly Func<CacheType>[] _clearCaches;
 
-    private readonly ConcurrentDictionary<StorageCell, byte[]> _storageCache = new(LockPartitions, InitialCapacity);
-    private readonly ConcurrentDictionary<AddressAsKey, Account> _stateCache = new(LockPartitions, InitialCapacity);
+    private readonly ISingleBlockProcessingCache<StorageCell, byte[]> _storageCache = new ConcurrentDictionaryCache<StorageCell, byte[]>(LockPartitions, InitialCapacity);
+    private readonly ISingleBlockProcessingCache<AddressAsKey, Account> _stateCache = new ConcurrentDictionaryCache<AddressAsKey, Account>(LockPartitions, InitialCapacity);
     private readonly ConcurrentDictionary<NodeKey, byte[]?> _rlpCache = new(LockPartitions, InitialCapacity);
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
 
@@ -35,8 +35,8 @@ public class PreBlockCaches
         ];
     }
 
-    public ConcurrentDictionary<StorageCell, byte[]> StorageCache => _storageCache;
-    public ConcurrentDictionary<AddressAsKey, Account> StateCache => _stateCache;
+    public ISingleBlockProcessingCache<StorageCell, byte[]> StorageCache => _storageCache;
+    public ISingleBlockProcessingCache<AddressAsKey, Account> StateCache => _stateCache;
     public ConcurrentDictionary<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
 
@@ -58,6 +58,12 @@ public class PreBlockCaches
         public bool Equals(PrecompileCacheKey other) => Address == other.Address && Data.Span.SequenceEqual(other.Data.Span);
         public override bool Equals(object? obj) => obj is PrecompileCacheKey other && Equals(other);
         public override int GetHashCode() => Data.Span.FastHash() ^ Address.GetHashCode();
+    }
+
+    private class ConcurrentDictionaryCache<TKey, TValue>(int lockPartitions, int initialCapacity)
+        : ConcurrentDictionary<TKey, TValue>(lockPartitions, initialCapacity), ISingleBlockProcessingCache<TKey, TValue>
+    {
+        public bool NoResizeClear() => CollectionExtensions.NoResizeClear(this);
     }
 }
 
