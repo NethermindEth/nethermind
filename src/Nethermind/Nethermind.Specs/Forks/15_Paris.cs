@@ -13,7 +13,6 @@ public class Paris : GrayGlacier
     protected Paris()
     {
         Name = "Paris";
-        MaximumUncleCount = 0;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Paris());
