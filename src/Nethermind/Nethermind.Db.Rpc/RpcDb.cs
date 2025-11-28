@@ -86,6 +86,8 @@ namespace Nethermind.Db.Rpc
         public IWriteBatch StartWriteBatch()
         {
             ThrowWritesNotSupported();
+            // Make compiler happy
+            return null!;
         }
 
         private byte[] GetThroughRpc(ReadOnlySpan<byte> key)
