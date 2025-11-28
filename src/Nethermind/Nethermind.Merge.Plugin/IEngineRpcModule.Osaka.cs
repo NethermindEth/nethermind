@@ -21,5 +21,5 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns requested blobs and proofs.",
         IsSharable = true,
         IsImplemented = true)]
-    public Task<ResultWrapper<IEnumerable<BlobAndProofV2>?>> engine_getBlobsV2(byte[][] blobVersionedHashes);
+    public Task<ResultWrapper<List<BlobAndProofV2>>> engine_getBlobsV2(List<BlobVersionedHash> blobVersionedHashes);
 }

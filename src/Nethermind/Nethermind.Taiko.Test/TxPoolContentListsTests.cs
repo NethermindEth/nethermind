@@ -22,7 +22,6 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Consensus.Processing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Rlp;
 
@@ -83,7 +82,7 @@ public class TxPoolContentListsTests
             Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
             Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
             Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
-            Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?>>(),
+            Substitute.For<IAsyncHandler<List<BlobVersionedHash>, List<BlobAndProofV2>>>(),
             Substitute.For<IEngineRequestsTracker>(),
             Substitute.For<ISpecProvider>(),
             null!,

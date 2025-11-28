@@ -34,6 +34,11 @@ public class PropertyRequiredInSszTypeAnalyzer : DiagnosticAnalyzer
             return;
         }
 
+        if (typeDeclaration.AttributeLists.SelectMany(attrList => attrList.Attributes).Any(attr => attr.Name.ToString() == "InlineArrayAttribute" || attr.Name.ToString() == "InlineArray"))
+        {
+            return;
+        }
+
         bool hasValidProperty = typeDeclaration.Members.OfType<PropertyDeclarationSyntax>()
             .Any(prop =>
                 prop.Modifiers.Any(SyntaxKind.PublicKeyword) &&

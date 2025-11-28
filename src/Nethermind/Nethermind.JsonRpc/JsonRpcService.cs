@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -162,7 +162,7 @@ public class JsonRpcService : IJsonRpcService
         Result result = resultWrapper.Result;
         return result.ResultType != ResultType.Success
             ? GetErrorResponse(methodName, resultWrapper.ErrorCode, result.Error, resultWrapper.Data, request.Id, returnAction, resultWrapper.IsTemporary)
-            : GetSuccessResponse(methodName, resultWrapper.Data, request.Id, returnAction);
+            : GetSuccessResponse(methodName, resultWrapper.Data, request.Id, returnAction, resultWrapper.GetBytes);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         JsonRpcResponse HandleMissingResultWrapper(JsonRpcRequest request, string methodName, Action returnAction)
@@ -315,6 +315,19 @@ public class JsonRpcService : IJsonRpcService
 
             return propertyInfo;
         }
+
+        //if (resultWrapper is null)
+        //{
+        //    string errorMessage = $"Method {methodName} execution result does not implement IResultWrapper";
+        //    if (_logger.IsError) _logger.Error(errorMessage);
+        //    return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, request.Id, returnAction);
+        //}
+
+        //Result? result = resultWrapper.Result;
+
+        //return result.ResultType != ResultType.Success
+        //    ? GetErrorResponse(methodName, resultWrapper.ErrorCode, result.Error, resultWrapper.Data, request.Id, returnAction, resultWrapper.IsTemporary)
+        //    : GetSuccessResponse(methodName, resultWrapper.Data, request.Id, returnAction, resultWrapper.GetBytes);
     }
 
     private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)
@@ -470,13 +483,14 @@ public class JsonRpcService : IJsonRpcService
         return (executionParameters, hasMissing);
     }
 
-    private static JsonRpcResponse GetSuccessResponse(string methodName, object result, object id, Action? disposableAction)
+    private static JsonRpcResponse GetSuccessResponse(string methodName, object result, object id, Action? disposableAction, Func<object, byte[]> getBytes = null)
     {
         JsonRpcResponse response = new JsonRpcSuccessResponse(disposableAction)
         {
             Result = result,
             Id = id,
-            MethodName = methodName
+            MethodName = methodName,
+            GetBytes = getBytes,
         };
 
         return response;

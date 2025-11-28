@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -16,6 +16,7 @@ namespace Nethermind.JsonRpc
         public Result Result { get; init; } = Result.Success;
         public int ErrorCode { get; init; }
         public bool IsTemporary { get; init; }
+        public Func<object, byte[]>? GetBytes { get; private set; }
 
         protected ResultWrapper()
         {
@@ -39,8 +40,8 @@ namespace Nethermind.JsonRpc
         public static ResultWrapper<T> Fail(string error, T data) =>
             new() { Data = data, Result = Result.Fail(error) };
 
-        public static ResultWrapper<T> Success(T data) =>
-            new() { Data = data, Result = Result.Success };
+        public static ResultWrapper<T> Success(T data, Func<object, byte[]>? ssz = null) =>
+            new() { Data = data, GetBytes = ssz, Result = Result.Success };
 
         public static ResultWrapper<T> From(RpcResult<T>? rpcResult) =>
             rpcResult is null
@@ -80,7 +81,7 @@ namespace Nethermind.JsonRpc
         public static ResultWrapper<T, TErrorData> Fail(string error, int errorCode, TErrorData errorData) =>
             new() { ErrorCode = errorCode, ErrorData = errorData, Result = Result.Fail(error) };
 
-        public static new ResultWrapper<T, TErrorData> Success(T data) =>
+        public static ResultWrapper<T, TErrorData> Success(T data) =>
             new() { Data = data, ErrorData = default, Result = Result.Success };
 
         public static implicit operator Task<ResultWrapper<T, TErrorData>>(ResultWrapper<T, TErrorData> resultWrapper) => Task.FromResult(resultWrapper);

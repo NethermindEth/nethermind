@@ -55,6 +55,9 @@ namespace Nethermind.JsonRpc
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public object? Result { get; set; }
 
+        [JsonIgnore]
+        public Func<object, byte[]>? GetBytes { get; set; }
+
         [JsonConstructor]
         public JsonRpcSuccessResponse() : base(null) { }
 

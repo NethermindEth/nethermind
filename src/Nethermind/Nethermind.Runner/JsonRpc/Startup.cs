@@ -196,9 +196,9 @@ public class Startup : IStartup
             {
                 await ctx.Response.WriteAsync("Nethermind JSON RPC");
             }
-            else if (ctx.Request.ContentType?.Contains("application/json") == false)
+            else if (ctx.Request.ContentType?.Contains("application/json") == false && ctx.Request.ContentType?.Contains("application/octet-stream") == false)
             {
-                await PushErrorResponse(StatusCodes.Status415UnsupportedMediaType, ErrorCodes.InvalidRequest, "Missing 'application/json' Content-Type header");
+                await PushErrorResponse(StatusCodes.Status415UnsupportedMediaType, ErrorCodes.InvalidRequest, "Missing 'application/json or application/octet-stream' Content-Type header");
             }
             else
             {
@@ -218,52 +218,85 @@ public class Startup : IStartup
                             CountingWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
                             try
                             {
-                                ctx.Response.ContentType = "application/json";
                                 ctx.Response.StatusCode = GetStatusCode(result);
 
-                                if (result.IsCollection)
+                                if (ctx.Request.Headers.Accept.Contains("application/octet-stream", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    resultWriter.Write(_jsonOpeningBracket);
-                                    bool first = true;
-                                    JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses.GetAsyncEnumerator(CancellationToken.None);
-                                    try
+
+                                    ctx.Response.ContentType = "application/octet-stream";
+
+                                    if (result.IsCollection)
                                     {
-                                        while (await enumerator.MoveNextAsync())
+                                        ctx.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+                                    }
+
+                                    if (result is { Response: JsonRpcSuccessResponse resp })
+                                    {
+                                        if (resp.Result is not null)
                                         {
-                                            JsonRpcResult.Entry entry = enumerator.Current;
-                                            using (entry)
+                                            if (resp.GetBytes is not null)
                                             {
-                                                if (!first)
-                                                {
-                                                    resultWriter.Write(_jsonComma);
-                                                }
-
-                                                first = false;
-                                                await jsonSerializer.SerializeAsync(resultWriter, entry.Response);
-                                                _ = jsonRpcLocalStats.ReportCall(entry.Report);
-
-                                                // We reached the limit and don't want to responded to more request in the batch
-                                                if (!jsonRpcContext.IsAuthenticated && resultWriter.WrittenCount > jsonRpcConfig.MaxBatchResponseBodySize)
-                                                {
-                                                    if (logger.IsWarn)
-                                                        logger.Warn(
-                                                            $"The max batch response body size exceeded. The current response size {resultWriter.WrittenCount}, and the config setting is JsonRpc.{nameof(jsonRpcConfig.MaxBatchResponseBodySize)} = {jsonRpcConfig.MaxBatchResponseBodySize}");
-                                                    enumerator.IsStopped = true;
-                                                }
+                                                resultWriter.Write(resp.GetBytes(resp.Result));
+                                            }
+                                            else
+                                            {
+                                                ctx.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
                                             }
                                         }
+                                        else
+                                        {
+                                            ctx.Response.StatusCode = (int)HttpStatusCode.NoContent;
+                                        }
                                     }
-                                    finally
-                                    {
-                                        await enumerator.DisposeAsync();
-                                    }
-
-                                    resultWriter.Write(_jsonClosingBracket);
                                 }
                                 else
                                 {
-                                    await jsonSerializer.SerializeAsync(resultWriter, result.Response);
+                                    ctx.Response.ContentType = "application/json";
+                                    if (result.IsCollection)
+                                    {
+                                        resultWriter.Write(_jsonOpeningBracket);
+                                        bool first = true;
+                                        JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses.GetAsyncEnumerator(CancellationToken.None);
+                                        try
+                                        {
+                                            while (await enumerator.MoveNextAsync())
+                                            {
+                                                JsonRpcResult.Entry entry = enumerator.Current;
+                                                using (entry)
+                                                {
+                                                    if (!first)
+                                                    {
+                                                        resultWriter.Write(_jsonComma);
+                                                    }
+
+                                                    first = false;
+                                                    await jsonSerializer.SerializeAsync(resultWriter, entry.Response);
+                                                    _ = jsonRpcLocalStats.ReportCall(entry.Report);
+
+                                                    // We reached the limit and don't want to responded to more request in the batch
+                                                    if (!jsonRpcContext.IsAuthenticated && resultWriter.WrittenCount > jsonRpcConfig.MaxBatchResponseBodySize)
+                                                    {
+                                                        if (logger.IsWarn)
+                                                            logger.Warn(
+                                                                $"The max batch response body size exceeded. The current response size {resultWriter.WrittenCount}, and the config setting is JsonRpc.{nameof(jsonRpcConfig.MaxBatchResponseBodySize)} = {jsonRpcConfig.MaxBatchResponseBodySize}");
+                                                        enumerator.IsStopped = true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        finally
+                                        {
+                                            await enumerator.DisposeAsync();
+                                        }
+
+                                        resultWriter.Write(_jsonClosingBracket);
+                                    }
+                                    else
+                                    {
+                                        await jsonSerializer.SerializeAsync(resultWriter, result.Response);
+                                    }
                                 }
+
                                 await resultWriter.CompleteAsync();
                                 if (stream is not null)
                                 {

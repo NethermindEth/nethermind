@@ -78,7 +78,7 @@ class SszType
     public static List<SszType> BasicTypes { get; set; } = [];
     public required string Name { get; init; }
     public required string? Namespace { get; init; }
-    public required Kind Kind { get; init; }
+    public required Kind Kind { get; set; }
     public SszProperty[]? Members { get; set; } = null;
 
     public bool IsStruct { get; set; }
@@ -91,6 +91,7 @@ class SszType
 
     public SszType? EnumType { get; set; }
     public int StaticLength { get => length ?? Members.Sum(x => x.StaticLength); set => length = value; }
+    public int? SpanSize { get; set; }
 
     public bool IsVariable => Members is not null && Members.Any(x => x.IsVariable) || Kind is Kind.Union;
 
@@ -112,7 +113,7 @@ class SszType
 
         INamedTypeSymbol? enumType = (type as INamedTypeSymbol)?.EnumUnderlyingType;
 
-        SszType result = new SszType
+        SszType result = new()
         {
             Namespace = @namespace,
             Name = name,
@@ -150,6 +151,19 @@ class SszType
             result.IsSszListItself = GetIsCollectionItselfValue(type);
         }
 
+        var inlineArrayAttr = type.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "InlineArrayAttribute");
+
+        if (inlineArrayAttr is not null)
+        {
+            object? attrValue = inlineArrayAttr.ConstructorArguments.FirstOrDefault().Value;
+
+            if (attrValue is not null)
+            {
+                result.StaticLength = (int)attrValue;
+                result.SpanSize = 1;
+            }
+        }
+
         return result;
     }
 
@@ -160,7 +174,9 @@ class SszType
 
     private static string GetTypeName(ITypeSymbol syntaxNode)
     {
-        return string.IsNullOrEmpty(syntaxNode.ContainingNamespace?.ToString()) ? syntaxNode.ToString() : syntaxNode.Name.Replace(syntaxNode.ContainingNamespace!.ToString() + ".", "");
+        return string.IsNullOrEmpty(syntaxNode.ContainingNamespace?.ToString()) ? syntaxNode.ToString() :
+            syntaxNode.Name == "Nullable" ? ((INamedTypeSymbol)syntaxNode).TypeArguments[0].Name.Replace(syntaxNode.ContainingNamespace!.ToString() + ".", "")
+                                          : syntaxNode.Name.Replace(syntaxNode.ContainingNamespace!.ToString() + ".", "");
     }
     public override string ToString()
     {
