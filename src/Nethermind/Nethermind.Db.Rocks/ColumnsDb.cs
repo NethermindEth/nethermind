@@ -21,6 +21,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         : this(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, GetEnumKeys(keys), sharedCache)
     {
     }
+
     private ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, IReadOnlyList<T> keys, IntPtr? sharedCache)
         : base(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, keys.Select(static key => key.ToString()).ToList(), sharedCache: sharedCache)
     {
