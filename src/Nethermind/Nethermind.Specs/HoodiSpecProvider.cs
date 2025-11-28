@@ -54,7 +54,7 @@ public class HoodiSpecProvider : ISpecProvider
     public ForkActivation? MergeBlockNumber { get; private set; } = (0, GenesisTimestamp);
     public ulong TimestampFork => ShanghaiTimestamp;
     public UInt256? TerminalTotalDifficulty { get; private set; } = 0;
-    public IReleaseSpec GenesisSpec { get; } = London.Instance;
+    public IReleaseSpec GenesisSpec { get; } = Shanghai.Instance;
     public ForkActivation[] TransitionActivations { get; } =
     [
         (1, ShanghaiTimestamp),
