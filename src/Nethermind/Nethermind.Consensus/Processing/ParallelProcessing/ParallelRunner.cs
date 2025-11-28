@@ -13,7 +13,7 @@ using Nethermind.Core.Threading;
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
 
 /// <summary>
-/// This class is main entry point to Block-STM algorithm, directly responsible for scheduling .net multithreaded code
+/// This class is the main entry point to Block-STM algorithm, directly responsible for scheduling .net multithreaded code
 /// and processing transactions.
 /// </summary>
 public class ParallelRunner<TLocation, TData, TLogger>(
@@ -39,14 +39,13 @@ public class ParallelRunner<TLocation, TData, TLogger>(
         using ArrayPoolList<Task> tasks = new(concurrency);
         for (int i = 0; i < concurrency; i++)
         {
-
             tasks.Add(Task.Run(Loop));
         }
 
-        // We need to wait only for first task, if one reads scheduler.Done, all other will too
+        // We need to wait only for the first task, if one reads scheduler.Done, all other will too
         await Task.WhenAny(tasks.AsSpan());
 
-        // This seems to perform slightly better without async:
+        // TODO: This seems to perform slightly better without async:
         // ParallelUnbalancedWork.For(0, concurrency, Loop);
     }
 
@@ -85,22 +84,20 @@ public class ParallelRunner<TLocation, TData, TLogger>(
     /// This can fail if blocking tx just finished execution before we managed to add dependency.
     /// In that case we return the task itself for re-execution.
     ///
-    /// If dependency was added, we return empty task, for the main loop to fetch next one.
+    /// If dependency was added, we return an empty task, for the main loop to fetch the next one.
     ///
     /// If execution succeeds, we record read and write sets of it in <see cref="MultiVersionMemory{TLocation,TData,TLogger}"/>
     /// and inform <see cref="ParallelScheduler{TLogger}"/> that it finished.
-    /// Scheduler may return a validation task for this transaction as it will be next high-priority.
+    /// Scheduler may return a validation task for this transaction as it will be the next high-priority.
     /// </remarks>
     private TxTask TryExecute(TxTask task) =>
-        vm.TryExecute(task.Version.TxIndex, out Version? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, TData> writeSet) == Status.ReadError
-            ? !scheduler.AbortExecution(task.Version.TxIndex, blockingTx!.Value.TxIndex)
-                ? task
-                : TxTask.Empty
+        vm.TryExecute(task.Version, out Version? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, TData> writeSet) == Status.ReadError
+            ? !scheduler.AbortExecution(task.Version.TxIndex, blockingTx!.Value.TxIndex) ? task : TxTask.Empty
             : scheduler.FinishExecution(task.Version, memory.Record(task.Version, readSet, writeSet));
 
 
     /// <summary>
-    /// Checks if transaction need to be re-executed.
+    /// Checks if the transaction needs to be re-executed.
     /// </summary>
     /// <remarks>
     /// First the <see cref="MultiVersionMemory{TLocation,TData,TLogger}.ValidateReadSet"/> is called to check if any of transaction reads are still dependent of pending writes.
@@ -120,6 +117,13 @@ public class ParallelRunner<TLocation, TData, TLogger>(
     }
 }
 
+public sealed class ParallelRunner(
+    ParallelScheduler<OffFlag> scheduler,
+    MultiVersionMemory<StorageCell, object, OffFlag> memory,
+    ParallelTrace<OffFlag> parallelTrace, IVm<StorageCell, object> vm,
+    int? concurrencyLevel = null)
+    : ParallelRunner<StorageCell, object, OffFlag>(scheduler, memory, parallelTrace, vm, concurrencyLevel);
+
 /// <summary>
 /// Abstraction of transaction execution.
 /// </summary>
@@ -128,10 +132,10 @@ public interface IVm<TLocation, TData> where TLocation : notnull
     /// <summary>
     /// Execute transaction
     /// </summary>
-    /// <param name="txIndex">Transaction index</param>
+    /// <param name="version">Transaction information</param>
     /// <param name="blockingTx">Information about transaction this one depends on as it is expected to write to a location this one reads</param>
     /// <param name="readSet">All locations read by the transaction</param>
     /// <param name="writeSet">All locations and values written by the transaction</param>
     /// <returns><see cref="Status.Ok"/> if no dependency detected, <see cref="Status.ReadError"/> if transaction is blocked by other</returns>
-    public Status TryExecute(int txIndex, out Version? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, TData> writeSet);
+    public Status TryExecute(Version version, out Version? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, TData> writeSet);
 }

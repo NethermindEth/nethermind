@@ -156,6 +156,8 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public void Dispose()
         {
+            EventHandler<IWorldStateScopeProvider.AccountUpdated> onAccountUpdated = OnAccountUpdated;
+
             while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
@@ -164,7 +166,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 account ??= ThrowNullAccount(key);
                 account = account!.WithChangedStorageRoot(storageRoot);
                 _dirtyAccounts[key] = account;
-                OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
+                onAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
                 if (logger.IsTrace) Trace(key, storageRoot, account);
             }
 

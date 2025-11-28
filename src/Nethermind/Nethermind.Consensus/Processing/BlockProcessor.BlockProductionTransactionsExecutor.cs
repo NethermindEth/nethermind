@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.Processing
         {
             private readonly ILogger _logger = logManager.GetClassLogger();
 
-            protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
+            protected EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
             event EventHandler<AddingTxEventArgs>? IBlockProductionTransactionsExecutor.AddingTransaction
             {
@@ -107,7 +107,7 @@ namespace Nethermind.Consensus.Processing
 
                     if (result)
                     {
-                        _transactionProcessed?.Invoke(this,
+                        TransactionProcessed?.Invoke(this,
                             new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
                     }
                     else

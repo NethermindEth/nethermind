@@ -5,6 +5,7 @@ using System;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
 
-public class AbortParallelExecutionException : Exception
+public class AbortParallelExecutionException(in Version blockingRead) : Exception
 {
+    public Version BlockingRead { get; } = blockingRead;
 }

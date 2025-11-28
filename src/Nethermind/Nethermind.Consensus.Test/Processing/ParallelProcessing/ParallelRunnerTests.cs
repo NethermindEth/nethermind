@@ -195,8 +195,9 @@ public class ParallelRunnerTests
         private readonly HashSet<Read<int>>[] _readSets = Enumerable.Range(0, blockSize).Select(_ => new HashSet<Read<int>>()).ToArray();
         private readonly Dictionary<int, byte[]>[] _writeSets = Enumerable.Range(0, blockSize).Select(_ => new Dictionary<int, byte[]>()).ToArray();
 
-        public Status TryExecute(int txIndex, out Version? blockingTx, out HashSet<Read<int>> readSet, out Dictionary<int, byte[]> writeSet)
+        public Status TryExecute(Version version, out Version? blockingTx, out HashSet<Read<int>> readSet, out Dictionary<int, byte[]> writeSet)
         {
+            int txIndex = version.TxIndex;
             readSet = _readSets[txIndex];
             readSet.Clear();
             writeSet = _writeSets[txIndex];
@@ -212,7 +213,7 @@ public class ParallelRunnerTests
                         {
                             if (!writeSet.TryGetValue(operation.Location, out lastRead))
                             {
-                                Status result = memory.TryRead(operation.Location, txIndex, out Version version, out var value);
+                                Status result = memory.TryRead(operation.Location, txIndex, out Version v, out var value);
                                 switch (result)
                                 {
                                     case Status.NotFound:
@@ -221,10 +222,10 @@ public class ParallelRunnerTests
                                         break;
                                     case Status.Ok:
                                         lastRead = value; // use value from previous transaction
-                                        readSet.Add(new Read<int>(operation.Location, version));
+                                        readSet.Add(new Read<int>(operation.Location, v));
                                         break;
                                     case Status.ReadError:
-                                        blockingTx = version;
+                                        blockingTx = v;
                                         return Status.ReadError;
                                 }
                             }

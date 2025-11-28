@@ -85,7 +85,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
             Recipient = transaction.IsContractCreation ? null : recipient,
             BlockHash = Block.Hash,
             BlockNumber = Block.Number,
-            Index = _currentIndex,
+            Index = CurrentIndex,
             GasUsed = spentGas,
             Sender = transaction.SenderAddress,
             ContractAddress = transaction.IsContractCreation ? recipient : null,
@@ -196,7 +196,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     }
 
     private ITxTracer _currentTxTracer = NullTxTracer.Instance;
-    protected int _currentIndex { get; private set; }
+    protected int CurrentIndex { get; private set; }
     private readonly List<TxReceipt> _txReceipts = new();
     protected Transaction? CurrentTx;
     public IReadOnlyList<TxReceipt> TxReceipts => _txReceipts;
@@ -225,7 +225,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void StartNewBlockTrace(Block block)
     {
         Block = block;
-        _currentIndex = 0;
+        CurrentIndex = 0;
         _txReceipts.Clear();
 
         _otherTracer.StartNewBlockTrace(block);
@@ -241,23 +241,29 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void EndTxTrace()
     {
         _otherTracer.EndTxTrace();
-        _currentIndex++;
+        CurrentIndex++;
+        _currentTxTracer = NullTxTracer.Instance;
     }
 
     public void EndBlockTrace()
     {
         _otherTracer.EndBlockTrace();
-        if (_txReceipts.Count > 0)
+        AccumulateBlockBloom(Block, _txReceipts);
+        _otherTracer = NullBlockTracer.Instance;
+    }
+
+    public static void AccumulateBlockBloom(Block block, IReadOnlyList<TxReceipt> txReceipts)
+    {
+        if (txReceipts.Count > 0)
         {
             Bloom blockBloom = new();
-            Block.Header.Bloom = blockBloom;
-            for (int index = 0; index < _txReceipts.Count; index++)
+            block.Header.Bloom = blockBloom;
+            for (int index = 0; index < txReceipts.Count; index++)
             {
-                TxReceipt? receipt = _txReceipts[index];
+                TxReceipt? receipt = txReceipts[index];
                 blockBloom.Accumulate(receipt.Bloom!);
             }
         }
-        _otherTracer = NullBlockTracer.Instance;
     }
 
     public void SetOtherTracer(IBlockTracer blockTracer)

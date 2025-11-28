@@ -92,6 +92,7 @@ public partial class BlockProcessor(
         IReleaseSpec spec,
         CancellationToken token)
     {
+        Evm.Metrics.ResetBlockStats();
         BlockHeader header = block.Header;
 
         ReceiptsTracer.SetOtherTracer(blockTracer);

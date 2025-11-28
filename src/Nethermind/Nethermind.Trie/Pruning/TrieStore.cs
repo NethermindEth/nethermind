@@ -1315,8 +1315,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public StableLockScope PrepareStableState(CancellationToken cancellationToken)
     {
-        var scopeLockScope = _scopeLock.EnterScope();
-        var pruneLockScope = _pruningLock.EnterScope();
+        Lock.Scope scopeLockScope = _scopeLock.EnterScope();
+        Lock.Scope pruneLockScope = _pruningLock.EnterScope();
 
         try
         {

@@ -155,7 +155,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     /// <param name="value">Value that was read</param>
     /// <returns>
     /// <see cref="Status.Ok"/> when read succeeds.
-    /// <see cref="Status.NotFound"/> when value for location is not in memory and needs to be read from database.
+    /// <see cref="Status.NotFound"/> when value for location is not in memory and needs to be read from the database.
     /// <see cref="Status.ReadError"/> when we know previous transaction needs to be re-executed first to correctly read the location.
     /// </returns>
     public Status TryRead(TLocation location, int txIndex, out Version version, out TData value)

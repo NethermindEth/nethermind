@@ -9,22 +9,6 @@ namespace Nethermind.Core.Threading;
 public static class InterlockedEx
 {
     /// <summary>
-    /// Reads location and uses <see cref="mutator"/> with <see cref="target"/> untill successfully changed the location
-    /// </summary>
-    /// <returns>Result of mutation</returns>
-    public static int MutateValue(ref int location, int target, Func<int, int, int> mutator)
-    {
-        int locationValue;
-        do
-        {
-            locationValue = Volatile.Read(ref location);
-            target = mutator(locationValue, target);
-        } while (Interlocked.CompareExchange(ref location, target, locationValue) != locationValue);
-
-        return target;
-    }
-
-    /// <summary>
     /// Atomically sets a field to the maximum of the field's current value and a specified value.
     /// </summary>
     /// <param name="location">The field to update</param>
@@ -38,7 +22,7 @@ public static class InterlockedEx
             current = location;
             newValue = Math.Max(current, value);
 
-            // If current is already >= value, no need to update
+            // If the current is already >= value, no need to update
             if (current >= value)
                 return current;
         }
@@ -84,7 +68,7 @@ public static class InterlockedEx
             current = location;
             newValue = Math.Min(current, value);
 
-            // If current is already <= value, no need to update
+            // If the current is already <= value, no need to update
             if (current <= value)
                 return current;
         }

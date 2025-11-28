@@ -16,24 +16,25 @@ namespace Nethermind.Consensus.Processing.ParallelProcessing;
 /// Coordinates which transaction should be executed and finishing block processing.
 /// It also tracks transaction dependencies.
 /// </summary>
-/// <param name="blockSize">Number of transactions in block</param>
+/// <param name="txCount">Number of transactions in block</param>
 /// <param name="parallelTrace">Trace</param>
 /// <param name="setPool">Pool of sets</param>
 /// <typeparam name="TLogger">Is tracing on</typeparam>
 /// <remarks>
 /// Algorithm is based on tracking <see cref="_executionIndex"/> and <see cref="_validationIndex"/> of transactions as well as <see cref="_activeTasks"/> that are currently in-flight.
 /// Priority is to always schedule the lowest possible transaction that needs work.
-/// When transactions finish out-of-order or dependency is detected then corresponding indexes are decreased and transactions are re-validated or re-executed depending on the need.
+/// When transactions finish out-of-order or dependency is detected, then corresponding indexes are decreased and transactions are re-validated or re-executed depending on the need.
 /// </remarks>
-public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> parallelTrace, ObjectPool<HashSet<int>> setPool) where TLogger : struct, IFlag
+public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> parallelTrace, ObjectPool<HashSet<int>> setPool) where TLogger : struct, IFlag
+// TODO: PooledSet
 {
     /// <summary>
-    /// Index to fetch next transaction to execute
+    /// Index to fetch the next transaction to execute
     /// </summary>
     private int _executionIndex;
 
     /// <summary>
-    /// Index to fetch next transaction to validate
+    /// Index to fetch the next transaction to validate
     /// </summary>
     private int _validationIndex;
 
@@ -50,13 +51,13 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
     /// <summary>
     /// Tracks <see cref="TxState"/> for each transaction in block
     /// </summary>
-    private readonly TxState[] _txStates = new TxState[blockSize];
+    private readonly TxState[] _txStates = new TxState[txCount];
 
     /// <summary>
     /// Maps blocking transaction -> transactions that depend on blocking transaction
     /// </summary>
-    private readonly HashSet<int>?[] _txDependencies = new HashSet<int>?[blockSize];
-    private volatile bool _done = false;
+    private readonly HashSet<int>?[] _txDependencies = new HashSet<int>?[txCount]; // TODO: PooledSet
+    private volatile bool _done;
 
     /// <summary>
     /// Indicates all work has been completed
@@ -71,11 +72,8 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
     /// <param name="name">Name of the index</param>
     private void DecreaseIndex(ref int index, int targetValue, [CallerArgumentExpression(nameof(index))] string name = "")
     {
-        // we should keep the index minimal of current and target
-        static int Mutator(int current, int target) => Math.Min(current, target);
-
         long id = parallelTrace.ReserveId();
-        int value = InterlockedEx.MutateValue(ref index, targetValue, Mutator);
+        int value = InterlockedEx.Min(ref index, targetValue);
 
         if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"WorkAvailable.Set from DecreaseIndex {name} to {value}");
 
@@ -92,7 +90,7 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
         if (!_done)
         {
             int observedCount = Volatile.Read(ref _decreaseCount);
-            bool done = Math.Min(_executionIndex, _validationIndex) >= blockSize // both indexes need to be beyond block size
+            bool done = Math.Min(_executionIndex, _validationIndex) >= txCount // both indexes need to be beyond block size
                         && Volatile.Read(ref _activeTasks) == 0 // and no tasks currently in flight (that could decrease the indexes)
                         && observedCount == Volatile.Read(ref _decreaseCount); // and no decreases happened while we are doing the check
             if (done)
@@ -113,8 +111,8 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
     /// <returns></returns>
     private Version FetchNext(ref int index, int requiredStatus, int newStatus, [CallerArgumentExpression(nameof(index))] string name = "")
     {
-        // if our index is outside the work in a block we potentially finished the work
-        if (Volatile.Read(ref index) >= blockSize)
+        // if our index is outside the work in a block, we potentially finished the work
+        if (Volatile.Read(ref index) >= txCount)
         {
             CheckDone();
             return Version.Empty;
@@ -129,9 +127,9 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
     }
 
     /// <summary>
-    /// Try to create new task
+    /// Try to create a new task
     /// </summary>
-    /// <param name="nextTx">Tx to create task for</param>
+    /// <param name="nextTx">Tx to create a task for</param>
     /// <param name="requiredStatus">Required <see cref="Status"/> for the transaction to succeed</param>
     /// <param name="newStatus">New <see cref="Status"/> for the transaction</param>
     /// <param name="name">Name of the index</param>
@@ -139,9 +137,9 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
     private Version TryIncarnate(int nextTx, int requiredStatus, int newStatus, string name)
     {
         // if we are in a block size
-        if (nextTx < blockSize)
+        if (nextTx < txCount)
         {
-            // if we can change status
+            // if we can change the status
             ref TxState state = ref _txStates[nextTx];
             if (Interlocked.CompareExchange(ref state.Status, newStatus, requiredStatus) == requiredStatus)
             {
@@ -151,18 +149,18 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
             }
         }
 
-        // if we didn't return new incarnation, then we didn't spawn a task and need to decrement previous incrementation
+        // if we didn't return a new incarnation, then we didn't spawn a task and need to decrement previous incrementation
         Interlocked.Decrement(ref _activeTasks);
         return Version.Empty;
     }
 
     /// <summary>
-    /// Tries to get next task for the calling thread to execute
+    /// Tries to get the next task for the calling thread to execute
     /// </summary>
     /// <returns></returns>
     public TxTask NextTask()
     {
-        // We want to validate aggressively so if validation is trailing execution than pick validation
+        // We want to validate aggressively, so if validation is trailing execution than pick validation
         bool validating = Volatile.Read(ref _validationIndex) < Volatile.Read(ref _executionIndex);
         Version version = validating
             ? FetchNext(ref _validationIndex, TxStatus.Executed, TxStatus.Executed)
@@ -178,14 +176,14 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
     /// <param name="blockingTxIndex">Transaction that is blocking</param>
     /// <returns>true if dependency was added, false if blocking transaction already finished execution</returns>
     /// <remarks>
-    /// After transaction execution in <see cref="ParallelRunner{TLocation,TLogger}.TryExecute"/> either this or <see cref="FinishExecution"/> is called. Both calls end the task.
+    /// After transaction execution in <see cref="ParallelRunner{TLocation, TData, TLogger}.TryExecute"/> either this or <see cref="FinishExecution"/> is called. Both calls end the task.
     /// </remarks>
     public bool AbortExecution(int txIndex, int blockingTxIndex)
     {
         ref TxState blockingTxState = ref _txStates[blockingTxIndex];
         int blockingTxStatus = Volatile.Read(ref blockingTxState.Status);
 
-        // If blocking transaction is now executed, we shouldn't add dependency, we should just re-execute dependent transaction
+        // If a blocking transaction is now executed, we shouldn't add dependency, we should just re-execute dependent transaction
         if (blockingTxStatus == TxStatus.Executed)
         {
             if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Can't add dependency for tx {txIndex} on {blockingTxIndex}, because it is already executed");
@@ -205,7 +203,7 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
 
         if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Dependency added for tx {txIndex} on {blockingTxIndex} to set {set.GetHashCode()}");
 
-        // if blocking transaction finished execution while we were adding the dependency then we need to now call resume dependencies ASAP
+        // if blocking transaction finished execution while we were adding the dependency, then we need to now call resume dependencies ASAP
         // This missing was one of issues in original paper
         blockingTxStatus = Volatile.Read(ref blockingTxState.Status);
         if (blockingTxStatus == TxStatus.Executed)
@@ -266,7 +264,7 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
                 setPool.Return(dependentTxs);
             }
 
-            // Decrease execution index to the smallest found transaction
+            // Decrease the execution index to the smallest found transaction
             // We need to re-execute them now
             if (min != int.MaxValue)
             {
@@ -291,10 +289,10 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
     /// Finishes the successful transaction execution
     /// </summary>
     /// <param name="version">Version of transaction being executed</param>
-    /// <param name="wroteNewLocation">If any new location was written by the transaction, compared to previous incarnations</param>
+    /// <param name="wroteNewLocation">If the transaction wrote any new location, compared to previous incarnations</param>
     /// <returns></returns>
     /// <remarks>
-    /// /// After transaction execution in <see cref="ParallelRunner{TLocation,TLogger}.TryExecute"/> either this or <see cref="AbortExecution"/> is called. Both calls end the task.
+    /// /// After transaction execution in <see cref="ParallelRunner{TLocation, TData, TLogger}.TryExecute"/> either this or <see cref="AbortExecution"/> is called. Both calls end the task.
     /// </remarks>
     public TxTask FinishExecution(Version version, bool wroteNewLocation)
     {
@@ -306,10 +304,10 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
         HashSet<int> dependencies = Interlocked.Exchange(ref _txDependencies[txIndex], null);
         ResumeDependencies(dependencies, txIndex);
 
-        // if validation index already progressed beyond this transaction
+        // if the validation index already progressed beyond this transaction
         if (Volatile.Read(ref _validationIndex) > txIndex)
         {
-            // if new location was written, we need to re-do subsequent transaction validations
+            // if a new location was written, we need to redo subsequent transaction validations
             if (wroteNewLocation)
             {
                 DecreaseIndex(ref _validationIndex, txIndex);
@@ -318,7 +316,7 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
             {
                 if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"WorkAvailable.Set from FinishExecution of {version}");
                 // validate this transaction
-                // don't decrement _activeTasks as we spawn new one
+                // don't decrement _activeTasks as we spawn a new one
                 return new TxTask(version, true);
             }
         }
@@ -332,13 +330,13 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
     /// Tries to abort the transaction
     /// </summary>
     /// <param name="version">Transaction incarnation</param>
-    /// <returns>true if successfull, false <see cref="TxState.Status"/> in not <see cref="TxStatus.Aborting"/> or <see cref="TxState.Incarnation"/> changed</returns>
+    /// <returns>true if successful, false <see cref="TxState.Status"/> in not <see cref="TxStatus.Aborting"/> or <see cref="TxState.Incarnation"/> changed</returns>
     public bool TryValidationAbort(Version version)
     {
         ref TxState state = ref _txStates[version.TxIndex];
         ref long stateInt = ref Unsafe.As<TxState, long>(ref state);
-        TxState value = new TxState(TxStatus.Aborting, version.Incarnation);
-        TxState requiredState = new TxState(TxStatus.Executed, version.Incarnation);
+        TxState value = new(TxStatus.Aborting, version.Incarnation);
+        TxState requiredState = new(TxStatus.Executed, version.Incarnation);
         long requiredInt = Unsafe.As<TxState, long>(ref requiredState);
         long valueInt = Unsafe.As<TxState, long>(ref value);
 
@@ -356,7 +354,7 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
     /// Finishes transaction validation
     /// </summary>
     /// <param name="txIndex">tx index</param>
-    /// <param name="aborted">was transaction aborted</param>
+    /// <param name="aborted">if transaction was aborted</param>
     /// <returns>potentially same tx incarnation to execute</returns>
     public TxTask FinishValidation(int txIndex, bool aborted)
     {
@@ -369,10 +367,10 @@ public class ParallelScheduler<TLogger>(int blockSize, ParallelTrace<TLogger> pa
             // re-validate subsequent transactions
             DecreaseIndex(ref _validationIndex, txIndex + 1);
 
-            // if execution index already progressed try re-executing transaction immediately
+            // if execution index already progressed try re-executing the transaction immediately
             if (Volatile.Read(ref _executionIndex) > txIndex)
             {
-                // don't decrement _activeTasks as we spawn new one
+                // don't decrement _activeTasks as we spawn a new one
                 return new TxTask(TryIncarnate(txIndex, TxStatus.Ready, TxStatus.Executing, nameof(_executionIndex)), false);
             }
         }
@@ -460,3 +458,6 @@ public static class TxStatus
             _ => "Unknown"
         };
 }
+
+public sealed class ParallelScheduler(int txCount, ParallelTrace<OffFlag> parallelTrace, ObjectPool<HashSet<int>> setPool)
+    : ParallelScheduler<OffFlag>(txCount, parallelTrace, setPool);

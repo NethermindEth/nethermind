@@ -18,25 +18,37 @@ public class MultiVersionMemoryScopeProvider(
     MultiVersionMemory multiVersionMemory)
     : IWorldStateScopeProvider
 {
+    public HashSet<Read<StorageCell>> ReadSet { get; private set; } = null!;
+    public Dictionary<StorageCell, object> WriteSet { get; private set; } = null!;
+
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+    {
+        ReadSet = new(); //TODO: object poolling?
+        WriteSet = new();
+        return new MultiVersionMemoryScope(version, baseProvider.BeginScope(baseBlock), multiVersionMemory, ReadSet, WriteSet);
+    }
 
     private static TResult Get<TStorage, TResult>(
         StorageCell location,
         int txIndex,
         MultiVersionMemory multiVersionMemory,
+        HashSet<Read<StorageCell>> readSet,
         TStorage storage,
         Func<TStorage, StorageCell, TResult> getFromStorage)
     {
-        Status status = multiVersionMemory.TryRead(location, txIndex, out _, out object? value);
-        return status switch
+        Status status = multiVersionMemory.TryRead(location, txIndex, out Version version, out object? value);
+        TResult result = status switch
         {
-            Status.ReadError => throw new AbortParallelExecutionException(),
+            Status.ReadError => throw new AbortParallelExecutionException(in version),
             Status.NotFound => getFromStorage(storage, location),
             Status.Ok => (TResult)value,
             _ => ThrowArgumentOutOfRangeException()
         };
+
+        readSet.Add(new Read<StorageCell>(location, version));
+        return result;
 
         [DoesNotReturn]
         [StackTraceHidden]
@@ -47,10 +59,10 @@ public class MultiVersionMemoryScopeProvider(
     private class MultiVersionMemoryScope(
         Version version,
         IWorldStateScopeProvider.IScope baseScope,
-        MultiVersionMemory multiVersionMemory) : IWorldStateScopeProvider.IScope
+        MultiVersionMemory multiVersionMemory,
+        HashSet<Read<StorageCell>> readSet,
+        Dictionary<StorageCell, object> writeSet) : IWorldStateScopeProvider.IScope
     {
-        private readonly HashSet<Read<StorageCell>> _readSet = new();
-
         public void Dispose() => baseScope.Dispose();
 
         public Hash256 RootHash => baseScope.RootHash;
@@ -61,6 +73,7 @@ public class MultiVersionMemoryScopeProvider(
             new StorageCell(address),
             version.TxIndex,
             multiVersionMemory,
+            readSet,
             baseScope,
             static (scope, location) => scope.Get(location.Address));
 
@@ -69,9 +82,9 @@ public class MultiVersionMemoryScopeProvider(
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
-            new MultiVersionMemoryStorageTree(address, version.TxIndex, baseScope.CreateStorageTree(address), multiVersionMemory);
+            new MultiVersionMemoryStorageTree(address, version.TxIndex, baseScope.CreateStorageTree(address), multiVersionMemory, readSet);
 
-        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new MultiVersionMemoryWriteBatch(version, multiVersionMemory, _readSet);
+        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new MultiVersionMemoryWriteBatch(version, multiVersionMemory, readSet, writeSet);
 
         public void Commit(long blockNumber)
         {
@@ -82,21 +95,21 @@ public class MultiVersionMemoryScopeProvider(
         private class MultiVersionMemoryWriteBatch(
             Version version,
             MultiVersionMemory multiVersionMemory,
-            HashSet<Read<StorageCell>> readSet) : IWorldStateScopeProvider.IWorldStateWriteBatch
+            HashSet<Read<StorageCell>> readSet,
+            Dictionary<StorageCell, object> writeSet) : IWorldStateScopeProvider.IWorldStateWriteBatch
         {
-            private readonly Dictionary<StorageCell, object> _writeSet = new();
-
-            public void Dispose()
-            {
-                multiVersionMemory.Record(version, readSet, _writeSet);
-            }
+            public void Dispose() => multiVersionMemory.Record(version, readSet, writeSet);
 
             public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
-            public void Set(Address key, Account? account) => _writeSet[new StorageCell(key)] = account;
+            public void Set(Address key, Account? account)
+            {
+                writeSet[new StorageCell(key)] = account;
+                OnAccountUpdated?.Invoke(this, new IWorldStateScopeProvider.AccountUpdated(key, account));
+            }
 
             public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
-                new MultiVersionMemoryStorageWriteBatch(key, _writeSet);
+                new MultiVersionMemoryStorageWriteBatch(key, writeSet);
 
             private class MultiVersionMemoryStorageWriteBatch(Address address, Dictionary<StorageCell, object> writeSet)
                 : IWorldStateScopeProvider.IStorageWriteBatch
@@ -116,7 +129,8 @@ public class MultiVersionMemoryScopeProvider(
             Address address,
             int txIndex,
             IWorldStateScopeProvider.IStorageTree baseStorageTree,
-            MultiVersionMemory multiVersionMemory)
+            MultiVersionMemory multiVersionMemory,
+            HashSet<Read<StorageCell>> readSet)
             : IWorldStateScopeProvider.IStorageTree
         {
             public Hash256 RootHash => throw new NotImplementedException();
@@ -125,6 +139,7 @@ public class MultiVersionMemoryScopeProvider(
                 new StorageCell(address, index),
                 txIndex,
                 multiVersionMemory,
+                readSet,
                 baseStorageTree,
                 static (scope, location) => scope.Get(location.Index));
 
@@ -134,6 +149,7 @@ public class MultiVersionMemoryScopeProvider(
                 new StorageCell(address, hash),
                 txIndex,
                 multiVersionMemory,
+                readSet,
                 baseStorageTree,
                 static (scope, location) => scope.Get(location.Hash));
         }
