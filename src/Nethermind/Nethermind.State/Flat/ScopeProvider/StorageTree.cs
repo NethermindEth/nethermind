@@ -60,7 +60,7 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
         }
 
         _storageSnapshotBundle.TryGet(index, out var value);
-        if (value == null) value = State.StorageTree.ZeroBytes;
+            if (value == null) value = State.StorageTree.ZeroBytes;
 
         HintGet(index, value);
 

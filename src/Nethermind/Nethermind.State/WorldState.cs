@@ -345,14 +345,20 @@ namespace Nethermind.State
             if (commitRoots)
             {
                 sw = Stopwatch.GetTimestamp();
-                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
-                writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
-                _persistentStorageProvider.FlushToTree(writeBatch);
-                _timeCounter.WithLabels("flush_storage", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
-                sw = Stopwatch.GetTimestamp();
-                _stateProvider.FlushToTree(writeBatch);
-                _timeCounter.WithLabels("flush", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
+                using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch =
+                       _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount))
+                {
+                    writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
+                    _persistentStorageProvider.FlushToTree(writeBatch);
+                    _timeCounter.WithLabels("flush_storage", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
+                    sw = Stopwatch.GetTimestamp();
+                    _stateProvider.FlushToTree(writeBatch);
+                    _timeCounter.WithLabels("flush", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
+                    sw = Stopwatch.GetTimestamp();
+                }
+                _timeCounter.WithLabels("dispose", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
             }
+
         }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)

@@ -44,6 +44,14 @@ public class InMemorySnapshotStore
         return _sortedKnownStates.GetViewBetween(start, end).ToList();
     }
 
+    public List<StateId> GetStatesAtBlockNumber(long blockNumber)
+    {
+        StateId min = new StateId(blockNumber, ValueKeccak.Zero);
+        StateId max = new StateId(blockNumber, ValueKeccak.MaxValue);
+
+        return GetKeysBetween(min, max).ToList();
+    }
+
     public IEnumerable<StateId> GetStatesAfterBlock(long startingBlockNumber)
     {
         return GetKeysBetween(

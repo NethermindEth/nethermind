@@ -60,7 +60,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddSingleton<FlatDiffRepository.Configuration>(new FlatDiffRepository.Configuration()
             {
                 Boundary = 128,
-                CompactSize = 64,
+                CompactSize = 32,
                 MaxInFlightCompactJob = 32,
                 ReadWithTrie = false,
                 VerifyWithTrie = false,

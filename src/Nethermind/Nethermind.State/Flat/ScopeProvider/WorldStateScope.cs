@@ -33,7 +33,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     private readonly bool _isReadOnly;
     private FlatDiffRepository.Configuration _configuration;
 
-    private static Histogram _flatScopeTimer = Metrics.CreateHistogram("flat_scope_timer", "timer",
+    public static Histogram _flatScopeTimer = Metrics.CreateHistogram("flat_scope_timer", "timer",
         new HistogramConfiguration()
         {
             LabelNames = ["part", "is_main"],

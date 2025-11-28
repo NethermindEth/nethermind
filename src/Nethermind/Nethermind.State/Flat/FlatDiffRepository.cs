@@ -181,6 +181,15 @@ public class FlatDiffRepository : IFlatDiffRepository
             {
                 if (_logger.IsDebug) _logger.Debug($"Compacted {gatheredCache.SnapshotCount} to {stateId}");
                 _compactedKnownStates[stateId] = snapshot;
+
+                if (stateId.blockNumber % _compactSize != 0)
+                {
+                    // Save memory
+                    foreach (var id in _inMemorySnapshotStore.GetStatesAtBlockNumber(stateId.blockNumber - _compactSize))
+                    {
+                        _compactedKnownStates.Remove(id);
+                    }
+                }
             }
         }
         catch (Exception e)

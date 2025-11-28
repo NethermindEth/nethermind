@@ -122,8 +122,8 @@ public class SnapshotBundle(
             {
                 _snapshotBundleTimerKnownStatesStorage.Observe(Stopwatch.GetTimestamp() - sw);
                 value = null;
-                return true;
-            }
+            return true;
+        }
         }
         _snapshotBundleTimerKnownStatesStorage.Observe(Stopwatch.GetTimestamp() - sw);
 

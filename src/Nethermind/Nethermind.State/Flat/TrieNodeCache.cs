@@ -56,6 +56,8 @@ public class TrieNodeCache
 
     public void Add(Snapshot snapshot)
     {
+        if (_maxCacheMemoryThreshold == 0) return;
+
         foreach (var kv in snapshot.TrieNodes)
         {
             Key key = new Key(kv.Key.Item1.Value, kv.Key.Item2);
