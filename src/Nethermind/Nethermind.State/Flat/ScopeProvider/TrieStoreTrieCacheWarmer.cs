@@ -131,7 +131,8 @@ public class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
 
     private class WarmerWorkers(TrieStoreTrieCacheWarmer mainWarmer, bool isMain)
     {
-        ManualResetEventSlim resetEvent = new ManualResetEventSlim();
+        private ManualResetEventSlim _resetEvent = new ManualResetEventSlim();
+        private SpinWait _spinWait = new SpinWait();
 
         public void Run(CancellationToken cancellationToken)
         {
@@ -143,30 +144,35 @@ public class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
 
                     if (mainWarmer.TryDequeue(out var job))
                     {
-                        if (isMain)
-                        {
-                            mainWarmer.MaybeWakeOpOtherWorker();
-                        }
+                        mainWarmer.MaybeWakeOpOtherWorker();
 
+                        _resetEvent.Set();
                         HandleJob(job, isMain);
                     }
                     else
                     {
-                        if (!isMain)
+                        if (_spinWait.NextSpinWillYield)
                         {
-                            _trieWarmEr.WithLabels("wait_not_main").Inc();
-                            if (resetEvent.IsSet)
+                            if (!isMain)
                             {
-                                resetEvent.Reset();
-                                mainWarmer.QueueWorker(this);
+                                _trieWarmEr.WithLabels("wait_not_main").Inc();
+                                if (_resetEvent.IsSet)
+                                {
+                                    _resetEvent.Reset();
+                                    mainWarmer.QueueWorker(this);
+                                }
+                                _resetEvent.Wait(1, cancellationToken);
                             }
-                            resetEvent.Wait(1, cancellationToken);
+                            else
+                            {
+                                mainWarmer.MainWarmerIdle(this);
+                                _resetEvent.Reset();
+                                _resetEvent.Wait(1, cancellationToken);
+                            }
                         }
                         else
                         {
-                            mainWarmer.MainWarmerIdle(this);
-                            resetEvent.Reset();
-                            resetEvent.Wait(1, cancellationToken);
+                            _spinWait.SpinOnce();
                         }
                     }
                 }
@@ -183,7 +189,7 @@ public class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
 
         public void WakeUp()
         {
-            resetEvent.Set();
+            _resetEvent.Set();
         }
     }
 
@@ -194,7 +200,7 @@ public class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
 
     private void MaybeWakeOpOtherWorker()
     {
-        if (_jobBuffer.EstimatedJobCount > 1 && _awaitingWorkers.TryPop(out WarmerWorkers otherWorker)) otherWorker.WakeUp();
+        if (_jobBuffer.EstimatedJobCount > 0 && _awaitingWorkers.TryPop(out WarmerWorkers otherWorker)) otherWorker.WakeUp();
     }
 
     private void QueueWorker(WarmerWorkers worker)

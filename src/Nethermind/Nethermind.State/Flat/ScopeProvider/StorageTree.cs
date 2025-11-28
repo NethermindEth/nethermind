@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
@@ -25,6 +26,7 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
     private readonly FlatDiffRepository.Configuration _config;
     private readonly ITrieStoreTrieCacheWarmer _trieCacheWarmer;
     private readonly WorldStateScope _scope;
+    private readonly HashSet<UInt256> _wasWarmedUp = new();
 
     public StorageTree(
         WorldStateScope scope,
@@ -78,6 +80,20 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
     {
         if (_storageSnapshotBundle.HintGet(index, value))
         {
+            WarmUpSlot(index);
+        }
+    }
+
+    public void HintSet(UInt256 index)
+    {
+        WarmUpSlot(index);
+    }
+
+    private void WarmUpSlot(UInt256 index)
+    {
+        if (!_wasWarmedUp.Contains(index))
+        {
+            _wasWarmedUp.Add(index);
             _trieCacheWarmer.PushJob(_scope, null, this, index);
         }
     }

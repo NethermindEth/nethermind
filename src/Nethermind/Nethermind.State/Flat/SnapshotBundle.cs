@@ -52,7 +52,7 @@ public class SnapshotBundle(
     private Histogram.Child _loadTrie = _snapshotBundleTimer.WithLabels("load_trie");
     private Counter _loadTrieCacheHit = Prometheus.Metrics.CreateCounter("load_trie_cache_hit", "", "hit");
 
-    public bool TryGetAccount(Address address, out Account? acc)
+    public bool TryGetAccountInMemory(Address address, out Account? acc)
     {
         if (_changedAccounts.TryGetValue(address, out acc)) return true;
 
@@ -69,8 +69,15 @@ public class SnapshotBundle(
         }
         _snapshotBundleTimerKnownStates.Observe(Stopwatch.GetTimestamp() - sw);
 
-        sw = Stopwatch.GetTimestamp();
+        acc = null;
+        return false;
+    }
 
+    public bool TryGetAccount(Address address, out Account? acc)
+    {
+        if (TryGetAccountInMemory(address, out acc)) return true;
+
+        long sw = Stopwatch.GetTimestamp();
         if (persistenceReader.TryGetAccount(address, out acc))
         {
             _snapshotBundleTimerPersistence.Observe(Stopwatch.GetTimestamp() - sw);

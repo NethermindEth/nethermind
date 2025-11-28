@@ -107,6 +107,13 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         return value;
     }
 
+    public override void Set(in StorageCell storageCell, byte[] newValue)
+    {
+        base.Set(storageCell, newValue);
+        GetOrCreateStorage(storageCell.Address).HintSet(storageCell);
+    }
+
+
     public Hash256 GetStorageRoot(Address address)
     {
         return GetOrCreateStorage(address).StorageRoot;
@@ -573,6 +580,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         public void RemoveStorageTree()
         {
             _backend = null;
+        }
+
+        public void HintSet(in StorageCell storageCell)
+        {
+            EnsureStorageTree();
+            _backend.HintSet(storageCell.Index);
         }
     }
 }
