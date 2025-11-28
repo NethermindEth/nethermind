@@ -149,6 +149,8 @@ public class GasEstimator(
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block, specProvider.GetSpec(block)));
         TransactionResult result = transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));
 
-        return result.TransactionExecuted && gasTracer.StatusCode == StatusCode.Success && !gasTracer.OutOfGas;
+        // Transaction succeeds if it executed, has success status, no OutOfGas, and no top-level revert
+        return result.TransactionExecuted && gasTracer.StatusCode == StatusCode.Success &&
+               !gasTracer.OutOfGas && !gasTracer.TopLevelRevert;
     }
 }

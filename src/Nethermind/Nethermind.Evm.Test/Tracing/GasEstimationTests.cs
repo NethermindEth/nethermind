@@ -604,13 +604,69 @@ namespace Nethermind.Evm.Test.Tracing
 
             if (shouldSucceed)
             {
-                result.Should().BeGreaterThan(1_000_000, "Gas estimation should account for the gas threshold in the contract");
+                result.Should().BeGreaterThan(1_000_000,
+                    "Gas estimation should account for the gas threshold in the contract");
                 err.Should().BeNull();
             }
             else
             {
                 err.Should().NotBeNull("Gas estimation should fail when the gas limit is too low");
             }
+        }
+
+        [Test]
+        public void Should_succeed_with_internal_revert()
+        {
+            using TestEnvironment testEnvironment = new();
+            long gasLimit = 100_000;
+            Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+
+            long gasLeft = gasLimit - 22000;
+            testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
+                ExecutionType.TRANSACTION, false);
+
+            gasLeft = 63 * gasLeft / 64;
+            testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
+                ExecutionType.CALL, false);
+
+            gasLeft = 63 * gasLeft / 64;
+            testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
+                ExecutionType.CALL, false);
+
+            testEnvironment.tracer.ReportActionRevert(gasLeft - 1000, Array.Empty<byte>());
+            testEnvironment.tracer.ReportActionEnd(gasLeft - 500, Array.Empty<byte>());
+            testEnvironment.tracer.ReportActionEnd(gasLeft, Array.Empty<byte>());
+            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 25000, Array.Empty<byte>(), Array.Empty<LogEntry>());
+
+            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+
+            result.Should().BeGreaterThan(0);
+            err.Should().BeNull();
+            testEnvironment.tracer.TopLevelRevert.Should().BeFalse();
+            testEnvironment.tracer.OutOfGas.Should().BeFalse();
+        }
+
+        [Test]
+        public void Should_fail_with_top_level_revert()
+        {
+            using TestEnvironment testEnvironment = new();
+            long gasLimit = 100_000;
+            Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+
+            long gasLeft = gasLimit - 22000;
+            testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
+                ExecutionType.TRANSACTION, false);
+
+            testEnvironment.tracer.ReportActionRevert(gasLeft - 1000, Array.Empty<byte>());
+            testEnvironment.tracer.MarkAsFailed(Address.Zero, 25000, Array.Empty<byte>(), "execution reverted");
+
+            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+
+            result.Should().Be(0);
+            err.Should().NotBeNull();
+            testEnvironment.tracer.TopLevelRevert.Should().BeTrue();
         }
 
         private class TestEnvironment : IDisposable
