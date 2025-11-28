@@ -170,8 +170,7 @@ public partial class EngineModuleTests
         ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, executionRequestsProcessorMock);
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
-            .LastOrDefault()?.BlockHash ?? Keccak.Zero;
+        await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true);
 
         Transaction invalidSetCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
