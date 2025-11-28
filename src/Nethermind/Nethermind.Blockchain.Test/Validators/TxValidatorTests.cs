@@ -21,6 +21,8 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -652,6 +654,60 @@ public class TxValidatorTests
     }
 
     public static IEnumerable<TxType> TxTypes = FastEnum.GetValues<TxType>().Where(t => t != TxType.DepositTx);
+
+    [Test]
+    public void IsWellFormed_Censored([ValueSource(nameof(TxTypes))] TxType txType)
+    {
+        Transaction BuildTransaction(bool censoredSender)
+        {
+            TransactionBuilder<Transaction> builder = Build.A.Transaction
+                .WithType(txType)
+                .WithSenderAddress(censoredSender ? TestItem.AddressA : TestItem.AddressC)
+                .WithTo(censoredSender ? Address.Zero : TestItem.AddressB)
+                .WithMaxFeePerGas(100000)
+                .WithGasLimit(1000000)
+                .WithChainId(BlockchainIds.Gnosis);
+
+            if (txType == TxType.Blob)
+            {
+                builder.WithMaxFeePerBlobGas(UInt256.One)
+                    .WithBlobVersionedHashes([MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1, 0)]);
+            }
+            if (txType == TxType.SetCode)
+            {
+                builder.WithAuthorizationCode(new AuthorizationTuple(0, TestItem.AddressA, 0, 0, 0, 0));
+            }
+            Transaction tx = builder.SignedAndResolved(censoredSender ? TestItem.PrivateKeyA : TestItem.PrivateKeyC).TestObject;
+            tx.SenderAddress = null; // sender address should be recovered
+
+            return tx;
+        }
+
+        Transaction txCensoredSender = BuildTransaction(true);
+        Transaction txCensoredTo = BuildTransaction(false);
+        TxValidator txValidator = new(BlockchainIds.Gnosis);
+        IReleaseSpec releaseSpec = new OverridableReleaseSpec(BalancerGnosis.Instance)
+        {
+            CensoredSenders = [TestItem.AddressA],
+            CensoredTo = [TestItem.AddressB]
+        };
+
+        ValidationResult result = txValidator.IsWellFormed(txCensoredSender, releaseSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.Censored));
+        }
+
+        result = txValidator.IsWellFormed(txCensoredTo, releaseSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.Censored));
+        }
+    }
 
     [Test]
     public void IsWellFormed_Nonce_Over_Limit([ValueSource(nameof(TxTypes))] TxType txType)

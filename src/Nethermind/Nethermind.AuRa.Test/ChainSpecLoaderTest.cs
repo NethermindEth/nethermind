@@ -90,8 +90,29 @@ public class ChainSpecLoaderTest
             }
         };
 
-        var auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
+        AuRaChainSpecEngineParameters auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
         auraParams.RewriteBytecode.Should().BeEquivalentTo(expected);
+    }
+
+    // todo: update with real values
+    [Test]
+    public void Can_load_gnosis_with_rewriteBytecodeGnosis()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/gnosis.json");
+        ChainSpec chainSpec = LoadChainSpec(path);
+        IDictionary<ulong, IDictionary<Address, byte[]>> expected = new Dictionary<ulong, IDictionary<Address, byte[]>>
+        {
+            {
+                0x999999999, new Dictionary<Address, byte[]>()
+                {
+                    {new Address("0x506d1f9efe24f0d47853adca907eb8d89ae03207"), Bytes.FromHexString("0xabababa")},
+                }
+            }
+        };
+
+        AuRaChainSpecEngineParameters auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
+
+        auraParams.RewriteBytecodeTimestamp.Should().BeEquivalentTo(expected);
     }
 }
