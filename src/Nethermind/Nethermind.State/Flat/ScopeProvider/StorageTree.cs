@@ -76,8 +76,10 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
 
     public void HintGet(in UInt256 index, byte[]? value)
     {
-        _storageSnapshotBundle.Set(index, value);
-        _trieCacheWarmer.PushJob(_scope, null, this, index);
+        if (_storageSnapshotBundle.HintGet(index, value))
+        {
+            _trieCacheWarmer.PushJob(_scope, null, this, index);
+        }
     }
 
     public void WarUpStorageTrie(UInt256 index)

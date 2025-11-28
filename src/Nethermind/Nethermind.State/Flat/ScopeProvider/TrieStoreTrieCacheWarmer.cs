@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Common.Internal;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -21,11 +24,17 @@ public interface ITrieStoreTrieCacheWarmer
         Address? path,
         StorageTree? storageTree,
         UInt256? index);
+
+    void OnNewScope();
 }
 
 public class NoopTrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
 {
     public void PushJob(WorldStateScope scope, Address? path, StorageTree? storageTree, UInt256? index)
+    {
+    }
+
+    public void OnNewScope()
     {
     }
 }
@@ -40,113 +49,37 @@ public class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
         WorldStateScope scope,
         Address? path,
         StorageTree? storageTree,
-        UInt256? index);
+        UInt256? index,
+        long startTime);
 
     Task? _warmerJob = null;
     private static Counter _trieWarmEr = Metrics.CreateCounter("triestore_trie_warmer", "hit rate", "type");
-    private ManualResetEventSlim _resetEvent = new ManualResetEventSlim(initialState: false);
+    private static Histogram _trieWarmServiceTime = Metrics.CreateHistogram("triestore_trie_service_time", "hit rate", new HistogramConfiguration()
+    {
+        LabelNames = new[] { "is_main", "type" },
+        Buckets = Histogram.PowersOfTenDividedBuckets(4, 10, 5)
+    });
+
+    private ConcurrentStack<WarmerWorkers> _awaitingWorkers = new ConcurrentStack<WarmerWorkers>();
+    private WarmerWorkers? _mainWarmer = null;
+
+    private bool TryDequeue(out Job job)
+    {
+        return _jobBuffer.TryDequeue(out job);
+    }
 
     public TrieStoreTrieCacheWarmer(IProcessExitSource processExitSource, ILogManager logManager)
     {
         _warmerJob = Task.Run<Task>(async () =>
         {
-            int completed = 0;
             ArrayPoolList<Task> tasks = new ArrayPoolList<Task>(Environment.ProcessorCount);
             for (int i = 0; i < Environment.ProcessorCount; i++)
             {
                 bool isMain = i == 0;
+                var worker = new WarmerWorkers(this, isMain);
                 tasks.Add(Task.Run(() =>
                 {
-                    try
-                    {
-                        while (true)
-                        {
-                            if (processExitSource.Token.IsCancellationRequested) break;
-
-                            if (_jobBuffer.TryDequeue(out var job))
-                            {
-                                if (isMain)
-                                {
-                                    if (_jobBuffer.EstimatedJobCount > 2) _resetEvent.Set();
-                                }
-
-                                (WorldStateScope scope,
-                                    Address? address,
-                                    StorageTree? storageTree,
-                                    UInt256? index) = job;
-
-                                if (scope.ShouldStillWarmUpTrie)
-                                {
-                                    if (address is not null)
-                                    {
-                                        scope.WarmUpStateTrie(address);
-                                    }
-                                    else
-                                    {
-                                        storageTree.WarUpStorageTrie(index.Value);
-                                    }
-                                }
-                                /*
-                                if (_commitReached || !ReferenceEquals(scope, _currentScope))
-                                {
-                                    if (path is null)
-                                    {
-                                        _trieWarmEr.WithLabels("state_skip").Inc();
-                                    }
-                                    else
-                                    {
-                                        _trieWarmEr.WithLabels("storage_skip").Inc();
-                                    }
-
-                                    continue;
-                                }
-
-                                if (path is null)
-                                {
-                                    tree.Get(address.ToAccountPath.ToCommitment().Bytes, root);
-                                    _trieWarmEr.WithLabels("state").Inc();
-                                }
-                                else
-                                {
-                                    PatriciaTree storageTree = new PatriciaTree(trieStore.GetTrieStore(address), logManager);
-                                    ValueHash256 key = new ValueHash256();
-                                    State.StorageTree.ComputeKeyWithLookup(path.Value, key.BytesAsSpan);
-                                    storageTree.Get(key.BytesAsSpan, root);
-                                    _trieWarmEr.WithLabels("storage").Inc();
-                                }
-                                */
-                            }
-                            else
-                            {
-                                if (!isMain)
-                                {
-                                    _trieWarmEr.WithLabels("wait_not_main").Inc();
-                                    _resetEvent.Wait(processExitSource.Token);
-                                    _resetEvent.Reset();
-                                }
-                                else
-                                {
-                                    _trieWarmEr.WithLabels("wait_main").Inc();
-                                    if (_resetEvent.Wait(1, processExitSource.Token))
-                                    {
-                                        _resetEvent.Reset();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    catch (OperationCanceledException)
-                    {
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.Error.WriteLine(ex);
-                        throw;
-                    }
-                    finally
-                    {
-                        completed++;
-                    }
+                    worker.Run(processExitSource.Token);
                 }));
             }
 
@@ -154,7 +87,121 @@ public class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
         });
     }
 
-    private long _pushCount = 0;
+    private static void HandleJob(Job job, bool isMain)
+    {
+        (WorldStateScope scope,
+            Address? address,
+            StorageTree? storageTree,
+            UInt256? index,
+            long sw) = job;
+
+        if (scope.ShouldStillWarmUpTrie)
+        {
+            if (address is not null)
+            {
+                _trieWarmServiceTime.WithLabels(isMain.ToString(), "state")
+                    .Observe(Stopwatch.GetTimestamp() - sw);
+                scope.WarmUpStateTrie(address);
+                _trieWarmEr.WithLabels("state").Inc();
+            }
+            else
+            {
+                _trieWarmServiceTime.WithLabels(isMain.ToString(), "storage")
+                    .Observe(Stopwatch.GetTimestamp() - sw);
+                storageTree.WarUpStorageTrie(index.Value);
+                _trieWarmEr.WithLabels("storage").Inc();
+            }
+        }
+        else
+        {
+            if (address is null)
+            {
+                _trieWarmServiceTime.WithLabels(isMain.ToString(), "state_skip")
+                    .Observe(Stopwatch.GetTimestamp() - sw);
+                _trieWarmEr.WithLabels("state_skip").Inc();
+            }
+            else
+            {
+                _trieWarmServiceTime.WithLabels(isMain.ToString(), "storage_skip")
+                    .Observe(Stopwatch.GetTimestamp() - sw);
+                _trieWarmEr.WithLabels("storage_skip").Inc();
+            }
+        }
+    }
+
+    private class WarmerWorkers(TrieStoreTrieCacheWarmer mainWarmer, bool isMain)
+    {
+        ManualResetEventSlim resetEvent = new ManualResetEventSlim();
+
+        public void Run(CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (true)
+                {
+                    if (cancellationToken.IsCancellationRequested) break;
+
+                    if (mainWarmer.TryDequeue(out var job))
+                    {
+                        if (isMain)
+                        {
+                            mainWarmer.MaybeWakeOpOtherWorker();
+                        }
+
+                        HandleJob(job, isMain);
+                    }
+                    else
+                    {
+                        if (!isMain)
+                        {
+                            _trieWarmEr.WithLabels("wait_not_main").Inc();
+                            if (resetEvent.IsSet)
+                            {
+                                resetEvent.Reset();
+                                mainWarmer.QueueWorker(this);
+                            }
+                            resetEvent.Wait(1, cancellationToken);
+                        }
+                        else
+                        {
+                            mainWarmer.MainWarmerIdle(this);
+                            resetEvent.Reset();
+                            resetEvent.Wait(1, cancellationToken);
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(ex);
+                throw;
+            }
+        }
+
+        public void WakeUp()
+        {
+            resetEvent.Set();
+        }
+    }
+
+    private void MainWarmerIdle(WarmerWorkers warmerWorkers)
+    {
+        _mainWarmer =  warmerWorkers;
+    }
+
+    private void MaybeWakeOpOtherWorker()
+    {
+        if (_jobBuffer.EstimatedJobCount > 1 && _awaitingWorkers.TryPop(out WarmerWorkers otherWorker)) otherWorker.WakeUp();
+    }
+
+    private void QueueWorker(WarmerWorkers worker)
+    {
+        _awaitingWorkers.Push(worker);
+    }
+
     public void PushJob(
         WorldStateScope scope,
         Address? path,
@@ -164,9 +211,14 @@ public class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
         // WARNING: Very hot!
         if (_jobBuffer.TryClaim(out var slot))
         {
-            _jobBuffer[slot] = new Job(scope, path, storageTree, index);
+            _jobBuffer[slot] = new Job(scope, path, storageTree, index, Stopwatch.GetTimestamp());
             _jobBuffer.Publish(slot);
-            if ((_pushCount++) % 10 == 0) _resetEvent.Set();
+            _mainWarmer?.WakeUp();
         }
+    }
+
+    public void OnNewScope()
+    {
+        _mainWarmer?.WakeUp();
     }
 }

@@ -118,7 +118,7 @@ public class TrieNodeCache
         return (key.GetHashCode() & 0x7FFFFFFF) % _shardCount;
     }
 
-    private readonly struct Key : IEquatable<Key>
+    public readonly struct Key : IEquatable<Key>
     {
         internal const long MemoryUsage = 8 + 36 + 8; // (address (probably shared), path, keccak pointer (shared with TrieNode))
         public readonly Hash256? Address;

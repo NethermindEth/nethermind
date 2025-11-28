@@ -90,7 +90,9 @@ public class FlatDiffRepository : IFlatDiffRepository
         var cachedReader = _cachedReader;
         if (cachedReader is null)
         {
-            _cachedReader = cachedReader = new RefCountingPersistenceReader(_persistence.CreateReader());
+            _cachedReader = cachedReader = new RefCountingPersistenceReader(
+                new CachedPersistenceReader(_persistence.CreateReader())
+            );
         }
 
         cachedReader.AcquireLease();

@@ -5,12 +5,14 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Prometheus;
 using Metrics = Nethermind.Trie.Metrics;
 
@@ -24,6 +26,9 @@ public class SnapshotBundle(
     TrieNodeCache trieNodeCache
 ) : IDisposable
 {
+
+    public bool _isPrewarmer = false;
+
     Dictionary<AddressPrefixAsKey, StorageSnapshotBundle> _loadedAccounts = new();
     Dictionary<AddressPrefixAsKey, Account> _changedAccounts = new();
     ConcurrentDictionary<TreePath, TrieNode> _changedNodes = new(); // Bulkset can get nodes concurrently
@@ -173,6 +178,11 @@ public class SnapshotBundle(
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
+        if (_isPrewarmer)
+        {
+            Console.Error.WriteLine($"Is warming using loadlp. {address}");
+            throw new Exception($"Is warming using loadlp. {address}");
+        }
         long sw = Stopwatch.GetTimestamp();
         var res = persistenceReader.TryLoadRlp(address, path, hash, flags);
         if (address is null)
@@ -199,9 +209,9 @@ public class SnapshotBundle(
         }
     }
 
-    public void HintAccountRead(Address address, Account? account)
+    public bool HintAccountRead(Address address, Account? account)
     {
-        _changedAccounts[address] = account;
+        return _changedAccounts.TryAdd(address, account);
     }
 
     public Snapshot CollectAndApplyKnownState(StateId from, StateId to)
@@ -431,6 +441,12 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
     {
         _changedSlots[slot] = value;
     }
+
+    public bool HintGet(UInt256 slot, byte[] value)
+    {
+        return _changedSlots.TryAdd(slot, value);
+    }
+
 
     public void SelfDestruct()
     {

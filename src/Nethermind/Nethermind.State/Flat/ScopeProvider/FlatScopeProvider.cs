@@ -43,6 +43,8 @@ public class FlatScopeProvider : IWorldStateScopeProvider
     {
         StateId currentState = new StateId(baseBlock);
         SnapshotBundle snapshotBundle = _flatDiffRepository.GatherReaderAtBaseBlock(currentState);
+        snapshotBundle._isPrewarmer = _trieWarmer is NoopTrieStoreTrieCacheWarmer;
+
         return new WorldStateScope(
             currentState,
             snapshotBundle,

@@ -37,7 +37,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         new HistogramConfiguration()
         {
             LabelNames = ["part"],
-            Buckets = Histogram.PowersOfTenDividedBuckets(5, 10, 5)
+            Buckets = Histogram.PowersOfTenDividedBuckets(4, 10, 5)
         });
 
     private Histogram.Child _stateTreeGet = _flatScopeTimer.WithLabels("statetree_get");
@@ -69,6 +69,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         _stateTree.RootHash = currentStateId.stateRoot.ToCommitment();
         _logManager = logManager;
         _warmer = trieCacheWarmer;
+        _warmer.OnNewScope();
         _isReadOnly = isReadOnly;
     }
 
@@ -120,12 +121,14 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
     public void HintGet(Address address, Account? account)
     {
-        _snapshotBundle.HintAccountRead(address, account);
-        _warmer.PushJob(this, address, null, null);
+        if (_snapshotBundle.HintAccountRead(address, account))
+        {
+            _warmer.PushJob(this, address, null, null);
+        }
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
-    public bool ShouldStillWarmUpTrie => _isCommitting == false;
+    public bool ShouldStillWarmUpTrie => !_isCommitting;
 
     public void WarmUpStateTrie(Address address)
     {
