@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -38,7 +38,8 @@ public class Engine : IDisposable
 
     [ThreadStatic] private static Engine? _currentEngine;
 
-    private static readonly V8Runtime _runtime = new();
+    private static readonly JavaScriptEngineSettings RuntimeSettings = JavaScriptEngineSettingsProvider.Current;
+    private static readonly V8Runtime _runtime = CreateRuntime();
     private static readonly ConcurrentDictionary<string, V8Script> _builtInScripts = new();
     private static readonly LruCache<int, V8Script> _runtimeScripts = new(10, "runtime scripts");
 
@@ -75,6 +76,36 @@ public class Engine : IDisposable
     }
 
     private static V8Script LoadBuiltIn(string name, string code) => _builtInScripts.AddOrUpdate(name, c => _runtime.Compile(code), static (_, script) => script);
+
+    private static V8Runtime CreateRuntime()
+    {
+        JavaScriptEngineSettings settings = RuntimeSettings;
+
+        V8RuntimeConstraints constraints = new()
+        {
+            MaxNewSpaceSize = settings.MaxNewSpaceSizeMiB,
+            MaxOldSpaceSize = settings.MaxOldSpaceSizeMiB,
+            MaxArrayBufferAllocation = settings.MaxArrayBufferAllocationMiB > 0
+                ? (ulong)settings.MaxArrayBufferAllocationMiB * 1024ul * 1024ul
+                : 0ul,
+            HeapExpansionMultiplier = settings.HeapExpansionMultiplier
+        };
+
+        V8Runtime runtime = new("js-tracer", constraints, V8RuntimeFlags.None);
+
+        if (settings.MaxHeapSizeBytes > 0)
+        {
+            runtime.MaxHeapSize = ClampToNative(settings.MaxHeapSizeBytes);
+            runtime.HeapSizeSampleInterval = settings.HeapSizeSampleInterval;
+        }
+
+        if (settings.MaxStackUsageBytes > 0)
+        {
+            runtime.MaxStackUsage = ClampToNative(settings.MaxStackUsageBytes);
+        }
+
+        return runtime;
+    }
 
     public Engine(IReleaseSpec spec)
     {
@@ -157,6 +188,7 @@ public class Engine : IDisposable
     {
         Interlocked.CompareExchange(ref _currentEngine, null, this);
         V8Engine.Dispose();
+        JavaScriptRuntimeMonitor.OnEngineDisposed(_runtime, RuntimeSettings);
     }
 
     /// <summary>
@@ -249,4 +281,23 @@ public class Engine : IDisposable
     private static string LoadTracerCodeFromFile(string tracerFileName) => PackTracerCode(LoadJavaScriptCodeFromFile(tracerFileName));
 
     private static V8Script LoadBigInteger() => LoadBuiltIn(nameof(BigIntegerJavaScript), LoadJavaScriptCodeFromFile(BigIntegerJavaScript));
+
+    private static UIntPtr ClampToNative(long value)
+    {
+        if (value <= 0)
+        {
+            return UIntPtr.Zero;
+        }
+
+        ulong desired = (ulong)value;
+
+        if (!Environment.Is64BitProcess && desired > uint.MaxValue)
+        {
+            desired = uint.MaxValue;
+        }
+
+        return Environment.Is64BitProcess
+            ? new UIntPtr(desired)
+            : new UIntPtr((uint)desired);
+    }
 }
