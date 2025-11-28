@@ -18,11 +18,14 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
     private readonly IDictionary<T, ColumnDb> _columnDbs = new Dictionary<T, ColumnDb>();
 
     public ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, IReadOnlyList<T> keys, IntPtr? sharedCache = null)
-        : base(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, GetEnumKeys(keys).Select(static (key) => key.ToString()).ToList(), sharedCache: sharedCache)
+        : this(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, ResolveKeys(keys), sharedCache)
     {
-        keys = GetEnumKeys(keys);
+    }
 
-        foreach (T key in keys)
+        private ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, (IReadOnlyList<T> Keys, IList<string> ColumnNames) keyInfo, IntPtr? sharedCache)
+        : base(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, keyInfo.ColumnNames, sharedCache: sharedCache)
+    {
+        foreach (T key in keyInfo.Keys)
         {
             _columnDbs[key] = new ColumnDb(_db, this, key.ToString()!);
         }
@@ -59,6 +62,14 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         }
 
         return keys;
+    }
+
+    private static (IReadOnlyList<T> Keys, IList<string> ColumnNames) ResolveKeys(IReadOnlyList<T> keys)
+    {
+        IReadOnlyList<T> resolvedKeys = GetEnumKeys(keys);
+        IList<string> columnNames = resolvedKeys.Select(static key => key.ToString()).ToList();
+
+        return (resolvedKeys, columnNames);
     }
 
     protected override void BuildOptions<TOptions>(IRocksDbConfig dbConfig, Options<TOptions> options, IntPtr? sharedCache, IMergeOperator? mergeOperator)
