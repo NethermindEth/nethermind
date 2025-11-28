@@ -106,29 +106,23 @@ public class BlockForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Bloom LogsBloom { get; set; }
     public Address Miner { get; set; }
-    public Hash256 MixHash { get; set; }
-
-    public bool ShouldSerializeMixHash() => !_isAuRaBlock && MixHash is not null;
+    public Hash256? MixHash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public byte[] Nonce { get; set; }
-
-    public bool ShouldSerializeNonce() => !_isAuRaBlock;
+    public byte[]? Nonce { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? Number { get; set; }
     public Hash256 ParentHash { get; set; }
     public Hash256 ReceiptsRoot { get; set; }
     public Hash256 Sha3Uncles { get; set; }
-    public byte[] Signature { get; set; }
-    public bool ShouldSerializeSignature() => _isAuRaBlock;
+    public byte[]? Signature { get; set; }
     public long Size { get; set; }
     public Hash256 StateRoot { get; set; }
     [JsonConverter(typeof(NullableRawLongConverter))]
     public long? Step { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UInt256? TotalDifficulty { get; set; }
-    public bool ShouldSerializeStep() => _isAuRaBlock;
     public UInt256 Timestamp { get; set; }
 
     public UInt256? BaseFeePerGas { get; set; }
