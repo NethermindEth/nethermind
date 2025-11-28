@@ -13,6 +13,8 @@ public class ForkConfigSummary
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public required ForkConfig? Last { get; init; }
+
+    public IReadOnlyList<ForkConfig>? All { get; init; }
 }
 
 public class ForkConfig
