@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Core;
 using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
@@ -15,6 +16,8 @@ namespace Nethermind.Init.Steps
     [RunnerStepDependencies(typeof(InitializeBlockTree))]
     public class InitializePlugins(INethermindApi api) : IStep
     {
+        private IDisposableStack? _disposeStack;
+
         public async Task Execute(CancellationToken cancellationToken)
         {
             ILogger logger = api.LogManager.GetClassLogger();
@@ -26,6 +29,7 @@ namespace Nethermind.Init.Steps
                     if (logger.IsInfo) logger.Info($"  {plugin.Name} by {plugin.Author}");
                     long startTime = Stopwatch.GetTimestamp();
                     await plugin.Init(api);
+                    RegisterForShutdown(plugin);
                     if (logger.IsInfo)
                         logger.Info($"  {plugin.Name} by {plugin.Author} initialized in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
                 }
@@ -34,6 +38,19 @@ namespace Nethermind.Init.Steps
                     if (logger.IsError) logger.Error($"Failed to initialize plugin {plugin.Name} by {plugin.Author}", e);
                     if (plugin.MustInitialize) throw;
                 }
+            }
+        }
+
+        private void RegisterForShutdown(INethermindPlugin plugin)
+        {
+            switch (plugin)
+            {
+                case IAsyncDisposable asyncDisposable:
+                    (_disposeStack ??= api.DisposeStack).Push(asyncDisposable);
+                    break;
+                case IDisposable disposable:
+                    (_disposeStack ??= api.DisposeStack).Push(disposable);
+                    break;
             }
         }
     }
