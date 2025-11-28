@@ -665,7 +665,7 @@ namespace Nethermind.Evm.Test.Tracing
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
             result.Should().Be(0);
-            err.Should().NotBeNull();
+            err.Should().Be("execution reverted");
             testEnvironment.tracer.TopLevelRevert.Should().BeTrue();
         }
 
