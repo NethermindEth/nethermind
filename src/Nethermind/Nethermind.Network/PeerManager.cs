@@ -221,9 +221,30 @@ namespace Nethermind.Network
             Channel<Peer> taskChannel = Channel.CreateBounded<Peer>(1);
             using ArrayPoolList<Task> tasks = new(_outgoingConnectParallelism);
             for (int idx = 0; idx < _outgoingConnectParallelism; idx++)
+        {
+            tasks.Add(RunWorker(idx));
+        }
+        
+        async Task RunWorker(int workerIdx)
+        {
+            await foreach (Peer peer in taskChannel.Reader.ReadAllAsync(_cancellationTokenSource.Token))
             {
-                int workerIdx = idx;
-                tasks.Add(Task.Run(async () =>
+                try
+                {
+                    await SetupOutgoingPeerConnection(peer);
+                }
+                catch (TaskCanceledException)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Connect worker {workerIdx} cancelled");
+                    break;
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error($"Error setting up connection to {peer}, {e}");
+                }
+            }
+            if (_logger.IsDebug) _logger.Debug($"Connect worker {workerIdx} completed");
+        }
                 {
                     await foreach (Peer peer in taskChannel.Reader.ReadAllAsync(_cancellationTokenSource.Token))
                     {
