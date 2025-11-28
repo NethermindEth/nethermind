@@ -194,8 +194,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 }
             }
 
-            if (_perTableDbConfig.EnableFileWarmer || (Name.StartsWith("Flat") && !Name.Contains("Node")))
-            // if (_perTableDbConfig.EnableFileWarmer)
+            if (_perTableDbConfig.EnableFileWarmer)
             {
                 WarmupFile(_fullPath, db);
             }

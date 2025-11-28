@@ -343,6 +343,7 @@ public class DbConfig : IDbConfig
     public ulong? FlatMetadataDbRowCacheSize { get; set; } = (ulong?)1.MiB();
     public string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
 
+    public bool FlatStateDbEnableFileWarmer { get; set; } = true;
     public ulong FlatStateDbWriteBufferSize { get; set; } = (ulong)64.MiB();
     public ulong FlatStateDbRowCacheSize { get; set; } = 0;
     public ulong FlatStateDbWriteBufferNumber { get; set; } = 4;
@@ -351,14 +352,16 @@ public class DbConfig : IDbConfig
     // Note: No prefix extractor for state.Dont forget.
     public string? FlatStateDbRocksDbOptions { get; set; } =
         MinimumBasicOption +
-        "compression=kLZ4Compression;" +
+        // "compression=kLZ4Compression;" +
+        "compression=kNoCompression;" +
         "min_write_buffer_number_to_merge=2;" +
         "block_based_table_factory.block_restart_interval=4;" +
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
         "block_based_table_factory.data_block_hash_table_util_ratio=0.7;" +
         "block_based_table_factory.block_size=16000;" +
         "block_based_table_factory.filter_policy=ribbonfilter:12;" +
-        "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;prepopulate_block_cache=kFlushOnly;};" +
+        // "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;prepopulate_block_cache=kFlushOnly;};" +
+        "block_based_table_factory={index_type=kHashSearch;partition_filters=0;prepopulate_block_cache=kFlushOnly;};" +
 
         // Default is 1 MB.
         "max_write_batch_group_size_bytes=4000000;" +
@@ -377,13 +380,15 @@ public class DbConfig : IDbConfig
 
     public string? FlatStateDbAdditionalRocksDbOptions { get; set; }
     public bool FlatStorageDbSkipDefaultDbOptions { get; set; } = true;
+    public bool FlatStorageDbEnableFileWarmer { get; set; }
     public ulong FlatStorageDbRowCacheSize { get; set; } = 0;
     public ulong FlatStorageDbWriteBufferSize { get; set; }= (ulong)64.MiB();
     public ulong FlatStorageDbWriteBufferNumber { get; set; } = 4;
 
     public string? FlatStorageDbRocksDbOptions { get; set; } =
         MinimumBasicOption +
-        "compression=kLZ4Compression;" +
+        // "compression=kLZ4Compression;" +
+        "compression=kNoCompression;" +
         "min_write_buffer_number_to_merge=2;" +
         "block_based_table_factory.block_restart_interval=4;" +
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
@@ -391,7 +396,8 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.block_size=16000;" +
         "block_based_table_factory.filter_policy=ribbonfilter:12;" +
         "block_based_table_factory.block_cache=1000000000;" +
-        "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;prepopulate_block_cache=kFlushOnly;};" +
+        // "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;prepopulate_block_cache=kFlushOnly;};" +
+        "block_based_table_factory={index_type=kHashSearch;partition_filters=0;prepopulate_block_cache=kFlushOnly;};" +
 
         // Default is 1 MB.
         "max_write_batch_group_size_bytes=4000000;" +
@@ -420,6 +426,7 @@ public class DbConfig : IDbConfig
     public ulong FlatStateNodesTopDbWriteBufferNumber { get; set; } = 4;
     public string? FlatStateNodesTopDbRocksDbOptions { get; set; }  =
         // LZ4 seems to be slightly faster here
+        "use_direct_io_for_flush_and_compaction=true;" +
         "compression=kLZ4Compression;" +
 
         // MaxBytesForLevelMultiplier is 10 by default. Lowering this will deepens the LSM, which may reduce write
@@ -470,6 +477,7 @@ public class DbConfig : IDbConfig
     public string? FlatStateNodesDbRocksDbOptions { get; set; } =
         // LZ4 seems to be slightly faster here
         "compression=kLZ4Compression;" +
+        "use_direct_io_for_flush_and_compaction=true;" +
 
         // MaxBytesForLevelMultiplier is 10 by default. Lowering this will deepens the LSM, which may reduce write
         // amplification (unless the LSM is too deep), at the expense of read performance. But then, you have bloom
@@ -521,6 +529,7 @@ public class DbConfig : IDbConfig
     public string? FlatStorageNodesDbRocksDbOptions { get; set; } =
         // LZ4 seems to be slightly faster here
         "compression=kLZ4Compression;" +
+        "use_direct_io_for_flush_and_compaction=true;" +
 
         // MaxBytesForLevelMultiplier is 10 by default. Lowering this will deepens the LSM, which may reduce write
         // amplification (unless the LSM is too deep), at the expense of read performance. But then, you have bloom
