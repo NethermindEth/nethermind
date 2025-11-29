@@ -46,6 +46,10 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     private readonly ITrieStoreTrieCacheWarmer _warmer;
     private bool _isCommitting = false;
     private readonly bool _isMain;
+    private readonly Histogram.Child _storageCommit;
+    private readonly Histogram.Child _stateCommit;
+    private readonly Histogram.Child _snapshotCollect;
+    private readonly Histogram.Child _snapshotAdd;
 
     public WorldStateScope(
         StateId currentStateId,
@@ -76,6 +80,10 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
         _stateTreeGet = _flatScopeTimer.WithLabels("statetree_get", _isMain.ToString());
         _flatGet = _flatScopeTimer.WithLabels("flat_get", _isMain.ToString());
+        _storageCommit = _flatScopeTimer.WithLabels("storage_commit", _isMain.ToString());
+        _stateCommit = _flatScopeTimer.WithLabels("state_commit", _isMain.ToString());
+        _snapshotCollect = _flatScopeTimer.WithLabels("snapshot_collect", _isMain.ToString());
+        _snapshotAdd = _flatScopeTimer.WithLabels("snapshot_add", _isMain.ToString());
     }
 
     public void Dispose()
@@ -177,9 +185,10 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     {
         StateId newStateId = new StateId(blockNumber, RootHash);
         _isCommitting = true;
-
+        long sw = Stopwatch.GetTimestamp();
         if (!_isReadOnly)
         {
+
             // Commit will copy the trie nodes from the tree to the bundle.
             using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
 
@@ -201,7 +210,14 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
             }
 
             Task.WaitAll(commitTask.AsSpan());
+
+            _storageCommit.Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
+
             _stateTree.Commit();
+
+            _stateCommit.Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
         }
 
         _isCommitting = false;
@@ -209,9 +225,15 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         _storages.Clear();
 
         Snapshot newSnapshot = _snapshotBundle.CollectAndApplyKnownState(_currentStateId, newStateId);
+
+        _snapshotCollect.Observe(Stopwatch.GetTimestamp() - sw);
+        sw = Stopwatch.GetTimestamp();
+
         if (!_isReadOnly)
         {
             if (_currentStateId != newStateId) _flatDiffRepository.AddSnapshot(newSnapshot);
+            _snapshotAdd.Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
         }
 
         _currentStateId = newStateId;

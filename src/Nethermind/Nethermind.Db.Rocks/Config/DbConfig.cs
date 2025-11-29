@@ -355,13 +355,17 @@ public class DbConfig : IDbConfig
         // "compression=kLZ4Compression;" +
         "compression=kNoCompression;" +
         "min_write_buffer_number_to_merge=2;" +
+        "block_based_table_factory.index_type=kTwoLevelIndexSearch;" +
+        "block_based_table_factory.partition_filters=true;" +
+        "block_based_table_factory.metadata_block_size=4096;" +
         "block_based_table_factory.block_restart_interval=4;" +
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
         "block_based_table_factory.data_block_hash_table_util_ratio=0.7;" +
-        "block_based_table_factory.block_size=16000;" +
+        "block_based_table_factory.block_size=4096;" +
+        "block_based_table_factory.prepopulate_block_cache=kFlushOnly;" +
         "block_based_table_factory.filter_policy=ribbonfilter:12;" +
         // "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;prepopulate_block_cache=kFlushOnly;};" +
-        "block_based_table_factory={index_type=kHashSearch;partition_filters=0;prepopulate_block_cache=kFlushOnly;};" +
+        // "block_based_table_factory={index_type=kHashSearch;partition_filters=0;prepopulate_block_cache=kFlushOnly;};" +
 
         // Default is 1 MB.
         "max_write_batch_group_size_bytes=4000000;" +
@@ -390,14 +394,15 @@ public class DbConfig : IDbConfig
         // "compression=kLZ4Compression;" +
         "compression=kNoCompression;" +
         "min_write_buffer_number_to_merge=2;" +
+        "block_based_table_factory.index_type=kTwoLevelIndexSearch;" +
+        "block_based_table_factory.partition_filters=true;" +
+        "block_based_table_factory.metadata_block_size=4096;" +
         "block_based_table_factory.block_restart_interval=4;" +
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
         "block_based_table_factory.data_block_hash_table_util_ratio=0.7;" +
-        "block_based_table_factory.block_size=16000;" +
+        "block_based_table_factory.block_size=4096;" +
+        "block_based_table_factory.prepopulate_block_cache=kFlushOnly;" +
         "block_based_table_factory.filter_policy=ribbonfilter:12;" +
-        "block_based_table_factory.block_cache=1000000000;" +
-        // "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;prepopulate_block_cache=kFlushOnly;};" +
-        "block_based_table_factory={index_type=kHashSearch;partition_filters=0;prepopulate_block_cache=kFlushOnly;};" +
 
         // Default is 1 MB.
         "max_write_batch_group_size_bytes=4000000;" +

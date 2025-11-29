@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Reflection.Metadata.Ecma335;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -188,6 +189,19 @@ public class FlatDiffRepository : IFlatDiffRepository
             if (_compactSize <= 1) return; // Disabled
             long blockNumber = stateId.blockNumber;
             if (blockNumber == 0) return;
+            if (blockNumber % _compactSize != 0)
+            {
+                using (_repoLock.EnterScope())
+                {
+                    StateId? last = _inMemorySnapshotStore.GetLast();
+                    if (last != null && last.Value.blockNumber - blockNumber > 1)
+                    {
+                        // To slow. Just skip this block number.
+                        return;
+                    }
+                }
+            }
+
             long startingBlockNumber = ((blockNumber - 1) / _compactSize) * _compactSize;
 
             using SnapshotBundle gatheredCache = GatherCache(stateId, startingBlockNumber);

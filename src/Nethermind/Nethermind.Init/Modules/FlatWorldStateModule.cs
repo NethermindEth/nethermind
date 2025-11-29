@@ -64,8 +64,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 MaxInFlightCompactJob = 32,
                 ReadWithTrie = false,
                 VerifyWithTrie = false,
-                ConcurrentCompactor = 4,
-                TrieCacheMemoryTarget = 0.GiB(),
+                ConcurrentCompactor = 2,
+                TrieCacheMemoryTarget = 1.GiB(),
                 InlineCompaction = false
             })
             .AddSingleton<IStateReader, FlatStateReader>();

@@ -240,10 +240,12 @@ namespace Nethermind.State
 
         public void CommitTree(long blockNumber)
         {
+            long sw = Stopwatch.GetTimestamp();
             DebugGuardInScope();
             _stateProvider.UpdateStateRootIfNeeded();
             _currentScope.Commit(blockNumber);
             _persistentStorageProvider.ClearStorageMap();
+            _timeCounter.WithLabels("commit_tree", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
         }
 
         public UInt256 GetNonce(Address address)

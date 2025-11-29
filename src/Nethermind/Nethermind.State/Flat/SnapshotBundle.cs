@@ -47,7 +47,12 @@ public class SnapshotBundle(
     private Histogram.Child _loadTriePersistence = _snapshotBundleTimer.WithLabels("load_trie_persistence", isPrewarmer.ToString());
     private Histogram.Child _loadTriePersistenceStorage = _snapshotBundleTimer.WithLabels("load_trie_persistence_storage", isPrewarmer.ToString());
     private Histogram.Child _loadTrie = _snapshotBundleTimer.WithLabels("load_trie", isPrewarmer.ToString());
-    private Counter _loadTrieCacheHit = Prometheus.Metrics.CreateCounter("load_trie_cache_hit", "", "hit");
+
+    private static Counter _loadTrieCacheHit = Prometheus.Metrics.CreateCounter("load_trie_cache_hit", "", "hit", "type");
+    private Counter.Child _loadTrieCacheHitStateHit = _loadTrieCacheHit.WithLabels("hit", "state");
+    private Counter.Child _loadTrieCacheHitStateMiss = _loadTrieCacheHit.WithLabels("miss", "state");
+    private Counter.Child _loadTrieCacheHitStorageHit = _loadTrieCacheHit.WithLabels("hit", "storage");
+    private Counter.Child _loadTrieCacheHitStorageMiss = _loadTrieCacheHit.WithLabels("miss", "storage");
 
     public void SetPrewarmer()
     {
@@ -175,11 +180,25 @@ public class SnapshotBundle(
         var res = trieNodeCache.TryGet(address, path, hash, out node);
         if (res)
         {
-            _loadTrieCacheHit.WithLabels("true").Inc();
+            if (address is null)
+            {
+                _loadTrieCacheHitStateHit.Inc();
+            }
+            else
+            {
+                _loadTrieCacheHitStorageHit.Inc();
+            }
         }
         else
         {
-            _loadTrieCacheHit.WithLabels("false").Inc();
+            if (address is null)
+            {
+                _loadTrieCacheHitStateMiss.Inc();
+            }
+            else
+            {
+                _loadTrieCacheHitStorageMiss.Inc();
+            }
         }
 
         _loadTrie.Observe(Stopwatch.GetTimestamp() - sw);
