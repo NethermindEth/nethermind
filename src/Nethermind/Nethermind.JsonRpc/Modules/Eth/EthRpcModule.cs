@@ -160,42 +160,25 @@ public partial class EthRpcModule(
 
     public Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter? blockParameter = null)
     {
-        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-        if (searchResult.IsError)
-        {
-            return Task.FromResult(GetFailureResult<UInt256?, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet()));
-        }
-
-        BlockHeader header = searchResult.Object;
-        if (!_blockchainBridge.HasStateForBlock(header!))
-        {
-            return Task.FromResult(GetStateFailureResult<UInt256?>(header));
-        }
-
-        _stateReader.TryGetAccount(header!, address, out AccountStruct account);
-        return Task.FromResult(ResultWrapper<UInt256?>.Success(account.Balance));
+        return ExecuteWithStateExceptionHandling<UInt256?>(
+            blockParameter,
+            header =>
+            {
+                _stateReader.TryGetAccount(header, address, out AccountStruct account);
+                return (UInt256?)account.Balance;
+            });
     }
 
     public ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex,
         BlockParameter? blockParameter = null)
     {
-        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-        if (searchResult.IsError)
-        {
-            return GetFailureResult<byte[], BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
-        }
-
-        BlockHeader? header = searchResult.Object;
-        try
-        {
-            ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!, address, positionIndex);
-            return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage!.PadLeft(32));
-        }
-        catch (MissingTrieNodeException e)
-        {
-            var hash = e.Hash;
-            return ResultWrapper<byte[]>.Fail($"missing trie node {hash} (path ) state {hash} is not available", ErrorCodes.InvalidInput);
-        }
+        return ExecuteWithStateExceptionHandlingSync<byte[]>(
+            blockParameter,
+            header =>
+            {
+                ReadOnlySpan<byte> storage = _stateReader.GetStorage(header, address, positionIndex);
+                return storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage!.PadLeft(32);
+            });
     }
 
     public Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter? blockParameter)
@@ -206,20 +189,13 @@ public partial class EthRpcModule(
             return Task.FromResult(ResultWrapper<UInt256>.Success(pendingNonce));
         }
 
-        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-        if (searchResult.IsError)
-        {
-            return Task.FromResult(GetFailureResult<UInt256, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet()));
-        }
-
-        BlockHeader header = searchResult.Object;
-        if (!_blockchainBridge.HasStateForBlock(header!))
-        {
-            return Task.FromResult(GetStateFailureResult<UInt256>(header));
-        }
-
-        _stateReader.TryGetAccount(header!, address, out AccountStruct account);
-        return Task.FromResult(ResultWrapper<UInt256>.Success(account.Nonce));
+        return ExecuteWithStateExceptionHandling<UInt256>(
+            blockParameter,
+            header =>
+            {
+                _stateReader.TryGetAccount(header, address, out AccountStruct account);
+                return account.Nonce;
+            });
     }
 
     public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Hash256 blockHash)
@@ -256,17 +232,9 @@ public partial class EthRpcModule(
 
     public ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter? blockParameter = null)
     {
-        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-        if (searchResult.IsError)
-        {
-            return GetFailureResult<byte[], BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
-        }
-
-        BlockHeader header = searchResult.Object;
-        return !_blockchainBridge.HasStateForBlock(header!)
-            ? GetStateFailureResult<byte[]>(header)
-            : ResultWrapper<byte[]>.Success(
-                _stateReader.TryGetAccount(header!, address, out AccountStruct account)
+        return ExecuteWithStateExceptionHandlingSync<byte[]>(
+            blockParameter,
+            header => _stateReader.TryGetAccount(header, address, out AccountStruct account)
                     ? _stateReader.GetCode(account.CodeHash)
                     : []);
     }
@@ -685,22 +653,14 @@ public partial class EthRpcModule(
     public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, UInt256[] storageKeys,
         BlockParameter blockParameter)
     {
-        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-        if (searchResult.IsError)
-        {
-            return GetFailureResult<AccountProof, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
-        }
-
-        BlockHeader header = searchResult.Object;
-
-        if (!_blockchainBridge.HasStateForBlock(header!))
-        {
-            return GetStateFailureResult<AccountProof>(header);
-        }
-
-        AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
-        _blockchainBridge.RunTreeVisitor(accountProofCollector, header!.StateRoot!);
-        return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
+        return ExecuteWithStateExceptionHandlingSync<AccountProof>(
+            blockParameter,
+            header =>
+            {
+                AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
+                _blockchainBridge.RunTreeVisitor(accountProofCollector, header.StateRoot!);
+                return accountProofCollector.BuildResult();
+            });
     }
 
     public ResultWrapper<ulong> eth_chainId()
@@ -734,34 +694,18 @@ public partial class EthRpcModule(
 
     public ResultWrapper<AccountForRpc?> eth_getAccount(Address accountAddress, BlockParameter? blockParameter)
     {
-        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-        if (searchResult.IsError)
-        {
-            return GetFailureResult<AccountForRpc?, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
-        }
-
-        BlockHeader header = searchResult.Object!;
-        if (!_blockchainBridge.HasStateForBlock(header))
-            return GetStateFailureResult<AccountForRpc?>(header);
-        return ResultWrapper<AccountForRpc?>.Success(
-            _stateReader.TryGetAccount(header, accountAddress, out AccountStruct account)
+        return ExecuteWithStateExceptionHandlingSync<AccountForRpc?>(
+            blockParameter,
+            header => _stateReader.TryGetAccount(header, accountAddress, out AccountStruct account)
                 ? new AccountForRpc(account)
                 : null);
     }
 
     public ResultWrapper<AccountInfoForRpc?> eth_getAccountInfo(Address accountAddress, BlockParameter? blockParameter)
     {
-        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-        if (searchResult.IsError)
-        {
-            return GetFailureResult<AccountInfoForRpc?, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
-        }
-
-        BlockHeader header = searchResult.Object!;
-        if (!_blockchainBridge.HasStateForBlock(header))
-            return GetStateFailureResult<AccountInfoForRpc?>(header);
-        return ResultWrapper<AccountInfoForRpc?>.Success(
-            _stateReader.TryGetAccount(header, accountAddress, out AccountStruct account)
+        return ExecuteWithStateExceptionHandlingSync<AccountInfoForRpc?>(
+            blockParameter,
+            header => _stateReader.TryGetAccount(header, accountAddress, out AccountStruct account)
                 ? new AccountInfoForRpc
                 {
                     Balance = account.Balance,
@@ -776,9 +720,6 @@ public partial class EthRpcModule(
 
     private static ResultWrapper<TResult> GetFailureResult<TResult>(ResourceNotFoundException exception, bool isTemporary) =>
         ResultWrapper<TResult>.Fail(exception.Message, ErrorCodes.ResourceNotFound, isTemporary);
-
-    private ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
-        ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet());
 
     public virtual ResultWrapper<ReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
     {
@@ -837,6 +778,74 @@ public partial class EthRpcModule(
                 Precompiles = spec.ListPrecompiles(),
                 SystemContracts = spec.ListSystemContracts(),
             };
+        }
+    }
+
+    private Task<ResultWrapper<T>> ExecuteWithStateExceptionHandling<T>(
+        BlockParameter? blockParameter,
+        Func<BlockHeader, T> stateAccessFunc)
+    {
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
+        {
+            return Task.FromResult(GetFailureResult<T, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet()));
+        }
+
+        BlockHeader header = searchResult.Object;
+        if (!_blockchainBridge.HasStateForBlock(header))
+        {
+            return Task.FromResult(ResultWrapper<T>.Fail(
+                $"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
+                ErrorCodes.ResourceUnavailable,
+                _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet()));
+        }
+
+        try
+        {
+            T result = stateAccessFunc(header);
+            return Task.FromResult(ResultWrapper<T>.Success(result));
+        }
+        catch (MissingTrieNodeException e)
+        {
+            if (_logger.IsError) _logger.Error($"Missing trie node for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", e);
+            return Task.FromResult(ResultWrapper<T>.Fail(
+                $"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
+                ErrorCodes.ResourceUnavailable,
+                _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet()));
+        }
+    }
+
+    private ResultWrapper<T> ExecuteWithStateExceptionHandlingSync<T>(
+        BlockParameter? blockParameter,
+        Func<BlockHeader, T> stateAccessFunc)
+    {
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
+        {
+            return GetFailureResult<T, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
+        }
+
+        BlockHeader header = searchResult.Object;
+        if (!_blockchainBridge.HasStateForBlock(header))
+        {
+            return ResultWrapper<T>.Fail(
+                $"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
+                ErrorCodes.ResourceUnavailable,
+                _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet());
+        }
+
+        try
+        {
+            T result = stateAccessFunc(header);
+            return ResultWrapper<T>.Success(result);
+        }
+        catch (MissingTrieNodeException e)
+        {
+            if (_logger.IsError) _logger.Error($"Missing trie node for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", e);
+            return ResultWrapper<T>.Fail(
+                $"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
+                ErrorCodes.ResourceUnavailable,
+                _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet());
         }
     }
 
