@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Trie;
 
@@ -21,38 +24,63 @@ namespace Nethermind.State.Flat;
 public class Snapshot(
     StateId from,
     StateId to,
-    Dictionary<AddressPrefixAsKey, Account?> accounts,
-    Dictionary<(AddressPrefixAsKey, UInt256), byte[]?> storages,
-    HashSet<AddressPrefixAsKey> selfDestructedStorageAddresses,
-    Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode> trieNodes)
+    SnapshotContent content,
+    ObjectPool<SnapshotContent> pool
+) : RefCountingDisposable
 {
     public StateId From => from;
     public StateId To => to;
-    public IEnumerable<KeyValuePair<AddressPrefixAsKey, Account?>> Accounts => accounts;
-    public IEnumerable<AddressPrefixAsKey> SelfDestructedStorageAddresses => selfDestructedStorageAddresses;
-    public IEnumerable<KeyValuePair<(AddressPrefixAsKey, UInt256), byte[]?>> Storages => storages;
-    public IEnumerable<KeyValuePair<(Hash256PrefixAsKey, TreePath), TrieNode>> TrieNodes => trieNodes;
-    public int AccountsCount => accounts.Count;
-    public int StoragesCount => storages.Count;
-    public int TrieNodesCount => trieNodes.Count;
+    public IEnumerable<KeyValuePair<AddressPrefixAsKey, Account?>> Accounts => content.Accounts;
+    public IEnumerable<AddressPrefixAsKey> SelfDestructedStorageAddresses => content.SelfDestructedStorageAddresses;
+    public IEnumerable<KeyValuePair<(AddressPrefixAsKey, UInt256), byte[]?>> Storages => content.Storages;
+    public IEnumerable<KeyValuePair<(Hash256PrefixAsKey, TreePath), TrieNode>> TrieNodes => content.TrieNodes;
+    public int AccountsCount => content.Accounts.Count;
+    public int StoragesCount => content.Storages.Count;
+    public int TrieNodesCount => content.TrieNodes.Count;
 
     public bool TryGetAccount(AddressPrefixAsKey key, out Account acc)
     {
-        return accounts.TryGetValue(key, out acc);
+        return content.Accounts.TryGetValue(key, out acc);
     }
 
     public bool HasSelfDestruct(Address address)
     {
-        return selfDestructedStorageAddresses.Contains(address);
+        return content.SelfDestructedStorageAddresses.Contains(address);
     }
 
     public bool TryGetStorage(Address address, in UInt256 index, out byte[] value)
     {
-        return storages.TryGetValue((address, index), out value);
+        return content.Storages.TryGetValue((address, index), out value);
     }
 
     public bool TryGetTrieNodes(Hash256 address, in TreePath path, out TrieNode node)
     {
-        return trieNodes.TryGetValue((address, path), out node);
+        return content.TrieNodes.TryGetValue((address, path), out node);
+    }
+
+    protected override void CleanUp()
+    {
+        content.Reset();
+        pool.Return(content);
+    }
+
+    public bool TryAcquire()
+    {
+        return TryAcquireLease();
+    }
+}
+
+public record SnapshotContent(
+    Dictionary<AddressPrefixAsKey, Account?> Accounts,
+    Dictionary<(AddressPrefixAsKey, UInt256), byte[]?> Storages,
+    HashSet<AddressPrefixAsKey> SelfDestructedStorageAddresses,
+    Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode> TrieNodes
+) {
+    public void Reset()
+    {
+        Accounts.Clear();
+        Storages.Clear();
+        SelfDestructedStorageAddresses.Clear();
+        TrieNodes.Clear();
     }
 }

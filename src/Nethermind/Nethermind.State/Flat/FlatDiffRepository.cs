@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -28,6 +29,27 @@ public class FlatDiffRepository : IFlatDiffRepository
     private readonly ICanonicalStateRootFinder _stateRootFinder;
     private Dictionary<StateId, Snapshot> _compactedKnownStates = new();
     private InMemorySnapshotStore _inMemorySnapshotStore;
+    private ObjectPool<SnapshotContent> _snapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy());
+    private ObjectPool<SnapshotContent> _compactedSnapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy());
+
+    private class SnapshotContentPolicy : IPooledObjectPolicy<SnapshotContent>
+    {
+        public SnapshotContent Create()
+        {
+            return new SnapshotContent(
+                Accounts: new Dictionary<AddressPrefixAsKey, Account?>(),
+                Storages: new Dictionary<(AddressPrefixAsKey, UInt256), byte[]?>(),
+                SelfDestructedStorageAddresses: new HashSet<AddressPrefixAsKey>(),
+                TrieNodes: new Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode>()
+            );
+        }
+
+        public bool Return(SnapshotContent obj)
+        {
+            return true;
+        }
+    }
+
     private IPersistence _persistence;
     private int _boundary;
 
@@ -175,7 +197,7 @@ public class FlatDiffRepository : IFlatDiffRepository
             }
 
             if (_logger.IsDebug) _logger.Debug($"Compacting {stateId}");
-            Snapshot snapshot = gatheredCache.CompactToKnownState();
+            Snapshot snapshot = gatheredCache.CompactToKnownState(_compactedSnapshotPool);
 
             using (_repoLock.EnterScope())
             {
@@ -187,7 +209,7 @@ public class FlatDiffRepository : IFlatDiffRepository
                     // Save memory
                     foreach (var id in _inMemorySnapshotStore.GetStatesAtBlockNumber(stateId.blockNumber - _compactSize))
                     {
-                        _compactedKnownStates.Remove(id);
+                        RemoveAndReleaseCompactedKnownState(id);
                     }
                 }
             }
@@ -222,7 +244,7 @@ public class FlatDiffRepository : IFlatDiffRepository
 
         string exitReason = "";
         StateId current = baseBlock;
-        while(_compactedKnownStates.TryGetValue(current, out var entry) || _inMemorySnapshotStore.TryGetValue(current, out entry))
+        while(TryLeaseCompactedState(current, out var entry) || TryLeaseState(current, out entry))
         {
             Snapshot state = entry;
             if (_logger.IsTrace) _logger.Trace($"Got {state.From} -> {state.To}");
@@ -261,7 +283,21 @@ public class FlatDiffRepository : IFlatDiffRepository
         knownStates.Reverse();
 
         if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestExclusive}, Got {knownStates.Count} known states, {_currentPersistedState}");
-        return new SnapshotBundle(knownStates, bigCacheReader, _trieNodeCache);
+        return new SnapshotBundle(knownStates, bigCacheReader, _trieNodeCache, _snapshotPool);
+    }
+
+    public bool TryLeaseCompactedState(StateId stateId, out Snapshot entry)
+    {
+        if (!_compactedKnownStates.TryGetValue(stateId, out entry)) return false;
+        if (!entry.TryAcquire()) return false;
+        return true;
+    }
+
+    public bool TryLeaseState(StateId stateId, out Snapshot entry)
+    {
+        if (!_inMemorySnapshotStore.TryGetValue(stateId, out entry)) return false;
+        if (!entry.TryAcquire()) return false;
+        return true;
     }
 
     public void AddSnapshot(Snapshot snapshot)
@@ -278,6 +314,7 @@ public class FlatDiffRepository : IFlatDiffRepository
                 return;
             }
 
+            // snapshot should have 1 lease here
             _inMemorySnapshotStore.AddBlock(endBlock, snapshot);
         }
 
@@ -427,21 +464,19 @@ public class FlatDiffRepository : IFlatDiffRepository
                 }
 
                 // Remove non-canon snapshots
-                using (_repoLock.EnterScope())
+                foreach (var stateId in candidateToAdd)
                 {
-                    foreach (var stateId in candidateToAdd)
+                    if (stateId != pickedSnapshot)
                     {
-                        if (stateId != pickedSnapshot)
-                        {
-                            _compactedKnownStates.Remove(stateId);
-                            _inMemorySnapshotStore.Remove(stateId);
-                        }
+                        RemoveAndReleaseCompactedKnownState(stateId);
+                        RemoveAndReleaseKnownState(stateId);
                     }
                 }
 
                 if (persistCompactedStates)
                 {
                     _compactedKnownStates.TryGetValue(pickedSnapshot.Value, out pickedState);
+                    pickedState.AcquireLease();
                     if (_logger.IsDebug) _logger.Debug($"Picking compacted state {pickedState.From} to {pickedState.To}");
 
                     foreach (var stateId in _inMemorySnapshotStore.GetStatesAfterBlock(currentState.blockNumber))
@@ -452,6 +487,7 @@ public class FlatDiffRepository : IFlatDiffRepository
                 else
                 {
                     _inMemorySnapshotStore.TryGetValue(pickedSnapshot.Value, out pickedState);
+                    pickedState.AcquireLease();
                 }
             }
 
@@ -468,17 +504,37 @@ public class FlatDiffRepository : IFlatDiffRepository
             // And we remove it
             using (_repoLock.EnterScope())
             {
-                _compactedKnownStates.Remove(pickedSnapshot.Value);
-                _inMemorySnapshotStore.Remove(pickedSnapshot.Value);
+                RemoveAndReleaseCompactedKnownState(pickedSnapshot.Value);
+                RemoveAndReleaseKnownState(pickedSnapshot.Value);
 
                 foreach (var stateId in toRemoveStates)
                 {
-                    _compactedKnownStates.Remove(stateId);
-                    _inMemorySnapshotStore.Remove(stateId);
+                    RemoveAndReleaseCompactedKnownState(stateId);
+                    RemoveAndReleaseKnownState(stateId);
                 }
             }
 
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(pickedSnapshot.Value.blockNumber));
+        }
+    }
+
+    private void RemoveAndReleaseCompactedKnownState(StateId stateId)
+    {
+        if (!_repoLock.IsHeldByCurrentThread) throw new Exception("Repolock must be held");
+        if (_compactedKnownStates.TryGetValue(stateId, out var existingState))
+        {
+            _compactedKnownStates.Remove(stateId);
+            existingState.Dispose();
+        }
+    }
+
+    private void RemoveAndReleaseKnownState(StateId stateId)
+    {
+        if (!_repoLock.IsHeldByCurrentThread) throw new Exception("Repolock must be held");
+        if (_inMemorySnapshotStore.TryGetValue(stateId, out var existingState))
+        {
+            _inMemorySnapshotStore.Remove(stateId);
+            existingState.Dispose();
         }
     }
 

@@ -14,7 +14,7 @@ public class TrieNodeCache
 {
     private ConcurrentDictionary<Key, TrieNode>[] _cacheShards;
     private long[] _shardMemoryUsages;
-    private int _shardCount = 16;
+    private int _shardCount = 256;
     private long _estimatedMemoryUsage = 0;
     private int _nextShardToClear = 0;
     private long _maxCacheMemoryThreshold;
@@ -117,7 +117,14 @@ public class TrieNodeCache
 
     private int GetShardIdx(Key key)
     {
-        return (key.GetHashCode() & 0x7FFFFFFF) % _shardCount;
+        // Separate by tree partition so that when pruned, whole partition is removed. This is because it is
+        // more efficient to load nodes from the same partition.
+        if (key.Address is null)
+        {
+            return key.Path.Path.Bytes[0];
+        }
+
+        return key.Address.Bytes[0];
     }
 
     public readonly struct Key : IEquatable<Key>

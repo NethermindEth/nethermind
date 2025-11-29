@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -21,6 +22,7 @@ public class SnapshotBundle(
     ArrayPoolList<Snapshot> knownStates,
     IPersistence.IPersistenceReader persistenceReader,
     TrieNodeCache trieNodeCache,
+    ObjectPool<SnapshotContent> contentPool,
     bool isPrewarmer = false
 ) : IDisposable
 {
@@ -227,22 +229,21 @@ public class SnapshotBundle(
 
     public Snapshot CollectAndApplyKnownState(StateId from, StateId to)
     {
-        Dictionary<Hash256PrefixAsKey, Address> addressHashes = new();
-        Dictionary<AddressPrefixAsKey, Account> accounts = new();
-        HashSet<AddressPrefixAsKey> selfDestructedAccountAddresses = new();
+        SnapshotContent content = contentPool.Get();
+        Dictionary<AddressPrefixAsKey, Account> accounts = content.Accounts;
+        HashSet<AddressPrefixAsKey> selfDestructedAccountAddresses = content.SelfDestructedStorageAddresses;
         foreach (var kv in _changedAccounts)
         {
-            addressHashes[kv.Key.Value.ToAccountPath.ToCommitment()] = kv.Key;
             accounts[kv.Key] = kv.Value;
         }
 
-        Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode> nodes = new();
+        Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode> nodes = content.TrieNodes;
         foreach (var kv in _changedNodes)
         {
             nodes[(null, kv.Key)] = kv.Value;
         }
 
-        Dictionary<(AddressPrefixAsKey, UInt256), byte[]> storages = new ();
+        Dictionary<(AddressPrefixAsKey, UInt256), byte[]> storages = content.Storages;
 
         foreach (var gatheredCacheStorage in _loadedAccounts)
         {
@@ -267,11 +268,10 @@ public class SnapshotBundle(
         var knownState = new Snapshot(
             from: from,
             to: to,
-            accounts: accounts,
-            storages: storages,
-            selfDestructedStorageAddresses: selfDestructedAccountAddresses,
-            trieNodes: nodes);
+            content: content,
+            pool: contentPool);
 
+        knownState.AcquireLease(); // For this bundle
         knownStates.Add(knownState);
 
         _changedAccounts = new();
@@ -293,20 +293,20 @@ public class SnapshotBundle(
         return cache;
     }
 
-    public Snapshot CompactToKnownState()
+    public Snapshot CompactToKnownState(ObjectPool<SnapshotContent> contentPool)
     {
-        if (knownStates.Count == 0) return new Snapshot(
-            new StateId(-1, ValueKeccak.EmptyTreeHash), new StateId(-1, ValueKeccak.EmptyTreeHash),
-            new Dictionary<AddressPrefixAsKey, Account>(),
-            new Dictionary<(AddressPrefixAsKey, UInt256), byte[]>(),
-            new HashSet<AddressPrefixAsKey>(),
-            new Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode>()
-        );
+        if (knownStates.Count == 0)
+            return new Snapshot(
+                new StateId(-1, ValueKeccak.EmptyTreeHash), new StateId(-1, ValueKeccak.EmptyTreeHash),
+                content: contentPool.Get(),
+                pool: contentPool);
 
-        Dictionary<AddressPrefixAsKey, Account> accounts = new();
-        Dictionary<(AddressPrefixAsKey, UInt256), byte[]> storages = new();
-        HashSet<AddressPrefixAsKey> selfDestructedStorageAddresses = new();
-        Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode> nodes = new();
+        SnapshotContent content = contentPool.Get();
+
+        Dictionary<AddressPrefixAsKey, Account> accounts = content.Accounts;
+        Dictionary<(AddressPrefixAsKey, UInt256), byte[]> storages = content.Storages;
+        HashSet<AddressPrefixAsKey> selfDestructedStorageAddresses = content.SelfDestructedStorageAddresses;
+        Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode> nodes = content.TrieNodes;
 
         if (knownStates.Count == 1) return knownStates[0];
 
@@ -359,10 +359,8 @@ public class SnapshotBundle(
         return new Snapshot(
             from,
             to,
-            accounts,
-            storages,
-            selfDestructedStorageAddresses,
-            nodes);
+            content: content,
+            pool: contentPool);
     }
 
     public void Dispose()
@@ -370,6 +368,10 @@ public class SnapshotBundle(
         foreach (var gatheredCacheStorage in _loadedAccounts)
         {
             gatheredCacheStorage.Value.Dispose();
+        }
+        foreach (Snapshot knownState in knownStates)
+        {
+            knownState.Dispose();
         }
         knownStates.Dispose();
     }
