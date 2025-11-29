@@ -129,7 +129,7 @@ public class Startup : IStartup
             app.UseWhen(ctx =>
                 ctx.WebSockets.IsWebSocketRequest &&
                 jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
-                jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
+                (jsonRpcUrl.RpcEndpoint & RpcEndpoint.Ws) != 0,
             builder => builder.UseWebSocketsModules());
         }
 
@@ -176,7 +176,7 @@ public class Startup : IStartup
                 return;
             }
 
-            if (!jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) || !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
+            if (!jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) || (jsonRpcUrl.RpcEndpoint & RpcEndpoint.Http) == 0)
             {
                 ctx.Response.StatusCode = (int)HttpStatusCode.NotFound;
                 return;

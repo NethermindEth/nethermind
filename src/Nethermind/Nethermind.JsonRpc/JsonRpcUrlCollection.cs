@@ -95,7 +95,7 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
             try
             {
                 JsonRpcUrl url = JsonRpcUrl.Parse(additionalRpcUrl);
-                if (!includeWebSockets && url.RpcEndpoint.HasFlag(RpcEndpoint.Ws))
+                if (!includeWebSockets && (url.RpcEndpoint & RpcEndpoint.Ws) != 0)
                 {
                     url.RpcEndpoint &= ~RpcEndpoint.Ws;
                     if (url.RpcEndpoint == RpcEndpoint.None)

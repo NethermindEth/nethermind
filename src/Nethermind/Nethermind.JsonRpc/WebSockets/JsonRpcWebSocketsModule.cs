@@ -56,7 +56,7 @@ public class JsonRpcWebSocketsModule : IWebSocketsModule
     {
         int port = context.Connection.LocalPort;
 
-        if (!_jsonRpcUrlCollection.TryGetValue(port, out JsonRpcUrl jsonRpcUrl) || !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws))
+        if (!_jsonRpcUrlCollection.TryGetValue(port, out JsonRpcUrl jsonRpcUrl) || (jsonRpcUrl.RpcEndpoint & RpcEndpoint.Ws) == 0)
         {
             throw new InvalidOperationException($"WebSocket-enabled url not defined for port {port}");
         }
