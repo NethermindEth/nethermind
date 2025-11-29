@@ -59,6 +59,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public void ResetBlockAccessIndex()
     {
         _changes.Clear();
+        _accountChanges.Clear();
         Index = 0;
     }
 
