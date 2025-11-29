@@ -29,7 +29,7 @@ public static class PipeReaderExtensions
         [MethodImpl(MethodImplOptions.NoInlining)]
         static void AdvanceReaderToEnd(PipeReader reader, in ReadResult result)
         {
-            // Common path we don't want to read the buffer
+            // Extract buffer reading to a separate method to reduce async state machine size
             ReadOnlySequence<byte> buffer = result.Buffer;
             reader.AdvanceTo(buffer.Start, buffer.End);
         }
