@@ -36,7 +36,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
 
     private JwtAuthentication(byte[] secret, ITimestamper timestamper, ILogger logger)
     {
-        Debug.Assert(secret is not null);
+        ArgumentNullException.ThrowIfNull(secret);
         ArgumentNullException.ThrowIfNull(timestamper);
 
         _securityKey = new SymmetricSecurityKey(secret);
@@ -260,12 +260,12 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         if (Math.Abs(entry.IssuedAtUnixSeconds - nowUnixSeconds) > JwtTokenTtl)
         {
             // Token lifetime exceeded - drop the cached entry and force a fresh validation
-            Volatile.Write(ref _lastToken, null);
+            Interlocked.CompareExchange(ref _lastToken, null, entry);
             return false;
         }
 
         // Same token, within TTL, recently validated:
-        // Accept as valid without re running JWT parsing and crypto checks
+        // Accept as valid without rerunning JWT parsing and crypto checks
         return true;
     }
 
