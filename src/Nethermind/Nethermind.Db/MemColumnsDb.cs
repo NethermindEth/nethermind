@@ -39,7 +39,7 @@ namespace Nethermind.Db
             return new InMemoryColumnWriteBatch<TKey>(this);
         }
 
-        public IColumnDbSnapshot<TKey> StartSnapshot()
+        public IColumnDbSnapshot<TKey> CreateSnapshot()
         {
             throw new Exception("Snapshot not supported");
         }

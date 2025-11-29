@@ -81,12 +81,12 @@ public class RocksdbPersistence : IPersistence
 
     public IPersistence.IPersistenceReader CreateReader()
     {
-        return new PersistenceReader(_db.StartSnapshot(), this);
+        return new PersistenceReader(_db.CreateSnapshot(), this);
     }
 
     public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to)
     {
-        var dbSnap = _db.StartSnapshot();
+        var dbSnap = _db.CreateSnapshot();
         var currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
         if (currentState != from)
         {

@@ -31,9 +31,9 @@ namespace Nethermind.Db
             return new InMemoryColumnWriteBatch<T>(this);
         }
 
-        public IColumnDbSnapshot<T> StartSnapshot()
+        public IColumnDbSnapshot<T> CreateSnapshot()
         {
-            return _baseColumnDb.StartSnapshot();
+            return _baseColumnDb.CreateSnapshot();
         }
 
         public void ClearTempChanges()

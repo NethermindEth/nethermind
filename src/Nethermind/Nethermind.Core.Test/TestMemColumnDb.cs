@@ -32,7 +32,7 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
         return new InMemoryColumnWriteBatch<TKey>(this);
     }
 
-    public IColumnDbSnapshot<TKey> StartSnapshot()
+    public IColumnDbSnapshot<TKey> CreateSnapshot()
     {
         throw new Exception("Snapshot not implemented");
     }

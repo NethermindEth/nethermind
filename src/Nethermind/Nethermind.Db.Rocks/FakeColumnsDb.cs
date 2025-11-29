@@ -34,9 +34,12 @@ public class FakeColumnsDb<T>(
         return new FakeWriteBatch(innerDb);
     }
 
-    public IColumnDbSnapshot<T> StartSnapshot()
+    public IColumnDbSnapshot<T> CreateSnapshot()
     {
-        return new FakeSnapshot(innerDb);
+        return new FakeSnapshot(innerDb.ToDictionary((kv) => kv.Key, (kv) =>
+        {
+            return ((ISnapshottableKeyValueStore)kv.Value).CreateSnapshot();
+        }));
     }
 
     private class FakeWriteBatch : IColumnsWriteBatch<T>
@@ -63,7 +66,7 @@ public class FakeColumnsDb<T>(
         }
     }
 
-    private class FakeSnapshot(Dictionary<T, IDb> innerDb) : IColumnDbSnapshot<T>
+    private class FakeSnapshot(Dictionary<T, IDbSnapshot> innerDb) : IColumnDbSnapshot<T>
     {
 
         public IReadOnlyKeyValueStore GetColumn(T key)
@@ -73,6 +76,10 @@ public class FakeColumnsDb<T>(
 
         public void Dispose()
         {
+            foreach (var keyValuePair in innerDb)
+            {
+                keyValuePair.Value.Dispose();
+            }
         }
     }
 }

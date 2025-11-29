@@ -46,7 +46,7 @@ namespace Nethermind.Db.Rpc
             return new InMemoryColumnWriteBatch<T>(this);
         }
 
-        public IColumnDbSnapshot<T> StartSnapshot()
+        public IColumnDbSnapshot<T> CreateSnapshot()
         {
             throw new Exception("Snapshot not implemented");
         }
