@@ -60,7 +60,7 @@ public partial class DebugRpcModuleTests
         );
 
         response.Should().BeOfType<JsonRpcErrorResponse>()
-            .Which.Error?.Message?.Should().Contain("insufficient funds");
+            .Which.Error?.Message?.Should().Contain("insufficient sender balance");
     }
 
     [Test]

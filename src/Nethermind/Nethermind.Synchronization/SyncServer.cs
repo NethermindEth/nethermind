@@ -558,6 +558,7 @@ namespace Nethermind.Synchronization
         private void StopNotifyingPeersAboutBlockRangeUpdates()
         {
             _blockTree.NewHeadBlock -= OnNewRange;
+            _historyPruner.NewOldestBlock -= OnNewRange;
         }
 
         public void Dispose()

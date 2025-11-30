@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Xdc;
+
 public interface IPenaltyHandler
 {
     Address[] HandlePenalties(long number, Hash256 currentHash, Address[] candidates);

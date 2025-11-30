@@ -8,6 +8,7 @@ using NUnit.Framework;
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 class ShutterKeyValidatorTests
 {
     [Test]

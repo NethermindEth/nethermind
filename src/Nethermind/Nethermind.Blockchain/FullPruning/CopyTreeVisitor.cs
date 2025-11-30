@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.FullPruning
             if (node.Keccak is not null)
             {
                 // simple copy of nodes RLP
-                _concurrentWriteBatcher.Set(storage, path, node.Keccak, node.FullRlp.ToArray(), _writeFlags);
+                _concurrentWriteBatcher.Set(storage, path, node.Keccak, node.FullRlp.Span, _writeFlags);
                 Interlocked.Increment(ref _persistedNodes);
 
                 // log message every 1 mln nodes

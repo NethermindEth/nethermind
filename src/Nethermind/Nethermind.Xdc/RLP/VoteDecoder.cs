@@ -7,6 +7,7 @@ using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
+
 public sealed class VoteDecoder : RlpValueDecoder<Vote>
 {
     private static readonly XdcBlockInfoDecoder _xdcBlockInfoDecoder = new();

@@ -4,6 +4,7 @@
 using Nethermind.Consensus;
 
 namespace Nethermind.Xdc;
+
 internal interface IXdcSealer : ISealer
 {
     bool CanSeal(ulong round, XdcBlockHeader parentHash);

@@ -19,6 +19,7 @@ using Nethermind.Xdc.Types;
 using System;
 
 namespace Nethermind.Xdc;
+
 internal class XdcBlockProducer : BlockProducerBase
 {
     protected readonly IEpochSwitchManager epochSwitchManager;

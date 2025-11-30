@@ -17,7 +17,7 @@ using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.Blockchain.Filters
 {
-    public class FilterStore : IFilterStore
+    public sealed class FilterStore : IDisposable
     {
         private readonly TimeSpan _timeout;
         private int _currentFilterId = -1;
@@ -85,6 +85,16 @@ namespace Nethermind.Blockchain.Filters
 
         public IEnumerable<T> GetFilters<T>() where T : FilterBase
         {
+            // Return Array.Empty<T>() to avoid allocating enumerator
+            // and which has a non-allocating fast-path for
+            // foreach via IEnumerable<T>
+            if (_filters.IsEmpty) return Array.Empty<T>();
+
+            return GetFiltersEnumerate<T>();
+        }
+
+        private IEnumerable<T> GetFiltersEnumerate<T>() where T : FilterBase
+        {
             // Reuse the enumerator
             var enumerator = Interlocked.Exchange(ref _enumerator, null) ?? _filters.GetEnumerator();
 
@@ -131,7 +141,7 @@ namespace Nethermind.Blockchain.Filters
 
         public void SaveFilter(FilterBase filter)
         {
-            if (_filters.ContainsKey(filter.Id))
+            if (!_filters.TryAdd(filter.Id, filter))
             {
                 throw new InvalidOperationException($"Filter with ID {filter.Id} already exists");
             }
@@ -140,8 +150,6 @@ namespace Nethermind.Blockchain.Filters
             {
                 _currentFilterId = Math.Max(filter.Id, _currentFilterId);
             }
-
-            _filters[filter.Id] = filter;
         }
 
         private int GetFilterId(bool generateId)

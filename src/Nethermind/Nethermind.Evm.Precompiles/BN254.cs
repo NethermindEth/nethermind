@@ -74,7 +74,7 @@ internal static unsafe class BN254
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static bool CheckPairing(byte[] output, ReadOnlySpan<byte> input)
     {
-        if ((uint)output.Length < 32)
+        if (output.Length < 32)
             return false;
 
         // Empty input means "true" by convention

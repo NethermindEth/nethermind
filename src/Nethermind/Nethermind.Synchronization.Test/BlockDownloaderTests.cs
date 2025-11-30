@@ -556,18 +556,18 @@ public partial class BlockDownloaderTests
         IForwardSyncController forwardSyncController = ctx.ForwardSyncController;
 
         ctx.ConfigureBestPeer(syncPeer);
-        (await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0, default)).Should().NotBeNull();
+        (await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0)).Should().NotBeNull();
         forwardSyncController.DownloadRequestBufferSize.Should().Be(32);
 
         ctx.ConfigureBestPeer(syncPeer2);
-        (await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0, default)).Should().NotBeNull();
+        (await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0)).Should().NotBeNull();
         forwardSyncController.DownloadRequestBufferSize.Should().Be(64);
 
         ctx.ConfigureBestPeer(syncPeer3);
-        (await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0, default)).Should().NotBeNull();
+        (await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0)).Should().NotBeNull();
         forwardSyncController.DownloadRequestBufferSize.Should().Be(96);
 
-        (await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0, default)).Should().BeNull();
+        (await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0)).Should().BeNull();
         forwardSyncController.DownloadRequestBufferSize.Should().Be(32);
     }
 

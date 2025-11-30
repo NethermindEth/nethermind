@@ -7,6 +7,7 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
+
 public interface ISnapshotManager
 {
     static bool IsTimeforSnapshot(long blockNumber, IXdcReleaseSpec spec)

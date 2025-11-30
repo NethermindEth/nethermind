@@ -11,9 +11,10 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
+
 internal class XdcSealer(ISigner signer) : ISealer
 {
-    private static XdcHeaderDecoder _xdcHeaderDecoder = new XdcHeaderDecoder();
+    private static readonly XdcHeaderDecoder _xdcHeaderDecoder = new XdcHeaderDecoder();
     public Address Address => signer.Address;
 
     public bool CanSeal(long blockNumber, Hash256 parentHash)

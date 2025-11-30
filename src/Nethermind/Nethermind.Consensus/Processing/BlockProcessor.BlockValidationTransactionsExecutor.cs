@@ -3,7 +3,6 @@
 
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;

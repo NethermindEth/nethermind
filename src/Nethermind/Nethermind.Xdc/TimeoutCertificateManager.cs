@@ -1,10 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -12,16 +8,20 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Errors;
-using Nethermind.Xdc.Types;
+using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Types;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
 public class TimeoutCertificateManager : ITimeoutCertificateManager
 {
-    private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
+    private readonly EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
     private static readonly TimeoutDecoder _timeoutDecoder = new();
     private readonly IXdcConsensusContext _consensusContext;
     private readonly ISnapshotManager _snapshotManager;
@@ -30,7 +30,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private readonly IBlockTree _blockTree;
     private readonly ISyncInfoManager _syncInfoManager;
     private readonly ISigner _signer;
-    private XdcPool<Timeout> _timeouts = new();
+    private readonly XdcPool<Timeout> _timeouts = new();
 
     public TimeoutCertificateManager(IXdcConsensusContext context, ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree, ISyncInfoManager syncInfoManager, ISigner signer)
     {

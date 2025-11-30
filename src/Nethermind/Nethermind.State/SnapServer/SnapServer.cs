@@ -226,7 +226,7 @@ public class SnapServer : ISnapServer
                 break;
             }
 
-            if (responseSize > 1 && (Math.Min(byteLimit, HardResponseByteLimit) - responseSize) < 10000)
+            if (responseSize > 1 && (byteLimit - responseSize) < 10000)
             {
                 break;
             }

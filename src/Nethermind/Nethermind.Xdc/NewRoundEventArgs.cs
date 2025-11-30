@@ -4,6 +4,7 @@
 using System;
 
 namespace Nethermind.Xdc;
+
 public class NewRoundEventArgs(ulong round, int previousRoundTimeouts) : EventArgs
 {
     public ulong NewRound { get; } = round;

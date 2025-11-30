@@ -52,7 +52,7 @@ public class L2Api(
             EIP1559Params = block.ExtraData.Length == 0 ? null : block.ExtraData[1..],
             GasLimit = block.GasLimit,
             ParentBeaconBlockRoot = block.ParentBeaconBlockRoot,
-            PrevRandao = block.MixHash,
+            PrevRandao = block.MixHash!,
             SuggestedFeeRecipient = block.Miner,
             Timestamp = block.Timestamp.ToUInt64(null),
             Withdrawals = block.Withdrawals?.ToArray()

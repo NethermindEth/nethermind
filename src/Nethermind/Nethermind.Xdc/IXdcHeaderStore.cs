@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace Nethermind.Xdc;
+
 internal interface IXdcHeaderStore : IHeaderStore
 {
     void Insert(XdcBlockHeader header) => ((IHeaderStore)this).Insert(header);

@@ -2,120 +2,29 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Google.Protobuf.WellKnownTypes;
-using MathNet.Numerics.Distributions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
 using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
-[Parallelizable()]
+
 internal class EpochSwitchManagerTests
 {
-    private static ImmutableArray<Address> SignerAddresses = [TestItem.AddressA, TestItem.AddressB];
-    private static ImmutableArray<Address> PenalizedAddresses = [TestItem.AddressC, TestItem.AddressD];
-    private static ImmutableArray<Address> StandbyAddresses = [TestItem.AddressE, TestItem.AddressF];
-    private static ImmutableArray<Signature> SignerSignatures = [TestItem.RandomSignatureA, TestItem.RandomSignatureB];
-    private XdcBlockHeader GetChainOfBlocks(IBlockTree tree, ISnapshotManager snapManager, IXdcReleaseSpec spec, int length, int startRound = 0)
-    {
-        int i = startRound;
-        XdcBlockHeader block = CreateV2RegenesisBlock(spec);
-        do
-        {
-            if (i != startRound)
-            {
-                block = GenNormalBlock(spec, block!);
-            }
-
-            if ((block.ExtraConsensusData?.BlockRound ?? 0ul) % (ulong)spec.EpochLength == 0)
-            {
-                snapManager.GetSnapshotByBlockNumber(block.Number, Arg.Any<IXdcReleaseSpec>()).Returns(new Snapshot(block.Number, block.Hash!, [.. StandbyAddresses, .. SignerAddresses]));
-            }
-
-            tree.FindHeader(block.Hash!).Returns(block);
-            tree.FindHeader(block.Number).Returns(block);
-
-        } while (i++ < length);
-
-        return block;
-    }
-
-    private XdcBlockHeader GenNormalBlock(IXdcReleaseSpec spec, XdcBlockHeader? parent)
-    {
-        ulong newRound = 0;
-        Hash256? parentHash = null;
-        ulong prevRound = 0;
-        long blockNumber = 0;
-        if (parent is not null)
-        {
-            newRound = 1 + (parent.ExtraConsensusData?.BlockRound ?? 0);
-            blockNumber = 1 + parent.Number;
-            prevRound = parent.ExtraConsensusData?.BlockRound ?? 0;
-            parentHash = parent.Hash;
-
-        }
-        Hash256 newBlockHash = Keccak.Compute(BitConverter.GetBytes(blockNumber).PadLeft(32));
-
-
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(parent?.Hash ?? Keccak.Zero, prevRound, parent?.Number ?? 0), SignerSignatures.ToArray(), (ulong)spec.Gap);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2((ulong)newRound, qc);
-
-        XdcBlockHeader header = Build.A.XdcBlockHeader()
-            .TestObject;
-        header.Hash = newBlockHash;
-        header.Number = blockNumber;
-        header.ExtraConsensusData = extraFieldsV2;
-        header.ParentHash = parentHash;
-
-        header.ValidatorsAddress = SignerAddresses;
-        header.PenaltiesAddress = PenalizedAddresses;
-
-        return header;
-    }
-
-    private XdcBlockHeader CreateV2RegenesisBlock(IXdcReleaseSpec spec)
-    {
-        Address[] signers = [TestItem.AddressA, TestItem.AddressB];
-
-        var header = (XdcBlockHeader)Build.A.XdcBlockHeader()
-            .WithNumber((long)spec.SwitchBlock)
-            .WithExtraData(FillExtraDataForTests(signers)) //2 master nodes
-            .WithParentHash(Keccak.EmptyTreeHash)
-            .TestObject;
-
-        header.PenaltiesAddress = [TestItem.AddressC];
-        return header;
-    }
-
-    private byte[] FillExtraDataForTests(Address[] nextEpochCandidates)
-    {
-        var length = Address.Size * nextEpochCandidates?.Length ?? 0;
-        var extraData = new byte[XdcConstants.ExtraVanity + length + XdcConstants.ExtraSeal];
-
-        for (int i = 0; i < nextEpochCandidates!.Length; i++)
-        {
-            Array.Copy(nextEpochCandidates[i].Bytes, 0, extraData, XdcConstants.ExtraVanity + i * Address.Size, Address.Size);
-        }
-
-        return extraData;
-    }
+    private static readonly ImmutableArray<Address> SignerAddresses = [TestItem.AddressA, TestItem.AddressB];
+    private static readonly ImmutableArray<Address> PenalizedAddresses = [TestItem.AddressC, TestItem.AddressD];
+    private static readonly ImmutableArray<Address> StandbyAddresses = [TestItem.AddressE, TestItem.AddressF];
+    private static readonly ImmutableArray<Signature> SignerSignatures = [TestItem.RandomSignatureA, TestItem.RandomSignatureB];
 
     private IEpochSwitchManager _epochSwitchManager;
     private IBlockTree _tree;
@@ -125,9 +34,9 @@ internal class EpochSwitchManagerTests
     [SetUp]
     public void Setup()
     {
-        _tree = NSubstitute.Substitute.For<IBlockTree>();
-        _config = NSubstitute.Substitute.For<ISpecProvider>();
-        _snapshotManager = NSubstitute.Substitute.For<ISnapshotManager>();
+        _tree = Substitute.For<IBlockTree>();
+        _config = Substitute.For<ISpecProvider>();
+        _snapshotManager = Substitute.For<ISnapshotManager>();
         _epochSwitchManager = new EpochSwitchManager(_config, _tree, _snapshotManager);
     }
 
@@ -688,4 +597,87 @@ internal class EpochSwitchManagerTests
         Assert.That(result?.BlockNumber, Is.EqualTo(expectedBlockNumber));
     }
 
+    private XdcBlockHeader GetChainOfBlocks(IBlockTree tree, ISnapshotManager snapManager, IXdcReleaseSpec spec, int length, int startRound = 0)
+    {
+        int i = startRound;
+        XdcBlockHeader block = CreateV2RegenesisBlock(spec);
+        do
+        {
+            if (i != startRound)
+            {
+                block = GenNormalBlock(spec, block!);
+            }
+
+            if ((block.ExtraConsensusData?.BlockRound ?? 0ul) % (ulong)spec.EpochLength == 0)
+            {
+                snapManager.GetSnapshotByBlockNumber(block.Number, Arg.Any<IXdcReleaseSpec>()).Returns(new Snapshot(block.Number, block.Hash!, [.. StandbyAddresses, .. SignerAddresses]));
+            }
+
+            tree.FindHeader(block.Hash!).Returns(block);
+            tree.FindHeader(block.Number).Returns(block);
+
+        } while (i++ < length);
+
+        return block;
+    }
+
+    private XdcBlockHeader GenNormalBlock(IXdcReleaseSpec spec, XdcBlockHeader? parent)
+    {
+        ulong newRound = 0;
+        Hash256? parentHash = null;
+        ulong prevRound = 0;
+        long blockNumber = 0;
+        if (parent is not null)
+        {
+            newRound = 1 + (parent.ExtraConsensusData?.BlockRound ?? 0);
+            blockNumber = 1 + parent.Number;
+            prevRound = parent.ExtraConsensusData?.BlockRound ?? 0;
+            parentHash = parent.Hash;
+
+        }
+        Hash256 newBlockHash = Keccak.Compute(BitConverter.GetBytes(blockNumber).PadLeft(32));
+
+
+        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(parent?.Hash ?? Keccak.Zero, prevRound, parent?.Number ?? 0), SignerSignatures.ToArray(), (ulong)spec.Gap);
+        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2((ulong)newRound, qc);
+
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .TestObject;
+        header.Hash = newBlockHash;
+        header.Number = blockNumber;
+        header.ExtraConsensusData = extraFieldsV2;
+        header.ParentHash = parentHash;
+
+        header.ValidatorsAddress = SignerAddresses;
+        header.PenaltiesAddress = PenalizedAddresses;
+
+        return header;
+    }
+
+    private XdcBlockHeader CreateV2RegenesisBlock(IXdcReleaseSpec spec)
+    {
+        Address[] signers = [TestItem.AddressA, TestItem.AddressB];
+
+        var header = (XdcBlockHeader)Build.A.XdcBlockHeader()
+            .WithNumber((long)spec.SwitchBlock)
+            .WithExtraData(FillExtraDataForTests(signers)) //2 master nodes
+            .WithParentHash(Keccak.EmptyTreeHash)
+            .TestObject;
+
+        header.PenaltiesAddress = [TestItem.AddressC];
+        return header;
+    }
+
+    private byte[] FillExtraDataForTests(Address[] nextEpochCandidates)
+    {
+        var length = Address.Size * nextEpochCandidates?.Length ?? 0;
+        var extraData = new byte[XdcConstants.ExtraVanity + length + XdcConstants.ExtraSeal];
+
+        for (int i = 0; i < nextEpochCandidates!.Length; i++)
+        {
+            Array.Copy(nextEpochCandidates[i].Bytes, 0, extraData, XdcConstants.ExtraVanity + i * Address.Size, Address.Size);
+        }
+
+        return extraData;
+    }
 }

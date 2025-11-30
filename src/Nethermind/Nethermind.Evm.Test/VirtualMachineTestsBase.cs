@@ -197,9 +197,10 @@ public abstract class VirtualMachineTestsBase
         int value = 1,
         long blockGasLimit = DefaultBlockGasLimit,
         byte[][]? blobVersionedHashes = null,
-        ulong excessBlobGas = 0)
+        ulong excessBlobGas = 0,
+        ulong gasPrice = 1)
     {
-        return PrepareTx((blockNumber, Timestamp), gasLimit, code, senderRecipientAndMiner, value, blockGasLimit, blobVersionedHashes, excessBlobGas);
+        return PrepareTx((blockNumber, Timestamp), gasLimit, code, senderRecipientAndMiner, value, blockGasLimit, blobVersionedHashes, excessBlobGas, gasPrice: gasPrice);
     }
 
     protected (Block block, Transaction transaction) PrepareTx(
@@ -211,7 +212,8 @@ public abstract class VirtualMachineTestsBase
         long blockGasLimit = DefaultBlockGasLimit,
         byte[][]? blobVersionedHashes = null,
         ulong excessBlobGas = 0,
-        Transaction transaction = null)
+        Transaction transaction = null,
+        ulong gasPrice = 1)
     {
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
 
@@ -243,7 +245,7 @@ public abstract class VirtualMachineTestsBase
 
         transaction ??= Build.A.Transaction
             .WithGasLimit(gasLimit)
-            .WithGasPrice(1)
+            .WithGasPrice(gasPrice)
             .WithValue(value)
             .WithBlobVersionedHashes(blobVersionedHashes)
             .WithNonce(TestState.GetNonce(senderRecipientAndMiner.Sender))
@@ -261,7 +263,7 @@ public abstract class VirtualMachineTestsBase
     /// deprecated. Please use activation instead of blockNumber.
     /// </summary>
     protected (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code,
-        byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null)
+        byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null, ulong gasPrice = 1)
     {
         return PrepareTx((blockNumber, Timestamp), gasLimit, code, input, value, senderRecipientAndMiner);
     }

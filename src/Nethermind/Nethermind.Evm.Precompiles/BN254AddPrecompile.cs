@@ -32,14 +32,14 @@ public class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
         Metrics.Bn254AddPrecompile++;
 
         ReadOnlySpan<byte> input = inputData.Span;
-        if (InputLength < (uint)input.Length)
+        if (InputLength < input.Length)
         {
             // Input is too long - trim to the expected length.
             input = input[..InputLength];
         }
 
         byte[] output = new byte[OutputLength];
-        bool result = (input.Length == InputLength) ?
+        bool result = input.Length == InputLength ?
             BN254.Add(output, input) :
             RunPaddedInput(output, input);
 

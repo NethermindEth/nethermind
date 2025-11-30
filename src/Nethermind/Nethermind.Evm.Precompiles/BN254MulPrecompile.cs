@@ -32,7 +32,7 @@ public class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
         Metrics.Bn254MulPrecompile++;
 
         ReadOnlySpan<byte> input = inputData.Span;
-        if (InputLength < (uint)input.Length)
+        if (InputLength < input.Length)
         {
             // Input is too long - trim to the expected length.
             input = input[..InputLength];

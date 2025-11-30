@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -34,6 +35,7 @@ public interface ICodeInfo
     /// By default, this returns <c>false</c>.
     /// </summary>
     bool IsPrecompile => false;
+    IPrecompile? Precompile => null;
 
     /// <summary>
     /// Gets the code section. 

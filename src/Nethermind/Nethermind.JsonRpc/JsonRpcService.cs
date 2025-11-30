@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.JsonRpc.Exceptions;
@@ -270,6 +271,15 @@ public class JsonRpcService : IJsonRpcService
 
             { InnerException: InsufficientBalanceException } =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.InnerException.Message, ex.ToString(), request.Id, returnAction),
+
+            { InnerException: InvalidTransactionException e } =>
+                GetErrorResponse(methodName, ErrorCodes.Default, e.Reason.ErrorDescription, null, request.Id, returnAction),
+
+            InvalidTransactionException e =>
+                GetErrorResponse(methodName, ErrorCodes.Default, e.Reason.ErrorDescription, null, request.Id, returnAction),
+
+            InvalidBlockException or { InnerException: InvalidBlockException } =>
+                GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, request.Id, returnAction),
 
             _ => HandleException(ex, methodName, request, returnAction)
         };

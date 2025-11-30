@@ -19,7 +19,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         {
             NullSigner signer = NullSigner.Instance;
             signer.Address.Should().Be(Address.Zero);
-            signer.CanSign.Should().BeTrue();
+            signer.CanSign.Should().BeFalse();
         }
 
         [Test, MaxTime(Timeout.MaxTestTime)]

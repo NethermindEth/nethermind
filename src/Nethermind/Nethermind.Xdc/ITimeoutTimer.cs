@@ -4,6 +4,7 @@
 using System;
 
 namespace Nethermind.Xdc;
+
 public interface ITimeoutTimer
 {
     void Reset(TimeSpan period);

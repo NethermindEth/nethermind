@@ -161,6 +161,7 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
         Lazy<ISyncPeerPool> syncPeerPool,
         Lazy<TreeSync> treeSync,
         Lazy<StateSyncFeed> stateSyncFeed,
+        Lazy<ISyncDownloader<StateSyncBatch>> downloader,
         Lazy<SyncDispatcher<StateSyncBatch>> syncDispatcher,
         Lazy<IBlockProcessingQueue> blockProcessingQueue,
         IBlockTree blockTree
@@ -171,6 +172,8 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
         public TreeSync TreeFeed => treeSync.Value;
         public StateSyncFeed Feed => stateSyncFeed.Value;
         public IBlockProcessingQueue BlockProcessingQueue => blockProcessingQueue.Value;
+
+        public ISyncDownloader<StateSyncBatch> Downloader => downloader.Value;
 
         private readonly AutoCancelTokenSource _autoCancelTokenSource = new();
         public CancellationToken CancellationToken => _autoCancelTokenSource.Token;
@@ -293,8 +296,10 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
 
             IStateReader alwaysAvailableRootTracker = Substitute.For<IStateReader>();
             alwaysAvailableRootTracker.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+            PruningConfig pruningConfig = new PruningConfig();
+            TestFinalizedStateProvider testFinalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
             TrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
-                Persist.EveryBlock, new PruningConfig(), LimboLogs.Instance);
+                Persist.EveryBlock, testFinalizedStateProvider, pruningConfig, LimboLogs.Instance);
             _stateDb = trieStore.TrieNodeRlpStore;
             _snapServer = new SnapServer(
                 trieStore.AsReadOnly(),

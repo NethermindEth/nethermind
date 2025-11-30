@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -70,6 +71,8 @@ namespace Nethermind.Synchronization.FastSync
         private Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>> _dependencies = new();
         private readonly LruKeyCache<StateSyncItem.NodeKey> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
         private readonly LruKeyCache<ValueHash256> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
+        private ConcurrentDictionary<StateSyncItem.NodeKey, byte[]> _previouslyPendingItems = new();
+        private ConcurrentDictionary<StateSyncItem.NodeKey, byte[]> _newPendingItems = new();
 
         private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
@@ -78,7 +81,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public event EventHandler<ITreeSync.SyncCompletedEventArgs>? SyncCompleted;
 
-        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, StateSyncPivot stateSyncPivot, ILogManager logManager)
+        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, StateSyncPivot stateSyncPivot, ISyncConfig syncConfig, ILogManager logManager)
         {
             _syncMode = SyncMode.StateNodes;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -90,7 +93,7 @@ namespace Nethermind.Synchronization.FastSync
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
             _data = new DetailedProgress(_blockTree.NetworkId, progress);
-            _pendingItems = new PendingSyncItems();
+            _pendingItems = new PendingSyncItems(syncConfig.SnapSync);
             _branchProgress = new BranchProgress(0, _logger);
         }
 
@@ -448,7 +451,13 @@ namespace Nethermind.Synchronization.FastSync
                     _branchProgress = new BranchProgress(blockNumber, _logger);
                     _blockNumber = blockNumber;
                     _rootNode = stateRoot;
-                    lock (_dependencies) _dependencies.Clear();
+                    lock (_dependencies)
+                    {
+                        // Swap the pending items
+                        _previouslyPendingItems.Clear();
+                        (_newPendingItems, _previouslyPendingItems) = (_previouslyPendingItems, _newPendingItems);
+                        _dependencies.Clear();
+                    }
 
                     if (_logger.IsDebug) _logger.Debug($"Clearing node stacks ({_pendingItems.Description})");
                     _pendingItems.Clear();
@@ -501,9 +510,9 @@ namespace Nethermind.Synchronization.FastSync
             return _data;
         }
 
-        private AddNodeResult AddNodeToPending(StateSyncItem syncItem, DependentItem? dependentItem, string reason, bool missing = false)
+        private AddNodeResult AddNodeToPending(StateSyncItem syncItem, DependentItem? dependentItem, string reason, bool retry = false)
         {
-            if (!missing)
+            if (!retry)
             {
                 if (syncItem.Level <= 2)
                 {
@@ -588,6 +597,15 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
 
+            if (_previouslyPendingItems.TryRemove(syncItem.Key, out var responseBytes))
+            {
+                if (_logger.IsTrace) _logger.Trace($"Using cache for key {syncItem.Key}");
+                int invalidNodes = 0;
+                HandleTrieNode(syncItem, responseBytes, ref invalidNodes);
+                Debug.Assert(invalidNodes == 0);
+                return AddNodeResult.AlreadyRequested;
+            }
+
             _pendingItems.PushToSelectedStream(syncItem, _branchProgress.LastProgress);
             if (_logger.IsTrace) _logger.Trace($"Added a node {syncItem.Hash} - {reason}");
             return AddNodeResult.Added;
@@ -635,6 +653,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private void SaveNode(StateSyncItem syncItem, byte[] data)
         {
+            _newPendingItems.TryRemove(syncItem.Key, out var _);
             if (syncItem.IsRoot)
             {
                 if (!VerifyStorageUpdated(syncItem, data))
@@ -790,6 +809,11 @@ namespace Nethermind.Synchronization.FastSync
                 _dependencies.Clear();
                 _alreadySavedNode.Clear();
                 _alreadySavedCode.Clear();
+                if (_rootSaved == 1)
+                {
+                    _previouslyPendingItems.Clear();
+                    _newPendingItems.Clear();
+                }
             }
             finally
             {
@@ -876,6 +900,10 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         SaveNode(currentStateSyncItem, currentResponseItem);
                     }
+                    else
+                    {
+                        _newPendingItems.TryAdd(currentStateSyncItem.Key, currentResponseItem);
+                    }
 
                     break;
                 case NodeType.Extension:
@@ -902,6 +930,10 @@ namespace Nethermind.Synchronization.FastSync
                         if (addResult == AddNodeResult.AlreadySaved)
                         {
                             SaveNode(currentStateSyncItem, currentResponseItem);
+                        }
+                        else
+                        {
+                            _newPendingItems.TryAdd(currentStateSyncItem.Key, currentResponseItem);
                         }
                     }
                     else
@@ -953,6 +985,10 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             Interlocked.Increment(ref _data.SavedAccounts);
                             SaveNode(currentStateSyncItem, currentResponseItem);
+                        }
+                        else
+                        {
+                            _newPendingItems.TryAdd(currentStateSyncItem.Key, currentResponseItem);
                         }
                     }
                     else

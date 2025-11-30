@@ -5,6 +5,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 
 namespace Nethermind.Xdc;
+
 public class MustBeEmptyUnclesValidator : IUnclesValidator
 {
     public bool Validate(BlockHeader header, BlockHeader[] uncles)

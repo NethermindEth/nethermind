@@ -525,7 +525,9 @@ namespace Nethermind.Synchronization.SnapSync
 
                         if (storagesToRetrieve > 0 && !_shouldStartLoggingLargeStorage)
                         {
-                            progress = (float)((_estimatedStorageRemaining - storagesToRetrieve) / (float)_estimatedStorageRemaining);
+                            progress = _estimatedStorageRemaining != 0
+                                ? (float)((_estimatedStorageRemaining - storagesToRetrieve) / (float)_estimatedStorageRemaining)
+                                : 1;
 
                             stateRangesReport = $"Snap         Remaining storage: ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
                         }
@@ -533,14 +535,16 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             double totalAllLargeStorageProgress = 0;
                             // totalLargeStorage changes over time, but thats fine.
-                            double totalLargeStorage = queuedStorage;
+                            long totalLargeStorage = queuedStorage;
                             foreach (var keyValuePair in _largeStorageProgress)
                             {
                                 totalAllLargeStorageProgress += keyValuePair.Value.CalculateProgress();
                                 totalLargeStorage++;
                             }
 
-                            progress = (float)(totalAllLargeStorageProgress / totalLargeStorage);
+                            progress = totalLargeStorage != 0
+                                ? (float)totalAllLargeStorageProgress / totalLargeStorage
+                                : 1;
 
                             stateRangesReport = $"Snap         Large storage left: {totalLargeStorage} ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
                         }

@@ -27,7 +27,7 @@ public class RevertTests : GeneralStateTestBase
             "RevertPrecompiledTouch",
         };
 
-        return tests.Where(t => !ignoredTests.Any(pattern => t.Name.Contains(pattern))); ;
+        return tests.Where(t => !ignoredTests.Any(pattern => t.Name.Contains(pattern)));
     }
 }
 

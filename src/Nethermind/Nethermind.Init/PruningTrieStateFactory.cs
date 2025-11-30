@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -106,10 +106,10 @@ public class PruningTrieStateFactory(
             preBlockCaches
         );
 
-        var verifyTrieStarter = new VerifyTrieStarter(stateManager, processExit!, logManager);
+        VerifyTrieStarter verifyTrieStarter = new(stateManager, processExit!, logManager);
         ManualPruningTrigger pruningTrigger = new();
         compositePruningTrigger.Add(pruningTrigger);
-        PruningTrieStateAdminRpcModule adminRpcModule = new PruningTrieStateAdminRpcModule(
+        PruningTrieStateAdminRpcModule adminRpcModule = new(
             pruningTrigger,
             blockTree,
             stateManager.GlobalStateReader,
@@ -181,6 +181,8 @@ public class MainPruningTrieStoreFactory
         IPruningConfig pruningConfig,
         IDbProvider dbProvider,
         INodeStorageFactory nodeStorageFactory,
+        IFinalizedStateProvider finalizedStateProvider,
+        IBlockTree blockTree,
         IDbConfig dbConfig,
         IHardwareInfo hardwareInfo,
         ILogManager logManager
@@ -232,10 +234,18 @@ public class MainPruningTrieStoreFactory
 
         INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb);
 
+        if (pruningConfig.SimulateLongFinalizationDepth != 0)
+        {
+            // Merge plugin also decorate this, but we want it to be the last decorator for this purpose, so its done
+            // manually here.
+            finalizedStateProvider = new DelayedFinalizedStateProvider(finalizedStateProvider, blockTree, pruningConfig.SimulateLongFinalizationDepth);
+        }
+
         PruningTrieStore = new TrieStore(
             mainNodeStorage,
             pruningStrategy,
             persistenceStrategy,
+            finalizedStateProvider,
             pruningConfig,
             logManager);
     }
@@ -273,4 +283,38 @@ public class MainPruningTrieStoreFactory
     }
 
     public IPruningTrieStore PruningTrieStore { get; }
+
+    // Used to simulate long reorg by delaying `FinalizedBlockNumber`
+    private class DelayedFinalizedStateProvider(
+        IFinalizedStateProvider finalizedStateProvider,
+        IBlockTree blockTree,
+        int pruningConfigSimulateLongFinalizationDepth
+    ) : IFinalizedStateProvider
+    {
+        private long? _lastFinalizedBlockNumber = null;
+
+        public long FinalizedBlockNumber
+        {
+            get
+            {
+                long baseFinalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
+
+                // Need to limit by head, otherwise it does not work for forward sync.
+                long headNumber = blockTree.Head?.Number ?? 0;
+                baseFinalizedBlockNumber = Math.Min(baseFinalizedBlockNumber, headNumber + pruningConfigSimulateLongFinalizationDepth / 2);
+
+                if (_lastFinalizedBlockNumber is null || baseFinalizedBlockNumber - _lastFinalizedBlockNumber > pruningConfigSimulateLongFinalizationDepth)
+                {
+                    _lastFinalizedBlockNumber = baseFinalizedBlockNumber;
+                }
+
+                return _lastFinalizedBlockNumber.Value;
+            }
+        }
+
+        public Hash256? GetFinalizedStateRootAt(long blockNumber)
+        {
+            return finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
+        }
+    }
 }

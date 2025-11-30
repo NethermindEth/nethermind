@@ -15,7 +15,7 @@ public static class DictionaryExtensions
         res++;
     }
 
-    public static TValue GetOrAdd<TKey, TValue>(this Dictionary<TKey, TValue> dictionary,
+    public static ref TValue GetOrAdd<TKey, TValue>(this Dictionary<TKey, TValue> dictionary,
         TKey key, Func<TKey, TValue> factory,
         out bool exists)
         where TKey : notnull
@@ -25,11 +25,11 @@ public static class DictionaryExtensions
         if (!exists)
             existing = factory(key);
 
-        return existing!;
+        return ref existing!;
     }
 
-    public static TValue GetOrAdd<TKey, TValue>(this Dictionary<TKey, TValue> dictionary,
+    public static ref TValue GetOrAdd<TKey, TValue>(this Dictionary<TKey, TValue> dictionary,
         TKey key, Func<TKey, TValue> factory)
         where TKey : notnull =>
-        GetOrAdd(dictionary, key, factory, out _);
+        ref GetOrAdd(dictionary, key, factory, out _);
 }

@@ -72,7 +72,7 @@ public class OptimismTransactionProcessor(
         senderReservedGasPayment = UInt256.Zero;
         blobBaseFee = UInt256.Zero;
 
-        bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
+        bool validate = ShouldValidateGas(tx, opts);
 
         UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
 
@@ -81,10 +81,10 @@ public class OptimismTransactionProcessor(
             return TransactionResult.InsufficientSenderBalance;
         }
 
-        if (validate && !tx.IsDeposit())
+        if (!tx.IsDeposit())
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-            if (!tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
+            if (validate && !tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
                 return TransactionResult.MinerPremiumNegative;
@@ -122,7 +122,7 @@ public class OptimismTransactionProcessor(
             senderReservedGasPayment += l1Cost; // no overflow here, otherwise previous check would fail
         }
 
-        if (validate)
+        if (!senderReservedGasPayment.IsZero)
             WorldState.SubtractFromBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
 
         return TransactionResult.Ok;

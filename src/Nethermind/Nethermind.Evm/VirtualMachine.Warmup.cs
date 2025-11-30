@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -189,11 +191,13 @@ public unsafe partial class VirtualMachine
         public Hash256 GetBlockhash(BlockHeader currentBlock, long number)
             => GetBlockhash(currentBlock, number, specProvider.GetSpec(currentBlock));
 
-        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec)
+        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
         {
             return Keccak.Compute(spec!.IsBlockHashInStateAvailable
                 ? (Eip2935Constants.RingBufferSize + number).ToString()
-                : (number).ToString());
+                : number.ToString());
         }
+
+        public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => Task.CompletedTask;
     }
 }

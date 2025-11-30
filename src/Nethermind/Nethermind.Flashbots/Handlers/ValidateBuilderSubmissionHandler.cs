@@ -71,7 +71,7 @@ public class ValidateSubmissionHandler
             return FlashbotsResult.Invalid("Parent beacon block root must be set in the request");
         }
 
-        payload.ParentBeaconBlockRoot = new Hash256(request.ParentBeaconBlockRoot);
+        payload.ParentBeaconBlockRoot = request.ParentBeaconBlockRoot;
 
         BlobsBundleV1 blobsBundle = request.BlobsBundle;
 
@@ -344,9 +344,9 @@ public class ValidateSubmissionHandler
         return false;
     }
 
-    private bool ValidateProcessedBlock(Block processedBlock, Address feeRecipient, UInt256 expectedProfit, IReadOnlyList<TxReceipt> receipts, out string? error)
+    private bool ValidateProcessedBlock(Block processedBlock, Address feeRecipient, UInt256 expectedProfit, ReadOnlySpan<TxReceipt> receipts, out string? error)
     {
-        if (receipts.Count == 0)
+        if (receipts.Length == 0)
         {
             error = "No proposer payment receipt";
             return false;

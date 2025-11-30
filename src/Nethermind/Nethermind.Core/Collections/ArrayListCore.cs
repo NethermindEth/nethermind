@@ -7,10 +7,10 @@ using System.Threading;
 
 namespace Nethermind.Core.Collections;
 
-internal static class ArrayPoolListCore
+internal static class ArrayPoolListCore<T>
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void GuardResize<T>(
+    public static void GuardResize(
         ArrayPool<T> pool,
         ref T[] array,
         ref int capacity,
@@ -43,7 +43,7 @@ internal static class ArrayPoolListCore
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ClearToCount<T>(T[] array, int count)
+    public static void ClearToCount(T[] array, int count)
     {
         if (count > 0 && RuntimeHelpers.IsReferenceOrContainsReferences<T>())
         {
@@ -52,7 +52,7 @@ internal static class ArrayPoolListCore
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Add<T>(
+    public static void Add(
         ArrayPool<T> pool,
         ref T[] array,
         ref int capacity,
@@ -64,7 +64,7 @@ internal static class ArrayPoolListCore
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void AddRange<T>(
+    public static void AddRange(
         ArrayPool<T> pool,
         ref T[] array,
         ref int capacity,
@@ -77,14 +77,14 @@ internal static class ArrayPoolListCore
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Clear<T>(T[] array, ref int count)
+    public static void Clear(T[] array, ref int count)
     {
         ClearToCount(array, count);
         count = 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ReduceCount<T>(
+    public static void ReduceCount(
         ArrayPool<T> pool,
         ref T[] array,
         ref int capacity,
@@ -123,30 +123,30 @@ internal static class ArrayPoolListCore
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Sort<T>(T[] array, int count, Comparison<T> comparison)
+    public static void Sort(T[] array, int count, Comparison<T> comparison)
     {
         ArgumentNullException.ThrowIfNull(comparison);
         if (count > 1) array.AsSpan(0, count).Sort(comparison);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Reverse<T>(T[] array, int count)
+    public static void Reverse(T[] array, int count)
     {
         array.AsSpan(0, count).Reverse();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool Contains<T>(T[] array, T item, int count) => IndexOf(array, count, item) >= 0;
+    public static bool Contains(T[] array, T item, int count) => IndexOf(array, count, item) >= 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int IndexOf<T>(T[] array, int count, T item)
+    public static int IndexOf(T[] array, int count, T item)
     {
         int indexOf = Array.IndexOf(array, item);
         return indexOf < count ? indexOf : -1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void CopyTo<T>(T[] array, int count, T[] destination, int index)
+    public static void CopyTo(T[] array, int count, T[] destination, int index)
     {
         array.AsMemory(0, count).CopyTo(destination.AsMemory(index));
     }
@@ -170,8 +170,21 @@ internal static class ArrayPoolListCore
         }
     }
 
+    public static T? RemoveLast(T[] array, ref int count)
+    {
+        if (count > 0)
+        {
+            int index = count - 1;
+            T item = array[index];
+            RemoveAt(array, ref count, index, true);
+            return item;
+        }
+
+        return default;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool RemoveAt<T>(T[] array, ref int count, int index, bool shouldThrow)
+    public static bool RemoveAt(T[] array, ref int count, int index, bool shouldThrow)
     {
         bool isValid = GuardIndex(index, count, shouldThrow);
         if (isValid)
@@ -193,13 +206,10 @@ internal static class ArrayPoolListCore
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool Remove<T>(T[] array, ref int count, T item)
-    {
-        return RemoveAt(array, ref count, IndexOf(array, count, item), false);
-    }
+    public static bool Remove(T[] array, ref int count, T item) => RemoveAt(array, ref count, IndexOf(array, count, item), false);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Insert<T>(
+    public static void Insert(
         ArrayPool<T> pool,
         ref T[] array,
         ref int capacity,
@@ -215,7 +225,7 @@ internal static class ArrayPoolListCore
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Truncate<T>(int newLength, T[] array, ref int count)
+    public static void Truncate(int newLength, T[] array, ref int count)
     {
         GuardIndex(newLength, count, shouldThrow: true, allowEqualToCount: true);
         count = newLength;
@@ -223,28 +233,28 @@ internal static class ArrayPoolListCore
 
     // Expose Get/Set and GetRef consistent with the original
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ref T GetRef<T>(T[] array, int index, int count)
+    public static ref T GetRef(T[] array, int index, int count)
     {
         GuardIndex(index, count);
         return ref array[index];
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static T Get<T>(T[] array, int index, int count)
+    public static T Get(T[] array, int index, int count)
     {
         GuardIndex(index, count);
         return array[index];
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Set<T>(T[] array, int index, int count, T value)
+    public static void Set(T[] array, int index, int count, T value)
     {
         GuardIndex(index, count);
         array[index] = value;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Dispose<T>(
+    public static void Dispose(
         ArrayPool<T> pool,
         ref T[] array,
         ref int count,
@@ -264,7 +274,7 @@ internal static class ArrayPoolListCore
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Dispose<T>(
+    public static void Dispose(
         ArrayPool<T> pool,
         ref T[] array,
         ref int count,

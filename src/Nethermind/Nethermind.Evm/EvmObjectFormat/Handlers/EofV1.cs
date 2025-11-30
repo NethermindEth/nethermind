@@ -1473,7 +1473,7 @@ internal class Eof1 : IEofVersionHandler
         if (eofContainer.Header.ContainerSections is null || initCodeSectionId >= eofContainer.Header.ContainerSections.Value.Count)
         {
             if (Logger.IsTrace)
-                Logger.Trace($"EOF: Eof{VERSION}, {Instruction.EOFCREATE}'s immediate must fall within the Containers' range available, i.e.: {eofContainer.Header.CodeSections.Count}");
+                Logger.Trace($"EOF: Eof{VERSION}, {Instruction.EOFCREATE}'s immediate must fall within the Containers' range available, i.e.: {eofContainer.Header.ContainerSections?.Count}");
             return false;
         }
 

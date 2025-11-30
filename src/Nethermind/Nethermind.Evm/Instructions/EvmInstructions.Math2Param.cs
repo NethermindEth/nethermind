@@ -9,6 +9,7 @@ using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;
+
 using Int256;
 
 internal static partial class EvmInstructions

@@ -4,4 +4,5 @@
 using Nethermind.Core;
 
 namespace Nethermind.Xdc.Types;
+
 public delegate byte[] SignFn(Address address, byte[] data);

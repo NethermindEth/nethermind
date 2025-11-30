@@ -70,9 +70,7 @@ public class DbModule(
             .AddDatabase(DbNames.Blocks)
             .AddDatabase(DbNames.Headers)
             .AddDatabase(DbNames.BlockInfos)
-            .AddDatabase(DbNames.BadBlocks)
             .AddDatabase(DbNames.Bloom)
-            .AddDatabase(DbNames.Metadata)
             .AddDatabase(DbNames.BlobTransactions)
 
             .AddColumnDatabase<ReceiptsColumns>(DbNames.Receipts)

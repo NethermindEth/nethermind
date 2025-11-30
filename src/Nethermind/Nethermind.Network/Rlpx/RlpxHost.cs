@@ -105,7 +105,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (_isInitialized)
             {
-                throw new InvalidOperationException($"{nameof(PeerManager)} already initialized.");
+                throw new InvalidOperationException($"{nameof(RlpxHost)} already initialized.");
             }
 
             _isInitialized = true;

@@ -101,7 +101,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return ValidationResult.Fail;
         }
 
-        executionPayload.ParentBeaconBlockRoot = new Hash256(parentBeaconBlockRoot);
+        executionPayload.ParentBeaconBlockRoot = parentBeaconBlockRoot;
 
         error = null;
         return ValidationResult.Success;

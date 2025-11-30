@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IBlockTree _blockTree = null!;
         private ITxPool _txPool = null!;
         private IReceiptStorage _receiptStorage = null!;
-        private IFilterStore _filterStore = null!;
+        private FilterStore _filterStore = null!;
         private ISubscriptionManager _subscriptionManager = null!;
         private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
         private IJsonSerializer _jsonSerializer = null!;
