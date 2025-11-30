@@ -77,4 +77,16 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
         IsSharable = true,
         IsImplemented = true)]
     ResultWrapper<L1Origin> taikoAuth_updateL1Origin(L1Origin l1Origin);
+
+    [JsonRpcMethod(
+        Description = "Sets the mapping from batch ID to the last block ID in this batch.",
+        IsSharable = true,
+        IsImplemented = true)]
+    ResultWrapper<UInt256> taikoAuth_setBatchToLastBlock(UInt256 batchId, UInt256 blockId);
+
+    [JsonRpcMethod(
+        Description = "Sets the L1 origin signature for the given block ID.",
+        IsSharable = true,
+        IsImplemented = true)]
+    ResultWrapper<L1Origin> taikoAuth_setL1OriginSignature(UInt256 blockId, int[] signature);
 }
