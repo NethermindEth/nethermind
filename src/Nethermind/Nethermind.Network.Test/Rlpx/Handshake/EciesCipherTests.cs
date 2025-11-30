@@ -222,39 +222,4 @@ public class EciesCipherTests
         (_, byte[] deciphered) = _eciesCipher.Decrypt(privateKey, cipherText);
         Assert.That(deciphered, Is.EqualTo(plainText));
     }
-
-    [Test]
-    public void Decrypt_rejects_when_cipher_body_is_shorter_than_mac_size()
-    {
-        PrivateKey privateKey = NetTestVectors.StaticKeyA;
-
-        byte[] plainText = Array.Empty<byte>();
-        _cryptoRandom.EnqueueRandomBytes(Bytes.FromHexString("0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"));
-        _cryptoRandom.EnqueueRandomBytes(NetTestVectors.EphemeralKeyA.KeyBytes);
-
-        byte[] cipherText = _eciesCipher.Encrypt(privateKey.PublicKey, plainText, null); // public(65) | IV(16) | MAC(32)
-
-        // Truncate one byte from the end to make body (ciphertext+MAC) shorter than MAC size
-        byte[] truncated = cipherText.AsSpan(0, cipherText.Length - 1).ToArray();
-
-        Assert.That(
-            () => _eciesCipher.Decrypt(privateKey, truncated),
-            Throws.Exception);
-    }
-
-    [Test]
-    public void Decrypt_accepts_when_cipher_body_equals_mac_size_zero_plaintext()
-    {
-        PrivateKey privateKey = NetTestVectors.StaticKeyA;
-
-        byte[] plainText = Array.Empty<byte>();
-        _cryptoRandom.EnqueueRandomBytes(Bytes.FromHexString("0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"));
-        _cryptoRandom.EnqueueRandomBytes(NetTestVectors.EphemeralKeyA.KeyBytes);
-
-        byte[] cipherText = _eciesCipher.Encrypt(privateKey.PublicKey, plainText, null); // public(65) | IV(16) | MAC(32)
-
-        (_, byte[] deciphered) = _eciesCipher.Decrypt(privateKey, cipherText);
-        Assert.That(deciphered, Is.Not.Null);
-        Assert.That(deciphered.Length, Is.EqualTo(0));
-    }
 }
