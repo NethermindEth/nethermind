@@ -7,9 +7,9 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.EvmObjectFormat;
+using Nethermind.Evm.Gas;
 using Nethermind.Evm.State;
-
-using static Nethermind.Evm.VirtualMachine;
+using VM = Nethermind.Evm.VirtualMachine<Nethermind.Evm.Gas.SimpleGasPolicy>;
 
 namespace Nethermind.Evm;
 
@@ -21,8 +21,15 @@ internal static partial class EvmInstructions
     /// Defines an environment introspection operation that returns a byte span.
     /// Implementations should provide a static gas cost and a static Operation method.
     /// </summary>
-    public interface IOpBlkAddress
+    /// <typeparam name="TGasPolicy">The gas policy type parameter.</typeparam>
+    public interface IOpBlkAddress<TGasPolicy>
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        /// <summary>
+        /// The opcode for this operation.
+        /// </summary>
+        static abstract Instruction OpCode { get; }
+
         /// <summary>
         /// The gas cost for the operation.
         /// </summary>
@@ -30,15 +37,17 @@ internal static partial class EvmInstructions
         /// <summary>
         /// Executes the operation and returns the result as address.
         /// </summary>
-        /// <param name="vmState">The current virtual machine state.</param>
-        abstract static Address Operation(VirtualMachine vm);
+        /// <param name="vm">The current virtual machine instance.</param>
+        static abstract Address Operation(VirtualMachine<TGasPolicy> vm);
     }
 
     /// <summary>
     /// Defines an environment introspection operation that returns a big endian word.
     /// Implementations should provide a static gas cost and a static Operation method.
     /// </summary>
-    public interface IOpEnv32Bytes
+    /// <typeparam name="TGasPolicy">The gas policy type parameter.</typeparam>
+    public interface IOpEnv32Bytes<TGasPolicy>
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         /// <summary>
         /// The gas cost for the operation.
@@ -47,8 +56,8 @@ internal static partial class EvmInstructions
         /// <summary>
         /// Executes the operation and returns the result as ref to big endian word.
         /// </summary>
-        /// <param name="vmState">The current virtual machine state.</param>
-        abstract static ref readonly ValueHash256 Operation(VirtualMachine vm);
+        /// <param name="vm">The current virtual machine instance.</param>
+        static abstract ref readonly ValueHash256 Operation(VirtualMachine<TGasPolicy> vm);
     }
 
     /// <summary>
@@ -57,6 +66,10 @@ internal static partial class EvmInstructions
     /// </summary>
     public interface IOpEnvAddress
     {
+        /// <summary>
+        /// The opcode for this operation.
+        /// </summary>
+        static abstract Instruction OpCode { get; }
         /// <summary>
         /// The gas cost for the operation.
         /// </summary>
@@ -73,6 +86,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public interface IOpEnvUInt256
     {
+        static abstract Instruction OpCode { get; }
         virtual static long GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt256.
@@ -85,15 +99,18 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Defines an environment introspection operation that returns a 256-bit unsigned integer.
     /// </summary>
-    public interface IOpBlkUInt256
+    /// <typeparam name="TGasPolicy">The gas policy type parameter.</typeparam>
+    public interface IOpBlkUInt256<TGasPolicy>
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        static abstract Instruction OpCode { get; }
         virtual static long GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt256.
         /// </summary>
-        /// <param name="vmState">The current virtual machine state.</param>
+        /// <param name="vm">The current virtual machine instance.</param>
         /// <param name="result">The resulting 256-bit unsigned integer.</param>
-        abstract static ref readonly UInt256 Operation(VirtualMachine vm);
+        static abstract ref readonly UInt256 Operation(VirtualMachine<TGasPolicy> vm);
     }
 
     /// <summary>
@@ -101,6 +118,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public interface IOpEnvUInt32
     {
+        static abstract Instruction OpCode { get; }
         virtual static long GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt32.
@@ -114,6 +132,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public interface IOpEnvUInt64
     {
+        static abstract Instruction OpCode { get; }
         virtual static long GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt64.
@@ -125,33 +144,39 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Defines an environment introspection operation that returns a 64-bit unsigned integer.
     /// </summary>
-    public interface IOpBlkUInt64
+    /// <typeparam name="TGasPolicy">The gas policy type parameter.</typeparam>
+    public interface IOpBlkUInt64<TGasPolicy>
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        static abstract Instruction OpCode { get; }
         virtual static long GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt64.
         /// </summary>
-        /// <param name="vmState">The current virtual machine state.</param>
-        abstract static ulong Operation(VirtualMachine vm);
+        /// <param name="vm">The current virtual machine instance.</param>
+        static abstract ulong Operation(VirtualMachine<TGasPolicy> vm);
     }
 
     /// <summary>
     /// Executes an environment introspection opcode that returns an Address.
     /// Generic parameter TOpEnv defines the concrete operation.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvAddress<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEnvAddress<TGasPolicy, TOpEnv, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpEnvAddress
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost as defined by the operation implementation.
-        gasAvailable -= TOpEnv.GasCost;
+        TGasPolicy.ConsumeGas(ref gasState, TOpEnv.GasCost, TOpEnv.OpCode);
 
         // Execute the operation and retrieve the result.
         Address result = TOpEnv.Operation(vm.EvmState);
@@ -166,19 +191,22 @@ internal static partial class EvmInstructions
     /// Executes an block introspection opcode that returns an Address.
     /// Generic parameter TOpEnv defines the concrete operation.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBlkAddress<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpEnv : struct, IOpBlkAddress
+    public static EvmExceptionType InstructionBlkAddress<TGasPolicy, TOpEnv, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpEnv : struct, IOpBlkAddress<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost as defined by the operation implementation.
-        gasAvailable -= TOpEnv.GasCost;
+        TGasPolicy.ConsumeGas(ref gasState, TOpEnv.GasCost, TOpEnv.OpCode);
 
         // Execute the operation and retrieve the result.
         Address result = TOpEnv.Operation(vm);
@@ -192,18 +220,21 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Executes an environment introspection opcode that returns a UInt256 value.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvUInt256<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEnvUInt256<TGasPolicy, TOpEnv, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpEnvUInt256
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpEnv.GasCost;
+        TGasPolicy.ConsumeGas(ref gasState, TOpEnv.GasCost, TOpEnv.OpCode);
 
         ref readonly UInt256 result = ref TOpEnv.Operation(vm.EvmState);
 
@@ -215,18 +246,21 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Executes an environment introspection opcode that returns a UInt256 value.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBlkUInt256<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpEnv : struct, IOpBlkUInt256
+    public static EvmExceptionType InstructionBlkUInt256<TGasPolicy, TOpEnv, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpEnv : struct, IOpBlkUInt256<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpEnv.GasCost;
+        TGasPolicy.ConsumeGas(ref gasState, TOpEnv.GasCost, TOpEnv.OpCode);
 
         ref readonly UInt256 result = ref TOpEnv.Operation(vm);
 
@@ -238,18 +272,21 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Executes an environment introspection opcode that returns a UInt32 value.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvUInt32<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEnvUInt32<TGasPolicy, TOpEnv, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpEnvUInt32
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpEnv.GasCost;
+        TGasPolicy.ConsumeGas(ref gasState, TOpEnv.GasCost, TOpEnv.OpCode);
 
         uint result = TOpEnv.Operation(vm.EvmState);
 
@@ -261,18 +298,21 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Executes an environment introspection opcode that returns a UInt64 value.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvUInt64<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEnvUInt64<TGasPolicy, TOpEnv, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpEnvUInt64
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpEnv.GasCost;
+        TGasPolicy.ConsumeGas(ref gasState, TOpEnv.GasCost, TOpEnv.OpCode);
 
         ulong result = TOpEnv.Operation(vm.EvmState);
 
@@ -284,18 +324,21 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Executes an environment introspection opcode that returns a UInt64 value.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBlkUInt64<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpEnv : struct, IOpBlkUInt64
+    public static EvmExceptionType InstructionBlkUInt64<TGasPolicy, TOpEnv, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpEnv : struct, IOpBlkUInt64<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpEnv.GasCost;
+        TGasPolicy.ConsumeGas(ref gasState, TOpEnv.GasCost, TOpEnv.OpCode);
 
         ulong result = TOpEnv.Operation(vm);
 
@@ -307,18 +350,21 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Executes an environment introspection opcode that returns a UInt64 value.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnv32Bytes<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpEnv : struct, IOpEnv32Bytes
+    public static EvmExceptionType InstructionEnv32Bytes<TGasPolicy, TOpEnv, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpEnv : struct, IOpEnv32Bytes<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpEnv.GasCost;
+        TGasPolicy.ConsumeGas(ref gasState, TOpEnv.GasCost, Instruction.ORIGIN);
 
         ref readonly ValueHash256 result = ref TOpEnv.Operation(vm);
 
@@ -332,6 +378,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCallDataSize : IOpEnvUInt32
     {
+        public static Instruction OpCode => Instruction.CALLDATASIZE;
         public static uint Operation(EvmState vmState)
             => (uint)vmState.Env.InputData.Length;
     }
@@ -341,6 +388,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCodeSize : IOpEnvUInt32
     {
+        public static Instruction OpCode => Instruction.CODESIZE;
         public static uint Operation(EvmState vmState)
             => (uint)vmState.Env.CodeInfo.CodeSpan.Length;
     }
@@ -348,27 +396,36 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Returns the timestamp of the current block.
     /// </summary>
-    public struct OpTimestamp : IOpBlkUInt64
+    public struct OpTimestamp<TGasPolicy> : IOpBlkUInt64<TGasPolicy>
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        public static ulong Operation(VirtualMachine vm)
+        public static Instruction OpCode => Instruction.TIMESTAMP;
+
+        public static ulong Operation(VirtualMachine<TGasPolicy> vm)
             => vm.BlockExecutionContext.Header.Timestamp;
     }
 
     /// <summary>
     /// Returns the block number of the current block.
     /// </summary>
-    public struct OpNumber : IOpBlkUInt64
+    public struct OpNumber<TGasPolicy> : IOpBlkUInt64<TGasPolicy>
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        public static ulong Operation(VirtualMachine vm)
+        public static Instruction OpCode => Instruction.NUMBER;
+
+        public static ulong Operation(VirtualMachine<TGasPolicy> vm)
             => vm.BlockExecutionContext.Number;
     }
 
     /// <summary>
     /// Returns the gas limit of the current block.
     /// </summary>
-    public struct OpGasLimit : IOpBlkUInt64
+    public struct OpGasLimit<TGasPolicy> : IOpBlkUInt64<TGasPolicy>
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        public static ulong Operation(VirtualMachine vm)
+        public static Instruction OpCode => Instruction.GASLIMIT;
+
+        public static ulong Operation(VirtualMachine<TGasPolicy> vm)
             => vm.BlockExecutionContext.GasLimit;
     }
 
@@ -377,6 +434,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpMSize : IOpEnvUInt64
     {
+        public static Instruction OpCode => Instruction.MSIZE;
         public static ulong Operation(EvmState vmState)
             => vmState.Memory.Size;
     }
@@ -384,9 +442,12 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Returns the base fee per gas for the current block.
     /// </summary>
-    public struct OpBaseFee : IOpBlkUInt256
+    public struct OpBaseFee<TGasPolicy> : IOpBlkUInt256<TGasPolicy>
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        public static ref readonly UInt256 Operation(VirtualMachine vm)
+        public static Instruction OpCode => Instruction.BASEFEE;
+
+        public static ref readonly UInt256 Operation(VirtualMachine<TGasPolicy> vm)
             => ref vm.BlockExecutionContext.Header.BaseFeePerGas;
     }
 
@@ -394,14 +455,17 @@ internal static partial class EvmInstructions
     /// Implements the BLOBBASEFEE opcode.
     /// Returns the blob base fee from the block header.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/>, or <see cref="EvmExceptionType.BadInstruction"/> if blob base fee not set.
     /// </returns>
-    public static EvmExceptionType InstructionBlobBaseFee<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBlobBaseFee<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         ref readonly BlockExecutionContext context = ref vm.BlockExecutionContext;
@@ -409,7 +473,7 @@ internal static partial class EvmInstructions
         if (!context.Header.ExcessBlobGas.HasValue) goto BadInstruction;
 
         // Charge the base gas cost for this opcode.
-        gasAvailable -= GasCostOf.Base;
+        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.Base, Instruction.BLOBBASEFEE);
         stack.Push32Bytes<TTracingInst>(in context.BlobBaseFee);
 
         return EvmExceptionType.None;
@@ -421,9 +485,12 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Returns the gas price for the transaction.
     /// </summary>
-    public struct OpGasPrice : IOpBlkUInt256
+    public struct OpGasPrice<TGasPolicy> : IOpBlkUInt256<TGasPolicy>
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        public static ref readonly UInt256 Operation(VirtualMachine vm)
+        public static Instruction OpCode => Instruction.GASPRICE;
+
+        public static ref readonly UInt256 Operation(VirtualMachine<TGasPolicy> vm)
             => ref vm.TxExecutionContext.GasPrice;
     }
 
@@ -432,6 +499,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCallValue : IOpEnvUInt256
     {
+        public static Instruction OpCode => Instruction.CALLVALUE;
         public static ref readonly UInt256 Operation(EvmState vmState)
             => ref vmState.Env.Value;
     }
@@ -441,6 +509,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpAddress : IOpEnvAddress
     {
+        public static Instruction OpCode => Instruction.ADDRESS;
         public static Address Operation(EvmState vmState)
             => vmState.Env.ExecutingAccount;
     }
@@ -450,6 +519,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCaller : IOpEnvAddress
     {
+        public static Instruction OpCode => Instruction.CALLER;
         public static Address Operation(EvmState vmState)
             => vmState.Env.Caller;
     }
@@ -457,27 +527,32 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Returns the origin address of the transaction.
     /// </summary>
-    public struct OpOrigin : IOpEnv32Bytes
+    public struct OpOrigin<TGasPolicy> : IOpEnv32Bytes<TGasPolicy>
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        public static ref readonly ValueHash256 Operation(VirtualMachine vm)
+        public static ref readonly ValueHash256 Operation(VirtualMachine<TGasPolicy> vm)
             => ref vm.TxExecutionContext.Origin;
     }
 
     /// <summary>
     /// Returns the coinbase (beneficiary) address for the current block.
     /// </summary>
-    public struct OpCoinbase : IOpBlkAddress
+    public struct OpCoinbase<TGasPolicy> : IOpBlkAddress<TGasPolicy>
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        public static Address Operation(VirtualMachine vm)
+        public static Instruction OpCode => Instruction.COINBASE;
+
+        public static Address Operation(VirtualMachine<TGasPolicy> vm)
             => vm.BlockExecutionContext.Coinbase;
     }
 
     /// <summary>
     /// Returns the chain identifier.
     /// </summary>
-    public struct OpChainId : IOpEnv32Bytes
+    public struct OpChainId<TGasPolicy> : IOpEnv32Bytes<TGasPolicy>
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        public static ref readonly ValueHash256 Operation(VirtualMachine vm)
+        public static ref readonly ValueHash256 Operation(VirtualMachine<TGasPolicy> vm)
             => ref vm.ChainId;
     }
 
@@ -485,9 +560,10 @@ internal static partial class EvmInstructions
     /// Retrieves and pushes the balance of an account.
     /// The address is popped from the stack.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if gas is available,
@@ -495,18 +571,20 @@ internal static partial class EvmInstructions
     /// or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBalance<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBalance<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct gas cost for balance operation as per specification.
-        gasAvailable -= spec.GetBalanceCost();
+        TGasPolicy.ConsumeGas(ref gasState, spec.GetBalanceCost(), Instruction.BALANCE);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
 
         // Charge gas for account access. If insufficient gas remains, abort.
-        if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
+        if (!EvmCalculations.ChargeAccountAccessGas(ref gasState, vm, address, Instruction.BALANCE)) goto OutOfGas;
 
         ref readonly UInt256 result = ref vm.WorldState.GetBalance(address);
         stack.PushUInt256<TTracingInst>(in result);
@@ -522,18 +600,21 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Pushes the balance of the executing account onto the stack.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/>
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSelfBalance<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSelfBalance<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.SelfBalance;
+        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.SelfBalance, Instruction.SELFBALANCE);
 
         // Get balance for currently executing account.
         ref readonly UInt256 result = ref vm.WorldState.GetBalance(vm.EvmState.Env.ExecutingAccount);
@@ -546,9 +627,10 @@ internal static partial class EvmInstructions
     /// Retrieves the code hash of an external account.
     /// Returns zero if the account does not exist or is considered dead.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if gas is available,
@@ -556,16 +638,18 @@ internal static partial class EvmInstructions
     /// or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeHash<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExtCodeHash<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
-        gasAvailable -= spec.GetExtCodeHashCost();
+        TGasPolicy.ConsumeGas(ref gasState, spec.GetExtCodeHashCost(), Instruction.EXTCODEHASH);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
         // Check if enough gas for account access and charge accordingly.
-        if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
+        if (!EvmCalculations.ChargeAccountAccessGas(ref gasState, vm, address, Instruction.EXTCODEHASH)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
         // For dead accounts, the specification requires pushing zero.
@@ -592,9 +676,10 @@ internal static partial class EvmInstructions
     /// Retrieves the code hash of an external account, considering the possibility of an EOF-validated contract.
     /// If the code is an EOF contract, a predefined EOF hash is pushed.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack where the gas value will be pushed.</param>
-    /// <param name="gasAvailable">Reference to the current available gas, which is modified by this operation.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The current program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if gas is available,
@@ -602,15 +687,17 @@ internal static partial class EvmInstructions
     /// or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeHashEof<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExtCodeHashEof<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
-        gasAvailable -= spec.GetExtCodeHashCost();
+        TGasPolicy.ConsumeGas(ref gasState, spec.GetExtCodeHashCost(), Instruction.EXTCODEHASH);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
-        if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
+        if (!EvmCalculations.ChargeAccountAccessGas(ref gasState, vm, address, Instruction.EXTCODEHASH)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
         if (state.IsDeadAccount(address))
@@ -623,7 +710,7 @@ internal static partial class EvmInstructions
             // If the code passes EOF validation, push the EOF-specific hash.
             if (EofValidator.IsEof(code, out _))
             {
-                stack.PushBytes<TTracingInst>(EofHash256);
+                stack.PushBytes<TTracingInst>(VM.EofHash256);
             }
             else
             {
@@ -644,19 +731,22 @@ internal static partial class EvmInstructions
     /// Implements the PREVRANDAO opcode.
     /// Pushes the previous random value (post-merge) or block difficulty (pre-merge) onto the stack.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/>
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPrevRandao<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionPrevRandao<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Charge the base gas cost for this opcode.
-        gasAvailable -= GasCostOf.Base;
+        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.Base, Instruction.PREVRANDAO);
         stack.Push32Bytes<TTracingInst>(in vm.BlockExecutionContext.PrevRandao);
         return EvmExceptionType.None;
     }
@@ -665,25 +755,28 @@ internal static partial class EvmInstructions
     /// Pushes the remaining gas onto the stack.
     /// The gas available is decremented by the base cost, and if negative, an OutOfGas error is returned.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack where the gas value will be pushed.</param>
-    /// <param name="gasAvailable">Reference to the current available gas, which is modified by this operation.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The current program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if gas is available, or <see cref="EvmExceptionType.OutOfGas"/> if the gas becomes negative.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionGas<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionGas<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Deduct the base gas cost for reading gas.
-        gasAvailable -= GasCostOf.Base;
+        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.Base, Instruction.GAS);
 
         // If gas falls below zero after cost deduction, signal out-of-gas error.
-        if (gasAvailable < 0) goto OutOfGas;
+        if (TGasPolicy.GetRemainingGas(in gasState) < 0) goto OutOfGas;
 
         // Push the remaining gas (as unsigned 64-bit) onto the stack.
-        stack.PushUInt64<TTracingInst>((ulong)gasAvailable);
+        stack.PushUInt64<TTracingInst>((ulong)TGasPolicy.GetRemainingGas(in gasState));
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -696,20 +789,23 @@ internal static partial class EvmInstructions
     /// Pops an index from the stack and uses it to select a blob hash from the versioned hashes array.
     /// If the index is invalid, pushes zero.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack from which the index is popped and where the blob hash is pushed.</param>
-    /// <param name="gasAvailable">Reference to the available gas; reduced by the blob hash cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success; otherwise, <see cref="EvmExceptionType.StackUnderflow"/>
     /// if there are insufficient elements on the stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBlobHash<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBlobHash<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost for blob hash operation.
-        gasAvailable -= GasCostOf.BlobHash;
+        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.BlobHash, Instruction.BLOBHASH);
 
         // Pop the blob index from the stack.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -740,20 +836,23 @@ internal static partial class EvmInstructions
     /// If no valid block hash exists, pushes a zero value.
     /// Additionally, reports the block hash if block hash tracing is enabled.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack from which the block number is popped and where the block hash is pushed.</param>
-    /// <param name="gasAvailable">Reference to the available gas; reduced by the block hash operation cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the operation completes successfully;
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if there are insufficient stack elements.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBlockHash<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBlockHash<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost for block hash operation.
-        gasAvailable -= GasCostOf.BlockHash;
+        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.BlockHash, Instruction.BLOCKHASH);
 
         // Pop the block number from the stack.
         if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
@@ -768,7 +867,7 @@ internal static partial class EvmInstructions
             vm.BlockHashProvider.GetBlockhash(header, number, vm.Spec);
 
         // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
-        stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);
+        stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : VM.BytesZero32);
 
         // If block hash tracing is enabled and a valid block hash was obtained, report it.
         if (vm.TxTracer.IsTracingBlockHash && blockHash is not null)

@@ -16,7 +16,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Evm;
 
-public readonly ref struct TransactionSubstate
+public ref struct TransactionSubstate
 {
     private readonly ILogger _logger;
     private static readonly IHashSetEnumerableCollection<Address> _emptyDestroyList = new JournalSet<Address>();
@@ -58,6 +58,12 @@ public readonly ref struct TransactionSubstate
     public IToArrayCollection<LogEntry> Logs => _logs ?? _emptyLogs;
     public IHashSetEnumerableCollection<Address> DestroyList => _destroyList ?? _emptyDestroyList;
 
+    /// <summary>
+    /// Policy-specific data for this transaction (e.g., multigas for Arbitrum).
+    /// Null for standard Ethereum transactions using SimpleGasPolicy.
+    /// </summary>
+    public object? PolicyData { get; set; }
+
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
     {
         Error = isTracerConnected ? exceptionType.ToString() : SomeError;
@@ -67,6 +73,7 @@ public readonly ref struct TransactionSubstate
         _destroyList = _emptyDestroyList;
         _logs = _emptyLogs;
         ShouldRevert = false;
+        PolicyData = null;
     }
 
     public static TransactionSubstate FailedInitCode => new("Eip 7698: Invalid CreateTx InitCode");
@@ -78,6 +85,7 @@ public readonly ref struct TransactionSubstate
         _destroyList = _emptyDestroyList;
         _logs = _emptyLogs;
         ShouldRevert = true;
+        PolicyData = null;
     }
 
     public TransactionSubstate((ICodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
@@ -87,7 +95,8 @@ public readonly ref struct TransactionSubstate
         bool shouldRevert,
         bool isTracerConnected,
         EvmExceptionType evmExceptionType = default,
-        ILogger logger = default)
+        ILogger logger = default,
+        object? policyData = null)
     {
         _logger = logger;
         Output = output;
@@ -96,6 +105,7 @@ public readonly ref struct TransactionSubstate
         _logs = logs;
         ShouldRevert = shouldRevert;
         EvmExceptionType = evmExceptionType;
+        PolicyData = policyData;
 
         if (!ShouldRevert)
         {

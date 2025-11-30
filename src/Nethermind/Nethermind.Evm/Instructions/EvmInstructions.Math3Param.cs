@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Evm.Gas;
 
 namespace Nethermind.Evm;
 
@@ -12,16 +13,19 @@ internal static partial class EvmInstructions
 {
     public interface IOpMath3Param
     {
+        static abstract Instruction OpCode { get; }
         virtual static long GasCost => GasCostOf.Mid;
         abstract static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result);
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath3Param<TOpMath, TTracingInst>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(
+        VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath3Param
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpMath.GasCost;
+        TGasPolicy.ConsumeGas(ref gasState, TOpMath.GasCost, TOpMath.OpCode);
 
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
 
@@ -43,11 +47,13 @@ internal static partial class EvmInstructions
 
     public struct OpAddMod : IOpMath3Param
     {
+        public static Instruction OpCode => Instruction.ADDMOD;
         public static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result) => UInt256.AddMod(in a, in b, in c, out result);
     }
 
     public struct OpMulMod : IOpMath3Param
     {
+        public static Instruction OpCode => Instruction.MULMOD;
         public static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result) => UInt256.MultiplyMod(in a, in b, in c, out result);
     }
 }

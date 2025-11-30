@@ -13,7 +13,7 @@ namespace Nethermind.Evm;
 internal sealed class StackPool
 {
     // Also have parallel prewarming and Rpc calls
-    private const int MaxStacksPooled = VirtualMachine.MaxCallDepth * 2;
+    private const int MaxStacksPooled = EthereumVirtualMachine.MaxCallDepth * 2;
     private readonly struct StackItem(byte[] dataStack, ReturnState[] returnStack)
     {
         public readonly byte[] DataStack = dataStack;

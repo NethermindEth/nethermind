@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Gas;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -20,15 +21,16 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm;
 
-using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
+using unsafe OpCode = delegate*<VirtualMachine<SimpleGasPolicy>, ref EvmStack, ref GasState, ref int, EvmExceptionType>;
 
-public unsafe partial class VirtualMachine
+public unsafe partial class VirtualMachine<TGasPolicy>
+    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     public static void WarmUpEvmInstructions(IWorldState state, ICodeInfoRepository codeInfoRepository)
     {
         IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
-        VirtualMachine vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
+        EthereumVirtualMachine vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
 
         byte[] bytecode = new byte[64];
@@ -147,16 +149,17 @@ public unsafe partial class VirtualMachine
         codeToDeploy.Add((byte)Instruction.POP);
     }
 
-    private static void RunOpCodes<TTracingInst>(VirtualMachine vm, IWorldState state, EvmState evmState, IReleaseSpec spec)
+    private static void RunOpCodes<TTracingInst>(EthereumVirtualMachine vm, IWorldState state, EvmState evmState,
+        IReleaseSpec spec)
         where TTracingInst : struct, IFlag
     {
         const int WarmUpIterations = 40;
 
-        OpCode[] opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
+        var opcodes = (OpCode[])vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
         EvmStack stack = new(0, txTracer, evmState.DataStack);
-        long gas = long.MaxValue;
+        GasState gasState = SimpleGasPolicy.InitializeForTransaction(long.MaxValue, 0);
         int pc = 0;
 
         for (int repeat = 0; repeat < WarmUpIterations; repeat++)
@@ -171,7 +174,7 @@ public unsafe partial class VirtualMachine
                 stack.PushOne<TTracingInst>();
                 stack.PushOne<TTracingInst>();
 
-                opcodes[i](vm, ref stack, ref gas, ref pc);
+                opcodes[i](vm, ref stack, ref gasState, ref pc);
                 if (vm.ReturnData is EvmState returnState)
                 {
                     returnState.Dispose();
@@ -180,7 +183,7 @@ public unsafe partial class VirtualMachine
 
                 state.Reset(resetBlockChanges: true);
                 stack = new(0, txTracer, evmState.DataStack);
-                gas = long.MaxValue;
+                gasState = SimpleGasPolicy.InitializeForTransaction(long.MaxValue, 0);
                 pc = 0;
             }
         }

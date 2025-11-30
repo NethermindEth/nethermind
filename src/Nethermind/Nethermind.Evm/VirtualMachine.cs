@@ -15,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
+using Nethermind.Evm.Gas;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -29,21 +30,25 @@ using Nethermind.Evm.Tracing.Debugger;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.Evm;
 
-using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
+/// <summary>
+/// Ethereum standard virtual machine using simple single-dimensional gas policy.
+/// This is the default VM for Ethereum mainnet and testnets.
+/// </summary>
 public sealed class EthereumVirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     ILogManager? logManager
-) : VirtualMachine(blockHashProvider, specProvider, logManager)
+) : VirtualMachine<SimpleGasPolicy>(blockHashProvider, specProvider, logManager)
 {
 }
 
-public unsafe partial class VirtualMachine(
+public unsafe partial class VirtualMachine<TGasPolicy>(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     ILogManager? logManager) : IVirtualMachine
+    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
     private static readonly UInt256 P255Int = (UInt256)BigInteger.Pow(2, 255);
@@ -87,12 +92,13 @@ public unsafe partial class VirtualMachine(
 
     private ICodeInfoRepository _codeInfoRepository;
 
-    private OpCode[] _opcodeMethods;
+    private Array _opcodeMethods;
     private static long _txCount;
 
     protected EvmState _currentState;
     protected ReadOnlyMemory<byte>? _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
+    private GasState _transactionGasState;
 
     public ILogger Logger => _logger;
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
@@ -243,8 +249,25 @@ public unsafe partial class VirtualMachine(
                     // Restore the previous state from the stack and mark it as a continuation.
                     _currentState = _stateStack.Pop();
                     _currentState.IsContinuation = true;
-                    // Refund the remaining gas from the completed call frame.
+
+                    // First, always add the child's remaining gas to parent (single-dimensional gas)
                     _currentState.GasAvailable += previousState.GasAvailable;
+
+                    // Then, merge multigas data from child frame if both have gas states
+                    if (_currentState.FrameGasState.HasValue && previousState.FrameGasState.HasValue)
+                    {
+                        // Get parent's current gas state and update RemainingGas to match actual
+                        GasState parentGasState = _currentState.FrameGasState.Value;
+                        parentGasState.RemainingGas = _currentState.GasAvailable;
+
+                        GasState childGasState = previousState.FrameGasState.Value;
+                        TGasPolicy.MergeChildFrame(
+                            ref parentGasState,
+                            in childGasState,
+                            previousState.InitialGasProvided);
+                        _currentState.FrameGasState = parentGasState;
+                    }
+
                     bool previousStateSucceeded = true;
 
                     if (!callResult.ShouldRevert)
@@ -521,6 +544,10 @@ public unsafe partial class VirtualMachine(
 
     protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
     {
+        // Copy refund from EvmState into policy data (e.g., MultiGas) - mirrors Nitro's WithRefund
+        TGasPolicy.FinalizeRefund(ref _transactionGasState, _currentState.Refund);
+
+        var policyData = TGasPolicy.GetReceiptData(in _transactionGasState);
         return new TransactionSubstate(
             callResult.Output,
             _currentState.Refund,
@@ -529,7 +556,8 @@ public unsafe partial class VirtualMachine(
             callResult.ShouldRevert,
             isTracerConnected: _txTracer.IsTracing,
             callResult.ExceptionType,
-            _logger);
+            _logger,
+            policyData);
     }
 
     /// <summary>
@@ -867,18 +895,22 @@ public unsafe partial class VirtualMachine(
                 spec.EvmInstructionsNoTrace = GenerateOpCodes<TTracingInst>(spec);
             }
             // Ensure the non-traced opcode set is generated and assign it to the _opcodeMethods field.
-            _opcodeMethods = (OpCode[])(spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = spec.EvmInstructionsNoTrace ??=
+                GenerateOpCodes<TTracingInst>(spec);
         }
         else
         {
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
-            _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = spec.EvmInstructionsTraced ??=
+                GenerateOpCodes<TTracingInst>(spec);
         }
     }
 
-    protected virtual OpCode[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
+    protected virtual Array GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
-        => EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
+    {
+        return EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
+    }
 
     /// <summary>
     /// Reports the final outcome of a transaction action to the transaction tracer, taking into account
@@ -1208,6 +1240,12 @@ public unsafe partial class VirtualMachine(
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
+        // Initialize gas state for execution
+        // If the frame has a pre-initialized gas state (from parent via InitializeChildFrame), use it
+        // Otherwise create a fresh gas state (for top-level execution)
+        GasState gasState = EvmState.FrameGasState ?? TGasPolicy.InitializeForTransaction(gasAvailable, 0);
+        // Store gas state in EvmState early so parent has it when child frames return
+        EvmState.FrameGasState = gasState;
         // Reset return data and set the current section index from the VM state.
         ReturnData = null;
         SectionIndex = EvmState.FunctionIndex;
@@ -1229,7 +1267,11 @@ public unsafe partial class VirtualMachine(
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks and casts.
         // If we don't use a pointer we have to cast for each call (delegate*<...> can't be used as a generic arg)
         // Or have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
-        fixed (OpCode* opcodeMethods = &_opcodeMethods[0])
+        var opcodeArray =
+            (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref GasState, ref int, EvmExceptionType>[])
+            _opcodeMethods;
+        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref GasState, ref int, EvmExceptionType>*
+               opcodeMethods = &opcodeArray[0])
         {
             int opCodeCount = 0;
             ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
@@ -1238,7 +1280,8 @@ public unsafe partial class VirtualMachine(
             {
 #if DEBUG
                 // Allow the debugger to inspect and possibly pause execution for debugging purposes.
-                debugger?.TryWait(ref _currentState, ref programCounter, ref gasAvailable, ref stack.Head);
+                var currentGasForDebugger = TGasPolicy.GetRemainingGas(in gasState);
+                debugger?.TryWait(ref _currentState, ref programCounter, ref currentGasForDebugger, ref stack.Head);
 #endif
                 // Fetch the current instruction from the code section.
                 Instruction instruction = Unsafe.Add(ref code, programCounter);
@@ -1249,7 +1292,8 @@ public unsafe partial class VirtualMachine(
 
                 // If tracing is enabled, start an instruction trace.
                 if (TTracingInst.IsActive)
-                    StartInstructionTrace(instruction, gasAvailable, programCounter, in stack);
+                    StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gasState), programCounter,
+                        in stack);
 
                 // Advance the program counter to point to the next instruction.
                 programCounter++;
@@ -1258,19 +1302,20 @@ public unsafe partial class VirtualMachine(
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
                 if (Instruction.POP == instruction)
                 {
-                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gasAvailable, ref programCounter);
+                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gasState, ref programCounter);
                 }
                 else
                 {
                     // Retrieve the opcode function pointer corresponding to the current instruction.
-                    OpCode opcodeMethod = opcodeMethods[(int)instruction];
+                    delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref GasState, ref int, EvmExceptionType>
+                        opcodeMethod = opcodeMethods[(int)instruction];
                     // Invoke the opcode method, which may modify the stack, gas, and program counter.
                     // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
-                    exceptionType = opcodeMethod(this, ref stack, ref gasAvailable, ref programCounter);
+                    exceptionType = opcodeMethod(this, ref stack, ref gasState, ref programCounter);
                 }
 
                 // If gas is exhausted, jump to the out-of-gas handler.
-                if (gasAvailable < 0)
+                if (TGasPolicy.GetRemainingGas(in gasState) < 0)
                 {
                     OpCodeCount += opCodeCount;
                     goto OutOfGas;
@@ -1281,7 +1326,7 @@ public unsafe partial class VirtualMachine(
 
                 // If tracing is enabled, complete the trace for the current instruction.
                 if (TTracingInst.IsActive)
-                    EndInstructionTrace(gasAvailable);
+                    EndInstructionTrace(TGasPolicy.GetRemainingGas(in gasState));
 
                 // If return data has been set, exit the loop to process the returned value.
                 if (ReturnData is not null)
@@ -1295,8 +1340,11 @@ public unsafe partial class VirtualMachine(
         {
             // If tracing is enabled, complete the trace for the current instruction.
             if (TTracingInst.IsActive)
-                EndInstructionTrace(gasAvailable);
-            UpdateCurrentState(programCounter, gasAvailable, stack.Head);
+                EndInstructionTrace(TGasPolicy.GetRemainingGas(in gasState));
+            UpdateCurrentState(programCounter, TGasPolicy.GetRemainingGas(in gasState), stack.Head);
+            _transactionGasState = gasState;
+            // Save final gas state to EvmState for parent frame's MergeChildFrame
+            EvmState.FrameGasState = gasState;
         }
         else
         {
@@ -1317,7 +1365,8 @@ public unsafe partial class VirtualMachine(
     DataReturn:
 #if DEBUG
         // Allow debugging before processing the return data.
-        debugger?.TryWait(ref _currentState, ref programCounter, ref gasAvailable, ref stack.Head);
+        var currentGasForDebugger2 = TGasPolicy.GetRemainingGas(in gasState);
+        debugger?.TryWait(ref _currentState, ref programCounter, ref currentGasForDebugger2, ref stack.Head);
 #endif
         // Process the return data based on its runtime type.
         if (ReturnData is EvmState state)
@@ -1336,12 +1385,16 @@ public unsafe partial class VirtualMachine(
         return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true, exceptionType);
 
     OutOfGas:
-        gasAvailable = 0;
+    TGasPolicy.SetOutOfGas(ref gasState);
         // Set the exception type to OutOfGas if gas has been exhausted.
         exceptionType = EvmExceptionType.OutOfGas;
     ReturnFailure:
+    // Store the final gas state for receipt data extraction
+    _transactionGasState = gasState;
+    // Save final gas state to EvmState for parent frame's MergeChildFrame
+    EvmState.FrameGasState = gasState;
         // Return a failure CallResult based on the remaining gas and the exception type.
-        return GetFailureReturn(gasAvailable, exceptionType);
+        return GetFailureReturn(TGasPolicy.GetRemainingGas(in gasState), exceptionType);
 
         // Converts the code section bytes into a read-only span of instructions.
         // Lightest weight conversion as mostly just helpful when debugging to see what the opcodes are.

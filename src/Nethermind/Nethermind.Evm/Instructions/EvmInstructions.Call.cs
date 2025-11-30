@@ -6,10 +6,9 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Gas;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
-
-using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
 
@@ -83,17 +82,18 @@ internal static partial class EvmInstructions
     /// </typeparam>
     /// <param name="vm">The current virtual machine instance containing execution state.</param>
     /// <param name="stack">The EVM stack for retrieving call parameters and pushing results.</param>
-    /// <param name="gasAvailable">Reference to the available gas, which is deducted according to various call costs.</param>
+    /// <param name="gasState">Reference to the gas state, which is updated according to various call costs.</param>
     /// <param name="programCounter">Reference to the current program counter (not modified by this method).</param>
     /// <returns>
     /// An <see cref="EvmExceptionType"/> value indicating success or the type of error encountered.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCall<TOpCall, TTracingInst>(
-        VirtualMachine vm,
+    public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
-        ref long gasAvailable,
+        ref GasState gasState,
         ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
     {
@@ -135,7 +135,16 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
-        if (!EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) goto OutOfGas;
+        Instruction instruction = TOpCall.ExecutionType switch
+        {
+            ExecutionType.CALL => Instruction.CALL,
+            ExecutionType.CALLCODE => Instruction.CALLCODE,
+            ExecutionType.DELEGATECALL => Instruction.DELEGATECALL,
+            ExecutionType.STATICCALL => Instruction.STATICCALL,
+            _ => Instruction.CALL
+        };
+        if (!EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasState, vm, codeSource, instruction))
+            goto OutOfGas;
 
         // For non-delegate calls, the transfer value is the call value.
         UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
@@ -170,10 +179,12 @@ internal static partial class EvmInstructions
         }
 
         // Update gas: call cost, memory expansion for input and output, and extra gas.
-        if (!EvmCalculations.UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
-            !EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataLength) ||
-            !EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in outputOffset, outputLength) ||
-            !EvmCalculations.UpdateGas(gasExtra, ref gasAvailable))
+        if (!EvmCalculations.UpdateGas<TGasPolicy>(ref gasState, spec.GetCallCost(), instruction) ||
+            !EvmCalculations.UpdateMemoryCost<TGasPolicy>(vm.EvmState, ref gasState, in dataOffset, dataLength,
+                instruction) ||
+            !EvmCalculations.UpdateMemoryCost<TGasPolicy>(vm.EvmState, ref gasState, in outputOffset, outputLength,
+                instruction) ||
+            !EvmCalculations.UpdateGas<TGasPolicy>(ref gasState, gasExtra, instruction))
             goto OutOfGas;
 
         // Retrieve code information for the call and schedule background analysis if needed.
@@ -183,9 +194,14 @@ internal static partial class EvmInstructions
         if (spec.IsEip7907Enabled)
         {
             uint excessContractSize = (uint)Math.Max(0, codeInfo.CodeSpan.Length - CodeSizeConstants.MaxCodeSizeEip170);
-            if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, codeSource, in vm.EvmState.AccessTracker, ref gasAvailable))
+            if (excessContractSize > 0 && !ChargeForLargeContractAccess<TGasPolicy>(excessContractSize, codeSource,
+                    in vm.EvmState.AccessTracker, ref gasState, instruction))
                 goto OutOfGas;
         }
+
+        // Get remaining gas for 63/64 calculation
+        var gasAvailable = TGasPolicy.GetRemainingGas(in gasState);
+
         // Apply the 63/64 gas rule if enabled.
         if (spec.Use63Over64Rule)
         {
@@ -196,7 +212,7 @@ internal static partial class EvmInstructions
         if (gasLimit >= long.MaxValue) goto OutOfGas;
 
         long gasLimitUl = (long)gasLimit;
-        if (!EvmCalculations.UpdateGas(gasLimitUl, ref gasAvailable)) goto OutOfGas;
+        if (!EvmCalculations.UpdateGas<TGasPolicy>(ref gasState, gasLimitUl, instruction)) goto OutOfGas;
 
         // Add call stipend if value is being transferred.
         if (!transferValue.IsZero)
@@ -207,7 +223,7 @@ internal static partial class EvmInstructions
         }
 
         // Check call depth and balance of the caller.
-        if (env.CallDepth >= MaxCallDepth ||
+        if (env.CallDepth >= VirtualMachine<TGasPolicy>.MaxCallDepth ||
             (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue))
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
@@ -224,15 +240,17 @@ internal static partial class EvmInstructions
 
             if (TTracingInst.IsActive)
             {
-                vm.TxTracer.ReportOperationRemainingGas(gasAvailable);
+                var gasRemaining = TGasPolicy.GetRemainingGas(in gasState);
+                vm.TxTracer.ReportOperationRemainingGas(gasRemaining);
                 vm.TxTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
             }
 
             // Refund the remaining gas to the caller.
-            EvmCalculations.UpdateGasUp(gasLimitUl, ref gasAvailable);
+            TGasPolicy.RefundGas(ref gasState, gasLimitUl);
             if (TTracingInst.IsActive)
             {
-                vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
+                var gasRemaining = TGasPolicy.GetRemainingGas(in gasState);
+                vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasRemaining);
             }
             return EvmExceptionType.None;
         }
@@ -247,7 +265,7 @@ internal static partial class EvmInstructions
         {
             vm.ReturnDataBuffer = default;
             stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
-            EvmCalculations.UpdateGasUp(gasLimitUl, ref gasAvailable);
+            TGasPolicy.RefundGas(ref gasState, gasLimitUl);
             return FastCall(vm, spec, in transferValue, target);
         }
 
@@ -271,6 +289,9 @@ internal static partial class EvmInstructions
             outputOffset = 0;
         }
 
+        // Initialize child frame gas state with policy-specific data (e.g., multigas)
+        GasState childGasState = TGasPolicy.InitializeChildFrame(gasLimitUl);
+
         // Rent a new call frame for executing the call.
         vm.ReturnData = EvmState.RentFrame(
             gasAvailable: gasLimitUl,
@@ -281,13 +302,15 @@ internal static partial class EvmInstructions
             isCreateOnPreExistingAccount: false,
             env: in callEnv,
             stateForAccessLists: in vm.EvmState.AccessTracker,
-            snapshot: in snapshot);
+            in snapshot,
+            frameGasState: childGasState);
 
         return EvmExceptionType.None;
 
         // Fast-call path for non-contract calls:
         // Directly credit the target account and avoid constructing a full call frame.
-        static EvmExceptionType FastCall(VirtualMachine vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
+        static EvmExceptionType FastCall(VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, in UInt256 transferValue,
+            Address target)
         {
             IWorldState state = vm.WorldState;
             state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
@@ -304,12 +327,19 @@ internal static partial class EvmInstructions
         return EvmExceptionType.OutOfGas;
     }
 
-    private static bool ChargeForLargeContractAccess(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref long gasAvailable)
+    private static bool ChargeForLargeContractAccess<TGasPolicy>(
+        uint excessContractSize,
+        Address codeAddress,
+        in StackAccessTracker accessTracer,
+        ref GasState gasState,
+        Instruction instruction)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         if (accessTracer.WarmUpLargeContract(codeAddress))
         {
             long largeContractCost = GasCostOf.InitCodeWord * EvmCalculations.Div32Ceiling(excessContractSize, out bool outOfGas);
-            if (outOfGas || !EvmCalculations.UpdateGas(largeContractCost, ref gasAvailable)) return false;
+            if (outOfGas || !EvmCalculations.UpdateGas<TGasPolicy>(ref gasState, largeContractCost, instruction))
+                return false;
         }
 
         return true;
@@ -322,18 +352,19 @@ internal static partial class EvmInstructions
     /// </summary>
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the offset and length are popped.</param>
-    /// <param name="gasAvailable">Reference to the available gas, adjusted by memory expansion cost.</param>
+    /// <param name="gasState">Reference to the gas state, adjusted by memory expansion cost.</param>
     /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success; otherwise, an error such as <see cref="EvmExceptionType.StackUnderflow"/>,
     /// <see cref="EvmExceptionType.OutOfGas"/>, or <see cref="EvmExceptionType.BadInstruction"/>.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturn(
-        VirtualMachine vm,
+    public static EvmExceptionType InstructionReturn<TGasPolicy>(
+        VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
-        ref long gasAvailable,
+        ref GasState gasState,
         ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // RETURN is not allowed during contract creation.
         if (vm.EvmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
@@ -347,7 +378,8 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.
-        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
+        if (!EvmCalculations.UpdateMemoryCost<TGasPolicy>(vm.EvmState, ref gasState, in position, in length,
+                Instruction.RETURN))
         {
             goto OutOfGas;
         }
