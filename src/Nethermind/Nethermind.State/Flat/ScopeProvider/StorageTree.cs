@@ -54,6 +54,31 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
     public Hash256 RootHash => _tree.RootHash;
     public byte[] Get(in UInt256 index)
     {
+        /*
+         *
+        if (!_config.ReadWithTrie && _storageSnapshotBundle.TryGet(index, out var value))
+           {
+               if (value == null) value = State.StorageTree.ZeroBytes;
+
+               if (_config.VerifyWithTrie)
+               {
+                   var treeValue = _tree.Get(index);
+                   if (!Bytes.AreEqual(treeValue, value))
+                   {
+                       throw new Exception($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index} {treeValue?.ToHexString()} vs {value?.ToHexString()}");
+                   }
+               }
+
+               HintGet(index, value);
+               return value;
+           }
+           else
+           {
+               value = _tree.Get(index);
+               HintGet(index, value);
+               return value;
+           }
+         */
         if (_config.ReadWithTrie)
         {
             return _tree.Get(index);

@@ -129,12 +129,13 @@ public class SnapshotBundle(
             {
                 _snapshotBundleTimerKnownStatesStorage.Observe(Stopwatch.GetTimestamp() - sw);
                 value = null;
-            return true;
-        }
+                return true;
+            }
         }
         _snapshotBundleTimerKnownStatesStorage.Observe(Stopwatch.GetTimestamp() - sw);
 
         sw = Stopwatch.GetTimestamp();
+        // TODO: This iis wrong
         var res = persistenceReader.TryGetSlot(address, index, out value);
         if (value == null)
         {

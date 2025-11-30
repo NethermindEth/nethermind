@@ -30,10 +30,10 @@ public class FlatDiffRepository : IFlatDiffRepository
     private readonly ICanonicalStateRootFinder _stateRootFinder;
     private Dictionary<StateId, Snapshot> _compactedKnownStates = new();
     private InMemorySnapshotStore _inMemorySnapshotStore;
-    private ObjectPool<SnapshotContent> _snapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy());
-    private ObjectPool<SnapshotContent> _compactedSnapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy());
+    private ObjectPool<SnapshotContent> _snapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(false));
+    private ObjectPool<SnapshotContent> _compactedSnapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(false));
 
-    private class SnapshotContentPolicy : IPooledObjectPolicy<SnapshotContent>
+    private class SnapshotContentPolicy(bool allow) : IPooledObjectPolicy<SnapshotContent>
     {
         public SnapshotContent Create()
         {
@@ -47,7 +47,8 @@ public class FlatDiffRepository : IFlatDiffRepository
 
         public bool Return(SnapshotContent obj)
         {
-            return true;
+            obj.Reset();
+            return allow;
         }
     }
 

@@ -16,8 +16,6 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.Importer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
-using Nethermind.Trie.Flat;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Modules;
 
@@ -28,7 +26,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
         builder.AddSingleton<MainPruningTrieStoreFactory>(_ => throw new Exception($"{nameof(MainPruningTrieStoreFactory)} disabled."));
         builder.AddSingleton<PruningTrieStateFactory>(_ => throw new Exception($"{nameof(PruningTrieStateFactory)} disabled."));
 
-
         builder
             .AddSingleton<ICanonicalStateRootFinder, CanonicalStateRootFinder>()
             .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
@@ -36,8 +33,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddSingleton<Importer>()
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
             .AddSingleton<IPersistence, RocksdbPersistence>()
+            // .AddSingleton<IPersistence, TrieOnlyRocksdbPersistence>()
             .AddSingleton<TrieStoreTrieCacheWarmer>()
 
+            /*
             .AddDatabase(DbNames.FlatMetadata)
             .AddDatabase(DbNames.FlatState)
             .AddDatabase(DbNames.FlatStorage)
@@ -56,6 +55,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                     { FlatDbColumns.StorageNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStorageNodes) },
                 });
             })
+            */
 
             .AddSingleton<FlatDiffRepository.Configuration>(new FlatDiffRepository.Configuration()
             {
@@ -63,7 +63,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 CompactSize = 16,
                 MaxInFlightCompactJob = 32,
                 ReadWithTrie = false,
-                VerifyWithTrie = false,
+                VerifyWithTrie = true,
                 ConcurrentCompactor = 2,
                 TrieCacheMemoryTarget = 1.GiB(),
                 InlineCompaction = false

@@ -60,7 +60,6 @@ public class Snapshot(
 
     protected override void CleanUp()
     {
-        content.Reset();
         pool.Return(content);
     }
 
