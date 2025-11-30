@@ -36,6 +36,7 @@ using NUnit.Framework;
 using System;
 using Nethermind.Core.Test.Db;
 using Nethermind.State;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -374,6 +375,23 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(parityRpcModule, "parity_netPeers");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"active\":0,\"connected\":0,\"max\":0,\"peers\":[]},\"id\":67}";
             Assert.That(serialized, Is.EqualTo(expectedResult));
+        }
+
+        [Test]
+        public void ParityTransactionPublicKey_DeserializedFromFullKey_SucceedsWithExplicitConverter()
+        {
+            string json = """
+                {
+                    "publicKey": "0xa49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec3",
+                    "hash": "0xd4720d1b81c70ed4478553a213a83bd2bf6988291677f5d05c6aae0b287f947e"
+                }
+                """;
+
+            var serializer = new EthereumJsonSerializer();
+            ParityTransaction tx = serializer.Deserialize<ParityTransaction>(json);
+
+            tx.PublicKey.Should().NotBeNull();
+            tx.PublicKey!.ToString(false).Should().Be("a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec3");
         }
     }
 }

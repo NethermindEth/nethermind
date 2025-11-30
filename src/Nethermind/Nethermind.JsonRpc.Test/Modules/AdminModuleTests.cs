@@ -743,4 +743,25 @@ public class AdminModuleTests
         peerInfo.Protocols.Should().NotContainKey("snap"); // Old versions don't support snap
     }
 
+    [Test]
+    public void PeerInfoId_DeserializedFromHashFormat_SucceedsWithDefaultConverter()
+    {
+        string json = """
+            {
+                "id": "0xdf850f14dc502aae061d0fefb7705ae4c6f81b66cdb323c65f4e8133690fc099",
+                "name": "test-peer",
+                "enode": "enode://a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec3@127.0.0.1:30303",
+                "caps": [],
+                "network": { "localAddress": "127.0.0.1", "remoteAddress": "127.0.0.1:30303" },
+                "protocols": { "eth": { "version": 0 } }
+            }
+            """;
+
+        var serializer = new EthereumJsonSerializer();
+        PeerInfo result = serializer.Deserialize<PeerInfo>(json);
+
+        result.Id.Should().NotBeNull();
+        result.Name.Should().Be("test-peer");
+    }
+
 }
