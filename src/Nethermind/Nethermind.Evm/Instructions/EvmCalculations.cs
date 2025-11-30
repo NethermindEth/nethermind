@@ -133,7 +133,7 @@ public static class EvmCalculations
     public static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
     {
         // Calculate additional gas cost for any memory expansion.
-        long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length);
+        long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
         if (memoryCost != 0L)
         {
             if (!UpdateGas(memoryCost, ref gasAvailable))
@@ -142,7 +142,7 @@ public static class EvmCalculations
             }
         }
 
-        return true;
+        return !outOfGas;
     }
 
     /// <summary>
