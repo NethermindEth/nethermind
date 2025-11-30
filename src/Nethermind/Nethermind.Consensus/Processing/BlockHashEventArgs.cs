@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -22,6 +22,7 @@ public class BlockHashEventArgs : EventArgs
 
 public enum ProcessingResult
 {
+    None,
     /// <summary>
     /// Processing was successful
     /// </summary>

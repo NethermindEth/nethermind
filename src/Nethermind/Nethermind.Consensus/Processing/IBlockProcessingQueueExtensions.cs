@@ -3,6 +3,7 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 
 namespace Nethermind.Consensus.Processing;
@@ -17,5 +18,15 @@ public static class BlockProcessingQueueExtensions
                 e => blockProcessingQueue.ProcessingQueueEmpty += e,
                 e => blockProcessingQueue.ProcessingQueueEmpty -= e);
         }
+    }
+
+    public static async Task<ProcessingResult> WaitForBlockProcessing(this IBlockProcessingQueue blockProcessingQueue, Hash256 blockHash, CancellationToken cancellationToken = default)
+    {
+        var res = await Wait.ForEventCondition<BlockRemovedEventArgs>(cancellationToken,
+            e => blockProcessingQueue.BlockRemoved += e,
+            e => blockProcessingQueue.BlockRemoved -= e,
+            e => e.BlockHash == blockHash).ConfigureAwait(false);
+
+        return res.ProcessingResult;
     }
 }
