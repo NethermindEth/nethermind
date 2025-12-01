@@ -43,9 +43,8 @@ namespace Nethermind.Blockchain
 
             return depth switch
             {
-                <= 0 => ReturnOutOfBounds(currentBlock, number),
+                <= 0 or > MaxDepth => ReturnOutOfBounds(currentBlock, number),
                 1 => currentBlock.ParentHash,
-                > MaxDepth => ReturnOutOfBounds(currentBlock, number),
                 _ => hashes is not null
                     ? hashes[depth - 1]
                     : blockhashCache.GetHash(currentBlock, (int)depth)
