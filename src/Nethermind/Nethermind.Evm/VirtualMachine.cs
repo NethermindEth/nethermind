@@ -146,6 +146,9 @@ public unsafe partial class VirtualMachine(
         _txTracer = txTracer;
         _worldState = worldState;
 
+        // Reset Parity touch bug state to prevent cross-transaction leakage.
+        _parityTouchBugAccount.ShouldDelete = false;
+
         // Prepare the specification and opcode mapping based on the current block header.
         IReleaseSpec spec = BlockExecutionContext.Spec;
         PrepareOpcodes<TTracingInst>(spec);
