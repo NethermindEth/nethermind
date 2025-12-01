@@ -109,6 +109,7 @@ public class PruningTrieStateFactory(
         VerifyTrieStarter verifyTrieStarter = new(stateManager, processExit!, logManager);
         ManualPruningTrigger pruningTrigger = new();
         compositePruningTrigger.Add(pruningTrigger);
+        disposeStack.Push(compositePruningTrigger);
         PruningTrieStateAdminRpcModule adminRpcModule = new(
             pruningTrigger,
             blockTree,
@@ -151,10 +152,6 @@ public class PruningTrieStateFactory(
             if (pruningTrigger is not null)
             {
                 compositePruningTrigger.Add(pruningTrigger);
-                if (pruningTrigger is IDisposable d)
-                {
-                    disposeStack.Push(d);
-                }
             }
 
             IDriveInfo? drive = fileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
