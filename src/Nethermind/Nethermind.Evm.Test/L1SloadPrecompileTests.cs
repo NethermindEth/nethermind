@@ -30,18 +30,18 @@ public class L1SloadPrecompileTests
     [Test]
     public void BaseGasCost_Should_Return_FixedGasCost()
     {
-        Assert.That(_precompile.BaseGasCost(_spec), Is.EqualTo(L1PrecompileConstants.FixedGasCost));
+        Assert.That(_precompile.BaseGasCost(_spec), Is.EqualTo(L1SloadConstants.FixedGasCost));
     }
 
     [Test]
     public void DataGasCost_With_Invalid_Input_Length_Should_Return_0()
     {
         // Input too short
-        var input = new byte[L1PrecompileConstants.AddressBytes]; // Only address
+        var input = new byte[L1SloadConstants.AddressBytes]; // Only address
         Assert.That(_precompile.DataGasCost(input, _spec), Is.EqualTo(0L));
 
         // Input too long
-        var expectedLength = L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes + L1PrecompileConstants.BlockNumberBytes;
+        var expectedLength = L1SloadConstants.ExpectedInputLength;
         var longInput = new byte[expectedLength + 32]; // Extra 32 bytes
         Assert.That(_precompile.DataGasCost(longInput, _spec), Is.EqualTo(0L));
     }
@@ -49,22 +49,22 @@ public class L1SloadPrecompileTests
     [Test]
     public void DataGasCost_With_Valid_Input_Should_Calculate_Correctly()
     {
-        var input = CreateValidInput(Address.FromNumber(123), (UInt256)1, (UInt256)1000);
-        Assert.That(_precompile.DataGasCost(input, _spec), Is.EqualTo(L1PrecompileConstants.PerLoadGasCost));
+        var input = CreateValidInput(Address.FromNumber(123), (UInt256)1);
+        Assert.That(_precompile.DataGasCost(input, _spec), Is.EqualTo(L1SloadConstants.PerLoadGasCost));
     }
 
     [Test]
     public void Run_With_Invalid_Input_Length_Should_Fail()
     {
         // Input too short
-        var input = new byte[L1PrecompileConstants.AddressBytes];
+        var input = new byte[L1SloadConstants.AddressBytes];
         var (result, success) = _precompile.Run(input, _spec);
 
         Assert.That(success, Is.False);
         Assert.That(result, Is.Empty);
 
         // Input too long
-        var expectedLength = L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes + L1PrecompileConstants.BlockNumberBytes;
+        var expectedLength = L1SloadConstants.ExpectedInputLength;
         var longInput = new byte[expectedLength + 32];
         (result, success) = _precompile.Run(longInput, _spec);
 
@@ -81,7 +81,7 @@ public class L1SloadPrecompileTests
 
         try
         {
-            var input = CreateValidInput(Address.FromNumber(123), (UInt256)1, (UInt256)1000);
+            var input = CreateValidInput(Address.FromNumber(123), (UInt256)1);
 
             var (result, success) = _precompile.Run(input, _spec);
 
@@ -102,7 +102,7 @@ public class L1SloadPrecompileTests
     {
         var disabledSpec = new ReleaseSpec { IsRip7728Enabled = false };
 
-        var input = CreateValidInput(Address.FromNumber(123), (UInt256)1, (UInt256)1000);
+        var input = CreateValidInput(Address.FromNumber(123), (UInt256)1);
 
         var (result, success) = _precompile.Run(input, disabledSpec);
 
@@ -114,7 +114,7 @@ public class L1SloadPrecompileTests
     public void Run_With_No_Provider_Should_Fail()
     {
         L1SloadPrecompile.L1StorageProvider = null;
-        var input = CreateValidInput(Address.FromNumber(123), (UInt256)1, (UInt256)1000);
+        var input = CreateValidInput(Address.FromNumber(123), (UInt256)1);
 
         var (result, success) = _precompile.Run(input, _spec);
 
@@ -129,7 +129,7 @@ public class L1SloadPrecompileTests
 
         try
         {
-            var input = CreateValidInput(Address.FromNumber(123), (UInt256)1, (UInt256)1000);
+            var input = CreateValidInput(Address.FromNumber(123), (UInt256)1);
 
             var (result, success) = _precompile.Run(input, _spec);
 
@@ -157,13 +157,12 @@ public class L1SloadPrecompileTests
             "L1SloadPrecompile address should not be identified as precompile when RIP-7728 is disabled");
     }
 
-    private static byte[] CreateValidInput(Address contractAddress, UInt256 storageKey, UInt256 blockNumber)
+    private static byte[] CreateValidInput(Address contractAddress, UInt256 storageKey)
     {
-        var input = new byte[L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes + L1PrecompileConstants.BlockNumberBytes];
+        var input = new byte[L1SloadConstants.ExpectedInputLength];
 
-        contractAddress.Bytes.CopyTo(input.AsSpan(0, L1PrecompileConstants.AddressBytes));
-        storageKey.ToBigEndian().CopyTo(input.AsSpan(L1PrecompileConstants.AddressBytes, L1PrecompileConstants.StorageKeyBytes));
-        blockNumber.ToBigEndian().CopyTo(input.AsSpan(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes, L1PrecompileConstants.BlockNumberBytes));
+        contractAddress.Bytes.CopyTo(input.AsSpan(0, L1SloadConstants.AddressBytes));
+        storageKey.ToBigEndian().CopyTo(input.AsSpan(L1SloadConstants.AddressBytes, L1SloadConstants.StorageKeyBytes));
 
         return input;
     }
@@ -177,7 +176,7 @@ public class L1SloadPrecompileTests
             _returnValue = returnValue;
         }
 
-        public UInt256? GetStorageValue(Address contractAddress, UInt256 storageKey, UInt256 blockNumber) => _returnValue;
+        public UInt256? GetStorageValue(Address contractAddress, UInt256 storageKey) => _returnValue;
 
         // Static factory methods for different scenarios
         public static MockL1StorageProvider Returning(UInt256 value) => new(value);
