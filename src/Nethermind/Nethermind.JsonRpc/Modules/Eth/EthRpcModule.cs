@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -802,15 +802,15 @@ public partial class EthRpcModule(
         };
     }
 
-    public ResultWrapper<JsonNode> eth_config(bool? showAllForks = null)
+    public ResultWrapper<JsonNode> eth_config(bool showAllForks = false)
     {
         ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
         IReadOnlyList<ForkConfig>? allForkConfigs = null;
 
-        if (showAllForks is true)
+        if (showAllForks)
         {
-            IReadOnlyList<Fork> forkSchedule = forkInfo.GetAllForks();
-            List<ForkConfig> forkConfigs = new(forkSchedule.Count);
+            Fork[] forkSchedule = forkInfo.GetAllForks();
+            List<ForkConfig> forkConfigs = new(forkSchedule.Length);
 
             foreach (Fork scheduledFork in forkSchedule)
             {
