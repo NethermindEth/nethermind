@@ -31,7 +31,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
         depth == 0 ? headBlock.Hash
         : depth == 1 ? headBlock.ParentHash
         : depth > MaxDepth ? null
-        : _flatCache.TryGet(headBlock.ParentHash!, out Hash256[] array) ? array[depth - 1]
+        : _flatCache.TryGet(headBlock.ParentHash!, out Hash256[] array) ? array[depth - 2]
         : Load(headBlock, depth, out _)?.Hash;
 
     private CacheNode? Load(BlockHeader blockHeader, int depth, out Hash256[]? hashes, CancellationToken cancellationToken = default)
