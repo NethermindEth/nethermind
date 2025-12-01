@@ -46,10 +46,11 @@ public class PluginDisposalTests
         _consensusPlugin = Substitute.For<IConsensusPlugin>();
         _consensusPlugin.Enabled.Returns(true);
         _consensusPlugin.ApiType.Returns(typeof(NethermindApi));
-        _consensusPlugin.InitBlockProducer().Returns(Substitute.For<IBlockProducer>());
-        _consensusPlugin
-            .InitBlockProducerRunner(Arg.Any<IBlockProducer>())
-            .Returns(Substitute.For<IBlockProducerRunner>());
+        IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
+        _consensusPlugin.InitBlockProducer().Returns(blockProducer);
+
+        IBlockProducerRunner blockProducerRunner = Substitute.For<IBlockProducerRunner>();
+        _consensusPlugin.InitBlockProducerRunner(blockProducer).Returns(blockProducerRunner);
     }
 
     [Test]
