@@ -38,7 +38,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     /// <summary>
     /// Refund unused gas (e.g., from failed CALL/CREATE).
-    /// This is different from ApplyRefund, which applies accumulated refunds at the transaction end.
     /// </summary>
     /// <param name="gasState">The gas state to update</param>
     /// <param name="gasAmount">The amount of gas to return (positive value)</param>

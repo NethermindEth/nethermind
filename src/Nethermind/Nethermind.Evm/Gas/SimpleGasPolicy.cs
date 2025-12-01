@@ -45,19 +45,6 @@ public readonly struct SimpleGasPolicy : IGasPolicy<SimpleGasPolicy>
     }
 
     /// <summary>
-    /// Apply gas refund (SSTORE clearing, SELFDESTRUCT).
-    /// Simple policy: refunds tracked in EvmState.Refund (unchanged from current).
-    /// No action needed here - TransactionProcessor handles refund application.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ApplyRefund(ref GasState gasState, long refundAmount)
-    {
-        // Refunds are accumulated in EvmState.Refund and applied at transaction end
-        // Simple policy doesn't need to track refunds in GasState
-        // This method exists for API symmetry with complex policies
-    }
-
-    /// <summary>
     /// Refund unused gas (e.g., from failed CALL/CREATE).
     /// Simple policy: add back to remaining gas.
     /// </summary>

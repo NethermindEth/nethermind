@@ -112,14 +112,4 @@ public class SimpleGasPolicyTests
         Assert.That(receiptData, Is.Null);
     }
 
-    [Test]
-    public void SimpleGasPolicy_ApplyRefund_NoOp()
-    {
-        var gasState = new GasState(1000000);
-
-        SimpleGasPolicy.ApplyRefund(ref gasState, 5000);
-
-        // Refunds don't affect GasState for simple policy
-        Assert.That(gasState.RemainingGas, Is.EqualTo(1000000));
-    }
 }
