@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using Prometheus;
 using Metrics = Prometheus.Metrics;
 
@@ -163,6 +164,7 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
                                     _resetEvent.Reset();
                                     mainWarmer.QueueWorker(this);
                                 }
+
                                 _resetEvent.Wait(1, cancellationToken);
                             }
                             else
@@ -171,6 +173,7 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
                                 _resetEvent.Reset();
                                 _resetEvent.Wait(1, cancellationToken);
                             }
+
                             _spinWait.Reset();
                         }
                         else
@@ -179,6 +182,14 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
                         }
                     }
                 }
+            }
+            catch (TrieNodeException)
+            {
+                // It can be missing when the warmer lags so much behind that the node is now gone.
+            }
+            catch (ObjectDisposedException)
+            {
+                // Yea... this need to be fixed.
             }
             catch (OperationCanceledException)
             {

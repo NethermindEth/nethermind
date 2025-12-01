@@ -31,7 +31,7 @@ public class RocksdbPersistence : IPersistence
     private const int StateNodesTopKeyLength = StateNodesTopPathLength + PathLengthLength;
 
     private const int StorageNodesKeyLength = StorageHashPrefixLength + FullPathLength + PathLengthLength;
-    private const int StorageNodesTopThreshold = 4;
+    private const int StorageNodesTopThreshold = 3;
     private const int StorageNodesTopPathLength = 2;
     private const int StorageNodesTopKeyLength = StorageHashPrefixLength + StorageNodesTopPathLength + PathLengthLength;
 
@@ -236,11 +236,11 @@ public class RocksdbPersistence : IPersistence
             {
                 if (path.Length <= StorageNodesTopThreshold)
                 {
-                    storageNodes.PutSpan(EncodeStorageNodeTopKey(stackalloc byte[StorageNodesKeyLength], address, path), tn.FullRlp.Span);
+                    storageTopNodes.PutSpan(EncodeStorageNodeTopKey(stackalloc byte[StorageNodesTopKeyLength], address, path), tn.FullRlp.Span);
                 }
                 else
                 {
-                    storageTopNodes.PutSpan(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, path), tn.FullRlp.Span);
+                    storageNodes.PutSpan(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, path), tn.FullRlp.Span);
                 }
             }
         }
@@ -286,7 +286,7 @@ public class RocksdbPersistence : IPersistence
                 if (value.IsNullOrEmpty())
                 {
                     acc = null;
-                    return false;
+                    return true;
                 }
 
                 var ctx = new Rlp.ValueDecoderContext(value);
@@ -314,7 +314,7 @@ public class RocksdbPersistence : IPersistence
                 if (value.IsNullOrEmpty())
                 {
                     valueBytes = null;
-                    return false;
+                    return true;
                 }
 
                 valueBytes = value.ToArray();
@@ -330,29 +330,24 @@ public class RocksdbPersistence : IPersistence
         {
             if (address is null)
             {
-                Span<byte> keyBuffer = stackalloc byte[StateNodesKeyLength];
-
                 if (path.Length <= StateNodesTopThreshold)
                 {
-                    return _stateTopNodes.Get(EncodeStateNodeKey(keyBuffer, in path));
+                    return _stateTopNodes.Get(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopKeyLength], in path));
                 }
                 else
                 {
-                    return _stateNodes.Get(EncodeStateNodeKey(keyBuffer, in path));
+                    return _stateNodes.Get(EncodeStateNodeKey(stackalloc byte[StateNodesKeyLength], in path));
                 }
             }
             else
             {
-                Span<byte> keyBuffer2 = stackalloc byte[StorageNodesKeyLength];
                 if (path.Length <= StorageNodesTopThreshold)
                 {
-                    var rlp = _storageTopNodes.Get(EncodeStorageNodeTopKey(keyBuffer2, address, in path));
-                    return rlp;
+                    return _storageTopNodes.Get(EncodeStorageNodeTopKey(stackalloc byte[StorageNodesTopKeyLength], address, in path));
                 }
                 else
                 {
-                    var rlp = _storageNodes.Get(EncodeStorageNodeKey(keyBuffer2, address, in path));
-                    return rlp;
+                    return _storageNodes.Get(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, in path));
                 }
             }
         }

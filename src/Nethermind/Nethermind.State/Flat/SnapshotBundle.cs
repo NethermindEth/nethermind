@@ -96,11 +96,17 @@ public class SnapshotBundle(
         long sw = Stopwatch.GetTimestamp();
         if (persistenceReader.TryGetAccount(address, out acc))
         {
-            _snapshotBundleTimerPersistence.Observe(Stopwatch.GetTimestamp() - sw);
+            if (acc == null)
+            {
+                _snapshotBundleTimerPersistenceNull.Observe(Stopwatch.GetTimestamp() - sw);
+            }
+            else
+            {
+                _snapshotBundleTimerPersistence.Observe(Stopwatch.GetTimestamp() - sw);
+            }
             return true;
         }
 
-        _snapshotBundleTimerPersistenceNull.Observe(Stopwatch.GetTimestamp() - sw);
         acc = null;
         return false;
     }
@@ -135,18 +141,21 @@ public class SnapshotBundle(
         _snapshotBundleTimerKnownStatesStorage.Observe(Stopwatch.GetTimestamp() - sw);
 
         sw = Stopwatch.GetTimestamp();
-        // TODO: This iis wrong
-        var res = persistenceReader.TryGetSlot(address, index, out value);
-        if (value == null)
+        if (persistenceReader.TryGetSlot(address, index, out value))
         {
-            _snapshotBundleTimerPersistenceStorage.Observe(Stopwatch.GetTimestamp() - sw);
-        }
-        else
-        {
-            _snapshotBundleTimerPersistenceNullStorage.Observe(Stopwatch.GetTimestamp() - sw);
+            if (value == null)
+            {
+                _snapshotBundleTimerPersistenceNullStorage.Observe(Stopwatch.GetTimestamp() - sw);
+            }
+            else
+            {
+                _snapshotBundleTimerPersistenceStorage.Observe(Stopwatch.GetTimestamp() - sw);
+            }
+
+            return true;
         }
 
-        return res;
+        return false;
     }
 
     public bool TryFindNode(in TreePath path, Hash256 hash, out TrieNode node)

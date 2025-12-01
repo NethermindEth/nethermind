@@ -352,7 +352,11 @@ public class DbConfig : IDbConfig
 
     private const string FlatCommonConfig =
         MinimumBasicOption +
+
+        // Hard to decide. No compression is lower latency. But it means bigger db, which means worst cache is at os
+        // level. TODO: Measure how much the db size change.
         "compression=kNoCompression;" +
+
         "min_write_buffer_number_to_merge=2;" +
 
         // This used to be on trie, but its here now. Attempt to reduce LSM depth at cost of write amp.
