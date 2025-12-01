@@ -21,9 +21,6 @@ namespace Nethermind.Runner.Test;
 [TestFixture]
 public class PluginDisposalTests
 {
-    private ChainSpec _chainSpec = null!;
-    private IConsensusPlugin _consensusPlugin = null!;
-
     [OneTimeSetUp]
     public void OneTimeSetup()
     {
@@ -39,6 +36,9 @@ public class PluginDisposalTests
             EngineChainSpecParametersProvider = provider
         };
     }
+
+    private ChainSpec _chainSpec = null!;
+    private IConsensusPlugin _consensusPlugin = null!;
 
     [SetUp]
     public void Setup()
