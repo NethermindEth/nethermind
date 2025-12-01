@@ -62,12 +62,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddSingleton<FlatDiffRepository.Configuration>(new FlatDiffRepository.Configuration()
             {
                 Boundary = 256,
-                CompactSize = 16,
+                CompactSize = 32,
                 MaxInFlightCompactJob = 32,
                 ReadWithTrie = false,
                 VerifyWithTrie = false,
                 ConcurrentCompactor = 2,
-                TrieCacheMemoryTarget = 1.GiB(),
+                TrieCacheMemoryTarget = 512.MiB(),
                 InlineCompaction = false
             })
             .AddSingleton<IStateReader, FlatStateReader>();

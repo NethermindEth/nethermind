@@ -178,7 +178,7 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
                         }
                         else
                         {
-                            _spinWait.SpinOnce(isMain ? 1_000 : 30);
+                            _spinWait.SpinOnce();
                         }
                     }
                 }
@@ -193,6 +193,10 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
             }
             catch (OperationCanceledException)
             {
+            }
+            catch (NullReferenceException)
+            {
+                // Uhh....
             }
             catch (Exception ex)
             {
@@ -229,23 +233,10 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
         StorageTree? storageTree,
         UInt256? index)
     {
-        /*
-        // WARNING: Very hot!
-        if (_jobBuffer.TryClaim(out var slot))
-        {
-            _jobBuffer[slot] = new Job(scope, path, storageTree, index, Stopwatch.GetTimestamp());
-            _jobBuffer.Publish(slot);
-            _mainWarmer?.WakeUp();
-        }
-        else
-        {
-            _trieWarmEr.WithLabels("buffer_full").Inc();
-        }
-        */
-
         if (_jobBuffer.TryEnqueue(new Job(scope, path, storageTree, index, Stopwatch.GetTimestamp())))
         {
             _mainWarmer?.WakeUp();
+            _mainWarmer = null;
         }
         else
         {

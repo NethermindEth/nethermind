@@ -358,7 +358,7 @@ namespace Nethermind.State
                     _timeCounter.WithLabels("flush", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
                     sw = Stopwatch.GetTimestamp();
                 }
-                _timeCounter.WithLabels("dispose", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
+                _timeCounter.WithLabels("write_batch_dispose", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
             }
 
         }
