@@ -11,6 +11,11 @@ public class RefCountingDisposableBox<T>(T item): RefCountingDisposable
 
     public T Item => item;
 
+    public bool TryAcquire()
+    {
+        return TryAcquireLease();
+    }
+
     protected override void CleanUp()
     {
         Item.Dispose();

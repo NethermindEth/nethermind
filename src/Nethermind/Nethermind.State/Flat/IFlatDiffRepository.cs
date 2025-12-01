@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core.Utils;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
@@ -11,6 +12,7 @@ public interface IFlatDiffRepository
 {
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
     SnapshotBundle? GatherReaderAtBaseBlock(StateId baseBlock);
+    RefCountingDisposableBox<SnapshotBundle>? GatherReadOnlyReaderAtBaseBlock(StateId baseBlock);
     void AddSnapshot(Snapshot snapshot);
     void FlushCache(CancellationToken cancellationToken);
     bool HasStateForBlock(StateId stateId);

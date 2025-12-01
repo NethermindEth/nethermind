@@ -29,6 +29,8 @@ public class SnapshotBundle : IDisposable
     private ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> _changedSlots; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses;
 
+    private readonly bool _isReadOnly;
+
     public int SnapshotCount => _knownStates.Count;
 
     internal static Histogram _snapshotBundleTimer = Prometheus.Metrics.CreateHistogram("snapshot_bundle_timer", "timer",
@@ -63,6 +65,7 @@ public class SnapshotBundle : IDisposable
         IPersistence.IPersistenceReader persistenceReader,
         TrieNodeCache trieNodeCache,
         ObjectPool<SnapshotContent> contentPool,
+        bool isReadOnly = false,
         bool isPrewarmer = false)
     {
         _knownStates = knownStates;
@@ -70,11 +73,15 @@ public class SnapshotBundle : IDisposable
         _trieNodeCache = trieNodeCache;
         _contentPool = contentPool;
         _isPrewarmer = isPrewarmer;
+        _isReadOnly = isReadOnly;
 
         _loadedContractStorages = new Dictionary<AddressAsKey, StorageSnapshotBundle>();
 
-        _currentPooledContent = contentPool.Get();
-        ExpandCurrentPooledContent();
+        if (!_isReadOnly)
+        {
+            _currentPooledContent = contentPool.Get();
+            ExpandCurrentPooledContent();
+        }
 
         _snapshotBundleTimerKnownStates = _snapshotBundleTimer.WithLabels("known_states", isPrewarmer.ToString());
         _snapshotBundleTimerPersistence = _snapshotBundleTimer.WithLabels("persistence", isPrewarmer.ToString());
@@ -111,7 +118,7 @@ public class SnapshotBundle : IDisposable
 
     public bool TryGetAccountInMemory(Address address, out Account? acc)
     {
-        if (_changedAccounts.TryGetValue(address, out acc)) return true;
+        if (!_isReadOnly && _changedAccounts.TryGetValue(address, out acc)) return true;
 
         AddressAsKey key = address;
 
@@ -201,7 +208,7 @@ public class SnapshotBundle : IDisposable
 
     public bool TryFindNode(Hash256AsKey addr, in TreePath path, Hash256 hash, out TrieNode node)
     {
-        if (TryGetChangedNode(addr, in path, hash, out node))
+        if (!_isReadOnly && TryGetChangedNode(addr, in path, hash, out node))
         {
             return true;
         }
@@ -286,16 +293,19 @@ public class SnapshotBundle : IDisposable
 
     public void SetStateNode(in TreePath path, TrieNode newNode)
     {
+        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
         SetNode(null, path, newNode);
     }
 
     public void SetNode(Hash256AsKey addr, in TreePath path, TrieNode newNode)
     {
+        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
         _changedNodes[(addr, path)] = newNode;
     }
 
     public void ApplyStateChanges(Dictionary<AddressAsKey, Account> changedValues)
     {
+        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
         foreach (var kv in changedValues)
         {
             _changedAccounts[kv.Key] = kv.Value;
@@ -304,11 +314,13 @@ public class SnapshotBundle : IDisposable
 
     public bool HintAccountRead(Address address, Account? account)
     {
+        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
         return _changedAccounts.TryAdd(address, account);
     }
 
     public Snapshot CollectAndApplyKnownState(StateId from, StateId to)
     {
+        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
         var knownState = new Snapshot(
             from: from,
             to: to,
@@ -446,11 +458,12 @@ public class SnapshotBundle : IDisposable
         _changedNodes = null;
         _selfDestructedAccountAddresses = null;
 
-        _contentPool.Return(_currentPooledContent);
+        if (!_isReadOnly) _contentPool.Return(_currentPooledContent);
     }
 
     public void Clear(Address address, Hash256AsKey addressHash)
     {
+        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
         foreach (var kv in _changedNodes)
         {
             if (kv.Key.Item1.Value == addressHash)
@@ -479,11 +492,18 @@ public class SnapshotBundle : IDisposable
 
     public bool TryGetChangedSlot(AddressAsKey address, in UInt256 index, out byte[] value)
     {
+        if (_isReadOnly)
+        {
+            value = null;
+            return false;
+        }
+
         return _changedSlots.TryGetValue((address, index), out value);
     }
 
     public void SetChangedSlot(AddressAsKey address, in UInt256 index, byte[] value)
     {
+        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
         _changedSlots[(address, index)] = value;
     }
 

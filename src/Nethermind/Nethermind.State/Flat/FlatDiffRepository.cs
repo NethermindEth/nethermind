@@ -16,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
@@ -31,6 +32,7 @@ public class FlatDiffRepository : IFlatDiffRepository
     private Lock _repoLock = new Lock(); // Note: lock is for proteccting in memory and compacted states only
     private readonly ICanonicalStateRootFinder _stateRootFinder;
     private Dictionary<StateId, Snapshot> _compactedKnownStates = new();
+    private ConcurrentDictionary<StateId, RefCountingDisposableBox<SnapshotBundle>> _sharedReader = new();
     private InMemorySnapshotStore _inMemorySnapshotStore;
     private ObjectPool<SnapshotContent> _snapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(false));
     private ObjectPool<SnapshotContent> _compactedSnapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(false));
@@ -250,6 +252,16 @@ public class FlatDiffRepository : IFlatDiffRepository
         return GatherCache(baseBlock, null);
     }
 
+    public RefCountingDisposableBox<SnapshotBundle>? GatherReadOnlyReaderAtBaseBlock(StateId baseBlock)
+    {
+        if (_sharedReader.TryGetValue(baseBlock, out var snapshotBundle) && snapshotBundle.TryAcquire())
+        {
+            return snapshotBundle;
+        }
+
+        return null;
+    }
+
     private static Histogram _knownStatesSize = Metrics.CreateHistogram("flatdiff_known_state_size", "timer",
         new HistogramConfiguration()
         {
@@ -257,7 +269,7 @@ public class FlatDiffRepository : IFlatDiffRepository
             Buckets = Histogram.LinearBuckets(0, 1, 100)
         });
 
-    private SnapshotBundle GatherCache(StateId baseBlock, long? earliestExclusive = null)
+    private SnapshotBundle GatherCache(StateId baseBlock, long? earliestExclusive = null, bool isReadOnly = false)
     {
         long sw = Stopwatch.GetTimestamp();
         using var _ = _repoLock.EnterScope();
@@ -313,7 +325,7 @@ public class FlatDiffRepository : IFlatDiffRepository
 
         if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestExclusive}, Got {knownStates.Count} known states, {_currentPersistedState}");
         _addTime.WithLabels("gather_cache").Observe(Stopwatch.GetTimestamp() - sw);
-        return new SnapshotBundle(knownStates, bigCacheReader, _trieNodeCache, _snapshotPool);
+        return new SnapshotBundle(knownStates, bigCacheReader, _trieNodeCache, _snapshotPool, isReadOnly: isReadOnly);
     }
 
     public bool TryLeaseCompactedState(StateId stateId, out Snapshot entry)
@@ -359,6 +371,12 @@ public class FlatDiffRepository : IFlatDiffRepository
                 _logger.Warn("Compactor job stall!");
                 _compactorJobs.Writer.WriteAsync(endBlock).AsTask().Wait();
             }
+        }
+
+        RefCountingDisposableBox<SnapshotBundle> newReader = new RefCountingDisposableBox<SnapshotBundle>(GatherCache(endBlock, isReadOnly: true));
+        if (!_sharedReader.TryAdd(endBlock, newReader))
+        {
+            newReader.Dispose();
         }
     }
 
@@ -565,6 +583,11 @@ public class FlatDiffRepository : IFlatDiffRepository
         {
             _inMemorySnapshotStore.Remove(stateId);
             existingState.Dispose();
+        }
+
+        if (_sharedReader.TryRemove(stateId, out var existingSharedState))
+        {
+            existingSharedState.Dispose();
         }
     }
 

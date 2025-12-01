@@ -5,6 +5,7 @@ using System;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -18,13 +19,14 @@ public class FlatStateReader(
 {
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {
-        using SnapshotBundle reader = flatDiffRepository.GatherReaderAtBaseBlock(new StateId(baseBlock));
-        if (reader is null)
+        using RefCountingDisposableBox<SnapshotBundle> readerBox = flatDiffRepository.GatherReadOnlyReaderAtBaseBlock(new StateId(baseBlock));
+        if (readerBox is null)
         {
             account = default;
             return false;
         }
 
+        SnapshotBundle reader = readerBox.Item;
         if (reader.TryGetAccount(address, out Account? accountCls))
         {
             account = accountCls.ToStruct();
@@ -38,12 +40,13 @@ public class FlatStateReader(
     // TODO: Why is it return span? How is it suppose to dispose itself?
     public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
     {
-        using SnapshotBundle reader = flatDiffRepository.GatherReaderAtBaseBlock(new StateId(baseBlock));
-        if (reader is null)
+        using RefCountingDisposableBox<SnapshotBundle> readerBox = flatDiffRepository.GatherReadOnlyReaderAtBaseBlock(new StateId(baseBlock));
+        if (readerBox is null)
         {
             return Array.Empty<byte>();
         }
 
+        SnapshotBundle reader = readerBox.Item;
         if (reader.TryGetSlot(address, index, reader.DetermineSelfDestructStateIdx(address), out byte[] value))
         {
             return value;
