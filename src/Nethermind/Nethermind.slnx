@@ -112,6 +112,7 @@
   <Project Path="Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />
   <Project Path="Nethermind.Network/Nethermind.Network.csproj" />
   <Project Path="Nethermind.Optimism/Nethermind.Optimism.csproj" />
+  <Project Path="Nethermind.Paprika/Nethermind.Paprika.csproj" />
   <Project Path="Nethermind.Runner/Nethermind.Runner.csproj" />
   <Project Path="Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
   <Project Path="Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
@@ -128,7 +129,6 @@
   <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
   <Project Path="Nethermind.Xdc/Nethermind.Xdc.csproj" />
   <Project Path="Paprika/src/Paprika/Paprika.csproj" />
-  <Project Path="Paprika\src\Paprika.Runner\Paprika.Runner.csproj" Type="Classic C#" />
-  <Project Path="Paprika\src\Paprika.Tests\Paprika.Tests.csproj" Type="Classic C#" />
-  <Project Path="Paprika\src\PaprikaPlugin\PaprikaPlugin.csproj" Type="Classic C#" />
+  <Project Path="Paprika\src\Paprika.Runner\Paprika.Runner.csproj" Type="C#" />
+  <Project Path="Paprika\src\Paprika.Tests\Paprika.Tests.csproj" Type="C#" />
 </Solution>

@@ -65,6 +65,7 @@
     <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
     <ProjectReference Include="..\Nethermind.Optimism\Nethermind.Optimism.csproj" />
+    <ProjectReference Include="..\Nethermind.Paprika\Nethermind.Paprika.csproj" />
     <ProjectReference Include="..\Nethermind.Taiko\Nethermind.Taiko.csproj" />
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
     <ProjectReference Include="..\Nethermind.Shutter\Nethermind.Shutter.csproj" />

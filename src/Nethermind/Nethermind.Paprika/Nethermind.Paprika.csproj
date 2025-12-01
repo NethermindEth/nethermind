@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+      <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
+      <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />
+      <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
+      <ProjectReference Include="..\Paprika\src\Paprika\Paprika.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Reference Include="Spectre.Console">
+        <HintPath>..\..\..\..\..\.nuget\packages\spectre.console\0.51.1\lib\net9.0\Spectre.Console.dll</HintPath>
+      </Reference>
+    </ItemGroup>
+
+</Project>

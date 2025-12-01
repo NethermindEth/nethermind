@@ -50,7 +50,7 @@ using Nethermind.TxPool;
 using NUnit.Framework;
 using NUnit.Framework.Internal;
 using Paprika.Store;
-using PaprikaPlugin;
+using Nethermind.Paprika;
 
 namespace Nethermind.Synchronization.Test;
 
