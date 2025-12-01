@@ -64,8 +64,8 @@ namespace Nethermind.Synchronization.FastSync
 
             public override int GetHashCode()
             {
-                uint hash0 = (uint)hash.GetHashCode();
-                ulong hash1 = ((ulong)(uint)(address?.GetHashCode() ?? 1) << 32) | (ulong)(uint)(Path?.GetHashCode() ?? 2);
+                uint hash0 = (uint)Hash.GetHashCode();
+                ulong hash1 = ((ulong)(uint)(Address.GetHashCode()) << 32) | (ulong)(uint)(Path?.GetHashCode() ?? 2);
                 return (int)BitOperations.Crc32C(hash0, hash1);
             }
 

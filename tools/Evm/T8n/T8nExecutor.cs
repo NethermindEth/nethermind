@@ -33,7 +33,7 @@ public static class T8nExecutor
     {
         T8nTest test = T8nInputProcessor.ProcessInputAndConvertToT8nTest(arguments);
 
-        KzgPolynomialCommitments.InitializeAsync();
+        KzgPolynomialCommitments.InitializeAsync().Wait();
 
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
