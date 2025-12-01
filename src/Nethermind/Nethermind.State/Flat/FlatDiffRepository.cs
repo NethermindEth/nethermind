@@ -29,7 +29,7 @@ namespace Nethermind.State.Flat;
 
 public class FlatDiffRepository : IFlatDiffRepository
 {
-    private Lock _repoLock = new Lock(); // Note: lock is for proteccting in memory and compacted states only
+    private ReaderWriterLockSlim _repoLock = new ReaderWriterLockSlim(); // Note: lock is for proteccting in memory and compacted states only
     private readonly ICanonicalStateRootFinder _stateRootFinder;
     private Dictionary<StateId, Snapshot> _compactedKnownStates = new();
     private ConcurrentDictionary<StateId, RefCountingDisposableBox<SnapshotBundle>> _sharedReader = new();
@@ -190,6 +190,35 @@ public class FlatDiffRepository : IFlatDiffRepository
         CleanIfNeeded().Wait();
     }
 
+    private RepolockReadExiter EnterRepolockReadOnly()
+    {
+        _repoLock.EnterReadLock();
+
+        return new RepolockReadExiter(_repoLock, true);
+    }
+
+    private RepolockReadExiter EnterRepolock()
+    {
+        _repoLock.EnterWriteLock();
+
+        return new RepolockReadExiter(_repoLock, false);
+    }
+
+    private ref struct RepolockReadExiter(ReaderWriterLockSlim @lock, bool read) : IDisposable
+    {
+        public void Dispose()
+        {
+            if (read)
+            {
+                @lock.ExitReadLock();
+            }
+            else
+            {
+                @lock.ExitWriteLock();
+            }
+        }
+    }
+
     private void CompactLevel(StateId stateId)
     {
         try
@@ -199,7 +228,7 @@ public class FlatDiffRepository : IFlatDiffRepository
             if (blockNumber == 0) return;
             if (blockNumber % _compactSize != 0)
             {
-                using (_repoLock.EnterScope())
+                using (EnterRepolockReadOnly())
                 {
                     StateId? last = _inMemorySnapshotStore.GetLast();
                     if (last != null && last.Value.blockNumber - blockNumber > 1)
@@ -224,7 +253,7 @@ public class FlatDiffRepository : IFlatDiffRepository
             long sw = Stopwatch.GetTimestamp();
             Snapshot snapshot = gatheredCache.CompactToKnownState(_compactedSnapshotPool);
 
-            using (_repoLock.EnterScope())
+            using (EnterRepolock())
             {
                 if (_logger.IsDebug) _logger.Debug($"Compacted {gatheredCache.SnapshotCount} to {stateId}");
                 _compactedKnownStates[stateId] = snapshot;
@@ -272,10 +301,10 @@ public class FlatDiffRepository : IFlatDiffRepository
     private SnapshotBundle GatherCache(StateId baseBlock, long? earliestExclusive = null, bool isReadOnly = false)
     {
         long sw = Stopwatch.GetTimestamp();
-        using var _ = _repoLock.EnterScope();
+        using var _ = EnterRepolockReadOnly();
         _addTime.WithLabels("gather_cache_lock").Observe(Stopwatch.GetTimestamp() - sw);
 
-        ArrayPoolList<Snapshot> knownStates = new(_inMemorySnapshotStore.KnownStatesCount / 32);
+        ArrayPoolList<Snapshot> knownStates = new(Math.Max(1, (int)(_inMemorySnapshotStore.KnownStatesCount / _compactSize)));
 
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}. Earliest is {earliestExclusive}");
 
@@ -346,7 +375,7 @@ public class FlatDiffRepository : IFlatDiffRepository
     {
         StateId startingBlock = snapshot.From;
         StateId endBlock = snapshot.To;
-        using (_repoLock.EnterScope())
+        using (EnterRepolock())
         {
             if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.blockNumber} to {endBlock.blockNumber}");
             if (endBlock.blockNumber <= _currentPersistedState.blockNumber)
@@ -401,7 +430,7 @@ public class FlatDiffRepository : IFlatDiffRepository
             Snapshot pickedState;
             StateId? pickedSnapshot = null;
             List<StateId> toRemoveStates = new List<StateId>();
-            using (_repoLock.EnterScope())
+            using (EnterRepolock())
             {
                 long lastSnapshotNumber = _inMemorySnapshotStore.GetLast()?.blockNumber ?? 0;
                 StateId currentState = _currentPersistedState;
@@ -550,7 +579,7 @@ public class FlatDiffRepository : IFlatDiffRepository
             _addTime.WithLabels("add_trie_cache").Observe(Stopwatch.GetTimestamp() - ss);
 
             // And we remove it
-            using (_repoLock.EnterScope())
+            using (EnterRepolock())
             {
                 RemoveAndReleaseCompactedKnownState(pickedSnapshot.Value);
                 RemoveAndReleaseKnownState(pickedSnapshot.Value);
@@ -568,7 +597,6 @@ public class FlatDiffRepository : IFlatDiffRepository
 
     private void RemoveAndReleaseCompactedKnownState(StateId stateId)
     {
-        if (!_repoLock.IsHeldByCurrentThread) throw new Exception("Repolock must be held");
         if (_compactedKnownStates.TryGetValue(stateId, out var existingState))
         {
             _compactedKnownStates.Remove(stateId);
@@ -578,7 +606,6 @@ public class FlatDiffRepository : IFlatDiffRepository
 
     private void RemoveAndReleaseKnownState(StateId stateId)
     {
-        if (!_repoLock.IsHeldByCurrentThread) throw new Exception("Repolock must be held");
         if (_inMemorySnapshotStore.TryGetValue(stateId, out var existingState))
         {
             _inMemorySnapshotStore.Remove(stateId);
