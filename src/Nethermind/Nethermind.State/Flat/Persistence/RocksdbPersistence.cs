@@ -19,13 +19,22 @@ public class RocksdbPersistence : IPersistence
     private readonly IColumnsDb<FlatDbColumns> _db;
     private static byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
 
-    private const int StorageKeyLength = 32 + 32;
+    private const int StorageHashPrefixLength = 20; // Store prefix of the 32 byte of the storage. Reduces index size.
+    private const int StorageSlotKeySize = 32;
+    private const int StorageKeyLength = StorageHashPrefixLength + StorageSlotKeySize;
+    private const int FullPathLength = 32;
+    private const int PathLengthLength = 1;
 
-    private const int StateNodesKeyLength = 32 + 1;
-    private const int TopStateNodesThreshold = 5;
+    private const int StateNodesKeyLength = FullPathLength + PathLengthLength;
+    private const int StateNodesTopThreshold = 5;
+    private const int StateNodesTopPathLength = 3;
+    private const int StateNodesTopKeyLength = StateNodesTopPathLength + PathLengthLength;
 
-    private const int StorageNodesKeyLength = 32 + 32 + 1;
-    private const int TopStorageNodesThreshold = 4;
+    private const int StorageNodesKeyLength = StorageHashPrefixLength + FullPathLength + PathLengthLength;
+    private const int StorageNodesTopThreshold = 4;
+    private const int StorageNodesTopPathLength = 2;
+    private const int StorageNodesTopKeyLength = StorageHashPrefixLength + StorageNodesTopPathLength + PathLengthLength;
+
 
     internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
@@ -56,21 +65,6 @@ public class RocksdbPersistence : IPersistence
         kv.PutSpan(CurrentStateKey, bytes);
     }
 
-    internal static ReadOnlySpan<byte> EncodeStateNodeKey(Span<byte> buffer, in TreePath path)
-    {
-        path.Path.Bytes.CopyTo(buffer);
-        buffer[32] = (byte)path.Length;
-        return buffer[..StateNodesKeyLength];
-    }
-
-    internal static ReadOnlySpan<byte> EncodeStorageNodeKey(Span<byte> buffer, Hash256 addr, in TreePath path)
-    {
-        addr.Bytes.CopyTo(buffer);
-        path.Path.Bytes.CopyTo(buffer[32..]);
-        buffer[32 + 32] = (byte)path.Length;
-        return buffer[..StorageNodesKeyLength];
-    }
-
     internal static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, in ValueHash256 addr, in UInt256 slot)
     {
         ValueHash256 hash256 = ValueKeccak.Zero;
@@ -80,9 +74,39 @@ public class RocksdbPersistence : IPersistence
 
     internal static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, in ValueHash256 addr, ValueHash256 slot)
     {
-        addr.Bytes.CopyTo(buffer);
-        slot.Bytes.CopyTo(buffer[32..64]);
+        addr.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
+        slot.Bytes.CopyTo(buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]);
         return buffer[..StorageKeyLength];
+    }
+
+    internal static ReadOnlySpan<byte> EncodeStateNodeKey(Span<byte> buffer, in TreePath path)
+    {
+        path.Path.Bytes.CopyTo(buffer);
+        buffer[FullPathLength] = (byte)path.Length;
+        return buffer[..StateNodesKeyLength];
+    }
+
+    internal static ReadOnlySpan<byte> EncodeStateTopNodeKey(Span<byte> buffer, in TreePath path)
+    {
+        path.Path.Bytes[0..StateNodesTopPathLength].CopyTo(buffer);
+        buffer[StateNodesTopPathLength] = (byte)path.Length;
+        return buffer[..StateNodesTopKeyLength];
+    }
+
+    internal static ReadOnlySpan<byte> EncodeStorageNodeKey(Span<byte> buffer, Hash256 addr, in TreePath path)
+    {
+        addr.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
+        path.Path.Bytes.CopyTo(buffer[StorageHashPrefixLength..]);
+        buffer[StorageHashPrefixLength + FullPathLength] = (byte)path.Length;
+        return buffer[..StorageNodesKeyLength];
+    }
+
+    internal static ReadOnlySpan<byte> EncodeStorageNodeTopKey(Span<byte> buffer, Hash256 addr, in TreePath path)
+    {
+        addr.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
+        path.Path.Bytes[..StorageNodesTopPathLength].CopyTo(buffer[StorageHashPrefixLength..]);
+        buffer[StorageHashPrefixLength + StorageNodesTopPathLength] = (byte)path.Length;
+        return buffer[..StorageNodesTopKeyLength];
     }
 
     public IPersistence.IPersistenceReader CreateReader()
@@ -129,7 +153,7 @@ public class RocksdbPersistence : IPersistence
         {
             Span<byte> lastKey = stackalloc byte[StorageNodesKeyLength];
             lastKey.Fill(0xff);
-            addr.Bytes.CopyTo(lastKey);
+            addr.Bytes[..StorageHashPrefixLength].CopyTo(lastKey);
 
             using (ISortedView storageNodeReader = ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes)).GetViewBetween(addr.Bytes, lastKey))
             {
@@ -199,9 +223,9 @@ public class RocksdbPersistence : IPersistence
         {
             if (address is null)
             {
-                if (path.Length <= TopStateNodesThreshold)
+                if (path.Length <= StateNodesTopThreshold)
                 {
-                    stateTopNodes.PutSpan(EncodeStateNodeKey(stackalloc byte[StateNodesKeyLength], path), tn.FullRlp.Span);
+                    stateTopNodes.PutSpan(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopKeyLength], path), tn.FullRlp.Span);
                 }
                 else
                 {
@@ -210,9 +234,9 @@ public class RocksdbPersistence : IPersistence
             }
             else
             {
-                if (path.Length <= TopStorageNodesThreshold)
+                if (path.Length <= StorageNodesTopThreshold)
                 {
-                    storageNodes.PutSpan(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, path), tn.FullRlp.Span);
+                    storageNodes.PutSpan(EncodeStorageNodeTopKey(stackalloc byte[StorageNodesKeyLength], address, path), tn.FullRlp.Span);
                 }
                 else
                 {
@@ -308,7 +332,7 @@ public class RocksdbPersistence : IPersistence
             {
                 Span<byte> keyBuffer = stackalloc byte[StateNodesKeyLength];
 
-                if (path.Length <= TopStateNodesThreshold)
+                if (path.Length <= StateNodesTopThreshold)
                 {
                     return _stateTopNodes.Get(EncodeStateNodeKey(keyBuffer, in path));
                 }
@@ -320,9 +344,9 @@ public class RocksdbPersistence : IPersistence
             else
             {
                 Span<byte> keyBuffer2 = stackalloc byte[StorageNodesKeyLength];
-                if (path.Length <= TopStorageNodesThreshold)
+                if (path.Length <= StorageNodesTopThreshold)
                 {
-                    var rlp = _storageTopNodes.Get(EncodeStorageNodeKey(keyBuffer2, address, in path));
+                    var rlp = _storageTopNodes.Get(EncodeStorageNodeTopKey(keyBuffer2, address, in path));
                     return rlp;
                 }
                 else

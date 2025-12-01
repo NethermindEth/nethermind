@@ -410,7 +410,7 @@ public class DbConfig : IDbConfig
 
     public string? FlatStorageDbRocksDbOptions { get; set; } =
         FlatCommonConfig +
-        "prefix_extractor=capped:32;" +
+        "prefix_extractor=capped:20;" +
         "";
 
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
