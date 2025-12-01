@@ -249,7 +249,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
         {
-            if (bundle.TryFindNode(path, hash, out var node))
+            if (bundle.TryFindNode(null, path, hash, out var node))
             {
                 return node;
             }

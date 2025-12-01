@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection.Metadata.Ecma335;
@@ -39,9 +40,9 @@ public class FlatDiffRepository : IFlatDiffRepository
         {
             return new SnapshotContent(
                 Accounts: new Dictionary<AddressAsKey, Account?>(),
-                Storages: new Dictionary<(AddressAsKey, UInt256), byte[]?>(),
-                SelfDestructedStorageAddresses: new HashSet<AddressAsKey>(),
-                TrieNodes: new Dictionary<(Hash256AsKey, TreePath), TrieNode>()
+                Storages: new ConcurrentDictionary<(AddressAsKey, UInt256), byte[]?>(),
+                SelfDestructedStorageAddresses: new ConcurrentDictionary<AddressAsKey, bool>(),
+                TrieNodes: new ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode>()
             );
         }
 
@@ -565,7 +566,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         {
             foreach (var toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
             {
-                batch.SelfDestruct(toSelfDestructStorage.Value.ToAccountPath);
+                batch.SelfDestruct(toSelfDestructStorage.Key.Value.ToAccountPath);
             }
             _addTime.WithLabels("self_destruct").Observe(Stopwatch.GetTimestamp() - sw);
             sw = Stopwatch.GetTimestamp();

@@ -31,7 +31,7 @@ public class Snapshot(
     public StateId From => from;
     public StateId To => to;
     public IEnumerable<KeyValuePair<AddressAsKey, Account?>> Accounts => content.Accounts;
-    public IEnumerable<AddressAsKey> SelfDestructedStorageAddresses => content.SelfDestructedStorageAddresses;
+    public IEnumerable<KeyValuePair<AddressAsKey, bool>> SelfDestructedStorageAddresses => content.SelfDestructedStorageAddresses;
     public IEnumerable<KeyValuePair<(AddressAsKey, UInt256), byte[]?>> Storages => content.Storages;
     public IEnumerable<KeyValuePair<(Hash256AsKey, TreePath), TrieNode>> TrieNodes => content.TrieNodes;
     public int AccountsCount => content.Accounts.Count;
@@ -45,7 +45,7 @@ public class Snapshot(
 
     public bool HasSelfDestruct(Address address)
     {
-        return content.SelfDestructedStorageAddresses.Contains(address);
+        return content.SelfDestructedStorageAddresses.TryGetValue(address, out var _);
     }
 
     public bool TryGetStorage(Address address, in UInt256 index, out byte[] value)
@@ -70,10 +70,11 @@ public class Snapshot(
 }
 
 public record SnapshotContent(
+    // They dont actually need to be concurrent, but its makes commit fast by just passing the whole content.
     Dictionary<AddressAsKey, Account?> Accounts,
-    Dictionary<(AddressAsKey, UInt256), byte[]?> Storages,
-    HashSet<AddressAsKey> SelfDestructedStorageAddresses,
-    Dictionary<(Hash256AsKey, TreePath), TrieNode> TrieNodes
+    ConcurrentDictionary<(AddressAsKey, UInt256), byte[]?> Storages,
+    ConcurrentDictionary<AddressAsKey, bool> SelfDestructedStorageAddresses,
+    ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> TrieNodes
 ) {
     public void Reset()
     {
