@@ -22,7 +22,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
@@ -36,7 +35,6 @@ public class SnapServer : ISnapServer
     private readonly IReadOnlyTrieStore _store;
     private readonly TrieStoreWithReadFlags _storeWithReadFlag;
     private readonly IReadOnlyKeyValueStore _codeDb;
-    private readonly IStateReader _stateReader;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
 
@@ -51,11 +49,10 @@ public class SnapServer : ISnapServer
     private const long HardResponseByteLimit = 2000000;
     private const int HardResponseNodeLimit = 100000;
 
-    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, IStateReader stateReader, ILogManager logManager, ILastNStateRootTracker? lastNStateRootTracker = null)
+    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILogManager logManager, ILastNStateRootTracker? lastNStateRootTracker = null)
     {
         _store = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-        _stateReader = stateReader; // TODO: Remove
         _lastNStateRootTracker = lastNStateRootTracker;
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = logManager.GetClassLogger();
@@ -281,8 +278,7 @@ public class SnapServer : ISnapServer
     {
         PatriciaTree tree = new(_store, _logManager);
         using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
-        VisitingOptions opt = new();
-        tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
+        tree.Accept(visitor, rootHash.ToCommitment(), new VisitingOptions(), storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 
         ArrayPoolList<byte[]> proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? visitor.GetProofs() : ArrayPoolList<byte[]>.Empty();
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);
