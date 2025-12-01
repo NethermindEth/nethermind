@@ -361,6 +361,9 @@ public class SnapshotBundle : IDisposable
 
         StateId to = _knownStates[^1].To;
         StateId from = _knownStates[0].From;
+        HashSet<Address> addressToClear = new HashSet<Address>();
+        HashSet<Hash256AsKey> addressHashToClear = new HashSet<Hash256AsKey>();
+
 
         for (int i = 0; i < _knownStates.Count; i++)
         {
@@ -371,25 +374,36 @@ public class SnapshotBundle : IDisposable
                 accounts[address] = knownStateAccount.Value;
             }
 
+            addressToClear.Clear();
+            addressHashToClear.Clear();
+
             foreach (KeyValuePair<AddressAsKey, bool> addrK in knownState.SelfDestructedStorageAddresses)
             {
                 var address = addrK.Key;
                 var isNewAccount = addrK.Value;
                 selfDestructedStorageAddresses[address] = isNewAccount;
 
+                if (!isNewAccount)
+                {
+                    addressToClear.Add(address);
+                    addressHashToClear.Add(address.Value.ToAccountPath.ToCommitment());
+                }
+            }
+
+            if (addressToClear.Count > 0)
+            {
                 // Clear
                 foreach (var kv in storages)
                 {
-                    if (kv.Key.Item1 == address.Value)
+                    if (addressToClear.Contains(kv.Key.Item1))
                     {
                         storages.Remove(kv.Key, out _);
                     }
                 }
 
-                Hash256 accountHash = address.Value.ToAccountPath.ToCommitment();
                 foreach (var kv in nodes)
                 {
-                    if (kv.Key.Item1 == accountHash)
+                    if (addressHashToClear.Contains(kv.Key.Item1))
                     {
                         nodes.Remove(kv.Key, out _);
                     }
