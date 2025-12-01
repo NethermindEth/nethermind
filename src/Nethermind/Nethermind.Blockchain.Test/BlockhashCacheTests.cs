@@ -311,9 +311,8 @@ public class BlockhashCacheTests
         Assert.Multiple(() =>
             {
                 int compareLength = headHashes.Length - 1;
-                Assert.That(prevHashes.AsSpan(0, compareLength)
-                    .SequenceEqual(headHashes.AsSpan(1, compareLength)));
-                Assert.That(headHashes[0], Is.EqualTo(head.Hash));
+                Assert.That(prevHashes.AsSpan(0, compareLength).SequenceEqual(headHashes.AsSpan(1, compareLength)));
+                Assert.That(headHashes[0], Is.EqualTo(head.ParentHash));
             }
         );
     }

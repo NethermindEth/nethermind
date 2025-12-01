@@ -101,12 +101,13 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             }
         }
 
-        if (blocks.Count == FlatCacheLength(blockHeader))
+        int ancestorHashCount = blocks.Count - 1;
+        if (ancestorHashCount == FlatCacheLength(blockHeader))
         {
-            hashes = new Hash256[blocks.Count];
-            for (int i = 0; i < blocks.Count; i++)
+            hashes = new Hash256[ancestorHashCount];
+            for (int i = 1; i < blocks.Count; i++)
             {
-                hashes[i] = blocks[i].Node.Hash;
+                hashes[i - 1] = blocks[i].Node.Hash;
             }
             _flatCache.Set(blockHeader.Hash, hashes);
         }
@@ -118,7 +119,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                 : null;
     }
 
-    private static int FlatCacheLength(BlockHeader blockHeader) => (int)(Math.Min(MaxDepth, blockHeader.Number) + 1);
+    private static int FlatCacheLength(BlockHeader blockHeader) => (int)Math.Min(MaxDepth, blockHeader.Number);
 
     public Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken = default)
     {
@@ -135,8 +136,8 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                         {
                             int length = FlatCacheLength(blockHeader);
                             hashes = new Hash256[length];
-                            hashes[0] = blockHeader.Hash;
-                            Array.Copy(parentHashes, 0, hashes, 1, Math.Min(length - 1, MaxDepth));
+                            hashes[0] = blockHeader.ParentHash;
+                            Array.Copy(parentHashes, 0, hashes, 1, Math.Min(length - 1, MaxDepth - 1));
                             _flatCache.Set(blockHeader.Hash, hashes);
                         }
                         else
