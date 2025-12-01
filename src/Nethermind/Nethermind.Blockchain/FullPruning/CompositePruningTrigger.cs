@@ -2,20 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Blockchain.FullPruning;
 
 /// <summary>
 /// Allows to have multiple <see cref="IPruningTrigger"/>s.
 /// </summary>
-public class CompositePruningTrigger : IPruningTrigger
+public class CompositePruningTrigger : IPruningTrigger, IDisposable
 {
+    private readonly List<IPruningTrigger> _triggers = new List<IPruningTrigger>();
+
     /// <summary>
     /// Adds new <see cref="IPruningTrigger"/> to the be watched."/>
     /// </summary>
     /// <param name="trigger">trigger to be watched</param>
     public void Add(IPruningTrigger trigger)
     {
+        _triggers.Add(trigger);
         trigger.Prune += OnPrune;
     }
 
@@ -26,4 +30,17 @@ public class CompositePruningTrigger : IPruningTrigger
 
     /// <inheridoc /> 
     public event EventHandler<PruningTriggerEventArgs>? Prune;
+
+    public void Dispose()
+    {
+        foreach (IPruningTrigger trigger in _triggers)
+        {
+            trigger.Prune -= OnPrune;
+            if (trigger is IDisposable d)
+            {
+                d.Dispose();
+            }
+        }
+        _triggers.Clear();
+    }
 }
