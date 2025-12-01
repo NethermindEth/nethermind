@@ -151,6 +151,10 @@ public class PruningTrieStateFactory(
             if (pruningTrigger is not null)
             {
                 compositePruningTrigger.Add(pruningTrigger);
+                if (pruningTrigger is IDisposable d)
+                {
+                    disposeStack.Push(d);
+                }
             }
 
             IDriveInfo? drive = fileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
