@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security;
@@ -68,7 +68,7 @@ public partial class EthRpcModule(
     IForkInfo forkInfo,
     ulong? secondsPerSlot) : IEthRpcModule
 {
-    private static readonly ConcurrentDictionary<ForkId, ForkConfig> forkConfigCache = [];
+    private static FrozenDictionary<ForkId, ForkConfig>? forkConfigCache = null;
 
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -808,6 +808,20 @@ public partial class EthRpcModule(
     public ResultWrapper<JsonNode> eth_config(bool showAllForks = false)
     {
         ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
+
+        if (forkConfigCache is null)
+        {
+            ReadOnlySpan<Fork> forkSchedule = forkInfo.GetAllForks();
+            Dictionary<ForkId, ForkConfig> allForks = new(forkSchedule.Length);
+
+            foreach (Fork scheduledFork in forkSchedule)
+            {
+                allForks.Add(scheduledFork.Id, BuildForkConfig(scheduledFork, _specProvider));
+            }
+
+            forkConfigCache = allForks.ToFrozenDictionary();
+        }
+
         List<ForkConfig>? allForkConfigs = null;
 
         if (showAllForks)
@@ -817,31 +831,23 @@ public partial class EthRpcModule(
 
             foreach (Fork scheduledFork in forkSchedule)
             {
-                allForkConfigs.Add(BuildForkConfig(scheduledFork, _specProvider));
+                allForkConfigs.Add(forkConfigCache[scheduledFork.Id]);
             }
         }
 
         return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize(new ForkConfigSummary
         {
-            Current = BuildForkConfig(forks.Current, _specProvider),
-            Next = GetForkConfigOrNull(forks.Next, _specProvider),
-            Last = GetForkConfigOrNull(forks.Last, _specProvider),
+            Current = forkConfigCache[forks.Current.Id],
+            Next = forks.Next is null ? null : forkConfigCache[forks.Next.Value.Id],
+            Last = forks.Last is null ? null : forkConfigCache[forks.Last.Value.Id],
             All = allForkConfigs
         }, UnchangedDictionaryKeyOptions)));
 
-        static ForkConfig? GetForkConfigOrNull(Fork? fork, ISpecProvider specProvider) =>
-            fork is null ? null : BuildForkConfig(fork.Value, specProvider);
-
         static ForkConfig BuildForkConfig(Fork fork, ISpecProvider specProvider)
         {
-            if (forkConfigCache.TryGetValue(fork.Id, out ForkConfig config))
-            {
-                return config;
-            }
-
             IReleaseSpec spec = specProvider.GetSpec(fork.Activation.BlockNumber, fork.Activation.Timestamp);
 
-            return forkConfigCache[fork.Id] = new ForkConfig
+            return new ForkConfig
             {
                 ActivationTime = fork.Activation.Timestamp is not null ? (int)fork.Activation.Timestamp : null,
                 ActivationBlock = fork.Activation.Timestamp is null ? (int)fork.Activation.BlockNumber : null,
