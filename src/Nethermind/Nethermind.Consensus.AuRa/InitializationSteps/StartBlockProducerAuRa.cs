@@ -158,7 +158,8 @@ public class StartBlockProducerAuRa(
         }
 
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _parameters.RewriteBytecode;
-        ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
+        IDictionary<ulong, IDictionary<Address, byte[]>> rewriteBytecodeTimestamp = _parameters.RewriteBytecodeTimestamp;
+        ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 
         var transactionExecutor = new BlockProcessor.BlockProductionTransactionsExecutor(
             new BuildUpTransactionProcessorAdapter(txProcessor),

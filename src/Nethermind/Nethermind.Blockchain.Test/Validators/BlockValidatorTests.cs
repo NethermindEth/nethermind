@@ -15,6 +15,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Specs.GnosisForks;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
@@ -211,7 +212,10 @@ public class BlockValidatorTests
                 .TestObject,
             parent,
             Substitute.For<ISpecProvider>(),
-            "InvalidUnclesHash");
+            "InvalidUnclesHash")
+        {
+            TestName = "InvalidUnclesHash"
+        };
 
         yield return new TestCaseData(
             Build.A.Block
@@ -219,7 +223,10 @@ public class BlockValidatorTests
                 .TestObject,
             parent,
             Substitute.For<ISpecProvider>(),
-            "InvalidTxRoot");
+            "InvalidTxRoot")
+        {
+            TestName = "InvalidTxRoot"
+        };
 
         yield return new TestCaseData(
             Build.A.Block.WithBlobGasUsed(131072)
@@ -234,13 +241,44 @@ public class BlockValidatorTests
                 .TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
-            "InsufficientMaxFeePerBlobGas");
+            "InsufficientMaxFeePerBlobGas")
+        {
+            TestName = "InsufficientMaxFeePerBlobGas"
+        };
 
         yield return new TestCaseData(
             Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize + 1).TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)),
-            "ExceededBlockSizeLimit");
+            "ExceededBlockSizeLimit")
+        {
+            TestName = "ExceededBlockSizeLimit"
+        };
+
+        Transaction censoredTx = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithSenderAddress(TestItem.AddressA)
+                .WithTo(Address.Zero)
+                .WithMaxFeePerGas(100000)
+                .WithGasLimit(1000000)
+                .WithChainId(TestBlockchainIds.ChainId).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        yield return new TestCaseData(
+            Build.A.Block
+                .WithParent(parent)
+                .WithTransactions([censoredTx])
+                .WithBlobGasUsed(0)
+                .WithWithdrawals([])
+                .TestObject,
+            parent,
+            new TestSpecProvider(new OverridableReleaseSpec(BalancerGnosis.Instance)
+            {
+                CensoredSenders = [TestItem.AddressA],
+                CensoredTo = [TestItem.AddressB]
+            }),
+            "Censored")
+        {
+            TestName = "Censored"
+        };
     }
 
     [TestCaseSource(nameof(BadSuggestedBlocks))]
@@ -249,8 +287,12 @@ public class BlockValidatorTests
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
 
-        sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
+        bool res = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
 
-        Assert.That(error, Does.StartWith(expectedError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res, Is.False);
+            Assert.That(error, Does.StartWith(expectedError));
+        }
     }
 }
