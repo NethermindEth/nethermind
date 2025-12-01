@@ -11,10 +11,10 @@ namespace Nethermind.Blockchain.FullPruning;
 /// </summary>
 public class CompositePruningTrigger : IPruningTrigger, IDisposable
 {
-    private readonly List<IPruningTrigger> _triggers = new List<IPruningTrigger>();
+    private readonly List<IPruningTrigger> _triggers = [];
 
     /// <summary>
-    /// Adds new <see cref="IPruningTrigger"/> to the be watched."/>
+    /// Adds new <see cref="IPruningTrigger"/> to be watched.
     /// </summary>
     /// <param name="trigger">trigger to be watched</param>
     public void Add(IPruningTrigger trigger)
@@ -28,7 +28,7 @@ public class CompositePruningTrigger : IPruningTrigger, IDisposable
         Prune?.Invoke(sender, e);
     }
 
-    /// <inheridoc /> 
+    /// <inheritdoc />
     public event EventHandler<PruningTriggerEventArgs>? Prune;
 
     public void Dispose()
