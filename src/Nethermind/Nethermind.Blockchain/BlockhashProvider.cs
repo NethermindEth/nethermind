@@ -38,8 +38,7 @@ namespace Nethermind.Blockchain
                 return _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
             }
 
-            long current = currentBlock.Number;
-            long depth = current - number;
+            long depth = currentBlock.Number - number;
             Hash256[]? hashes = _hashes;
 
             return depth switch
