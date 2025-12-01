@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security;
@@ -67,6 +68,8 @@ public partial class EthRpcModule(
     IForkInfo forkInfo,
     ulong? secondsPerSlot) : IEthRpcModule
 {
+    private static readonly ConcurrentDictionary<ForkId, ForkConfig> forkConfigCache = [];
+
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
     protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
@@ -805,19 +808,17 @@ public partial class EthRpcModule(
     public ResultWrapper<JsonNode> eth_config(bool showAllForks = false)
     {
         ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
-        IReadOnlyList<ForkConfig>? allForkConfigs = null;
+        List<ForkConfig>? allForkConfigs = null;
 
         if (showAllForks)
         {
-            Fork[] forkSchedule = forkInfo.GetAllForks();
-            List<ForkConfig> forkConfigs = new(forkSchedule.Length);
+            ReadOnlySpan<Fork> forkSchedule = forkInfo.GetAllForks();
+            allForkConfigs = new(forkSchedule.Length);
 
             foreach (Fork scheduledFork in forkSchedule)
             {
-                forkConfigs.Add(BuildForkConfig(scheduledFork, _specProvider));
+                allForkConfigs.Add(BuildForkConfig(scheduledFork, _specProvider));
             }
-
-            allForkConfigs = forkConfigs;
         }
 
         return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize(new ForkConfigSummary
@@ -833,9 +834,14 @@ public partial class EthRpcModule(
 
         static ForkConfig BuildForkConfig(Fork fork, ISpecProvider specProvider)
         {
+            if (forkConfigCache.TryGetValue(fork.Id, out ForkConfig config))
+            {
+                return config;
+            }
+
             IReleaseSpec spec = specProvider.GetSpec(fork.Activation.BlockNumber, fork.Activation.Timestamp);
 
-            return new ForkConfig
+            return forkConfigCache[fork.Id] = new ForkConfig
             {
                 ActivationTime = fork.Activation.Timestamp is not null ? (int)fork.Activation.Timestamp : null,
                 ActivationBlock = fork.Activation.Timestamp is null ? (int)fork.Activation.BlockNumber : null,

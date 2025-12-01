@@ -177,7 +177,7 @@ namespace Nethermind.Network
             };
         }
 
-        public Fork[] GetAllForks()
+        public ReadOnlySpan<Fork> GetAllForks()
         {
             EnsureInitialized();
             return Forks;
