@@ -133,31 +133,31 @@ namespace Nethermind.Specs.Test
 
         public bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
 
-        private long? _overridenEip1559TransitionBlock;
+        private long? _overriddenEip1559TransitionBlock;
         public long Eip1559TransitionBlock
         {
-            get => _overridenEip1559TransitionBlock ?? spec.Eip1559TransitionBlock;
-            set => _overridenEip1559TransitionBlock = value;
+            get => _overriddenEip1559TransitionBlock ?? spec.Eip1559TransitionBlock;
+            set => _overriddenEip1559TransitionBlock = value;
         }
 
-        private Address? _overridenFeeCollector;
+        private Address? _overriddenFeeCollector;
         public Address? FeeCollector
         {
-            get => _overridenFeeCollector ?? spec.FeeCollector;
-            set => _overridenFeeCollector = value;
+            get => _overriddenFeeCollector ?? spec.FeeCollector;
+            set => _overriddenFeeCollector = value;
         }
 
-        private ulong? _overridenEip4844TransitionTimeStamp;
+        private ulong? _overriddenEip4844TransitionTimestamp;
 
         public ulong Eip4844TransitionTimestamp
         {
             get
             {
-                return _overridenEip4844TransitionTimeStamp ?? spec.Eip4844TransitionTimestamp;
+                return _overriddenEip4844TransitionTimestamp ?? spec.Eip4844TransitionTimestamp;
             }
             set
             {
-                _overridenEip4844TransitionTimeStamp = value;
+                _overriddenEip4844TransitionTimestamp = value;
             }
         }
 

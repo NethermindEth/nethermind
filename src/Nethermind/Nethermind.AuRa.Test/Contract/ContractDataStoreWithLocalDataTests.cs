@@ -55,7 +55,7 @@ namespace Nethermind.AuRa.Test.Contract
         }
 
         [Test]
-        public void doesnt_reload_data_from_local_when_changed_not_fired()
+        public void does_not_reload_data_from_local_when_changed_not_fired()
         {
             ILocalDataSource<IEnumerable<Address>> localDataSource = Substitute.For<ILocalDataSource<IEnumerable<Address>>>();
             Address[] expected = { TestItem.AddressA };

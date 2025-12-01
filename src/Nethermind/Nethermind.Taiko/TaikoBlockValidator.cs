@@ -89,7 +89,7 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        // We dont set the tx.SenderAddress here, as it will stop the rest of the transactions in the block
+        // We don't set the tx.SenderAddress here, as it will stop the rest of the transactions in the block
         // from getting their sender address recovered
         Address? senderAddress = tx.SenderAddress ?? ecdsa.RecoverAddress(tx);
 

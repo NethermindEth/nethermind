@@ -54,9 +54,9 @@ public class TaikoTransactionProcessor(
         {
             if (((ITaikoReleaseSpec)spec).IsOntakeEnabled)
             {
-                byte basefeeSharingPctg = header.DecodeOntakeExtraData() ?? 0;
+                byte basefeeSharingPct = header.DecodeOntakeExtraData() ?? 0;
 
-                UInt256 feeCoinbase = baseFees * basefeeSharingPctg / 100;
+                UInt256 feeCoinbase = baseFees * basefeeSharingPct / 100;
 
                 if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
                 {

@@ -52,7 +52,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             }
             finally
             {
-                Metrics.ForkchoiceUpdedExecutionTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
+                Metrics.ForkchoiceUpdatedExecutionTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
                 _locker.Release();
             }
         }

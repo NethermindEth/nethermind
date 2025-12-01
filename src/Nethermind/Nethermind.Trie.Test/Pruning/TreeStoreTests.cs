@@ -1492,7 +1492,7 @@ namespace Nethermind.Trie.Test.Pruning
                 }
             }
 
-            // Start from genesis for simplicty
+            // Start from genesis for simplicity
             BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(Keccak.EmptyTreeHash).TestObject;
             int blockNum = 100;
             int lastNRoots = 0;

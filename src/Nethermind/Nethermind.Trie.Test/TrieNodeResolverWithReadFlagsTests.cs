@@ -29,7 +29,7 @@ public class TrieNodeResolverWithReadFlagsTests
     }
 
     [Test]
-    public void LoadRlp_combine_passed_flaeg()
+    public void LoadRlp_combine_passed_flag()
     {
         ReadFlags theFlags = ReadFlags.HintCacheMiss;
         TestMemDb memDb = new();

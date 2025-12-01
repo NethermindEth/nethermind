@@ -24,6 +24,6 @@ public class CompositePruningTrigger : IPruningTrigger
         Prune?.Invoke(sender, e);
     }
 
-    /// <inheridoc /> 
+    /// <inheritdoc />
     public event EventHandler<PruningTriggerEventArgs>? Prune;
 }

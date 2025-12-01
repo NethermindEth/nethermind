@@ -483,7 +483,7 @@ public partial class EngineModuleTests
 
     [Test]
     [Retry(3)]
-    public async Task getPayloadV1_doesnt_wait_for_improvement_when_block_is_not_empty()
+    public async Task getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 50 * delay;

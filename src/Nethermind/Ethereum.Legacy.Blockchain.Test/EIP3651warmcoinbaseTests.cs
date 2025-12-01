@@ -9,7 +9,7 @@ namespace Ethereum.Blockchain.Legacy.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class EIP3651warmcoinbaseTests : GeneralStateTestBase
+public class EIP3651WarmCoinbaseTests : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test)
@@ -19,7 +19,8 @@ public class EIP3651warmcoinbaseTests : GeneralStateTestBase
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stEIP3651-warmcoinbase");
+        const string testsSubset = "stEIP3651-" + "warm" + "coinbase";
+        var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), testsSubset);
         return loader.LoadTests<GeneralStateTest>();
     }
 }

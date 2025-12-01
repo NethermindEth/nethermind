@@ -221,7 +221,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             if (Logger.IsTrace)
             {
-                Logger.Trace("Sending node fata request:");
+                Logger.Trace("Sending node data request:");
                 Logger.Trace($"Keys count: {message.Hashes.Count}");
             }
 
@@ -239,7 +239,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             if (Logger.IsTrace)
             {
-                Logger.Trace("Sending node fata request:");
+                Logger.Trace("Sending receipts request:");
                 Logger.Trace($"Hashes count: {message.Hashes.Count}");
             }
 
