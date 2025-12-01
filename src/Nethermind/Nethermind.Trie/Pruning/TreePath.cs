@@ -300,8 +300,18 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
 
     public readonly int CompareTo(in TreePath otherTree)
     {
-        var pathComparison = Path.CompareTo(otherTree.Path);
-        if (pathComparison != 0) return pathComparison;
+        int minLength = Math.Min(Length, otherTree.Length);
+        int commonByteLength = minLength / 2;
+        int compareByByte =
+            Bytes.BytesComparer.Compare(Span[..commonByteLength], otherTree.Span[..commonByteLength]);
+        if (compareByByte != 0) return compareByByte;
+
+        if (minLength % 2 == 1)
+        {
+            int result = this[minLength - 1].CompareTo(otherTree[minLength - 1]);
+            if (result != 0) return result;
+        }
+
         return Length.CompareTo(otherTree.Length);
     }
 
