@@ -19,16 +19,16 @@ public class EthereumIesEngineTests
     [Test]
     public void Decrypt_throws_when_cipher_body_not_greater_than_mac_tag()
     {
-        TestRandom cryptoRandom = new TestRandom();
-        EciesCipher ecies = new EciesCipher(cryptoRandom);
+        TestRandom cryptoRandom = new();
+        EciesCipher ecies = new(cryptoRandom);
 
         byte[] fixedIv = Bytes.FromHexString("0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a");
         cryptoRandom.EnqueueRandomBytes(fixedIv);
         cryptoRandom.EnqueueRandomBytes(NetTestVectors.EphemeralKeyA.KeyBytes);
 
         PrivateKey recipient = NetTestVectors.StaticKeyA;
-        byte[] plain = { 1, 2, 3, 4, 5 };
-        byte[] validCipher = ecies.Encrypt(recipient.PublicKey, plain, null);
+        byte[] plain = [1, 2, 3, 4, 5];
+        byte[] validCipher = ecies.Encrypt(recipient.PublicKey, plain, []);
 
         int ephemLen = 65;
         int ivLen = KeySize / 8;
