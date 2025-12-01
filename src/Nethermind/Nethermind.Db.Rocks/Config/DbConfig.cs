@@ -28,8 +28,8 @@ public class DbConfig : IDbConfig
         "min_write_buffer_number_to_merge=1;" +
         "write_buffer_size=250000000;" +
         "max_write_buffer_number=2;" +
-        "memtable_whole_key_filtering=true;" +
         "max_compaction_bytes=4000000000;" +
+        "memtable_whole_key_filtering=true;" +
         "memtable_prefix_bloom_size_ratio=0.02;" +
         "advise_random_on_open=true;" +
         "";
@@ -296,7 +296,7 @@ public class DbConfig : IDbConfig
 
     public ulong FlatDbWriteBufferSize { get; set; } = (ulong)64.MB();
     public ulong FlatDbWriteBufferNumber { get; set; } = 4;
-    public bool? FlatDbVerifyChecksum { get; set; }
+    public bool? FlatDbVerifyChecksum { get; set; } = false; // YOLO
     public bool FlatDbEnableFileWarmer { get; set; }
     public string FlatDbRocksDbOptions { get; set; } =
         MinimumBasicOption +
@@ -342,6 +342,7 @@ public class DbConfig : IDbConfig
         "";
     public ulong? FlatMetadataDbRowCacheSize { get; set; } = (ulong?)1.MiB();
     public string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
+    public bool? FlatStateDbVerifyChecksum { get; set; } = false // YOLO
 
     public bool FlatStateDbEnableFileWarmer { get; set; } = true;
     public ulong FlatStateDbWriteBufferSize { get; set; } = (ulong)64.MiB();
@@ -349,40 +350,58 @@ public class DbConfig : IDbConfig
     public ulong FlatStateDbWriteBufferNumber { get; set; } = 4;
     public bool FlatStateDbSkipDefaultDbOptions { get; set; } = true;
 
-    // Note: No prefix extractor for state.Dont forget.
-    public string? FlatStateDbRocksDbOptions { get; set; } =
+    private const string FlatCommonConfig =
         MinimumBasicOption +
-        // "compression=kLZ4Compression;" +
         "compression=kNoCompression;" +
         "min_write_buffer_number_to_merge=2;" +
-        "block_based_table_factory.index_type=kTwoLevelIndexSearch;" +
-        "block_based_table_factory.partition_filters=true;" +
+
+        // This used to be on trie, but its here now. Attempt to reduce LSM depth at cost of write amp.
+        "max_bytes_for_level_multiplier=30;" +
+        "max_bytes_for_level_base=350000000;" +
+
         "block_based_table_factory.metadata_block_size=4096;" +
         "block_based_table_factory.block_restart_interval=4;" +
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
         "block_based_table_factory.data_block_hash_table_util_ratio=0.7;" +
-        "block_based_table_factory.block_size=4096;" +
         "block_based_table_factory.prepopulate_block_cache=kFlushOnly;" +
         "block_based_table_factory.filter_policy=ribbonfilter:12;" +
-        // "block_based_table_factory={index_type=kBinarySearch;partition_filters=0;prepopulate_block_cache=kFlushOnly;};" +
-        // "block_based_table_factory={index_type=kHashSearch;partition_filters=0;prepopulate_block_cache=kFlushOnly;};" +
+        "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;" +
+        "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +
 
-        // Default is 1 MB.
-        "max_write_batch_group_size_bytes=4000000;" +
-        "prefix_extractor=capped:4;" + // So not the whole key, but like the first 8 byte. Its pretty good I think. Take up a lot of memory though.
+        // Important tunables
+
+        // Further split bloom filter. Reduces memory but add latency. Set to false now
+        "block_based_table_factory.partition_filters=false;" +
+
+        // Smaller block size is faster to load slightly. But on most SSD, any value lower than a certain number
+        // around 16k, does not reduce latency much. The important impact is memory, as lower block size mean more
+        // hot block can fit in memory, but at the same time, index size become larger, which may take up more memory.
+        "block_based_table_factory.block_size=16000;" +
+
+        // Two level index means only the top level index points to another index before pointing to block.
+        // Only top level index is in memory all the time. This adds latency, but reduces memory usage.
+        // "block_based_table_factory.index_type=kTwoLevelIndexSearch;" +
+
+        // Complete bsearch index in memory
+        // "block_based_table_factory.index_type=kBinarySearch;" +
+
+        // This **should** help given prefix extractor. But further increase index size.
+        "block_based_table_factory.index_type=kHashSearch;" +
 
         "block_based_table_factory.block_cache=1000000000;" +
-        "optimize_filters_for_hits=false;";
 
-        /*
-        "allow_mmap_reads=true;" +
-        "plain_table_factory={user_key_len=32;};" +
-        "prefix_extractor=capped:8;" + // So not the whole key, but like the first 8 byte. Its pretty good I think. Take up a lot of memory though.
-        "memtable=prefix_hash:1000000;" +
-        "optimize_filters_for_hits=false;";
-        */
+        // So that last level bloom is kept. Should accelerate miss state check.
+        "optimize_filters_for_hits=false;" +
+        "";
+
+    // Note: No prefix extractor for state.Dont forget.
+    public string? FlatStateDbRocksDbOptions { get; set; } =
+        FlatCommonConfig +
+        "prefix_extractor=capped:4;" + // So not the whole key, but like the first 8 byte. Its pretty good I think. Take up a lot of memory though.
+        "";
 
     public string? FlatStateDbAdditionalRocksDbOptions { get; set; }
+    public bool? FlatStorageDbVerifyChecksum { get; set; }
     public bool FlatStorageDbSkipDefaultDbOptions { get; set; } = true;
     public bool FlatStorageDbEnableFileWarmer { get; set; }
     public ulong FlatStorageDbRowCacheSize { get; set; } = 0;
@@ -390,67 +409,20 @@ public class DbConfig : IDbConfig
     public ulong FlatStorageDbWriteBufferNumber { get; set; } = 4;
 
     public string? FlatStorageDbRocksDbOptions { get; set; } =
-        MinimumBasicOption +
-        // "compression=kLZ4Compression;" +
-        "compression=kNoCompression;" +
-        "min_write_buffer_number_to_merge=2;" +
-        "block_based_table_factory.index_type=kTwoLevelIndexSearch;" +
-        "block_based_table_factory.partition_filters=true;" +
-        "block_based_table_factory.metadata_block_size=4096;" +
-        "block_based_table_factory.block_restart_interval=4;" +
-        "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
-        "block_based_table_factory.data_block_hash_table_util_ratio=0.7;" +
-        "block_based_table_factory.block_size=4096;" +
-        "block_based_table_factory.prepopulate_block_cache=kFlushOnly;" +
-        "block_based_table_factory.filter_policy=ribbonfilter:12;" +
-
-        // Default is 1 MB.
-        "max_write_batch_group_size_bytes=4000000;" +
+        FlatCommonConfig +
         "prefix_extractor=capped:32;" +
-
-        "optimize_filters_for_hits=false;";
-    /*
-     *
-     *
-        "allow_mmap_reads=true;" +
-       "min_write_buffer_number_to_merge=2;" +
-       "compression=kNoCompression;" +
-
-       "plain_table_factory={user_key_len=64;};" +
-
-       "memtable=prefix_hash:1000000;" +
-       "optimize_filters_for_hits=false;" +
-       "prefix_extractor=capped:40;";
-     */
+        "";
 
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
-    public ulong FlatStateNodesDbWriteBufferSize { get; set; } = (ulong)128.MiB();
-    public ulong FlatStateNodesDbWriteBufferNumber { get; set; } = 4;
 
-    public ulong FlatStateNodesTopDbWriteBufferSize { get; set; } = (ulong)128.MiB();
-    public ulong FlatStateNodesTopDbWriteBufferNumber { get; set; } = 4;
-    public string? FlatStateNodesTopDbRocksDbOptions { get; set; }  =
-        // LZ4 seems to be slightly faster here
+    // Largely the same as statedb, but more write focused.
+    private const string TrieNodeConfig =
+
+        // For trie which is heavy in compaction. Use direct io to prevent taking up space in os cache.
         "use_direct_io_for_flush_and_compaction=true;" +
+
+        // LZ4 seems to be slightly faster here
         "compression=kLZ4Compression;" +
-
-        // MaxBytesForLevelMultiplier is 10 by default. Lowering this will deepens the LSM, which may reduce write
-        // amplification (unless the LSM is too deep), at the expense of read performance. But then, you have bloom
-        // filter anyway, and recently written keys are likely to be read and they tend to be at the top of the LSM
-        // tree which means they are more cacheable, so at that point you are trading CPU for cacheability.
-        // These two config make the LSM level to be no more than 3 until the database grow to about 250GB.
-        "max_bytes_for_level_multiplier=30;" +
-        "max_bytes_for_level_base=350000000;" +
-
-        // Multiply the target size of SST file by this much every level down, reduce number of file.
-        // Does not have much downside on hash based DB, but might disable some move optimization on db with
-        // blocknumber key, or halfpath/flatdb layout.
-        "target_file_size_multiplier=2;" +
-
-        // This is basically useless on write only database. However, for halfpath with live pruning, flatdb, or
-        // (maybe?) full sync where keys are deleted, replaced, or re-inserted, two memtable can merge together
-        // resulting in a reduced total memtable size to be written. This does seems to reduce sync throughput though.
-        "min_write_buffer_number_to_merge=2;" +
 
         // Default value is 16.
         // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
@@ -458,125 +430,41 @@ public class DbConfig : IDbConfig
         // through potentially "BlockRestartInterval" number of key, probably. That is my understanding.
         // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
         // cache utilization.
-        "block_based_table_factory.block_restart_interval=4;" +
+        "block_based_table_factory.block_restart_interval=8;" +
 
         // This adds a hashtable-like index per block (the 32kb block)
         // This reduce CPU and therefore latency under high block cache hit scenario.
         // It seems to increase disk space use by about 1 GB.
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
-        "block_based_table_factory.data_block_hash_table_util_ratio=0.5;" +
+        "block_based_table_factory.data_block_hash_table_util_ratio=0.75;" +
 
         "block_based_table_factory.block_size=32000;" +
+        "block_based_table_factory.filter_policy=ribbonfilter:15;" +
 
-        "block_based_table_factory.filter_policy=bloomfilter:15;" +
-
-        // Default is 1 MB.
-        "max_write_batch_group_size_bytes=4000000;" +
-
+        // Make it
         "optimize_filters_for_hits=true;" +
 
         "";
 
-    public string? FlatStateNodesTopDbAdditionalRocksDbOptions { get; set; }
-
-    public string? FlatStateNodesDbRocksDbOptions { get; set; } =
-        // LZ4 seems to be slightly faster here
-        "compression=kLZ4Compression;" +
-        "use_direct_io_for_flush_and_compaction=true;" +
-
-        // MaxBytesForLevelMultiplier is 10 by default. Lowering this will deepens the LSM, which may reduce write
-        // amplification (unless the LSM is too deep), at the expense of read performance. But then, you have bloom
-        // filter anyway, and recently written keys are likely to be read and they tend to be at the top of the LSM
-        // tree which means they are more cacheable, so at that point you are trading CPU for cacheability.
-        // These two config make the LSM level to be no more than 3 until the database grow to about 250GB.
-        "max_bytes_for_level_multiplier=30;" +
-        "max_bytes_for_level_base=350000000;" +
-
-        // Multiply the target size of SST file by this much every level down, reduce number of file.
-        // Does not have much downside on hash based DB, but might disable some move optimization on db with
-        // blocknumber key, or halfpath/flatdb layout.
-        "target_file_size_multiplier=2;" +
-
-        // This is basically useless on write only database. However, for halfpath with live pruning, flatdb, or
-        // (maybe?) full sync where keys are deleted, replaced, or re-inserted, two memtable can merge together
-        // resulting in a reduced total memtable size to be written. This does seems to reduce sync throughput though.
-        "min_write_buffer_number_to_merge=2;" +
-
-        // Default value is 16.
-        // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
-        // They key within the same restart is delta-encoded with the key before it. This mean a read will have to go
-        // through potentially "BlockRestartInterval" number of key, probably. That is my understanding.
-        // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
-        // cache utilization.
-        "block_based_table_factory.block_restart_interval=4;" +
-
-        // This adds a hashtable-like index per block (the 32kb block)
-        // This reduce CPU and therefore latency under high block cache hit scenario.
-        // It seems to increase disk space use by about 1 GB.
-        "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
-        "block_based_table_factory.data_block_hash_table_util_ratio=0.5;" +
-
-        "block_based_table_factory.block_size=32000;" +
-
-        "block_based_table_factory.filter_policy=bloomfilter:15;" +
-
-        // Default is 1 MB.
-        "max_write_batch_group_size_bytes=4000000;" +
-
-        "optimize_filters_for_hits=false;" +
-
+    // Only 1 gig in total, but almost 1/3rd of the writes.
+    public ulong FlatStateNodesTopDbWriteBufferSize { get; set; } = (ulong)128.MiB();
+    public ulong FlatStateNodesTopDbWriteBufferNumber { get; set; } = 4;
+    public string? FlatStateNodesTopDbRocksDbOptions { get; set; }  =
+        TrieNodeConfig +
         "";
+
+    public ulong FlatStateNodesDbWriteBufferSize { get; set; } = (ulong)32.MiB();
+    public ulong FlatStateNodesDbWriteBufferNumber { get; set; } = 4;
+    public string? FlatStateNodesDbRocksDbOptions { get; set; } =
+        TrieNodeConfig +
+        "";
+    public string? FlatStateNodesTopDbAdditionalRocksDbOptions { get; set; }
 
     public string? FlatStateNodesDbAdditionalRocksDbOptions { get; set; }
     public ulong FlatStorageNodesDbWriteBufferSize { get; set; }= (ulong)128.MiB();
     public ulong FlatStorageNodesDbWriteBufferNumber { get; set; } = 4;
-
     public string? FlatStorageNodesDbRocksDbOptions { get; set; } =
-        // LZ4 seems to be slightly faster here
-        "compression=kLZ4Compression;" +
-        "use_direct_io_for_flush_and_compaction=true;" +
-
-        // MaxBytesForLevelMultiplier is 10 by default. Lowering this will deepens the LSM, which may reduce write
-        // amplification (unless the LSM is too deep), at the expense of read performance. But then, you have bloom
-        // filter anyway, and recently written keys are likely to be read and they tend to be at the top of the LSM
-        // tree which means they are more cacheable, so at that point you are trading CPU for cacheability.
-        // These two config make the LSM level to be no more than 3 until the database grow to about 250GB.
-        "max_bytes_for_level_multiplier=30;" +
-        "max_bytes_for_level_base=350000000;" +
-
-        // Multiply the target size of SST file by this much every level down, reduce number of file.
-        // Does not have much downside on hash based DB, but might disable some move optimization on db with
-        // blocknumber key, or halfpath/flatdb layout.
-        "target_file_size_multiplier=2;" +
-
-        // This is basically useless on write only database. However, for halfpath with live pruning, flatdb, or
-        // (maybe?) full sync where keys are deleted, replaced, or re-inserted, two memtable can merge together
-        // resulting in a reduced total memtable size to be written. This does seems to reduce sync throughput though.
-        "min_write_buffer_number_to_merge=2;" +
-
-        // Default value is 16.
-        // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
-        // They key within the same restart is delta-encoded with the key before it. This mean a read will have to go
-        // through potentially "BlockRestartInterval" number of key, probably. That is my understanding.
-        // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
-        // cache utilization.
-        "block_based_table_factory.block_restart_interval=4;" +
-
-        // This adds a hashtable-like index per block (the 32kb block)
-        // This reduce CPU and therefore latency under high block cache hit scenario.
-        // It seems to increase disk space use by about 1 GB.
-        "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
-        "block_based_table_factory.data_block_hash_table_util_ratio=0.5;" +
-
-        "block_based_table_factory.block_size=32000;" +
-
-        "block_based_table_factory.filter_policy=bloomfilter:15;" +
-
-        // Default is 1 MB.
-        "max_write_batch_group_size_bytes=4000000;" +
-
-        "optimize_filters_for_hits=true;" +
-
+        TrieNodeConfig +
         "";
     public string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
 }

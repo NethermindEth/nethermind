@@ -36,7 +36,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             // .AddSingleton<IPersistence, TrieOnlyRocksdbPersistence>()
             .AddSingleton<TrieStoreTrieCacheWarmer>()
 
-            /*
+            // These blocks are workaround for missing metrics with column db. Probably not a good idea though as
+            // a failure in writes in one of the DB will break the db.
             .AddDatabase(DbNames.FlatMetadata)
             .AddDatabase(DbNames.FlatState)
             .AddDatabase(DbNames.FlatStorage)
@@ -55,7 +56,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                     { FlatDbColumns.StorageNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStorageNodes) },
                 });
             })
-            */
 
             .AddSingleton<FlatDiffRepository.Configuration>(new FlatDiffRepository.Configuration()
             {
@@ -63,7 +63,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 CompactSize = 16,
                 MaxInFlightCompactJob = 32,
                 ReadWithTrie = false,
-                VerifyWithTrie = true,
+                VerifyWithTrie = false,
                 ConcurrentCompactor = 2,
                 TrieCacheMemoryTarget = 1.GiB(),
                 InlineCompaction = false

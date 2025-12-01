@@ -105,7 +105,6 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
     public Account? Get(Address address)
     {
-        /*
         long sw = Stopwatch.GetTimestamp();
         if (!_configuration.ReadWithTrie && _snapshotBundle.TryGetAccount(address, out Account account))
         {
@@ -133,38 +132,6 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
             _stateTreeGet.Observe(Stopwatch.GetTimestamp() - sw);
             return account;
         }
-        */
-        long sw = Stopwatch.GetTimestamp();
-        if (_configuration.ReadWithTrie)
-        {
-            var acc = _stateTree.Get(address);
-            _stateTreeGet.Observe(Stopwatch.GetTimestamp() - sw);
-            return acc;
-        }
-
-        _snapshotBundle.TryGetAccount(address, out var account);
-        _flatGet.Observe(Stopwatch.GetTimestamp() - sw);
-
-        if (account != null)
-        {
-            HintGet(address, account);
-        }
-
-        if (!_configuration.VerifyWithTrie)
-        {
-            return account;
-        }
-
-        // TODO: To snapshot bundler
-        sw = Stopwatch.GetTimestamp();
-        Account? accTrie = _stateTree.Get(address);
-        if (accTrie != account)
-        {
-            Console.Error.WriteLine($"Incorrect account {accTrie} vs {account}");
-        }
-        _stateTreeGet.Observe(Stopwatch.GetTimestamp() - sw);
-
-        return account;
     }
 
     public void HintGet(Address address, Account? account)

@@ -114,6 +114,7 @@ public interface IDbConfig : IConfig
     string? FlatMetadataDbRocksDbOptions { get; set; }
     ulong? FlatMetadataDbRowCacheSize { get; set; }
     string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
+    bool? FlatStateDbVerifyChecksum { get; set; }
     bool FlatStateDbSkipDefaultDbOptions { get; set; }
     bool FlatStateDbEnableFileWarmer { get; set; }
     ulong FlatStateDbWriteBufferSize { get; set; }
@@ -121,6 +122,7 @@ public interface IDbConfig : IConfig
     ulong FlatStateDbWriteBufferNumber { get; set; }
     string? FlatStateDbRocksDbOptions { get; set; }
     string? FlatStateDbAdditionalRocksDbOptions { get; set; }
+    bool? FlatStorageDbVerifyChecksum { get; set; }
     bool FlatStorageDbSkipDefaultDbOptions { get; set; }
     bool FlatStorageDbEnableFileWarmer { get; set; }
     ulong FlatStorageDbRowCacheSize { get; set; }
