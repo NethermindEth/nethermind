@@ -18,9 +18,15 @@ public class RocksdbPersistence : IPersistence
 {
     private readonly IColumnsDb<FlatDbColumns> _db;
     private static byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
-    private const int StateNodesKeyLength = 32 + 1;
-    private const int StorageNodesKeyLength = 32 + 32 + 1;
+
     private const int StorageKeyLength = 32 + 32;
+
+    private const int StateNodesKeyLength = 32 + 1;
+    private const int TopStateNodesThreshold = 5;
+
+    private const int StorageNodesKeyLength = 32 + 32 + 1;
+    private const int TopStorageNodesThreshold = 4;
+
     internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
     public RocksdbPersistence(IColumnsDb<FlatDbColumns> db)
@@ -65,14 +71,14 @@ public class RocksdbPersistence : IPersistence
         return buffer[..StorageNodesKeyLength];
     }
 
-    internal static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, ValueHash256 addr, UInt256 slot)
+    internal static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, in ValueHash256 addr, in UInt256 slot)
     {
         ValueHash256 hash256 = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, hash256.BytesAsSpan);
         return EncodeStorageKey(buffer, addr, hash256);
     }
 
-    internal static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, ValueHash256 addr, ValueHash256 slot)
+    internal static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, in ValueHash256 addr, ValueHash256 slot)
     {
         addr.Bytes.CopyTo(buffer);
         slot.Bytes.CopyTo(buffer[32..64]);
@@ -107,8 +113,9 @@ public class RocksdbPersistence : IPersistence
         IWriteOnlyKeyValueStore state = batch.GetColumnBatch(FlatDbColumns.State);
         IWriteOnlyKeyValueStore storage = batch.GetColumnBatch(FlatDbColumns.Storage);
         IWriteOnlyKeyValueStore stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
-        IWriteOnlyKeyValueStore stateNodesTop = batch.GetColumnBatch(FlatDbColumns.StateNodesTop);
+        IWriteOnlyKeyValueStore stateTopNodes = batch.GetColumnBatch(FlatDbColumns.StateTopNodes);
         IWriteOnlyKeyValueStore storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
+        IWriteOnlyKeyValueStore storageTopNodes = batch.GetColumnBatch(FlatDbColumns.StorageTopNodes);
         private AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
         public void Dispose()
@@ -124,22 +131,31 @@ public class RocksdbPersistence : IPersistence
             lastKey.Fill(0xff);
             addr.Bytes.CopyTo(lastKey);
 
-            using ISortedView storageNodeReader = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.StorageNodes))
-                .GetViewBetween(addr.Bytes, lastKey);
-
-            var storageNodeWriter = storageNodes;
-            while (storageNodeReader.MoveNext())
+            using (ISortedView storageNodeReader = ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes)).GetViewBetween(addr.Bytes, lastKey))
             {
-                storageNodeWriter.Remove(storageNodeReader.CurrentKey);
+                var storageNodeWriter = storageNodes;
+                while (storageNodeReader.MoveNext())
+                {
+                    storageNodeWriter.Remove(storageNodeReader.CurrentKey);
+                }
             }
 
-            using ISortedView storageReader = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage))
-                .GetViewBetween(addr.Bytes, lastKey);
-
-            var storageWriter = storage;
-            while (storageReader.MoveNext())
+            using (ISortedView storageNodeReader = ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageTopNodes)).GetViewBetween(addr.Bytes, lastKey))
             {
-                storageWriter.Remove(storageReader.CurrentKey);
+                var storageNodeWriter = storageNodes;
+                while (storageNodeReader.MoveNext())
+                {
+                    storageNodeWriter.Remove(storageNodeReader.CurrentKey);
+                }
+            }
+
+            using (ISortedView storageReader = ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)).GetViewBetween(addr.Bytes, lastKey))
+            {
+                var storageWriter = storage;
+                while (storageReader.MoveNext())
+                {
+                    storageWriter.Remove(storageReader.CurrentKey);
+                }
             }
         }
 
@@ -183,9 +199,9 @@ public class RocksdbPersistence : IPersistence
         {
             if (address is null)
             {
-                if (path.Length <= 5)
+                if (path.Length <= TopStateNodesThreshold)
                 {
-                    stateNodesTop.PutSpan(EncodeStateNodeKey(stackalloc byte[StateNodesKeyLength], path), tn.FullRlp.Span);
+                    stateTopNodes.PutSpan(EncodeStateNodeKey(stackalloc byte[StateNodesKeyLength], path), tn.FullRlp.Span);
                 }
                 else
                 {
@@ -194,7 +210,14 @@ public class RocksdbPersistence : IPersistence
             }
             else
             {
-                storageNodes.PutSpan(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, path), tn.FullRlp.Span);
+                if (path.Length <= TopStorageNodesThreshold)
+                {
+                    storageNodes.PutSpan(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, path), tn.FullRlp.Span);
+                }
+                else
+                {
+                    storageTopNodes.PutSpan(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, path), tn.FullRlp.Span);
+                }
             }
         }
     }
@@ -205,8 +228,9 @@ public class RocksdbPersistence : IPersistence
         private readonly IReadOnlyKeyValueStore _state;
         private readonly IReadOnlyKeyValueStore _storage;
         private readonly IReadOnlyKeyValueStore _stateNodes;
-        private readonly IReadOnlyKeyValueStore _stateNodesTop;
+        private readonly IReadOnlyKeyValueStore _stateTopNodes;
         private readonly IReadOnlyKeyValueStore _storageNodes;
+        private readonly IReadOnlyKeyValueStore _storageTopNodes;
         private readonly RocksdbPersistence _mainDb;
 
 
@@ -218,8 +242,9 @@ public class RocksdbPersistence : IPersistence
             _state = _db.GetColumn(FlatDbColumns.State);
             _storage = _db.GetColumn(FlatDbColumns.Storage);
             _stateNodes = _db.GetColumn(FlatDbColumns.StateNodes);
-            _stateNodesTop = _db.GetColumn(FlatDbColumns.StateNodesTop);
+            _stateTopNodes = _db.GetColumn(FlatDbColumns.StateTopNodes);
             _storageNodes = _db.GetColumn(FlatDbColumns.StorageNodes);
+            _storageTopNodes = _db.GetColumn(FlatDbColumns.StorageTopNodes);
         }
 
         public StateId CurrentState { get; }
@@ -283,18 +308,29 @@ public class RocksdbPersistence : IPersistence
             {
                 Span<byte> keyBuffer = stackalloc byte[StateNodesKeyLength];
 
-                if (path.Length <= 5)
+                if (path.Length <= TopStateNodesThreshold)
                 {
-                    return _stateNodesTop.Get(EncodeStateNodeKey(keyBuffer, in path));
+                    return _stateTopNodes.Get(EncodeStateNodeKey(keyBuffer, in path));
                 }
                 else
                 {
                     return _stateNodes.Get(EncodeStateNodeKey(keyBuffer, in path));
                 }
             }
-            Span<byte> keyBuffer2 = stackalloc byte[StorageNodesKeyLength];
-            var rlp = _storageNodes.Get(EncodeStorageNodeKey(keyBuffer2, address, in path));
-            return rlp;
+            else
+            {
+                Span<byte> keyBuffer2 = stackalloc byte[StorageNodesKeyLength];
+                if (path.Length <= TopStorageNodesThreshold)
+                {
+                    var rlp = _storageTopNodes.Get(EncodeStorageNodeKey(keyBuffer2, address, in path));
+                    return rlp;
+                }
+                else
+                {
+                    var rlp = _storageNodes.Get(EncodeStorageNodeKey(keyBuffer2, address, in path));
+                    return rlp;
+                }
+            }
         }
     }
 }

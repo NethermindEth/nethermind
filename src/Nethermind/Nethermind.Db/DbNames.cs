@@ -25,7 +25,8 @@ namespace Nethermind.Db
         public const string FlatState = "flatState";
         public const string FlatStorage = "flatStorage";
         public const string FlatStateNodes = "flatStateNodes";
-        public const string FlatStateNodesTop = "flatStateNodesTop";
+        public const string FlatStateTopNodes = "flatStateNodesTop";
         public const string FlatStorageNodes = "flatStorageNodes";
+        public const string FlatStorageTopNodes = "flatStorageTopNodes";
     }
 }

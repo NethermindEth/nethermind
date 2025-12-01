@@ -342,7 +342,7 @@ public class DbConfig : IDbConfig
         "";
     public ulong? FlatMetadataDbRowCacheSize { get; set; } = (ulong?)1.MiB();
     public string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
-    public bool? FlatStateDbVerifyChecksum { get; set; } = false // YOLO
+    public bool? FlatStateDbVerifyChecksum { get; set; } = false; // YOLO
 
     public bool FlatStateDbEnableFileWarmer { get; set; } = true;
     public ulong FlatStateDbWriteBufferSize { get; set; } = (ulong)64.MiB();
@@ -447,9 +447,9 @@ public class DbConfig : IDbConfig
         "";
 
     // Only 1 gig in total, but almost 1/3rd of the writes.
-    public ulong FlatStateNodesTopDbWriteBufferSize { get; set; } = (ulong)128.MiB();
-    public ulong FlatStateNodesTopDbWriteBufferNumber { get; set; } = 4;
-    public string? FlatStateNodesTopDbRocksDbOptions { get; set; }  =
+    public ulong FlatStateTopNodesDbWriteBufferSize { get; set; } = (ulong)128.MiB();
+    public ulong FlatStateTopNodesDbWriteBufferNumber { get; set; } = 4;
+    public string? FlatStateTopNodesDbRocksDbOptions { get; set; }  =
         TrieNodeConfig +
         "";
 
@@ -458,13 +458,20 @@ public class DbConfig : IDbConfig
     public string? FlatStateNodesDbRocksDbOptions { get; set; } =
         TrieNodeConfig +
         "";
-    public string? FlatStateNodesTopDbAdditionalRocksDbOptions { get; set; }
+    public string? FlatStateTopNodesDbAdditionalRocksDbOptions { get; set; }
 
     public string? FlatStateNodesDbAdditionalRocksDbOptions { get; set; }
-    public ulong FlatStorageNodesDbWriteBufferSize { get; set; }= (ulong)128.MiB();
+    public ulong FlatStorageNodesDbWriteBufferSize { get; set; } = (ulong)128.MiB();
     public ulong FlatStorageNodesDbWriteBufferNumber { get; set; } = 4;
     public string? FlatStorageNodesDbRocksDbOptions { get; set; } =
         TrieNodeConfig +
         "";
     public string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
+
+    public ulong FlatStorageTopNodesDbWriteBufferSize { get; set; } = (ulong)128.MiB();
+    public ulong FlatStorageTopNodesNodesDbWriteBufferNumber { get; set; } = 4;
+    public string? FlatStorageTopNodesNodesDbRocksDbOptions { get; set; } =
+        TrieNodeConfig +
+        "";
+    public string? FlatStorageTopNodesNodesDbAdditionalRocksDbOptions { get; set; }
 }

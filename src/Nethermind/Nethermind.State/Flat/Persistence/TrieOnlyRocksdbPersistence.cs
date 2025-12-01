@@ -107,7 +107,7 @@ public class TrieOnlyRocksdbPersistence : IPersistence
         IWriteOnlyKeyValueStore state = batch.GetColumnBatch(FlatDbColumns.State);
         IWriteOnlyKeyValueStore storage = batch.GetColumnBatch(FlatDbColumns.Storage);
         IWriteOnlyKeyValueStore stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
-        IWriteOnlyKeyValueStore stateNodesTop = batch.GetColumnBatch(FlatDbColumns.StateNodesTop);
+        IWriteOnlyKeyValueStore stateNodesTop = batch.GetColumnBatch(FlatDbColumns.StateTopNodes);
         IWriteOnlyKeyValueStore storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
         private AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
@@ -217,7 +217,7 @@ public class TrieOnlyRocksdbPersistence : IPersistence
             _state = _db.GetColumn(FlatDbColumns.State);
             _storage = _db.GetColumn(FlatDbColumns.Storage);
             _stateNodes = _db.GetColumn(FlatDbColumns.StateNodes);
-            _stateNodesTop = _db.GetColumn(FlatDbColumns.StateNodesTop);
+            _stateNodesTop = _db.GetColumn(FlatDbColumns.StateTopNodes);
             _storageNodes = _db.GetColumn(FlatDbColumns.StorageNodes);
         }
 

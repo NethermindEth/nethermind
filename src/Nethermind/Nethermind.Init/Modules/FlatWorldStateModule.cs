@@ -36,14 +36,15 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             // .AddSingleton<IPersistence, TrieOnlyRocksdbPersistence>()
             .AddSingleton<TrieStoreTrieCacheWarmer>()
 
-            // These blocks are workaround for missing metrics with column db. Probably not a good idea though as
+            // These fake db are workaround for missing metrics with column db. Probably not a good idea though as
             // a failure in writes in one of the DB will break the db.
             .AddDatabase(DbNames.FlatMetadata)
             .AddDatabase(DbNames.FlatState)
             .AddDatabase(DbNames.FlatStorage)
             .AddDatabase(DbNames.FlatStateNodes)
-            .AddDatabase(DbNames.FlatStateNodesTop)
+            .AddDatabase(DbNames.FlatStateTopNodes)
             .AddDatabase(DbNames.FlatStorageNodes)
+            .AddDatabase(DbNames.FlatStorageTopNodes)
             .AddSingleton<IColumnsDb<FlatDbColumns>>((ctx) =>
             {
                 return new FakeColumnsDb<FlatDbColumns>(new Dictionary<FlatDbColumns, IDb>()
@@ -52,8 +53,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                     { FlatDbColumns.State, ctx.ResolveKeyed<IDb>(DbNames.FlatState) },
                     { FlatDbColumns.Storage, ctx.ResolveKeyed<IDb>(DbNames.FlatStorage) },
                     { FlatDbColumns.StateNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStateNodes) },
-                    { FlatDbColumns.StateNodesTop, ctx.ResolveKeyed<IDb>(DbNames.FlatStateNodesTop) },
                     { FlatDbColumns.StorageNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStorageNodes) },
+                    { FlatDbColumns.StateTopNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStateTopNodes) },
+                    { FlatDbColumns.StorageTopNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStorageTopNodes) },
                 });
             })
 

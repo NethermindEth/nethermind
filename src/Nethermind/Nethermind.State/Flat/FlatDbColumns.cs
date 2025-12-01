@@ -9,6 +9,7 @@ public enum FlatDbColumns
     State,
     Storage,
     StateNodes,
-    StateNodesTop,
+    StateTopNodes,
     StorageNodes,
+    StorageTopNodes,
 }
