@@ -26,8 +26,8 @@ public class SnapshotBundle(
     bool isPrewarmer = false
 ) : IDisposable
 {
-    Dictionary<AddressPrefixAsKey, StorageSnapshotBundle> _loadedAccounts = new();
-    Dictionary<AddressPrefixAsKey, Account> _changedAccounts = new();
+    Dictionary<AddressAsKey, StorageSnapshotBundle> _loadedAccounts = new();
+    Dictionary<AddressAsKey, Account> _changedAccounts = new();
     ConcurrentDictionary<TreePath, TrieNode> _changedNodes = new(); // Bulkset can get nodes concurrently
     public int SnapshotCount => knownStates.Count;
 
@@ -72,7 +72,7 @@ public class SnapshotBundle(
     {
         if (_changedAccounts.TryGetValue(address, out acc)) return true;
 
-        AddressPrefixAsKey key = address;
+        AddressAsKey key = address;
 
         long sw = Stopwatch.GetTimestamp();
         for (int i = knownStates.Count - 1; i >= 0; i--)
@@ -243,7 +243,7 @@ public class SnapshotBundle(
         _changedNodes[path] = newNode;
     }
 
-    public void ApplyStateChanges(Dictionary<AddressPrefixAsKey, Account> changedValues)
+    public void ApplyStateChanges(Dictionary<AddressAsKey, Account> changedValues)
     {
         foreach (var kv in changedValues)
         {
@@ -259,20 +259,20 @@ public class SnapshotBundle(
     public Snapshot CollectAndApplyKnownState(StateId from, StateId to)
     {
         SnapshotContent content = contentPool.Get();
-        Dictionary<AddressPrefixAsKey, Account> accounts = content.Accounts;
-        HashSet<AddressPrefixAsKey> selfDestructedAccountAddresses = content.SelfDestructedStorageAddresses;
+        Dictionary<AddressAsKey, Account> accounts = content.Accounts;
+        HashSet<AddressAsKey> selfDestructedAccountAddresses = content.SelfDestructedStorageAddresses;
         foreach (var kv in _changedAccounts)
         {
             accounts[kv.Key] = kv.Value;
         }
 
-        Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode> nodes = content.TrieNodes;
+        Dictionary<(Hash256AsKey, TreePath), TrieNode> nodes = content.TrieNodes;
         foreach (var kv in _changedNodes)
         {
             nodes[(null, kv.Key)] = kv.Value;
         }
 
-        Dictionary<(AddressPrefixAsKey, UInt256), byte[]> storages = content.Storages;
+        Dictionary<(AddressAsKey, UInt256), byte[]> storages = content.Storages;
 
         foreach (var gatheredCacheStorage in _loadedAccounts)
         {
@@ -332,10 +332,10 @@ public class SnapshotBundle(
 
         SnapshotContent content = contentPool.Get();
 
-        Dictionary<AddressPrefixAsKey, Account> accounts = content.Accounts;
-        Dictionary<(AddressPrefixAsKey, UInt256), byte[]> storages = content.Storages;
-        HashSet<AddressPrefixAsKey> selfDestructedStorageAddresses = content.SelfDestructedStorageAddresses;
-        Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode> nodes = content.TrieNodes;
+        Dictionary<AddressAsKey, Account> accounts = content.Accounts;
+        Dictionary<(AddressAsKey, UInt256), byte[]> storages = content.Storages;
+        HashSet<AddressAsKey> selfDestructedStorageAddresses = content.SelfDestructedStorageAddresses;
+        Dictionary<(Hash256AsKey, TreePath), TrieNode> nodes = content.TrieNodes;
 
         if (knownStates.Count == 1) return knownStates[0];
 
@@ -452,8 +452,8 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
     }
 
     public (bool hasSelfDesruct, bool hasChange) CollectAndApplyKnownState(
-        Dictionary<(AddressPrefixAsKey, UInt256), byte[]> storages,
-        Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode> nodes
+        Dictionary<(AddressAsKey, UInt256), byte[]> storages,
+        Dictionary<(Hash256AsKey, TreePath), TrieNode> nodes
     )
     {
         foreach (var kv in _changedSlots)

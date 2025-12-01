@@ -117,24 +117,6 @@ namespace Nethermind.Core.Crypto
         public int CompareTo(Hash256AsKey other) => _key.CompareTo(other._key);
     }
 
-    public readonly struct Hash256PrefixAsKey(Hash256 key) : IEquatable<Hash256PrefixAsKey>, IComparable<Hash256PrefixAsKey>
-    {
-        private readonly Hash256 _key = key;
-        public Hash256 Value => _key;
-
-        public static implicit operator Hash256(Hash256PrefixAsKey key) => key._key;
-        public static implicit operator Hash256PrefixAsKey(Hash256 key) => new(key);
-
-        public bool Equals(Hash256PrefixAsKey other) => Equals(_key, other._key);
-        public override int GetHashCode()
-        {
-            if (_key is null) return 0;
-            return BinaryPrimitives.ReadInt32LittleEndian(_key.Bytes);
-        }
-
-        public int CompareTo(Hash256PrefixAsKey other) => _key.CompareTo(other._key);
-    }
-
     [DebuggerStepThrough]
     public sealed class Hash256 : IEquatable<Hash256>, IComparable<Hash256>
     {

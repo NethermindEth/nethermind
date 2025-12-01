@@ -292,27 +292,6 @@ namespace Nethermind.Core
         }
     }
 
-    public readonly struct AddressPrefixAsKey(Address key) : IEquatable<AddressPrefixAsKey>
-    {
-        private readonly Address _key = key;
-        public Address Value => _key;
-
-        public static implicit operator Address(AddressPrefixAsKey key) => key._key;
-        public static implicit operator AddressPrefixAsKey(Address key) => new(key);
-
-        public bool Equals(AddressPrefixAsKey other) => _key == other._key;
-        public override int GetHashCode()
-        {
-            if (_key is null) return 0;
-            return BinaryPrimitives.ReadInt32LittleEndian(_key.Bytes.AsSpan().Slice(16, 4));
-        }
-
-        public override string ToString()
-        {
-            return _key?.ToString() ?? "<null>";
-        }
-    }
-
     public ref struct AddressStructRef
     {
         public const int ByteLength = 20;

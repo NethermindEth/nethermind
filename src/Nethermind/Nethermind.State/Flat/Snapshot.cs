@@ -30,15 +30,15 @@ public class Snapshot(
 {
     public StateId From => from;
     public StateId To => to;
-    public IEnumerable<KeyValuePair<AddressPrefixAsKey, Account?>> Accounts => content.Accounts;
-    public IEnumerable<AddressPrefixAsKey> SelfDestructedStorageAddresses => content.SelfDestructedStorageAddresses;
-    public IEnumerable<KeyValuePair<(AddressPrefixAsKey, UInt256), byte[]?>> Storages => content.Storages;
-    public IEnumerable<KeyValuePair<(Hash256PrefixAsKey, TreePath), TrieNode>> TrieNodes => content.TrieNodes;
+    public IEnumerable<KeyValuePair<AddressAsKey, Account?>> Accounts => content.Accounts;
+    public IEnumerable<AddressAsKey> SelfDestructedStorageAddresses => content.SelfDestructedStorageAddresses;
+    public IEnumerable<KeyValuePair<(AddressAsKey, UInt256), byte[]?>> Storages => content.Storages;
+    public IEnumerable<KeyValuePair<(Hash256AsKey, TreePath), TrieNode>> TrieNodes => content.TrieNodes;
     public int AccountsCount => content.Accounts.Count;
     public int StoragesCount => content.Storages.Count;
     public int TrieNodesCount => content.TrieNodes.Count;
 
-    public bool TryGetAccount(AddressPrefixAsKey key, out Account acc)
+    public bool TryGetAccount(AddressAsKey key, out Account acc)
     {
         return content.Accounts.TryGetValue(key, out acc);
     }
@@ -70,10 +70,10 @@ public class Snapshot(
 }
 
 public record SnapshotContent(
-    Dictionary<AddressPrefixAsKey, Account?> Accounts,
-    Dictionary<(AddressPrefixAsKey, UInt256), byte[]?> Storages,
-    HashSet<AddressPrefixAsKey> SelfDestructedStorageAddresses,
-    Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode> TrieNodes
+    Dictionary<AddressAsKey, Account?> Accounts,
+    Dictionary<(AddressAsKey, UInt256), byte[]?> Storages,
+    HashSet<AddressAsKey> SelfDestructedStorageAddresses,
+    Dictionary<(Hash256AsKey, TreePath), TrieNode> TrieNodes
 ) {
     public void Reset()
     {

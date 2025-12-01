@@ -38,10 +38,10 @@ public class FlatDiffRepository : IFlatDiffRepository
         public SnapshotContent Create()
         {
             return new SnapshotContent(
-                Accounts: new Dictionary<AddressPrefixAsKey, Account?>(),
-                Storages: new Dictionary<(AddressPrefixAsKey, UInt256), byte[]?>(),
-                SelfDestructedStorageAddresses: new HashSet<AddressPrefixAsKey>(),
-                TrieNodes: new Dictionary<(Hash256PrefixAsKey, TreePath), TrieNode>()
+                Accounts: new Dictionary<AddressAsKey, Account?>(),
+                Storages: new Dictionary<(AddressAsKey, UInt256), byte[]?>(),
+                SelfDestructedStorageAddresses: new HashSet<AddressAsKey>(),
+                TrieNodes: new Dictionary<(Hash256AsKey, TreePath), TrieNode>()
             );
         }
 
@@ -115,7 +115,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         if (cachedReader is null)
         {
             _cachedReader = cachedReader = new RefCountingPersistenceReader(
-                new CachedPersistenceReader(_persistence.CreateReader())
+                _persistence.CreateReader()
             );
         }
 

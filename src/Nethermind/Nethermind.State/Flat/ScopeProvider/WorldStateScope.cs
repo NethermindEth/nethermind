@@ -27,7 +27,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IWorldStateScopeProvider.ICodeDb _codeDb;
     private readonly IFlatDiffRepository _flatDiffRepository;
-    private readonly Dictionary<AddressPrefixAsKey, StorageTree> _storages = new();
+    private readonly Dictionary<AddressAsKey, StorageTree> _storages = new();
     private readonly StateTree _stateTree;
     private readonly PatriciaTree _warmupStateTree;
     private readonly ILogManager _logManager;
@@ -194,7 +194,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
             // Commit will copy the trie nodes from the tree to the bundle.
             using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
 
-            foreach (KeyValuePair<AddressPrefixAsKey, StorageTree> storage in _storages)
+            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
             {
                 if (_concurrencyQuota.TryRequestConcurrencyQuota())
                 {
@@ -279,8 +279,8 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         ILogger logger
     ) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
-        private readonly Dictionary<AddressPrefixAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
-        private readonly ConcurrentQueue<(AddressPrefixAsKey, Hash256)> _dirtyStorageTree = new();
+        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
+        private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
@@ -298,7 +298,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
                     onRootUpdated: (address, newRoot) => MarkDirty(address, newRoot));
         }
 
-        private void MarkDirty(AddressPrefixAsKey address, Hash256 storageTreeRootHash)
+        private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
         {
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
         }
@@ -307,7 +307,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         {
             while (_dirtyStorageTree.TryDequeue(out var entry))
             {
-                (AddressPrefixAsKey key, Hash256 storageRoot) = entry;
+                (AddressAsKey key, Hash256 storageRoot) = entry;
                 if (!_dirtyAccounts.TryGetValue(key, out var account)) account = scope.Get(key);
                 if (account == null && storageRoot == Keccak.EmptyTreeHash) continue;
                 account ??= ThrowNullAccount(key);
