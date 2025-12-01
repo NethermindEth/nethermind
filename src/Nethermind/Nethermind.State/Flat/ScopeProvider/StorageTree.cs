@@ -48,7 +48,7 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
             storageRoot, logManager);
         _tree.RootHash = storageRoot;
         _warmupStorageTree = new PatriciaTree(
-            new TrieStoreAdapter(storageSnapshotBundle, concurrencyQuota, isReadOnly: true),
+            new TrieStoreAdapter(storageSnapshotBundle, concurrencyQuota, isReadOnly: false),
             logManager);
         _warmupStorageTree.RootHash = storageRoot;
         _config = config;

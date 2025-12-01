@@ -57,7 +57,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         );
         _stateTree.RootHash = currentStateId.stateRoot.ToCommitment();
         _warmupStateTree = new PatriciaTree(
-            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota, isReadOnly: true),
+            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota, isReadOnly: false),
             logManager
         );
         _warmupStateTree.RootHash = currentStateId.stateRoot.ToCommitment();
@@ -214,7 +214,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
             }
 
             TrieNode newNode = new TrieNode(NodeType.Unknown, hash);
-            if (!isReadOnly) bundle.SetStateNode(path, newNode);
+            if (!isReadOnly) bundle.SetNode(null, path, newNode);
             return newNode;
         }
 
@@ -226,7 +226,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         {
             public override TrieNode CommitNode(ref TreePath path, TrieNode node)
             {
-                bundle.SetStateNode(path, node);
+                bundle.SetNode(null, path, node);
                 return node;
             }
         }

@@ -72,10 +72,11 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
 
     public TrieStoreTrieCacheWarmer(IProcessExitSource processExitSource, ILogManager logManager)
     {
+        int processorCount = Environment.ProcessorCount;
         _warmerJob = Task.Run<Task>(async () =>
         {
-            using ArrayPoolList<Task> tasks = new ArrayPoolList<Task>(Environment.ProcessorCount);
-            for (int i = 0; i < Environment.ProcessorCount; i++)
+            using ArrayPoolList<Task> tasks = new ArrayPoolList<Task>(processorCount);
+            for (int i = 0; i < processorCount; i++)
             {
                 bool isMain = i == 0;
                 var worker = new WarmerWorkers(this, isMain);
@@ -201,8 +202,7 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine(ex);
-                throw;
+                Console.Error.WriteLine("Error in warmup job " + ex);
             }
         }
 
@@ -236,8 +236,12 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
     {
         if (_jobBuffer.TryEnqueue(new Job(scope, path, storageTree, index, Stopwatch.GetTimestamp())))
         {
-            _mainWarmer?.WakeUp();
-            _mainWarmer = null;
+            if (_mainWarmer is not null)
+            {
+                _trieWarmEr.WithLabels("main_wake_up").Inc();
+                _mainWarmer?.WakeUp();
+                _mainWarmer = null;
+            }
         }
         else
         {
@@ -248,5 +252,6 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
     public void OnNewScope()
     {
         _mainWarmer?.WakeUp();
+        _mainWarmer = null;
     }
 }

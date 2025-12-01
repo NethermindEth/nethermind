@@ -32,11 +32,12 @@ public class SnapshotBundle : IDisposable
 
     public int SnapshotCount => _knownStates.Count;
 
-    private readonly ArrayPoolList<Snapshot> _knownStates;
+    private ArrayPoolList<Snapshot> _knownStates;
     private readonly IPersistence.IPersistenceReader _persistenceReader;
     private readonly TrieNodeCache _trieNodeCache;
     private readonly ObjectPool<SnapshotContent> _contentPool;
     private bool _isPrewarmer;
+    private bool _isDisposed;
 
     public SnapshotBundle(ArrayPoolList<Snapshot> knownStates,
         IPersistence.IPersistenceReader persistenceReader,
@@ -155,6 +156,12 @@ public class SnapshotBundle : IDisposable
 
     public bool TryFindNode(Hash256? address, in TreePath path, Hash256 hash, int selfDestructStateIdx, out TrieNode node)
     {
+        if (_isDisposed)
+        {
+            node = null;
+            return false;
+        }
+
         for (int i = _knownStates.Count - 1; i >= 0; i--)
         {
             if (_knownStates[i].TryGetTrieNodes(address, path, out node))
@@ -174,18 +181,14 @@ public class SnapshotBundle : IDisposable
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
+        if (_isDisposed) return null;
         return _persistenceReader.TryLoadRlp(address, path, hash, flags);
-    }
-
-    public void SetStateNode(in TreePath path, TrieNode newNode)
-    {
-        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
-        SetNode(null, path, newNode);
     }
 
     public void SetNode(Hash256AsKey addr, in TreePath path, TrieNode newNode)
     {
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
+        if (_isDisposed) return;
         _changedNodes[(addr, path)] = newNode;
     }
 
@@ -328,6 +331,7 @@ public class SnapshotBundle : IDisposable
 
     public void Dispose()
     {
+        _isDisposed = true;
         foreach (var gatheredCacheStorage in _loadedContractStorages)
         {
             gatheredCacheStorage.Value.Dispose();
@@ -338,7 +342,8 @@ public class SnapshotBundle : IDisposable
         }
         _knownStates.Dispose();
 
-        // Null them in case unexpected mutation
+        // Null them in case unexpected mutation from trie warmer
+        _knownStates = null;
         _changedSlots = null;
         _changedAccounts = null;
         _changedNodes = null;
