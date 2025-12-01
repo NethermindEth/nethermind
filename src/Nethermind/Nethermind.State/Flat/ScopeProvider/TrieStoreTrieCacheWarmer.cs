@@ -97,37 +97,53 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
             UInt256? index,
             long sw) = job;
 
-        if (scope.ShouldStillWarmUpTrie)
+        try
         {
-            if (address is not null)
+
+            if (scope.ShouldStillWarmUpTrie)
             {
-                _trieWarmServiceTime.WithLabels(isMain.ToString(), "state")
-                    .Observe(Stopwatch.GetTimestamp() - sw);
-                scope.WarmUpStateTrie(address);
-                _trieWarmEr.WithLabels("state").Inc();
+                if (address is not null)
+                {
+                    _trieWarmServiceTime.WithLabels(isMain.ToString(), "state")
+                        .Observe(Stopwatch.GetTimestamp() - sw);
+                    scope.WarmUpStateTrie(address);
+                    _trieWarmEr.WithLabels("state").Inc();
+                }
+                else
+                {
+                    _trieWarmServiceTime.WithLabels(isMain.ToString(), "storage")
+                        .Observe(Stopwatch.GetTimestamp() - sw);
+                    storageTree.WarUpStorageTrie(index.Value);
+                    _trieWarmEr.WithLabels("storage").Inc();
+                }
             }
             else
             {
-                _trieWarmServiceTime.WithLabels(isMain.ToString(), "storage")
-                    .Observe(Stopwatch.GetTimestamp() - sw);
-                storageTree.WarUpStorageTrie(index.Value);
-                _trieWarmEr.WithLabels("storage").Inc();
+                if (address is null)
+                {
+                    _trieWarmServiceTime.WithLabels(isMain.ToString(), "state_skip")
+                        .Observe(Stopwatch.GetTimestamp() - sw);
+                    _trieWarmEr.WithLabels("state_skip").Inc();
+                }
+                else
+                {
+                    _trieWarmServiceTime.WithLabels(isMain.ToString(), "storage_skip")
+                        .Observe(Stopwatch.GetTimestamp() - sw);
+                    _trieWarmEr.WithLabels("storage_skip").Inc();
+                }
             }
         }
-        else
+        catch (TrieNodeException)
         {
-            if (address is null)
-            {
-                _trieWarmServiceTime.WithLabels(isMain.ToString(), "state_skip")
-                    .Observe(Stopwatch.GetTimestamp() - sw);
-                _trieWarmEr.WithLabels("state_skip").Inc();
-            }
-            else
-            {
-                _trieWarmServiceTime.WithLabels(isMain.ToString(), "storage_skip")
-                    .Observe(Stopwatch.GetTimestamp() - sw);
-                _trieWarmEr.WithLabels("storage_skip").Inc();
-            }
+            // It can be missing when the warmer lags so much behind that the node is now gone.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Yea... this need to be fixed.
+        }
+        catch (NullReferenceException)
+        {
+            // Uhh....
         }
     }
 
@@ -149,7 +165,6 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
                         _spinWait.Reset();
                         mainWarmer.MaybeWakeOpOtherWorker();
 
-                        _resetEvent.Set();
                         HandleJob(job, isMain);
                     }
                     else
@@ -159,18 +174,16 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
                             if (!isMain)
                             {
                                 _trieWarmEr.WithLabels("wait_not_main").Inc();
-                                if (_resetEvent.IsSet)
-                                {
-                                    _resetEvent.Reset();
-                                    mainWarmer.QueueWorker(this);
-                                }
+                                _resetEvent.Reset();
+                                mainWarmer.QueueWorker(this);
 
                                 _resetEvent.Wait(1, cancellationToken);
                             }
                             else
                             {
-                                mainWarmer.MainWarmerIdle(this);
                                 _resetEvent.Reset();
+                                mainWarmer.MainWarmerIdle(this);
+
                                 _resetEvent.Wait(1, cancellationToken);
                             }
 
@@ -183,20 +196,8 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
                     }
                 }
             }
-            catch (TrieNodeException)
-            {
-                // It can be missing when the warmer lags so much behind that the node is now gone.
-            }
-            catch (ObjectDisposedException)
-            {
-                // Yea... this need to be fixed.
-            }
             catch (OperationCanceledException)
             {
-            }
-            catch (NullReferenceException)
-            {
-                // Uhh....
             }
             catch (Exception ex)
             {

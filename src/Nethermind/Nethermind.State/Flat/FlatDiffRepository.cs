@@ -566,6 +566,10 @@ public class FlatDiffRepository : IFlatDiffRepository
         {
             foreach (var toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
             {
+                if (toSelfDestructStorage.Value)
+                {
+                    continue;
+                }
                 batch.SelfDestruct(toSelfDestructStorage.Key.Value.ToAccountPath);
             }
             _addTime.WithLabels("self_destruct").Observe(Stopwatch.GetTimestamp() - sw);

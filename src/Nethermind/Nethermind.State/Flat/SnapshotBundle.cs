@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -20,7 +21,7 @@ namespace Nethermind.State.Flat;
 // TODO: We can skip the reverse
 public class SnapshotBundle : IDisposable
 {
-    private Dictionary<AddressAsKey, StorageSnapshotBundle> _loadedAccounts;
+    private Dictionary<AddressAsKey, StorageSnapshotBundle> _loadedContractStorages;
 
     private SnapshotContent _currentPooledContent;
     private Dictionary<AddressAsKey, Account> _changedAccounts;
@@ -70,7 +71,7 @@ public class SnapshotBundle : IDisposable
         _contentPool = contentPool;
         _isPrewarmer = isPrewarmer;
 
-        _loadedAccounts = new Dictionary<AddressAsKey, StorageSnapshotBundle>();
+        _loadedContractStorages = new Dictionary<AddressAsKey, StorageSnapshotBundle>();
 
         _currentPooledContent = contentPool.Get();
         ExpandCurrentPooledContent();
@@ -321,25 +322,24 @@ public class SnapshotBundle : IDisposable
         _currentPooledContent = _contentPool.Get();
         ExpandCurrentPooledContent();
 
-        foreach (var gatheredCacheStorage in _loadedAccounts)
+        foreach (var gatheredCacheStorage in _loadedContractStorages)
         {
             gatheredCacheStorage.Value.Dispose();
         }
-        _loadedAccounts.Clear();
+        _loadedContractStorages.Clear();
 
         return knownState;
     }
 
     public StorageSnapshotBundle GatherStorageCache(Address address)
     {
-        if (_loadedAccounts.TryGetValue(address, out var acc))
+        ref var snapshotBundle = ref CollectionsMarshal.GetValueRefOrAddDefault(_loadedContractStorages, address, out bool exists);
+        if (!exists)
         {
-            return acc;
+            snapshotBundle = new StorageSnapshotBundle(address, this);
         }
 
-        StorageSnapshotBundle cache = new StorageSnapshotBundle(address, this);
-        _loadedAccounts[address] = cache;
-        return cache;
+        return snapshotBundle;
     }
 
     public Snapshot CompactToKnownState(ObjectPool<SnapshotContent> contentPool)
@@ -374,7 +374,8 @@ public class SnapshotBundle : IDisposable
             foreach (KeyValuePair<AddressAsKey, bool> addrK in knownState.SelfDestructedStorageAddresses)
             {
                 var address = addrK.Key;
-                selfDestructedStorageAddresses[address] = true;
+                var isNewAccount = addrK.Value;
+                selfDestructedStorageAddresses[address] = isNewAccount;
 
                 // Clear
                 foreach (var kv in storages)
@@ -415,7 +416,7 @@ public class SnapshotBundle : IDisposable
 
     public void Dispose()
     {
-        foreach (var gatheredCacheStorage in _loadedAccounts)
+        foreach (var gatheredCacheStorage in _loadedContractStorages)
         {
             gatheredCacheStorage.Value.Dispose();
         }
@@ -452,7 +453,12 @@ public class SnapshotBundle : IDisposable
             }
         }
 
-        _selfDestructedAccountAddresses.TryAdd(address, true);
+        bool isNewAccount = false;
+        if (TryGetAccount(address, out Account? account) && account == null)
+        {
+            isNewAccount = true;
+        }
+        _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
     }
 
     public bool TryGetChangedSlot(AddressAsKey address, in UInt256 index, out byte[] value)

@@ -73,6 +73,8 @@ public record SnapshotContent(
     // They dont actually need to be concurrent, but its makes commit fast by just passing the whole content.
     Dictionary<AddressAsKey, Account?> Accounts,
     ConcurrentDictionary<(AddressAsKey, UInt256), byte[]?> Storages,
+
+    // Bool is true if this is a new account also
     ConcurrentDictionary<AddressAsKey, bool> SelfDestructedStorageAddresses,
     ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> TrieNodes
 ) {
