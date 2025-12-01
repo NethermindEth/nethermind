@@ -101,10 +101,10 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             }
         }
 
-        int ancestorHashCount = blocks.Count - 1;
-        if (ancestorHashCount == FlatCacheLength(blockHeader))
+        int ancestorCount = blocks.Count - 1;
+        if (ancestorCount == FlatCacheLength(blockHeader))
         {
-            hashes = new Hash256[ancestorHashCount];
+            hashes = new Hash256[ancestorCount];
             for (int i = 1; i < blocks.Count; i++)
             {
                 hashes[i - 1] = blocks[i].Node.Hash;

@@ -28,6 +28,11 @@ namespace Nethermind.Blockchain
 
         public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
         {
+            if (number < 0)
+            {
+                return ReturnOutOfBounds(currentBlock, number);
+            }
+
             if (spec.IsBlockHashInStateAvailable)
             {
                 return _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
@@ -35,17 +40,24 @@ namespace Nethermind.Blockchain
 
             long current = currentBlock.Number;
             long depth = current - number;
-            if (number >= current || number < 0 || depth > MaxDepth)
-            {
-                if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning null for {currentBlock.Number} -> {number}");
-                return null;
-            }
-
             Hash256[]? hashes = _hashes;
-            return hashes is not null
-                ? hashes[depth - 1]
-                : blockhashCache.GetHash(currentBlock, (int)depth)
-                  ?? throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation");
+
+            return depth switch
+            {
+                <= 0 => ReturnOutOfBounds(currentBlock, number),
+                1 => currentBlock.ParentHash,
+                > MaxDepth => ReturnOutOfBounds(currentBlock, number),
+                _ => hashes is not null
+                    ? hashes[depth - 1]
+                    : blockhashCache.GetHash(currentBlock, (int)depth)
+                      ?? throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation")
+            };
+        }
+
+        private Hash256? ReturnOutOfBounds(BlockHeader currentBlock, long number)
+        {
+            if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning null for {currentBlock.Number} -> {number}");
+            return null;
         }
 
         public async Task Prefetch(BlockHeader currentBlock, CancellationToken token)
