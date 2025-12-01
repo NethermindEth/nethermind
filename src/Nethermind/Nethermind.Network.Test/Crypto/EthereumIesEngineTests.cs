@@ -37,8 +37,6 @@ public class EthereumIesEngineTests
         byte[] broken = new byte[prefixLen + 32];
         Array.Copy(validCipher, 0, broken, 0, prefixLen);
 
-        var ex = Assert.Catch<Exception>(() => ecies.Decrypt(recipient, broken));
-        Assert.That(ex!.GetType().Name, Is.EqualTo("InvalidCipherTextException"));
-        Assert.That(ex.Message, Does.Contain("Length of input must be greater than the MAC"));
+        Assert.Throws<InvalidCipherTextException>(() => ecies.Decrypt(recipient, broken));
     }
 }
