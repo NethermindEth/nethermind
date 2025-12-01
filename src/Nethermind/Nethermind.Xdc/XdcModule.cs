@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -69,7 +70,7 @@ public class XdcModule : Module
 
             // block processing
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
-            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, XdcTransactionExecutor>()
+            .AddSingleton<IBlockProducerEnvFactory, XdcBlockProductionEnvFactory>()
             ;
     }
 

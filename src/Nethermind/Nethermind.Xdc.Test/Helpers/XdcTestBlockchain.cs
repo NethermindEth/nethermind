@@ -11,11 +11,13 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Facade.Find;
 using Nethermind.Int256;
@@ -219,6 +221,22 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.MinimumSigningTx = 1;
         xdcSpec.GasLimitBoundDivisor = 1024;
 
+        xdcSpec.BlackListedAddresses =
+            [
+            new Address("0x00000000000000000000000000000000b1Ac701"),
+            new Address("0x00000000000000000000000000000000b1Ac702"),
+            new Address("0x00000000000000000000000000000000b1Ac703"),
+            new Address("0x00000000000000000000000000000000b1Ac704"),
+            new Address("0x00000000000000000000000000000000b1Ac705"),
+            new Address("0x00000000000000000000000000000000b1Ac706"),
+            new Address("0x00000000000000000000000000000000b1Ac707"),
+            ];
+        xdcSpec.MergeSignRange = 15;
+
+        xdcSpec.RandomizeSMCBinary = new Address("0x7c2E0c7B4F06C3cF4dA27AE5A6b89C4A0F1C9c41");
+        xdcSpec.BlockSignersAddress = new Address("0xA45eEFb7d2a6800F9f39E35C0F0F8D5E0d7C3B22");
+        xdcSpec.TIP2019Block = 10;
+
         V2ConfigParams[] v2ConfigParams = [
             new V2ConfigParams {
                 SwitchRound = 0,
@@ -292,7 +310,22 @@ public class XdcTestBlockchain : TestBlockchain
     {
         if (_useHotStuffModule)
         {
-            return Container.Resolve<IBlockProducerRunner>();
+            return new XdcHotStuff(
+                BlockTree,
+                XdcContext,
+                SpecProvider,
+                Container.Resolve<IBlockProducer>(),
+                EpochSwitchManager,
+                SnapshotManager,
+                QuorumCertificateManager,
+                VotesManager,
+                Signer,
+                Container.Resolve<ITimeoutTimer>(),
+                Container.Resolve<IProcessExitSource>(),
+                new MemDb(),
+                Container.Resolve<ITxPool>(),
+                LogManager
+                );
         }
         return base.CreateBlockProducerRunner();
     }
@@ -310,8 +343,46 @@ public class XdcTestBlockchain : TestBlockchain
             state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
             state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
             state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
+            state.CreateAccount(TestItem.AddressD, testConfiguration.AccountInitialValue);
+            state.CreateAccount(TestItem.AddressF, testConfiguration.AccountInitialValue);
+
+
+            var genesisSpec = specProvider.GenesisSpec as IXdcReleaseSpec;
+
+            state.CreateAccount(genesisSpec!.BlockSignersAddress, 100_000);
+            state.CreateAccount(genesisSpec!.RandomizeSMCBinary, 100_000);
+
+            var gasEaterCode = Prepare.EvmCode
+                .JUMPDEST()
+                .ADD(1, 1)
+                .POP()
+                .JUMP(0)
+                .Done;
+            var gasEaterHashcode = Keccak.Compute(gasEaterCode);
+            var gasEaterAddress = Address.FromNumber(new UInt256(gasEaterHashcode.Bytes.Slice(0, 32)));
+            state.CreateAccount(gasEaterAddress, 100_000);
+
+            var dummyCode = Prepare.EvmCode
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(1)
+                .PushData(gasEaterAddress)
+                .GAS()
+                .CALL()
+                .Done;
+            var dummyCodeHashcode = Keccak.Compute(dummyCode);
+
+            state.InsertCode(genesisSpec.BlockSignersAddress, dummyCodeHashcode, dummyCode, genesisSpec, true);
+            state.InsertCode(genesisSpec.RandomizeSMCBinary, dummyCodeHashcode, dummyCode, genesisSpec, true);
 
             IXdcReleaseSpec? finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
+
+            foreach (var nodeAddress in finalSpec.GenesisMasterNodes)
+            {
+                state.CreateAccount(nodeAddress, testConfiguration.AccountInitialValue);
+            }
 
             XdcBlockHeaderBuilder xdcBlockHeaderBuilder = new();
 

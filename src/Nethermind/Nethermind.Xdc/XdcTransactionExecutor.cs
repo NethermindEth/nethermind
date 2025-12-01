@@ -28,6 +28,7 @@ internal class XdcTransactionExecutor(ITransactionProcessorAdapter txProcessorAd
 
         var spec = specProvider.GetXdcSpec(block.Header as XdcBlockHeader);
 
+
         for (int i = 0; i < block.Transactions.Length; i++)
         {
             Transaction currentTx = block.Transactions[i];

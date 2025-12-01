@@ -40,7 +40,7 @@ internal static class ContractsUtils
         await signer.Sign(transaction);
 
         // add local somehow to tx pool
-        bool added = txPool.SubmitTx(transaction, TxHandlingOptions.None);
+        bool added = txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
         if(!added)
         {
             throw new Exception("Failed to add signed transaction to the pool.");
@@ -65,7 +65,7 @@ internal static class ContractsUtils
                 await signer.Sign(tx);
 
                 // add local somehow to tx pool
-                bool addedOpening = txPool.SubmitTx(tx, TxHandlingOptions.None);
+                bool addedOpening = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
 
                 stateDb.Remove(randomKey);
             }
@@ -78,7 +78,7 @@ internal static class ContractsUtils
                 Transaction tx = BuildTxSecretRandomize(nonce + 1, spec.RandomizeSMCBinary, (ulong)spec.EpochLength, randomizeKeyValue);
                 await signer.Sign(tx);
                 // add local somehow to tx pool
-                bool addedOpening = txPool.SubmitTx(tx, TxHandlingOptions.None);
+                bool addedOpening = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
                 stateDb.PutSpan(randomKey, randomizeKeyValue);
 
             }
@@ -98,6 +98,10 @@ internal static class ContractsUtils
         transaction.GasPrice = 0;
         transaction.Data = inputData;
 
+        transaction.Type = TxType.Legacy;
+
+        transaction.Hash = transaction.CalculateHash();
+
         return transaction;
     }
 
@@ -113,6 +117,10 @@ internal static class ContractsUtils
         transaction.GasLimit = 200_000;
         transaction.GasPrice = 0;
         transaction.Data = inputData;
+
+        transaction.Type = TxType.Legacy;
+
+        transaction.Hash = transaction.CalculateHash();
 
         return transaction;
     }
@@ -147,6 +155,10 @@ internal static class ContractsUtils
         transaction.GasLimit = 200_000;
         transaction.GasPrice = 0;
         transaction.Data = inputData;
+
+        transaction.Type = TxType.Legacy;
+
+        transaction.Hash = transaction.CalculateHash();
 
         return transaction;
     }
