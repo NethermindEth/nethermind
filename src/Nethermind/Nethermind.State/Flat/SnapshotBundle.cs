@@ -13,7 +13,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
-using Prometheus;
 
 namespace Nethermind.State.Flat;
 
@@ -33,28 +32,6 @@ public class SnapshotBundle : IDisposable
 
     public int SnapshotCount => _knownStates.Count;
 
-    internal static Histogram _snapshotBundleTimer = Prometheus.Metrics.CreateHistogram("snapshot_bundle_timer", "timer",
-        new HistogramConfiguration()
-        {
-            LabelNames = ["part", "is_prewarmer"],
-            Buckets = Histogram.PowersOfTenDividedBuckets(5, 10, 5)
-        });
-
-    private Histogram.Child _snapshotBundleTimerKnownStates;
-    private Histogram.Child _snapshotBundleTimerPersistence;
-    private Histogram.Child _snapshotBundleTimerPersistenceNull;
-    private Histogram.Child _snapshotBundleTimerKnownStatesStorage;
-    private Histogram.Child _snapshotBundleTimerPersistenceStorage;
-    private Histogram.Child _snapshotBundleTimerPersistenceNullStorage;
-    private Histogram.Child _loadTriePersistence;
-    private Histogram.Child _loadTriePersistenceStorage;
-    private Histogram.Child _loadTrie;
-
-    private static Counter _loadTrieCacheHit = Prometheus.Metrics.CreateCounter("load_trie_cache_hit", "", "hit", "type");
-    private Counter.Child _loadTrieCacheHitStateHit = _loadTrieCacheHit.WithLabels("hit", "state");
-    private Counter.Child _loadTrieCacheHitStateMiss = _loadTrieCacheHit.WithLabels("miss", "state");
-    private Counter.Child _loadTrieCacheHitStorageHit = _loadTrieCacheHit.WithLabels("hit", "storage");
-    private Counter.Child _loadTrieCacheHitStorageMiss = _loadTrieCacheHit.WithLabels("miss", "storage");
     private readonly ArrayPoolList<Snapshot> _knownStates;
     private readonly IPersistence.IPersistenceReader _persistenceReader;
     private readonly TrieNodeCache _trieNodeCache;
@@ -82,16 +59,6 @@ public class SnapshotBundle : IDisposable
             _currentPooledContent = contentPool.Get();
             ExpandCurrentPooledContent();
         }
-
-        _snapshotBundleTimerKnownStates = _snapshotBundleTimer.WithLabels("known_states", isPrewarmer.ToString());
-        _snapshotBundleTimerPersistence = _snapshotBundleTimer.WithLabels("persistence", isPrewarmer.ToString());
-        _snapshotBundleTimerPersistenceNull = _snapshotBundleTimer.WithLabels("persistence_null", isPrewarmer.ToString());
-        _snapshotBundleTimerKnownStatesStorage = _snapshotBundleTimer.WithLabels("known_states_storage", isPrewarmer.ToString());
-        _snapshotBundleTimerPersistenceStorage = _snapshotBundleTimer.WithLabels("persistence_storage", isPrewarmer.ToString());
-        _snapshotBundleTimerPersistenceNullStorage = _snapshotBundleTimer.WithLabels("persistence_null_storage", isPrewarmer.ToString());
-        _loadTriePersistence = _snapshotBundleTimer.WithLabels("load_trie_persistence", isPrewarmer.ToString());
-        _loadTriePersistenceStorage = _snapshotBundleTimer.WithLabels("load_trie_persistence_storage", isPrewarmer.ToString());
-        _loadTrie = _snapshotBundleTimer.WithLabels("load_trie", isPrewarmer.ToString());
     }
 
     private void ExpandCurrentPooledContent()
@@ -105,15 +72,6 @@ public class SnapshotBundle : IDisposable
     public void SetPrewarmer()
     {
         _isPrewarmer = true;
-        _snapshotBundleTimerKnownStates = _snapshotBundleTimer.WithLabels("known_states", _isPrewarmer.ToString());
-        _snapshotBundleTimerPersistence = _snapshotBundleTimer.WithLabels("persistence", _isPrewarmer.ToString());
-        _snapshotBundleTimerPersistenceNull = _snapshotBundleTimer.WithLabels("persistence_null", _isPrewarmer.ToString());
-        _snapshotBundleTimerKnownStatesStorage = _snapshotBundleTimer.WithLabels("known_states_storage", _isPrewarmer.ToString());
-        _snapshotBundleTimerPersistenceStorage = _snapshotBundleTimer.WithLabels("persistence_storage", _isPrewarmer.ToString());
-        _snapshotBundleTimerPersistenceNullStorage = _snapshotBundleTimer.WithLabels("persistence_null_storage", _isPrewarmer.ToString());
-        _loadTriePersistence = _snapshotBundleTimer.WithLabels("load_trie_persistence", _isPrewarmer.ToString());
-        _loadTriePersistenceStorage = _snapshotBundleTimer.WithLabels("load_trie_persistence_storage", _isPrewarmer.ToString());
-        _loadTrie = _snapshotBundleTimer.WithLabels("load_trie", _isPrewarmer.ToString());
     }
 
     public bool TryGetAccountInMemory(Address address, out Account? acc)
@@ -122,16 +80,13 @@ public class SnapshotBundle : IDisposable
 
         AddressAsKey key = address;
 
-        long sw = Stopwatch.GetTimestamp();
         for (int i = _knownStates.Count - 1; i >= 0; i--)
         {
             if (_knownStates[i].TryGetAccount(key, out acc))
             {
-                _snapshotBundleTimerKnownStates.Observe(Stopwatch.GetTimestamp() - sw);
                 return true;
             }
         }
-        _snapshotBundleTimerKnownStates.Observe(Stopwatch.GetTimestamp() - sw);
 
         acc = null;
         return false;
@@ -141,21 +96,11 @@ public class SnapshotBundle : IDisposable
     {
         if (TryGetAccountInMemory(address, out acc)) return true;
 
-        long sw = Stopwatch.GetTimestamp();
         if (_persistenceReader.TryGetAccount(address, out acc))
         {
-            if (acc == null)
-            {
-                _snapshotBundleTimerPersistenceNull.Observe(Stopwatch.GetTimestamp() - sw);
-            }
-            else
-            {
-                _snapshotBundleTimerPersistence.Observe(Stopwatch.GetTimestamp() - sw);
-            }
             return true;
         }
 
-        acc = null;
         return false;
     }
 
@@ -174,32 +119,19 @@ public class SnapshotBundle : IDisposable
 
     public bool TryGetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out byte[] value)
     {
-        long sw = Stopwatch.GetTimestamp();
         for (int i = _knownStates.Count - 1; i >= 0; i--)
         {
             if (_knownStates[i].TryGetStorage(address, index, out value)) return true;
 
             if (i <= selfDestructStateIdx)
             {
-                _snapshotBundleTimerKnownStatesStorage.Observe(Stopwatch.GetTimestamp() - sw);
                 value = null;
                 return true;
             }
         }
-        _snapshotBundleTimerKnownStatesStorage.Observe(Stopwatch.GetTimestamp() - sw);
 
-        sw = Stopwatch.GetTimestamp();
         if (_persistenceReader.TryGetSlot(address, index, out value))
         {
-            if (value == null)
-            {
-                _snapshotBundleTimerPersistenceNullStorage.Observe(Stopwatch.GetTimestamp() - sw);
-            }
-            else
-            {
-                _snapshotBundleTimerPersistenceStorage.Observe(Stopwatch.GetTimestamp() - sw);
-            }
-
             return true;
         }
 
@@ -223,72 +155,26 @@ public class SnapshotBundle : IDisposable
 
     public bool TryFindNode(Hash256? address, in TreePath path, Hash256 hash, int selfDestructStateIdx, out TrieNode node)
     {
-        long sw = Stopwatch.GetTimestamp();
         for (int i = _knownStates.Count - 1; i >= 0; i--)
         {
             if (_knownStates[i].TryGetTrieNodes(address, path, out node))
             {
-                _loadTrie.Observe(Stopwatch.GetTimestamp() - sw);
                 return true;
             }
 
             if (i <= selfDestructStateIdx)
             {
-                _loadTrie.Observe(Stopwatch.GetTimestamp() - sw);
                 node = null;
                 return false;
             }
         }
 
-        var res = _trieNodeCache.TryGet(address, path, hash, out node);
-        if (res)
-        {
-            if (address is null)
-            {
-                _loadTrieCacheHitStateHit.Inc();
-            }
-            else
-            {
-                _loadTrieCacheHitStorageHit.Inc();
-            }
-        }
-        else
-        {
-            if (address is null)
-            {
-                _loadTrieCacheHitStateMiss.Inc();
-            }
-            else
-            {
-                _loadTrieCacheHitStorageMiss.Inc();
-            }
-        }
-
-        _loadTrie.Observe(Stopwatch.GetTimestamp() - sw);
-        return res;
-    }
-
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags)
-    {
-        long sw = Stopwatch.GetTimestamp();
-        var res =  _persistenceReader.TryLoadRlp(null, path, hash, flags);
-        _loadTriePersistence.Observe(Stopwatch.GetTimestamp() - sw);
-        return res;
+        return _trieNodeCache.TryGet(address, path, hash, out node);
     }
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
-        long sw = Stopwatch.GetTimestamp();
-        var res = _persistenceReader.TryLoadRlp(address, path, hash, flags);
-        if (address is null)
-        {
-            _loadTriePersistence.Observe(Stopwatch.GetTimestamp() - sw);
-        }
-        else
-        {
-            _loadTriePersistenceStorage.Observe(Stopwatch.GetTimestamp() - sw);
-        }
-        return res;
+        return _persistenceReader.TryLoadRlp(address, path, hash, flags);
     }
 
     public void SetStateNode(in TreePath path, TrieNode newNode)

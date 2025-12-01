@@ -1254,8 +1254,6 @@ namespace Nethermind.Trie
 
                                 if (IsPersisted && !child.IsPersisted)
                                 {
-                                    // What is this? Why is this here?
-                                    Console.Error.WriteLine($"Weird case {childPath}");
                                     child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
                                         NullLogger.Instance);
                                 }

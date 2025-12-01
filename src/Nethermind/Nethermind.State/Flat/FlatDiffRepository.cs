@@ -250,7 +250,6 @@ public class FlatDiffRepository : IFlatDiffRepository
             }
 
             if (_logger.IsDebug) _logger.Debug($"Compacting {stateId}");
-            long sw = Stopwatch.GetTimestamp();
             Snapshot snapshot = gatheredCache.CompactToKnownState(_compactedSnapshotPool);
 
             using (EnterRepolock())
@@ -267,7 +266,6 @@ public class FlatDiffRepository : IFlatDiffRepository
                     }
                 }
             }
-            _addTime.WithLabels("compact_to_known_state").Observe(Stopwatch.GetTimestamp() - sw);
         }
         catch (Exception e)
         {
@@ -300,9 +298,7 @@ public class FlatDiffRepository : IFlatDiffRepository
 
     private SnapshotBundle GatherCache(StateId baseBlock, long? earliestExclusive = null, bool isReadOnly = false)
     {
-        long sw = Stopwatch.GetTimestamp();
         using var _ = EnterRepolockReadOnly();
-        _addTime.WithLabels("gather_cache_lock").Observe(Stopwatch.GetTimestamp() - sw);
 
         ArrayPoolList<Snapshot> knownStates = new(Math.Max(1, (int)(_inMemorySnapshotStore.KnownStatesCount / _compactSize)));
 
@@ -333,7 +329,6 @@ public class FlatDiffRepository : IFlatDiffRepository
 
         _knownStatesSize.Observe(knownStates.Count);
 
-        long sw2 = Stopwatch.GetTimestamp();
         // Note: By the time the previous loop finished checking all state, the big cache may have added new state and removed some
         // entry in `_inMemorySnapshotStore`. Meaning, this need to be here instead oof before the loop.
         IPersistence.IPersistenceReader bigCacheReader = LeaseReader();
@@ -341,7 +336,6 @@ public class FlatDiffRepository : IFlatDiffRepository
         {
             throw new Exception($"Non consecutive snappshots. Current {current} vs {bigCacheReader.CurrentState}, {bigCacheState}, {baseBlock}, {_inMemorySnapshotStore.TryGetValue(current, out var snapshot)}, {exitReason}");
         }
-        _addTime.WithLabels("lease_reader").Observe(Stopwatch.GetTimestamp() - sw2);
 
         if (bigCacheReader.CurrentState.blockNumber > baseBlock.blockNumber)
         {
@@ -353,7 +347,6 @@ public class FlatDiffRepository : IFlatDiffRepository
         knownStates.Reverse();
 
         if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestExclusive}, Got {knownStates.Count} known states, {_currentPersistedState}");
-        _addTime.WithLabels("gather_cache").Observe(Stopwatch.GetTimestamp() - sw);
         return new SnapshotBundle(knownStates, bigCacheReader, _trieNodeCache, _snapshotPool, isReadOnly: isReadOnly);
     }
 
@@ -413,14 +406,6 @@ public class FlatDiffRepository : IFlatDiffRepository
     {
         await NotifyWhenSlow("add to bigcache", () => AddToBigCache());
     }
-
-    private Histogram _addTime = Metrics.CreateHistogram("flatdiff_repo_time", "times", new HistogramConfiguration()
-    {
-        LabelNames = ["part"],
-        Buckets = Histogram.PowersOfTenDividedBuckets(4, 12, 10)
-    });
-
-    private static Counter _flushCount = Metrics.CreateCounter("flatdiff_flush", "flush", "type");
 
     private void AddToBigCache()
     {
@@ -569,14 +554,10 @@ public class FlatDiffRepository : IFlatDiffRepository
             }
 
             // Add the canon snapshot
-            long ss = Stopwatch.GetTimestamp();
             Add(pickedState);
-            _addTime.WithLabels("snapshot_save").Observe(Stopwatch.GetTimestamp() - ss);
 
             // TODO: Determine if selfdestruct handling is required here.
-            ss = Stopwatch.GetTimestamp();
             _trieNodeCache.Add(pickedState);
-            _addTime.WithLabels("add_trie_cache").Observe(Stopwatch.GetTimestamp() - ss);
 
             // And we remove it
             using (EnterRepolock())
@@ -618,34 +599,10 @@ public class FlatDiffRepository : IFlatDiffRepository
         }
     }
 
-    private Counter.Child _accountWrites = _flushCount.WithLabels("account");
-    private Counter.Child _storageWrites = _flushCount.WithLabels("storage");
-    private Counter.Child _nodesWrites = _flushCount.WithLabels("nodes");
-    private Counter.Child _selfDestruct = _flushCount.WithLabels("self_destruct");
-    private Counter.Child _selfDestructNew = _flushCount.WithLabels("self_destruct_new");
-    private Counter.Child _unknownNodeEmpty = _flushCount.WithLabels("unknown_node_empty");
-    private Counter.Child _unknownNode = _flushCount.WithLabels("unknown_node");
-    private Counter.Child _persistedNode = _flushCount.WithLabels("persisted_node");
-
-    private static Histogram _flushcountHist = Metrics.CreateHistogram("flatdiff_flushcount_hist", "timer",
-        new HistogramConfiguration()
-        {
-            LabelNames = ["part"],
-            Buckets = Histogram.PowersOfTenDividedBuckets(0, 6, 5)
-        });
-
-    private static Histogram _flushcountHistSize = Metrics.CreateHistogram("flatdiff_flushcount_size_hist", "timer",
-        new HistogramConfiguration()
-        {
-            LabelNames = ["part"],
-            Buckets = Histogram.PowersOfTenDividedBuckets(0, 8, 5)
-        });
-
     private List<(Hash256AsKey, TreePath)> _trieNodesSortBuffer = new List<(Hash256AsKey, TreePath)>(); // Presort make it faster
 
     public void Add(Snapshot snapshot)
     {
-        long sw = Stopwatch.GetTimestamp();
         if (snapshot.To.blockNumber - snapshot.From.blockNumber != _compactSize) _logger.Warn($"Snapshot size write is {snapshot.To.blockNumber - snapshot.From.blockNumber}");
         using (var batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
@@ -654,18 +611,12 @@ public class FlatDiffRepository : IFlatDiffRepository
             {
                 if (toSelfDestructStorage.Value)
                 {
-                    _selfDestructNew.Inc();
                     continue;
                 }
 
-                _selfDestruct.Inc();
                 batch.SelfDestruct(toSelfDestructStorage.Key.Value.ToAccountPath);
                 counter++;
             }
-            _flushcountHist.WithLabels("self_destruct").Observe(counter);
-
-            _addTime.WithLabels("self_destruct").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
 
             foreach (var kv in snapshot.Accounts)
             {
@@ -675,12 +626,6 @@ public class FlatDiffRepository : IFlatDiffRepository
                 else
                     batch.SetAccount(addr, account);
             }
-
-            _accountWrites.Inc(snapshot.AccountsCount);
-            _flushcountHist.WithLabels("accounts").Observe(snapshot.AccountsCount);
-
-            _addTime.WithLabels("accounts").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
 
             foreach (var kv in snapshot.Storages)
             {
@@ -695,18 +640,11 @@ public class FlatDiffRepository : IFlatDiffRepository
                     batch.SetStorage(addr, slot, value);
                 }
             }
-            _storageWrites.Inc(snapshot.StoragesCount);
-            _flushcountHist.WithLabels("storages").Observe(snapshot.StoragesCount);
-
-            _addTime.WithLabels("storage").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
 
             _trieNodesSortBuffer.Clear();
             _trieNodesSortBuffer.AddRange(snapshot.TrieNodeKeys);
             _trieNodesSortBuffer.Sort();
 
-            long nodeState = 0;
-            long nodeStorage = 0;
             // foreach (var tn in snapshot.TrieNodes)
             foreach (var k in _trieNodesSortBuffer)
             {
@@ -719,39 +657,16 @@ public class FlatDiffRepository : IFlatDiffRepository
                     // TODO: Need to double check this case. Does it need a rewrite or not?
                     if (node.NodeType == NodeType.Unknown)
                     {
-                        _unknownNodeEmpty.Inc();
                         continue;
                     }
-                }
-
-
-                if (node.IsPersisted)
-                {
-                    _persistedNode.Inc();
-                }
-
-                if (node.NodeType == NodeType.Unknown)
-                {
-                    _unknownNode.Inc();
                 }
 
                 // Note: Even if the node already marked as persisted, we still re-persist it
                 batch.SetTrieNodes(address, path, node);
 
                 node.IsPersisted = true;
-                if (address.Value is null)
-                    nodeState++;
-                else nodeStorage++;
             }
-            _nodesWrites.Inc(snapshot.TrieNodesCount);
-            _flushcountHist.WithLabels("trynode_state").Observe(nodeState);
-            _flushcountHist.WithLabels("trynode_storage").Observe(nodeStorage);
-
-            _addTime.WithLabels("nodes").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
         }
-        _addTime.WithLabels("dispose").Observe(Stopwatch.GetTimestamp() - sw);
-        sw = Stopwatch.GetTimestamp();
 
         _currentPersistedState = snapshot.To;
         ClearReaderCache();

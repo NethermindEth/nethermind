@@ -16,8 +16,6 @@ using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using Prometheus;
-using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -34,23 +32,9 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     private readonly bool _isReadOnly;
     private FlatDiffRepository.Configuration _configuration;
 
-    public static Histogram _flatScopeTimer = Metrics.CreateHistogram("flat_scope_timer", "timer",
-        new HistogramConfiguration()
-        {
-            LabelNames = ["part", "is_main"],
-            Buckets = Histogram.PowersOfTenDividedBuckets(4, 10, 5)
-        });
-
-    private Histogram.Child _stateTreeGet;
-    private Histogram.Child _flatGet;
     private readonly ConcurrencyQuota _concurrencyQuota;
     private readonly ITrieStoreTrieCacheWarmer _warmer;
     private bool _isCommitting = false;
-    private readonly bool _isMain;
-    private readonly Histogram.Child _storageCommit;
-    private readonly Histogram.Child _stateCommit;
-    private readonly Histogram.Child _snapshotCollect;
-    private readonly Histogram.Child _snapshotAdd;
 
     public WorldStateScope(
         StateId currentStateId,
@@ -82,14 +66,6 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         _warmer = trieCacheWarmer;
         _warmer.OnNewScope();
         _isReadOnly = isReadOnly;
-        _isMain = !isReadOnly;
-
-        _stateTreeGet = _flatScopeTimer.WithLabels("statetree_get", _isMain.ToString());
-        _flatGet = _flatScopeTimer.WithLabels("flat_get", _isMain.ToString());
-        _storageCommit = _flatScopeTimer.WithLabels("storage_commit", _isMain.ToString());
-        _stateCommit = _flatScopeTimer.WithLabels("state_commit", _isMain.ToString());
-        _snapshotCollect = _flatScopeTimer.WithLabels("snapshot_collect", _isMain.ToString());
-        _snapshotAdd = _flatScopeTimer.WithLabels("snapshot_add", _isMain.ToString());
     }
 
     public void Dispose()
@@ -105,22 +81,18 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
     public Account? Get(Address address)
     {
-        long sw = Stopwatch.GetTimestamp();
         if (!_configuration.ReadWithTrie && _snapshotBundle.TryGetAccount(address, out Account account))
         {
-            _flatGet.Observe(Stopwatch.GetTimestamp() - sw);
             HintGet(address, account);
 
             if (_configuration.VerifyWithTrie)
             {
                 // TODO: To snapshot bundler
-                sw = Stopwatch.GetTimestamp();
                 Account? accTrie = _stateTree.Get(address);
                 if (accTrie != account)
                 {
                     throw new Exception($"Incorrect account {accTrie} vs {account}");
                 }
-                _stateTreeGet.Observe(Stopwatch.GetTimestamp() - sw);
             }
 
             return account;
@@ -129,7 +101,6 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         {
             account = _stateTree.Get(address);
             HintGet(address, account);
-            _stateTreeGet.Observe(Stopwatch.GetTimestamp() - sw);
             return account;
         }
     }
@@ -187,7 +158,6 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     {
         StateId newStateId = new StateId(blockNumber, RootHash);
         _isCommitting = true;
-        long sw = Stopwatch.GetTimestamp();
         if (!_isReadOnly)
         {
 
@@ -213,13 +183,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
             Task.WaitAll(commitTask.AsSpan());
 
-            _storageCommit.Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
-
             _stateTree.Commit();
-
-            _stateCommit.Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
         }
 
         _isCommitting = false;
@@ -228,14 +192,9 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
         Snapshot newSnapshot = _snapshotBundle.CollectAndApplyKnownState(_currentStateId, newStateId);
 
-        _snapshotCollect.Observe(Stopwatch.GetTimestamp() - sw);
-        sw = Stopwatch.GetTimestamp();
-
         if (!_isReadOnly)
         {
             if (_currentStateId != newStateId) _flatDiffRepository.AddSnapshot(newSnapshot);
-            _snapshotAdd.Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
         }
 
         _currentStateId = newStateId;
@@ -259,7 +218,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
             return newNode;
         }
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => bundle.TryLoadRlp(path, hash, flags);
+        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => bundle.TryLoadRlp(null, path, hash, flags);
 
         public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(bundle, concurrencyQuota);
 

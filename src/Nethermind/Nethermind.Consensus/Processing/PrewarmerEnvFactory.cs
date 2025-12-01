@@ -19,7 +19,6 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILifetime
             preBlockCaches,
             populatePreBlockCache: true
         );
-        Console.Error.WriteLine($"Create with {worldState.GetHashCode()} {worldState.IsWarmWorldState}");
 
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {

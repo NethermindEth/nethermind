@@ -61,12 +61,7 @@ namespace Nethermind.State
             isPrewarmer = false;
             if (scopeProvider is PrewarmerScopeProvider psp)
             {
-                Console.Error.WriteLine($"In worldstate its {psp.GetHashCode()} {!psp.IsWarmWorldState}");
                 isPrewarmer = !psp.IsWarmWorldState;
-            }
-            else
-            {
-                Console.Error.WriteLine($"The thing is {scopeProvider}");
             }
         }
 

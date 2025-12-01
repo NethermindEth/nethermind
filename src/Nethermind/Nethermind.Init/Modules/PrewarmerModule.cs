@@ -52,7 +52,6 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                         ctx.Resolve<PreBlockCaches>(),
                         populatePreBlockCache: false
                     );
-                    Console.Error.WriteLine($"Create with {worldState.IsWarmWorldState}");
                     return worldState;
                 })
                 .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
