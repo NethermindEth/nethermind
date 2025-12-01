@@ -22,7 +22,8 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public class StorageTree : IWorldStateScopeProvider.IStorageTree
 {
     private readonly StorageSnapshotBundle _storageSnapshotBundle;
-    internal readonly State.StorageTree _tree;
+    private readonly State.StorageTree _tree;
+    private readonly PatriciaTree _warmupStorageTree;
     private readonly Address _address;
     private readonly FlatDiffRepository.Configuration _config;
     private readonly ITrieStoreTrieCacheWarmer _trieCacheWarmer;
@@ -42,8 +43,14 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
         _scope = scope;
         _trieCacheWarmer = trieCacheWarmer;
         _storageSnapshotBundle = storageSnapshotBundle;
-        _tree = new State.StorageTree(new TrieStoreAdapter(storageSnapshotBundle, concurrencyQuota), storageRoot, logManager);
+        _tree = new State.StorageTree(
+            new TrieStoreAdapter(storageSnapshotBundle, concurrencyQuota, isReadOnly: false),
+            storageRoot, logManager);
         _tree.RootHash = storageRoot;
+        _warmupStorageTree = new PatriciaTree(
+            new TrieStoreAdapter(storageSnapshotBundle, concurrencyQuota, isReadOnly: true),
+            logManager);
+        _warmupStorageTree.RootHash = storageRoot;
         _config = config;
         _address = address;
 
@@ -85,7 +92,7 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
         }
 
         _storageSnapshotBundle.TryGet(index, out var value);
-            if (value == null) value = State.StorageTree.ZeroBytes;
+        if (value == null) value = State.StorageTree.ZeroBytes;
 
         HintGet(index, value);
 
@@ -128,7 +135,7 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
         }
         ValueHash256 hash = new ValueHash256();
         State.StorageTree.ComputeKeyWithLookup(index, hash.BytesAsSpan);
-        _tree.Get(hash);
+        _warmupStorageTree.Get(hash.Bytes);
     }
 
     public byte[] Get(in ValueHash256 hash)
@@ -141,7 +148,11 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
         _tree.Commit();
     }
 
-    private class TrieStoreAdapter(StorageSnapshotBundle storageSnapshotBundle, ConcurrencyQuota concurrencyQuota): AbstractMinimalTrieStore
+    private class TrieStoreAdapter(
+        StorageSnapshotBundle storageSnapshotBundle,
+        ConcurrencyQuota concurrencyQuota,
+        bool isReadOnly
+    ): AbstractMinimalTrieStore
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
         {
@@ -151,7 +162,7 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
             }
 
             TrieNode newNode = new TrieNode(NodeType.Unknown, hash);
-            storageSnapshotBundle.SetNode(path, newNode);
+            if (!isReadOnly) storageSnapshotBundle.SetNode(path, newNode);
             return newNode;
         }
 

@@ -29,6 +29,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     private readonly IFlatDiffRepository _flatDiffRepository;
     private readonly Dictionary<AddressPrefixAsKey, StorageTree> _storages = new();
     private readonly StateTree _stateTree;
+    private readonly PatriciaTree _warmupStateTree;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
     private FlatDiffRepository.Configuration _configuration;
@@ -67,11 +68,16 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         _flatDiffRepository = flatDiffRepository;
         _concurrencyQuota = new ConcurrencyQuota();
         _stateTree = new StateTree(
-            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
+            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota, isReadOnly: false),
             logManager
         );
-        _configuration = configuration;
         _stateTree.RootHash = currentStateId.stateRoot.ToCommitment();
+        _warmupStateTree = new PatriciaTree(
+            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota, isReadOnly: true),
+            logManager
+        );
+        _warmupStateTree.RootHash = currentStateId.stateRoot.ToCommitment();
+        _configuration = configuration;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
         _warmer.OnNewScope();
@@ -175,7 +181,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     public void WarmUpStateTrie(Address address)
     {
         ValueHash256 rawHash = address.ToAccountPath;
-        _stateTree.Get(rawHash.Bytes);
+        _warmupStateTree.Get(rawHash.Bytes);
     }
 
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
@@ -270,7 +276,8 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
     private class StateTrieStoreAdapter(
         SnapshotBundle bundle,
-        ConcurrencyQuota concurrencyQuota
+        ConcurrencyQuota concurrencyQuota,
+        bool isReadOnly
     ) : AbstractMinimalTrieStore
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
@@ -281,7 +288,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
             }
 
             TrieNode newNode = new TrieNode(NodeType.Unknown, hash);
-            bundle.SetStateNode(path, newNode);
+            if (!isReadOnly) bundle.SetStateNode(path, newNode);
             return newNode;
         }
 
