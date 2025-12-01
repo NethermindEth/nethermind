@@ -357,6 +357,8 @@ public class DbConfig : IDbConfig
         // level. TODO: Measure how much the db size change.
         "compression=kNoCompression;" +
 
+        "memtable=prefix_hash:1000;" +
+
         "min_write_buffer_number_to_merge=2;" +
 
         // This used to be on trie, but its here now. Attempt to reduce LSM depth at cost of write amp.

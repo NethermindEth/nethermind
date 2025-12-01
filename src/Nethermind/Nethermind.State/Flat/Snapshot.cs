@@ -34,6 +34,7 @@ public class Snapshot(
     public IEnumerable<KeyValuePair<AddressAsKey, bool>> SelfDestructedStorageAddresses => content.SelfDestructedStorageAddresses;
     public IEnumerable<KeyValuePair<(AddressAsKey, UInt256), byte[]?>> Storages => content.Storages;
     public IEnumerable<KeyValuePair<(Hash256AsKey, TreePath), TrieNode>> TrieNodes => content.TrieNodes;
+    public IEnumerable<(Hash256AsKey, TreePath)> TrieNodeKeys => content.TrieNodes.Keys;
     public int AccountsCount => content.Accounts.Count;
     public int StoragesCount => content.Storages.Count;
     public int TrieNodesCount => content.TrieNodes.Count;

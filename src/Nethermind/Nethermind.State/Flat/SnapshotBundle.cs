@@ -435,7 +435,7 @@ public class SnapshotBundle : IDisposable
         _contentPool.Return(_currentPooledContent);
     }
 
-    public void SelfDestruct(Address address, Hash256AsKey addressHash)
+    public void Clear(Address address, Hash256AsKey addressHash)
     {
         foreach (var kv in _changedNodes)
         {
@@ -454,9 +454,11 @@ public class SnapshotBundle : IDisposable
         }
 
         bool isNewAccount = false;
-        if (TryGetAccount(address, out Account? account) && account == null)
+        if (TryGetAccount(address, out Account? account))
         {
-            isNewAccount = true;
+            // So... a clear is always sent even on new account. This makes is a minor optimization as
+            // it skip persistence, but probably need to make sure it does not send it at all in the first place.
+            isNewAccount = account == null;
         }
         _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
     }
@@ -541,7 +543,7 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
     public void SelfDestruct()
     {
         _hasSelfDestruct = true;
-        bundle.SelfDestruct(address, _addressHash);
+        bundle.Clear(address, _addressHash);
     }
 
     public void Dispose()
