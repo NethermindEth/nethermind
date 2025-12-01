@@ -49,6 +49,8 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using NUnit.Framework.Internal;
+using Paprika.Store;
+using Nethermind.Paprika;
 
 namespace Nethermind.Synchronization.Test;
 
@@ -66,7 +68,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     {
         Default,
         Hash,
-        NoPruning
+        NoPruning,
+        Paprika
     }
 
     public static IEnumerable<TestFixtureParameters> CreateTestCases()
@@ -74,9 +77,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         yield return new TestFixtureParameters(DbMode.Default, false);
         yield return new TestFixtureParameters(DbMode.Hash, false);
         yield return new TestFixtureParameters(DbMode.NoPruning, false);
+        yield return new TestFixtureParameters(DbMode.Paprika, false);
         yield return new TestFixtureParameters(DbMode.Default, true);
         yield return new TestFixtureParameters(DbMode.Hash, true);
         yield return new TestFixtureParameters(DbMode.NoPruning, true);
+        yield return new TestFixtureParameters(DbMode.Paprika, true);
     }
 
     private static TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
@@ -155,6 +160,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 {
                     IPruningConfig pruningConfig = configProvider.GetConfig<IPruningConfig>();
                     pruningConfig.Mode = PruningMode.None;
+                    break;
+                }
+            case DbMode.Paprika:
+                {
+                    IPaprikaConfig pruningConfig = configProvider.GetConfig<IPaprikaConfig>();
+                    pruningConfig.Enabled = true;
                     break;
                 }
         }
@@ -261,6 +272,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     [Retry(5)]
     public async Task FastSync()
     {
+        if (dbMode == DbMode.Paprika) Assert.Ignore();
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         PrivateKey clientKey = TestItem.PrivateKeyC;
@@ -294,6 +306,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     [Retry(5)]
     public async Task SnapSync()
     {
+        if (dbMode == DbMode.Paprika) Assert.Ignore();
         if (dbMode == DbMode.Hash) Assert.Ignore("Hash db does not support snap sync");
 
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);

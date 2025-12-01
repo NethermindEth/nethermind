@@ -127,6 +127,11 @@ namespace Nethermind.Core
         }
 
         public AccountStruct ToStruct() => new(Nonce, Balance, StorageRoot, CodeHash);
+
+        public override string ToString()
+        {
+            return $"N:{Nonce},B:{Balance},S:{StorageRoot},C:{CodeHash}";
+        }
     }
 
     public readonly struct AccountStruct : IEquatable<AccountStruct>

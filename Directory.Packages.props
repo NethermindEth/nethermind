@@ -24,7 +24,9 @@
     <PackageVersion Include="Google.Protobuf.Tools" Version="3.33.1" />
     <PackageVersion Include="Grpc" Version="2.46.6" />
     <PackageVersion Include="Grpc.Tools" Version="2.76.0" />
+    <PackageVersion Include="HdrHistogram" Version="2.5.0" />
     <PackageVersion Include="HexMate" Version="0.0.3" />
+    <PackageVersion Include="JetBrains.dotMemoryUnit" Version="3.2.20220510" />
     <PackageVersion Include="MathNet.Numerics.FSharp" Version="5.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="10.0.0" />
@@ -84,6 +86,7 @@
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
     <PackageVersion Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="22.0.16" />
     <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.0.16" />
+    <PackageVersion Include="Verify.NUnit" Version="31.7.1" />
     <PackageVersion Include="Websocket.Client" Version="5.3.0" />
     <PackageVersion Include="ZstdSharp.Port" Version="0.8.6" />
   </ItemGroup>
