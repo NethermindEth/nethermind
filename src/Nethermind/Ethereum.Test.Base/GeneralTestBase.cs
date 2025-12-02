@@ -158,7 +158,6 @@ namespace Ethereum.Test.Base
                 // '@winsvega added a 0-wei reward to the miner, so we had to add that into the state test execution phase. He needed it for retesteth.'
                 // This must only happen after successful transaction execution, not when tx fails validation.
                 stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero);
-
                 stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.RecalculateStateRoot();
             }
