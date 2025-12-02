@@ -238,7 +238,7 @@ public class FlatDiffRepository : IFlatDiffRepository
                     }
                 }
 
-                if (blockNumber % _compactEveryBlockNum == 0) return;
+                if (blockNumber % _compactEveryBlockNum != 0) return;
             }
 
             long startingBlockNumber = ((blockNumber - 1) / _compactSize) * _compactSize;

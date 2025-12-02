@@ -38,6 +38,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
 
             // These fake db are workaround for missing metrics with column db. Probably not a good idea though as
             // a failure in writes in one of the DB will break the db.
+            .AddDatabase(DbNames.Preimage)
             .AddDatabase(DbNames.FlatMetadata)
             .AddDatabase(DbNames.FlatState)
             .AddDatabase(DbNames.FlatStorage)

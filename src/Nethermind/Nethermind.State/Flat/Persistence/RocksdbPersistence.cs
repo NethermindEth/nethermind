@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Threading;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -37,10 +38,12 @@ public class RocksdbPersistence : IPersistence
 
 
     internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
+    private readonly IKeyValueStoreWithBatching _preimageDb;
 
-    public RocksdbPersistence(IColumnsDb<FlatDbColumns> db)
+    public RocksdbPersistence(IColumnsDb<FlatDbColumns> db, [KeyFilter(DbNames.Preimage)] IDb preimageDb)
     {
         _db = db;
+        _preimageDb = preimageDb;
     }
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
@@ -125,10 +128,11 @@ public class RocksdbPersistence : IPersistence
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        return new WriteBatch(_db.StartWriteBatch(), dbSnap, to);
+        return new WriteBatch(_preimageDb.StartWriteBatch(), _db.StartWriteBatch(), dbSnap, to);
     }
 
     private class WriteBatch(
+        IWriteBatch preimageWriteBatch,
         IColumnsWriteBatch<FlatDbColumns> batch,
         IColumnDbSnapshot<FlatDbColumns> dbSnap,
         StateId to
@@ -147,6 +151,7 @@ public class RocksdbPersistence : IPersistence
             SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), to);
             batch.Dispose();
             dbSnap.Dispose();
+            preimageWriteBatch.Dispose();
         }
 
         public void SelfDestruct(in ValueHash256 addr)
@@ -192,11 +197,17 @@ public class RocksdbPersistence : IPersistence
         {
             using var stream = _accountDecoder.EncodeToNewNettyStream(account);
 
+            ValueHash256 accountPath = addr.ToAccountPath;
+            preimageWriteBatch.PutSpan(accountPath.Bytes, addr.Bytes);
             state.PutSpan(addr.ToAccountPath.Bytes, stream.AsSpan());
         }
 
         public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
         {
+            ValueHash256 hash256 = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(slot, hash256.BytesAsSpan);
+            preimageWriteBatch.PutSpan(hash256.Bytes, slot.ToBigEndian());
+
             ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addr.ToAccountPath, slot);
             storage.PutSpan(theKey, value);
         }

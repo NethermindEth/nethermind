@@ -27,7 +27,7 @@ public class FlatStateReader(
         }
 
         SnapshotBundle reader = readerBox.Item;
-        if (reader.TryGetAccount(address, out Account? accountCls))
+        if (reader.TryGetAccount(address, out Account? accountCls) && accountCls != null)
         {
             account = accountCls.ToStruct();
             return true;

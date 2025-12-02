@@ -20,6 +20,7 @@ namespace Nethermind.Db
         public const string BlobTransactions = "blobTransactions";
         public const string DiscoveryNodes = "discoveryNodes";
         public const string PeersDb = "peers";
+        public const string Preimage = "preimage";
 
         public const string FlatMetadata = "flatMetadata";
         public const string FlatState = "flatState";
