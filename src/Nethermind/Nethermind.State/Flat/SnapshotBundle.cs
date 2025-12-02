@@ -24,13 +24,21 @@ public class SnapshotBundle : IDisposable
 {
     private Dictionary<AddressAsKey, StorageSnapshotBundle> _loadedContractStorages;
 
+    // Used to solve the problem of how do we prevent the warmer from setting the account when it is being written actively.
+    // When a write batch is created, the write lock is entered and sequence id is incremented. Trie warmer is
+    // now no longer able to set the accounts until the write lock is exited. After it is exited, the sequence id
+    // from before is no longer the same and it no longer match and not applied. The world state scope need to be careful
+    // not to use the updated sequence id until the write is complete though...
+    // TODO: Check if it is even worth it....
+    private ReaderWriterLockSlim _hintLock = new ReaderWriterLockSlim();
+    private volatile int _hintSequenceId = 0;
+
     private SnapshotContent _currentPooledContent;
-    private Dictionary<AddressAsKey, Account> _changedAccounts;
+    private ConcurrentDictionary<AddressAsKey, Account> _changedAccounts;
     private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedNodes; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> _changedSlots; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses;
 
-    private volatile int _hintSequenceId = 0;
     public int HintSequenceId => _hintSequenceId;
 
     private readonly bool _isReadOnly;
@@ -43,7 +51,6 @@ public class SnapshotBundle : IDisposable
     private bool _isPrewarmer;
     private bool _isDisposed;
     private readonly ResourcePool _resourcePool;
-    private HintResource _hintResource;
 
     private static Counter _snapshotBundleEvents = Metrics.CreateCounter("snapshot_bundle_evens", "event", "type", "is_prewarmer");
     private Counter.Child _nodeGetChanged;
@@ -73,8 +80,6 @@ public class SnapshotBundle : IDisposable
 
         if (!_isReadOnly)
         {
-            _hintResource = _resourcePool.GetHintResource();
-            _hintResource.Clear();
             _currentPooledContent = resourcePool.GetSnapshotContent();
             ExpandCurrentPooledContent();
         }
@@ -110,7 +115,6 @@ public class SnapshotBundle : IDisposable
         if (!_isReadOnly)
         {
             if (_changedAccounts.TryGetValue(address, out acc)) return true;
-            if (_hintResource.TryGetAccount(address, out acc)) return true;
         }
 
         AddressAsKey key = address;
@@ -178,11 +182,6 @@ public class SnapshotBundle : IDisposable
         if (!_isReadOnly)
         {
             if (_changedSlots.TryGetValue((address, index), out value))
-            {
-                return true;
-            }
-
-            if (_hintResource.TryGetSlot(address, index, out value))
             {
                 return true;
             }
@@ -296,49 +295,63 @@ public class SnapshotBundle : IDisposable
         }
     }
 
-    private bool TryGetHintResourceSafe(int sequenceId, out HintResource hintResource)
-    {
-        hintResource = _hintResource;
-        if (_hintSequenceId != sequenceId)
-        {
-            return false;
-        }
-        return true;
-    }
-
     public bool HintAccountRead(Address address, Account? account, int sequenceId)
     {
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
-        return TryGetHintResourceSafe(sequenceId, out var hintResource) &&
-               hintResource.TryAddAccount(address, account);
+        if (_hintLock.TryEnterReadLock(0))
+        {
+            try
+            {
+                if (_hintSequenceId != sequenceId) return false;
+                return _changedAccounts.TryAdd(address, account);
+            }
+            finally
+            {
+                _hintLock.ExitReadLock();
+            }
+        }
+
+        return false;
     }
 
     public bool HintGet(AddressAsKey address, in UInt256 index, int sequenceId, byte[] value)
     {
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
 
-        return TryGetHintResourceSafe(sequenceId, out var hintResource) &&
-               hintResource.TryAddSlot(address, index, value);
+        if (_hintLock.TryEnterReadLock(0))
+        {
+            try
+            {
+                if (_hintSequenceId != sequenceId) return false;
+                return _changedSlots.TryAdd((address, index), value);
+            }
+            finally
+            {
+                _hintLock.ExitReadLock();
+            }
+        }
+
+        return false;
+    }
+
+    public struct WriteScopeExiter(ReaderWriterLockSlim lockc): IDisposable
+    {
+        public void Dispose()
+        {
+            lockc.ExitWriteLock();
+        }
+    }
+
+    public WriteScopeExiter EnterWrites()
+    {
+        _hintLock.EnterWriteLock();
+        Interlocked.Increment(ref _hintSequenceId);
+        return new WriteScopeExiter(_hintLock);
     }
 
     public Snapshot CollectAndApplyKnownState(StateId from, StateId to)
     {
-        Interlocked.Increment(ref _hintSequenceId);
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
-
-        foreach (KeyValuePair<AddressAsKey, Account> acc in _hintResource.Accounts)
-        {
-            if (_selfDestructedAccountAddresses.ContainsKey(acc.Key)) continue;
-            _accountHintWrite.Inc();
-            _changedAccounts.TryAdd(acc.Key, acc.Value);
-        }
-
-        foreach (KeyValuePair<(AddressAsKey, UInt256), byte[]> slot in _hintResource.Slots)
-        {
-            if (_selfDestructedAccountAddresses.ContainsKey(slot.Key.Item1)) continue;
-            _storageHintWrite.Inc();
-            _changedSlots.TryAdd(slot.Key, slot.Value);
-        }
 
         var knownState = new Snapshot(
             from: from,
@@ -349,12 +362,6 @@ public class SnapshotBundle : IDisposable
         knownState.AcquireLease(); // For this bundle
 
         _knownStates.Add(knownState);
-
-        _hintResource.Clear();
-
-        var hintResource = _hintResource;
-        _hintResource = _resourcePool.GetHintResource();
-        _resourcePool.ReturnHintResource(hintResource);
 
         _currentPooledContent = _resourcePool.GetSnapshotContent();
         ExpandCurrentPooledContent();
@@ -389,7 +396,7 @@ public class SnapshotBundle : IDisposable
 
         SnapshotContent content = _resourcePool.GetCompactedSnapshotPool();
 
-        Dictionary<AddressAsKey, Account> accounts = content.Accounts;
+        ConcurrentDictionary<AddressAsKey, Account> accounts = content.Accounts;
         ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> storages = content.Storages;
         ConcurrentDictionary<AddressAsKey, bool> selfDestructedStorageAddresses = content.SelfDestructedStorageAddresses;
         ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> nodes = content.TrieNodes;
@@ -488,7 +495,6 @@ public class SnapshotBundle : IDisposable
         _persistenceReader.Dispose();
 
         if (!_isReadOnly) _resourcePool.ReturnSnapshotContent(_currentPooledContent);
-        if (!_isReadOnly) _resourcePool.ReturnHintResource(_hintResource);
     }
 
     public void Clear(Address address, Hash256AsKey addressHash)

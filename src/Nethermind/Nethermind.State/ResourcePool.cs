@@ -27,7 +27,7 @@ public class ResourcePool
         public SnapshotContent Create()
         {
             return new SnapshotContent(
-                Accounts: new Dictionary<AddressAsKey, Account?>(),
+                Accounts: new ConcurrentDictionary<AddressAsKey, Account?>(),
                 Storages: new ConcurrentDictionary<(AddressAsKey, UInt256), byte[]?>(),
                 SelfDestructedStorageAddresses: new ConcurrentDictionary<AddressAsKey, bool>(),
                 TrieNodes: new ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode>()

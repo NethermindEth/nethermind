@@ -88,7 +88,8 @@ public class TrieNodeCache
 
         long prevMemory = _estimatedMemoryUsage;
         bool wasPruned = false;
-        while (_estimatedMemoryUsage > _maxCacheMemoryThreshold)
+        // TODO: Make 16 parameter configurable.
+        while (snapshot.To.blockNumber % 16 == 0 && _estimatedMemoryUsage > _maxCacheMemoryThreshold)
         {
             wasPruned = true;
             int shardToClear = _nextShardToClear;

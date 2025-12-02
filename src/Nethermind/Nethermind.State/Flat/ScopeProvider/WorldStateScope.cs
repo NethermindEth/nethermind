@@ -150,7 +150,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
-        return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
+        return new WriteBatch(this, _snapshotBundle.EnterWrites(), estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
     public void Commit(long blockNumber)
@@ -237,6 +237,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
     private class WriteBatch(
         WorldStateScope scope,
+        SnapshotBundle.WriteScopeExiter scopeExiter,
         int estimatedAccountCount,
         ILogger logger
     ) : IWorldStateScopeProvider.IWorldStateWriteBatch
@@ -267,27 +268,35 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
         public void Dispose()
         {
-            while (_dirtyStorageTree.TryDequeue(out var entry))
+            try
             {
-                (AddressAsKey key, Hash256 storageRoot) = entry;
-                if (!_dirtyAccounts.TryGetValue(key, out var account)) account = scope.Get(key);
-                if (account == null && storageRoot == Keccak.EmptyTreeHash) continue;
-                account ??= ThrowNullAccount(key);
-                account = account!.WithChangedStorageRoot(storageRoot);
-                _dirtyAccounts[key] = account;
-                OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
-                if (logger.IsTrace) Trace(key, storageRoot, account);
-            }
 
-            using (var stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count))
-            {
-                foreach (var kv in _dirtyAccounts)
+                while (_dirtyStorageTree.TryDequeue(out var entry))
                 {
-                    stateSetter.Set(kv.Key, kv.Value);
+                    (AddressAsKey key, Hash256 storageRoot) = entry;
+                    if (!_dirtyAccounts.TryGetValue(key, out var account)) account = scope.Get(key);
+                    if (account == null && storageRoot == Keccak.EmptyTreeHash) continue;
+                    account ??= ThrowNullAccount(key);
+                    account = account!.WithChangedStorageRoot(storageRoot);
+                    _dirtyAccounts[key] = account;
+                    OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
+                    if (logger.IsTrace) Trace(key, storageRoot, account);
                 }
-            }
-            scope._snapshotBundle.ApplyStateChanges(_dirtyAccounts);
 
+                using (var stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count))
+                {
+                    foreach (var kv in _dirtyAccounts)
+                    {
+                        stateSetter.Set(kv.Key, kv.Value);
+                    }
+                }
+
+                scope._snapshotBundle.ApplyStateChanges(_dirtyAccounts);
+            }
+            finally
+            {
+                scopeExiter.Dispose();
+            }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address, Hash256 storageRoot, Account? account)
