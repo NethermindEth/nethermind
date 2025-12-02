@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Logging;
@@ -23,7 +24,10 @@ public abstract class NettyDiscoveryBaseHandler : SimpleChannelInboundHandler<Da
     public override void ChannelRead(IChannelHandlerContext ctx, object msg)
     {
         if (msg is DatagramPacket packet && AcceptInboundMessage(packet) && !ValidatePacket(packet))
+        {
+            ReferenceCountUtil.Release(msg);
             return;
+        }
 
         base.ChannelRead(ctx, msg);
     }
