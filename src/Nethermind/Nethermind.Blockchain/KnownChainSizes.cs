@@ -45,13 +45,6 @@ namespace Nethermind.Blockchain
                 _updateDate = updateDate;
             }
 
-            public LinearExtrapolation(long firstValue, DateTime firstDate, long secondValue, DateTime secondDate)
-            {
-                _atUpdate = firstValue;
-                _dailyGrowth = (long)((secondValue - firstValue) / (secondDate - firstDate).TotalDays);
-                _updateDate = firstDate;
-            }
-
             public long Estimate => _atUpdate + (DateTime.UtcNow - _updateDate).Days * _dailyGrowth;
         }
 
