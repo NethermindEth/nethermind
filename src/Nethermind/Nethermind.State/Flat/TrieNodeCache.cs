@@ -11,6 +11,10 @@ using NonBlocking;
 
 namespace Nethermind.State.Flat;
 
+/// <summary>
+/// The trienode cache is a populated on the latest snapshot instead of on the last one.
+/// This has a slightly better hit rate and uses less memory overall.
+/// </summary>
 public class TrieNodeCache
 {
     private ConcurrentDictionary<Key, TrieNode>[] _cacheShards;

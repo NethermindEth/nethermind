@@ -246,6 +246,16 @@ public class FlatDiffRepository : IFlatDiffRepository
     {
         try
         {
+            Snapshot lastSnapshot;
+            using (EnterRepolockReadOnly())
+            {
+                StateId? last = _inMemorySnapshotStore.GetLast();
+                if (last == null) return;
+                if (!_inMemorySnapshotStore.TryGetValue(last.Value, out lastSnapshot)) return;
+            }
+
+            _trieNodeCache.Add(lastSnapshot);
+
             if (_compactSize <= 1) return; // Disabled
             long blockNumber = stateId.blockNumber;
             if (blockNumber == 0) return;
@@ -563,8 +573,6 @@ public class FlatDiffRepository : IFlatDiffRepository
             // Add the canon snapshot
             Add(pickedState);
 
-            // TODO: Determine if selfdestruct handling is required here.
-            _trieNodeCache.Add(pickedState);
             pickedState.Dispose();
 
             // And we remove it
