@@ -11,8 +11,7 @@ namespace Nethermind.State.Flat;
 public interface IFlatDiffRepository
 {
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-    SnapshotBundle? GatherReaderAtBaseBlock(StateId baseBlock);
-    RefCountingDisposableBox<SnapshotBundle>? GatherReadOnlyReaderAtBaseBlock(StateId baseBlock);
+    SnapshotBundle? GatherReaderAtBaseBlock(StateId baseBlock, bool isReadOnly = false);
     void AddSnapshot(Snapshot snapshot);
     void FlushCache(CancellationToken cancellationToken);
     bool HasStateForBlock(StateId stateId);

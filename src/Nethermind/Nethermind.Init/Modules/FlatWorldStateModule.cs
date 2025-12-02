@@ -60,6 +60,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 });
             })
 
+            .AddSingleton<ReadonlyReaderRepository>()
             .AddSingleton<FlatDiffRepository.Configuration>(new FlatDiffRepository.Configuration()
             {
                 Boundary = 256,

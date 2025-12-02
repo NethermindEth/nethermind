@@ -32,7 +32,6 @@ public class FlatDiffRepository : IFlatDiffRepository
     private ReaderWriterLockSlim _repoLock = new ReaderWriterLockSlim(); // Note: lock is for proteccting in memory and compacted states only
     private readonly ICanonicalStateRootFinder _stateRootFinder;
     private Dictionary<StateId, Snapshot> _compactedKnownStates = new();
-    private ConcurrentDictionary<StateId, RefCountingDisposableBox<SnapshotBundle>> _sharedReader = new();
     private InMemorySnapshotStore _inMemorySnapshotStore;
     private ObjectPool<SnapshotContent> _snapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(false));
     private ObjectPool<SnapshotContent> _compactedSnapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(false));
@@ -297,20 +296,10 @@ public class FlatDiffRepository : IFlatDiffRepository
         }
     }
 
-    public SnapshotBundle? GatherReaderAtBaseBlock(StateId baseBlock)
+    public SnapshotBundle? GatherReaderAtBaseBlock(StateId baseBlock, bool isReadOnly = false)
     {
         // TODO: Throw if not enough or return null
-        return GatherCache(baseBlock, null);
-    }
-
-    public RefCountingDisposableBox<SnapshotBundle>? GatherReadOnlyReaderAtBaseBlock(StateId baseBlock)
-    {
-        if (_sharedReader.TryGetValue(baseBlock, out var snapshotBundle) && snapshotBundle.TryAcquire())
-        {
-            return snapshotBundle;
-        }
-
-        return null;
+        return GatherCache(baseBlock, null, isReadOnly: isReadOnly);
     }
 
     private static Histogram _knownStatesSize = Metrics.CreateHistogram("flatdiff_known_state_size", "timer",
@@ -417,12 +406,6 @@ public class FlatDiffRepository : IFlatDiffRepository
                 _logger.Warn("Compactor job stall!");
                 _compactorJobs.Writer.WriteAsync(endBlock).AsTask().Wait();
             }
-        }
-
-        RefCountingDisposableBox<SnapshotBundle> newReader = new RefCountingDisposableBox<SnapshotBundle>(GatherCache(endBlock, isReadOnly: true));
-        if (!_sharedReader.TryAdd(endBlock, newReader))
-        {
-            newReader.Dispose();
         }
     }
 
@@ -616,11 +599,6 @@ public class FlatDiffRepository : IFlatDiffRepository
         {
             _inMemorySnapshotStore.Remove(stateId);
             existingState.Dispose();
-        }
-
-        if (_sharedReader.TryRemove(stateId, out var existingSharedState))
-        {
-            existingSharedState.Dispose();
         }
     }
 
