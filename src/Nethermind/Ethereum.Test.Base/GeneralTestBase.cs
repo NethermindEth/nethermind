@@ -66,15 +66,13 @@ namespace Ethereum.Test.Base
 
             test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
 
+            // State tests use the fork from the "post" section for all blocks, regardless of currentNumber.
+            // This is consistent with geth, revm, evmone, and besu implementations.
+            // Note: Blockchain tests (BlockchainTestBase) still use Frontier at genesis because they
+            // process actual blocks starting from genesis, but state tests execute a single transaction.
             ISpecProvider specProvider =
                 new CustomSpecProvider(test.ChainId, test.ChainId,
-                    ((ForkActivation)0, test.GenesisSpec), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                    ((ForkActivation)1, test.Fork));
-
-            if (test.ChainId != GnosisSpecProvider.Instance.ChainId && specProvider.GenesisSpec != Frontier.Instance)
-            {
-                Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
-            }
+                    ((ForkActivation)0, test.Fork));
 
             IConfigProvider configProvider = new ConfigProvider();
             using IContainer container = new ContainerBuilder()
