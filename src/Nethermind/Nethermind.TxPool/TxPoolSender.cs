@@ -22,7 +22,7 @@ namespace Nethermind.TxPool
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             _nonceManager = nonceManager ?? throw new ArgumentNullException(nameof(nonceManager));
-            _ecdsa = ecdsa ?? throw new ArgumentException(nameof(ecdsa));
+            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
         }
 
         public ValueTask<(Hash256, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
