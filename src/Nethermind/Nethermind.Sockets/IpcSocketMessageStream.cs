@@ -8,12 +8,14 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Buffers;
+using Nethermind.Logging;
 
 namespace Nethermind.Sockets;
 
 public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMessageBorderPreservingStream
 {
     private const byte Delimiter = (byte)'\n';
+    private readonly ILogger _logger;
 
     private byte[] _bufferedData = [];
     private int _bufferedDataLength = 0;
