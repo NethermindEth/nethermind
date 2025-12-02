@@ -60,6 +60,7 @@ public class FlatDiffRepository : IFlatDiffRepository
     private int _boundary;
 
     private Channel<StateId> _compactorJobs;
+    private Channel<StateId> _persistenceJob;
     private long _compactSize;
     private long _compactEveryBlockNum;
     private readonly bool _inlineCompaction;
@@ -99,6 +100,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         _logger = logManager.GetClassLogger<FlatDiffRepository>();
 
         _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
+        _persistenceJob = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
         _boundary = config.Boundary;
 
         using var reader = LeaseReader();
@@ -107,8 +109,10 @@ public class FlatDiffRepository : IFlatDiffRepository
 
         for (int i = 0; i < config.ConcurrentCompactor; i++)
         {
-            _ = RunCompactor(doPersist: i == 0, exitSource.Token);
+            _ = RunCompactor(exitSource.Token);
         }
+
+        _ = RunPersistence(exitSource.Token);
     }
 
     private Lock _readerCacheLock = new Lock();
@@ -122,7 +126,8 @@ public class FlatDiffRepository : IFlatDiffRepository
         if (cachedReader is null)
         {
             _cachedReader = cachedReader = new RefCountingPersistenceReader(
-                _persistence.CreateReader()
+                _persistence.CreateReader(),
+                _logger
             );
         }
 
@@ -138,18 +143,37 @@ public class FlatDiffRepository : IFlatDiffRepository
         cachedReader?.Dispose();
     }
 
-    private async Task RunCompactor(bool doPersist, CancellationToken cancellationToken)
+    private async Task RunCompactor(CancellationToken cancellationToken)
     {
         await foreach (var stateId in _compactorJobs.Reader.ReadAllAsync(cancellationToken))
         {
             try
             {
                 CompactLevel(stateId);
-                if (doPersist) await CleanIfNeeded();
+                if (stateId.blockNumber % _compactSize == 0)
+                {
+                    await _persistenceJob.Writer.WriteAsync(stateId, cancellationToken);
+                }
             }
             catch (Exception ex)
             {
                 _logger.Error("Compact job failed", ex);
+                throw;
+            }
+        }
+    }
+
+    private async Task RunPersistence(CancellationToken cancellationToken)
+    {
+        await foreach (var _ in _persistenceJob.Reader.ReadAllAsync(cancellationToken))
+        {
+            try
+            {
+                await CleanIfNeeded();
+            }
+            catch (Exception ex)
+            {
+                _logger.Error("Persistence job failed", ex);
                 throw;
             }
         }
@@ -558,6 +582,7 @@ public class FlatDiffRepository : IFlatDiffRepository
 
             // TODO: Determine if selfdestruct handling is required here.
             _trieNodeCache.Add(pickedState);
+            pickedState.Dispose();
 
             // And we remove it
             using (EnterRepolock())

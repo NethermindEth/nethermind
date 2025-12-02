@@ -15,7 +15,7 @@ public abstract class RefCountingDisposable : IDisposable
     private const int NoAccessors = 0;
     private const int Disposing = -1;
 
-    private PaddedValue _leases;
+    protected PaddedValue _leases;
 
     protected RefCountingDisposable(int initialCount = Single)
     {
@@ -131,7 +131,7 @@ public abstract class RefCountingDisposable : IDisposable
     }
 
     [StructLayout(LayoutKind.Explicit, Size = 128)]
-    private struct PaddedValue
+    protected struct PaddedValue
     {
         [FieldOffset(64)]
         public long Value;

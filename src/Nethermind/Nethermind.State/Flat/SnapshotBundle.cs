@@ -349,6 +349,8 @@ public class SnapshotBundle : IDisposable
         _changedNodes = null;
         _selfDestructedAccountAddresses = null;
 
+        _persistenceReader.Dispose();
+
         if (!_isReadOnly) _contentPool.Return(_currentPooledContent);
     }
 
