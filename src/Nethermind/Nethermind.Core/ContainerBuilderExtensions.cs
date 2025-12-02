@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -32,12 +32,16 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, T instance) where T : class
+    public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, T instance, bool takeOwnership = false) where T : class
     {
-        builder.RegisterInstance(instance)
+        IRegistrationBuilder<T, SimpleActivatorData, SingleRegistrationStyle> registrationBuilder = builder.RegisterInstance(instance)
             .As<T>()
-            .ExternallyOwned()
             .SingleInstance();
+
+        if (!takeOwnership)
+        {
+            registrationBuilder.ExternallyOwned();
+        }
 
         return builder;
     }
