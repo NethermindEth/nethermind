@@ -68,4 +68,54 @@ public class CustomSpecProviderTests
         Assert.That(specProvider.GetSpec((ForkActivation)1), Is.InstanceOf<Homestead>(), "3 releases, block 1");
         Assert.That(specProvider.GetSpec((ForkActivation)100), Is.InstanceOf<Byzantium>(), "3 releases, block 10");
     }
+
+    /// <summary>
+    /// Verifies that state tests can use a post-Berlin fork at block 0.
+    /// This is the pattern used by GeneralTestBase for state tests, which should
+    /// use the test fork from the "post" section for all blocks regardless of currentNumber.
+    /// This is consistent with geth, revm, evmone, and besu implementations.
+    /// </summary>
+    [Test]
+    public void State_test_pattern_uses_test_fork_at_block_zero()
+    {
+        // This is how GeneralTestBase creates the spec provider for state tests
+        var specProvider = new CustomSpecProvider(((ForkActivation)0, Cancun.Instance));
+
+        // The spec at block 0 should be Cancun, not Frontier
+        IReleaseSpec specAtBlockZero = specProvider.GetSpec((ForkActivation)0);
+        Assert.That(specAtBlockZero.Name, Is.EqualTo("Cancun"));
+    }
+
+    [Test]
+    public void State_test_pattern_has_eip2929_enabled_at_block_zero()
+    {
+        // State tests with post-Berlin forks should have EIP-2929 enabled at block 0
+        var specProvider = new CustomSpecProvider(((ForkActivation)0, Cancun.Instance));
+
+        IReleaseSpec specAtBlockZero = specProvider.GetSpec((ForkActivation)0);
+
+        // EIP-2929 introduces hot/cold storage gas costs (SLOAD costs 2100 cold, 100 warm)
+        // Previously this was broken because state tests used Frontier at block 0
+        Assert.That(specAtBlockZero.UseHotAndColdStorage, Is.True,
+            "EIP-2929 should be enabled at block 0 for post-Berlin forks in state tests");
+    }
+
+    [TestCase("Berlin")]
+    [TestCase("London")]
+    [TestCase("Shanghai")]
+    [TestCase("Cancun")]
+    [TestCase("Prague")]
+    [TestCase("Osaka")]
+    public void State_test_pattern_works_for_all_post_berlin_forks(string forkName)
+    {
+        IReleaseSpec testFork = SpecNameParser.Parse(forkName);
+        var specProvider = new CustomSpecProvider(((ForkActivation)0, testFork));
+
+        IReleaseSpec specAtBlockZero = specProvider.GetSpec((ForkActivation)0);
+
+        Assert.That(specAtBlockZero.Name, Is.EqualTo(forkName),
+            $"State test should use {forkName} at block 0");
+        Assert.That(specAtBlockZero.UseHotAndColdStorage, Is.True,
+            $"EIP-2929 should be enabled for {forkName}");
+    }
 }
