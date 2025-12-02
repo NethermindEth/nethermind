@@ -40,21 +40,21 @@ namespace Nethermind.Synchronization.StateSync
             Task<IOwnedReadOnlyList<byte[]>> task = null;
             HashList? hashList = null;
             GetTrieNodesRequest? getTrieNodesRequest = null;
-            // Use GETNODEDATA if possible. Firstly via dedicated NODEDATA protocol
+            // Use GetNodeData if possible, starting with the dedicated NodeData protocol
             if (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler))
             {
                 if (Logger.IsTrace) Logger.Trace($"Requested NodeData via NodeDataProtocol from peer {peer}");
                 hashList = HashList.Rent(batch.RequestedNodes);
                 task = nodeDataHandler.GetNodeData(hashList, cancellationToken);
             }
-            // If NODEDATA protocol is not supported, try eth66
+            // If the NodeData protocol is not supported, try eth66
             else if (peer.ProtocolVersion < EthVersions.Eth67)
             {
                 if (Logger.IsTrace) Logger.Trace($"Requested NodeData via EthProtocol from peer {peer}");
                 hashList = HashList.Rent(batch.RequestedNodes);
                 task = peer.GetNodeData(hashList, cancellationToken);
             }
-            // GETNODEDATA is not supported so we try with SNAP protocol
+            // If GetNodeData is not supported, fall back to the Snap protocol
             else if (peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapHandler))
             {
                 if (batch.NodeDataType == NodeDataType.Code)

@@ -255,12 +255,12 @@ public class ReceiptsSyncFeedTests
     [TestCase(1, 1024, false, null, false)]
     [TestCase(1, 1024, true, null, false)]
     [TestCase(1, 1024, false, 0, false)]
-    public void When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
+    public void When_finished_sync_with_old_default_barrier_then_finishes_immediately(
         long AncientBarrierInConfig,
         long? lowestInsertedReceiptBlockNumber,
         bool JustStarted,
         long? previousBarrierInDb,
-        bool shouldfinish)
+        bool shouldFinish)
     {
         _syncPointers = Substitute.For<ISyncPointers>();
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
@@ -271,7 +271,7 @@ public class ReceiptsSyncFeedTests
             _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         LoadScenario(_256BodiesWithOneTxEach);
         _syncPointers.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceiptBlockNumber);
-        _feed.IsFinished.Should().Be(shouldfinish);
+        _feed.IsFinished.Should().Be(shouldFinish);
     }
 
     private void LoadScenario(Scenario scenario)

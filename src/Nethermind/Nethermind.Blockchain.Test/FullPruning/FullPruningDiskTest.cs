@@ -103,7 +103,7 @@ public class FullPruningDiskTest
             PruningTestBlockchain chain = new()
             {
                 PruningConfig = pruningConfig ?? new PruningConfig(),
-                TestTimout = testTimeoutMs,
+                TestTimeout = testTimeoutMs,
             };
             await chain.Build();
             return chain;

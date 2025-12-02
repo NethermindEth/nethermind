@@ -89,7 +89,7 @@ public class BlockhashCacheTests
     }
 
     [Test]
-    public void GetHash_doesnt_go_beyond_depth_256()
+    public void GetHash_does_not_go_beyond_depth_256()
     {
         (BlockTree tree, BlockhashCache cache) = BuildTest(300);
 
@@ -319,7 +319,7 @@ public class BlockhashCacheTests
     }
 
     [Test]
-    public async Task Doesnt_cache_cancelled_searches()
+    public async Task DoesNot_cache_cancelled_searches()
     {
         SlowHeaderStore headerStore = new(new HeaderStore(new MemDb(), new MemDb()));
         (BlockTree tree, BlockhashCache cache) = BuildTest(260, headerStore);

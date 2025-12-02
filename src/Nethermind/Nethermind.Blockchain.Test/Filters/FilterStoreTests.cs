@@ -75,7 +75,7 @@ public class FilterStoreTests
         store.FilterRemoved += (s, e) => hasNotified = true;
         store.RemoveFilter(0);
 
-        Assert.That(hasNotified, Is.True, "notied");
+        Assert.That(hasNotified, Is.True, "notified");
         Assert.That(store.FilterExists(0), Is.False, "exists");
     }
 

@@ -11,8 +11,8 @@ namespace Nethermind.Specs;
 
 public class GnosisSpecProvider : ISpecProvider
 {
-    public const long ConstantinopoleBlockNumber = 1_604_400;
-    public const long ConstantinopoleFixBlockNumber = 2_508_800;
+    public const long ConstantinopleBlockNumber = 1_604_400;
+    public const long ConstantinopleFixBlockNumber = 2_508_800;
     public const long IstanbulBlockNumber = 7_298_030;
     public const long BerlinBlockNumber = 16_101_500;
     public const long LondonBlockNumber = 19_040_000;
@@ -28,8 +28,8 @@ public class GnosisSpecProvider : ISpecProvider
     {
         return forkActivation.BlockNumber switch
         {
-            < ConstantinopoleBlockNumber => GenesisSpec,
-            < ConstantinopoleFixBlockNumber => Constantinople.Instance,
+            < ConstantinopleBlockNumber => GenesisSpec,
+            < ConstantinopleFixBlockNumber => Constantinople.Instance,
             < IstanbulBlockNumber => ConstantinopleFix.Instance,
             < BerlinBlockNumber => Istanbul.Instance,
             < LondonBlockNumber => Berlin.Instance,

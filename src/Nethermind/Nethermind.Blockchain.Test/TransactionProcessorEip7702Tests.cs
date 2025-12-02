@@ -457,7 +457,7 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey signer = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
         _stateProvider.CreateAccount(sender.Address, 1.Ether());
-        //Increment 1 everytime it's called
+        // Increment by 1 every time it's called
         byte[] code = Prepare.EvmCode
             .Op(Instruction.PUSH0)
             .Op(Instruction.SLOAD)
@@ -578,7 +578,7 @@ internal class TransactionProcessorEip7702Tests
 
     public static IEnumerable<object[]> EXTCODEHASHAccountSetup()
     {
-        yield return new object[] { static (IWorldState state, Address accountt) =>
+        yield return new object[] { static (IWorldState state, Address account) =>
             {
                 //Account does not exists
             },
@@ -783,7 +783,7 @@ internal class TransactionProcessorEip7702Tests
         };
     }
     [TestCaseSource(nameof(AccountAccessGasCases))]
-    public void Execute_DiffentAccountAccessOpcodes_ChargesCorrectAccountAccessGas(byte[] code, long expectedGas, bool isDelegated, long gasLimit, bool shouldRunOutOfGas)
+    public void Execute_DifferentAccountAccessOpcodes_ChargesCorrectAccountAccessGas(byte[] code, long expectedGas, bool isDelegated, long gasLimit, bool shouldRunOutOfGas)
     {
         PrivateKey signer = TestItem.PrivateKeyA;
         PrivateKey sender = TestItem.PrivateKeyB;
