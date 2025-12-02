@@ -1027,7 +1027,7 @@ public unsafe partial class VirtualMachine(
                 SubstateError = success ? null : GetErrorString(precompile, output.Error)
             };
         }
-        catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException})
+        catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
         {
             if (_logger.IsError) LogMissingDependency(precompile, exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException);
             Environment.Exit(ExitCodes.MissingPrecompile);
