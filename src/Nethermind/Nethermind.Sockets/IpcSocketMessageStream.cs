@@ -20,6 +20,11 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
     private byte[] _bufferedData = [];
     private int _bufferedDataLength = 0;
 
+    public IpcSocketMessageStream(Socket socket, ILogManager logManager) : base(socket)
+    {
+        _logger = logManager.GetClassLogger<IpcSocketMessageStream>();
+    }
+
     public async ValueTask<ReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken = default)
     {
         if (!Socket.Connected)
