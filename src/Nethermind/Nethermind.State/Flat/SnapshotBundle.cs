@@ -29,7 +29,7 @@ public class SnapshotBundle : IDisposable
     // now no longer able to set the accounts until the write lock is exited. After it is exited, the sequence id
     // from before is no longer the same and it no longer match and not applied. The world state scope need to be careful
     // not to use the updated sequence id until the write is complete though...
-    // TODO: Check if it is even worth it....
+    // TODO: Check if it is even worth it.... really, maybe the HintGet's time is not too much of a big deal.
     private ReaderWriterLockSlim _hintLock = new ReaderWriterLockSlim();
     private volatile int _hintSequenceId = 0;
 
@@ -156,8 +156,28 @@ public class SnapshotBundle : IDisposable
         return -1;
     }
 
+    public int GetSelfDestructKnownStateId()
+    {
+        return _knownStates.Count;
+    }
+
     public bool TryGetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out byte[] value)
     {
+        if (!_isReadOnly)
+        {
+            if (_changedSlots.TryGetValue((address, index), out value))
+            {
+                return true;
+            }
+        }
+
+        if (selfDestructStateIdx == _knownStates.Count)
+        {
+            _nodeGetSelfDestruct.Inc();
+            value = null;
+            return true;
+        }
+
         for (int i = _knownStates.Count - 1; i >= 0; i--)
         {
             if (_knownStates[i].TryGetStorage(address, index, out value)) return true;
@@ -177,20 +197,6 @@ public class SnapshotBundle : IDisposable
         return false;
     }
 
-    public bool TryGetChangedSlot(AddressAsKey address, in UInt256 index, out byte[] value)
-    {
-        if (!_isReadOnly)
-        {
-            if (_changedSlots.TryGetValue((address, index), out value))
-            {
-                return true;
-            }
-        }
-
-        value = null;
-        return false;
-    }
-
     public void SetChangedSlot(AddressAsKey address, in UInt256 index, byte[] value)
     {
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
@@ -199,39 +205,11 @@ public class SnapshotBundle : IDisposable
 
     public bool TryFindNode(Hash256AsKey addr, in TreePath path, Hash256 hash, out TrieNode node)
     {
-        if (TryGetChangedNode(addr, in path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return true;
-        }
-
         return TryFindNode(addr, path, hash, -1, out node);
     }
 
-    public bool TryGetChangedNode(Hash256AsKey addr, in TreePath path, Hash256 hash, out TrieNode node)
-    {
-        if (_changedNodes.TryGetValue((addr, path), out node))
-        {
-            _nodeGetChanged.Inc();
-            return true;
-        }
-
-        return false;
-    }
-
-    public bool TryFindNode(Hash256AsKey? address, in TreePath path, Hash256 hash, int selfDestructStateIdx,
+    public bool TryFindNode(Hash256AsKey address, in TreePath path, Hash256 hash, int selfDestructStateIdx,
         out TrieNode node)
-    {
-        if (DoTryFindNode(address, path, hash, selfDestructStateIdx, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return true;
-        }
-
-        return false;
-    }
-
-    private bool DoTryFindNode(Hash256AsKey? address, in TreePath path, Hash256 hash, int selfDestructStateIdx, out TrieNode node)
     {
         if (_isDisposed)
         {
@@ -239,24 +217,42 @@ public class SnapshotBundle : IDisposable
             return false;
         }
 
+        if (_changedNodes.TryGetValue((address, path), out node))
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            _nodeGetChanged.Inc();
+            return true;
+        }
+
+        if (selfDestructStateIdx == _knownStates.Count)
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            _nodeGetSelfDestruct.Inc();
+            node = null;
+            return true;
+        }
+
         for (int i = _knownStates.Count - 1; i >= 0; i--)
         {
             if (_knownStates[i].TryGetTrieNodes(address, path, out node))
             {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                 _nodeGetSnapshots.Inc();
                 return true;
             }
 
             if (i <= selfDestructStateIdx)
             {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                 _nodeGetSelfDestruct.Inc();
                 node = null;
-                return false;
+                return true;
             }
         }
 
         if (_trieNodeCache.TryGet(address, path, hash, out node))
         {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             _nodeGetTrieCache.Inc();
             return true;
         }

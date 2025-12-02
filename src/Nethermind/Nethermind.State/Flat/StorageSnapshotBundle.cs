@@ -12,40 +12,16 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
 {
     internal Hash256 _addressHash = address.ToAccountPath.ToCommitment();
 
-    bool _hasSelfDestruct = false;
     private int _selfDestructKnownStateIdx = bundle.DetermineSelfDestructStateIdx(address);
     public int HintSequenceId => bundle.HintSequenceId;
 
     public bool TryGet(in UInt256 index, out byte[]? value)
     {
-        if (bundle.TryGetChangedSlot(address, index, out value))
-        {
-            return true;
-        }
-
-        // TODO: Wrong. On later block (assuming same bundle), this would block all reads.
-        if (_hasSelfDestruct)
-        {
-            value = null;
-            return true;
-        }
-
         return bundle.TryGetSlot(address, index, _selfDestructKnownStateIdx, out value);
     }
 
     public bool TryFindNode(in TreePath path, Hash256 hash, out TrieNode value)
     {
-        if (bundle.TryGetChangedNode(_addressHash, path, hash, out value))
-        {
-            return true;
-        }
-
-        if (_hasSelfDestruct)
-        {
-            value = null;
-            return true;
-        }
-
         return bundle.TryFindNode(_addressHash, path, hash, _selfDestructKnownStateIdx, out value);
     }
 
@@ -76,8 +52,8 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
 
     public void SelfDestruct()
     {
-        _hasSelfDestruct = true;
         bundle.Clear(address, _addressHash);
+        _selfDestructKnownStateIdx = bundle.GetSelfDestructKnownStateId();
     }
 
     public void Dispose()
