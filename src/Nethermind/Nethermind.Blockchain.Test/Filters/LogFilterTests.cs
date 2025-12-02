@@ -121,7 +121,7 @@ public class LogFilterTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void address_filter_doesnt_match_bloom()
+    public void address_filter_does_not_match_bloom()
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithAddress(TestItem.AddressA)
@@ -133,7 +133,7 @@ public class LogFilterTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void addresses_filter_doesnt_match_bloom()
+    public void addresses_filter_does_not_match_bloom()
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithAddresses(TestItem.AddressA, TestItem.AddressB, TestItem.AddressC)
@@ -145,7 +145,7 @@ public class LogFilterTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void specific_topics_filter_doesnt_match_bloom()
+    public void specific_topics_filter_does_not_match_bloom()
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakC))
@@ -157,7 +157,7 @@ public class LogFilterTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void multiple_specific_topics_filter_doesnt_match_bloom()
+    public void multiple_specific_topics_filter_does_not_match_bloom()
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakB))
@@ -169,7 +169,7 @@ public class LogFilterTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void or_topics_filter_doesnt_match_bloom()
+    public void or_topics_filter_does_not_match_bloom()
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA)))
@@ -181,7 +181,7 @@ public class LogFilterTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void complex_topics_filter_doesnt_match_bloom()
+    public void complex_topics_filter_does_not_match_bloom()
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA)))
@@ -193,7 +193,7 @@ public class LogFilterTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void complex_filter_doesnt_match_bloom()
+    public void complex_filter_does_not_match_bloom()
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakC)))

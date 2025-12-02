@@ -27,14 +27,8 @@ public sealed class BlockchainProcessorFacade(
         preprocessorStep.RecoverData(block);
 
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
-        try
-        {
-            (Block? processedBlock, TxReceipt[] _) = blockProcessor.ProcessOne(block, options, tracer, spec, token);
-            return processedBlock;
-        }
-        catch (InvalidBlockException)
-        {
-            return null;
-        }
+
+        (Block? processedBlock, TxReceipt[] _) = blockProcessor.ProcessOne(block, options, tracer, spec, token);
+        return processedBlock;
     }
 }

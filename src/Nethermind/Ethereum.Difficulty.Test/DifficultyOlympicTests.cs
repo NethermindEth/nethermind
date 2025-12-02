@@ -7,15 +7,15 @@ using NUnit.Framework;
 namespace Ethereum.Difficulty.Test
 {
     [Parallelizable(ParallelScope.All)]
-    public class DifficultyOlimpicTests : TestsBase
+    public class DifficultyOlympicTests : TestsBase
     {
-        public static IEnumerable<DifficultyTests> LoadOlimpicTests()
+        public static IEnumerable<DifficultyTests> LoadOlympicTests()
         {
-            return LoadHex("difficultyOlimpic.json");
+            return LoadHex("difficultyOlympic.json");
         }
 
         // ToDo: fix loader
-        // [TestCaseSource(nameof(LoadOlimpicTests))]
+        // [TestCaseSource(nameof(LoadOlympicTests))]
         // public void Test(DifficultyTests test)
         // {
         //     RunTest(test, new SingleReleaseSpecProvider(Olympic.Instance, 0));

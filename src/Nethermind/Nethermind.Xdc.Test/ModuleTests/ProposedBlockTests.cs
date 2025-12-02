@@ -12,11 +12,12 @@ using System.Linq;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test;
+
 [Parallelizable(ParallelScope.All)]
 internal class ProposedBlockTests
 {
     [Test]
-    public async Task TestShouldSendVoteMsgAndCommitGrandGrandParentBlockAsync()
+    public async Task TestShouldSendVoteMsgAndCommitGreatGrandparentBlockAsync()
     {
         var blockChain = await XdcTestBlockchain.Create(2, true);
 

@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 
 namespace Nethermind.Evm;
+
 using Int256;
 
 internal static partial class EvmInstructions

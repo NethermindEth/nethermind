@@ -235,18 +235,6 @@ public class TransactionProcessorTests
         Assert.That(result.TransactionExecuted, Is.False);
     }
 
-    [TestCase(true, true)]
-    [TestCase(true, false)]
-    [TestCase(false, true)]
-    [TestCase(false, false)]
-    public void Will_not_cause_quick_fail_above_block_gas_limit_during_calls(bool withStateDiff, bool withTrace)
-    {
-        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
-        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
-        TransactionResult result = CallAndRestore(tx, block);
-        Assert.That(result.TransactionExecuted, Is.True);
-    }
-
     [Test]
     public void Balance_is_not_changed_on_call_and_restore()
     {
@@ -301,14 +289,14 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithParent(_baseBlock).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         EstimateGasTracer tracer = new();
-        Action action = () => _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
+        TransactionResult result = _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
+
         if (!systemUser)
         {
-            action.Should().Throw<InsufficientBalanceException>();
+            result.Should().Be(TransactionResult.InsufficientSenderBalance);
         }
         else
         {
-            action.Should().NotThrow();
             tracer.GasSpent.Should().Be(21000);
         }
     }
@@ -331,7 +319,7 @@ public class TransactionProcessorTests
 
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
 
-        if (txValue > AccountBalance)
+        if (txValue + (UInt256)gasLimit > AccountBalance)
         {
             Assert.That(err, Is.Not.Null); // Should have error
             Assert.That(err, Is.EqualTo("Transaction execution fails"));
@@ -348,20 +336,21 @@ public class TransactionProcessorTests
     {
         get
         {
+            UInt256 gasLimit = 100000;
             yield return new TestCaseData((UInt256)1)
             { TestName = "Sanity check", ExpectedResult = GasCostOf.Transaction };
-            yield return new TestCaseData(AccountBalance - 1)
+            yield return new TestCaseData(AccountBalance - 1 - gasLimit)
             { TestName = "Less than account balance", ExpectedResult = GasCostOf.Transaction };
-            yield return new TestCaseData(AccountBalance - GasCostOf.Transaction)
+            yield return new TestCaseData(AccountBalance - GasCostOf.Transaction - gasLimit)
             { TestName = "Account balance - tx cost", ExpectedResult = GasCostOf.Transaction };
-            yield return new TestCaseData(AccountBalance - GasCostOf.Transaction + 1)
+            yield return new TestCaseData(AccountBalance - GasCostOf.Transaction - gasLimit + 1)
             { TestName = "More than (account balance - tx cost)", ExpectedResult = GasCostOf.Transaction };
             yield return new TestCaseData(AccountBalance)
-            { TestName = "Exactly account balance", ExpectedResult = GasCostOf.Transaction };
+            { TestName = "Exactly account balance", ExpectedResult = 0L };
 
             yield return new TestCaseData(AccountBalance + 1)
             { TestName = "More than account balance", ExpectedResult = 0L };
-            yield return new TestCaseData(UInt256.MaxValue)
+            yield return new TestCaseData(UInt256.MaxValue - gasLimit)
             { TestName = "Max value possible", ExpectedResult = 0L };
         }
     }

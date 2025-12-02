@@ -10,6 +10,7 @@ using Nethermind.Xdc.Types;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test;
+
 [Parallelizable(ParallelScope.All)]
 internal class ExtraConsensusDataDecoderTests
 {

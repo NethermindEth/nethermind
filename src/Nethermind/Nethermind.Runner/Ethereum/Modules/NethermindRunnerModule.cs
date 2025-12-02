@@ -78,13 +78,14 @@ public class NethermindRunnerModule(
             .AddSingleton<IConsensusPlugin>(consensusPlugin)
             ;
 
-        foreach (var plugin in plugins)
+        foreach (INethermindPlugin plugin in plugins)
         {
             if (plugin.Module is not null)
             {
                 builder.AddModule(plugin.Module);
             }
-            builder.AddSingleton<INethermindPlugin>(plugin);
+
+            builder.AddSingleton<INethermindPlugin>(plugin, takeOwnership: true);
         }
 
         builder.OnBuild((ctx) =>

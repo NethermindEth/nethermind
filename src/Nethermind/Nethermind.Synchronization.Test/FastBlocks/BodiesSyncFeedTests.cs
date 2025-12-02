@@ -182,12 +182,12 @@ public class BodiesSyncFeedTests
     [TestCase(1, 99, false, null, false)]
     [TestCase(1, 99, true, null, false)]
     [TestCase(1, 99, false, 0, false)]
-    public void When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
+    public void When_finished_sync_with_old_default_barrier_then_finishes_immediately(
             long AncientBarrierInConfig,
             long lowestInsertedBlockNumber,
             bool JustStarted,
             long? previousBarrierInDb,
-            bool shouldfinish)
+            bool shouldFinish)
     {
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
@@ -198,7 +198,7 @@ public class BodiesSyncFeedTests
         _feed.InitializeFeed();
         _syncPointers.LowestInsertedBodyNumber = lowestInsertedBlockNumber;
 
-        _feed.IsFinished.Should().Be(shouldfinish);
+        _feed.IsFinished.Should().Be(shouldFinish);
     }
 
     [Test]

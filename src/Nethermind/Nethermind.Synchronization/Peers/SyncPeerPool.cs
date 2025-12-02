@@ -446,7 +446,6 @@ namespace Nethermind.Synchronization.Peers
             }
 
             if (_logger.IsInfo) _logger.Info("Exiting sync peer refresh loop");
-            await Task.CompletedTask;
         }
 
         private void StartUpgradeTimer()

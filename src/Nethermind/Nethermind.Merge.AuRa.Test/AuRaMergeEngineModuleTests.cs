@@ -139,7 +139,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 .AddDecorator<AuRaNethermindApi>((ctx, api) =>
                 {
                     // Yes getting from `TestBlockchain` itself, since steps are not run
-                    // and some of these are not from DI. you know... chicken and egg, but dont forgot about rooster.
+                    // and some of these are not from DI. you know... chicken and egg, but don't forget about the rooster.
                     api.TxPool = TxPool;
                     api.TransactionComparerProvider = TransactionComparerProvider;
                     api.FinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
