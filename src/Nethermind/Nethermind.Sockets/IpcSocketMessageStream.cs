@@ -32,7 +32,12 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
             {
                 Buffer.BlockCopy(_bufferedData, 0, buffer.Array!, buffer.Offset, _bufferedDataLength);
             }
-            catch { }
+            catch (Exception ex)
+{
+    if (_logger.IsError)
+        _logger.Error($"Failed to copy buffered data. BufferedLength: {_bufferedDataLength}, BufferCount: {buffer.Count}", ex);
+    throw;
+}
         }
 
         int delimiter = buffer[.._bufferedDataLength].AsSpan().IndexOf(Delimiter);
