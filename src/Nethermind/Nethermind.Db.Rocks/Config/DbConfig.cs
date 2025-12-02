@@ -344,7 +344,7 @@ public class DbConfig : IDbConfig
     public string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
     public bool? FlatStateDbVerifyChecksum { get; set; } = false; // YOLO
 
-    public bool FlatStateDbEnableFileWarmer { get; set; } = true;
+    public bool FlatStateDbEnableFileWarmer { get; set; } = false;
     public ulong FlatStateDbWriteBufferSize { get; set; } = (ulong)64.MiB();
     public ulong FlatStateDbRowCacheSize { get; set; } = 0;
     public ulong FlatStateDbWriteBufferNumber { get; set; } = 4;
