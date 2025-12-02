@@ -400,9 +400,9 @@ public class SnapshotBundle : IDisposable
         _changedSlots[(address, index)] = value;
     }
 
-    public bool HasChangedSlot(AddressAsKey address, in UInt256 index)
+    public bool TryAdd(AddressAsKey address, in UInt256 index, byte[] value)
     {
-        return _changedSlots.ContainsKey((address, index));
+        return _changedSlots.TryAdd((address, index), value);
     }
 }
 
@@ -462,9 +462,7 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
 
     public bool HintGet(UInt256 slot, byte[] value)
     {
-        if (bundle.HasChangedSlot(address, slot)) return false;
-        bundle.SetChangedSlot(address, slot, value);
-        return true;
+        return bundle.TryAdd(address, slot, value);
     }
 
     public void SelfDestruct()

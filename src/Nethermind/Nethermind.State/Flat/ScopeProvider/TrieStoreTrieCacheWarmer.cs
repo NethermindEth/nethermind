@@ -51,16 +51,10 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
         WorldStateScope scope,
         Address? path,
         StorageTree? storageTree,
-        UInt256? index,
-        long startTime);
+        UInt256? index);
 
     Task? _warmerJob = null;
     private static Counter _trieWarmEr = Metrics.CreateCounter("triestore_trie_warmer", "hit rate", "type");
-    private static Histogram _trieWarmServiceTime = Metrics.CreateHistogram("triestore_trie_service_time", "hit rate", new HistogramConfiguration()
-    {
-        LabelNames = new[] { "is_main", "type" },
-        Buckets = Histogram.PowersOfTenDividedBuckets(4, 10, 5)
-    });
 
     private ConcurrentStack<WarmerWorkers> _awaitingWorkers = new ConcurrentStack<WarmerWorkers>();
     private WarmerWorkers? _mainWarmer = null;
@@ -95,8 +89,7 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
         (WorldStateScope scope,
             Address? address,
             StorageTree? storageTree,
-            UInt256? index,
-            long sw) = job;
+            UInt256? index) = job;
 
         try
         {
@@ -105,15 +98,11 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
             {
                 if (address is not null)
                 {
-                    _trieWarmServiceTime.WithLabels(isMain.ToString(), "state")
-                        .Observe(Stopwatch.GetTimestamp() - sw);
                     scope.WarmUpStateTrie(address);
                     _trieWarmEr.WithLabels("state").Inc();
                 }
                 else
                 {
-                    _trieWarmServiceTime.WithLabels(isMain.ToString(), "storage")
-                        .Observe(Stopwatch.GetTimestamp() - sw);
                     storageTree.WarUpStorageTrie(index.Value);
                     _trieWarmEr.WithLabels("storage").Inc();
                 }
@@ -122,14 +111,10 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
             {
                 if (address is null)
                 {
-                    _trieWarmServiceTime.WithLabels(isMain.ToString(), "state_skip")
-                        .Observe(Stopwatch.GetTimestamp() - sw);
                     _trieWarmEr.WithLabels("state_skip").Inc();
                 }
                 else
                 {
-                    _trieWarmServiceTime.WithLabels(isMain.ToString(), "storage_skip")
-                        .Observe(Stopwatch.GetTimestamp() - sw);
                     _trieWarmEr.WithLabels("storage_skip").Inc();
                 }
             }
@@ -234,18 +219,13 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
         StorageTree? storageTree,
         UInt256? index)
     {
-        if (_jobBuffer.TryEnqueue(new Job(scope, path, storageTree, index, Stopwatch.GetTimestamp())))
+        if (!_jobBuffer.TryEnqueue(new Job(scope, path, storageTree, index))) return;
+
+        WarmerWorkers? mainWarmer = _mainWarmer;
+        if (mainWarmer is not null)
         {
-            if (_mainWarmer is not null)
-            {
-                _trieWarmEr.WithLabels("main_wake_up").Inc();
-                _mainWarmer?.WakeUp();
-                _mainWarmer = null;
-            }
-        }
-        else
-        {
-            _trieWarmEr.WithLabels("buffer_full").Inc();
+            mainWarmer.WakeUp();
+            _mainWarmer = null;
         }
     }
 
