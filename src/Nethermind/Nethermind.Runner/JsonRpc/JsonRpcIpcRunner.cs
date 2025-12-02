@@ -21,6 +21,7 @@ namespace Nethermind.Runner.JsonRpc
     {
         private const int OperationCancelledError = 125;
         private readonly ILogger _logger;
+        private readonly ILogManager _logManager;
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IFileSystem _fileSystem;
@@ -40,6 +41,7 @@ namespace Nethermind.Runner.JsonRpc
         {
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _jsonRpcProcessor = jsonRpcProcessor;
+            _logManager = logManager;
             _logger = logManager.GetClassLogger();
             _jsonRpcLocalStats = jsonRpcLocalStats;
             _jsonSerializer = jsonSerializer;
@@ -91,7 +93,7 @@ namespace Nethermind.Runner.JsonRpc
         {
             using JsonRpcSocketsClient<IpcSocketMessageStream>? socketsClient = new(
                 string.Empty,
-                new IpcSocketMessageStream(socket),
+                new IpcSocketMessageStream(socket, _logManager),
                 RpcEndpoint.IPC,
                 _jsonRpcProcessor,
                 _jsonRpcLocalStats,
