@@ -113,8 +113,16 @@ namespace Nethermind.JsonRpc
 
             return other is JsonRpcUrl url && Equals(url);
         }
+        public override int GetHashCode()
+        {
+            int modulesHash = 0;
+            foreach (string m in EnabledModules.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+            {
+                modulesHash = HashCode.Combine(modulesHash, StringComparer.OrdinalIgnoreCase.GetHashCode(m));
+            }
 
-        public override int GetHashCode() => HashCode.Combine(Scheme, Host, Port, RpcEndpoint, EnabledModules as IStructuralEquatable);
+            return HashCode.Combine(Scheme, Host, Port, RpcEndpoint, IsAuthenticated, modulesHash);
+        }
         public object Clone() => new JsonRpcUrl(Scheme, Host, Port, RpcEndpoint, IsAuthenticated, EnabledModules.ToArray());
         public override string ToString() => $"{Scheme}://{Host}:{Port}";
     }
