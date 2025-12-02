@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using NonBlocking;
@@ -45,6 +46,7 @@ public class TrieNodeCache
             }
             else
             {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                 node = maybeNode;
                 return true;
             }

@@ -143,6 +143,7 @@ public class SnapshotBundle : IDisposable
     {
         if (!_isReadOnly && TryGetChangedNode(addr, in path, hash, out node))
         {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             return true;
         }
 
@@ -154,7 +155,19 @@ public class SnapshotBundle : IDisposable
         return _changedNodes.TryGetValue((addr, path), out node);
     }
 
-    public bool TryFindNode(Hash256? address, in TreePath path, Hash256 hash, int selfDestructStateIdx, out TrieNode node)
+    public bool TryFindNode(Hash256AsKey? address, in TreePath path, Hash256 hash, int selfDestructStateIdx,
+        out TrieNode node)
+    {
+        if (DoTryFindNode(address, path, hash, selfDestructStateIdx, out node))
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool DoTryFindNode(Hash256AsKey? address, in TreePath path, Hash256 hash, int selfDestructStateIdx, out TrieNode node)
     {
         if (_isDisposed)
         {
@@ -182,6 +195,7 @@ public class SnapshotBundle : IDisposable
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
         if (_isDisposed) return null;
+        Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         return _persistenceReader.TryLoadRlp(address, path, hash, flags);
     }
 
@@ -403,75 +417,5 @@ public class SnapshotBundle : IDisposable
     public bool TryAdd(AddressAsKey address, in UInt256 index, byte[] value)
     {
         return _changedSlots.TryAdd((address, index), value);
-    }
-}
-
-public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
-{
-    internal Hash256 _addressHash = address.ToAccountPath.ToCommitment();
-
-    bool _hasSelfDestruct = false;
-    private int _selfDestructKnownStateIdx = bundle.DetermineSelfDestructStateIdx(address);
-
-    public bool TryGet(in UInt256 index, out byte[]? value)
-    {
-        if (bundle.TryGetChangedSlot(address, index, out value))
-        {
-            return true;
-        }
-
-        if (_hasSelfDestruct)
-        {
-            value = null;
-            return true;
-        }
-
-        return bundle.TryGetSlot(address, index, _selfDestructKnownStateIdx, out value);
-    }
-
-    public bool TryFindNode(in TreePath path, Hash256 hash, out TrieNode value)
-    {
-        if (bundle.TryGetChangedNode(_addressHash, path, hash, out value))
-        {
-            return true;
-        }
-
-        if (_hasSelfDestruct)
-        {
-            value = null;
-            return true;
-        }
-
-        return bundle.TryFindNode(_addressHash, path, hash, _selfDestructKnownStateIdx, out value);
-    }
-
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags)
-    {
-        return bundle.TryLoadRlp(_addressHash, in path, hash, flags);
-    }
-
-    public void SetNode(TreePath path, TrieNode node)
-    {
-        bundle.SetNode(_addressHash, path, node);
-    }
-
-    public void Set(UInt256 slot, byte[] value)
-    {
-        bundle.SetChangedSlot(address, slot, value);
-    }
-
-    public bool HintGet(UInt256 slot, byte[] value)
-    {
-        return bundle.TryAdd(address, slot, value);
-    }
-
-    public void SelfDestruct()
-    {
-        _hasSelfDestruct = true;
-        bundle.Clear(address, _addressHash);
-    }
-
-    public void Dispose()
-    {
     }
 }

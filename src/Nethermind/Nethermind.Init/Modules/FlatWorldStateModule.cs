@@ -70,7 +70,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 ReadWithTrie = false,
                 VerifyWithTrie = false,
                 ConcurrentCompactor = 2,
-                TrieCacheMemoryTarget = 512.MiB(),
+                TrieCacheMemoryTarget = 2.GiB(), // 2 GB is enough for 20% dirty load. Without it, then the diff layers on its own have around 35% dirty load.
                 InlineCompaction = false
             })
             .AddSingleton<IStateReader, FlatStateReader>();

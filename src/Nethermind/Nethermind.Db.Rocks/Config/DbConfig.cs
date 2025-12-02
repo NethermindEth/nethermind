@@ -424,6 +424,7 @@ public class DbConfig : IDbConfig
     // Largely the same as statedb, but more write focused.
     private const string TrieNodeConfig =
 
+        // "use_direct_reads=true;" +
         // For trie which is heavy in compaction. Use direct io to prevent taking up space in os cache.
         "use_direct_io_for_flush_and_compaction=true;" +
 
