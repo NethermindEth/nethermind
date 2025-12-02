@@ -33,27 +33,7 @@ public class FlatDiffRepository : IFlatDiffRepository
     private readonly ICanonicalStateRootFinder _stateRootFinder;
     private Dictionary<StateId, Snapshot> _compactedKnownStates = new();
     private InMemorySnapshotStore _inMemorySnapshotStore;
-    private ObjectPool<SnapshotContent> _snapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(false));
-    private ObjectPool<SnapshotContent> _compactedSnapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(false));
-
-    private class SnapshotContentPolicy(bool allow) : IPooledObjectPolicy<SnapshotContent>
-    {
-        public SnapshotContent Create()
-        {
-            return new SnapshotContent(
-                Accounts: new Dictionary<AddressAsKey, Account?>(),
-                Storages: new ConcurrentDictionary<(AddressAsKey, UInt256), byte[]?>(),
-                SelfDestructedStorageAddresses: new ConcurrentDictionary<AddressAsKey, bool>(),
-                TrieNodes: new ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode>()
-            );
-        }
-
-        public bool Return(SnapshotContent obj)
-        {
-            obj.Reset();
-            return allow;
-        }
-    }
+    private ResourcePool _resourcePool = new ResourcePool();
 
     private IPersistence _persistence;
     private int _boundary;
@@ -283,7 +263,7 @@ public class FlatDiffRepository : IFlatDiffRepository
             }
 
             if (_logger.IsDebug) _logger.Debug($"Compacting {stateId}");
-            Snapshot snapshot = gatheredCache.CompactToKnownState(_compactedSnapshotPool);
+            Snapshot snapshot = gatheredCache.CompactToKnownState();
 
             using (EnterRepolock())
             {
@@ -370,7 +350,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         knownStates.Reverse();
 
         if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestExclusive}, Got {knownStates.Count} known states, {_currentPersistedState}");
-        return new SnapshotBundle(knownStates, bigCacheReader, _trieNodeCache, _snapshotPool, isReadOnly: isReadOnly);
+        return new SnapshotBundle(knownStates, bigCacheReader, _trieNodeCache, _resourcePool, isReadOnly: isReadOnly);
     }
 
     public bool TryLeaseCompactedState(StateId stateId, out Snapshot entry)

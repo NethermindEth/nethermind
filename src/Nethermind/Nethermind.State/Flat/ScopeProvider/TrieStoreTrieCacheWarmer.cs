@@ -25,14 +25,15 @@ public interface ITrieStoreTrieCacheWarmer
         WorldStateScope scope,
         Address? path,
         StorageTree? storageTree,
-        UInt256? index);
+        UInt256? index,
+        int sequenceId);
 
     void OnNewScope();
 }
 
 public class NoopTrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
 {
-    public void PushJob(WorldStateScope scope, Address? path, StorageTree? storageTree, UInt256? index)
+    public void PushJob(WorldStateScope scope, Address? path, StorageTree? storageTree, UInt256? index, int sequenceId)
     {
     }
 
@@ -51,7 +52,8 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
         WorldStateScope scope,
         Address? path,
         StorageTree? storageTree,
-        UInt256? index);
+        UInt256? index,
+        int sequenceId);
 
     Task? _warmerJob = null;
     private static Counter _trieWarmEr = Metrics.CreateCounter("triestore_trie_warmer", "hit rate", "type");
@@ -89,34 +91,21 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
         (WorldStateScope scope,
             Address? address,
             StorageTree? storageTree,
-            UInt256? index) = job;
+            UInt256? index,
+            int sequenceId) = job;
 
         try
         {
 
-            if (scope.ShouldStillWarmUpTrie)
+            if (address is not null)
             {
-                if (address is not null)
-                {
-                    scope.WarmUpStateTrie(address);
-                    _trieWarmEr.WithLabels("state").Inc();
-                }
-                else
-                {
-                    storageTree.WarUpStorageTrie(index.Value);
-                    _trieWarmEr.WithLabels("storage").Inc();
-                }
+                scope.WarmUpStateTrie(address, sequenceId);
+                _trieWarmEr.WithLabels("state").Inc();
             }
             else
             {
-                if (address is null)
-                {
-                    _trieWarmEr.WithLabels("state_skip").Inc();
-                }
-                else
-                {
-                    _trieWarmEr.WithLabels("storage_skip").Inc();
-                }
+                storageTree.WarUpStorageTrie(index.Value, sequenceId);
+                _trieWarmEr.WithLabels("storage").Inc();
             }
         }
         catch (TrieNodeException)
@@ -217,9 +206,10 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
         WorldStateScope scope,
         Address? path,
         StorageTree? storageTree,
-        UInt256? index)
+        UInt256? index,
+        int sequenceId)
     {
-        if (!_jobBuffer.TryEnqueue(new Job(scope, path, storageTree, index))) return;
+        if (!_jobBuffer.TryEnqueue(new Job(scope, path, storageTree, index, sequenceId))) return;
 
         WarmerWorkers? mainWarmer = _mainWarmer;
         if (mainWarmer is not null)

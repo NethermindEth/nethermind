@@ -14,6 +14,7 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
 
     bool _hasSelfDestruct = false;
     private int _selfDestructKnownStateIdx = bundle.DetermineSelfDestructStateIdx(address);
+    public int HintSequenceId => bundle.HintSequenceId;
 
     public bool TryGet(in UInt256 index, out byte[]? value)
     {
@@ -22,6 +23,7 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
             return true;
         }
 
+        // TODO: Wrong. On later block (assuming same bundle), this would block all reads.
         if (_hasSelfDestruct)
         {
             value = null;
@@ -57,14 +59,19 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
         bundle.SetNode(_addressHash, path, node);
     }
 
+    public void SetNodeHint(in TreePath path, TrieNode node)
+    {
+        bundle.HintTrieNode(_addressHash, path, node);
+    }
+
     public void Set(UInt256 slot, byte[] value)
     {
         bundle.SetChangedSlot(address, slot, value);
     }
 
-    public bool HintGet(UInt256 slot, byte[] value)
+    public bool HintGet(UInt256 slot, byte[] value, int sequenceId)
     {
-        return bundle.TryAdd(address, slot, value);
+        return bundle.HintGet(address, slot, sequenceId, value);
     }
 
     public void SelfDestruct()

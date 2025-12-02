@@ -4,15 +4,17 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Microsoft.Extensions.ObjectPool;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Prometheus;
+using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State.Flat;
 
@@ -28,6 +30,9 @@ public class SnapshotBundle : IDisposable
     private ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> _changedSlots; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses;
 
+    private volatile int _hintSequenceId = 0;
+    public int HintSequenceId => _hintSequenceId;
+
     private readonly bool _isReadOnly;
 
     public int SnapshotCount => _knownStates.Count;
@@ -35,29 +40,40 @@ public class SnapshotBundle : IDisposable
     private ArrayPoolList<Snapshot> _knownStates;
     private readonly IPersistence.IPersistenceReader _persistenceReader;
     private readonly TrieNodeCache _trieNodeCache;
-    private readonly ObjectPool<SnapshotContent> _contentPool;
     private bool _isPrewarmer;
     private bool _isDisposed;
+    private readonly ResourcePool _resourcePool;
+    private HintResource _hintResource;
+
+    private static Counter _snapshotBundleEvents = Metrics.CreateCounter("snapshot_bundle_evens", "event", "type", "is_prewarmer");
+    private Counter.Child _nodeGetChanged;
+    private Counter.Child _nodeGetSnapshots;
+    private Counter.Child _nodeGetTrieCache;
+    private Counter.Child _nodeGetMiss;
+    private Counter.Child _nodeGetSelfDestruct;
 
     public SnapshotBundle(ArrayPoolList<Snapshot> knownStates,
         IPersistence.IPersistenceReader persistenceReader,
         TrieNodeCache trieNodeCache,
-        ObjectPool<SnapshotContent> contentPool,
+        ResourcePool resourcePool,
         bool isReadOnly = false,
         bool isPrewarmer = false)
     {
         _knownStates = knownStates;
         _persistenceReader = persistenceReader;
         _trieNodeCache = trieNodeCache;
-        _contentPool = contentPool;
+        _resourcePool = resourcePool;
         _isPrewarmer = isPrewarmer;
         _isReadOnly = isReadOnly;
 
         _loadedContractStorages = new Dictionary<AddressAsKey, StorageSnapshotBundle>();
+        SetupMetric();
 
         if (!_isReadOnly)
         {
-            _currentPooledContent = contentPool.Get();
+            _hintResource = _resourcePool.GetHintResource();
+            _hintResource.Clear();
+            _currentPooledContent = resourcePool.GetSnapshotContent();
             ExpandCurrentPooledContent();
         }
     }
@@ -73,11 +89,26 @@ public class SnapshotBundle : IDisposable
     public void SetPrewarmer()
     {
         _isPrewarmer = true;
+        SetupMetric();
     }
 
-    public bool TryGetAccountInMemory(Address address, out Account? acc)
+    private void SetupMetric()
     {
-        if (!_isReadOnly && _changedAccounts.TryGetValue(address, out acc)) return true;
+        _nodeGetChanged = _snapshotBundleEvents.WithLabels("node_get_changed", _isPrewarmer.ToString());
+        _nodeGetHinted = _snapshotBundleEvents.WithLabels("node_get_hinted", _isPrewarmer.ToString());
+        _nodeGetSnapshots = _snapshotBundleEvents.WithLabels("node_get_snapshots", _isPrewarmer.ToString());
+        _nodeGetTrieCache = _snapshotBundleEvents.WithLabels("node_get_trie_cache", _isPrewarmer.ToString());
+        _nodeGetSelfDestruct = _snapshotBundleEvents.WithLabels("node_get_self_destruct", _isPrewarmer.ToString());
+        _nodeGetMiss = _snapshotBundleEvents.WithLabels("node_get_miss", _isPrewarmer.ToString());
+    }
+
+    private bool TryGetAccountInMemory(Address address, out Account? acc)
+    {
+        if (!_isReadOnly)
+        {
+            if (_changedAccounts.TryGetValue(address, out acc)) return true;
+            if (_hintResource.TryGetAccount(address, out acc)) return true;
+        }
 
         AddressAsKey key = address;
 
@@ -139,9 +170,34 @@ public class SnapshotBundle : IDisposable
         return false;
     }
 
+    public bool TryGetChangedSlot(AddressAsKey address, in UInt256 index, out byte[] value)
+    {
+        if (!_isReadOnly)
+        {
+            if (_changedSlots.TryGetValue((address, index), out value))
+            {
+                return true;
+            }
+
+            if (_hintResource.TryGetSlot(address, index, out value))
+            {
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
+    public void SetChangedSlot(AddressAsKey address, in UInt256 index, byte[] value)
+    {
+        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
+        _changedSlots[(address, index)] = value;
+    }
+
     public bool TryFindNode(Hash256AsKey addr, in TreePath path, Hash256 hash, out TrieNode node)
     {
-        if (!_isReadOnly && TryGetChangedNode(addr, in path, hash, out node))
+        if (TryGetChangedNode(addr, in path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             return true;
@@ -152,7 +208,13 @@ public class SnapshotBundle : IDisposable
 
     public bool TryGetChangedNode(Hash256AsKey addr, in TreePath path, Hash256 hash, out TrieNode node)
     {
-        return _changedNodes.TryGetValue((addr, path), out node);
+        if (_changedNodes.TryGetValue((addr, path), out node))
+        {
+            _nodeGetChanged.Inc();
+            return true;
+        }
+
+        return false;
     }
 
     public bool TryFindNode(Hash256AsKey? address, in TreePath path, Hash256 hash, int selfDestructStateIdx,
@@ -179,17 +241,26 @@ public class SnapshotBundle : IDisposable
         {
             if (_knownStates[i].TryGetTrieNodes(address, path, out node))
             {
+                _nodeGetSnapshots.Inc();
                 return true;
             }
 
             if (i <= selfDestructStateIdx)
             {
+                _nodeGetSelfDestruct.Inc();
                 node = null;
                 return false;
             }
         }
 
-        return _trieNodeCache.TryGet(address, path, hash, out node);
+        if (_trieNodeCache.TryGet(address, path, hash, out node))
+        {
+            _nodeGetTrieCache.Inc();
+            return true;
+        }
+
+        _nodeGetMiss.Inc();
+        return false;
     }
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
@@ -206,6 +277,13 @@ public class SnapshotBundle : IDisposable
         _changedNodes[(addr, path)] = newNode;
     }
 
+    public void HintTrieNode(Hash256AsKey addr, in TreePath path, TrieNode newNode)
+    {
+        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
+        if (_isDisposed) return;
+        _changedNodes.TryAdd((addr, path), newNode);
+    }
+
     public void ApplyStateChanges(Dictionary<AddressAsKey, Account> changedValues)
     {
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
@@ -215,26 +293,53 @@ public class SnapshotBundle : IDisposable
         }
     }
 
-    public bool HintAccountRead(Address address, Account? account)
+    private bool TryGetHintResourceSafe(int sequenceId, out HintResource hintResource)
+    {
+        hintResource = _hintResource;
+        if (_hintSequenceId != sequenceId)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    public bool HintAccountRead(Address address, Account? account, int sequenceId)
     {
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
-        return _changedAccounts.TryAdd(address, account);
+        return TryGetHintResourceSafe(sequenceId, out var hintResource) &&
+               hintResource.TryAddAccount(address, account);
+    }
+
+    public bool HintGet(AddressAsKey address, in UInt256 index, int sequenceId, byte[] value)
+    {
+        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
+
+        return TryGetHintResourceSafe(sequenceId, out var hintResource) &&
+               hintResource.TryAddSlot(address, index, value);
     }
 
     public Snapshot CollectAndApplyKnownState(StateId from, StateId to)
     {
+        Interlocked.Increment(ref _hintSequenceId);
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
+
         var knownState = new Snapshot(
             from: from,
             to: to,
             content: _currentPooledContent,
-            pool: _contentPool);
+            pool: _resourcePool.SnapshotPool);
 
         knownState.AcquireLease(); // For this bundle
 
         _knownStates.Add(knownState);
 
-        _currentPooledContent = _contentPool.Get();
+        _hintResource.Clear();
+
+        var hintResource = _hintResource;
+        _hintResource = _resourcePool.GetHintResource();
+        _resourcePool.ReturnHintResource(hintResource);
+
+        _currentPooledContent = _resourcePool.GetSnapshotContent();
         ExpandCurrentPooledContent();
 
         foreach (var gatheredCacheStorage in _loadedContractStorages)
@@ -257,15 +362,15 @@ public class SnapshotBundle : IDisposable
         return snapshotBundle;
     }
 
-    public Snapshot CompactToKnownState(ObjectPool<SnapshotContent> contentPool)
+    public Snapshot CompactToKnownState()
     {
         if (_knownStates.Count == 0)
             return new Snapshot(
                 new StateId(-1, ValueKeccak.EmptyTreeHash), new StateId(-1, ValueKeccak.EmptyTreeHash),
-                content: contentPool.Get(),
-                pool: contentPool);
+                content: _resourcePool.GetSnapshotContent(),
+                pool: _resourcePool.SnapshotPool);
 
-        SnapshotContent content = contentPool.Get();
+        SnapshotContent content = _resourcePool.GetCompactedSnapshotPool();
 
         Dictionary<AddressAsKey, Account> accounts = content.Accounts;
         ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> storages = content.Storages;
@@ -340,7 +445,7 @@ public class SnapshotBundle : IDisposable
             from,
             to,
             content: content,
-            pool: contentPool);
+            pool: _resourcePool.CompactedSnapshotPool);
     }
 
     public void Dispose()
@@ -365,7 +470,8 @@ public class SnapshotBundle : IDisposable
 
         _persistenceReader.Dispose();
 
-        if (!_isReadOnly) _contentPool.Return(_currentPooledContent);
+        if (!_isReadOnly) _resourcePool.ReturnSnapshotContent(_currentPooledContent);
+        if (!_isReadOnly) _resourcePool.ReturnHintResource(_hintResource);
     }
 
     public void Clear(Address address, Hash256AsKey addressHash)
@@ -395,27 +501,5 @@ public class SnapshotBundle : IDisposable
             isNewAccount = account == null;
         }
         _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
-    }
-
-    public bool TryGetChangedSlot(AddressAsKey address, in UInt256 index, out byte[] value)
-    {
-        if (_isReadOnly)
-        {
-            value = null;
-            return false;
-        }
-
-        return _changedSlots.TryGetValue((address, index), out value);
-    }
-
-    public void SetChangedSlot(AddressAsKey address, in UInt256 index, byte[] value)
-    {
-        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
-        _changedSlots[(address, index)] = value;
-    }
-
-    public bool TryAdd(AddressAsKey address, in UInt256 index, byte[] value)
-    {
-        return _changedSlots.TryAdd((address, index), value);
     }
 }

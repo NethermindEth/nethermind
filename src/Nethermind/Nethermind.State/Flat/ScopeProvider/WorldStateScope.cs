@@ -27,14 +27,13 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     private readonly IFlatDiffRepository _flatDiffRepository;
     private readonly Dictionary<AddressAsKey, StorageTree> _storages = new();
     private readonly StateTree _stateTree;
-    private readonly PatriciaTree _warmupStateTree;
+    private readonly StateTree _warmupStateTree;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
     private FlatDiffRepository.Configuration _configuration;
 
     private readonly ConcurrencyQuota _concurrencyQuota;
     private readonly ITrieStoreTrieCacheWarmer _warmer;
-    private bool _isCommitting = false;
 
     public WorldStateScope(
         StateId currentStateId,
@@ -52,12 +51,12 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         _flatDiffRepository = flatDiffRepository;
         _concurrencyQuota = new ConcurrencyQuota();
         _stateTree = new StateTree(
-            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota, isReadOnly: false),
+            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota, isTrieWarmer: false),
             logManager
         );
         _stateTree.RootHash = currentStateId.stateRoot.ToCommitment();
-        _warmupStateTree = new PatriciaTree(
-            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota, isReadOnly: false),
+        _warmupStateTree = new StateTree(
+            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota, isTrieWarmer: true),
             logManager
         );
         _warmupStateTree.RootHash = currentStateId.stateRoot.ToCommitment();
@@ -87,7 +86,6 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
             if (_configuration.VerifyWithTrie)
             {
-                // TODO: To snapshot bundler
                 Account? accTrie = _stateTree.Get(address);
                 if (accTrie != account)
                 {
@@ -107,19 +105,20 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
     public void HintGet(Address address, Account? account)
     {
-        if (_snapshotBundle.HintAccountRead(address, account))
-        {
-            _warmer.PushJob(this, address, null, null);
-        }
+        _warmer.PushJob(this, address, null, null, _snapshotBundle.HintSequenceId);
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
-    public bool ShouldStillWarmUpTrie => !_isCommitting;
 
-    public void WarmUpStateTrie(Address address)
+    public void WarmUpStateTrie(Address address, int sequenceId)
     {
-        ValueHash256 rawHash = address.ToAccountPath;
-        _warmupStateTree.Get(rawHash.Bytes);
+        if (_snapshotBundle.HintSequenceId != sequenceId) return;
+
+        Account? account = _warmupStateTree.Get(address);
+        if (account is not null)
+        {
+            _snapshotBundle.HintAccountRead(address, account, _snapshotBundle.HintSequenceId);
+        }
     }
 
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
@@ -157,7 +156,6 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     public void Commit(long blockNumber)
     {
         StateId newStateId = new StateId(blockNumber, RootHash);
-        _isCommitting = true;
         if (!_isReadOnly)
         {
 
@@ -186,8 +184,6 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
             _stateTree.Commit();
         }
 
-        _isCommitting = false;
-
         _storages.Clear();
 
         Snapshot newSnapshot = _snapshotBundle.CollectAndApplyKnownState(_currentStateId, newStateId);
@@ -203,7 +199,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     private class StateTrieStoreAdapter(
         SnapshotBundle bundle,
         ConcurrencyQuota concurrencyQuota,
-        bool isReadOnly
+        bool isTrieWarmer
     ) : AbstractMinimalTrieStore
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
@@ -214,7 +210,14 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
             }
 
             TrieNode newNode = new TrieNode(NodeType.Unknown, hash);
-            if (!isReadOnly) bundle.SetNode(null, path, newNode);
+            if (isTrieWarmer)
+            {
+                if (hash is not null) bundle.HintTrieNode(null, path, newNode);
+            }
+            else
+            {
+                bundle.SetNode(null, path, newNode);
+            }
             return newNode;
         }
 

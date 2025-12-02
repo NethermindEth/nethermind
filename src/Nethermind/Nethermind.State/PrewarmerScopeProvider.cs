@@ -41,6 +41,7 @@ public class PrewarmerScopeProvider(
     {
         private Histogram.Child _addressGetHit = _timer.WithLabels("address_hit", populatePreBlockCache.ToString());
         private Histogram.Child _addressGetMiss = _timer.WithLabels("address_miss", populatePreBlockCache.ToString());
+        private Histogram.Child _addressGetHint = _timer.WithLabels("address_get_hint", populatePreBlockCache.ToString());
 
         ConcurrentDictionary<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
 
@@ -95,9 +96,11 @@ public class PrewarmerScopeProvider(
             {
                 if (preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
                 {
-                    baseScope.HintGet(address, account);
-                    Metrics.IncrementStateTreeCacheHits();
                     _addressGetHit.Observe(Stopwatch.GetTimestamp() - sw);
+                    sw = Stopwatch.GetTimestamp();
+                    baseScope.HintGet(address, account);
+                    _addressGetHint.Observe(Stopwatch.GetTimestamp() - sw);
+                    Metrics.IncrementStateTreeCacheHits();
                 }
                 else
                 {

@@ -2,12 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -23,7 +18,7 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
 {
     private readonly StorageSnapshotBundle _storageSnapshotBundle;
     private readonly State.StorageTree _tree;
-    private readonly PatriciaTree _warmupStorageTree;
+    private readonly State.StorageTree _warmupStorageTree;
     private readonly Address _address;
     private readonly FlatDiffRepository.Configuration _config;
     private readonly ITrieStoreTrieCacheWarmer _trieCacheWarmer;
@@ -44,18 +39,18 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
         _trieCacheWarmer = trieCacheWarmer;
         _storageSnapshotBundle = storageSnapshotBundle;
         _tree = new State.StorageTree(
-            new TrieStoreAdapter(storageSnapshotBundle, concurrencyQuota, isReadOnly: false),
+            new TrieStoreAdapter(storageSnapshotBundle, concurrencyQuota, isTrieWarmer: false),
             storageRoot, logManager);
         _tree.RootHash = storageRoot;
-        _warmupStorageTree = new PatriciaTree(
-            new TrieStoreAdapter(storageSnapshotBundle, concurrencyQuota, isReadOnly: false),
+        _warmupStorageTree = new State.StorageTree(
+            new TrieStoreAdapter(storageSnapshotBundle, concurrencyQuota, isTrieWarmer: true),
             logManager);
         _warmupStorageTree.RootHash = storageRoot;
         _config = config;
         _address = address;
 
         // In case its all write.
-        _trieCacheWarmer.PushJob(_scope, null, this, 0);
+        _trieCacheWarmer.PushJob(_scope, null, this, 0, _storageSnapshotBundle.HintSequenceId);
     }
 
     public Hash256 RootHash => _tree.RootHash;
@@ -87,10 +82,7 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
 
     public void HintGet(in UInt256 index, byte[]? value)
     {
-        if (_storageSnapshotBundle.HintGet(index, value))
-        {
-            WarmUpSlot(index);
-        }
+        WarmUpSlot(index);
     }
 
     public void HintSet(UInt256 index)
@@ -100,18 +92,21 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
 
     private void WarmUpSlot(UInt256 index)
     {
-        _trieCacheWarmer.PushJob(_scope, null, this, index);
+        _trieCacheWarmer.PushJob(_scope, null, this, index, _storageSnapshotBundle.HintSequenceId);
     }
 
-    public void WarUpStorageTrie(UInt256 index)
+    public void WarUpStorageTrie(UInt256 index, int sequenceId)
     {
+        if (sequenceId != _storageSnapshotBundle.HintSequenceId) return;
         if (!_wasWarmedUp.TryAdd(index, true))
         {
             return;
         }
-        ValueHash256 hash = new ValueHash256();
-        State.StorageTree.ComputeKeyWithLookup(index, hash.BytesAsSpan);
-        _warmupStorageTree.Get(hash.Bytes);
+
+        byte[] value = _warmupStorageTree.Get(index);
+        if (_storageSnapshotBundle.HintGet(index, value, sequenceId))
+        {
+        }
     }
 
     public byte[] Get(in ValueHash256 hash)
@@ -127,7 +122,7 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
     private class TrieStoreAdapter(
         StorageSnapshotBundle storageSnapshotBundle,
         ConcurrencyQuota concurrencyQuota,
-        bool isReadOnly
+        bool isTrieWarmer
     ): AbstractMinimalTrieStore
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
@@ -138,7 +133,14 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
             }
 
             TrieNode newNode = new TrieNode(NodeType.Unknown, hash);
-            if (!isReadOnly) storageSnapshotBundle.SetNode(path, newNode);
+            if (isTrieWarmer)
+            {
+                if (hash is not null) storageSnapshotBundle.SetNodeHint(path, newNode);
+            }
+            else
+            {
+                storageSnapshotBundle.SetNode(path, newNode);
+            }
             return newNode;
         }
 
