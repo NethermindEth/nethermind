@@ -5,9 +5,10 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
+
 internal sealed class ExtraConsensusDataDecoder : RlpValueDecoder<ExtraFieldsV2>
 {
-    private QuorumCertificateDecoder _quorumCertificateDecoder = new();
+    private readonly QuorumCertificateDecoder _quorumCertificateDecoder = new();
     protected override ExtraFieldsV2 DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())

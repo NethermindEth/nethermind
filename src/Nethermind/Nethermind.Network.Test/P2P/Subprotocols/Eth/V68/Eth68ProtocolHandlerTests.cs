@@ -127,7 +127,7 @@ public class Eth68ProtocolHandlerTests
 
     [TestCase(true)]
     [TestCase(false)]
-    public void Should_throw_when_sizes_doesnt_match(bool removeSize)
+    public void Should_throw_when_sizes_do_not_match(bool removeSize)
     {
         GenerateLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes);
 

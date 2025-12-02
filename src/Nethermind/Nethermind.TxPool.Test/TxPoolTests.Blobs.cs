@@ -26,6 +26,7 @@ using NUnit.Framework;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Spec;
 
 namespace Nethermind.TxPool.Test
 {
@@ -242,11 +243,22 @@ namespace Nethermind.TxPool.Test
             blobTxFromDb.Should().BeNull();
         }
 
-        [TestCase(999_999_999, false)]
-        [TestCase(1_000_000_000, true)]
-        public void should_not_allow_to_add_blob_tx_with_MaxPriorityFeePerGas_lower_than_1GWei(int maxPriorityFeePerGas, bool expectedResult)
+        [TestCase(1, null, true)]
+        [TestCase(999_999_999, null, true)]
+        [TestCase(1_000_000_000, null, true)]
+        [TestCase(1_000_000_001, null, true)]
+        [TestCase(1, 0ul, true)]
+        [TestCase(1_000_000_000, 0ul, true)]
+        [TestCase(1, 10ul, false)]
+        public void should_allow_to_add_blob_tx_with_MaxPriorityFeePerGas_lower_than_1GWei(int maxPriorityFeePerGas, ulong? configuredMinPriorityFee, bool expectedResult)
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, Size = 10 };
+
+            if (configuredMinPriorityFee is not null)
+            {
+                txPoolConfig.MinBlobTxPriorityFee = configuredMinPriorityFee.Value;
+            }
+
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
@@ -259,6 +271,39 @@ namespace Nethermind.TxPool.Test
             _txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(expectedResult
                 ? AcceptTxResult.Accepted
                 : AcceptTxResult.FeeTooLow);
+        }
+
+        [Test]
+        public void should_not_allow_to_add_blob_tx_with_MaxFeePerBlobGas_lower_than_CurrentFeePerBlobGas([Values(true, false)] bool isMaxFeePerBlobGasHighEnough, [Values(true, false)] bool isRequirementEnabled)
+        {
+            ISpecProvider specProvider = GetCancunSpecProvider();
+            ChainHeadInfoProvider chainHeadInfoProvider = new(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, _stateProvider);
+
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.InMemory,
+                Size = 10,
+                CurrentBlobBaseFeeRequired = isRequirementEnabled
+            };
+
+            UInt256 currentFeePerBlobGas = 100;
+            chainHeadInfoProvider.CurrentFeePerBlobGas = currentFeePerBlobGas;
+
+            _txPool = CreatePool(config: txPoolConfig,
+                specProvider: specProvider,
+                chainHeadInfoProvider: chainHeadInfoProvider);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction tx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithMaxFeePerBlobGas(isMaxFeePerBlobGasHighEnough ? currentFeePerBlobGas : currentFeePerBlobGas - 1)
+                .WithMaxFeePerGas(1.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None),
+                Is.EqualTo(isRequirementEnabled && !isMaxFeePerBlobGasHighEnough
+                    ? AcceptTxResult.FeeTooLow
+                    : AcceptTxResult.Accepted));
         }
 
         [Test]
@@ -392,7 +437,8 @@ namespace Nethermind.TxPool.Test
             TxPoolConfig txPoolConfig = new()
             {
                 BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
-                Size = 10
+                Size = 10,
+                CurrentBlobBaseFeeRequired = false
             };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);

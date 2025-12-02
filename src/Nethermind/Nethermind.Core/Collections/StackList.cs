@@ -4,10 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Resettables;
 
 namespace Nethermind.Core.Collections
 {
-    public sealed class StackList<T> : List<T>
+    public sealed class StackList<T> : List<T>, IResettable, IReturnable
         where T : struct, IComparable<T>
     {
         public T Peek() => this[^1];
@@ -47,10 +49,7 @@ namespace Nethermind.Core.Collections
             }
         }
 
-        public void Push(T item)
-        {
-            Add(item);
-        }
+        public void Push(T item) => Add(item);
 
         public bool TryGetSearchedItem(T activation, out T item)
         {
@@ -78,6 +77,22 @@ namespace Nethermind.Core.Collections
             }
 
             return result;
+        }
+
+        internal static StackList<T> Rent()
+            => StaticPool<StackList<T>>.Rent();
+
+        public void Return() => Return(this);
+        public void Reset() => Clear();
+
+        private static void Return(StackList<T> value)
+        {
+            const int MaxPooledCapacity = 128;
+
+            if (value.Capacity > MaxPooledCapacity)
+                return;
+
+            StaticPool<StackList<T>>.Return(value);
         }
     }
 }

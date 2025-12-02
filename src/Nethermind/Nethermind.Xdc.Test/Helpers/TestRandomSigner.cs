@@ -7,15 +7,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test.Helpers;
+
 internal class TestRandomSigner(List<PrivateKey> masternodeCandidates) : ISigner
 {
     private readonly Random _rnd = new Random();
-    private EthereumEcdsa _ecdsa = new EthereumEcdsa(0);
+    private readonly EthereumEcdsa _ecdsa = new EthereumEcdsa(0);
     public PrivateKey? Key { get; private set; }
 
     public Address Address => Key!.Address;

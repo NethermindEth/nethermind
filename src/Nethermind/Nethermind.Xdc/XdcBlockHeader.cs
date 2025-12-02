@@ -12,9 +12,10 @@ using System;
 using System.Collections.Immutable;
 
 namespace Nethermind.Xdc;
+
 public class XdcBlockHeader : BlockHeader, IHashResolver
 {
-    private static XdcHeaderDecoder _headerDecoder = new();
+    private static readonly XdcHeaderDecoder _headerDecoder = new();
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
     public XdcBlockHeader(
         Hash256 parentHash,

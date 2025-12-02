@@ -13,10 +13,11 @@ using System;
 using System.Linq;
 
 namespace Nethermind.Xdc;
+
 internal class XdcSealValidator(ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider) : ISealValidator
 {
-    private EthereumEcdsa _ethereumEcdsa = new(0); //Ignore chainId since we don't sign transactions here
-    private XdcHeaderDecoder _headerDecoder = new();
+    private readonly EthereumEcdsa _ethereumEcdsa = new(0); //Ignore chainId since we don't sign transactions here
+    private readonly XdcHeaderDecoder _headerDecoder = new();
 
     public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
     {

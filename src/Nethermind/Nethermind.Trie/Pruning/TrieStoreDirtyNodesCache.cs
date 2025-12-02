@@ -205,7 +205,7 @@ internal class TrieStoreDirtyNodesCache
             // This is because although very rare, it is possible that this node is persisted, but its child is not
             // persisted. This can happen when a path is not replaced with another node, but its child is and hence,
             // the child is removed, but the parent is not and remain in the cache as persisted node.
-            // Additionally, it may hold a reference to its child which is marked as persisted eventhough it was
+            // Additionally, it may hold a reference to its child which is marked as persisted even though it was
             // deleted from the cached map.
             node = arg.Node;
         }

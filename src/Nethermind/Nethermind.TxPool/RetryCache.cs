@@ -97,7 +97,7 @@ public class RetryCache<TMessage, TResourceId>
             return added ? AnnounceResult.New : AnnounceResult.Enqueued;
         }
 
-        if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}, but a retry is in progress already, immidietly firing");
+        if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}, but a retry is in progress already, immediately firing");
 
         return AnnounceResult.New;
     }

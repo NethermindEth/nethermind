@@ -38,6 +38,9 @@ internal class FundsDistributor
     /// <exception cref="AccountException"></exception>
     public async Task<IEnumerable<string>> DitributeFunds(Signer distributeFrom, uint keysToMake, UInt256 maxFee, UInt256 maxPriorityFee)
     {
+        if (keysToMake == 0)
+            throw new ArgumentException("keysToMake must be greater than zero.", nameof(keysToMake));
+
         string? balanceString = await _rpcClient.Post<string>("eth_getBalance", distributeFrom.Address, "latest");
         if (balanceString is null)
             throw new AccountException($"Unable to get balance for {distributeFrom.Address}");
