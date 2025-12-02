@@ -89,7 +89,7 @@ namespace Ethereum.Test.Base
             using IDisposable _ = stateProvider.BeginScope(null);
             ITransactionProcessor transactionProcessor = mainBlockProcessingContext.TransactionProcessor;
 
-            InitializeTestState(test.Pre, test.CurrentCoinbase, stateProvider, specProvider);
+            InitializeTestState(test.Pre, stateProvider, specProvider);
 
             BlockHeader header = new(
                 test.PreviousHash,
@@ -154,6 +154,15 @@ namespace Ethereum.Test.Base
             {
                 stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.CommitTree(1);
+
+                // '@winsvega added a 0-wei reward to the miner, so we had to add that into the state test execution phase. He needed it for retesteth.'
+                // This must only happen after successful transaction execution, not when tx fails validation.
+                if (!stateProvider.AccountExists(test.CurrentCoinbase))
+                {
+                    stateProvider.CreateAccount(test.CurrentCoinbase, 0);
+                }
+
+                stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.RecalculateStateRoot();
             }
             else
@@ -176,7 +185,7 @@ namespace Ethereum.Test.Base
             return testResult;
         }
 
-        public static void InitializeTestState(Dictionary<Address, AccountState> preState, Address coinbase, IWorldState stateProvider, ISpecProvider specProvider)
+        public static void InitializeTestState(Dictionary<Address, AccountState> preState, IWorldState stateProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in preState)
             {
@@ -194,13 +203,6 @@ namespace Ethereum.Test.Base
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
             stateProvider.Reset();
-
-            if (!stateProvider.AccountExists(coinbase))
-            {
-                stateProvider.CreateAccount(coinbase, 0);
-                stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
-                stateProvider.RecalculateStateRoot();
-            }
         }
 
         private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)
