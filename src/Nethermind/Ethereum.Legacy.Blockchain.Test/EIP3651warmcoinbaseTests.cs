@@ -19,8 +19,7 @@ public class EIP3651WarmCoinbaseTests : GeneralStateTestBase
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        const string testsSubset = "stEIP3651-" + "warm" + "coinbase";
-        var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), testsSubset);
+        var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stEIP3651-warmcoinbase");
         return loader.LoadTests<GeneralStateTest>();
     }
 }
