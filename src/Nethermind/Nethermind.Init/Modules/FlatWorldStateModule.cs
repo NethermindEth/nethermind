@@ -61,17 +61,17 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             })
 
             .AddSingleton<ReadonlyReaderRepository>()
-            .AddSingleton<FlatDiffRepository.Configuration>(new FlatDiffRepository.Configuration()
+            .AddSingleton<FlatDiffRepository.Configuration, IFlatDbConfig>((config) => new FlatDiffRepository.Configuration()
             {
-                Boundary = 256,
-                CompactSize = 16,
-                CompactInterval = 4,
-                MaxInFlightCompactJob = 32,
-                ReadWithTrie = false,
-                VerifyWithTrie = false,
-                ConcurrentCompactor = 2,
-                TrieCacheMemoryTarget = 1.GiB(), // 2 GB is enough for 20% dirty load. Without it, then the diff layers on its own have around 35% dirty load.
-                InlineCompaction = false
+                Boundary = config.PruningBoundary,
+                CompactSize = config.CompactSize,
+                CompactInterval = config.CompactInterval,
+                MaxInFlightCompactJob = config.MaxInFlightCompactJob,
+                ReadWithTrie = config.ReadWithTrie,
+                VerifyWithTrie = config.VerifyWithTrie,
+                ConcurrentCompactor = 1,
+                TrieCacheMemoryTarget = config.TrieCacheMemoryTarget,
+                InlineCompaction = config.InlineCompaction
             })
             .AddSingleton<IStateReader, FlatStateReader>();
 
