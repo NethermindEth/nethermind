@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using static System.Runtime.CompilerServices.Unsafe;
 using static Nethermind.Evm.VirtualMachine;
@@ -25,7 +26,7 @@ internal static partial class EvmInstructions
         /// <summary>
         /// The gas cost for executing the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.VeryLow;
+        virtual static long GasCost(IReleaseSpec spec) => GasCostOf.VeryLow;
 
         /// <summary>
         /// Executes the operation on the provided 256‐bit operand.
@@ -41,7 +42,7 @@ internal static partial class EvmInstructions
     /// which implements <see cref="IOpMath1Param"/>.
     /// </summary>
     /// <typeparam name="TOpMath">A struct implementing <see cref="IOpMath1Param"/> for the specific math operation.</typeparam>
-    /// <param name="_">An unused virtual machine instance.</param>
+    /// <param name="vm">An unused virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the operand is read and where the result is written.</param>
     /// <param name="gasAvailable">Reference to the available gas, reduced by the operation's cost.</param>
     /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
@@ -50,11 +51,11 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.StackUnderflow"/> if the stack is empty.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath1Param<TOpMath>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMath1Param<TOpMath>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpMath : struct, IOpMath1Param
     {
         // Deduct the gas cost associated with the math operation.
-        gasAvailable -= TOpMath.GasCost;
+        gasAvailable -= TOpMath.GasCost(vm.Spec);
 
         // Peek at the top element of the stack without removing it.
         // This avoids an unnecessary pop/push sequence.
@@ -79,6 +80,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpNot : IOpMath1Param
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
         public static Word Operation(Word value) => Vector256.OnesComplement(value);
     }
 
@@ -89,6 +91,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpIsZero : IOpMath1Param
     {
+        public static long GasCost(IReleaseSpec spec) => spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
         public static Word Operation(Word value) => value == default ? OpBitwiseEq.One : default;
     }
 
@@ -98,7 +101,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCLZ : IOpMath1Param
     {
-        public static long GasCost => GasCostOf.Low;
+        public static long GasCost(IReleaseSpec spec) => GasCostOf.Low;
 
         public static Word Operation(Word value) => value == default
             ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
@@ -113,7 +116,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionByte<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.VeryLow;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
 
         // Pop the byte position and the 256-bit word.
         if (!stack.PopUInt256(out UInt256 a))
@@ -152,7 +155,7 @@ internal static partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionSignExtend<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
-        gasAvailable -= GasCostOf.Low;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.Low;
 
         // Pop the index to determine which byte to use for sign extension.
         if (!stack.PopUInt256(out UInt256 a))
