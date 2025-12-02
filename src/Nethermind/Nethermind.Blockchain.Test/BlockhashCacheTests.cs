@@ -329,6 +329,19 @@ public class BlockhashCacheTests
         cache.GetStats().Should().Be(new BlockhashCache.Stats(0, 0, 0));
     }
 
+    [Test]
+    public void Doesnt_cache_null_hashes()
+    {
+        (BlockTree tree, BlockhashCache cache) = BuildTest(100);
+        BlockHeader head = tree.FindHeader(99, BlockTreeLookupOptions.None)!;
+        BlockHeader headMinus4 = tree.FindHeader(95, BlockTreeLookupOptions.None)!;
+        BlockHeader headerOnHeadMinus4 = Build.A.BlockHeader.WithParent(headMinus4).WithHash(null!).TestObject;
+        BlockHeader headerOnHead = Build.A.BlockHeader.WithParent(head).WithHash(null!).TestObject;
+        Hash256? hashOnHeadMinus8 = cache.GetHash(headerOnHeadMinus4, 4);
+        cache.GetHash(headerOnHead, 5).Should().Be(headMinus4.Hash!);
+        hashOnHeadMinus8.Should().Be(cache.GetHash(headerOnHead, 8)!);
+    }
+
     private static (BlockTree, BlockhashCache) BuildTest(int chainLength, IHeaderStore? headerStore = null)
     {
         Block genesis = Build.A.Block.Genesis.TestObject;

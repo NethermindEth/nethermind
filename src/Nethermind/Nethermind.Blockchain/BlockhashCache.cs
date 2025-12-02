@@ -58,8 +58,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                     }
 
                     currentNode = new CacheNode(currentHeader);
-                    needToAdd = true;
-                    needToAddAny = true;
+                    needToAddAny |= needToAdd = currentHeader.Hash is not null;
                 }
             }
 
@@ -102,7 +101,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
         }
 
         int ancestorCount = blocks.Count - 1;
-        if (ancestorCount == FlatCacheLength(blockHeader))
+        if (blockHeader.Hash is not null && ancestorCount == FlatCacheLength(blockHeader))
         {
             hashes = new Hash256[ancestorCount];
             for (int i = 1; i < blocks.Count; i++)
