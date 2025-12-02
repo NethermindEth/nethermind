@@ -27,7 +27,7 @@ public class TaikoHeaderValidator(
 
     private static readonly UInt256 ShastaInitialBaseFee = 25_000_000;
     private static readonly UInt256 MinBaseFeeShasta = 5_000_000;
-    private static readonly UInt256 MaxBaseFeeShasta = UInt256.Parse("1_000_000_000");
+    private static readonly UInt256 MaxBaseFeeShasta = 1_000_000_000;
 
     protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 

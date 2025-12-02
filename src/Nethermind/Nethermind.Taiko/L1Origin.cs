@@ -11,6 +11,7 @@ public class L1Origin(UInt256 blockId,
     long? l1BlockHeight,
     ValueHash256 l1BlockHash,
     int[]? buildPayloadArgsId,
+    bool isForcedInclusion = false,
     int[]? signature = null)
 {
     public UInt256 BlockId { get; set; } = blockId;
@@ -20,6 +21,7 @@ public class L1Origin(UInt256 blockId,
 
     // Taiko uses int-like serializer (Go's default encoding for byte arrays)
     public int[]? BuildPayloadArgsId { get; set; } = buildPayloadArgsId;
+    public bool IsForcedInclusion { get; set; } = isForcedInclusion;
     public int[]? Signature { get; set; } = signature;
 
     /// <summary>
