@@ -51,6 +51,8 @@ public class SnapshotBundle : IDisposable
     private Counter.Child _nodeGetTrieCache;
     private Counter.Child _nodeGetMiss;
     private Counter.Child _nodeGetSelfDestruct;
+    private Counter.Child _accountHintWrite;
+    private Counter.Child _storageHintWrite;
 
     public SnapshotBundle(ArrayPoolList<Snapshot> knownStates,
         IPersistence.IPersistenceReader persistenceReader,
@@ -95,11 +97,12 @@ public class SnapshotBundle : IDisposable
     private void SetupMetric()
     {
         _nodeGetChanged = _snapshotBundleEvents.WithLabels("node_get_changed", _isPrewarmer.ToString());
-        _nodeGetHinted = _snapshotBundleEvents.WithLabels("node_get_hinted", _isPrewarmer.ToString());
         _nodeGetSnapshots = _snapshotBundleEvents.WithLabels("node_get_snapshots", _isPrewarmer.ToString());
         _nodeGetTrieCache = _snapshotBundleEvents.WithLabels("node_get_trie_cache", _isPrewarmer.ToString());
         _nodeGetSelfDestruct = _snapshotBundleEvents.WithLabels("node_get_self_destruct", _isPrewarmer.ToString());
         _nodeGetMiss = _snapshotBundleEvents.WithLabels("node_get_miss", _isPrewarmer.ToString());
+        _accountHintWrite = _snapshotBundleEvents.WithLabels("account_hint_write", _isPrewarmer.ToString());
+        _storageHintWrite = _snapshotBundleEvents.WithLabels("storage_hint_write", _isPrewarmer.ToString());
     }
 
     private bool TryGetAccountInMemory(Address address, out Account? acc)
@@ -322,6 +325,20 @@ public class SnapshotBundle : IDisposable
     {
         Interlocked.Increment(ref _hintSequenceId);
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
+
+        foreach (KeyValuePair<AddressAsKey, Account> acc in _hintResource.Accounts)
+        {
+            if (_selfDestructedAccountAddresses.ContainsKey(acc.Key)) continue;
+            _accountHintWrite.Inc();
+            _changedAccounts.TryAdd(acc.Key, acc.Value);
+        }
+
+        foreach (KeyValuePair<(AddressAsKey, UInt256), byte[]> slot in _hintResource.Slots)
+        {
+            if (_selfDestructedAccountAddresses.ContainsKey(slot.Key.Item1)) continue;
+            _storageHintWrite.Inc();
+            _changedSlots.TryAdd(slot.Key, slot.Value);
+        }
 
         var knownState = new Snapshot(
             from: from,
