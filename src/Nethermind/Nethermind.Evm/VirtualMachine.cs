@@ -1356,7 +1356,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true, exceptionType);
 
     OutOfGas:
-    TGasPolicy.SetOutOfGas(ref gasState);
+        TGasPolicy.SetOutOfGas(ref gasState);
         // Set the exception type to OutOfGas if gas has been exhausted.
         exceptionType = EvmExceptionType.OutOfGas;
     ReturnFailure:
