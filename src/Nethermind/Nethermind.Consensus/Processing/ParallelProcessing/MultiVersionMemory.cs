@@ -208,7 +208,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     public Dictionary<TLocation, TData> Snapshot()
     {
         Dictionary<TLocation, TData> result = new();
-        // need to iterate backwards, as the later transaction writes are the final writes to the same location
+        // need to iterate backwards, as the later transaction writes are the final written to the same location
         for (var index = _data.Length - 1; index >= 0; index--)
         {
             DataDictionary<TLocation, Value> data = _data[index];

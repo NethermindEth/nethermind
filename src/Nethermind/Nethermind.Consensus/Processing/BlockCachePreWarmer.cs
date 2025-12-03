@@ -8,7 +8,6 @@ using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
@@ -89,7 +88,7 @@ public sealed class BlockCachePreWarmer(
         }
         finally
         {
-            // Don't compete task until address warmer is also done.
+            // Don't compete the task until address warmer is also done.
             addressWarmer.Wait();
         }
     }
@@ -217,10 +216,7 @@ public sealed class BlockCachePreWarmer(
     private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer)
         : IThreadPoolWorkItem
     {
-        private readonly Block Block = block;
-        private readonly Hash256 StateRoot = parent.StateRoot;
-        private readonly BlockCachePreWarmer PreWarmer = preWarmer;
-        private readonly ArrayPoolList<AccessList>? SystemTxAccessLists = GetAccessLists(block, spec, systemAccessLists);
+        private readonly ArrayPoolList<AccessList>? _systemTxAccessLists = GetAccessLists(block, spec, systemAccessLists);
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
 
         public void Wait() => _doneEvent.Wait();
@@ -244,11 +240,11 @@ public sealed class BlockCachePreWarmer(
             try
             {
                 if (parallelOptions.CancellationToken.IsCancellationRequested) return;
-                WarmupAddresses(parallelOptions, Block);
+                WarmupAddresses(parallelOptions, block);
             }
             catch (Exception ex)
             {
-                if (PreWarmer._logger.IsDebug) PreWarmer._logger.Error($"DEBUG/ERROR Error pre-warming addresses", ex);
+                if (preWarmer._logger.IsDebug) preWarmer._logger.Error($"DEBUG/ERROR Error pre-warming addresses", ex);
             }
             finally
             {
@@ -260,21 +256,21 @@ public sealed class BlockCachePreWarmer(
         {
             if (parallelOptions.CancellationToken.IsCancellationRequested)
             {
-                SystemTxAccessLists.Dispose();
+                _systemTxAccessLists.Dispose();
                 return;
             }
 
-            ObjectPool<IReadOnlyTxProcessorSource> envPool = PreWarmer._envPool;
+            ObjectPool<IReadOnlyTxProcessorSource> envPool = preWarmer._envPool;
             try
             {
-                if (SystemTxAccessLists is not null)
+                if (_systemTxAccessLists is not null)
                 {
                     IReadOnlyTxProcessorSource? env = envPool.Get();
                     try
                     {
                         using IReadOnlyTxProcessingScope scope = env.Build(parent);
 
-                        foreach (AccessList list in SystemTxAccessLists.AsSpan())
+                        foreach (AccessList list in _systemTxAccessLists.AsSpan())
                         {
                             scope.WorldState.WarmUp(list);
                         }
@@ -282,7 +278,7 @@ public sealed class BlockCachePreWarmer(
                     finally
                     {
                         envPool.Return(env);
-                        SystemTxAccessLists.Dispose();
+                        _systemTxAccessLists.Dispose();
                     }
                 }
 
@@ -330,27 +326,26 @@ public sealed class BlockCachePreWarmer(
     {
         public static Action<AddressWarmingState> FinallyAction { get; } = DisposeThreadState;
 
-        public readonly ObjectPool<IReadOnlyTxProcessorSource> EnvPool = envPool;
         public readonly Block Block = block;
-        public readonly IReadOnlyTxProcessorSource? Env;
+        private readonly IReadOnlyTxProcessorSource? _env;
         public readonly IReadOnlyTxProcessingScope? Scope;
 
-        public AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, BlockHeader parent, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope) : this(envPool, block, parent)
+        private AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, BlockHeader parent, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope) : this(envPool, block, parent)
         {
-            Env = env;
+            _env = env;
             Scope = scope;
         }
 
         public AddressWarmingState InitThreadState()
         {
-            IReadOnlyTxProcessorSource env = EnvPool.Get();
-            return new(EnvPool, Block, parent, env, scope: env.Build(parent));
+            IReadOnlyTxProcessorSource env = envPool.Get();
+            return new(envPool, Block, parent, env, scope: env.Build(parent));
         }
 
         public void Dispose()
         {
             Scope.Dispose();
-            EnvPool.Return(Env);
+            envPool.Return(_env);
         }
 
         private static void DisposeThreadState(AddressWarmingState state) => state.Dispose();
@@ -382,7 +377,7 @@ public sealed class BlockCachePreWarmer(
     private readonly struct BlockState
     {
         private readonly BlockStateSource _src;
-        public readonly IReadOnlyTxProcessorSource Env;
+        private readonly IReadOnlyTxProcessorSource _env;
         public readonly IReadOnlyTxProcessingScope Scope;
 
         public ref readonly ILogger Logger => ref _src.PreWarmer._logger;
@@ -393,15 +388,15 @@ public sealed class BlockCachePreWarmer(
         public BlockState(BlockStateSource src)
         {
             _src = src;
-            Env = src.PreWarmer._envPool.Get();
-            Scope = Env.Build(src.Parent);
+            _env = src.PreWarmer._envPool.Get();
+            Scope = _env.Build(src.Parent);
             Scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(Block.Header, Spec));
         }
 
         public void Dispose()
         {
             Scope.Dispose();
-            _src.PreWarmer._envPool.Return(Env);
+            _src.PreWarmer._envPool.Return(_env);
         }
     }
 }
