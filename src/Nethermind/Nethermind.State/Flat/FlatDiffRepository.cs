@@ -57,7 +57,8 @@ public class FlatDiffRepository : IFlatDiffRepository
         long TrieCacheMemoryTarget = 2_000_000_000,
         bool VerifyWithTrie = false,
         bool ReadWithTrie = false,
-        bool InlineCompaction = false
+        bool InlineCompaction = false,
+        bool DisableTrieWarmer = false
     )
     {
     }

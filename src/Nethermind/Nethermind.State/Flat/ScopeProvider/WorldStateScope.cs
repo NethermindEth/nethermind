@@ -34,6 +34,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
     private readonly ConcurrencyQuota _concurrencyQuota;
     private readonly ITrieStoreTrieCacheWarmer _warmer;
+    private int _hintSequenceId;
 
     public WorldStateScope(
         StateId currentStateId,
@@ -62,6 +63,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         _warmupStateTree.RootHash = currentStateId.stateRoot.ToCommitment();
         _configuration = configuration;
         _logManager = logManager;
+        _hintSequenceId = snapshotBundle.HintSequenceId;
         _warmer = trieCacheWarmer;
         _warmer.OnNewScope();
         _isReadOnly = isReadOnly;
@@ -105,20 +107,23 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
     public void HintGet(Address address, Account? account)
     {
-        _warmer.PushJob(this, address, null, null, _snapshotBundle.HintSequenceId);
+        _warmer.PushJob(this, address, null, null, _hintSequenceId);
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
+    public int HintSequenceId => _hintSequenceId;
 
-    public void WarmUpStateTrie(Address address, int sequenceId)
+    public bool WarmUpStateTrie(Address address, int sequenceId)
     {
-        if (_snapshotBundle.HintSequenceId != sequenceId) return;
+        if (_snapshotBundle.HintSequenceId != sequenceId) return false;
 
         Account? account = _warmupStateTree.Get(address);
         if (account is not null)
         {
-            _snapshotBundle.HintAccountRead(address, account, _snapshotBundle.HintSequenceId);
+            _snapshotBundle.HintAccountRead(address, account, _hintSequenceId);
         }
+
+        return true;
     }
 
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
@@ -296,6 +301,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
             finally
             {
                 scopeExiter.Dispose();
+                scope.IncrementHintSequenceId();
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
@@ -306,5 +312,10 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
             static Account ThrowNullAccount(Address address)
                 => throw new InvalidOperationException($"Account {address} is null when updating storage hash");
         }
+    }
+
+    private void IncrementHintSequenceId()
+    {
+        _hintSequenceId += 1;
     }
 }

@@ -77,7 +77,7 @@ public sealed class SpmcRingBuffer<T>
     /// Returns false if the ring is full.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryEnqueue(T item)
+    public bool TryEnqueue(in T item)
     {
         // Single producer: no CAS needed on tail.
         long tail = _tail;

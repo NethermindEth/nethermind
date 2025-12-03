@@ -23,7 +23,6 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
     private readonly FlatDiffRepository.Configuration _config;
     private readonly ITrieStoreTrieCacheWarmer _trieCacheWarmer;
     private readonly WorldStateScope _scope;
-    private readonly ConcurrentDictionary<UInt256, bool> _wasWarmedUp = new();
 
     public StorageTree(
         WorldStateScope scope,
@@ -50,7 +49,7 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
         _address = address;
 
         // In case its all write.
-        _trieCacheWarmer.PushJob(_scope, null, this, 0, _storageSnapshotBundle.HintSequenceId);
+        _trieCacheWarmer.PushJob(_scope, null, this, 0, _scope.HintSequenceId);
     }
 
     public Hash256 RootHash => _tree.RootHash;
@@ -92,21 +91,21 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
 
     private void WarmUpSlot(UInt256 index)
     {
-        _trieCacheWarmer.PushJob(_scope, null, this, index, _storageSnapshotBundle.HintSequenceId);
+        _trieCacheWarmer.PushJob(_scope, null, this, index, _scope.HintSequenceId);
     }
 
-    public void WarUpStorageTrie(UInt256 index, int sequenceId)
+    public bool WarUpStorageTrie(UInt256 index, int sequenceId)
     {
-        if (sequenceId != _storageSnapshotBundle.HintSequenceId) return;
-        if (!_wasWarmedUp.TryAdd(index, true))
-        {
-            return;
-        }
+        if (_storageSnapshotBundle.HintSequenceId != sequenceId) return false;
+
+        // TODO: Was warmed up
 
         byte[] value = _warmupStorageTree.Get(index);
         if (_storageSnapshotBundle.HintGet(index, value, sequenceId))
         {
         }
+
+        return true;
     }
 
     public byte[] Get(in ValueHash256 hash)

@@ -71,7 +71,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 VerifyWithTrie = config.VerifyWithTrie,
                 ConcurrentCompactor = 1,
                 TrieCacheMemoryTarget = config.TrieCacheMemoryTarget,
-                InlineCompaction = config.InlineCompaction
+                InlineCompaction = config.InlineCompaction,
+                DisableTrieWarmer = config.DisableTrieWarmer
             })
             .AddSingleton<IStateReader, FlatStateReader>();
 

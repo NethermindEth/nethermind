@@ -3,11 +3,9 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Common.Internal;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -25,7 +23,7 @@ public interface ITrieStoreTrieCacheWarmer
         WorldStateScope scope,
         Address? path,
         StorageTree? storageTree,
-        UInt256? index,
+        in UInt256? index,
         int sequenceId);
 
     void OnNewScope();
@@ -33,7 +31,7 @@ public interface ITrieStoreTrieCacheWarmer
 
 public class NoopTrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
 {
-    public void PushJob(WorldStateScope scope, Address? path, StorageTree? storageTree, UInt256? index, int sequenceId)
+    public void PushJob(WorldStateScope scope, Address? path, StorageTree? storageTree, in UInt256? index, int sequenceId)
     {
     }
 
@@ -44,20 +42,20 @@ public class NoopTrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
 
 public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
 {
-    private SpmcRingBuffer<Job> _jobBuffer = new SpmcRingBuffer<Job>(1024);
+    private SpmcRingBuffer<Job> _jobBuffer = new SpmcRingBuffer<Job>(256);
 
     // If path is not null, its an address warmup.
     // if storage tree is not null, its a storage warmup.
+    // So this ideally need to be under 64 byte in size so that it fits within cache line
     private record struct Job(
-        WorldStateScope scope,
+        object scopeOrStorageTree,
         Address? path,
-        StorageTree? storageTree,
-        UInt256? index,
+        UInt256 index,
         int sequenceId);
 
     Task? _warmerJob = null;
     private static Counter _trieWarmEr = Metrics.CreateCounter("triestore_trie_warmer", "hit rate", "type");
-
+    private static Counter.Child _bufferFull = _trieWarmEr.WithLabels("buffer_full");
     private ConcurrentStack<WarmerWorkers> _awaitingWorkers = new ConcurrentStack<WarmerWorkers>();
     private WarmerWorkers? _mainWarmer = null;
 
@@ -88,36 +86,50 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
 
     private static void HandleJob(Job job, bool isMain)
     {
-        (WorldStateScope scope,
+        (object scopeOrStorageTree,
             Address? address,
-            StorageTree? storageTree,
-            UInt256? index,
+            UInt256 index,
             int sequenceId) = job;
 
         try
         {
-
-            if (address is not null)
+            if (scopeOrStorageTree is WorldStateScope scope)
             {
-                scope.WarmUpStateTrie(address, sequenceId);
-                _trieWarmEr.WithLabels("state").Inc();
+                if (scope.WarmUpStateTrie(address, sequenceId))
+                {
+                    _trieWarmEr.WithLabels("state").Inc();
+                }
+                else
+                {
+                    _trieWarmEr.WithLabels("state_skip").Inc();
+                }
             }
             else
             {
-                storageTree.WarUpStorageTrie(index.Value, sequenceId);
-                _trieWarmEr.WithLabels("storage").Inc();
+                StorageTree storageTree = (StorageTree)scopeOrStorageTree;
+                if (storageTree.WarUpStorageTrie(index, sequenceId))
+                {
+                    _trieWarmEr.WithLabels("storage").Inc();
+                }
+                else
+                {
+                    _trieWarmEr.WithLabels("storage_skip").Inc();
+                }
             }
         }
         catch (TrieNodeException)
         {
+            _trieWarmEr.WithLabels("err_trienode").Inc();
             // It can be missing when the warmer lags so much behind that the node is now gone.
         }
         catch (ObjectDisposedException)
         {
+            _trieWarmEr.WithLabels("err_disposed").Inc();
             // Yea... this need to be fixed.
         }
         catch (NullReferenceException)
         {
+            _trieWarmEr.WithLabels("err_null").Inc();
             // Uhh....
         }
     }
@@ -206,10 +218,25 @@ public sealed class TrieStoreTrieCacheWarmer : ITrieStoreTrieCacheWarmer
         WorldStateScope scope,
         Address? path,
         StorageTree? storageTree,
-        UInt256? index,
+        in UInt256? index,
         int sequenceId)
     {
-        if (!_jobBuffer.TryEnqueue(new Job(scope, path, storageTree, index, sequenceId))) return;
+        if (path is not null)
+        {
+            if (!_jobBuffer.TryEnqueue(new Job(scope, path, index.GetValueOrDefault(), sequenceId)))
+            {
+                _bufferFull.Inc();
+                return;
+            }
+        }
+        else
+        {
+            if (!_jobBuffer.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId)))
+            {
+                _bufferFull.Inc();
+                return;
+            }
+        }
 
         WarmerWorkers? mainWarmer = _mainWarmer;
         if (mainWarmer is not null)

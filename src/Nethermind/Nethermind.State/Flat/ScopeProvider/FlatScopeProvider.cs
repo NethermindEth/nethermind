@@ -45,13 +45,19 @@ public class FlatScopeProvider : IWorldStateScopeProvider
         SnapshotBundle snapshotBundle = _flatDiffRepository.GatherReaderAtBaseBlock(currentState);
         if (_trieWarmer is NoopTrieStoreTrieCacheWarmer) snapshotBundle.SetPrewarmer();
 
+        ITrieStoreTrieCacheWarmer warmer = _trieWarmer;
+        if (_configuration.DisableTrieWarmer)
+        {
+            warmer = new NoopTrieStoreTrieCacheWarmer();
+        }
+
         return new WorldStateScope(
             currentState,
             snapshotBundle,
             _codeDb,
             _flatDiffRepository,
             _configuration,
-            _trieWarmer,
+            warmer,
             _logManager,
             _isReadOnly
         );
