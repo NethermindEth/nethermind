@@ -1,30 +1,24 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
-using Org.BouncyCastle.Utilities.Encoders;
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using BlockRoundInfo = Nethermind.Xdc.Types.BlockRoundInfo;
 
 namespace Nethermind.Xdc;
+
 internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertificate>
 {
-    private XdcBlockInfoDecoder _blockInfoDecoder = new XdcBlockInfoDecoder();
+    private readonly XdcBlockInfoDecoder _blockInfoDecoder = new XdcBlockInfoDecoder();
     protected override QuorumCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
-            return null;
         int sequenceLength = decoderContext.ReadSequenceLength();
+        if (sequenceLength == 0)
+            return null;
         int endPosition = decoderContext.Position + sequenceLength;
 
         BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(ref decoderContext, rlpBehaviors);
@@ -43,16 +37,19 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
         }
 
         ulong gap = decoderContext.DecodeULong();
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+        {
+            decoderContext.Check(endPosition);
+        }
         return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
     protected override QuorumCertificate DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (rlpStream.IsNextItemNull())
-            return null;
         int sequenceLength = rlpStream.ReadSequenceLength();
+        if (sequenceLength == 0)
+            return null;
         int endPosition = rlpStream.Position + sequenceLength;
-
         BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(rlpStream, rlpBehaviors);
 
         byte[][]? signatureBytes = rlpStream.DecodeByteArrays();
@@ -69,6 +66,10 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
         }
 
         ulong gap = rlpStream.DecodeULong();
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+        {
+            rlpStream.Check(endPosition);
+        }
         return new QuorumCertificate(blockInfo, signatures, gap);
     }
 

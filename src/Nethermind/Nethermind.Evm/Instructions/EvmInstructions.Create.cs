@@ -136,7 +136,8 @@ internal static partial class EvmInstructions
         }
 
         // Load the initialization code from memory based on the specified position and length.
-        ReadOnlyMemory<byte> initCode = vm.EvmState.Memory.Load(in memoryPositionOfInitCode, in initCodeLength);
+        if (!vm.EvmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
+            goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
@@ -207,6 +208,13 @@ internal static partial class EvmInstructions
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
             goto None;
+        }
+
+        // If the contract address refers to a dead account, clear its storage before creation.
+        if (state.IsDeadAccount(contractAddress))
+        {
+            // Note: Seems to be needed on block 21827914 for some reason
+            state.ClearStorage(contractAddress);
         }
 
         // Deduct the transfer value from the executing account's balance.

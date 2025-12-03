@@ -38,7 +38,7 @@ public partial class PatriciaTree
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public byte GetPathNibbble(int index)
+        public byte GetPathNibble(int index)
         {
             int offset = index / 2;
             Span<byte> theSpan = Path.BytesAsSpan;
@@ -339,12 +339,12 @@ public partial class PatriciaTree
         Span<int> indexes)
     {
         // You know, I originally used another buffer to keep track of the entries per nibble. then ChatGPT gave me this.
-        // I dont know what is worst, that ChatGPT beat me to it, or that it is simpler.
+        // I don't know what is worse, that ChatGPT beat me to it, or that it is simpler.
 
         Span<int> counts = stackalloc int[TrieNode.BranchesCount];
         for (int i = 0; i < entries.Length; i++)
         {
-            byte nib = entries[i].GetPathNibbble(pathIndex);
+            byte nib = entries[i].GetPathNibble(pathIndex);
             counts[nib]++;
         }
 
@@ -365,7 +365,7 @@ public partial class PatriciaTree
 
         for (int i = 0; i < entries.Length; i++)
         {
-            int nib = entries[i].GetPathNibbble(pathIndex);
+            int nib = entries[i].GetPathNibble(pathIndex);
             sortTarget[starts[nib]++] = entries[i];
         }
 
@@ -384,7 +384,7 @@ public partial class PatriciaTree
         Span<int> counts = stackalloc int[TrieNode.BranchesCount];
         for (int i = 0; i < entries.Length; i++)
         {
-            byte nib = entries[i].GetPathNibbble(pathIndex);
+            byte nib = entries[i].GetPathNibble(pathIndex);
             counts[nib]++;
             usedMask |= 1 << nib;
         }
@@ -405,7 +405,7 @@ public partial class PatriciaTree
 
         for (int i = 0; i < entries.Length; i++)
         {
-            int nib = entries[i].GetPathNibbble(pathIndex);
+            int nib = entries[i].GetPathNibble(pathIndex);
             sortTarget[starts[nib]++] = entries[i];
         }
 
@@ -433,7 +433,7 @@ public partial class PatriciaTree
 
         for (int i = 0; i < entries.Length && curIdx < TrieNode.BranchesCount; i++)
         {
-            var currentNib = entries[i].GetPathNibbble(pathIndex);
+            var currentNib = entries[i].GetPathNibble(pathIndex);
 
             if (currentNib > curIdx)
             {
@@ -463,7 +463,7 @@ public partial class PatriciaTree
         Span<int> his = stackalloc int[TrieNode.BranchesCount];
         his.Fill(n);
 
-        int nib = entries[0].GetPathNibbble(pathIndex);
+        int nib = entries[0].GetPathNibble(pathIndex);
 
         // First nib is free
         int usedMask = 0;
@@ -479,7 +479,7 @@ public partial class PatriciaTree
             while (lo < hi)
             {
                 int mid = (int)((uint)(lo + hi) >> 1);
-                int midnib = entries[mid].GetPathNibbble(pathIndex);
+                int midnib = entries[mid].GetPathNibble(pathIndex);
                 if (midnib < nib)
                 {
                     lo = mid + 1;
@@ -495,7 +495,7 @@ public partial class PatriciaTree
             if (lo == n) break;
 
             // Note: The nib can be different, but its fine as it automatically skip.
-            nib = entries[lo].GetPathNibbble(pathIndex);
+            nib = entries[lo].GetPathNibble(pathIndex);
             usedMask |= 1 << nib;
             indexes[nib] = lo;
 

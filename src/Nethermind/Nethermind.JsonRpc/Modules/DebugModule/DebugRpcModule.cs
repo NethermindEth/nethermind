@@ -415,9 +415,9 @@ public class DebugRpcModule(
         return ResultWrapper<byte[]>.Success(rlp.Bytes);
     }
 
-    public Task<ResultWrapper<SyncReportSymmary>> debug_getSyncStage()
+    public Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage()
     {
-        return ResultWrapper<SyncReportSymmary>.Success(debugBridge.GetCurrentSyncStage());
+        return ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());
     }
 
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)

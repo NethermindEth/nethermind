@@ -12,9 +12,9 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
-using System;
 
 namespace Nethermind.Xdc;
+
 internal class XdcBlockTree : BlockTree
 {
     private const int MaxSearchDepth = 1024;
@@ -53,7 +53,7 @@ internal class XdcBlockTree : BlockTree
         }
         if (header.Number - finalizedBlockInfo.BlockNumber > MaxSearchDepth)
         {
-            //Theoretically very deep reorgs could happen, if the chain doesnt finalize for a long time
+            //Theoretically very deep reorgs could happen, if the chain doesn't finalize for a long time
             //TODO Maybe this needs to be revisited later
             Logger.Warn($"Deep reorg past {MaxSearchDepth} blocks detected! Rejecting block {header.ToString(BlockHeader.Format.Full)}");
             return AddBlockResult.InvalidBlock;

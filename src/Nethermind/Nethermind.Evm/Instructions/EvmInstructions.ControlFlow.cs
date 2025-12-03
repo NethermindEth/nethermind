@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
+
 using Int256;
 
 internal static partial class EvmInstructions
@@ -172,13 +173,13 @@ internal static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
-        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
+        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length) ||
+            !vm.EvmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
         {
             goto OutOfGas;
         }
 
-        // Copy the specified memory region as return data.
-        vm.ReturnData = vm.EvmState.Memory.Load(in position, in length).ToArray();
+        vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.Revert;
     // Jump forward to be unpredicted by the branch predictor.

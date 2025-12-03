@@ -37,36 +37,36 @@ public class OverlayTrieStoreTests
         ITrieStore overlayStore = new OverlayTrieStore(readOnlyDbProvider.GetDb<IDb>(DbNames.State), existingStore.AsReadOnly());
 
         // Modify the overlay tree
-        PatriciaTree overlayedTree = new PatriciaTree(overlayStore, LimboLogs.Instance);
-        overlayedTree.RootHash = originalRoot;
-        overlayedTree.Get(TestItem.Keccaks[0].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[0].BytesToArray());
-        overlayedTree.Get(TestItem.Keccaks[1].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[1].BytesToArray());
-        overlayedTree.Set(TestItem.Keccaks[2].Bytes, TestItem.Keccaks[2].BytesToArray());
-        overlayedTree.Set(TestItem.Keccaks[3].Bytes, TestItem.Keccaks[3].BytesToArray());
-        overlayedTree.Commit();
-        Hash256 newRoot = overlayedTree.RootHash;
+        PatriciaTree overlaidTree = new PatriciaTree(overlayStore, LimboLogs.Instance);
+        overlaidTree.RootHash = originalRoot;
+        overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[0].BytesToArray());
+        overlaidTree.Get(TestItem.Keccaks[1].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[1].BytesToArray());
+        overlaidTree.Set(TestItem.Keccaks[2].Bytes, TestItem.Keccaks[2].BytesToArray());
+        overlaidTree.Set(TestItem.Keccaks[3].Bytes, TestItem.Keccaks[3].BytesToArray());
+        overlaidTree.Commit();
+        Hash256 newRoot = overlaidTree.RootHash;
 
         // Verify that the db is modified
         readOnlyDbProvider.GetDb<IDb>(DbNames.State).GetAllKeys().Count().Should().NotBe(originalKeyCount);
 
         // It can read the modified db
-        overlayedTree = new PatriciaTree(overlayStore, LimboLogs.Instance);
-        overlayedTree.RootHash = newRoot;
-        overlayedTree.Get(TestItem.Keccaks[0].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[0].BytesToArray());
-        overlayedTree.Get(TestItem.Keccaks[1].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[1].BytesToArray());
-        overlayedTree.Get(TestItem.Keccaks[2].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[2].BytesToArray());
-        overlayedTree.Get(TestItem.Keccaks[3].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[3].BytesToArray());
+        overlaidTree = new PatriciaTree(overlayStore, LimboLogs.Instance);
+        overlaidTree.RootHash = newRoot;
+        overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[0].BytesToArray());
+        overlaidTree.Get(TestItem.Keccaks[1].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[1].BytesToArray());
+        overlaidTree.Get(TestItem.Keccaks[2].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[2].BytesToArray());
+        overlaidTree.Get(TestItem.Keccaks[3].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[3].BytesToArray());
 
         // Now we clear it
         readOnlyDbProvider.ClearTempChanges();
 
-        // It should throw because the overlayed keys are now missing.
+        // It should throw because the overlaid keys are now missing.
         readOnlyDbProvider.GetDb<IDb>(DbNames.State).GetAllKeys().Count().Should().Be(originalKeyCount);
-        overlayedTree = new PatriciaTree(overlayStore, LimboLogs.Instance);
+        overlaidTree = new PatriciaTree(overlayStore, LimboLogs.Instance);
         Action act = () =>
         {
-            overlayedTree.RootHash = newRoot;
-            overlayedTree.Get(TestItem.Keccaks[0].Bytes).ToArray().Should()
+            overlaidTree.RootHash = newRoot;
+            overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray().Should()
                 .BeEquivalentTo(TestItem.Keccaks[0].BytesToArray());
         };
         act.Should().Throw<MissingTrieNodeException>(); // The root is now missing.
