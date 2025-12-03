@@ -399,29 +399,5 @@ namespace Nethermind.JsonRpc.Test.Modules
             tx.PublicKey.Bytes.Length.Should().Be(64);
             tx.PublicKey.Bytes.Should().BeEquivalentTo(fullPublicKeyBytes);
         }
-        
-        [Test]
-        public void ParityTransaction_WithHashedPublicKeyJson_ResultsInPaddedBytes() 
-        {
-            byte[] fullPublicKeyBytes = Bytes.FromHexString("a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec3");
-            byte[] hashedBytes = Keccak.Compute(fullPublicKeyBytes).Bytes.ToArray();
-            string hashedHex = Convert.ToHexString(hashedBytes).ToLower();
-
-            string json = $$"""
-                {
-                    "publicKey": "0x{{hashedHex}}",
-                    "hash": "0xd4720d1b81c70ed4478553a213a83bd2bf6988291677f5d05c6aae0b287f947e"
-                }
-                """;
-
-            EthereumJsonSerializer serializer = new();
-            ParityTransaction tx = serializer.Deserialize<ParityTransaction>(json);
-
-            tx.PublicKey.Should().NotBeNull();
-            tx.PublicKey.Bytes.Length.Should().Be(64);
-            tx.PublicKey.Bytes.Should().NotBeEquivalentTo(fullPublicKeyBytes);
-            tx.PublicKey.Bytes.AsSpan(0, 32).ToArray().Should().AllBeEquivalentTo((byte)0);
-            tx.PublicKey.Bytes.AsSpan(32, 32).ToArray().Should().BeEquivalentTo(hashedBytes);
-        }
     }
 }

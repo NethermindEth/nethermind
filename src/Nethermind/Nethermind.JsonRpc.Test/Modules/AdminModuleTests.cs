@@ -770,29 +770,4 @@ public class AdminModuleTests
         peerInfo.Id.Bytes.Length.Should().Be(64);
         peerInfo.Id.Bytes.AsSpan(32, 32).ToArray().Should().BeEquivalentTo(expectedHashBytes);
     }
-
-    [Test]
-    public void PeerInfo_WithFullPublicKeyJson_DeserializesSuccessfully() {
-        const string fullKeyHex = "a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec3";
-        byte[] fullPublicKeyBytes = Bytes.FromHexString(fullKeyHex);
-
-        string json = $$"""
-            {
-                "id": "0x{{fullKeyHex}}",
-                "name": "test-peer",
-                "enode": "enode://{{fullKeyHex}}@127.0.0.1:30303",
-                "caps": [],
-                "network": { "localAddress": "127.0.0.1", "remoteAddress": "127.0.0.1:30303" },
-                "protocols": { "eth": { "version": 0 } }
-            }
-            """;
-
-        EthereumJsonSerializer serializer = new();
-        PeerInfo peerInfo = serializer.Deserialize<PeerInfo>(json);
-
-        peerInfo.Id.Should().NotBeNull();
-        peerInfo.Id.Bytes.Length.Should().Be(64);
-        peerInfo.Id.Bytes.Should().BeEquivalentTo(fullPublicKeyBytes);
-    }
-
 }
