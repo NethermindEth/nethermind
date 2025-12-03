@@ -343,21 +343,29 @@ public class BlockhashCacheTests
     }
 
     [Test]
-    public async Task Prefetch_with_null_hash_does_not_cache()
+    public async Task Prefetch_with_null_hash_does_not_cache([Values] bool prefetchParent)
     {
         (BlockTree tree, BlockhashCache cache) = BuildTest(10);
 
         BlockHeader parent = tree.FindHeader(9, BlockTreeLookupOptions.None)!;
-        await cache.Prefetch(parent);
+        if (prefetchParent)
+        {
+            await cache.Prefetch(parent);
+        }
+
         int cacheCountBefore = cache.GetStats().FlatCache;
 
         BlockHeader production = Build.A.BlockHeader.WithParent(parent).WithNumber(10).TestObject;
         production.Hash = null;
-        Hash256[]? hashes = await cache.Prefetch(production);
+        Hash256[] hashes = (await cache.Prefetch(production))!;
 
-        hashes![0].Should().BeNull();
-        hashes[1].Should().Be(parent.Hash!);
-        cache.GetStats().FlatCache.Should().Be(cacheCountBefore);
+        hashes.Should().NotBeNull();
+        hashes[0].Should().Be(parent.Hash!);
+
+        if (prefetchParent)
+        {
+            cache.GetStats().FlatCache.Should().Be(cacheCountBefore);
+        }
     }
 
     private static (BlockTree, BlockhashCache) BuildTest(int chainLength, IHeaderStore? headerStore = null)

@@ -101,14 +101,18 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
         }
 
         int ancestorCount = blocks.Count - 1;
-        if (blockHeader.Hash is not null && ancestorCount == FlatCacheLength(blockHeader))
+        if (ancestorCount == FlatCacheLength(blockHeader))
         {
             hashes = new Hash256[ancestorCount];
             for (int i = 1; i < blocks.Count; i++)
             {
                 hashes[i - 1] = blocks[i].Node.Hash;
             }
-            _flatCache.Set(blockHeader.Hash, hashes);
+
+            if (blockHeader.Hash is not null)
+            {
+                _flatCache.Set(blockHeader.Hash, hashes);
+            }
         }
 
         int index = depth - skipped;
