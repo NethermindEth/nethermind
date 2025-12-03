@@ -27,7 +27,7 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
 
         Type tApi = typeof(TApi);
 
-        BindingFlags flag = BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public;
+        BindingFlags flag = BindingFlags.Instance | BindingFlags.Public;
         if (directlyDeclaredOnly)
             flag |= BindingFlags.DeclaredOnly;
 
