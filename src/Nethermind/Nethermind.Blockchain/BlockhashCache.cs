@@ -129,7 +129,9 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             {
                 if (!cancellationToken.IsCancellationRequested)
                 {
-                    if (!_flatCache.TryGet(blockHeader.Hash, out hashes))
+                    bool emptyHash = blockHeader.Hash is null;
+
+                    if (emptyHash || !_flatCache.TryGet(blockHeader.Hash, out hashes))
                     {
                         if (_flatCache.TryGet(blockHeader.ParentHash, out Hash256[] parentHashes))
                         {
@@ -137,7 +139,10 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                             hashes = new Hash256[length];
                             hashes[0] = blockHeader.ParentHash;
                             Array.Copy(parentHashes, 0, hashes, 1, Math.Min(length - 1, MaxDepth - 1));
-                            _flatCache.Set(blockHeader.Hash, hashes);
+                            if (!emptyHash)
+                            {
+                                _flatCache.Set(blockHeader.Hash, hashes);
+                            }
                         }
                         else
                         {
