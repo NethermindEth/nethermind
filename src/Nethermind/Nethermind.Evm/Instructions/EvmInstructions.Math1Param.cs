@@ -9,7 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.Gas;
 using Nethermind.Int256;
 using static System.Runtime.CompilerServices.Unsafe;
-using VM = Nethermind.Evm.VirtualMachine<Nethermind.Evm.Gas.SimpleGasPolicy>;
+using static Nethermind.Evm.VirtualMachine<Nethermind.Evm.Gas.SimpleGasPolicy>;
 
 namespace Nethermind.Evm;
 
@@ -135,7 +135,7 @@ internal static partial class EvmInstructions
         Span<byte> bytes = stack.PopWord256();
 
         // If the position is out-of-range, push zero.
-        if (a >= VM.BigInt32)
+        if (a >= BigInt32)
         {
             stack.PushZero<TTracingInst>();
         }
@@ -174,7 +174,7 @@ internal static partial class EvmInstructions
         // Pop the index to determine which byte to use for sign extension.
         if (!stack.PopUInt256(out UInt256 a))
             goto StackUnderflow;
-        if (a >= VM.BigInt32)
+        if (a >= BigInt32)
         {
             // If the index is out-of-range, no extension is needed.
             if (!stack.EnsureDepth(1))
@@ -192,12 +192,12 @@ internal static partial class EvmInstructions
         if (sign >= 0)
         {
             // Fill with zero bytes.
-            VM.BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
+            BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
         }
         else
         {
             // Fill with 0xFF bytes.
-            VM.BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
+            BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
         }
 
         return EvmExceptionType.None;

@@ -7,7 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Gas;
 using static System.Runtime.CompilerServices.Unsafe;
-using VM = Nethermind.Evm.VirtualMachine<Nethermind.Evm.Gas.SimpleGasPolicy>;
+using static Nethermind.Evm.VirtualMachine<Nethermind.Evm.Gas.SimpleGasPolicy>;
 
 namespace Nethermind.Evm;
 
@@ -151,10 +151,10 @@ internal static partial class EvmInstructions
                 // Division by zero: result is zero.
                 result = default;
             }
-            else if (As<UInt256, Int256>(ref AsRef(in b)) == Int256.MinusOne && a == VM.P255)
+            else if (As<UInt256, Int256>(ref AsRef(in b)) == Int256.MinusOne && a == P255)
             {
                 // Special overflow case: when a equals P255 (a specific constant) and divisor is -1.
-                result = VM.P255;
+                result = P255;
             }
             else
             {

@@ -33,10 +33,10 @@ namespace Nethermind.Evm;
 using Int256;
 
 /// <summary>
-/// Ethereum standard virtual machine using simple single-dimensional gas policy.
-/// This is the default VM for Ethereum mainnet and testnets.
+/// Backward-compatible alias for VirtualMachine with simple single-dimensional gas.
+/// Allows existing code to extend VirtualMachine without specifying a gas policy.
 /// </summary>
-public sealed class EthereumVirtualMachine(
+public class VirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     ILogManager? logManager

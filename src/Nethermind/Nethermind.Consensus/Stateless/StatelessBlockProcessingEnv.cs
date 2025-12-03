@@ -15,6 +15,8 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.State;
+using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -70,7 +72,7 @@ public class StatelessBlockProcessingEnv(
     private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockhashCache blockhashCache)
     {
         BlockhashProvider blockhashProvider = new(blockhashCache, state, logManager);
-        EthereumVirtualMachine vm = new(blockhashProvider, specProvider, logManager);
+        VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
         return new TransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
     }
 }

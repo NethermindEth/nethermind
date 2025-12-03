@@ -8,7 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.Gas;
-using VM = Nethermind.Evm.VirtualMachine<Nethermind.Evm.Gas.SimpleGasPolicy>;
+using static Nethermind.Evm.VirtualMachine<Nethermind.Evm.Gas.SimpleGasPolicy>;
 
 namespace Nethermind.Evm;
 

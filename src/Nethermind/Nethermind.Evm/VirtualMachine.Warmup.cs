@@ -30,7 +30,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
-        EthereumVirtualMachine vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
+        VirtualMachine vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
 
         byte[] bytecode = new byte[64];
@@ -149,7 +149,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         codeToDeploy.Add((byte)Instruction.POP);
     }
 
-    private static void RunOpCodes<TTracingInst>(EthereumVirtualMachine vm, IWorldState state, EvmState evmState,
+    private static void RunOpCodes<TTracingInst>(VirtualMachine vm, IWorldState state, EvmState evmState,
         IReleaseSpec spec)
         where TTracingInst : struct, IFlag
     {

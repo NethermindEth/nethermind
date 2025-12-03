@@ -54,8 +54,8 @@ public static class EvmCalculations
     /// <param name="gasState">The gas state to update.</param>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="address">The target account address.</param>
-    /// <param name="chargeForWarm">If true, applies the warm read gas cost even if the account is warm.</param>
     /// <param name="instruction">The instruction being executed.</param>
+    /// <param name="chargeForWarm">If true, applies the warm read gas cost even if the account is warm.</param>
     /// <returns>True if the gas charge was successful; otherwise false.</returns>
     public static bool ChargeAccountAccessGas<TGasPolicy>(
         ref GasState gasState,
@@ -65,38 +65,41 @@ public static class EvmCalculations
         bool chargeForWarm = true)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        bool result = true;
         IReleaseSpec spec = vm.Spec;
-        if (!spec.UseHotAndColdStorage)
-            return true;
-
-        EvmState vmState = vm.EvmState;
-        ref readonly StackAccessTracker accessTracker = ref vmState.AccessTracker;
-
-        if (vm.TxTracer.IsTracingAccess)
-            accessTracker.WarmUp(address);
-
-        if (!spec.IsPrecompile(address) && accessTracker.WarmUp(address))
+        if (spec.UseHotAndColdStorage)
         {
-            TGasPolicy.ConsumeGas(ref gasState, GasCostOf.ColdAccountAccess, instruction);
-            return TGasPolicy.GetRemainingGas(in gasState) >= 0;
+            EvmState vmState = vm.EvmState;
+            if (vm.TxTracer.IsTracingAccess)
+            {
+                // Ensure that tracing simulates access-list behavior.
+                vmState.AccessTracker.WarmUp(address);
+            }
+
+            // If the account is cold (and not a precompile), charge the cold access cost.
+            if (!spec.IsPrecompile(address) && vmState.AccessTracker.WarmUp(address))
+            {
+                TGasPolicy.ConsumeGas(ref gasState, GasCostOf.ColdAccountAccess, instruction);
+                result = TGasPolicy.GetRemainingGas(in gasState) >= 0;
+            }
+            else if (chargeForWarm)
+            {
+                // Otherwise, if warm access should be charged, apply the warm read cost.
+                TGasPolicy.ConsumeGas(ref gasState, GasCostOf.WarmStateRead, instruction);
+                result = TGasPolicy.GetRemainingGas(in gasState) >= 0;
+            }
         }
 
-        if (!chargeForWarm)
-            return true;
-        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.WarmStateRead, instruction);
-        return TGasPolicy.GetRemainingGas(in gasState) >= 0;
+        return result;
     }
 
 
     /// <summary>
     /// Charges the appropriate gas cost for accessing a storage cell, taking into account whether the access is cold or warm.
-    /// </summary>
     /// <para>
     /// For cold storage accesses (or if not previously warmed up), a higher gas cost is applied. For warm accesses during SLOAD,
     /// a lower cost is deducted.
     /// </para>
-    /// <summary>
-    /// Charges gas for accessing a storage cell using the gas policy abstraction.
     /// </summary>
     /// <typeparam name="TGasPolicy">The gas policy type.</typeparam>
     /// <param name="gasState">The gas state to update.</param>
@@ -115,27 +118,34 @@ public static class EvmCalculations
         Instruction instruction)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        if (!spec.UseHotAndColdStorage)
-            return true;
-
         EvmState vmState = vm.EvmState;
-        ref readonly StackAccessTracker accessTracker = ref vmState.AccessTracker;
+        bool result = true;
 
-        if (vm.TxTracer.IsTracingAccess) accessTracker.WarmUp(in storageCell);
-
-        // If the storage cell is still cold, apply the higher cold access cost and mark it as warm.
-        if (accessTracker.WarmUp(in storageCell))
+        // If the spec requires hot/cold storage tracking, determine if extra gas should be charged.
+        if (spec.UseHotAndColdStorage)
         {
-            TGasPolicy.ConsumeGas(ref gasState, GasCostOf.ColdSLoad, instruction);
-            return TGasPolicy.GetRemainingGas(in gasState) >= 0;
+            // When tracing access, ensure the storage cell is marked as warm to simulate inclusion in the access list.
+            ref readonly StackAccessTracker accessTracker = ref vmState.AccessTracker;
+            if (vm.TxTracer.IsTracingAccess)
+            {
+                accessTracker.WarmUp(in storageCell);
+            }
+
+            // If the storage cell is still cold, apply the higher cold access cost and mark it as warm.
+            if (accessTracker.WarmUp(in storageCell))
+            {
+                TGasPolicy.ConsumeGas(ref gasState, GasCostOf.ColdSLoad, instruction);
+                result = TGasPolicy.GetRemainingGas(in gasState) >= 0;
+            }
+            // For SLOAD operations on already warmed-up storage, apply a lower warm-read cost.
+            else if (storageAccessType == StorageAccessType.SLOAD)
+            {
+                TGasPolicy.ConsumeGas(ref gasState, GasCostOf.WarmStateRead, instruction);
+                result = TGasPolicy.GetRemainingGas(in gasState) >= 0;
+            }
         }
-        // For SLOAD operations on already warmed-up storage, apply a lower warm-read cost.
 
-        if (storageAccessType != StorageAccessType.SLOAD)
-            return true;
-        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.WarmStateRead, instruction);
-        return TGasPolicy.GetRemainingGas(in gasState) >= 0;
-
+        return result;
     }
 
     /// <summary>

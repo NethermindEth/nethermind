@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.Gas;
 using Nethermind.Evm.State;
-using VM = Nethermind.Evm.VirtualMachine<Nethermind.Evm.Gas.SimpleGasPolicy>;
+using static Nethermind.Evm.VirtualMachine<Nethermind.Evm.Gas.SimpleGasPolicy>;
 
 namespace Nethermind.Evm;
 
@@ -710,7 +710,7 @@ internal static partial class EvmInstructions
             // If the code passes EOF validation, push the EOF-specific hash.
             if (EofValidator.IsEof(code, out _))
             {
-                stack.PushBytes<TTracingInst>(VM.EofHash256);
+                stack.PushBytes<TTracingInst>(EofHash256);
             }
             else
             {
@@ -867,7 +867,7 @@ internal static partial class EvmInstructions
             vm.BlockHashProvider.GetBlockhash(header, number, vm.Spec);
 
         // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
-        stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : VM.BytesZero32);
+        stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);
 
         // If block hash tracing is enabled and a valid block hash was obtained, report it.
         if (vm.TxTracer.IsTracingBlockHash && blockHash is not null)
