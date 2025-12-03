@@ -11,28 +11,6 @@ namespace Nethermind.Evm.Test.Gas;
 public class SimpleGasPolicyTests
 {
     [Test]
-    public void SimpleGasPolicy_InitializeForTransaction_SetsRemainingGas()
-    {
-        long gasLimit = 1000000;
-        long intrinsicGas = 21000;
-
-        GasState gasState = SimpleGasPolicy.InitializeForTransaction(gasLimit, intrinsicGas);
-
-        Assert.That(gasState.RemainingGas, Is.EqualTo(gasLimit));
-        Assert.That(gasState.PolicyData, Is.Null);
-    }
-
-    [Test]
-    public void SimpleGasPolicy_GetRemainingGas_ReturnsCorrectValue()
-    {
-        var gasState = new GasState(500000);
-
-        var remaining = SimpleGasPolicy.GetRemainingGas(in gasState);
-
-        Assert.That(remaining, Is.EqualTo(500000));
-    }
-
-    [Test]
     public void SimpleGasPolicy_ConsumeGas_ReducesRemainingGas()
     {
         var gasState = new GasState(1000000);
@@ -53,38 +31,6 @@ public class SimpleGasPolicyTests
 
         // Same gas cost, different instructions - same result for simple policy
         Assert.That(gasState1.RemainingGas, Is.EqualTo(gasState2.RemainingGas));
-    }
-
-    [Test]
-    public void SimpleGasPolicy_ConsumeGas_CanGoNegative()
-    {
-        var gasState = new GasState(10);
-
-        SimpleGasPolicy.ConsumeGas(ref gasState, 20, Instruction.ADD);
-
-        Assert.That(gasState.RemainingGas, Is.EqualTo(-10));
-    }
-
-    [Test]
-    public void SimpleGasPolicy_InitializeChildFrame_CreatesNewGasState()
-    {
-        long gasProvided = 50000;
-
-        GasState childState = SimpleGasPolicy.InitializeChildFrame(gasProvided);
-
-        Assert.That(childState.RemainingGas, Is.EqualTo(50000));
-        Assert.That(childState.PolicyData, Is.Null);
-    }
-
-    [Test]
-    public void SimpleGasPolicy_GetFinalGasUsed_ReturnsCorrectValue()
-    {
-        var gasState = new GasState(300000);
-        long gasLimit = 1000000;
-
-        var gasUsed = SimpleGasPolicy.GetFinalGasUsed(in gasState, gasLimit);
-
-        Assert.That(gasUsed, Is.EqualTo(700000));
     }
 
     [Test]

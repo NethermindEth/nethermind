@@ -51,13 +51,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract void SetOutOfGas(ref GasState gasState);
 
     /// <summary>
-    /// Initialize the gas state for a child call frame (CALL, DELEGATECALL, STATICCALL, CREATE, CREATE2).
-    /// </summary>
-    /// <param name="gasProvided">The amount of gas provided to the child frame</param>
-    /// <returns>New gas state for the child frame</returns>
-    static abstract GasState InitializeChildFrame(long gasProvided);
-
-    /// <summary>
     /// Finalize the gas state by copying the accumulated refund from EvmState.
     /// Called at transaction end before GetReceiptData.
     /// For simple policies this is a no-op (refund used directly from EvmState).

@@ -786,9 +786,6 @@ internal static partial class EvmInstructions
             value: in value,
             inputData: in callData);
 
-        // Initialize child frame gas state with policy-specific data (e.g., multigas)
-        GasState childGasState = TGasPolicy.InitializeChildFrame(callGas);
-
         vm.ReturnData = EvmState.RentFrame(
             gasAvailable: callGas,
             outputDestination: 0,
@@ -798,8 +795,7 @@ internal static partial class EvmInstructions
             isCreateOnPreExistingAccount: accountExists,
             env: in callEnv,
             stateForAccessLists: in vm.EvmState.AccessTracker,
-            in snapshot,
-            frameGasState: childGasState);
+            in snapshot);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -1054,9 +1050,6 @@ internal static partial class EvmInstructions
             value: in callValue,
             inputData: in callData);
 
-        // Initialize child frame gas state with policy-specific data (e.g., multigas)
-        GasState childGasState = TGasPolicy.InitializeChildFrame(callGas);
-
         vm.ReturnData = EvmState.RentFrame(
             gasAvailable: callGas,
             outputDestination: 0,
@@ -1066,8 +1059,7 @@ internal static partial class EvmInstructions
             isCreateOnPreExistingAccount: false,
             env: in callEnv,
             stateForAccessLists: in vm.EvmState.AccessTracker,
-            in snapshot,
-            frameGasState: childGasState);
+            in snapshot);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

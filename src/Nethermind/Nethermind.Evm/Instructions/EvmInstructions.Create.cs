@@ -239,9 +239,6 @@ internal static partial class EvmInstructions
             value: in value,
             inputData: in _emptyMemory);
 
-        // Initialize child frame gas state with policy-specific data (e.g., multigas)
-        GasState childGasState = TGasPolicy.InitializeChildFrame(callGas);
-
         // Rent a new frame to run the initialization code in the new execution environment.
         vm.ReturnData = EvmState.RentFrame(
             gasAvailable: callGas,
@@ -252,8 +249,7 @@ internal static partial class EvmInstructions
             isCreateOnPreExistingAccount: accountExists,
             env: in callEnv,
             stateForAccessLists: in vm.EvmState.AccessTracker,
-            in snapshot,
-            frameGasState: childGasState);
+            in snapshot);
     None:
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

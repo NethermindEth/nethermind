@@ -65,26 +65,6 @@ public readonly struct SimpleGasPolicy : IGasPolicy<SimpleGasPolicy>
     }
 
     /// <summary>
-    /// Initialize child call frame gas state.
-    /// Simple policy: child gets its own gas state with gasProvided.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static GasState InitializeChildFrame(long gasProvided)
-    {
-        return new GasState(gasProvided);
-    }
-
-    /// <summary>
-    /// Get final gas used for transaction receipt.
-    /// Simple policy: gasLimit minus remaining gas.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long GetFinalGasUsed(in GasState gasState, long gasLimit)
-    {
-        return gasLimit - gasState.RemainingGas;
-    }
-
-    /// <summary>
     /// Finalize gas state with accumulated refund.
     /// Simple policy: no-op (refund is used directly from EvmState).
     /// </summary>

@@ -522,8 +522,8 @@ internal static partial class EvmInstructions
             {
                 if (currentIsZero)
                 {
-                    if (!EvmCalculations.UpdateGas<TGasPolicy>(ref gasState, GasCostOf.SSet, Instruction.SSTORE)
-                    goto OutOfGas;
+                    if (!EvmCalculations.UpdateGas<TGasPolicy>(ref gasState, GasCostOf.SSet, Instruction.SSTORE))
+                        goto OutOfGas;
                 }
                 else
                 {
