@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -769,7 +768,7 @@ public class AdminModuleTests
 
         peerInfo.Id.Should().NotBeNull();
         peerInfo.Id.Bytes.Length.Should().Be(64);
-        peerInfo.Id.Bytes.Skip(32).Should().BeEquivalentTo(expectedHashBytes);
+        peerInfo.Id.Bytes.AsSpan(32, 32).ToArray().Should().BeEquivalentTo(expectedHashBytes);
     }
 
     [Test]

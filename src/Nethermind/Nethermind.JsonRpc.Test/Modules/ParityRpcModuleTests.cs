@@ -6,7 +6,6 @@ using System.IO;
 using System.Net;
 using System.Threading.Tasks;
 using System.Text.Json;
-using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;

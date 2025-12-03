@@ -3,7 +3,6 @@
 
 using System;
 using System.Text.Json;
-using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -72,10 +71,10 @@ namespace Nethermind.Flashbots.Test
             trace.ProposerPublicKey.Bytes.Length.Should().Be(64);
             trace.BuilderPublicKey.Bytes.Should().NotBeEquivalentTo(builderKeyBytes);
             trace.ProposerPublicKey.Bytes.Should().NotBeEquivalentTo(proposerKeyBytes);
-            trace.BuilderPublicKey.Bytes.Take(32).Should().AllBeEquivalentTo((byte)0);
-            trace.ProposerPublicKey.Bytes.Take(32).Should().AllBeEquivalentTo((byte)0);
-            trace.BuilderPublicKey.Bytes.Skip(32).Should().BeEquivalentTo(builderHashBytes);
-            trace.ProposerPublicKey.Bytes.Skip(32).Should().BeEquivalentTo(proposerHashBytes);
+            trace.BuilderPublicKey.Bytes.AsSpan(0, 32).ToArray().Should().AllBeEquivalentTo((byte)0);
+            trace.ProposerPublicKey.Bytes.AsSpan(0, 32).ToArray().Should().AllBeEquivalentTo((byte)0);
+            trace.BuilderPublicKey.Bytes.AsSpan(32, 32).ToArray().Should().BeEquivalentTo(builderHashBytes);
+            trace.ProposerPublicKey.Bytes.AsSpan(32, 32).ToArray().Should().BeEquivalentTo(proposerHashBytes);
         }
     }
 }
