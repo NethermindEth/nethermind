@@ -111,6 +111,11 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         _warmer.PushJob(this, address, null, null, _hintSequenceId);
     }
 
+    public void HintSet(Address address)
+    {
+        _warmer.PushJob(this, address, null, null, _hintSequenceId);
+    }
+
     public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
     public int HintSequenceId => _hintSequenceId;
 
@@ -238,7 +243,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
             return newNode;
         }
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => bundle.TryLoadRlp(null, path, hash, flags);
+        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => bundle.TryLoadRlp(null, path, hash, flags, isTrieWarmer);
 
         public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(bundle, concurrencyQuota);
 

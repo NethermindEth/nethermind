@@ -145,7 +145,7 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
 
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            var rlp = storageSnapshotBundle.TryLoadRlp(path, hash, flags);
+            var rlp = storageSnapshotBundle.TryLoadRlp(path, hash, flags, isTrieWarmer);
             return rlp;
         }
 

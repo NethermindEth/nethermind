@@ -66,6 +66,8 @@ public interface IWorldStateScopeProvider
         /// first.
         /// </summary>
         void Commit(long blockNumber);
+
+        void HintSet(Address address);
     }
 
     public interface ICodeDb

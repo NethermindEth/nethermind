@@ -112,6 +112,7 @@ public class PrewarmerScopeProvider(
         }
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
+        public void HintSet(Address address) => baseScope.HintSet(address);
 
         private Account? GetFromBaseTree(AddressAsKey address)
         {

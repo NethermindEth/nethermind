@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
@@ -62,6 +63,20 @@ public class SnapshotBundle : IDisposable
     private Counter.Child _accountHintWrite;
     private Counter.Child _storageHintWrite;
 
+    private static Histogram _snapshotBundleTimes = Metrics.CreateHistogram("snapshot_bundle_times", "aha", new HistogramConfiguration()
+    {
+        LabelNames = new[] { "type", "is_prewarmer" },
+        Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
+    });
+    private Histogram.Child _accountPersistenceRead;
+    private Histogram.Child _slotPersistenceRead;
+    private Histogram.Child _loadRlpRead;
+    private Histogram.Child _loadRlpReadTrieWarmer;
+    private Histogram.Child _loadStorageRlpRead;
+    private Histogram.Child _loadStorageRlpReadTrieWarmer;
+    private Counter.Child _accountGet;
+    private Counter.Child _slotGet;
+
     public SnapshotBundle(ArrayPoolList<Snapshot> knownStates,
         IPersistence.IPersistenceReader persistenceReader,
         TrieNodeCache trieNodeCache,
@@ -110,10 +125,20 @@ public class SnapshotBundle : IDisposable
         _nodeGetMiss = _snapshotBundleEvents.WithLabels("node_get_miss", _isPrewarmer.ToString());
         _accountHintWrite = _snapshotBundleEvents.WithLabels("account_hint_write", _isPrewarmer.ToString());
         _storageHintWrite = _snapshotBundleEvents.WithLabels("storage_hint_write", _isPrewarmer.ToString());
+        _accountGet = _snapshotBundleEvents.WithLabels("account_get", _isPrewarmer.ToString());
+        _slotGet = _snapshotBundleEvents.WithLabels("slot_get", _isPrewarmer.ToString());
+
+        _accountPersistenceRead = _snapshotBundleTimes.WithLabels("account_persistence", _isPrewarmer.ToString());
+        _slotPersistenceRead = _snapshotBundleTimes.WithLabels("slot_persistence", _isPrewarmer.ToString());
+        _loadRlpRead = _snapshotBundleTimes.WithLabels("rlp_read", _isPrewarmer.ToString());
+        _loadRlpReadTrieWarmer = _snapshotBundleTimes.WithLabels("rlp_read_trie_warmer", _isPrewarmer.ToString());
+        _loadStorageRlpRead = _snapshotBundleTimes.WithLabels("storage_rlp_read", _isPrewarmer.ToString());
+        _loadStorageRlpReadTrieWarmer = _snapshotBundleTimes.WithLabels("storage_rlp_read_trie_warmer", _isPrewarmer.ToString());
     }
 
     public bool TryGetAccount(Address address, out Account? acc)
     {
+        _accountGet.Inc();
         if (!_isReadOnly)
         {
             if (_changedAccounts.TryGetValue(address, out acc)) return true;
@@ -129,8 +154,10 @@ public class SnapshotBundle : IDisposable
             }
         }
 
+        long sw = Stopwatch.GetTimestamp();
         if (_persistenceReader.TryGetAccount(address, out acc))
         {
+            _accountPersistenceRead.Observe(Stopwatch.GetTimestamp() - sw);
             return true;
         }
 
@@ -162,6 +189,8 @@ public class SnapshotBundle : IDisposable
 
     public bool TryGetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out byte[] value)
     {
+        _slotGet.Inc();
+
         if (!_isReadOnly)
         {
             if (_changedSlots.TryGetValue((address, index), out value))
@@ -188,8 +217,10 @@ public class SnapshotBundle : IDisposable
             }
         }
 
+        long sw = Stopwatch.GetTimestamp();
         if (_persistenceReader.TryGetSlot(address, index, out value))
         {
+            _slotPersistenceRead.Observe(Stopwatch.GetTimestamp() - sw);
             return true;
         }
 
@@ -260,11 +291,35 @@ public class SnapshotBundle : IDisposable
         return false;
     }
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags, bool isTrieWarmer)
     {
         if (_isDisposed) return null;
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
-        return _persistenceReader.TryLoadRlp(address, path, hash, flags);
+        long sw = Stopwatch.GetTimestamp();
+        var res = _persistenceReader.TryLoadRlp(address, path, hash, flags);
+        if (isTrieWarmer)
+        {
+            if (address is null)
+            {
+                _loadRlpReadTrieWarmer.Observe(Stopwatch.GetTimestamp() - sw);
+            }
+            else
+            {
+                _loadStorageRlpReadTrieWarmer.Observe(Stopwatch.GetTimestamp() - sw);
+            }
+        }
+        else
+        {
+            if (address is null)
+            {
+                _loadRlpRead.Observe(Stopwatch.GetTimestamp() - sw);
+            }
+            else
+            {
+                _loadStorageRlpRead.Observe(Stopwatch.GetTimestamp() - sw);
+            }
+        }
+        return res;
     }
 
     public void SetNode(Hash256AsKey addr, in TreePath path, TrieNode newNode)

@@ -26,9 +26,9 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
         return bundle.TryFindNode(_addressHash, path, hash, _selfDestructKnownStateIdx, out value);
     }
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags)
+    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags, bool isTrieWarmer)
     {
-        return bundle.TryLoadRlp(_addressHash, in path, hash, flags);
+        return bundle.TryLoadRlp(_addressHash, in path, hash, flags, isTrieWarmer);
     }
 
     public void SetNode(TreePath path, TrieNode node)
