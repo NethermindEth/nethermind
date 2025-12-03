@@ -22,7 +22,7 @@ namespace Nethermind.Trie.Pruning;
 
 /// <summary>
 /// Trie store helps to manage trie commits block by block.
-/// If persistence and pruning are needed they have a chance to execute their behaviour on commits.
+/// If persistence and pruning are needed they have a chance to execute their behavior on commits.
 /// </summary>
 public sealed class TrieStore : ITrieStore, IPruningTrieStore
 {
@@ -63,13 +63,16 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private bool _lastPersistedReachedReorgBoundary;
     private long _toBePersistedBlockNumber = -1;
+
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
+    private readonly IFinalizedStateProvider _finalizedStateProvider;
 
     public TrieStore(
         INodeStorage nodeStorage,
         IPruningStrategy pruningStrategy,
         IPersistenceStrategy persistenceStrategy,
+        IFinalizedStateProvider finalizedStateProvider,
         IPruningConfig pruningConfig,
         ILogManager logManager)
     {
@@ -77,6 +80,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _nodeStorage = nodeStorage;
         _pruningStrategy = pruningStrategy;
         _persistenceStrategy = persistenceStrategy;
+        _finalizedStateProvider = finalizedStateProvider;
+
         _publicStore = new TrieKeyValueStore(this);
         _persistedNodeRecorder = PersistedNodeRecorder;
         _persistedNodeRecorderNoop = PersistedNodeRecorderNoop;
@@ -85,7 +90,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _prunePersistedNodeMinimumTarget = pruningConfig.PrunePersistedNodeMinimumTarget;
         _maxBufferedCommitCount = pruningConfig.MaxBufferedCommitCount;
 
-        _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys;
+        _pastKeyTrackingEnabled = pruningConfig.TrackPastKeys && nodeStorage.RequirePath;
+        _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys && _pastKeyTrackingEnabled;
         _shardBit = pruningConfig.DirtyNodeShardBit;
         _shardedDirtyNodeCount = 1 << _shardBit;
         _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];
@@ -96,8 +102,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, keepRoot: _deleteOldNodes, _logger);
             _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
         }
-
-        _pastKeyTrackingEnabled = pruningConfig.TrackPastKeys && nodeStorage.RequirePath;
     }
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
@@ -455,7 +459,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void FinishBlockCommit(BlockCommitSet set, TrieNode? root)
     {
-        if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue?.Count ?? 0}");
+        if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue.Count}");
         // Note: root is null when the state trie is empty. It will therefore make the block commit set not sealed.
         set.Seal(root);
         set.Prune();
@@ -613,7 +617,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             SaveSnapshot();
 
             // Full pruning may set delete obsolete keys to false
-            PruneCache(dontRemoveNodes: !_pruningStrategy.DeleteObsoleteKeys);
+            PruneCache(doNotRemoveNodes: !_pruningStrategy.DeleteObsoleteKeys);
 
             TimeSpan sw = Stopwatch.GetElapsedTime(start);
             long ms = (long)sw.TotalMilliseconds;
@@ -639,7 +643,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         int count = _commitSetQueue?.Count ?? 0;
         if (count == 0) return;
 
-        using ArrayPoolListRef<BlockCommitSet> candidateSets = DetermineCommitSetToPersistInSnapshot(count);
+        (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(count);
+        using var _ = candidateSets;
 
         bool shouldTrackPastKey =
             // Its disabled
@@ -647,8 +652,16 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             // Full pruning need to visit all node, so can't delete anything.
 
             // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
-            // For archice node, it is safe to remove canon key from cache as it will just get re-loaded.
-            (!_deleteOldNodes || candidateSets.Count == 1);
+            // For archive node, it is safe to remove canon key from cache as it will just get re-loaded.
+            _deleteOldNodes &&
+            finalizedBlockNumber.HasValue;
+
+        if (_logger.IsDebug) _logger.Debug($"Persisting {candidateSets.Count} commit sets. Finalized block number {finalizedBlockNumber}. Should track past keys {shouldTrackPastKey}");
+
+        if (!finalizedBlockNumber.HasValue)
+        {
+            if (_logger.IsInfo) _logger.Info($"Finalized block unknown. Persisting {candidateSets.Count} states.");
+        }
 
         if (shouldTrackPastKey)
         {
@@ -691,41 +704,92 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (_logger.IsDebug) _logger.Debug($"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {_maxDepth})");
     }
 
-    private ArrayPoolListRef<BlockCommitSet> DetermineCommitSetToPersistInSnapshot(int count)
+    /// <summary>
+    /// Determined the state that will be persisted in a snapshot.
+    /// If more than 1 commit set, then its an archive node.
+    /// </summary>
+    /// <param name="count"></param>
+    /// <returns>A tuple of the block to be committed and the canonical block number if known.</returns>
+    private (ArrayPoolList<BlockCommitSet>, long?) DetermineCommitSetToPersistInSnapshot(int count)
     {
-        ArrayPoolListRef<BlockCommitSet> candidateSets = new(count);
+        ArrayPoolList<BlockCommitSet> candidateSets = new(count);
         try
         {
-
-            long lastBlockBeforeRorgBoundary = 0;
-            foreach (BlockCommitSet blockCommitSet in _commitSetQueue)
+            if (_commitSetQueue.IsEmpty)
             {
-                if (!blockCommitSet.IsSealed) continue;
-                if (blockCommitSet.BlockNumber <= LatestCommittedBlockNumber - _maxDepth && blockCommitSet.BlockNumber > lastBlockBeforeRorgBoundary)
+                if (_logger.IsDebug) _logger.Debug("Unable to persist commit set due to empty queue");
+                return (candidateSets, null);
+            }
+
+            long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
+            long pruningBoundaryBlockNumber = _commitSetQueue.MaxBlockNumber.Value - _maxDepth;
+            long effectiveFinalizedBlockNumber = Math.Min(pruningBoundaryBlockNumber, finalizedBlockNumber);
+            effectiveFinalizedBlockNumber = Math.Max(0, effectiveFinalizedBlockNumber);
+
+            if (effectiveFinalizedBlockNumber < _commitSetQueue.MinBlockNumber)
+            {
+                // Finalized block number far behind any commit. Persist everything so that it can be pruned, but not after
+                // pruning boundary point as snap sync need it.
+                using ArrayPoolListRef<BlockCommitSet> commitSet = _commitSetQueue.GetAndDequeueCommitSetsBeforeOrAt(pruningBoundaryBlockNumber);
+
+                if (commitSet.Count > 0)
                 {
-                    lastBlockBeforeRorgBoundary = blockCommitSet.BlockNumber;
+                    if (_logger.IsDebug) _logger.Debug($"Committing {commitSet.Count} commit sets after finalized block. Effective finalized block: {effectiveFinalizedBlockNumber}, Finalized block number: {finalizedBlockNumber}");
+                    candidateSets.AddRange(commitSet.AsSpan());
+                }
+                else
+                {
+                    // This can happen if the Max-Min of the commit set queue is less than pruning boundary
+                    if (_logger.IsDebug) _logger.Debug($"Block commits are all after finalized block. Min block commit: {_commitSetQueue.MinBlockNumber}, Effective finalized block: {effectiveFinalizedBlockNumber}, Finalized block number: {finalizedBlockNumber}");
+                }
+                return (candidateSets, null);
+            }
+
+            using ArrayPoolListRef<BlockCommitSet> commitSetsAtFinalizedBlock = _commitSetQueue.GetCommitSetsAtBlockNumber(effectiveFinalizedBlockNumber);
+
+            BlockCommitSet? finalizedBlockCommitSet = null;
+            Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedStateRootAt(effectiveFinalizedBlockNumber);
+            if (finalizedStateRoot is not null)
+            {
+                foreach (BlockCommitSet blockCommitSet in commitSetsAtFinalizedBlock)
+                {
+                    if (blockCommitSet.StateRoot == finalizedStateRoot)
+                    {
+                        finalizedBlockCommitSet = blockCommitSet;
+                        break;
+                    }
                 }
             }
 
-            using ArrayPoolListRef<BlockCommitSet> toAddBack = new(count);
-            while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
+            if (finalizedBlockCommitSet is null)
             {
-                if (frontSet.BlockNumber == lastBlockBeforeRorgBoundary || (_persistenceStrategy.ShouldPersist(frontSet.BlockNumber) && frontSet.BlockNumber < lastBlockBeforeRorgBoundary))
+                // This is a hang. It should recover itself as new finalized block is set. But it will hang if we for some reason
+                // does not process in the finalized branch at all.
+                if (_logger.IsWarn) _logger.Warn($"Unable to determine finalized state root at block {effectiveFinalizedBlockNumber}. Available state roots {string.Join(", ", commitSetsAtFinalizedBlock.Select(c => c.StateRoot.ToString()).ToArray())}");
+                return (candidateSets, null);
+            }
+
+            bool finalizedWasAdded = false;
+            while (_commitSetQueue.TryPeek(out BlockCommitSet? set))
+            {
+                if (set.BlockNumber > effectiveFinalizedBlockNumber) break;
+
+                _commitSetQueue.Remove(set);
+
+                if (_persistenceStrategy.ShouldPersist(set.BlockNumber))
                 {
-                    candidateSets.Add(frontSet);
-                }
-                else if (frontSet.BlockNumber >= LatestCommittedBlockNumber - _maxDepth)
-                {
-                    toAddBack.Add(frontSet);
+                    candidateSets.Add(set);
+                    if (ReferenceEquals(set, finalizedBlockCommitSet)) finalizedWasAdded = true;
                 }
             }
 
-            for (int index = 0; index < toAddBack.Count; index++)
+            if (!finalizedWasAdded)
             {
-                _commitSetQueue.Enqueue(toAddBack[index]);
+                _commitSetQueue.Remove(finalizedBlockCommitSet);
+                candidateSets.Add(finalizedBlockCommitSet);
             }
 
-            return candidateSets;
+            return (candidateSets, effectiveFinalizedBlockNumber);
         }
         catch
         {
@@ -776,7 +840,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     /// This is done after a `SaveSnapshot`.
     /// </summary>
     /// <exception cref="InvalidOperationException"></exception>
-    private void PruneCache(bool prunePersisted = false, bool dontRemoveNodes = false, bool forceRemovePersistedNodes = false)
+    private void PruneCache(bool prunePersisted = false, bool doNotRemoveNodes = false, bool forceRemovePersistedNodes = false)
     {
         if (_logger.IsDebug) _logger.Debug($"Pruning nodes {DirtyMemoryUsedByDirtyCache / 1.MB()} MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         long start = Stopwatch.GetTimestamp();
@@ -794,7 +858,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 }
 
                 INodeStorage nodeStorage = _nodeStorage;
-                if (dontRemoveNodes) nodeStorage = null;
+                if (doNotRemoveNodes) nodeStorage = null;
 
                 dirtyNode
                     .PruneCache(
@@ -911,7 +975,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private readonly ILogger _logger;
 
-    private ConcurrentQueue<BlockCommitSet> _commitSetQueue = new ConcurrentQueue<BlockCommitSet>();
+    private CommitSetQueue _commitSetQueue = new CommitSetQueue();
+    public CommitSetQueue CommitSetQueue => _commitSetQueue;
 
     private BlockCommitSet? _lastCommitSet = null;
 
@@ -928,7 +993,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private BlockCommitter? _currentBlockCommitter = null;
 
-    private long LatestCommittedBlockNumber { get; set; }
+    public long LatestCommittedBlockNumber { get; set; }
     public INodeStorage.KeyScheme Scheme => _nodeStorage.Scheme;
 
     private void VerifyNewCommitSet(long blockNumber)
@@ -1130,17 +1195,21 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void PersistOnShutdown()
     {
-        if (_commitSetQueue?.IsEmpty ?? true) return;
+        if (_commitSetQueue.IsEmpty) return;
 
-        using ArrayPoolListRef<BlockCommitSet> candidateSets = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
-        if (candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommmitSet))
+        (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
+        using var _ = candidateSets;
+        if (LastPersistedBlockNumber == 0 && candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommitSet))
         {
-            // No commitset to persist, likely as not enough block was processed to reached prune boundary
+            // No commit set to persist, likely as not enough block was processed to reached prune boundary
             // This happens when node is shutdown right after sync.
             // we need to persist at least something or in case of fresh sync or the best persisted state will not be set
-            // at all. This come at a risk that this commitset is not canon though.
-            candidateSets.Add(anyCommmitSet);
+            // at all. This come at a risk that this commit set is not canon though.
+            candidateSets.Add(anyCommitSet);
+            if (_logger.IsDebug) _logger.Debug($"Force persisting commit set {anyCommitSet} on shutdown.");
         }
+
+        if (_logger.IsDebug) _logger.Debug($"On shutdown persisting {candidateSets.Count} commit sets. Finalized block is {finalizedBlockNumber}.");
 
         INodeStorage.IWriteBatch writeBatch = _nodeStorage.StartWriteBatch();
         for (int index = 0; index < candidateSets.Count; index++)
@@ -1154,7 +1223,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (candidateSets.Count == 0)
         {
-            if (_logger.IsDebug) _logger.Debug("No commitset to persist at all.");
+            if (_logger.IsDebug) _logger.Debug("No commit set to persist at all.");
         }
         else
         {
@@ -1169,9 +1238,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         long start = Stopwatch.GetTimestamp();
         int commitSetCount = 0;
-        // We persist all sealed Commitset causing PruneCache to almost completely clear the cache. Any new block that
+        // We persist all sealed commit sets causing PruneCache to almost completely clear the cache. Any new block that
         // need existing node will have to read back from db causing copy-on-read mechanism to copy the node.
-        ConcurrentQueue<BlockCommitSet> commitSetQueue = _commitSetQueue;
+        CommitSetQueue commitSetQueue = _commitSetQueue;
 
         void ClearCommitSetQueue()
         {
@@ -1201,7 +1270,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         // All persisted node including recommitted nodes between head and reorg depth must be removed so that
         // it will be re-persisted or at least re-read in order to be cloned.
         // This should clear most nodes. For some reason, not all.
-        PruneCache(prunePersisted: true, dontRemoveNodes: true, forceRemovePersistedNodes: true);
+        PruneCache(prunePersisted: true, doNotRemoveNodes: true, forceRemovePersistedNodes: true);
         if (cancellationToken.IsCancellationRequested) return;
 
         int totalPersistedCount = 0;
@@ -1219,12 +1288,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (cancellationToken.IsCancellationRequested) return;
 
-        PruneCache(prunePersisted: true, dontRemoveNodes: true, forceRemovePersistedNodes: true);
+        PruneCache(prunePersisted: true, doNotRemoveNodes: true, forceRemovePersistedNodes: true);
 
         long nodesCount = NodesCount();
         if (nodesCount != 0)
         {
-            if (_logger.IsWarn) _logger.Warn($"{nodesCount} cache entry remains. {DirtyCachedNodesCount} dirty, total persistec count is {totalPersistedCount}.");
+            if (_logger.IsWarn) _logger.Warn($"{nodesCount} cache entry remains. {DirtyCachedNodesCount} dirty, total persisted count is {totalPersistedCount}.");
         }
 
         if (_logger.IsInfo) _logger.Info($"Clear cache took {Stopwatch.GetElapsedTime(start)}.");

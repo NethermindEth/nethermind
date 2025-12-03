@@ -120,14 +120,14 @@ public class TxCertifierFilterTests
     }
 
     [Test]
-    public async Task registry_contract_returns_not_found_when_key_doesnt_exist()
+    public async Task registry_contract_returns_not_found_when_key_does_not_exist()
     {
         using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
         chain.RegisterContract.TryGetAddress(chain.BlockTree.Head.Header, "not existing key", out Address _).Should().BeFalse();
     }
 
     [Test]
-    public async Task registry_contract_returns_not_found_when_contract_doesnt_exist()
+    public async Task registry_contract_returns_not_found_when_contract_does_not_exist()
     {
         using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
         RegisterContract contract = new(AbiEncoder.Instance, Address.FromNumber(1000), chain.ReadOnlyTxProcessingEnvFactory.Create());

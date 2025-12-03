@@ -45,6 +45,8 @@ public sealed record OptimismRollupConfig
     public required ulong? HoloceneTime { get; init; }
     [JsonPropertyName("isthmus_time")]
     public required ulong? IsthmusTime { get; init; }
+    [JsonPropertyName("jovian_time")]
+    public required ulong? JovianTime { get; init; }
     [JsonPropertyName("batch_inbox_address")]
     public required Address BatchInboxAddress { get; init; }
     [JsonPropertyName("deposit_contract_address")]
@@ -105,6 +107,7 @@ public sealed record OptimismRollupConfig
             GraniteTime = engineParameters.GraniteTimestamp,
             HoloceneTime = engineParameters.HoloceneTimestamp,
             IsthmusTime = engineParameters.IsthmusTimestamp,
+            JovianTime = engineParameters.JovianTimestamp,
 
             BatchInboxAddress = clParameters.BatchSubmitter!,
             DepositContractAddress = chainSpec.Parameters.DepositContractAddress,

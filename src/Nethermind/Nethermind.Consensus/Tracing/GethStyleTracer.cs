@@ -174,7 +174,7 @@ public class GethStyleTracer(
 
         // Previously, when the processing options is not `TraceTransaction`, the base block is the parent of the block
         // which is set by the `BranchProcessor`, which mean the state override probably does not take affect.
-        // However, when it is `TraceTransactioon`, it apply `ForceSameBlock` to `BlockchainProcessor` which will send the same
+        // However, when it is `TraceTransaction`, it applies `ForceSameBlock` to `BlockchainProcessor`, which will send the same
         // block as the baseBlock, which is important as the stateroot of the baseblock is modified in `BuildAndOverride`.
         //
         // Wild stuff!

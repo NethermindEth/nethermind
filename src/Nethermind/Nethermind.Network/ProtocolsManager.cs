@@ -435,22 +435,6 @@ namespace Nethermind.Network
             }
         }
 
-        public void SendNewCapability(Capability capability)
-        {
-            AddCapabilityMessage message = new(capability);
-            foreach ((Guid _, ISession session) in _sessions)
-            {
-                if (!session.HasAgreedCapability(capability) && session.HasAvailableCapability(capability))
-                {
-                    session.DeliverMessage(message);
-                }
-                else
-                {
-                    message.Dispose();
-                }
-            }
-        }
-
         public int GetHighestProtocolVersion(string protocol)
         {
             int highestVersion = 0;

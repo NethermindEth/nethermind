@@ -90,7 +90,7 @@ public class LocalChannelFactory(string networkGroup, INetworkConfig networkConf
         }
     }
 
-    // Needed because the default local address did not compare the id and because it need to be convertiable to
+    // Needed because the default local address did not compare the ID and because it needs to be convertible to
     // IPEndpoint
     private class NethermindLocalAddress(string id, IPEndPoint ipEndPoint) : LocalAddress(id), IIPEndpointSource
     {

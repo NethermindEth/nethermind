@@ -66,7 +66,7 @@ public class RetryCacheTests
     }
 
     [Test]
-    public void Announced_MultipleResources_ExecutesAllRetryRequestsExceptInititalOne()
+    public void Announced_MultipleResources_ExecutesAllRetryRequestsExceptInitialOne()
     {
         ITestHandler request1 = Substitute.For<ITestHandler>();
         ITestHandler request2 = Substitute.For<ITestHandler>();
