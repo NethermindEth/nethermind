@@ -383,7 +383,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void ParityTransaction_WithFullPublicKeyJson_DeserializesSuccessfully()
         {
             const string fullKeyHex = "a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec3";
-           byte[] fullPublicKeyBytes = Bytes.FromHexString(fullKeyHex);
+            byte[] fullPublicKeyBytes = Bytes.FromHexString(fullKeyHex);
 
             string json = $$"""
                 {
