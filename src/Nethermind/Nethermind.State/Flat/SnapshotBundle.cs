@@ -10,6 +10,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
@@ -36,7 +37,7 @@ public class SnapshotBundle : IDisposable
     private volatile int _hintSequenceId = 0;
 
     private SnapshotContent _currentPooledContent;
-    private ConcurrentDictionary<AddressAsKey, Account> _changedAccounts;
+    private ConcurrentDictionary<AddressAsKey, Account?> _changedAccounts;
     private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedNodes; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> _changedSlots; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses;
@@ -60,8 +61,6 @@ public class SnapshotBundle : IDisposable
     private Counter.Child _nodeGetTrieCache;
     private Counter.Child _nodeGetMiss;
     private Counter.Child _nodeGetSelfDestruct;
-    private Counter.Child _accountHintWrite;
-    private Counter.Child _storageHintWrite;
 
     private static Histogram _snapshotBundleTimes = Metrics.CreateHistogram("snapshot_bundle_times", "aha", new HistogramConfiguration()
     {
@@ -70,6 +69,8 @@ public class SnapshotBundle : IDisposable
     });
     private Histogram.Child _accountPersistenceRead;
     private Histogram.Child _slotPersistenceRead;
+    private Histogram.Child _accountPersistenceEmptyRead;
+    private Histogram.Child _slotPersistenceEmptyRead;
     private Histogram.Child _loadRlpRead;
     private Histogram.Child _loadRlpReadTrieWarmer;
     private Histogram.Child _loadStorageRlpRead;
@@ -123,13 +124,13 @@ public class SnapshotBundle : IDisposable
         _nodeGetTrieCache = _snapshotBundleEvents.WithLabels("node_get_trie_cache", _isPrewarmer.ToString());
         _nodeGetSelfDestruct = _snapshotBundleEvents.WithLabels("node_get_self_destruct", _isPrewarmer.ToString());
         _nodeGetMiss = _snapshotBundleEvents.WithLabels("node_get_miss", _isPrewarmer.ToString());
-        _accountHintWrite = _snapshotBundleEvents.WithLabels("account_hint_write", _isPrewarmer.ToString());
-        _storageHintWrite = _snapshotBundleEvents.WithLabels("storage_hint_write", _isPrewarmer.ToString());
         _accountGet = _snapshotBundleEvents.WithLabels("account_get", _isPrewarmer.ToString());
         _slotGet = _snapshotBundleEvents.WithLabels("slot_get", _isPrewarmer.ToString());
 
         _accountPersistenceRead = _snapshotBundleTimes.WithLabels("account_persistence", _isPrewarmer.ToString());
         _slotPersistenceRead = _snapshotBundleTimes.WithLabels("slot_persistence", _isPrewarmer.ToString());
+        _accountPersistenceEmptyRead = _snapshotBundleTimes.WithLabels("empty_account_persistence", _isPrewarmer.ToString());
+        _slotPersistenceEmptyRead = _snapshotBundleTimes.WithLabels("empty_slot_persistence", _isPrewarmer.ToString());
         _loadRlpRead = _snapshotBundleTimes.WithLabels("rlp_read", _isPrewarmer.ToString());
         _loadRlpReadTrieWarmer = _snapshotBundleTimes.WithLabels("rlp_read_trie_warmer", _isPrewarmer.ToString());
         _loadStorageRlpRead = _snapshotBundleTimes.WithLabels("storage_rlp_read", _isPrewarmer.ToString());
@@ -138,6 +139,12 @@ public class SnapshotBundle : IDisposable
 
     public bool TryGetAccount(Address address, out Account? acc)
     {
+        if (_isDisposed)
+        {
+            acc = null;
+            return false;
+        }
+
         _accountGet.Inc();
         if (!_isReadOnly)
         {
@@ -157,7 +164,14 @@ public class SnapshotBundle : IDisposable
         long sw = Stopwatch.GetTimestamp();
         if (_persistenceReader.TryGetAccount(address, out acc))
         {
-            _accountPersistenceRead.Observe(Stopwatch.GetTimestamp() - sw);
+            if (acc is null)
+            {
+                _accountPersistenceEmptyRead.Observe(Stopwatch.GetTimestamp() - sw);
+            }
+            else
+            {
+                _accountPersistenceRead.Observe(Stopwatch.GetTimestamp() - sw);
+            }
             return true;
         }
 
@@ -189,6 +203,12 @@ public class SnapshotBundle : IDisposable
 
     public bool TryGetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out byte[] value)
     {
+        if (_isDisposed)
+        {
+            value = null;
+            return false;
+        }
+
         _slotGet.Inc();
 
         if (!_isReadOnly)
@@ -220,7 +240,14 @@ public class SnapshotBundle : IDisposable
         long sw = Stopwatch.GetTimestamp();
         if (_persistenceReader.TryGetSlot(address, index, out value))
         {
-            _slotPersistenceRead.Observe(Stopwatch.GetTimestamp() - sw);
+            if (value is null || value.Length == 0 || Bytes.AreEqual(value, StorageTree.ZeroBytes))
+            {
+                _slotPersistenceEmptyRead.Observe(Stopwatch.GetTimestamp() - sw);
+            }
+            else
+            {
+                _slotPersistenceRead.Observe(Stopwatch.GetTimestamp() - sw);
+            }
             return true;
         }
 

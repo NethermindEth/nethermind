@@ -350,14 +350,29 @@ public class DbConfig : IDbConfig
     public ulong FlatStateDbWriteBufferNumber { get; set; } = 4;
     public bool FlatStateDbSkipDefaultDbOptions { get; set; } = true;
 
-    private const string FlatCommonConfig =
+    private const string FlatCommonConfigWithPlainTable =
+        MinimumBasicOption +
+        "memtable=prefix_hash:1000;" +
+
+        "min_write_buffer_number_to_merge=2;" +
+
+        // This used to be on trie, but its here now. Attempt to reduce LSM depth at cost of write amp.
+        "max_bytes_for_level_multiplier=30;" +
+        "max_bytes_for_level_base=350000000;" +
+        "plain_table_factory={};" +
+        "";
+
+    private const string FlatCommonConfigWithBlockBased =
         MinimumBasicOption +
 
         // Hard to decide. No compression is lower latency. But it means bigger db, which means worst cache is at os
         // level. TODO: Measure how much the db size change.
-        "compression=kNoCompression;" +
+        // "compression=kNoCompression;" +
 
-        "memtable=prefix_hash:1000;" +
+        "compression=kLZ4Compression;" +
+
+        // "memtable=prefix_hash:1000;" +
+        "memtable=skiplist;" +
 
         "min_write_buffer_number_to_merge=2;" +
 
@@ -370,29 +385,30 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
         "block_based_table_factory.data_block_hash_table_util_ratio=0.7;" +
         "block_based_table_factory.prepopulate_block_cache=kFlushOnly;" +
-        "block_based_table_factory.filter_policy=ribbonfilter:12;" +
+        "block_based_table_factory.filter_policy=ribbonfilter:8;" + // Note: Really impact index size. This seems to be about 1 GIG inn size.
         "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;" +
         "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +
+        "block_based_table_factory.whole_key_filtering=true;" + // should be default. Just in case.
 
         // Important tunables
 
         // Further split bloom filter. Reduces memory but add latency. Set to false now
-        "block_based_table_factory.partition_filters=false;" +
+        // "block_based_table_factory.partition_filters=true;" +
 
         // Smaller block size is faster to load slightly. But on most SSD, any value lower than a certain number
         // around 16k, does not reduce latency much. The important impact is memory, as lower block size mean more
         // hot block can fit in memory, but at the same time, index size become larger, which may take up more memory.
-        "block_based_table_factory.block_size=16000;" +
+        "block_based_table_factory.block_size=4096;" +
 
         // Two level index means only the top level index points to another index before pointing to block.
         // Only top level index is in memory all the time. This adds latency, but reduces memory usage.
         // "block_based_table_factory.index_type=kTwoLevelIndexSearch;" +
 
         // Complete bsearch index in memory
-        // "block_based_table_factory.index_type=kBinarySearch;" +
+        "block_based_table_factory.index_type=kBinarySearch;" +
 
         // This **should** help given prefix extractor. But further increase index size.
-        "block_based_table_factory.index_type=kHashSearch;" +
+        // "block_based_table_factory.index_type=kHashSearch;" +
 
         "block_based_table_factory.block_cache=1000000000;" +
 
@@ -400,10 +416,12 @@ public class DbConfig : IDbConfig
         "optimize_filters_for_hits=false;" +
         "";
 
+    public const string FlatCommonConfig = FlatCommonConfigWithBlockBased;
+
     // Note: No prefix extractor for state.Dont forget.
     public string? FlatStateDbRocksDbOptions { get; set; } =
         FlatCommonConfig +
-        "prefix_extractor=capped:4;" + // So not the whole key, but like the first 8 byte. Its pretty good I think. Take up a lot of memory though.
+        // "prefix_extractor=capped:3;" + // I forget why.
         "";
 
     public string? FlatStateDbAdditionalRocksDbOptions { get; set; }
@@ -416,7 +434,11 @@ public class DbConfig : IDbConfig
 
     public string? FlatStorageDbRocksDbOptions { get; set; } =
         FlatCommonConfig +
-        "prefix_extractor=capped:20;" +
+        // v"plain_table_factory={user_key_len=52;};" +
+        // "block_based_table_factory.index_type=kBinarySearch;" +
+        // "block_based_table_factory.block_restart_interval=6;" + // For storage the prefix have a lot in common.
+        // "memtable=skiplist;" +
+        // "prefix_extractor=capped:23;" + // 20 byte address + 3 byte prefix.
         "";
 
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
@@ -460,7 +482,7 @@ public class DbConfig : IDbConfig
         TrieNodeConfig +
         "";
 
-    public ulong FlatStateNodesDbWriteBufferSize { get; set; } = (ulong)32.MiB();
+    public ulong FlatStateNodesDbWriteBufferSize { get; set; } = (ulong)128.MiB();
     public ulong FlatStateNodesDbWriteBufferNumber { get; set; } = 4;
     public string? FlatStateNodesDbRocksDbOptions { get; set; } =
         TrieNodeConfig +

@@ -43,7 +43,10 @@ public class Importer(
         {
             try
             {
-                tree.Accept(new Visitor(channel.Writer), to.stateRoot.ToHash256());
+                tree.Accept(new Visitor(channel.Writer), to.stateRoot.ToHash256(), new VisitingOptions()
+                {
+                    MaxDegreeOfParallelism = 1 // The writer is single threaded. Its better to write sorted then.
+                });
             }
             finally
             {
@@ -54,7 +57,7 @@ public class Importer(
         Task ingestTask = Task.Run(async () =>
         {
             long totalNodes = 0;
-            int batchSize = 1_000_000;
+            int batchSize = 4_000_000;
             int currentBatchSize = 0;
 
             StateId lastState = from;
