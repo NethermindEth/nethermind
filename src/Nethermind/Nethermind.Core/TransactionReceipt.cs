@@ -33,6 +33,7 @@ namespace Nethermind.Core
             Bloom = other.Bloom;
             Logs = other.Logs;
             Error = other.Error;
+            PolicyData = other.PolicyData;
         }
 
         /// <summary>
@@ -64,6 +65,12 @@ namespace Nethermind.Core
         public Bloom? Bloom { get => _bloom ?? CalculateBloom(); set => _bloom = value; }
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
+
+        /// <summary>
+        /// Policy-specific gas data.
+        /// Null for Ethereum and chains using simple gas.
+        /// </summary>
+        public object? PolicyData { get; set; }
 
 
         public Bloom CalculateBloom()

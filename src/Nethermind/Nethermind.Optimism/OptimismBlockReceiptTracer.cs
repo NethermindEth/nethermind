@@ -45,7 +45,7 @@ public class OptimismBlockReceiptTracer : BlockReceiptsTracer
         return (depositNonce, version);
     }
 
-    protected override TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
+    protected override TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, object? policyData, Hash256? stateRoot)
     {
         (ulong? depositNonce, ulong? version) = GetDepositReceiptData(Block.Header);
 
@@ -66,6 +66,7 @@ public class OptimismBlockReceiptTracer : BlockReceiptsTracer
             ContractAddress = transaction.IsContractCreation ? recipient : null,
             TxHash = transaction.Hash,
             PostTransactionState = stateRoot,
+            PolicyData = policyData,
             DepositNonce = depositNonce,
             DepositReceiptVersion = version
         };

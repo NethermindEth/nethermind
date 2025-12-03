@@ -3,10 +3,12 @@
 
 using System;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Gas;
 
 namespace Nethermind.Evm;
 
-public partial class VirtualMachine
+public partial class VirtualMachine<TGasPolicy>
+    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     protected readonly ref struct CallResult
     {

@@ -26,7 +26,8 @@ public class EvmWarmer(IOverridableEnvFactory envFactory, ILifetimeScope rootSco
             builder.AddModule(env);
         });
 
-        VirtualMachine.WarmUpEvmInstructions(childContainerScope.Resolve<IWorldState>(), childContainerScope.Resolve<ICodeInfoRepository>());
+        VirtualMachine.WarmUpEvmInstructions(childContainerScope.Resolve<IWorldState>(),
+            childContainerScope.Resolve<ICodeInfoRepository>());
 
         return Task.CompletedTask;
     }

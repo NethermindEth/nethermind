@@ -6,9 +6,10 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.Gas;
 using Nethermind.Int256;
 using static System.Runtime.CompilerServices.Unsafe;
-using static Nethermind.Evm.VirtualMachine;
+using static Nethermind.Evm.VirtualMachine<Nethermind.Evm.Gas.SimpleGasPolicy>;
 
 namespace Nethermind.Evm;
 
@@ -22,6 +23,11 @@ internal static partial class EvmInstructions
     /// </summary>
     public interface IOpMath1Param
     {
+        /// <summary>
+        /// The opcode for this operation.
+        /// </summary>
+        static abstract Instruction OpCode { get; }
+
         /// <summary>
         /// The gas cost for executing the operation.
         /// </summary>
@@ -40,21 +46,24 @@ internal static partial class EvmInstructions
     /// The operation is defined by the generic parameter <typeparamref name="TOpMath"/>,
     /// which implements <see cref="IOpMath1Param"/>.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpMath">A struct implementing <see cref="IOpMath1Param"/> for the specific math operation.</typeparam>
     /// <param name="_">An unused virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the operand is read and where the result is written.</param>
-    /// <param name="gasAvailable">Reference to the available gas, reduced by the operation's cost.</param>
+    /// <param name="gasState">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the operation completes successfully; otherwise,
     /// <see cref="EvmExceptionType.StackUnderflow"/> if the stack is empty.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath1Param<TOpMath>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMath1Param<TGasPolicy, TOpMath>(VirtualMachine<TGasPolicy> _,
+        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath1Param
     {
         // Deduct the gas cost associated with the math operation.
-        gasAvailable -= TOpMath.GasCost;
+        TGasPolicy.ConsumeGas(ref gasState, TOpMath.GasCost, TOpMath.OpCode);
 
         // Peek at the top element of the stack without removing it.
         // This avoids an unnecessary pop/push sequence.
@@ -79,6 +88,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpNot : IOpMath1Param
     {
+        public static Instruction OpCode => Instruction.NOT;
         public static Word Operation(Word value) => Vector256.OnesComplement(value);
     }
 
@@ -89,6 +99,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpIsZero : IOpMath1Param
     {
+        public static Instruction OpCode => Instruction.ISZERO;
         public static Word Operation(Word value) => value == default ? OpBitwiseEq.One : default;
     }
 
@@ -98,6 +109,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCLZ : IOpMath1Param
     {
+        public static Instruction OpCode => Instruction.CLZ;
         public static long GasCost => GasCostOf.Low;
 
         public static Word Operation(Word value) => value == default
@@ -110,10 +122,12 @@ internal static partial class EvmInstructions
     /// Extracts a byte from a 256-bit word at the position specified by the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionByte<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionByte<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.VeryLow;
+        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.VeryLow, Instruction.BYTE);
 
         // Pop the byte position and the 256-bit word.
         if (!stack.PopUInt256(out UInt256 a))
@@ -150,9 +164,12 @@ internal static partial class EvmInstructions
     /// Performs sign extension on a 256-bit integer in-place based on a specified byte index.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSignExtend<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSignExtend<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.Low;
+        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.Low, Instruction.SIGNEXTEND);
 
         // Pop the index to determine which byte to use for sign extension.
         if (!stack.PopUInt256(out UInt256 a))

@@ -7,10 +7,9 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
+using Nethermind.Evm.Gas;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
-
-using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
 
@@ -59,19 +58,21 @@ internal static partial class EvmInstructions
     /// This method performs validation, gas and memory cost calculations, state updates,
     /// and delegates execution to a new call frame for the contract's initialization code.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy implementation.</typeparam>
     /// <typeparam name="TOpCreate">The type of create operation (either <see cref="OpCreate"/> or <see cref="OpCreate2"/>).</typeparam>
     /// <typeparam name="TTracingInst">Tracing instructions type used for instrumentation if active.</typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">Reference to the EVM stack.</param>
-    /// <param name="gasAvailable">Reference to the gas counter available for execution.</param>
+    /// <param name="gasState">Reference to the gas state.</param>
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or the type of exception encountered.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCreate<TOpCreate, TTracingInst>(
-        VirtualMachine vm,
+    public static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
-        ref long gasAvailable,
+        ref GasState gasState,
         ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCreate : struct, IOpCreate
         where TTracingInst : struct, IFlag
     {
@@ -109,6 +110,9 @@ internal static partial class EvmInstructions
                 goto OutOfGas;
         }
 
+        // Determine the instruction type based on the create operation type.
+        Instruction instruction = typeof(TOpCreate) == typeof(OpCreate) ? Instruction.CREATE : Instruction.CREATE2;
+
         bool outOfGas = false;
         // Calculate the gas cost for the creation, including fixed cost and per-word cost for init code.
         // Also include an extra cost for CREATE2 if applicable.
@@ -119,16 +123,17 @@ internal static partial class EvmInstructions
                            : 0);
 
         // Check gas sufficiency: if outOfGas flag was set during gas division or if gas update fails.
-        if (outOfGas || !EvmCalculations.UpdateGas(gasCost, ref gasAvailable))
+        if (outOfGas || !EvmCalculations.UpdateGas<TGasPolicy>(ref gasState, gasCost, instruction))
             goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
-        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in memoryPositionOfInitCode, in initCodeLength))
+        if (!EvmCalculations.UpdateMemoryCost<TGasPolicy>(vm.EvmState, ref gasState, in memoryPositionOfInitCode,
+                in initCodeLength, instruction))
             goto OutOfGas;
 
         // Verify call depth does not exceed the maximum allowed. If exceeded, return early with empty data.
         // This guard ensures we do not create nested contract calls beyond EVM limits.
-        if (env.CallDepth >= MaxCallDepth)
+        if (env.CallDepth >= VirtualMachine<TGasPolicy>.MaxCallDepth)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
@@ -157,6 +162,9 @@ internal static partial class EvmInstructions
             goto None;
         }
 
+        // Get remaining gas for the create operation.
+        var gasAvailable = TGasPolicy.GetRemainingGas(in gasState);
+
         // End tracing if enabled, prior to switching to the new call frame.
         if (TTracingInst.IsActive)
             vm.EndInstructionTrace(gasAvailable);
@@ -164,7 +172,7 @@ internal static partial class EvmInstructions
         // Calculate gas available for the contract creation call.
         // Use the 63/64 gas rule if specified in the current EVM specification.
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-        if (!EvmCalculations.UpdateGas(callGas, ref gasAvailable))
+        if (!EvmCalculations.UpdateGas<TGasPolicy>(ref gasState, callGas, instruction))
             goto OutOfGas;
 
         // Compute the contract address:
@@ -186,7 +194,7 @@ internal static partial class EvmInstructions
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
-            EvmCalculations.UpdateGasUp(callGas, ref gasAvailable);
+            TGasPolicy.RefundGas(ref gasState, callGas);
             goto None;
         }
 
@@ -241,7 +249,7 @@ internal static partial class EvmInstructions
             isCreateOnPreExistingAccount: accountExists,
             env: in callEnv,
             stateForAccessLists: in vm.EvmState.AccessTracker,
-            snapshot: in snapshot);
+            in snapshot);
     None:
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
