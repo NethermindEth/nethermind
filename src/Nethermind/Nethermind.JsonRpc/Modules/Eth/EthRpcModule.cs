@@ -1,6 +1,16 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Frozen;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -32,17 +42,6 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using System;
-using System.Collections.Frozen;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Linq;
-using System.Security;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Threading;
-using System.Threading.Tasks;
 using Block = Nethermind.Core.Block;
 using BlockHeader = Nethermind.Core.BlockHeader;
 using ResultType = Nethermind.Core.ResultType;
@@ -813,14 +812,27 @@ public partial class EthRpcModule(
         if (forkConfigCache is null)
         {
             ReadOnlySpan<Fork> forkSchedule = forkInfo.GetAllForks();
-            ImmutableArray<KeyValuePair<ForkId, ForkConfig>>.Builder allForks = ImmutableArray.CreateBuilder<KeyValuePair<ForkId, ForkConfig>>(forkSchedule.Length);
+            Dictionary<ForkId, ForkConfig> allForks = new(forkSchedule.Length);
 
             foreach (Fork scheduledFork in forkSchedule)
             {
-                allForks.Add(new KeyValuePair<ForkId, ForkConfig>(scheduledFork.Id, BuildForkConfig(scheduledFork, _specProvider)));
+                allForks.Add(scheduledFork.Id, BuildForkConfig(scheduledFork, _specProvider));
             }
 
             forkConfigCache = allForks.ToFrozenDictionary();
+        }
+
+        List<ForkConfig>? allForkConfigs = null;
+
+        if (showAllForks)
+        {
+            ReadOnlySpan<Fork> forkSchedule = forkInfo.GetAllForks();
+            allForkConfigs = new(forkSchedule.Length);
+
+            foreach (Fork scheduledFork in forkSchedule)
+            {
+                allForkConfigs.Add(forkConfigCache[scheduledFork.Id]);
+            }
         }
 
         return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize(new ForkConfigSummary
@@ -828,7 +840,7 @@ public partial class EthRpcModule(
             Current = forkConfigCache[forks.Current.Id],
             Next = forks.Next is null ? null : forkConfigCache[forks.Next.Value.Id],
             Last = forks.Last is null ? null : forkConfigCache[forks.Last.Value.Id],
-            All = showAllForks ? forkConfigCache.Values : null,
+            All = allForkConfigs
         }, UnchangedDictionaryKeyOptions)));
 
         static ForkConfig BuildForkConfig(Fork fork, ISpecProvider specProvider)
