@@ -7,12 +7,14 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -744,24 +746,54 @@ public class AdminModuleTests
     }
 
     [Test]
-    public void PeerInfoId_DeserializedFromHashFormat_SucceedsWithDefaultConverter()
+    public void PeerInfo_WithHashedPublicKeyJson_DeserializesSuccessfully()
     {
-        string json = """
+        const string fullKeyHex = "a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec3";
+        byte[] fullPublicKeyBytes = Bytes.FromHexString(fullKeyHex);
+        byte[] expectedHashBytes = Keccak.Compute(fullPublicKeyBytes).Bytes.ToArray();
+        string expectedHashHex = Convert.ToHexString(expectedHashBytes).ToLower();
+
+        string json = $$"""
             {
-                "id": "0xdf850f14dc502aae061d0fefb7705ae4c6f81b66cdb323c65f4e8133690fc099",
+                "id": "0x{{expectedHashHex}}",
                 "name": "test-peer",
-                "enode": "enode://a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec3@127.0.0.1:30303",
+                "enode": "enode://{{fullKeyHex}}@127.0.0.1:30303",
                 "caps": [],
                 "network": { "localAddress": "127.0.0.1", "remoteAddress": "127.0.0.1:30303" },
                 "protocols": { "eth": { "version": 0 } }
             }
             """;
 
-        var serializer = new EthereumJsonSerializer();
-        PeerInfo result = serializer.Deserialize<PeerInfo>(json);
+        EthereumJsonSerializer serializer = new();
+        PeerInfo peerInfo = serializer.Deserialize<PeerInfo>(json);
 
-        result.Id.Should().NotBeNull();
-        result.Name.Should().Be("test-peer");
+        peerInfo.Id.Should().NotBeNull();
+        peerInfo.Id.Bytes.Length.Should().Be(64);
+        peerInfo.Id.Bytes.Skip(32).Should().BeEquivalentTo(expectedHashBytes);
+    }
+
+    [Test]
+    public void PeerInfo_WithFullPublicKeyJson_DeserializesSuccessfully() {
+        const string fullKeyHex = "a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec3";
+        byte[] fullPublicKeyBytes = Bytes.FromHexString(fullKeyHex);
+
+        string json = $$"""
+            {
+                "id": "0x{{fullKeyHex}}",
+                "name": "test-peer",
+                "enode": "enode://{{fullKeyHex}}@127.0.0.1:30303",
+                "caps": [],
+                "network": { "localAddress": "127.0.0.1", "remoteAddress": "127.0.0.1:30303" },
+                "protocols": { "eth": { "version": 0 } }
+            }
+            """;
+
+        EthereumJsonSerializer serializer = new();
+        PeerInfo peerInfo = serializer.Deserialize<PeerInfo>(json);
+
+        peerInfo.Id.Should().NotBeNull();
+        peerInfo.Id.Bytes.Length.Should().Be(64);
+        peerInfo.Id.Bytes.Should().BeEquivalentTo(fullPublicKeyBytes);
     }
 
 }
