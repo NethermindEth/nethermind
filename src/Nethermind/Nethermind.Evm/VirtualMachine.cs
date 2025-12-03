@@ -98,7 +98,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected EvmState _currentState;
     protected ReadOnlyMemory<byte>? _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
-    private GasState _transactionGasState;
+    private GasState _transactionGasState = default;
 
     public ILogger Logger => _logger;
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
@@ -527,9 +527,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
     {
-        // Copy refund from EvmState into policy data (e.g., MultiGas) - mirrors Nitro's WithRefund
-        TGasPolicy.FinalizeRefund(ref _transactionGasState, _currentState.Refund);
-
         var policyData = TGasPolicy.GetReceiptData(in _transactionGasState);
         return new TransactionSubstate(
             callResult.Output,
@@ -978,14 +975,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
     }
 
-    protected static bool UpdateGas(long gasCost, ref long gasAvailable)
+    protected static bool UpdateGas(long gasCost, ref GasState gasState, Instruction instruction)
     {
-        if (gasAvailable < gasCost)
+        if (TGasPolicy.GetRemainingGas(gasState) < gasCost)
         {
             return false;
         }
 
-        gasAvailable -= gasCost;
+        TGasPolicy.ConsumeGas(ref gasState, gasCost, instruction);
         return true;
     }
 
@@ -993,7 +990,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         ReadOnlyMemory<byte> callData = state.Env.InputData;
         UInt256 transferValue = state.Env.TransferValue;
-        long gasAvailable = state.GasAvailable;
+        GasState gasState = TGasPolicy.InitializeForTransaction(state.GasAvailable, 0);
 
         IPrecompile precompile = state.Env.CodeInfo.Precompile!;
 
@@ -1020,12 +1017,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         if ((ulong)baseGasCost + (ulong)dataGasCost > (ulong)long.MaxValue ||
-            !UpdateGas(baseGasCost + dataGasCost, ref gasAvailable))
+            !UpdateGas(baseGasCost + dataGasCost, ref gasState, Instruction.STOP))
         {
             return new(output: default, precompileSuccess: false, fromVersion: 0, shouldRevert: true, EvmExceptionType.OutOfGas);
         }
 
-        state.GasAvailable = gasAvailable;
+        state.GasAvailable = TGasPolicy.GetRemainingGas(in gasState);
 
         try
         {
@@ -1140,7 +1137,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         EvmStack stack = new(vmState.DataStackHead, _txTracer, AsAlignedSpan(vmState.DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength));
 
         // Cache the available gas from the state for local use.
-        long gasAvailable = vmState.GasAvailable;
+        GasState gasState = new(vmState.GasAvailable);
 
         // If a previous call result exists, push its bytes onto the stack.
         if (previousCallResult is not null)
@@ -1161,7 +1158,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             UInt256 localPreviousDest = previousCallOutputDestination;
 
             // Attempt to update the memory cost; if insufficient gas is available, jump to the out-of-gas handler.
-            if (!UpdateMemoryCost(vmState, ref gasAvailable, in localPreviousDest, (ulong)previousCallOutput.Length))
+            if (!UpdateMemoryCost(vmState, ref gasState, in localPreviousDest, (ulong)previousCallOutput.Length))
             {
                 goto OutOfGas;
             }
@@ -1177,8 +1174,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
         return _txTracer.IsCancelable switch
         {
-            false => RunByteCode<TTracingInst, OffFlag>(ref stack, gasAvailable),
-            true => RunByteCode<TTracingInst, OnFlag>(ref stack, gasAvailable),
+            false => RunByteCode<TTracingInst, OffFlag>(ref stack, gasState),
+            true => RunByteCode<TTracingInst, OnFlag>(ref stack, gasState),
         };
 
     Empty:
@@ -1219,7 +1216,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     [SkipLocalsInit]
     protected virtual unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
-        long gasAvailable)
+        GasState gasState)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
@@ -1410,11 +1407,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         state.FunctionIndex = SectionIndex;
     }
 
-    private static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
+    private static bool UpdateMemoryCost(EvmState vmState, ref GasState gasState, in UInt256 position, in UInt256 length)
     {
         long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
         if (outOfGas) return false;
-        return memoryCost == 0L || UpdateGas(memoryCost, ref gasAvailable);
+        return memoryCost == 0L || UpdateGas(memoryCost, ref gasState, Instruction.STOP);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

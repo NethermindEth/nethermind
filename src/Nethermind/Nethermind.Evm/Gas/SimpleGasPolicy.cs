@@ -65,16 +65,6 @@ public readonly struct SimpleGasPolicy : IGasPolicy<SimpleGasPolicy>
     }
 
     /// <summary>
-    /// Finalize gas state with accumulated refund.
-    /// Simple policy: no-op (refund is used directly from EvmState).
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void FinalizeRefund(ref GasState gasState, long refund)
-    {
-        // No-op: refund is already in EvmState.Refund, used directly by VirtualMachine
-    }
-
-    /// <summary>
     /// Get policy-specific receipt data.
     /// Simple policy: no extra data needed.
     /// </summary>

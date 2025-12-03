@@ -51,16 +51,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract void SetOutOfGas(ref GasState gasState);
 
     /// <summary>
-    /// Finalize the gas state by copying the accumulated refund from EvmState.
-    /// Called at transaction end before GetReceiptData.
-    /// For simple policies this is a no-op (refund used directly from EvmState).
-    /// For multigas policies this copies refund into the multigas structure.
-    /// </summary>
-    /// <param name="gasState">The gas state to finalize</param>
-    /// <param name="refund">The accumulated refund from EvmState</param>
-    static abstract void FinalizeRefund(ref GasState gasState, long refund);
-
-    /// <summary>
     /// Get policy-specific data for receipt storage (e.g., multigas breakdown).
     /// Returns null for policies without extra data (e.g., Ethereum).
     /// </summary>

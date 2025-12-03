@@ -21,8 +21,6 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm;
 
-using unsafe OpCode = delegate*<VirtualMachine<SimpleGasPolicy>, ref EvmStack, ref GasState, ref int, EvmExceptionType>;
-
 public unsafe partial class VirtualMachine<TGasPolicy>
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
@@ -30,7 +28,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
-        VirtualMachine vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
+        VirtualMachine<TGasPolicy> vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
 
         byte[] bytecode = new byte[64];
@@ -149,17 +147,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         codeToDeploy.Add((byte)Instruction.POP);
     }
 
-    private static void RunOpCodes<TTracingInst>(VirtualMachine vm, IWorldState state, EvmState evmState,
+    private static void RunOpCodes<TTracingInst>(VirtualMachine<TGasPolicy> vm, IWorldState state, EvmState evmState,
         IReleaseSpec spec)
         where TTracingInst : struct, IFlag
     {
         const int WarmUpIterations = 40;
 
-        var opcodes = (OpCode[])vm.GenerateOpCodes<TTracingInst>(spec);
+        var opcodes = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref GasState, ref int, EvmExceptionType>[])
+            vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
         EvmStack stack = new(0, txTracer, evmState.DataStack);
-        GasState gasState = SimpleGasPolicy.InitializeForTransaction(long.MaxValue, 0);
+        GasState gasState = TGasPolicy.InitializeForTransaction(long.MaxValue, 0);
         int pc = 0;
 
         for (int repeat = 0; repeat < WarmUpIterations; repeat++)
