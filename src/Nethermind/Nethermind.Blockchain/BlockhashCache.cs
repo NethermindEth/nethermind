@@ -142,7 +142,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                             int length = FlatCacheLength(blockHeader);
                             hashes = new Hash256[length];
                             hashes[0] = blockHeader.ParentHash;
-                            Array.Copy(parentHashes, 0, hashes, 1, Math.Min(length - 1, MaxDepth - 1));
+                            Array.Copy(parentHashes, 0, hashes, 1, length - 1);
                             if (!emptyHash)
                             {
                                 _flatCache.Set(blockHeader.Hash, hashes);
