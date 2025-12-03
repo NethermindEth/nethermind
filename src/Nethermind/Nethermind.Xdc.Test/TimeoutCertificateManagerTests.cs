@@ -56,7 +56,7 @@ public class TimeoutCertificateManagerTests
             Substitute.For<IEpochSwitchManager>(),
             specProvider,
             blockTree,
-            Substitute.For<ISyncInfoManager>(),
+            
             Substitute.For<ISigner>());
 
         var ok = tcManager.VerifyTimeoutCertificate(tc, out var err);
@@ -84,7 +84,7 @@ public class TimeoutCertificateManagerTests
             Substitute.For<IEpochSwitchManager>(),
             specProvider,
             blockTree,
-            Substitute.For<ISyncInfoManager>(),
+            
             Substitute.For<ISigner>());
 
         var ok = tcManager.VerifyTimeoutCertificate(tc, out var err);
@@ -146,11 +146,10 @@ public class TimeoutCertificateManagerTests
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
 
         var context = new XdcConsensusContext();
-        ISyncInfoManager syncInfoManager = Substitute.For<ISyncInfoManager>();
         ISigner signer = Substitute.For<ISigner>();
 
         var tcManager = new TimeoutCertificateManager(context, snapshotManager, epochSwitchManager, specProvider,
-            blockTree, syncInfoManager, signer);
+            blockTree, signer);
 
         Assert.That(tcManager.VerifyTimeoutCertificate(timeoutCertificate, out _), Is.EqualTo(expected));
     }
@@ -189,11 +188,10 @@ public class TimeoutCertificateManagerTests
         blockTree.Head.Returns(new Block(header, new BlockBody()));
 
         var context = new XdcConsensusContext() { CurrentRound = 100 };
-        ISyncInfoManager syncInfoManager = Substitute.For<ISyncInfoManager>();
         ISigner signer = Substitute.For<ISigner>();
 
         var tcManager = new TimeoutCertificateManager(context, snapshotManager, epochSwitchManager, specProvider,
-            blockTree, syncInfoManager, signer);
+            blockTree, signer);
 
         var key = correctSigner ? keys.First() : keys.Last();
         var timeout = XdcTestHelper.BuildSignedTimeout(key, round, gap);
@@ -208,7 +206,7 @@ public class TimeoutCertificateManagerTests
             Substitute.For<IEpochSwitchManager>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlockTree>(),
-            Substitute.For<ISyncInfoManager>(),
+            
             Substitute.For<ISigner>());
     }
 

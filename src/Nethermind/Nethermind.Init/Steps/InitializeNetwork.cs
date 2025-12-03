@@ -51,15 +51,15 @@ public class InitializeNetwork : IStep
 {
     protected readonly IApiWithNetwork _api;
     protected readonly INodeStatsManager NodeStatsManager;
-    private readonly ISynchronizer _synchronizer;
-    private readonly ISyncPeerPool _syncPeerPool;
-    private readonly IForkInfo _forkInfo;
-    private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
-    private readonly INetworkStorage _peerStorage;
-    private readonly IDiscoveryApp _discoveryApp;
-    private readonly Lazy<IPeerPool> _peerPool;
-
+    protected readonly ISynchronizer _synchronizer;
+    protected readonly ISyncPeerPool _syncPeerPool;
+    protected readonly IForkInfo _forkInfo;
+    protected readonly IDiscoveryApp _discoveryApp;
+    protected readonly Lazy<IPeerPool> _peerPool;
+    protected readonly INetworkStorage _peerStorage;
     protected readonly INetworkConfig _networkConfig;
+
+    private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly ISyncConfig _syncConfig;
     private readonly IInitConfig _initConfig;
 
@@ -265,7 +265,7 @@ public class InitializeNetwork : IStep
 
         await _api.TrustedNodesManager.InitAsync();
 
-        CreateProtocolManager();
+        _api.ProtocolsManager = CreateProtocolManager();
 
         if (_syncConfig.SnapServingEnabled == true)
         {

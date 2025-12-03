@@ -258,7 +258,7 @@ namespace Nethermind.Network
                 }
             };
 
-        private void InitSatelliteProtocol(ISession session, ProtocolHandlerBase handler)
+        protected void InitSatelliteProtocol(ISession session, ProtocolHandlerBase handler)
         {
             session.Node.EthDetails = handler.Name;
             handler.ProtocolInitialized += (sender, args) =>
@@ -338,7 +338,7 @@ namespace Nethermind.Network
             };
         }
 
-        private void InitSyncPeerProtocol(ISession session, SyncPeerProtocolHandlerBase handler)
+        protected void InitSyncPeerProtocol(ISession session, SyncPeerProtocolHandlerBase handler)
         {
             session.Node.EthDetails = handler.Name;
             handler.ProtocolInitialized += (sender, args) =>

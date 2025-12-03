@@ -33,21 +33,7 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
     }
 
     public Task InitNetworkProtocol()
-    {
-        //_nethermindApi.ProtocolsManager!.AddProtocol(Protocol.Eth,
-        //    (session, version) =>
-        //    {
-        //        Eth63ProtocolHandler ethHandler = version switch
-        //        {
-        //            62 => new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-        //            63 => new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-        //            _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
-        //        };
-
-        //        InitSyncPeerProtocol(session, ethHandler);
-        //        return ethHandler;
-        //    });
-    
+    {    
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 62));
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 63));
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new("xdpos2", 100));

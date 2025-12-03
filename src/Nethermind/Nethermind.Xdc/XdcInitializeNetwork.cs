@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Autofac.Features.AttributeFilters;
 using Google.Protobuf.WellKnownTypes;
 using Nethermind.Api;
@@ -14,6 +15,7 @@ using Nethermind.Network.Discovery;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.TxPool;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -38,9 +40,32 @@ internal class XdcInitializeNetwork(
     IInitConfig initConfig,
     ILogManager logManager) : InitializeNetwork(api, nodeStatsManager, _, synchronizer, syncPeerPool, enrDiscoveryAppFeeder, discoveryApp, peerPool, forkInfo, peerStorage, networkConfig, syncConfig, initConfig, logManager)
 {
-    public override IProtocolsManager ProtocolsManager()
+    protected override IProtocolsManager CreateProtocolManager()
     {
-        base.CreateProtocolManager();
+        var manager = base.CreateProtocolManager();
 
+        XdcProtocolManager xdcProtocolManager = new XdcProtocolManager(
+            _api.Context.Resolve<ITimeoutCertificateManager>(),
+            _api.Context.Resolve<IVotesManager>(),
+            _api.Context.Resolve<ISyncInfoManager>(),
+            _syncPeerPool,
+            _api.SyncServer,
+            _api.BackgroundTaskScheduler,
+            _api.TxPool!,
+            _discoveryApp,
+            _api.MessageSerializationService,
+            _api.RlpxPeer,
+            NodeStatsManager,
+            _api.ProtocolValidator,
+            _peerStorage,
+            _forkInfo,
+            _api.GossipPolicy,
+            _api.WorldStateManager!,
+            _api.LogManager,
+            _api.Config<ITxPoolConfig>(),
+            _api.SpecProvider!,
+            _api.TxGossipPolicy
+            );
+        return xdcProtocolManager;
     }
 }

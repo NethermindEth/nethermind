@@ -52,6 +52,7 @@ public class XdcModule : Module
             // reward handler
 
             // forensics handler
+            .AddSingleton<IForensicsProcessor, ForensicsProcessor>()
 
             // Validators
             .AddSingleton<IHeaderValidator, XdcHeaderValidator>()

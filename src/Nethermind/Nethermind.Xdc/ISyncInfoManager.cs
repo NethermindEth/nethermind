@@ -9,5 +9,4 @@ public interface ISyncInfoManager
 {
     void ProcessSyncInfo(SyncInfo syncInfo);
     bool VerifySyncInfo(SyncInfo syncInfo, out string error);
-    SyncInfo GetSyncInfo();
 }

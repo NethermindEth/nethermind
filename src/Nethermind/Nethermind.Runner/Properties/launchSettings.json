@@ -114,7 +114,7 @@
     },
     "Xdc": {
       "commandName": "Project",
-      "commandLineArgs": "-c xdc --data-dir .data --jsonrpc-enabled",
+      "commandLineArgs": "-c xdc --data-dir .data --Network.DiagTracerEnabled True\r\n",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

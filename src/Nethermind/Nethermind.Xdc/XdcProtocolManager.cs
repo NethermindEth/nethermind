@@ -74,7 +74,7 @@ internal class XdcProtocolManager(
                 100 => new Xdpos2ProtocolHandler(timeoutCertificateManager, votesManager, syncInfoManager, session, _serializer, _stats, _backgroundTaskScheduler, _logManager),
                 _ => throw new NotSupportedException($"Xdpos2 protocol version {version} is not supported.")
             };
-
+            InitSatelliteProtocol(session, xdposHandler);
             return xdposHandler;
         };
 
