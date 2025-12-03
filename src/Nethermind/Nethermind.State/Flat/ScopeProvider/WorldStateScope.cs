@@ -27,7 +27,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     private readonly IFlatDiffRepository _flatDiffRepository;
     private readonly Dictionary<AddressAsKey, StorageTree> _storages = new();
     private readonly StateTree _stateTree;
-    private readonly StateTree _warmupStateTree;
+    private readonly PatriciaTree _warmupStateTree;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
     private FlatDiffRepository.Configuration _configuration;
@@ -56,7 +56,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
             logManager
         );
         _stateTree.RootHash = currentStateId.stateRoot.ToCommitment();
-        _warmupStateTree = new StateTree(
+        _warmupStateTree = new PatriciaTree(
             new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota, isTrieWarmer: true),
             logManager
         );
@@ -107,6 +107,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
     public void HintGet(Address address, Account? account)
     {
+        // Note: Very hot. Setting the account set directly in the bundle have a measureable 5-7% overhead.
         _warmer.PushJob(this, address, null, null, _hintSequenceId);
     }
 
@@ -117,10 +118,18 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
     {
         if (_snapshotBundle.HintSequenceId != sequenceId) return false;
 
-        Account? account = _warmupStateTree.Get(address);
-        if (account is not null)
+        try
         {
-            _snapshotBundle.HintAccountRead(address, account, _hintSequenceId);
+            // Note: tree root not changed after write batch. Also not cleared. So the result is not correct.
+            _ = _warmupStateTree.Get(address.ToAccountPath.Bytes);
+
+            // TODO: Is this really needed?
+            _snapshotBundle.MaybePreReadAccount(address, sequenceId);
+        }
+        catch (AbstractMinimalTrieStore.UnsupportedOperationException)
+        {
+            // So there is this highly confusing case where patriciatree attempted to set storage nodes as persisted
+            // if its parent is persisted. No idea what is the case, but in this case, we really dont care.
         }
 
         return true;

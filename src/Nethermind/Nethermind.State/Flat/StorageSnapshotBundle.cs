@@ -8,6 +8,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
 
+// TODO: Maybe remove this class?
 public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
 {
     internal Hash256 _addressHash = address.ToAccountPath.ToCommitment();
@@ -45,9 +46,9 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
         bundle.SetChangedSlot(address, slot, value);
     }
 
-    public bool HintGet(UInt256 slot, byte[] value, int sequenceId)
+    public void MaybePreReadSlot(UInt256 slot, int sequenceId)
     {
-        return bundle.HintGet(address, slot, sequenceId, value);
+        bundle.MaybePreReadSlot(address, slot, sequenceId);
     }
 
     public void SelfDestruct()

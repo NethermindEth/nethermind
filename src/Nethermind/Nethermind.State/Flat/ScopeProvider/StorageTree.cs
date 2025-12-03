@@ -98,12 +98,9 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
     {
         if (_storageSnapshotBundle.HintSequenceId != sequenceId) return false;
 
-        // TODO: Was warmed up
-
-        byte[] value = _warmupStorageTree.Get(index);
-        if (_storageSnapshotBundle.HintGet(index, value, sequenceId))
-        {
-        }
+        // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
+        _ = _warmupStorageTree.Get(index);
+        _storageSnapshotBundle.MaybePreReadSlot(index, sequenceId);
 
         return true;
     }

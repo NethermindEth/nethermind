@@ -110,7 +110,7 @@ public class SnapshotBundle : IDisposable
         _storageHintWrite = _snapshotBundleEvents.WithLabels("storage_hint_write", _isPrewarmer.ToString());
     }
 
-    private bool TryGetAccountInMemory(Address address, out Account? acc)
+    public bool TryGetAccount(Address address, out Account? acc)
     {
         if (!_isReadOnly)
         {
@@ -127,14 +127,6 @@ public class SnapshotBundle : IDisposable
             }
         }
 
-        acc = null;
-        return false;
-    }
-
-    public bool TryGetAccount(Address address, out Account? acc)
-    {
-        if (TryGetAccountInMemory(address, out acc)) return true;
-
         if (_persistenceReader.TryGetAccount(address, out acc))
         {
             return true;
@@ -145,6 +137,11 @@ public class SnapshotBundle : IDisposable
 
     public int DetermineSelfDestructStateIdx(Address address)
     {
+        if (_selfDestructedAccountAddresses.ContainsKey(address))
+        {
+            return _knownStates.Count;
+        }
+
         for (int i = _knownStates.Count - 1; i >= 0; i--)
         {
             if (_knownStates[i].HasSelfDestruct(address))
@@ -291,43 +288,55 @@ public class SnapshotBundle : IDisposable
         }
     }
 
-    public bool HintAccountRead(Address address, Account? account, int sequenceId)
+    public void MaybePreReadAccount(Address address, int sequenceId)
     {
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
-        if (_hintLock.TryEnterReadLock(0))
+        if (_changedAccounts.ContainsKey(address)) return;
+
+        if (TryGetAccount(address, out Account? account))
         {
-            try
+            if (_hintLock.TryEnterReadLock(0))
             {
-                if (_hintSequenceId != sequenceId) return false;
-                return _changedAccounts.TryAdd(address, account);
-            }
-            finally
-            {
-                _hintLock.ExitReadLock();
+                try
+                {
+                    if (_hintSequenceId != sequenceId) return;
+
+                    // Note: self destruct and change account is not atomic together obviously,
+                    // but the write batch cannot run with this because of the hintlock.
+                    // So self destruct should be correct here.
+                    if (_selfDestructedAccountAddresses.ContainsKey(address)) return;
+                    _changedAccounts.TryAdd(address, account);
+                }
+                finally
+                {
+                    _hintLock.ExitReadLock();
+                }
             }
         }
-
-        return false;
     }
 
-    public bool HintGet(AddressAsKey address, in UInt256 index, int sequenceId, byte[] value)
+    public void MaybePreReadSlot(Address address, UInt256 slot, int sequenceId)
     {
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
+        if (_changedSlots.ContainsKey((address, slot))) return;
 
-        if (_hintLock.TryEnterReadLock(0))
+        if (TryGetSlot(address, slot, DetermineSelfDestructStateIdx(address), out byte[]? value))
         {
-            try
+            if (_hintLock.TryEnterReadLock(0))
             {
-                if (_hintSequenceId != sequenceId) return false;
-                return _changedSlots.TryAdd((address, index), value);
-            }
-            finally
-            {
-                _hintLock.ExitReadLock();
+                try
+                {
+                    if (_hintSequenceId != sequenceId) return;
+
+                    if(_selfDestructedAccountAddresses.ContainsKey(address)) return;
+                    _changedSlots.TryAdd((address, slot), value);
+                }
+                finally
+                {
+                    _hintLock.ExitReadLock();
+                }
             }
         }
-
-        return false;
     }
 
     public struct WriteScopeExiter(ReaderWriterLockSlim lockc): IDisposable
@@ -496,22 +505,6 @@ public class SnapshotBundle : IDisposable
     public void Clear(Address address, Hash256AsKey addressHash)
     {
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
-        foreach (var kv in _changedNodes)
-        {
-            if (kv.Key.Item1.Value == addressHash)
-            {
-                _changedNodes.TryRemove(kv.Key, out TrieNode _);
-            }
-        }
-
-        foreach (var kv in _changedSlots)
-        {
-            if (kv.Key.Item1.Value == address)
-            {
-                _changedSlots.TryRemove(kv.Key, out byte[] _);
-            }
-        }
-
         bool isNewAccount = false;
         if (TryGetAccount(address, out Account? account))
         {
@@ -520,5 +513,24 @@ public class SnapshotBundle : IDisposable
             isNewAccount = account == null;
         }
         _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
+
+        if (!isNewAccount)
+        {
+            foreach (var kv in _changedNodes)
+            {
+                if (kv.Key.Item1.Value == addressHash)
+                {
+                    _changedNodes.TryRemove(kv.Key, out TrieNode _);
+                }
+            }
+
+            foreach (var kv in _changedSlots)
+            {
+                if (kv.Key.Item1.Value == address)
+                {
+                    _changedSlots.TryRemove(kv.Key, out byte[] _);
+                }
+            }
+        }
     }
 }
