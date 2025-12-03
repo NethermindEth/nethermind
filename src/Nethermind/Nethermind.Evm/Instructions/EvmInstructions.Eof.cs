@@ -115,9 +115,10 @@ internal static partial class EvmInstructions
         }
 
         // Deduct the fixed gas cost and the memory cost based on the size (rounded up to 32-byte words).
-        var gasCost = GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out var outOfGas);
+        TGasPolicy.ConsumeGas(ref gasState,
+            GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas),
+            Instruction.RETURNDATACOPY);
         if (outOfGas) goto OutOfGas;
-        TGasPolicy.ConsumeGas(ref gasState, gasCost, Instruction.RETURNDATACOPY);
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
         // For legacy (non-EOF) code, ensure that the copy does not exceed the available return data.

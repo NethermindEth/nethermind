@@ -28,12 +28,13 @@ internal static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b))
             goto StackUnderflow;
 
-        // Calculate gas: base cost plus additional cost per 32-byte word.
-        var gasCost = GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in b, out var outOfGas);
+        // Deduct gas: base cost plus additional cost per 32-byte word.
+        TGasPolicy.ConsumeGas(ref gasState,
+            GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in b, out bool outOfGas),
+            Instruction.KECCAK256);
         if (outOfGas)
             goto OutOfGas;
 
-        TGasPolicy.ConsumeGas(ref gasState, gasCost, Instruction.KECCAK256);
 
         EvmState vmState = vm.EvmState;
         // Charge gas for any required memory expansion.

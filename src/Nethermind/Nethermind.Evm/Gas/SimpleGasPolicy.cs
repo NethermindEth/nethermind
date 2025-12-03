@@ -75,21 +75,6 @@ public readonly struct SimpleGasPolicy : IGasPolicy<SimpleGasPolicy>
     }
 
     /// <summary>
-    /// Merge child frame gas back into parent after call completion.
-    /// Simple policy: no-op since RemainingGas is handled by VirtualMachine.ExecuteTransaction.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void MergeChildFrame(
-        ref GasState parentState,
-        in GasState childState,
-        long gasProvided)
-    {
-        // NOTE: RemainingGas is handled by VirtualMachine.ExecuteTransaction separately
-        // This method is for policy-specific data merging (e.g., multigas)
-        // Simple policy has no extra data to merge
-    }
-
-    /// <summary>
     /// Get final gas used for transaction receipt.
     /// Simple policy: gasLimit minus remaining gas.
     /// </summary>

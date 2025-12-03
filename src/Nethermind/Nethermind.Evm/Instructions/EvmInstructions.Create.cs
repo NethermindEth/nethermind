@@ -111,7 +111,7 @@ internal static partial class EvmInstructions
         }
 
         // Determine the instruction type based on the create operation type.
-        Instruction instruction = typeof(TOpCreate) == typeof(OpCreate2) ? Instruction.CREATE2 : Instruction.CREATE;
+        Instruction instruction = typeof(TOpCreate) == typeof(OpCreate) ? Instruction.CREATE : Instruction.CREATE2;
 
         bool outOfGas = false;
         // Calculate the gas cost for the creation, including fixed cost and per-word cost for init code.

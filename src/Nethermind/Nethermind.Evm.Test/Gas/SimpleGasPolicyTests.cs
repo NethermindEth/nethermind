@@ -77,21 +77,6 @@ public class SimpleGasPolicyTests
     }
 
     [Test]
-    public void SimpleGasPolicy_MergeChildFrame_AddsReturnedGas()
-    {
-        var parentState = new GasState(950000); // After providing 50000 to child
-        var childState = new GasState(30000); // Child used 20000 of 50000
-        long gasProvided = 50000;
-
-        SimpleGasPolicy.MergeChildFrame(
-            ref parentState,
-            in childState,
-            gasProvided);
-
-        Assert.That(parentState.RemainingGas, Is.EqualTo(980000)); // 950000 + 30000
-    }
-
-    [Test]
     public void SimpleGasPolicy_GetFinalGasUsed_ReturnsCorrectValue()
     {
         var gasState = new GasState(300000);

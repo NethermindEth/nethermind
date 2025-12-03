@@ -33,17 +33,6 @@ public struct GasState
     }
 
     /// <summary>
-    /// Initializes a new gas state with remaining gas and policy-specific data.
-    /// </summary>
-    /// <param name="remainingGas">The initial remaining gas</param>
-    /// <param name="policyData">Policy-specific data</param>
-    public GasState(long remainingGas, object? policyData)
-    {
-        RemainingGas = remainingGas;
-        PolicyData = policyData;
-    }
-
-    /// <summary>
     /// Returns a string representation of the gas state for debugging.
     /// </summary>
     public readonly override string ToString()

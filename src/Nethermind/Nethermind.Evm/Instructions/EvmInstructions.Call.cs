@@ -246,7 +246,7 @@ internal static partial class EvmInstructions
             }
 
             // Refund the remaining gas to the caller.
-            TGasPolicy.RefundGas(ref gasState, gasLimitUl);
+            EvmCalculations.UpdateGasUp<TGasPolicy>(ref gasState, gasLimitUl);
             if (TTracingInst.IsActive)
             {
                 var gasRemaining = TGasPolicy.GetRemainingGas(in gasState);
@@ -265,7 +265,7 @@ internal static partial class EvmInstructions
         {
             vm.ReturnDataBuffer = default;
             stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
-            TGasPolicy.RefundGas(ref gasState, gasLimitUl);
+            EvmCalculations.UpdateGasUp<TGasPolicy>(ref gasState, gasLimitUl);
             return FastCall(vm, spec, in transferValue, target);
         }
 

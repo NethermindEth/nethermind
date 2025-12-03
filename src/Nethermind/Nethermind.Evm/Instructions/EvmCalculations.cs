@@ -39,7 +39,7 @@ public static class EvmCalculations
             return true;
         }
 
-        var notOutOfGas = ChargeAccountAccessGas(ref gasState, vm, address, instruction, chargeForWarm);
+        bool notOutOfGas = ChargeAccountAccessGas(ref gasState, vm, address, instruction, chargeForWarm);
         return notOutOfGas
                && (!vm.TxExecutionContext.CodeInfoRepository.TryGetDelegation(address, spec, out Address delegated)
                    // Charge additional gas for the delegated account if it exists.
@@ -79,20 +79,17 @@ public static class EvmCalculations
             // If the account is cold (and not a precompile), charge the cold access cost.
             if (!spec.IsPrecompile(address) && vmState.AccessTracker.WarmUp(address))
             {
-                TGasPolicy.ConsumeGas(ref gasState, GasCostOf.ColdAccountAccess, instruction);
-                result = TGasPolicy.GetRemainingGas(in gasState) >= 0;
+                result = UpdateGas<TGasPolicy>(ref gasState, GasCostOf.ColdAccountAccess, instruction);
             }
             else if (chargeForWarm)
             {
                 // Otherwise, if warm access should be charged, apply the warm read cost.
-                TGasPolicy.ConsumeGas(ref gasState, GasCostOf.WarmStateRead, instruction);
-                result = TGasPolicy.GetRemainingGas(in gasState) >= 0;
+                result = UpdateGas<TGasPolicy>(ref gasState, GasCostOf.WarmStateRead, instruction);
             }
         }
 
         return result;
     }
-
 
     /// <summary>
     /// Charges the appropriate gas cost for accessing a storage cell, taking into account whether the access is cold or warm.
@@ -134,14 +131,12 @@ public static class EvmCalculations
             // If the storage cell is still cold, apply the higher cold access cost and mark it as warm.
             if (accessTracker.WarmUp(in storageCell))
             {
-                TGasPolicy.ConsumeGas(ref gasState, GasCostOf.ColdSLoad, instruction);
-                result = TGasPolicy.GetRemainingGas(in gasState) >= 0;
+                result = UpdateGas<TGasPolicy>(ref gasState, GasCostOf.ColdSLoad, instruction);
             }
             // For SLOAD operations on already warmed-up storage, apply a lower warm-read cost.
             else if (storageAccessType == StorageAccessType.SLOAD)
             {
-                TGasPolicy.ConsumeGas(ref gasState, GasCostOf.WarmStateRead, instruction);
-                result = TGasPolicy.GetRemainingGas(in gasState) >= 0;
+                result = UpdateGas<TGasPolicy>(ref gasState, GasCostOf.WarmStateRead, instruction);
             }
         }
 
@@ -163,11 +158,17 @@ public static class EvmCalculations
         in UInt256 length, Instruction instruction)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        var memoryCost = vmState.Memory.CalculateMemoryCost(in position, length);
-        if (memoryCost == 0L)
-            return true;
-        TGasPolicy.ConsumeGas(ref gasState, memoryCost, instruction);
-        return TGasPolicy.GetRemainingGas(in gasState) >= 0;
+        // Calculate additional gas cost for any memory expansion.
+        long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length);
+        if (memoryCost != 0L)
+        {
+            if (!UpdateGas<TGasPolicy>(ref gasState, memoryCost, instruction))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -182,20 +183,25 @@ public static class EvmCalculations
     public static bool UpdateGas<TGasPolicy>(ref GasState gasState, long gasCost, Instruction instruction)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        if (TGasPolicy.GetRemainingGas(in gasState) < gasCost)
+        {
+            return false;
+        }
+
         TGasPolicy.ConsumeGas(ref gasState, gasCost, instruction);
-        return TGasPolicy.GetRemainingGas(in gasState) >= 0;
+        return true;
     }
 
     /// <summary>
     /// Refunds gas by adding the specified amount back to the available gas.
     /// </summary>
     /// <param name="refund">The gas amount to refund.</param>
-    /// <param name="gasAvailable">The current gas available.</param>
+    /// <param name="gasState">The gas state to update.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void UpdateGasUp<TGasPolicy>(long refund, ref long gasAvailable)
+    public static void UpdateGasUp<TGasPolicy>(ref GasState gasState, long refund)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        gasAvailable += refund;
+        TGasPolicy.RefundGas(ref gasState, refund);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

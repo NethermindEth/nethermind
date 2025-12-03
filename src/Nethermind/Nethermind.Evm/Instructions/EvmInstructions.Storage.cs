@@ -365,8 +365,8 @@ internal static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
 
         // For legacy metering: ensure there is enough gas for the SSTORE reset cost before reading storage.
-        TGasPolicy.ConsumeGas(ref gasState, spec.GetSStoreResetCost(), Instruction.SSTORE);
-        if (TGasPolicy.GetRemainingGas(in gasState) < 0) goto OutOfGas;
+        if (!EvmCalculations.UpdateGas<TGasPolicy>(ref gasState, spec.GetSStoreResetCost(), Instruction.SSTORE))
+            goto OutOfGas;
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -407,8 +407,9 @@ internal static partial class EvmInstructions
         // When setting a non-zero value over an existing zero, apply the difference in gas costs.
         else if (currentIsZero)
         {
-            TGasPolicy.ConsumeGas(ref gasState, GasCostOf.SSet - GasCostOf.SReset, Instruction.SSTORE);
-            if (TGasPolicy.GetRemainingGas(in gasState) < 0) goto OutOfGas;
+            if (!EvmCalculations.UpdateGas<TGasPolicy>(ref gasState, GasCostOf.SSet - GasCostOf.SReset,
+                    Instruction.SSTORE))
+                goto OutOfGas;
         }
 
         // Only update storage if the new value differs from the current value.
@@ -474,8 +475,7 @@ internal static partial class EvmInstructions
         {
             if (vm.TxTracer.IsTracingRefunds)
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
-            var availableGas = TGasPolicy.GetRemainingGas(in gasState);
-            if (availableGas <= GasCostOf.CallStipend)
+            if (TGasPolicy.GetRemainingGas(in gasState) <= GasCostOf.CallStipend)
                 goto OutOfGas;
         }
 
@@ -507,8 +507,9 @@ internal static partial class EvmInstructions
 
         if (newSameAsCurrent)
         {
-            TGasPolicy.ConsumeGas(ref gasState, spec.GetNetMeteredSStoreCost(), Instruction.SSTORE);
-            if (TGasPolicy.GetRemainingGas(in gasState) < 0) goto OutOfGas;
+            if (!EvmCalculations.UpdateGas<TGasPolicy>(ref gasState, spec.GetNetMeteredSStoreCost(),
+                    Instruction.SSTORE))
+                goto OutOfGas;
         }
         else
         {
@@ -521,13 +522,14 @@ internal static partial class EvmInstructions
             {
                 if (currentIsZero)
                 {
-                    TGasPolicy.ConsumeGas(ref gasState, GasCostOf.SSet, Instruction.SSTORE);
-                    if (TGasPolicy.GetRemainingGas(in gasState) < 0) goto OutOfGas;
+                    if (!EvmCalculations.UpdateGas<TGasPolicy>(ref gasState, GasCostOf.SSet, Instruction.SSTORE)
+                    goto OutOfGas;
                 }
                 else
                 {
-                    TGasPolicy.ConsumeGas(ref gasState, spec.GetSStoreResetCost(), Instruction.SSTORE);
-                    if (TGasPolicy.GetRemainingGas(in gasState) < 0) goto OutOfGas;
+                    if (!EvmCalculations.UpdateGas<TGasPolicy>(ref gasState, spec.GetSStoreResetCost(),
+                            Instruction.SSTORE))
+                        goto OutOfGas;
 
                     if (newIsZero)
                     {
@@ -540,8 +542,8 @@ internal static partial class EvmInstructions
             else
             {
                 long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
-                TGasPolicy.ConsumeGas(ref gasState, netMeteredStoreCost, Instruction.SSTORE);
-                if (TGasPolicy.GetRemainingGas(in gasState) < 0) goto OutOfGas;
+                if (!EvmCalculations.UpdateGas<TGasPolicy>(ref gasState, netMeteredStoreCost, Instruction.SSTORE))
+                    goto OutOfGas;
 
                 if (!originalIsZero)
                 {
@@ -638,8 +640,7 @@ internal static partial class EvmInstructions
         Metrics.IncrementSLoadOpcode();
 
         // Deduct the gas cost for performing an SLOAD.
-        var sloadCost = spec.GetSLoadCost();
-        TGasPolicy.ConsumeGas(ref gasState, sloadCost, Instruction.SLOAD);
+        TGasPolicy.ConsumeGas(ref gasState, spec.GetSLoadCost(), Instruction.SLOAD);
 
         // Pop the key from the stack; if unavailable, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;

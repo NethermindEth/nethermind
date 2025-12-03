@@ -249,25 +249,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // Restore the previous state from the stack and mark it as a continuation.
                     _currentState = _stateStack.Pop();
                     _currentState.IsContinuation = true;
-
-                    // First, always add the child's remaining gas to parent (single-dimensional gas)
+                    // Refund the remaining gas from the completed call frame.
                     _currentState.GasAvailable += previousState.GasAvailable;
-
-                    // Then, merge multigas data from child frame if both have gas states
-                    if (_currentState.FrameGasState.HasValue && previousState.FrameGasState.HasValue)
-                    {
-                        // Get parent's current gas state and update RemainingGas to match actual
-                        GasState parentGasState = _currentState.FrameGasState.Value;
-                        parentGasState.RemainingGas = _currentState.GasAvailable;
-
-                        GasState childGasState = previousState.FrameGasState.Value;
-                        TGasPolicy.MergeChildFrame(
-                            ref parentGasState,
-                            in childGasState,
-                            previousState.InitialGasProvided);
-                        _currentState.FrameGasState = parentGasState;
-                    }
-
                     bool previousStateSucceeded = true;
 
                     if (!callResult.ShouldRevert)
@@ -1240,12 +1223,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
-        // Initialize gas state for execution
-        // If the frame has a pre-initialized gas state (from parent via InitializeChildFrame), use it
-        // Otherwise create a fresh gas state (for top-level execution)
-        GasState gasState = EvmState.FrameGasState ?? TGasPolicy.InitializeForTransaction(gasAvailable, 0);
-        // Store gas state in EvmState early so parent has it when child frames return
-        EvmState.FrameGasState = gasState;
         // Reset return data and set the current section index from the VM state.
         ReturnData = null;
         SectionIndex = EvmState.FunctionIndex;
@@ -1342,9 +1319,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             if (TTracingInst.IsActive)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gasState));
             UpdateCurrentState(programCounter, TGasPolicy.GetRemainingGas(in gasState), stack.Head);
-            _transactionGasState = gasState;
-            // Save final gas state to EvmState for parent frame's MergeChildFrame
-            EvmState.FrameGasState = gasState;
         }
         else
         {
@@ -1389,10 +1363,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Set the exception type to OutOfGas if gas has been exhausted.
         exceptionType = EvmExceptionType.OutOfGas;
     ReturnFailure:
-    // Store the final gas state for receipt data extraction
-    _transactionGasState = gasState;
-    // Save final gas state to EvmState for parent frame's MergeChildFrame
-    EvmState.FrameGasState = gasState;
         // Return a failure CallResult based on the remaining gas and the exception type.
         return GetFailureReturn(TGasPolicy.GetRemainingGas(in gasState), exceptionType);
 

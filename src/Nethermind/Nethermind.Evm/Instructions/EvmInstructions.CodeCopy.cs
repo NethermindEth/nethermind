@@ -29,7 +29,7 @@ internal static partial class EvmInstructions
         /// </summary>
         /// <param name="vm">The virtual machine instance providing execution context.</param>
         /// <returns>A read-only span of bytes containing the code.</returns>
-        static abstract ReadOnlySpan<byte> GetCode(VirtualMachine<TGasPolicy> vm);
+        abstract static ReadOnlySpan<byte> GetCode(VirtualMachine<TGasPolicy> vm);
     }
 
     /// <summary>
@@ -69,9 +69,10 @@ internal static partial class EvmInstructions
 
         // Deduct gas for the operation plus the cost for memory expansion.
         // Gas cost is calculated as a fixed "VeryLow" cost plus a per-32-bytes cost.
-        var gasCost = GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out var outOfGas);
+        TGasPolicy.ConsumeGas(ref gasState,
+            GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out var outOfGas),
+            Instruction.EXTCODECOPY);
         if (outOfGas) goto OutOfGas;
-        TGasPolicy.ConsumeGas(ref gasState, gasCost, Instruction.CODECOPY);
 
         // Only perform the copy if length (result) is non-zero.
         if (!result.IsZero)
@@ -157,10 +158,10 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
-        var gasCost = spec.GetExtCodeCost() +
-                      GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out var outOfGas);
+        TGasPolicy.ConsumeGas(ref gasState,
+            spec.GetExtCodeCost() + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out var outOfGas),
+            Instruction.EXTCODECOPY);
         if (outOfGas) goto OutOfGas;
-        TGasPolicy.ConsumeGas(ref gasState, gasCost, Instruction.EXTCODECOPY);
 
         // Charge gas for account access (considering hot/cold storage costs).
         if (!EvmCalculations.ChargeAccountAccessGas(ref gasState, vm, address, Instruction.EXTCODECOPY))

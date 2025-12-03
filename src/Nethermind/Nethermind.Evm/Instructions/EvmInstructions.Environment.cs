@@ -38,7 +38,7 @@ internal static partial class EvmInstructions
         /// Executes the operation and returns the result as address.
         /// </summary>
         /// <param name="vm">The current virtual machine instance.</param>
-        static abstract Address Operation(VirtualMachine<TGasPolicy> vm);
+        abstract static Address Operation(VirtualMachine<TGasPolicy> vm);
     }
 
     /// <summary>
@@ -57,7 +57,7 @@ internal static partial class EvmInstructions
         /// Executes the operation and returns the result as ref to big endian word.
         /// </summary>
         /// <param name="vm">The current virtual machine instance.</param>
-        static abstract ref readonly ValueHash256 Operation(VirtualMachine<TGasPolicy> vm);
+        abstract static ref readonly ValueHash256 Operation(VirtualMachine<TGasPolicy> vm);
     }
 
     /// <summary>
@@ -110,7 +110,7 @@ internal static partial class EvmInstructions
         /// </summary>
         /// <param name="vm">The current virtual machine instance.</param>
         /// <param name="result">The resulting 256-bit unsigned integer.</param>
-        static abstract ref readonly UInt256 Operation(VirtualMachine<TGasPolicy> vm);
+        abstract static ref readonly UInt256 Operation(VirtualMachine<TGasPolicy> vm);
     }
 
     /// <summary>
@@ -154,7 +154,7 @@ internal static partial class EvmInstructions
         /// Executes the operation and returns the result as a UInt64.
         /// </summary>
         /// <param name="vm">The current virtual machine instance.</param>
-        static abstract ulong Operation(VirtualMachine<TGasPolicy> vm);
+        abstract static ulong Operation(VirtualMachine<TGasPolicy> vm);
     }
 
     /// <summary>

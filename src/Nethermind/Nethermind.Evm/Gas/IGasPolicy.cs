@@ -58,18 +58,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract GasState InitializeChildFrame(long gasProvided);
 
     /// <summary>
-    /// Merge child frame gas state back into parent after call completion.
-    /// Handles gas returns, refunds, and policy-specific aggregation (e.g., multigas accumulation).
-    /// </summary>
-    /// <param name="parentState">The parent gas state to update</param>
-    /// <param name="childState">The completed child gas state</param>
-    /// <param name="gasProvided">The amount of gas originally provided to the child</param>
-    static abstract void MergeChildFrame(
-        ref GasState parentState,
-        in GasState childState,
-        long gasProvided);
-
-    /// <summary>
     /// Finalize the gas state by copying the accumulated refund from EvmState.
     /// Called at transaction end before GetReceiptData.
     /// For simple policies this is a no-op (refund used directly from EvmState).

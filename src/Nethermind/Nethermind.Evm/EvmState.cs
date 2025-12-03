@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Evm.Gas;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
@@ -80,16 +79,6 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public byte[]? DataStack;
     public ReturnState[]? ReturnStack;
     public long GasAvailable { get; set; }
-    /// <summary>
-    /// The initial gas allocated to this frame when created.
-    /// Used for MergeChildFrame to properly aggregate multigas.
-    /// </summary>
-    public long InitialGasProvided { get; private set; }
-    /// <summary>
-    /// Gas state for policy-based gas tracking (e.g., multigas).
-    /// When set, ExecuteCall will use this instead of creating a fresh state.
-    /// </summary>
-    public GasState? FrameGasState { get; set; }
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
@@ -123,8 +112,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         ExecutionType executionType,
         in ExecutionEnvironment env,
         in StackAccessTracker accessedItems,
-        in Snapshot snapshot,
-        GasState? frameGasState = null)
+        in Snapshot snapshot)
     {
         EvmState state = Rent();
         state.Initialize(
@@ -137,8 +125,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             isCreateOnPreExistingAccount: false,
             env: env,
             stateForAccessLists: accessedItems,
-            snapshot: snapshot,
-            frameGasState: frameGasState);
+            snapshot: snapshot);
         return state;
     }
 
@@ -155,8 +142,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         in ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot,
-        bool isTopLevel = false,
-        GasState? frameGasState = null)
+        bool isTopLevel = false)
     {
         EvmState state = Rent();
         state.Initialize(
@@ -169,8 +155,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
             env: env,
             stateForAccessLists: stateForAccessLists,
-            snapshot: snapshot,
-            frameGasState: frameGasState);
+            snapshot: snapshot);
         return state;
     }
 
@@ -188,8 +173,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         bool isCreateOnPreExistingAccount,
         in ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
-        in Snapshot snapshot,
-        GasState? frameGasState = null)
+        in Snapshot snapshot)
     {
         _env = env;
         _snapshot = snapshot;
@@ -200,8 +184,6 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         }
         _accessTracker.TakeSnapshot();
         GasAvailable = gasAvailable;
-        InitialGasProvided = gasAvailable;
-        FrameGasState = frameGasState;
         OutputDestination = outputDestination;
         OutputLength = outputLength;
         Refund = 0;
@@ -275,7 +257,6 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         _accessTracker = default;
         _env = default;
         _snapshot = default;
-        FrameGasState = null;
 
         _statePool.Enqueue(this);
 
