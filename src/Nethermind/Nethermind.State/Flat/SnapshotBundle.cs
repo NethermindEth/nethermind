@@ -23,6 +23,7 @@ namespace Nethermind.State.Flat;
 public class SnapshotBundle : IDisposable
 {
     private Dictionary<AddressAsKey, StorageSnapshotBundle> _loadedContractStorages;
+    private ConcurrentDictionary<(AddressAsKey, UInt256?), bool> _wasPrewarmed;
 
     // Used to solve the problem of how do we prevent the warmer from setting the account when it is being written actively.
     // When a write batch is created, the write lock is entered and sequence id is incremented. Trie warmer is
@@ -76,6 +77,7 @@ public class SnapshotBundle : IDisposable
         _isReadOnly = isReadOnly;
 
         _loadedContractStorages = new Dictionary<AddressAsKey, StorageSnapshotBundle>();
+        _wasPrewarmed = new ConcurrentDictionary<(AddressAsKey, UInt256?), bool>();
         SetupMetric();
 
         if (!_isReadOnly)
@@ -288,6 +290,11 @@ public class SnapshotBundle : IDisposable
         }
     }
 
+    public bool ShouldPrewarm(Address address, UInt256? slot)
+    {
+        return _wasPrewarmed.TryAdd((address, slot), true);
+    }
+
     public void MaybePreReadAccount(Address address, int sequenceId)
     {
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
@@ -498,6 +505,7 @@ public class SnapshotBundle : IDisposable
         _selfDestructedAccountAddresses = null;
 
         _persistenceReader.Dispose();
+        _wasPrewarmed.Clear();
 
         if (!_isReadOnly) _resourcePool.ReturnSnapshotContent(_currentPooledContent);
     }

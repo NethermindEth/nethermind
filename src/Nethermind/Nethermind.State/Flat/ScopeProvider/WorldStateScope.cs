@@ -120,11 +120,14 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
         try
         {
-            // Note: tree root not changed after write batch. Also not cleared. So the result is not correct.
-            _ = _warmupStateTree.Get(address.ToAccountPath.Bytes);
+            if (_snapshotBundle.ShouldPrewarm(address, null))
+            {
+                // Note: tree root not changed after write batch. Also not cleared. So the result is not correct.
+                _ = _warmupStateTree.Get(address.ToAccountPath.Bytes);
 
-            // TODO: Is this really needed?
-            _snapshotBundle.MaybePreReadAccount(address, sequenceId);
+                // TODO: Is this really needed?
+                _snapshotBundle.MaybePreReadAccount(address, sequenceId);
+            }
         }
         catch (AbstractMinimalTrieStore.UnsupportedOperationException)
         {

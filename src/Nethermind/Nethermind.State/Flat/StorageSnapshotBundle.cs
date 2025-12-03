@@ -60,4 +60,9 @@ public class StorageSnapshotBundle(Address address, SnapshotBundle bundle)
     public void Dispose()
     {
     }
+
+    public bool ShouldPrewarm(UInt256 index)
+    {
+        return bundle.ShouldPrewarm(address, index);
+    }
 }
