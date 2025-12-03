@@ -42,10 +42,15 @@ namespace Nethermind.Blockchain
             }
 
             Hash256[]? hashes = _hashes;
-            return hashes is not null
-                ? hashes[depth]
-                : blockhashCache.GetHash(currentBlock, (int)depth)
-                  ?? throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation");
+
+            // Use prefetched hashes if available and depth is within bounds.
+            if (hashes is not null && depth < hashes.Length)
+            {
+                return hashes[depth];
+            }
+
+            return blockhashCache.GetHash(currentBlock, (int)depth)
+                ?? throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation");
         }
 
         public async Task Prefetch(BlockHeader currentBlock, CancellationToken token)

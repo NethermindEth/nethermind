@@ -330,6 +330,24 @@ public class BlockhashCacheTests
         cache.GetStats().Should().Be(new BlockhashCache.Stats(0, 0, 0));
     }
 
+    [Test]
+    public async Task Prefetch_with_null_hash_does_not_cache()
+    {
+        (BlockTree tree, BlockhashCache cache) = BuildTest(10);
+
+        BlockHeader parent = tree.FindHeader(9, BlockTreeLookupOptions.None)!;
+        await cache.Prefetch(parent);
+        int cacheCountBefore = cache.GetStats().FlatCache;
+
+        BlockHeader production = Build.A.BlockHeader.WithParent(parent).WithNumber(10).TestObject;
+        production.Hash = null;
+        Hash256[]? hashes = await cache.Prefetch(production);
+
+        hashes![0].Should().BeNull();
+        hashes[1].Should().Be(parent.Hash!);
+        cache.GetStats().FlatCache.Should().Be(cacheCountBefore);
+    }
+
     private static (BlockTree, BlockhashCache) BuildTest(int chainLength, IHeaderStore? headerStore = null)
     {
         Block genesis = Build.A.Block.Genesis.TestObject;

@@ -108,7 +108,12 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             {
                 hashes[i] = blocks[i].Node.Hash;
             }
-            _flatCache.Set(blockHeader.Hash, hashes);
+
+            // Only cache if we have a valid hash key
+            if (blockHeader.Hash is not null)
+            {
+                _flatCache.Set(blockHeader.Hash, hashes);
+            }
         }
 
         int index = depth - skipped;
@@ -129,7 +134,9 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             {
                 if (!cancellationToken.IsCancellationRequested)
                 {
-                    if (!_flatCache.TryGet(blockHeader.Hash, out hashes))
+                    bool emptyHash = blockHeader.Hash is null;
+
+                    if (emptyHash || !_flatCache.TryGet(blockHeader.Hash, out hashes))
                     {
                         if (_flatCache.TryGet(blockHeader.ParentHash, out Hash256[] parentHashes))
                         {
@@ -137,7 +144,11 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                             hashes = new Hash256[length];
                             hashes[0] = blockHeader.Hash;
                             Array.Copy(parentHashes, 0, hashes, 1, Math.Min(length - 1, MaxDepth));
-                            _flatCache.Set(blockHeader.Hash, hashes);
+                            // Only cache if we have a valid hash key
+                            if (!emptyHash)
+                            {
+                                _flatCache.Set(blockHeader.Hash, hashes);
+                            }
                         }
                         else
                         {
