@@ -59,6 +59,8 @@ namespace Nethermind.Config
 
         public bool PreWarmStateOnBlockProcessing { get; set; } = true;
 
+        public bool ParallelBlockProcessing { get; set; } = true;
+
         public bool CachePrecompilesOnBlockProcessing { get; set; } = true;
 
         public int PreWarmStateConcurrency { get; set; } = 0;
