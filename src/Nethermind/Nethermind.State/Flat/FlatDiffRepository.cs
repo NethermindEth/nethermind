@@ -46,6 +46,12 @@ public class FlatDiffRepository : IFlatDiffRepository
     private ILogger _logger;
     private StateId _currentPersistedState;
 
+    private static Histogram _flatdiffimes = Metrics.CreateHistogram("flatdiff_times", "aha", new HistogramConfiguration()
+    {
+        LabelNames = new[] { "category", "type" },
+        Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
+    });
+
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
     public record Configuration(
@@ -149,7 +155,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         {
             try
             {
-                await CleanIfNeeded();
+                await PersistIfNeeded();
             }
             catch (Exception ex)
             {
@@ -191,7 +197,7 @@ public class FlatDiffRepository : IFlatDiffRepository
     private void RunCompactJob(StateId stateId)
     {
         CompactLevel(stateId);
-        CleanIfNeeded().Wait();
+        PersistIfNeeded().Wait();
     }
 
     private RepolockReadExiter EnterRepolockReadOnly()
@@ -264,7 +270,9 @@ public class FlatDiffRepository : IFlatDiffRepository
             }
 
             if (_logger.IsDebug) _logger.Debug($"Compacting {stateId}");
+            long sw = Stopwatch.GetTimestamp();
             Snapshot snapshot = gatheredCache.CompactToKnownState();
+            _flatdiffimes.WithLabels("compaction", "compact_to_known_state").Observe(Stopwatch.GetTimestamp() - sw);
 
             using (EnterRepolock())
             {
@@ -370,10 +378,15 @@ public class FlatDiffRepository : IFlatDiffRepository
 
     public void AddSnapshot(Snapshot snapshot)
     {
+        long sw = Stopwatch.GetTimestamp();
+
         StateId startingBlock = snapshot.From;
         StateId endBlock = snapshot.To;
         using (EnterRepolock())
         {
+            _flatdiffimes.WithLabels("add_snapshot", "repolock").Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
+
             if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.blockNumber} to {endBlock.blockNumber}");
             if (endBlock.blockNumber <= _currentPersistedState.blockNumber)
             {
@@ -384,6 +397,9 @@ public class FlatDiffRepository : IFlatDiffRepository
 
             // snapshot should have 1 lease here
             _inMemorySnapshotStore.AddBlock(endBlock, snapshot);
+
+            _flatdiffimes.WithLabels("add_snapshot", "add_block").Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
         }
 
         if (_inlineCompaction)
@@ -394,18 +410,25 @@ public class FlatDiffRepository : IFlatDiffRepository
         {
             if (!_compactorJobs.Writer.TryWrite(endBlock))
             {
+                _flatdiffimes.WithLabels("add_snapshot", "try_write_failed").Observe(Stopwatch.GetTimestamp() - sw);
+                sw = Stopwatch.GetTimestamp();
                 _logger.Warn("Compactor job stall!");
                 _compactorJobs.Writer.WriteAsync(endBlock).AsTask().Wait();
+                _flatdiffimes.WithLabels("add_snapshot", "write_async").Observe(Stopwatch.GetTimestamp() - sw);
+            }
+            else
+            {
+                _flatdiffimes.WithLabels("add_snapshot", "try_write_ok").Observe(Stopwatch.GetTimestamp() - sw);
             }
         }
     }
 
-    private async Task CleanIfNeeded()
+    private async Task PersistIfNeeded()
     {
-        await NotifyWhenSlow("add to bigcache", () => AddToBigCache());
+        await NotifyWhenSlow("add to bigcache", () => AddToPersistence());
     }
 
-    private void AddToBigCache()
+    private void AddToPersistence()
     {
         // Attempt to add snapshots into bigcache
         while (true)
@@ -413,8 +436,11 @@ public class FlatDiffRepository : IFlatDiffRepository
             Snapshot pickedState;
             StateId? pickedSnapshot = null;
             List<StateId> toRemoveStates = new List<StateId>();
+            long sw = Stopwatch.GetTimestamp();
             using (EnterRepolock())
             {
+                _flatdiffimes.WithLabels("add_to_persistence", "repolock").Observe(Stopwatch.GetTimestamp() - sw);
+                sw = Stopwatch.GetTimestamp();
                 long lastSnapshotNumber = _inMemorySnapshotStore.GetLast()?.blockNumber ?? 0;
                 StateId currentState = _currentPersistedState;
                 if (lastSnapshotNumber - currentState.blockNumber <= (_boundary + _compactSize))
@@ -550,12 +576,14 @@ public class FlatDiffRepository : IFlatDiffRepository
                     pickedState.AcquireLease();
                 }
             }
+            _flatdiffimes.WithLabels("add_to_persistence", "state_picked").Observe(Stopwatch.GetTimestamp() - sw);
 
             // Add the canon snapshot
             Add(pickedState);
 
             pickedState.Dispose();
 
+            sw = Stopwatch.GetTimestamp();
             // And we remove it
             using (EnterRepolock())
             {
@@ -568,8 +596,13 @@ public class FlatDiffRepository : IFlatDiffRepository
                     RemoveAndReleaseKnownState(stateId);
                 }
             }
+            _flatdiffimes.WithLabels("add_to_persistence", "cleanup").Observe(Stopwatch.GetTimestamp() - sw);
+
+            sw = Stopwatch.GetTimestamp();
 
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(pickedSnapshot.Value.blockNumber));
+
+            _flatdiffimes.WithLabels("add_to_persistence", "reorg_boundary").Observe(Stopwatch.GetTimestamp() - sw);
         }
     }
 
@@ -596,8 +629,11 @@ public class FlatDiffRepository : IFlatDiffRepository
     public void Add(Snapshot snapshot)
     {
         if (snapshot.To.blockNumber - snapshot.From.blockNumber != _compactSize) _logger.Warn($"Snapshot size write is {snapshot.To.blockNumber - snapshot.From.blockNumber}");
+        long sw = Stopwatch.GetTimestamp();
         using (var batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
+            _flatdiffimes.WithLabels("persistence", "start_batch").Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
             int counter = 0;
             foreach (var toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
             {
@@ -609,6 +645,8 @@ public class FlatDiffRepository : IFlatDiffRepository
                 batch.SelfDestruct(toSelfDestructStorage.Key.Value.ToAccountPath);
                 counter++;
             }
+            _flatdiffimes.WithLabels("persistence", "self_destruct").Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
 
             foreach (var kv in snapshot.Accounts)
             {
@@ -618,6 +656,8 @@ public class FlatDiffRepository : IFlatDiffRepository
                 else
                     batch.SetAccount(addr, account);
             }
+            _flatdiffimes.WithLabels("persistence", "accounts").Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
 
             foreach (var kv in snapshot.Storages)
             {
@@ -632,10 +672,14 @@ public class FlatDiffRepository : IFlatDiffRepository
                     batch.SetStorage(addr, slot, value);
                 }
             }
+            _flatdiffimes.WithLabels("persistence", "storages").Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
 
             _trieNodesSortBuffer.Clear();
             _trieNodesSortBuffer.AddRange(snapshot.TrieNodeKeys);
             _trieNodesSortBuffer.Sort();
+            _flatdiffimes.WithLabels("persistence", "trienode_sort").Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
 
             // foreach (var tn in snapshot.TrieNodes)
             foreach (var k in _trieNodesSortBuffer)
@@ -658,7 +702,10 @@ public class FlatDiffRepository : IFlatDiffRepository
 
                 node.IsPersisted = true;
             }
+            _flatdiffimes.WithLabels("persistence", "trienodes").Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
         }
+        _flatdiffimes.WithLabels("persistence", "dispose").Observe(Stopwatch.GetTimestamp() - sw);
 
         _currentPersistedState = snapshot.To;
         ClearReaderCache();

@@ -1778,6 +1778,7 @@
           "Nethermind.Evm": "[1.36.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.36.0-unstable, )",
           "Nethermind.Trie": "[1.36.0-unstable, )",
+          "ZstdSharp.Port": "[0.8.6, )",
           "prometheus-net": "[8.2.1, )"
         }
       },

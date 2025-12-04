@@ -25,8 +25,8 @@ public class DbConfig : IDbConfig
     private const string MinimumBasicOption =
         "target_file_size_base=64000000;" +
         "max_bytes_for_level_base=256000000;" +
-        "min_write_buffer_number_to_merge=1;" +
         "write_buffer_size=250000000;" +
+        "min_write_buffer_number_to_merge=1;" +
         "max_write_buffer_number=2;" +
         "max_compaction_bytes=4000000000;" +
         "memtable_whole_key_filtering=true;" +
@@ -373,8 +373,9 @@ public class DbConfig : IDbConfig
 
         // "memtable=prefix_hash:1000;" +
         "memtable=skiplist;" +
-
+        "max_write_buffer_number=4;" +
         "min_write_buffer_number_to_merge=2;" +
+        "wal_compression=kZSTD;" + // I think it does not work.
 
         // This used to be on trie, but its here now. Attempt to reduce LSM depth at cost of write amp.
         "max_bytes_for_level_multiplier=30;" +
@@ -422,6 +423,8 @@ public class DbConfig : IDbConfig
     public string? FlatStateDbRocksDbOptions { get; set; } =
         FlatCommonConfig +
         // "prefix_extractor=capped:3;" + // I forget why.
+        "block_based_table_factory.block_cache=64000000;" +
+        "compression=kNoCompression;" + // Compress manually.
         "";
 
     public string? FlatStateDbAdditionalRocksDbOptions { get; set; }
@@ -439,6 +442,7 @@ public class DbConfig : IDbConfig
         // "block_based_table_factory.block_restart_interval=6;" + // For storage the prefix have a lot in common.
         // "memtable=skiplist;" +
         // "prefix_extractor=capped:23;" + // 20 byte address + 3 byte prefix.
+        "block_based_table_factory.block_cache=64000000;" +
         "";
 
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
@@ -452,6 +456,8 @@ public class DbConfig : IDbConfig
 
         // LZ4 seems to be slightly faster here
         "compression=kLZ4Compression;" +
+
+        "wal_compression=kZSTD;" +
 
         // Default value is 16.
         // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.

@@ -3,6 +3,9 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
@@ -13,6 +16,8 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Newtonsoft.Json;
+using ZstdSharp;
 
 namespace Nethermind.State.Flat.Persistence;
 
@@ -37,14 +42,127 @@ public class RocksdbPersistence : IPersistence
     private const int StorageNodesTopPathLength = 2;
     private const int StorageNodesTopKeyLength = StorageHashPrefixLength + StorageNodesTopPathLength + PathLengthLength;
 
-
     internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
     private readonly IKeyValueStoreWithBatching _preimageDb;
+
+    // Compress accounts here instead of in rocksdb, allowing disabling rocksdb's compression.
+    // Unfortunately, only works well with accounts due to many redundant hash.
+    // TODO: Does not help with latency, or anything. Overall use slightly more disk space. Maybe remove.
+    private byte[] _zstdDictionary;
 
     public RocksdbPersistence(IColumnsDb<FlatDbColumns> db, [KeyFilter(DbNames.Preimage)] IDb preimageDb)
     {
         _db = db;
         _preimageDb = preimageDb;
+
+        LoadZstdDictionary();
+
+        // TrainDictionary();
+    }
+
+    private Decompressor CreateDecompressor()
+    {
+        Decompressor decomp = new Decompressor();
+        decomp.LoadDictionary(_zstdDictionary);
+        return decomp;
+    }
+
+    private void LoadZstdDictionary()
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        const string resourceName = "Nethermind.State.Flat.Persistence.zstddictionary.bin";
+        using Stream? stream = assembly.GetManifestResourceStream(resourceName)
+                               ?? throw new InvalidOperationException($"Resource '{resourceName}' not found.");
+
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        _zstdDictionary =  ms.ToArray();
+        Console.Error.WriteLine($"Dictionary size is {_zstdDictionary.Length}");
+    }
+
+    internal void TrainDictionary()
+    {
+        using var snapshot = _db.CreateSnapshot();
+
+        List<byte[]> data = new List<byte[]>();
+
+        FlatDbColumns[] columnsToTest =
+        [
+            FlatDbColumns.State,
+            // FlatDbColumns.Storage,
+            // FlatDbColumns.StateTopNodes,
+            // FlatDbColumns.StateNodes,
+            // FlatDbColumns.StorageTopNodes,
+            // FlatDbColumns.StorageNodes,
+        ];
+
+        Random rand = new Random(0);
+
+        byte[] key = new byte[32];
+        byte[] maxKey = new byte[32];
+        Keccak.MaxValue.Bytes.CopyTo(maxKey);
+
+        int totalSize = 0;
+
+        foreach (FlatDbColumns column in columnsToTest)
+        {
+            ISortedKeyValueStore col = snapshot.GetColumn(column) as ISortedKeyValueStore;
+            for (int i = 0; i < 10000; i++)
+            {
+                rand.NextBytes(key);
+
+                using ISortedView view = col.GetViewBetween(key, maxKey);
+
+                if (view.MoveNext())
+                {
+                    data.Add(view.CurrentValue.ToArray());
+                    totalSize += view.CurrentValue.Length;
+                }
+            }
+        }
+
+        Console.Error.WriteLine($"Training dictionary");
+        byte[] dictionary = DictBuilder.TrainFromBuffer(data, 1024 * 2);
+        Console.Error.WriteLine($"Trained a dictionary of size {dictionary.Length} from {data.Count} samples of total size {totalSize}");
+
+        File.WriteAllBytes(Path.Combine(Directory.GetCurrentDirectory(), "flatdictionary.bin"), dictionary);
+
+        using Compressor compressor = new Compressor();
+        compressor.LoadDictionary(dictionary);
+
+        foreach (FlatDbColumns column in columnsToTest)
+        {
+            int compressed = 0;
+            int uncompressed = 0;
+
+            ISortedKeyValueStore col = snapshot.GetColumn(column) as ISortedKeyValueStore;
+            for (int i = 0; i < 10000; i++)
+            {
+                rand.NextBytes(key);
+
+                using ISortedView view = col.GetViewBetween(key, maxKey);
+
+                if (view.MoveNext())
+                {
+                    data.Add(view.CurrentValue.ToArray());
+                    totalSize += view.CurrentValue.Length;
+                }
+            }
+            for (int i = 0; i < 10000; i++)
+            {
+                rand.NextBytes(key);
+
+                using ISortedView view = col.GetViewBetween(key, maxKey);
+
+                if (view.MoveNext())
+                {
+                    uncompressed += view.CurrentValue.Length;
+                    compressed += compressor.Wrap(view.CurrentValue).Length;
+                }
+            }
+
+            Console.Error.WriteLine($"Expected ratio for {column} {(double)compressed / uncompressed}. Comppressed {compressed:N}, Uncompressed {uncompressed:N}");
+        }
     }
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
@@ -129,13 +247,17 @@ public class RocksdbPersistence : IPersistence
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        return new WriteBatch(_preimageDb.StartWriteBatch(), _db.StartWriteBatch(), dbSnap, to);
+        Compressor compressor = new Compressor();
+        compressor.LoadDictionary(_zstdDictionary);
+
+        return new WriteBatch(_preimageDb.StartWriteBatch(), _db.StartWriteBatch(), dbSnap, compressor, to);
     }
 
     private class WriteBatch(
         IWriteBatch preimageWriteBatch,
         IColumnsWriteBatch<FlatDbColumns> batch,
         IColumnDbSnapshot<FlatDbColumns> dbSnap,
+        Compressor compressor,
         StateId to
     ): IPersistence.IWriteBatch
     {
@@ -147,12 +269,15 @@ public class RocksdbPersistence : IPersistence
         IWriteOnlyKeyValueStore storageTopNodes = batch.GetColumnBatch(FlatDbColumns.StorageTopNodes);
         private AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
+        WriteFlags _flags = WriteFlags.None;
+
         public void Dispose()
         {
             SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), to);
             batch.Dispose();
             dbSnap.Dispose();
             preimageWriteBatch.Dispose();
+            compressor.Dispose();
         }
 
         public void SelfDestruct(in ValueHash256 addr)
@@ -196,11 +321,8 @@ public class RocksdbPersistence : IPersistence
 
         public void SetAccount(Address addr, Account account)
         {
-            using var stream = _accountDecoder.EncodeToNewNettyStream(account);
-
             ValueHash256 accountPath = addr.ToAccountPath;
-            preimageWriteBatch.PutSpan(accountPath.Bytes, addr.Bytes);
-            state.PutSpan(addr.ToAccountPath.Bytes, stream.AsSpan());
+            SetAccountRaw(accountPath, account);
         }
 
         public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
@@ -210,7 +332,7 @@ public class RocksdbPersistence : IPersistence
             preimageWriteBatch.PutSpan(hash256.Bytes, slot.ToBigEndian());
 
             ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addr.ToAccountPath, slot);
-            storage.PutSpan(theKey, value);
+            storage.PutSpan(theKey, value, _flags);
         }
 
         public void RemoveStorage(Address addr, UInt256 slot)
@@ -221,14 +343,24 @@ public class RocksdbPersistence : IPersistence
 
         public void SetStorageRaw(Hash256? addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
         {
-            storage.PutSpan(EncodeStorageKey(stackalloc byte[StorageKeyLength], addrHash, slotHash), value);
+            storage.PutSpan(EncodeStorageKey(stackalloc byte[StorageKeyLength], addrHash, slotHash), value, _flags);
         }
+
 
         public void SetAccountRaw(Hash256 addrHash, Account account)
         {
+            SetAccountRaw((ValueHash256)addrHash, account);
+        }
+
+        public void SetAccountRaw(in ValueHash256 addrHash, Account account)
+        {
             using var stream = _accountDecoder.EncodeToNewNettyStream(account);
 
-            state.PutSpan(addrHash.Bytes, stream.AsSpan());
+            Span<byte> compressBuffer = stackalloc byte[stream.AsSpan().Length + 64]; // 64 is extra margin.
+            int compressedSize = compressor.Wrap(stream.AsSpan(), compressBuffer);
+            Span<byte> compressedSpan = compressBuffer[..compressedSize];
+
+            state.PutSpan(addrHash.Bytes, compressedSpan, _flags);
         }
 
         public void SetTrieNodes(Hash256? address, TreePath path, TrieNode tn)
@@ -237,22 +369,22 @@ public class RocksdbPersistence : IPersistence
             {
                 if (path.Length <= StateNodesTopThreshold)
                 {
-                    stateTopNodes.PutSpan(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopKeyLength], path), tn.FullRlp.Span);
+                    stateTopNodes.PutSpan(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopKeyLength], path), tn.FullRlp.Span, _flags);
                 }
                 else
                 {
-                    stateNodes.PutSpan(EncodeStateNodeKey(stackalloc byte[StateNodesKeyLength], path), tn.FullRlp.Span);
+                    stateNodes.PutSpan(EncodeStateNodeKey(stackalloc byte[StateNodesKeyLength], path), tn.FullRlp.Span, _flags);
                 }
             }
             else
             {
                 if (path.Length <= StorageNodesTopThreshold)
                 {
-                    storageTopNodes.PutSpan(EncodeStorageNodeTopKey(stackalloc byte[StorageNodesTopKeyLength], address, path), tn.FullRlp.Span);
+                    storageTopNodes.PutSpan(EncodeStorageNodeTopKey(stackalloc byte[StorageNodesTopKeyLength], address, path), tn.FullRlp.Span, _flags);
                 }
                 else
                 {
-                    storageNodes.PutSpan(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, path), tn.FullRlp.Span);
+                    storageNodes.PutSpan(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, path), tn.FullRlp.Span, _flags);
                 }
             }
         }
@@ -269,6 +401,7 @@ public class RocksdbPersistence : IPersistence
         private readonly IReadOnlyKeyValueStore _storageTopNodes;
         private readonly RocksdbPersistence _mainDb;
 
+        private Decompressor? _decompressor; // Simple single pool decompressor
 
         public PersistenceReader(IColumnDbSnapshot<FlatDbColumns> db, RocksdbPersistence mainDb)
         {
@@ -290,11 +423,39 @@ public class RocksdbPersistence : IPersistence
             _db.Dispose();
         }
 
+        private Decompressor RentDecompressor()
+        {
+            Decompressor? decompressor = _decompressor;
+            if (decompressor is null) return _mainDb.CreateDecompressor();
+            if (Interlocked.CompareExchange(ref _decompressor, null, decompressor) == decompressor) return decompressor;
+            return _mainDb.CreateDecompressor();
+        }
+
+        private void ReturnDecompressor(Decompressor decompressor)
+        {
+            if (Interlocked.CompareExchange(ref _decompressor, decompressor, null) == null)
+            {
+                return;
+            }
+            decompressor.Dispose();
+        }
+
         public bool TryGetAccount(Address address, out Account? acc)
         {
-            Span<byte> value = _state.GetSpan(address.ToAccountPath.Bytes);
+            Span<byte> compressed = _state.GetSpan(address.ToAccountPath.Bytes);
+            Decompressor decompressor = RentDecompressor();
             try
             {
+                if (compressed.IsNullOrEmpty())
+                {
+                    acc = null;
+                    return true;
+                }
+
+                Span<byte> decompressedBuffer = stackalloc byte[256];
+                int resultSize = decompressor.Unwrap(compressed, decompressedBuffer);
+
+                Span<byte> value = decompressedBuffer[..resultSize];
                 if (value.IsNullOrEmpty())
                 {
                     acc = null;
@@ -305,14 +466,10 @@ public class RocksdbPersistence : IPersistence
                 acc = _mainDb._accountDecoder.Decode(ref ctx);
                 return true;
             }
-            catch (RlpException)
-            {
-                Console.Error.WriteLine($"The value is {address}, {value.ToHexString()}");
-                throw;
-            }
             finally
             {
-                _state.DangerousReleaseMemory(value);
+                _state.DangerousReleaseMemory(compressed);
+                ReturnDecompressor(decompressor);
             }
         }
 
