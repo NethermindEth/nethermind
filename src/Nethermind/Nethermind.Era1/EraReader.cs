@@ -88,7 +88,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
                 if (!blockValidator.ValidateBodyAgainstHeader(err.Block.Header, err.Block.Body, out string? error))
                 {
-                    throw new EraVerificationException($"Mismatched block body againts header: {error}. Block number {blockNumber}.");
+                    throw new EraVerificationException($"Mismatched block body against header: {error}. Block number {blockNumber}.");
                 }
 
                 if (!blockValidator.ValidateOrphanedBlock(err.Block, out error))
@@ -178,8 +178,8 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
             position,
             static (buffer) => new UInt256(buffer.Span, isBigEndian: false),
             EntryTypes.TotalDifficulty,
-            out UInt256 currentTotalDiffulty);
-        header.TotalDifficulty = currentTotalDiffulty;
+            out UInt256 currentTotalDifficulty);
+        header.TotalDifficulty = currentTotalDifficulty;
 
         Block block = new Block(header, body);
         return new EntryReadResult(block, receipts);

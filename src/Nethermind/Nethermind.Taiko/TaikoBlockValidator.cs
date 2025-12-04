@@ -24,11 +24,12 @@ public class TaikoBlockValidator(
     private static readonly byte[] AnchorSelector = Keccak.Compute("anchor(bytes32,bytes32,uint64,uint32)").Bytes[..4].ToArray();
     private static readonly byte[] AnchorV2Selector = Keccak.Compute("anchorV2(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32))").Bytes[..4].ToArray();
     private static readonly byte[] AnchorV3Selector = Keccak.Compute("anchorV3(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32),bytes32[])").Bytes[..4].ToArray();
+    public static readonly byte[] AnchorV4Selector = Keccak.Compute("anchorV4((uint48,address,bytes,bytes32,(uint48,uint8,address,address)[]),(uint48,bytes32,bytes32))").Bytes[..4].ToArray();
 
     public static readonly Address GoldenTouchAccount = new("0x0000777735367b36bC9B61C50022d9D0700dB4Ec");
 
     private const long AnchorGasLimit = 250_000;
-    private const long AnchorV3GasLimit = 1_000_000;
+    private const long AnchorV3V4GasLimit = 1_000_000;
 
     protected override bool ValidateEip4844Fields(Block block, IReleaseSpec spec, ref string? error) => true; // No blob transactions are expected, covered by ValidateTransactions also
 
@@ -65,7 +66,8 @@ public class TaikoBlockValidator(
         if (tx.Data.Length == 0
             || (!AnchorSelector.AsSpan().SequenceEqual(tx.Data.Span[..4])
                 && !AnchorV2Selector.AsSpan().SequenceEqual(tx.Data.Span[..4])
-                && !AnchorV3Selector.AsSpan().SequenceEqual(tx.Data.Span[..4])))
+                && !AnchorV3Selector.AsSpan().SequenceEqual(tx.Data.Span[..4])
+                && !AnchorV4Selector.AsSpan().SequenceEqual(tx.Data.Span[..4])))
         {
             errorMessage = "Anchor transaction must have valid selector";
             return false;
@@ -77,7 +79,7 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        if (tx.GasLimit != (spec.IsPacayaEnabled ? AnchorV3GasLimit : AnchorGasLimit))
+        if (tx.GasLimit != (spec.IsPacayaEnabled || spec.IsShastaEnabled ? AnchorV3V4GasLimit : AnchorGasLimit))
         {
             errorMessage = "Anchor transaction must have correct gas limit";
             return false;
@@ -89,7 +91,7 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        // We dont set the tx.SenderAddress here, as it will stop the rest of the transactions in the block
+        // We don't set the tx.SenderAddress here, as it will stop the rest of the transactions in the block
         // from getting their sender address recovered
         Address? senderAddress = tx.SenderAddress ?? ecdsa.RecoverAddress(tx);
 

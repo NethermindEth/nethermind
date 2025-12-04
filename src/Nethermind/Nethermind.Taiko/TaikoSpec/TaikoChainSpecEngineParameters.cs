@@ -13,6 +13,7 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
     public string SealEngineType => Core.SealEngineType.Taiko;
     public long? OntakeTransition { get; set; }
     public long? PacayaTransition { get; set; }
+    public ulong? ShastaTimestamp { get; set; }
     public bool? UseSurgeGasPriceOracle { get; set; }
 
     public Address TaikoL2Address { get; set; } = new("0x1670000000000000000000000000000000010001");
@@ -27,6 +28,11 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
         if (PacayaTransition is not null)
         {
             blockNumbers.Add(PacayaTransition.Value);
+        }
+
+        if (ShastaTimestamp is not null)
+        {
+            timestamps.Add(ShastaTimestamp.Value);
         }
     }
 }

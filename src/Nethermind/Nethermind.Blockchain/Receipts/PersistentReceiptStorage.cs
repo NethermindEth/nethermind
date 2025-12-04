@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Receipts
             EnsureCanonical(e.Block);
             NewCanonicalReceipts?.Invoke(this, e);
 
-            // Dont block main loop
+            // Don't block the main loop
             Task.Run(() =>
             {
                 Block newMain = e.Block;

@@ -31,11 +31,11 @@ public class OptimismBaseFeeCalculatorTests
         {
             IsEip1559Enabled = true,
             IsOpHoloceneEnabled = true,
-            BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp, new DefaultBaseFeeCalculator())
+            BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp, null, new DefaultBaseFeeCalculator())
         };
 
-        var extraData = new byte[EIP1559Parameters.ByteLength];
         var parameters = new EIP1559Parameters(0, denominator, elasticity);
+        var extraData = new byte[parameters.ByteLength];
         parameters.WriteTo(extraData);
 
         BlockHeader blockHeader = Build.A.BlockHeader
@@ -43,6 +43,62 @@ public class OptimismBaseFeeCalculatorTests
             .WithBaseFee(10_000_000)
             .WithTimestamp(HoloceneTimestamp)
             .WithGasUsed(gasUsed)
+            .WithExtraData(extraData)
+            .TestObject;
+
+        UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
+
+        actualBaseFee.Should().Be((UInt256)expectedBaseFee);
+    }
+
+    private static class JovianTest
+    {
+        public const long GasLimit = 30_000_000;
+        public const uint Denominator = 50;
+        public const uint Elasticity = 3;
+        public const long GasTarget = GasLimit / Elasticity;
+    }
+
+    /// <remarks>
+    /// Tests sourced from <see href="https://github.com/ethereum-optimism/op-geth/blob/6658a36c9862694c82eabd803ca885370667401f/consensus/misc/eip1559/eip1559_test.go#L235"/>
+    /// </remarks>
+    [TestCase(1L, JovianTest.GasTarget - 1_000_000, 0L, Spec.HoloceneTimeStamp, 1_000_000_000, 1L)]
+    [TestCase(1L, JovianTest.GasTarget, 0L, Spec.JovianTimeStamp, 1_000_000_000, 1_000_000_000)]
+    [TestCase(1L, JovianTest.GasTarget + 1_000_000, 0L, Spec.JovianTimeStamp, 1_000_000_000, 1_000_000_000)]
+    [TestCase(2_000_000_000, JovianTest.GasTarget + 10_000_000, 0L, Spec.JovianTimeStamp, 1_000_000_000, 2_040_000_000)]
+    [TestCase(1, JovianTest.GasTarget - 1_000_000, 0L, Spec.JovianTimeStamp, 1_000_000_000, 1_000_000_000)]
+    [TestCase(2_097_152, JovianTest.GasTarget - 1_000_000, 0L, Spec.JovianTimeStamp, 2_000_000, 2_092_958)]
+    [TestCase(10_000, JovianTest.GasTarget - 1, 0L, Spec.JovianTimeStamp, 10_000, 10_000)]
+    [TestCase(10_000, JovianTest.GasTarget + 1, 0L, Spec.JovianTimeStamp, 10_000, 10_000 + 1)]
+    [TestCase(10_000, JovianTest.GasTarget, JovianTest.GasLimit, Spec.HoloceneTimeStamp, 1_000_000, 10_000)]
+    [TestCase(10_000, JovianTest.GasTarget, JovianTest.GasTarget + 1, Spec.JovianTimeStamp, 10_000, 10_000 + 1)]
+    [TestCase(2_000_000_000, JovianTest.GasTarget, JovianTest.GasTarget + 10_000_000, Spec.JovianTimeStamp, 1_000_000_000, 2_040_000_000)]
+    public void CalculatesBaseFee_AfterJovian_Using(
+        long baseFee, long gasUsed, long blobGasUsed, ulong timestamp,
+        long minBaseFee, long expectedBaseFee
+    )
+    {
+        IReleaseSpec releaseSpec = new ReleaseSpec
+        {
+            IsEip1559Enabled = true,
+            IsOpHoloceneEnabled = timestamp >= Spec.HoloceneTimeStamp,
+            IsOpJovianEnabled = timestamp >= Spec.JovianTimeStamp,
+            BaseFeeCalculator = new OptimismBaseFeeCalculator(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp, new DefaultBaseFeeCalculator())
+        };
+
+        EIP1559Parameters parameters = releaseSpec.IsOpJovianEnabled
+            ? new(1, JovianTest.Denominator, JovianTest.Elasticity, (ulong)minBaseFee)
+            : new(0, JovianTest.Denominator, JovianTest.Elasticity);
+
+        var extraData = new byte[parameters.ByteLength];
+        parameters.WriteTo(extraData);
+
+        BlockHeader blockHeader = Build.A.BlockHeader
+            .WithGasLimit(JovianTest.GasLimit)
+            .WithGasUsed(gasUsed)
+            .WithBlobGasUsed((ulong)blobGasUsed)
+            .WithBaseFee((UInt256)baseFee)
+            .WithTimestamp((ulong)timestamp)
             .WithExtraData(extraData)
             .TestObject;
 

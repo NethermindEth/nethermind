@@ -7,15 +7,13 @@ using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.State;
 using System;
 
 namespace Nethermind.Xdc.Contracts;
 
-public class MasternodeVotingContract : Contract, IMasternodeVotingContract
+internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 {
     private readonly IWorldState _worldState;
     private IConstantContract _constant;

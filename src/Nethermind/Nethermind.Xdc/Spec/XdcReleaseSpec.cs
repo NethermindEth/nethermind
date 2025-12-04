@@ -34,7 +34,6 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public Address[] GenesisMasterNodes { get; set; }
     public Address FoundationWallet { get; set; }
     public Address BlockSignerContract { get; set; }
-    public Address MasternodeVotingContract { get; set; }
 
     public void ApplyV2Config(ulong round)
     {
@@ -104,7 +103,6 @@ public interface IXdcReleaseSpec : IReleaseSpec
     Address[] GenesisMasterNodes { get; set; }
     Address FoundationWallet { get; set; }
     Address BlockSignerContract { get; set; }
-    Address MasternodeVotingContract { get; set; }
 
     public void ApplyV2Config(ulong round);
 }

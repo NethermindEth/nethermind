@@ -18,6 +18,7 @@ using GT = Bls.PT;
 using EncryptedMessage = ShutterCrypto.EncryptedMessage;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 class ShutterCryptoTests
 {
     [Test]

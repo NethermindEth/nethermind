@@ -31,11 +31,11 @@ public class TransactionTests
     {
         Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
         IEnumerable<string> testDirs = Directory.EnumerateDirectories(".", "tt" + testSet);
-        Dictionary<string, Dictionary<string, TransactionTestJson>> testJsons =
+        Dictionary<string, Dictionary<string, TransactionTestJson>> testJsonMap =
             new();
         foreach (string testDir in testDirs)
         {
-            testJsons[testDir] = new Dictionary<string, TransactionTestJson>();
+            testJsonMap[testDir] = new Dictionary<string, TransactionTestJson>();
             IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir).ToList();
             foreach (string testFile in testFiles)
             {
@@ -43,13 +43,13 @@ public class TransactionTests
                 Dictionary<string, TransactionTestJson> testsInFile = JsonSerializer.Deserialize<Dictionary<string, TransactionTestJson>>(json);
                 foreach (KeyValuePair<string, TransactionTestJson> namedTest in testsInFile)
                 {
-                    testJsons[testDir].Add(namedTest.Key, namedTest.Value);
+                    testJsonMap[testDir].Add(namedTest.Key, namedTest.Value);
                 }
             }
         }
 
         List<TransactionTest> tests = new();
-        foreach (KeyValuePair<string, Dictionary<string, TransactionTestJson>> byDir in testJsons)
+        foreach (KeyValuePair<string, Dictionary<string, TransactionTestJson>> byDir in testJsonMap)
         {
             foreach (KeyValuePair<string, TransactionTestJson> byName in byDir.Value)
             {

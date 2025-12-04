@@ -125,9 +125,9 @@ public class DebugTracerTests : VirtualMachineTestsBase
     }
 
     [TestCase("0x5b5b5b5b5b5b5b5b5b5b00")]
-    public void Debugger_Halts_Execution_On_Eeach_Iteration_using_StepByStepMode(string bytecodeHex)
+    public void Debugger_Halts_Execution_On_Each_Iteration_using_StepByStepMode(string bytecodeHex)
     {
-        // this bytecode is just a bunch of NOP/JUMPDEST, the idea is it will take as much bytes in the bytecode as steps to go throught it
+        // this bytecode is just a bunch of NOP/JUMPDEST; the idea is it will take as many bytes in the bytecode as steps to go through it
         byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
         using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
@@ -161,7 +161,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
     [TestCase("0x5b5b5b5b5b5b5b5b5b5b00")]
     public void Debugger_Skips_Single_Step_Breakpoints_When_MoveNext_Uses_Override(string bytecodeHex)
     {
-        // this bytecode is just a bunch of NOP/JUMPDEST, the idea is it will take as much bytes in the bytecode as steps to go throught it
+        // this bytecode is just a bunch of NOP/JUMPDEST; the idea is it will take as many bytes in the bytecode as steps to go through it
         byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
         using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
@@ -193,7 +193,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
     [TestCase("0x5b5b5b5b5b5b5b5b5b5b00")]
     public void Debugger_Switches_To_Single_Steps_After_First_Breakpoint(string bytecodeHex)
     {
-        // this bytecode is just a bunch of NOP/JUMPDEST, the idea is it will take as much bytes in the bytecode as steps to go throught it
+        // this bytecode is just a bunch of NOP/JUMPDEST; the idea is it will take as many bytes in the bytecode as steps to go through it
         byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
         (int depth, int pc) BREAKPOINT = (0, 5);
@@ -313,7 +313,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 // we alter the value stored in memory to force EQ check at the end to fail
-                tracer.CurrentState.Memory.SaveByte(31, 0x0A);
+                tracer.CurrentState.Memory.TrySaveByte(31, 0x0A);
 
                 tracer.MoveNext();
             }
@@ -435,7 +435,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         const int DATA_STACK_HEIGHT = 10;
         using DebugTracer tracer = new DebugTracer(GethLikeTxTracer);
 
-        tracer.SetCondtion(state => state.DataStackHead == DATA_STACK_HEIGHT);
+        tracer.SetCondition(state => state.DataStackHead == DATA_STACK_HEIGHT);
 
         Thread vmThread = new Thread(() => Execute(tracer, bytecode));
         vmThread.Start();
@@ -455,7 +455,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
     }
 
     [TestCase("0x5b601760005600")]
-    public void Debugger_Wont_Halt_If_Breakpoint_Is_Unreacheable(string bytecodeHex)
+    public void Debugger_Wont_Halt_If_Breakpoint_Is_Unreachable(string bytecodeHex)
     {
         byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
