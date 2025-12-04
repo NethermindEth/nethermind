@@ -15,7 +15,7 @@ public class EraStoreFactory(
     IEraConfig eraConfig
 ) : IEraStoreFactory
 {
-    public IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators)
+    public virtual IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators)
     {
         return new EraStore(
             specProvider,
