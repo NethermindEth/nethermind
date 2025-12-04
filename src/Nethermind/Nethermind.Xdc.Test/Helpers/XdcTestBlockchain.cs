@@ -10,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -194,6 +195,7 @@ public class XdcTestBlockchain : TestBlockchain
             })
             .AddSingleton((_) => BlockProducer)
             //.AddSingleton((_) => BlockProducerRunner)
+            .AddSingleton<IRewardCalculator, NullRewardCalculator>()
             .AddSingleton<IBlockProducerRunner, XdcHotStuff>()
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(TestContext.CurrentContext.CancellationToken))
 
@@ -351,6 +353,11 @@ public class XdcTestBlockchain : TestBlockchain
             snapshotManager.StoreSnapshot(new Types.Snapshot(genesisBlock.Number, genesisBlock.Hash!, finalSpec.GenesisMasterNodes));
             return genesisBlock;
         }
+    }
+
+    private class NullRewardCalculator : IRewardCalculator
+    {
+        public BlockReward[] CalculateRewards(Block block) => Array.Empty<BlockReward>();
     }
 
     public void ChangeReleaseSpec(Action<XdcReleaseSpec> reconfigure)
