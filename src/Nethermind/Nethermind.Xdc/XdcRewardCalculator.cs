@@ -57,7 +57,7 @@ namespace Nethermind.Xdc
             var rewards = new List<BlockReward>();
             var number = xdcHeader.Number;
             IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
-            if(number == spec.SwitchBlock + 1) return rewards.ToArray();
+            if (number == spec.SwitchBlock + 1) return rewards.ToArray();
 
             Address foundationWalletAddr = spec.FoundationWallet;
             if (foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
@@ -74,7 +74,7 @@ namespace Nethermind.Xdc
                 totalFoundationWalletReward += foundationWalletReward;
                 rewards.Add(holderReward);
             }
-            if(totalFoundationWalletReward > UInt256.Zero) rewards.Add(new BlockReward(foundationWalletAddr, totalFoundationWalletReward));
+            if (totalFoundationWalletReward > UInt256.Zero) rewards.Add(new BlockReward(foundationWalletAddr, totalFoundationWalletReward));
             return rewards.ToArray();
         }
 
@@ -237,7 +237,7 @@ namespace Nethermind.Xdc
             // 10% of the reward goes to the foundation wallet
             UInt256 foundationReward = reward / 10;
 
-            return (new BlockReward(owner, masterReward),  foundationReward);
+            return (new BlockReward(owner, masterReward), foundationReward);
         }
     }
 }
