@@ -795,6 +795,7 @@ namespace Nethermind.State
             Stack<int> stack = SetupCache(address);
             stack.Push(_changes.Count);
             _changes.Add(new Change(address, account, ChangeType.New));
+            _tree.HintSet(address);
         }
 
         private void PushRecreateEmpty(Address address, Account account, Stack<int> stack)

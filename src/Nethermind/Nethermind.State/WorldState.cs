@@ -16,6 +16,7 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
+using Prometheus;
 
 [assembly: InternalsVisibleTo("Ethereum.Test.Base")]
 [assembly: InternalsVisibleTo("Ethereum.Blockchain.Test")]
@@ -36,6 +37,9 @@ namespace Nethermind.State
         private bool _isInScope;
         private readonly ILogger _logger;
 
+        private bool isPrewarmer;
+        private Counter _timeCounter = Prometheus.Metrics.CreateCounter("time_counter", "time_counter", "part", "is_prewarmer");
+
         public Hash256 StateRoot
         {
             get
@@ -54,6 +58,11 @@ namespace Nethermind.State
             _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
+            isPrewarmer = false;
+            if (scopeProvider is PrewarmerScopeProvider psp)
+            {
+                isPrewarmer = !psp.IsWarmWorldState;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -226,10 +235,12 @@ namespace Nethermind.State
 
         public void CommitTree(long blockNumber)
         {
+            long sw = Stopwatch.GetTimestamp();
             DebugGuardInScope();
             _stateProvider.UpdateStateRootIfNeeded();
             _currentScope.Commit(blockNumber);
             _persistentStorageProvider.ClearStorageMap();
+            _timeCounter.WithLabels("commit_tree", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
         }
 
         public UInt256 GetNonce(Address address)
@@ -321,17 +332,30 @@ namespace Nethermind.State
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
             DebugGuardInScope();
+
+            long sw = Stopwatch.GetTimestamp();
             _transientStorageProvider.Commit(tracer);
             _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
+            _timeCounter.WithLabels("commit", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
 
             if (commitRoots)
             {
-                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
-                writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
-                _persistentStorageProvider.FlushToTree(writeBatch);
-                _stateProvider.FlushToTree(writeBatch);
+                sw = Stopwatch.GetTimestamp();
+                using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch =
+                       _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount))
+                {
+                    writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
+                    _persistentStorageProvider.FlushToTree(writeBatch);
+                    _timeCounter.WithLabels("flush_storage", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
+                    sw = Stopwatch.GetTimestamp();
+                    _stateProvider.FlushToTree(writeBatch);
+                    _timeCounter.WithLabels("flush", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
+                    sw = Stopwatch.GetTimestamp();
+                }
+                _timeCounter.WithLabels("write_batch_dispose", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
             }
+
         }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)

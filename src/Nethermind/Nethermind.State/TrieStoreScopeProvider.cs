@@ -142,6 +142,10 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             _storages.Clear();
         }
 
+        public void HintSet(Address address)
+        {
+        }
+
         internal StorageTree LookupStorageTree(Address address)
         {
             if (_storages.TryGetValue(address, out var storageTree))
@@ -182,7 +186,8 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries)
         {
-            return new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address), this, address);
+            return new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address),
+                (address, rootHash) => MarkDirty(address, rootHash), address);
         }
 
         public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
@@ -225,7 +230,11 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         }
     }
 
-    private class StorageTreeBulkWriteBatch(int estimatedEntries, StorageTree storageTree, WorldStateWriteBatch worldStateWriteBatch, AddressAsKey address) : IWorldStateScopeProvider.IStorageWriteBatch
+    public class StorageTreeBulkWriteBatch(
+        int estimatedEntries,
+        StorageTree storageTree,
+        Action<Address, Hash256> onRootUpdated,
+        AddressAsKey address) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // Slight optimization on small contract as the index hash can be precalculated in some case.
         private const int MIN_ENTRIES_TO_BATCH = 16;
@@ -287,12 +296,12 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             if (hasSet)
             {
                 storageTree.UpdateRootHash(_bulkWrite?.Count > 64);
-                worldStateWriteBatch.MarkDirty(address, storageTree.RootHash);
+                onRootUpdated(address, storageTree.RootHash);
             }
         }
     }
 
-    private class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb) : IWorldStateScopeProvider.ICodeDb
+    internal class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb) : IWorldStateScopeProvider.ICodeDb
     {
         public byte[]? GetCode(in ValueHash256 codeHash)
         {
