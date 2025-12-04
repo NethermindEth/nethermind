@@ -13,14 +13,15 @@ public sealed class DisabledLogIndexStorage : ILogIndexStorage
 {
     public bool Enabled => false;
 
-    public Task FirstBlockAdded => Task.CompletedTask;
-
     public string GetDbSize() => "0 B";
     public int? GetMaxBlockNumber() => null;
     public int? GetMinBlockNumber() => null;
 
     public IList<int> GetBlockNumbersFor(Address address, int from, int to) => throw new NotSupportedException();
     public IList<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to) => throw new NotSupportedException();
+
+    public IList<LogPosition> GetLogPositions(Address address, int from, int to) => throw new NotSupportedException();
+    public IList<LogPosition> GetLogPositions(int index, Hash256 topic, int from, int to) => throw new NotSupportedException();
 
     public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
         throw new NotSupportedException();

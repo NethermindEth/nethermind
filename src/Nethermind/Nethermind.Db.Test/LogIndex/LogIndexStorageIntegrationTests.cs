@@ -955,16 +955,18 @@ namespace Nethermind.Db.Test.LogIndex
 
             private int _count;
 
-            protected override void SaveBlockNumbersByKey(IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<int> blockNums, bool isBackwardSync, LogIndexUpdateStats? stats)
+            protected override void SaveBlockNumbersByKey(IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<long> positions, bool isBackwardSync, LogIndexUpdateStats? stats)
             {
+                (LogPosition first, LogPosition last) pos = (positions[0], positions[^1]);
+
                 var isFailBlock =
-                    FailOnBlock >= Math.Min(blockNums[0], blockNums[^1]) &&
-                    FailOnBlock <= Math.Max(blockNums[0], blockNums[^1]);
+                    FailOnBlock >= Math.Min(pos.first.BlockNumber, pos.last.BlockNumber) &&
+                    FailOnBlock <= Math.Max(pos.first.BlockNumber, pos.last.BlockNumber);
 
                 if (isFailBlock && Interlocked.Increment(ref _count) >= FailOnCallN)
                     throw new(FailMessage);
 
-                base.SaveBlockNumbersByKey(dbBatch, key, blockNums, isBackwardSync, stats);
+                base.SaveBlockNumbersByKey(dbBatch, key, positions, isBackwardSync, stats);
             }
         }
     }

@@ -19,7 +19,7 @@ namespace Nethermind.Core;
 public static class AscListHelper
 {
     public static TList IntersectTo<T, TList>(TList destination, IList<T> source1, IList<T> source2)
-        where T: IComparable<T>
+        where T : IComparable<T>
         where TList : IList<T>
     {
         var i = 0;
@@ -46,7 +46,7 @@ public static class AscListHelper
     }
 
     public static IList<T> Intersect<T>(IList<T> source1, IList<T> source2)
-        where T: IComparable<T>
+        where T : IComparable<T>
     {
         if (source1.Count == 0 || source2.Count == 0)
             return [];
@@ -56,7 +56,7 @@ public static class AscListHelper
     }
 
     public static TList UnionTo<T, TList>(TList destination, IList<T> source1, IList<T> source2)
-        where T: IComparable<T>
+        where T : IComparable<T>
         where TList : IList<T>
     {
         var i = 0;
@@ -89,7 +89,7 @@ public static class AscListHelper
     }
 
     public static IList<T> Union<T>(IList<T> source1, IList<T> source2)
-        where T: IComparable<T>
+        where T : IComparable<T>
     {
         if (source1.Count == 0) return source2;
         if (source2.Count == 0) return source1;
@@ -99,19 +99,19 @@ public static class AscListHelper
     }
 
     public static IList<T> IntersectAll<T>(IEnumerable<IList<T>> sources)
-        where T: IComparable<T> =>
+        where T : IComparable<T> =>
         sources.Aggregate<IList<T>, IList<T>?>(null, (current, l) => current is null ? l.ToList() : Intersect(current, l)) ?? [];
 
     public static IList<T> IntersectAll<T>(ICollection<List<T>> sources)
-        where T: IComparable<T> =>
+        where T : IComparable<T> =>
         sources.Count == 1 ? sources.First() : IntersectAll(sources.AsEnumerable());
 
     public static IList<T> UnionAll<T>(IEnumerable<IList<T>> sources)
-        where T: IComparable<T> =>
+        where T : IComparable<T> =>
         sources.Aggregate<IList<T>, IList<T>?>(null, (current, l) => current is null ? l.ToList() : Union(current, l)) ?? [];
 
     public static IList<T> UnionAll<T>(ICollection<List<T>> sources)
-        where T: IComparable<T> =>
+        where T : IComparable<T> =>
         sources.Count == 1 ? sources.First() : UnionAll(sources.AsEnumerable());
 
     // TODO: remove?
