@@ -370,13 +370,13 @@ public class ForkInfoTests
         provider.NetworkId.Should().Be(expectedNetworkId);
     }
 
-    private static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
+    public static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
     {
         Test(head, headTimestamp, genesisHash, forkHashHex, next, description, specProvider);
         Test(head, headTimestamp, genesisHash, forkHashHex, next, description, chainSpec, path);
     }
 
-    private static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, string chainSpec, string path = "../../../../Chains")
+    public static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, string chainSpec, string path = "../../../../Chains")
     {
         var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile(Path.Combine(path, chainSpec));
@@ -386,7 +386,7 @@ public class ForkInfoTests
 
     private static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider)
     {
-        uint expectedForkHash = Bytes.ReadEthUInt32(Bytes.FromHexString(forkHashHex));
+        uint expectedForkHash = Bytes.FromHexString(forkHashHex).ReadEthUInt32();
 
         ISyncServer syncServer = Substitute.For<ISyncServer>();
         syncServer.Genesis.Returns(Build.A.BlockHeader.WithHash(genesisHash).TestObject);
