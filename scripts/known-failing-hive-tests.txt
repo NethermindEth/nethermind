@@ -1,5 +1,9 @@
 # rpc-compat
 
+eth_estimateGas/estimate-with-eip4844 (nethermind)
+eth_getStorageAt/get-storage-invalid-key (nethermind)
+eth_getStorageAt/get-storage-invalid-key-too-large (nethermind)
+
 # graphql
 
 01_eth_blockNumber (nethermind)
@@ -58,6 +62,8 @@
 
 Blob Transaction Ordering, Multiple Accounts (Cancun) (nethermind)
 Blob Transaction Ordering, Multiple Clients (Cancun) (nethermind)
+Invalid Missing Ancestor Syncing ReOrg, GasUsed, EmptyTxs=False, CanonicalReOrg=False, Invalid P8 (Cancun) (nethermind)
+Invalid Missing Ancestor Syncing ReOrg, GasUsed, EmptyTxs=False, CanonicalReOrg=False, Invalid P8 (Paris) (nethermind)
 
 #devp2p
 
@@ -73,3 +79,7 @@ TalkRequest (nethermind)
 SimultaneousRequests (nethermind)
 TestBlobTxWithMismatchedSidecar (nethermind)
 TestBlobTxWithoutSidecar (nethermind)
+
+#sync
+
+sync nethermind from nethermind
