@@ -5,6 +5,8 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -28,6 +30,9 @@ public class Snapshot(
     ObjectPool<SnapshotContent> pool
 ) : RefCountingDisposable
 {
+    private Dictionary<MemoryType, long>? _memory = null; // The memory changes, so we use this as a smoewhat estimate so it make some seense
+    public Dictionary<MemoryType, long> EstimateMemory() => _memory ??= content.EstimateMemory();
+
     public StateId From => from;
     public StateId To => to;
     public IEnumerable<KeyValuePair<AddressAsKey, Account?>> Accounts => content.Accounts;
@@ -86,4 +91,38 @@ public record SnapshotContent(
         SelfDestructedStorageAddresses.Clear();
         TrieNodes.Clear();
     }
+
+    public Dictionary<MemoryType, long> EstimateMemory()
+    {
+        Dictionary<MemoryType, long> result = new Dictionary<MemoryType, long>(){
+            { MemoryType.Account, Accounts.Count },
+            { MemoryType.Storage, Storages.Count },
+            { MemoryType.StorageBytes, Storages.Sum((kv) => kv.Value?.Length ?? 0) },
+            { MemoryType.SelfDestructedAddress, SelfDestructedStorageAddresses.Count },
+            { MemoryType.TrieNodes, TrieNodes.Count },
+            { MemoryType.TrieNodesBytes, TrieNodes.Sum((kv) => kv.Value.GetMemorySize(false)) },
+        };
+
+        // I'm just winging it here.
+        result[MemoryType.TotalBytes]
+            = result[MemoryType.Account] * 40 +
+              result[MemoryType.Storage] * 48 +
+              result[MemoryType.StorageBytes] +
+              result[MemoryType.SelfDestructedAddress] * 40 +
+              result[MemoryType.TrieNodes] + 48 +
+              result[MemoryType.TrieNodesBytes];
+
+        return result;
+    }
+}
+
+public enum MemoryType
+{
+    Account,
+    Storage,
+    StorageBytes,
+    SelfDestructedAddress,
+    TrieNodes,
+    TrieNodesBytes,
+    TotalBytes
 }

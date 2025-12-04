@@ -2,21 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Reflection.Metadata.Ecma335;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using Microsoft.Extensions.ObjectPool;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
@@ -51,6 +46,9 @@ public class FlatDiffRepository : IFlatDiffRepository
         LabelNames = new[] { "category", "type" },
         Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
     });
+
+    private static Gauge _knownStatesMemory = Metrics.CreateGauge("flatdiff_knownstates_memory", "memory", "category");
+    private static Gauge _compactedMemory = Metrics.CreateGauge("flatdiff_compacted_memory", "memory", "category");
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
@@ -277,7 +275,20 @@ public class FlatDiffRepository : IFlatDiffRepository
             using (EnterRepolock())
             {
                 if (_logger.IsDebug) _logger.Debug($"Compacted {gatheredCache.SnapshotCount} to {stateId}");
-                _compactedKnownStates[stateId] = snapshot;
+
+                if (_compactedKnownStates.TryAdd(stateId, snapshot))
+                {
+                    var memory = snapshot.EstimateMemory();
+                    foreach (var keyValuePair in memory)
+                    {
+                        _compactedMemory.WithLabels(keyValuePair.Key.ToString()).Inc(keyValuePair.Value);
+                    }
+                    _compactedMemory.WithLabels("count").Inc(1);
+                }
+                else
+                {
+                    snapshot.Dispose();
+                }
 
                 if (stateId.blockNumber % _compactSize != 0)
                 {
@@ -397,6 +408,14 @@ public class FlatDiffRepository : IFlatDiffRepository
 
             // snapshot should have 1 lease here
             _inMemorySnapshotStore.AddBlock(endBlock, snapshot);
+
+            var memory = snapshot.EstimateMemory();
+            foreach (var keyValuePair in memory)
+            {
+                _knownStatesMemory.WithLabels(keyValuePair.Key.ToString()).Inc(keyValuePair.Value);
+            }
+            _knownStatesMemory.WithLabels("count").Inc(1);
+
 
             _flatdiffimes.WithLabels("add_snapshot", "add_block").Observe(Stopwatch.GetTimestamp() - sw);
             sw = Stopwatch.GetTimestamp();
@@ -612,6 +631,12 @@ public class FlatDiffRepository : IFlatDiffRepository
         {
             _compactedKnownStates.Remove(stateId);
             existingState.Dispose();
+            var memory = existingState.EstimateMemory();
+            foreach (var keyValuePair in memory)
+            {
+                _compactedMemory.WithLabels(keyValuePair.Key.ToString()).Dec(keyValuePair.Value);
+            }
+            _compactedMemory.WithLabels("count").Dec(1);
         }
     }
 
@@ -621,6 +646,12 @@ public class FlatDiffRepository : IFlatDiffRepository
         {
             _inMemorySnapshotStore.Remove(stateId);
             existingState.Dispose();
+            var memory = existingState.EstimateMemory();
+            foreach (var keyValuePair in memory)
+            {
+                _knownStatesMemory.WithLabels(keyValuePair.Key.ToString()).Dec(keyValuePair.Value);
+            }
+            _knownStatesMemory.WithLabels("count").Dec();
         }
     }
 

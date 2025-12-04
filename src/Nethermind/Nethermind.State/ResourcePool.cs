@@ -10,6 +10,8 @@ using Nethermind.Int256;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Prometheus;
+using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State;
 
@@ -22,10 +24,13 @@ public class ResourcePool
     public ObjectPool<SnapshotContent> SnapshotPool => _snapshotPool;
     public ObjectPool<SnapshotContent> CompactedSnapshotPool => _compactedSnapshotPool;
 
+    private static Counter _createdSnapshotContent = Metrics.CreateCounter("resourcepool_created_snapshot_content", "created snapshot content");
+
     private class SnapshotContentPolicy(bool allow) : IPooledObjectPolicy<SnapshotContent>
     {
         public SnapshotContent Create()
         {
+            _createdSnapshotContent.Inc();
             return new SnapshotContent(
                 Accounts: new ConcurrentDictionary<AddressAsKey, Account?>(),
                 Storages: new ConcurrentDictionary<(AddressAsKey, UInt256), byte[]?>(),
