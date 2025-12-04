@@ -11,8 +11,11 @@ using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Xdc
 {
@@ -34,6 +37,8 @@ namespace Nethermind.Xdc
         private readonly ITimeoutTimer _timeoutTimer;
         private readonly IProcessExitSource _processExit;
         private readonly ILogger _logger;
+        private readonly IRewardCalculator  _rewardCalculator;
+        private readonly ConcurrentDictionary<Hash256, byte> _rewardsDone = new();
 
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _runTask;
@@ -58,7 +63,8 @@ namespace Nethermind.Xdc
             ISigner signer,
             ITimeoutTimer timeoutTimer,
             IProcessExitSource processExit,
-            ILogManager logManager)
+            ILogManager logManager,
+            IRewardCalculator rewardCalculator)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _xdcContext = xdcContext;
@@ -71,6 +77,7 @@ namespace Nethermind.Xdc
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _timeoutTimer = timeoutTimer;
             _processExit = processExit;
+            _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
 
             _lastActivityTime = DateTime.UtcNow;
@@ -367,8 +374,38 @@ namespace Nethermind.Xdc
                 //TODO This should probably trigger a sync
             }
 
+            TryRunRewardHookAsync(e.Block, xdcHead);
+
             // Signal new round
             _lastActivityTime = DateTime.UtcNow;
+        }
+
+        private void TryRunRewardHookAsync(Block block, XdcBlockHeader header)
+        {
+            // Only run on epoch-switch blocks
+            if (!_epochSwitchManager.IsEpochSwitchAtBlock(header)) return;
+
+            // Only run once per block hash
+            if (!_rewardsDone.TryAdd(header.Hash!, 0)) return;
+
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    var rewards = _rewardCalculator.CalculateRewards(block);
+
+                    //TODO What to do with the rewards? Save them in DB?
+                    if (rewards.Length == 0)
+                        _logger.Info($"[Rewards] Epoch checkpoint #{block.Number} => no rewards.");
+                    else
+                        _logger.Info($"[Rewards] Epoch checkpoint #{block.Number} => {rewards.Length} reward entries.");
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"[Rewards] Failed at checkpoint #{block.Number}", ex);
+                    //TODO Allow retry if desired? _rewardsDone.TryRemove(header.Hash!, out _);
+                }
+            }, _cancellationTokenSource?.Token ?? CancellationToken.None);
         }
 
         /// <summary>
