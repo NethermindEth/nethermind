@@ -975,7 +975,7 @@ internal static partial class EvmInstructions
                 TOpEofCall.OpCode))
             goto OutOfGas;
         // 7. Account access gas: ensure target is warm or charge extra gas for cold access.
-        if (!EvmCalculations.ChargeAccountAccessGasWithDelegation<TGasPolicy>(ref gasState, vm, codeSource,
+        if (!EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasState, vm, codeSource,
                 TOpEofCall.OpCode))
             goto OutOfGas;
 

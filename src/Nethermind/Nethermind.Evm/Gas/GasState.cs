@@ -32,6 +32,12 @@ public struct GasState
         PolicyData = null;
     }
 
+    public GasState(long remainingGas, object policyData)
+    {
+        RemainingGas = remainingGas;
+        PolicyData = policyData;
+    }
+
     /// <summary>
     /// Returns a string representation of the gas state for debugging.
     /// </summary>

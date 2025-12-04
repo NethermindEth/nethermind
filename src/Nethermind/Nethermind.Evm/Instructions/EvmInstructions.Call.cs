@@ -135,14 +135,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
-        Instruction instruction = TOpCall.ExecutionType switch
-        {
-            ExecutionType.CALL => Instruction.CALL,
-            ExecutionType.CALLCODE => Instruction.CALLCODE,
-            ExecutionType.DELEGATECALL => Instruction.DELEGATECALL,
-            ExecutionType.STATICCALL => Instruction.STATICCALL,
-            _ => Instruction.CALL
-        };
+        var instruction = TOpCall.ExecutionType.ToInstruction();
         if (!EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasState, vm, codeSource, instruction))
             goto OutOfGas;
 
