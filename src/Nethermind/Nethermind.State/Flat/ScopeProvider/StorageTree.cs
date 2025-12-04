@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -16,18 +17,20 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public class StorageTree : IWorldStateScopeProvider.IStorageTree
 {
-    private readonly StorageSnapshotBundle _storageSnapshotBundle;
     private readonly State.StorageTree _tree;
     private readonly State.StorageTree _warmupStorageTree;
     private readonly Address _address;
     private readonly FlatDiffRepository.Configuration _config;
     private readonly ITrieStoreTrieCacheWarmer _trieCacheWarmer;
     private readonly WorldStateScope _scope;
+    private readonly SnapshotBundle _bundle;
+    private readonly Hash256 _addressHash;
+    private int _selfDestructKnownStateIdx;
 
     public StorageTree(
         WorldStateScope scope,
         ITrieStoreTrieCacheWarmer trieCacheWarmer,
-        StorageSnapshotBundle storageSnapshotBundle,
+        SnapshotBundle bundle,
         FlatDiffRepository.Configuration config,
         ConcurrencyQuota concurrencyQuota,
         Hash256 storageRoot,
@@ -36,17 +39,21 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
     {
         _scope = scope;
         _trieCacheWarmer = trieCacheWarmer;
-        _storageSnapshotBundle = storageSnapshotBundle;
+        _bundle = bundle;
+        _address = address;
+        _addressHash = address.ToAccountPath.ToHash256();
+        _selfDestructKnownStateIdx = bundle.DetermineSelfDestructStateIdx(address);
+
         _tree = new State.StorageTree(
-            new TrieStoreAdapter(storageSnapshotBundle, concurrencyQuota, isTrieWarmer: false),
+            new TrieStoreAdapter(this, concurrencyQuota, isTrieWarmer: false),
             storageRoot, logManager);
         _tree.RootHash = storageRoot;
         _warmupStorageTree = new State.StorageTree(
-            new TrieStoreAdapter(storageSnapshotBundle, concurrencyQuota, isTrieWarmer: true),
+            new TrieStoreAdapter(this, concurrencyQuota, isTrieWarmer: true),
             logManager);
         _warmupStorageTree.RootHash = storageRoot;
+
         _config = config;
-        _address = address;
 
         // In case its all write.
         _trieCacheWarmer.PushJob(_scope, null, this, 0, _scope.HintSequenceId);
@@ -55,7 +62,7 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
     public Hash256 RootHash => _tree.RootHash;
     public byte[] Get(in UInt256 index)
     {
-        if (!_config.ReadWithTrie && _storageSnapshotBundle.TryGet(index, out var value))
+        if (!_config.ReadWithTrie && TryGet(index, out var value))
         {
             if (value == null) value = State.StorageTree.ZeroBytes;
 
@@ -96,16 +103,38 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
 
     public bool WarUpStorageTrie(UInt256 index, int sequenceId)
     {
-        if (_storageSnapshotBundle.HintSequenceId != sequenceId) return false;
+        if (HintSequenceId != sequenceId) return false;
 
-        if (_storageSnapshotBundle.ShouldPrewarm(index))
+        if (ShouldPrewarm(index))
         {
             // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
             _ = _warmupStorageTree.Get(index);
-            _storageSnapshotBundle.MaybePreReadSlot(index, sequenceId);
+            MaybePreReadSlot(index, sequenceId);
         }
 
         return true;
+    }
+
+    public int HintSequenceId => _bundle.HintSequenceId;
+
+    public bool TryGet(in UInt256 index, out byte[]? value)
+    {
+        return _bundle.TryGetSlot(_address, index, _selfDestructKnownStateIdx, out value);
+    }
+
+    public bool TryFindNode(in TreePath path, Hash256 hash, out TrieNode value)
+    {
+        return _bundle.TryFindNode(_addressHash, path, hash, _selfDestructKnownStateIdx, out value);
+    }
+
+    public bool ShouldPrewarm(UInt256 index)
+    {
+        return _bundle.ShouldPrewarm(_address, index);
+    }
+
+    public void MaybePreReadSlot(UInt256 slot, int sequenceId)
+    {
+        _bundle.MaybePreReadSlot(_address, slot, sequenceId);
     }
 
     public byte[] Get(in ValueHash256 hash)
@@ -113,20 +142,47 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
         throw new Exception("Not supported");
     }
 
+    private byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags, bool isTrieWarmer)
+    {
+        return _bundle.TryLoadRlp(_addressHash, in path, hash, flags, isTrieWarmer);
+    }
+
+    public void Set(UInt256 slot, byte[] value)
+    {
+        _bundle.SetChangedSlot(_address, slot, value);
+    }
+
+    public void SelfDestruct()
+    {
+        _bundle.Clear(_address, _addressHash);
+        _selfDestructKnownStateIdx = _bundle.GetSelfDestructKnownStateId();
+    }
+
+    public void SetNode(TreePath path, TrieNode node)
+    {
+        _bundle.SetNode(_addressHash, path, node);
+    }
+
+    public void SetNodeHint(in TreePath path, TrieNode node)
+    {
+        _bundle.HintTrieNode(_addressHash, path, node);
+    }
+
+
     public void CommitTree()
     {
         _tree.Commit();
     }
 
     private class TrieStoreAdapter(
-        StorageSnapshotBundle storageSnapshotBundle,
+        StorageTree storageTree,
         ConcurrencyQuota concurrencyQuota,
         bool isTrieWarmer
     ): AbstractMinimalTrieStore
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
         {
-            if (storageSnapshotBundle.TryFindNode(path, hash, out var node))
+            if (storageTree.TryFindNode(path, hash, out var node))
             {
                 return node;
             }
@@ -134,29 +190,28 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
             TrieNode newNode = new TrieNode(NodeType.Unknown, hash);
             if (isTrieWarmer)
             {
-                if (hash is not null) storageSnapshotBundle.SetNodeHint(path, newNode);
+                if (hash is not null) storageTree.SetNodeHint(path, newNode);
             }
             else
             {
-                storageSnapshotBundle.SetNode(path, newNode);
+                storageTree.SetNode(path, newNode);
             }
             return newNode;
         }
 
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            var rlp = storageSnapshotBundle.TryLoadRlp(path, hash, flags, isTrieWarmer);
-            return rlp;
+            return storageTree.TryLoadRlp(path, hash, flags, isTrieWarmer);
         }
 
-        public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(storageSnapshotBundle, concurrencyQuota);
+        public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(storageTree, concurrencyQuota);
     }
 
-    private class Committer(StorageSnapshotBundle snapshotBundle, ConcurrencyQuota concurrencyQuota) : AbstractMinimalTrieStore.AbstractMinimalCommitter(concurrencyQuota)
+    private class Committer(StorageTree storageTree, ConcurrencyQuota concurrencyQuota) : AbstractMinimalTrieStore.AbstractMinimalCommitter(concurrencyQuota)
     {
         public override TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
-            snapshotBundle.SetNode(path, node);
+            storageTree.SetNode(path, node);
             return node;
         }
     }
@@ -172,24 +227,24 @@ public class StorageTree : IWorldStateScopeProvider.IStorageTree
 
         return new StorageTreeBulkWriteBatch(
             storageTreeBulkWriteBatch,
-            _storageSnapshotBundle
+            this
         );
     }
 
     private class StorageTreeBulkWriteBatch(
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch,
-        StorageSnapshotBundle storageSnapshotBundle) : IWorldStateScopeProvider.IStorageWriteBatch
+        StorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         public void Set(in UInt256 index, byte[] value)
         {
             storageTreeBulkWriteBatch.Set(in index, value);
-            storageSnapshotBundle.Set(index, value);
+            storageTree.Set(index, value);
         }
 
         public void Clear()
         {
             storageTreeBulkWriteBatch.Clear();
-            storageSnapshotBundle.SelfDestruct();
+            storageTree.SelfDestruct();
         }
 
         public void Dispose()

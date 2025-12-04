@@ -160,7 +160,7 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
         storage = new StorageTree(
             this,
             _warmer,
-            _snapshotBundle.GatherStorageCache(address),
+            _snapshotBundle,
             _configuration,
             _concurrencyQuota,
             storageRoot,

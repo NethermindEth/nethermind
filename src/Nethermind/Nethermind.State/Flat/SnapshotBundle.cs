@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -13,7 +12,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Prometheus;
 using Metrics = Prometheus.Metrics;
@@ -24,7 +22,6 @@ namespace Nethermind.State.Flat;
 // TODO: We can skip the reverse
 public class SnapshotBundle : IDisposable
 {
-    private Dictionary<AddressAsKey, StorageSnapshotBundle> _loadedContractStorages;
     private ConcurrentDictionary<(AddressAsKey, UInt256?), bool> _wasPrewarmed;
 
     // Used to solve the problem of how do we prevent the warmer from setting the account when it is being written actively.
@@ -94,7 +91,6 @@ public class SnapshotBundle : IDisposable
         _isPrewarmer = isPrewarmer;
         _isReadOnly = isReadOnly;
 
-        _loadedContractStorages = new Dictionary<AddressAsKey, StorageSnapshotBundle>();
         _wasPrewarmed = new ConcurrentDictionary<(AddressAsKey, UInt256?), bool>();
         SetupMetric();
 
@@ -466,24 +462,7 @@ public class SnapshotBundle : IDisposable
         _currentPooledContent = _resourcePool.GetSnapshotContent();
         ExpandCurrentPooledContent();
 
-        foreach (var gatheredCacheStorage in _loadedContractStorages)
-        {
-            gatheredCacheStorage.Value.Dispose();
-        }
-        _loadedContractStorages.Clear();
-
         return (knownState, cachedResource);
-    }
-
-    public StorageSnapshotBundle GatherStorageCache(Address address)
-    {
-        ref var snapshotBundle = ref CollectionsMarshal.GetValueRefOrAddDefault(_loadedContractStorages, address, out bool exists);
-        if (!exists)
-        {
-            snapshotBundle = new StorageSnapshotBundle(address, this);
-        }
-
-        return snapshotBundle;
     }
 
     public Snapshot CompactToKnownState()
@@ -575,10 +554,6 @@ public class SnapshotBundle : IDisposable
     public void Dispose()
     {
         _isDisposed = true;
-        foreach (var gatheredCacheStorage in _loadedContractStorages)
-        {
-            gatheredCacheStorage.Value.Dispose();
-        }
         foreach (Snapshot knownState in _knownStates)
         {
             knownState.Dispose();
