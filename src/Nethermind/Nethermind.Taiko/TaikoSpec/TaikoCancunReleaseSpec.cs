@@ -8,26 +8,21 @@ namespace Nethermind.Taiko.TaikoSpec;
 
 public class TaikoOntakeReleaseSpec : Cancun, ITaikoReleaseSpec
 {
-
-    public TaikoOntakeReleaseSpec()
-    {
-        IsOntakeEnabled = true;
-        IsPacayaEnabled = false;
-    }
+    public TaikoOntakeReleaseSpec() => IsOntakeEnabled = true;
 
     public bool IsOntakeEnabled { get; set; }
     public bool IsPacayaEnabled { get; set; }
+    public bool IsShastaEnabled { get; set; }
     public bool UseSurgeGasPriceOracle { get; set; }
     public Address TaikoL2Address { get; set; } = new("0x1670000000000000000000000000000000010001");
 }
 
-public class TaikoPacayaReleaseSpec : TaikoOntakeReleaseSpec, ITaikoReleaseSpec
+public class TaikoPacayaReleaseSpec : TaikoOntakeReleaseSpec
 {
+    public TaikoPacayaReleaseSpec() => IsPacayaEnabled = true;
+}
 
-    public TaikoPacayaReleaseSpec()
-    {
-        IsOntakeEnabled = true;
-        IsPacayaEnabled = true;
-    }
-
+public class TaikoShastaReleaseSpec : TaikoPacayaReleaseSpec
+{
+    public TaikoShastaReleaseSpec() => IsShastaEnabled = true;
 }
