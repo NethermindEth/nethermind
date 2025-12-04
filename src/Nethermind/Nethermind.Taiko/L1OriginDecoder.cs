@@ -11,7 +11,7 @@ namespace Nethermind.Taiko;
 public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
 {
     const int BuildPayloadArgsIdLength = 8;
-    const int SignatureLength = 65;
+    internal const int SignatureLength = 65;
 
     protected override L1Origin DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

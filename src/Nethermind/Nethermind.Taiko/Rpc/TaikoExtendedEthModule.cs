@@ -135,7 +135,7 @@ public class TaikoExtendedEthModule(
         var offset = new UInt256(args[..dataLength], true);
 
         // Check if the offset is invalid
-        if (offset + dataLength > args.Length)
+        if (offset > int.MaxValue || offset + dataLength > args.Length)
         {
             return null;
         }

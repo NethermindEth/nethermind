@@ -20,7 +20,7 @@ public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, IRl
     private const byte L1OriginPrefix = 0x00;
     private const byte BatchToBlockPrefix = 0x01;
     private const byte L1OriginHeadPrefix = 0xFF;
-    private static readonly byte[] L1OriginHeadKey = [L1OriginHeadPrefix, .. new byte[32]];
+    private static readonly byte[] L1OriginHeadKey = [L1OriginHeadPrefix];
 
     private static void CreateL1OriginKey(UInt256 blockId, Span<byte> keyBytes)
     {

@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Taiko.Test;
@@ -154,7 +156,7 @@ public class L1OriginStoreTests
         var testDb = (TestMemDb)_db;
         var allKeys = testDb.Keys.ToArray();
         allKeys.Should().HaveCount(1);
-        allKeys[0].Length.Should().Be(33);
+        allKeys[0].Length.Should().Be(1);
         allKeys[0][0].Should().Be(0xFF, "Head key should have prefix 0xFF");
     }
 
@@ -186,6 +188,19 @@ public class L1OriginStoreTests
         retrieved.Should().NotBeNull();
         retrieved!.L1BlockHeight.Should().Be(0);
         retrieved.IsPreconfBlock.Should().BeTrue();
+    }
+
+    [TestCase(0)]
+    [TestCase(L1OriginDecoder.SignatureLength - 1)]
+    [TestCase(L1OriginDecoder.SignatureLength + 1)]
+    [TestCase(L1OriginDecoder.SignatureLength * 2)]
+    public void Fails_for_invalid_length_signature(int signatureLength)
+    {
+        int[] signature = Enumerable.Range(0, signatureLength).ToArray();
+        L1Origin origin = new(1, Hash256.Zero, 456, Hash256.Zero, null) { Signature = signature };
+
+        Action act = () => _decoder.Encode(origin);
+        act.Should().Throw<RlpException>().WithMessage($"*Signature*{L1OriginDecoder.SignatureLength}*");
     }
 }
 
