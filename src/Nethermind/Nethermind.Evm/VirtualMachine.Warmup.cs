@@ -153,12 +153,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         const int WarmUpIterations = 40;
 
-        var opcodes = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref GasState, ref int, EvmExceptionType>[])
+        var opcodes = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref GasState<TGasPolicy>, ref int, EvmExceptionType>[])
             vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
         EvmStack stack = new(0, txTracer, evmState.DataStack);
-        GasState gasState = TGasPolicy.InitializeForTransaction(long.MaxValue, 0);
+        GasState<TGasPolicy> gasState = TGasPolicy.InitializeForTransaction(long.MaxValue, 0);
         int pc = 0;
 
         for (int repeat = 0; repeat < WarmUpIterations; repeat++)
@@ -182,7 +182,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                 state.Reset(resetBlockChanges: true);
                 stack = new(0, txTracer, evmState.DataStack);
-                gasState = SimpleGasPolicy.InitializeForTransaction(long.MaxValue, 0);
+                gasState = TGasPolicy.InitializeForTransaction(long.MaxValue, 0);
                 pc = 0;
             }
         }

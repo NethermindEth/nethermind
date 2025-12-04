@@ -170,7 +170,7 @@ internal static partial class EvmInstructions
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionEnvAddress<TGasPolicy, TOpEnv, TTracingInst>(
-        VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpEnvAddress
         where TTracingInst : struct, IFlag
@@ -200,7 +200,7 @@ internal static partial class EvmInstructions
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionBlkAddress<TGasPolicy, TOpEnv, TTracingInst>(
-        VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpBlkAddress<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -229,7 +229,7 @@ internal static partial class EvmInstructions
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionEnvUInt256<TGasPolicy, TOpEnv, TTracingInst>(
-        VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpEnvUInt256
         where TTracingInst : struct, IFlag
@@ -255,7 +255,7 @@ internal static partial class EvmInstructions
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionBlkUInt256<TGasPolicy, TOpEnv, TTracingInst>(
-        VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpBlkUInt256<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -281,7 +281,7 @@ internal static partial class EvmInstructions
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionEnvUInt32<TGasPolicy, TOpEnv, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpEnvUInt32
         where TTracingInst : struct, IFlag
@@ -307,7 +307,7 @@ internal static partial class EvmInstructions
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionEnvUInt64<TGasPolicy, TOpEnv, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpEnvUInt64
         where TTracingInst : struct, IFlag
@@ -333,7 +333,7 @@ internal static partial class EvmInstructions
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionBlkUInt64<TGasPolicy, TOpEnv, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpBlkUInt64<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -359,7 +359,7 @@ internal static partial class EvmInstructions
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionEnv32Bytes<TGasPolicy, TOpEnv, TTracingInst>(
-        VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpEnv : struct, IOpEnv32Bytes<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -464,7 +464,7 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/>, or <see cref="EvmExceptionType.BadInstruction"/> if blob base fee not set.
     /// </returns>
     public static EvmExceptionType InstructionBlobBaseFee<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -572,7 +572,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionBalance<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -610,7 +610,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionSelfBalance<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -639,7 +639,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionExtCodeHash<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -688,7 +688,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionExtCodeHashEof<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -741,7 +741,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionPrevRandao<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -765,7 +765,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionGas<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -800,7 +800,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionBlobHash<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -847,7 +847,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionBlockHash<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {

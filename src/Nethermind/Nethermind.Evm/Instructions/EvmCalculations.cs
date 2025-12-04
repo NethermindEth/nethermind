@@ -25,7 +25,7 @@ public static class EvmCalculations
     /// <param name="instruction">The instruction being executed.</param>
     /// <returns>True if gas was successfully charged; otherwise false.</returns>
     public static bool ChargeAccountAccessGasWithDelegation<TGasPolicy>(
-        ref GasState gasState,
+        ref GasState<TGasPolicy> gasState,
         VirtualMachine<TGasPolicy> vm,
         Address address,
         Instruction instruction,
@@ -58,7 +58,7 @@ public static class EvmCalculations
     /// <param name="chargeForWarm">If true, applies the warm read gas cost even if the account is warm.</param>
     /// <returns>True if the gas charge was successful; otherwise false.</returns>
     public static bool ChargeAccountAccessGas<TGasPolicy>(
-        ref GasState gasState,
+        ref GasState<TGasPolicy> gasState,
         VirtualMachine<TGasPolicy> vm,
         Address address,
         Instruction instruction,
@@ -107,7 +107,7 @@ public static class EvmCalculations
     /// <param name="instruction">The instruction being executed.</param>
     /// <returns><c>true</c> if the gas charge was successfully applied; otherwise, <c>false</c> indicating an out-of-gas condition.</returns>
     public static bool ChargeStorageAccessGas<TGasPolicy>(
-        ref GasState gasState,
+        ref GasState<TGasPolicy> gasState,
         VirtualMachine<TGasPolicy> vm,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
@@ -154,7 +154,7 @@ public static class EvmCalculations
     /// <param name="instruction">The instruction being executed.</param>
     /// <returns><c>true</c> if sufficient gas was available and deducted; otherwise, <c>false</c>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool UpdateMemoryCost<TGasPolicy>(EvmState vmState, ref GasState gasState, in UInt256 position,
+    public static bool UpdateMemoryCost<TGasPolicy>(EvmState vmState, ref GasState<TGasPolicy> gasState, in UInt256 position,
         in UInt256 length, Instruction instruction)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
@@ -180,7 +180,7 @@ public static class EvmCalculations
     /// <param name="instruction">The instruction being executed.</param>
     /// <returns><c>true</c> if there was sufficient gas; otherwise, <c>false</c>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool UpdateGas<TGasPolicy>(ref GasState gasState, long gasCost, Instruction instruction)
+    public static bool UpdateGas<TGasPolicy>(ref GasState<TGasPolicy> gasState, long gasCost, Instruction instruction)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         if (TGasPolicy.GetRemainingGas(in gasState) < gasCost)
@@ -198,7 +198,7 @@ public static class EvmCalculations
     /// <param name="refund">The gas amount to refund.</param>
     /// <param name="gasState">The gas state to update.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void UpdateGasUp<TGasPolicy>(ref GasState gasState, long refund)
+    public static void UpdateGasUp<TGasPolicy>(ref GasState<TGasPolicy> gasState, long refund)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         TGasPolicy.RefundGas(ref gasState, refund);

@@ -44,7 +44,7 @@ internal static partial class EvmInstructions
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or a stack underflow error.</returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionBitwise<TGasPolicy, TOpBitwise>(VirtualMachine<TGasPolicy> _,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpBitwise : struct, IOpBitwise
     {

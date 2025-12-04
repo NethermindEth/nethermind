@@ -20,7 +20,7 @@ internal static partial class EvmInstructions
     /// </summary>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionKeccak256<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {

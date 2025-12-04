@@ -29,6 +29,11 @@ internal static partial class EvmInstructions
         /// Gets the execution type corresponding to the create operation.
         /// </summary>
         abstract static ExecutionType ExecutionType { get; }
+
+        /// <summary>
+        /// Gets the instruction opcode for this create operation.
+        /// </summary>
+        abstract static Instruction OpCode { get; }
     }
 
     /// <summary>
@@ -40,6 +45,11 @@ internal static partial class EvmInstructions
         /// Gets the execution type for the CREATE opcode.
         /// </summary>
         public static ExecutionType ExecutionType => ExecutionType.CREATE;
+
+        /// <summary>
+        /// Gets the instruction opcode for the CREATE operation.
+        /// </summary>
+        public static Instruction OpCode => Instruction.CREATE;
     }
 
     /// <summary>
@@ -51,6 +61,11 @@ internal static partial class EvmInstructions
         /// Gets the execution type for the CREATE2 opcode.
         /// </summary>
         public static ExecutionType ExecutionType => ExecutionType.CREATE2;
+
+        /// <summary>
+        /// Gets the instruction opcode for the CREATE2 operation.
+        /// </summary>
+        public static Instruction OpCode => Instruction.CREATE2;
     }
 
     /// <summary>
@@ -70,7 +85,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
-        ref GasState gasState,
+        ref GasState<TGasPolicy> gasState,
         ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCreate : struct, IOpCreate
@@ -111,7 +126,7 @@ internal static partial class EvmInstructions
         }
 
         // Determine the instruction type based on the create operation type.
-        Instruction instruction = typeof(TOpCreate) == typeof(OpCreate) ? Instruction.CREATE : Instruction.CREATE2;
+        Instruction instruction = TOpCreate.OpCode;
 
         bool outOfGas = false;
         // Calculate the gas cost for the creation, including fixed cost and per-word cost for init code.

@@ -30,7 +30,7 @@ internal static partial class EvmInstructions
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionPop<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack,
-        ref GasState gasState, ref int programCounter)
+        ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the minimal gas cost for a POP operation.
@@ -68,6 +68,14 @@ internal static partial class EvmInstructions
             stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
         }
     }
+
+    /// <summary>
+    /// Helper to get instruction by adding (Count - 1) to the base instruction.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Instruction GetInstruction<TOpCount>(Instruction baseInstruction)
+        where TOpCount : IOpCount
+        => baseInstruction + (byte)(TOpCount.Count - 1);
 
     // Some push operations override the default Push method to handle fixed-size optimizations.
 
@@ -118,7 +126,7 @@ internal static partial class EvmInstructions
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionPush2<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -492,7 +500,7 @@ internal static partial class EvmInstructions
     /// <returns><see cref="EvmExceptionType.None"/> on success.</returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionPush0<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -515,13 +523,13 @@ internal static partial class EvmInstructions
     /// <returns><see cref="EvmExceptionType.None"/> on success.</returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionPush<TGasPolicy, TOpCount, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCount : IOpCount
         where TTracingInst : struct, IFlag
     {
         // Deduct a very low gas cost for the push operation.
-        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.VeryLow, Instruction.PUSH1 + (byte)(TOpCount.Count - 1));
+        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.VeryLow, GetInstruction<TOpCount>(Instruction.PUSH1));
         // Retrieve the code segment containing immediate data.
         ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSpan;
         // Use the push method defined by the specific push operation.
@@ -544,12 +552,12 @@ internal static partial class EvmInstructions
     /// <returns><see cref="EvmExceptionType.None"/> on success or <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements.</returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionDup<TGasPolicy, TOpCount, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCount : IOpCount
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.VeryLow, Instruction.DUP1 + (byte)(TOpCount.Count - 1));
+        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.VeryLow, GetInstruction<TOpCount>(Instruction.DUP1));
 
         return stack.Dup<TTracingInst>(TOpCount.Count);
     }
@@ -567,12 +575,12 @@ internal static partial class EvmInstructions
     /// <returns><see cref="EvmExceptionType.None"/> on success or <see cref="EvmExceptionType.StackUnderflow"/> if insufficient elements.</returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionSwap<TGasPolicy, TOpCount, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCount : IOpCount
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.VeryLow, Instruction.SWAP1 + (byte)(TOpCount.Count - 1));
+        TGasPolicy.ConsumeGas(ref gasState, GasCostOf.VeryLow, GetInstruction<TOpCount>(Instruction.SWAP1));
         // Swap the top element with the (n+1)th element; ensure adequate stack depth.
         return stack.Swap<TTracingInst>(TOpCount.Count + 1);
     }
@@ -594,7 +602,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionLog<TGasPolicy, TOpCount>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack, ref GasState gasState, ref int programCounter)
+        ref EvmStack stack, ref GasState<TGasPolicy> gasState, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCount : struct, IOpCount
     {

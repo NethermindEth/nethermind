@@ -32,15 +32,4 @@ public class SimpleGasPolicyTests
         // Same gas cost, different instructions - same result for simple policy
         Assert.That(gasState1.RemainingGas, Is.EqualTo(gasState2.RemainingGas));
     }
-
-    [Test]
-    public void SimpleGasPolicy_GetReceiptData_ReturnsNull()
-    {
-        var gasState = new GasState(500000);
-
-        var receiptData = SimpleGasPolicy.GetReceiptData(in gasState);
-
-        Assert.That(receiptData, Is.Null);
-    }
-
 }

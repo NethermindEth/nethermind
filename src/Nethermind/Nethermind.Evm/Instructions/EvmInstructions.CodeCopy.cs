@@ -54,7 +54,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionCodeCopy<TGasPolicy, TOpCodeCopy, TTracingInst>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
-        ref GasState gasState,
+        ref GasState<TGasPolicy> gasState,
         ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCodeCopy : struct, IOpCodeCopy<TGasPolicy>
@@ -141,7 +141,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
-        ref GasState gasState,
+        ref GasState<TGasPolicy> gasState,
         ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -233,7 +233,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionExtCodeSize<TGasPolicy, TTracingInst>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
-        ref GasState gasState,
+        ref GasState<TGasPolicy> gasState,
         ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag

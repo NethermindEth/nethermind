@@ -4,45 +4,21 @@
 namespace Nethermind.Evm.Gas;
 
 /// <summary>
-/// Generic gas state container that can hold both simple and complex gas accounting.
+/// Gas state containing remaining gas and an inline gas policy.
 /// </summary>
-public struct GasState
+/// <typeparam name="TGasPolicy">The gas policy type</typeparam>
+public ref struct GasState<TGasPolicy>(long remainingGas, TGasPolicy policy = default)
+    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     /// <summary>
-    /// Remaining single-dimensional gas.
-    /// For simple gas: this is the only field used.
-    /// For multigas: this is the sum of all dimensions.
+    /// Remaining gas available for execution.
     /// </summary>
-    public long RemainingGas;
+    public long RemainingGas = remainingGas;
 
     /// <summary>
-    /// Policy-specific data for complex gas accounting.
-    /// For simple gas: null.
-    /// For multigas: holds MultiGas breakdown and other tracking data.
+    /// Inline gas policy containing tracking data.
     /// </summary>
-    public readonly object? PolicyData;
+    public TGasPolicy Policy = policy;
 
-    /// <summary>
-    /// Initializes a new gas state with specified remaining gas.
-    /// </summary>
-    /// <param name="remainingGas">The initial remaining gas</param>
-    public GasState(long remainingGas)
-    {
-        RemainingGas = remainingGas;
-        PolicyData = null;
-    }
-
-    public GasState(long remainingGas, object policyData)
-    {
-        RemainingGas = remainingGas;
-        PolicyData = policyData;
-    }
-
-    /// <summary>
-    /// Returns a string representation of the gas state for debugging.
-    /// </summary>
-    public readonly override string ToString()
-    {
-        return PolicyData is null ? $"Gas: {RemainingGas}" : $"Gas: {RemainingGas}, PolicyData: {PolicyData}";
-    }
+    public readonly override string ToString() => $"Gas: {RemainingGas}";
 }

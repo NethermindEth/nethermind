@@ -91,7 +91,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
-        ref GasState gasState,
+        ref GasState<TGasPolicy> gasState,
         ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
@@ -320,7 +320,7 @@ internal static partial class EvmInstructions
         uint excessContractSize,
         Address codeAddress,
         in StackAccessTracker accessTracer,
-        ref GasState gasState,
+        ref GasState<TGasPolicy> gasState,
         Instruction instruction)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
@@ -351,7 +351,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionReturn<TGasPolicy>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
-        ref GasState gasState,
+        ref GasState<TGasPolicy> gasState,
         ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {

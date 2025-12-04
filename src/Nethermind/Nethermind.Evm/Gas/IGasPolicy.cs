@@ -5,9 +5,8 @@ namespace Nethermind.Evm.Gas;
 
 /// <summary>
 /// Defines a gas policy for EVM execution.
-/// Implementations can use single-dimensional or multidimensional gas accounting.
 /// </summary>
-/// <typeparam name="TSelf">The implementing type (enables static dispatch without virtual calls)</typeparam>
+/// <typeparam name="TSelf">The implementing type</typeparam>
 public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 {
     /// <summary>
@@ -15,9 +14,9 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// Called by TransactionProcessor before ExecuteTransaction.
     /// </summary>
     /// <param name="gasLimit">The gas limit provided for the transaction</param>
-    /// <param name="intrinsicGas">Intrinsic gas already calculated (not deducted yet from gasLimit)</param>
-    /// <returns>Initialized gas state with remaining gas and policy-specific data</returns>
-    static abstract GasState InitializeForTransaction(long gasLimit, long intrinsicGas);
+    /// <param name="intrinsicGas">Intrinsic gas already calculated</param>
+    /// <returns>Initialized gas state with remaining gas</returns>
+    static abstract GasState<TSelf> InitializeForTransaction(long gasLimit, long intrinsicGas);
 
     /// <summary>
     /// Get the remaining single-dimensional gas available for execution.
@@ -25,36 +24,27 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </summary>
     /// <param name="gasState">The current gas state</param>
     /// <returns>Remaining gas (negative values indicate out-of-gas)</returns>
-    static abstract long GetRemainingGas(in GasState gasState);
+    static abstract long GetRemainingGas(in GasState<TSelf> gasState);
 
     /// <summary>
-    /// Consume gas for an EVM operation.
-    /// Implementations can categorize gas by instruction type for multidimensional accounting.
+    /// Consume gas for an EVM operation with tracking.
     /// </summary>
-    /// <param name="gasState">The gas state to update (passed by reference for mutation)</param>
+    /// <param name="gasState">The gas state to update</param>
     /// <param name="gasCost">The gas cost to charge for this operation</param>
-    /// <param name="instruction">The instruction being executed (for categorization)</param>
-    static abstract void ConsumeGas(ref GasState gasState, long gasCost, Instruction instruction);
+    /// <param name="instruction">The instruction being executed</param>
+    static abstract void ConsumeGas(ref GasState<TSelf> gasState, long gasCost, Instruction instruction);
 
     /// <summary>
     /// Refund unused gas (e.g., from failed CALL/CREATE).
     /// </summary>
     /// <param name="gasState">The gas state to update</param>
-    /// <param name="gasAmount">The amount of gas to return (positive value)</param>
-    static abstract void RefundGas(ref GasState gasState, long gasAmount);
+    /// <param name="gasAmount">The amount of gas to return</param>
+    static abstract void RefundGas(ref GasState<TSelf> gasState, long gasAmount);
 
     /// <summary>
-    /// Mark the gas state as out of gas (sets remaining to zero).
+    /// Mark the gas state as out of gas.
     /// Called when execution exhausts all gas.
     /// </summary>
     /// <param name="gasState">The gas state to update</param>
-    static abstract void SetOutOfGas(ref GasState gasState);
-
-    /// <summary>
-    /// Get policy-specific data for receipt storage (e.g., multigas breakdown).
-    /// Returns null for policies without extra data (e.g., Ethereum).
-    /// </summary>
-    /// <param name="gasState">The final gas state after transaction execution</param>
-    /// <returns>Policy-specific receipt data, or null if none</returns>
-    static abstract object? GetReceiptData(in GasState gasState);
+    static abstract void SetOutOfGas(ref GasState<TSelf> gasState);
 }
