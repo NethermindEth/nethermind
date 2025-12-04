@@ -60,13 +60,12 @@ public class TrieNodeCache
         return false;
     }
 
-    public void Add(Snapshot snapshot)
+    public void Add(Snapshot snapshot, CachedResource cachedResource)
     {
         if (_maxCacheMemoryThreshold == 0) return;
 
-        foreach (var kv in snapshot.TrieNodes)
+        void AddtoCache(Key key, TrieNode newNode)
         {
-            Key key = new Key(kv.Key.Item1.Value, kv.Key.Item2);
             int shardIdx = GetShardIdx(key);
             if (_cacheShards[shardIdx].TryRemove(key, out var node))
             {
@@ -76,7 +75,7 @@ public class TrieNodeCache
                 _estimatedMemoryUsage -= memory;
             }
 
-            node = kv.Value;
+            node = newNode;
             node.PrunePersistedRecursively(1);
             if (_cacheShards[shardIdx].TryAdd(key, node))
             {
@@ -84,6 +83,21 @@ public class TrieNodeCache
                 _shardMemoryUsages[shardIdx] += memory;
                 _estimatedMemoryUsage += memory;
             }
+        }
+
+        foreach (var kv in cachedResource.LoadedNodes)
+        {
+            Key key = new Key(kv.Key.Item1.Value, kv.Key.Item2);
+            if (!snapshot.TryGetTrieNodes(kv.Key.Item1, kv.Key.Item2, out _))
+            {
+                AddtoCache(key, kv.Value);
+            }
+        }
+
+        foreach (var kv in snapshot.TrieNodes)
+        {
+            Key key = new Key(kv.Key.Item1.Value, kv.Key.Item2);
+            AddtoCache(key, kv.Value);
         }
 
         long prevMemory = _estimatedMemoryUsage;

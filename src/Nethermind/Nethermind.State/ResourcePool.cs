@@ -19,7 +19,7 @@ public class ResourcePool
 {
     private ObjectPool<SnapshotContent> _snapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(true));
     private ObjectPool<SnapshotContent> _compactedSnapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(true));
-    private ObjectPool<HintResource> _hintResourcePool = new DefaultObjectPool<HintResource>(new HintResourcePolicy());
+    private ObjectPool<CachedResource> _cachedResourcePool = new DefaultObjectPool<CachedResource>(new CachedResourcePolicy());
 
     public ObjectPool<SnapshotContent> SnapshotPool => _snapshotPool;
     public ObjectPool<SnapshotContent> CompactedSnapshotPool => _compactedSnapshotPool;
@@ -46,17 +46,16 @@ public class ResourcePool
         }
     }
 
-    private class HintResourcePolicy() : IPooledObjectPolicy<HintResource>
+    private class CachedResourcePolicy() : IPooledObjectPolicy<CachedResource>
     {
-        public HintResource Create()
+        public CachedResource Create()
         {
-            return new HintResource(
-                new ConcurrentDictionary<AddressAsKey, Account>(),
-                new ConcurrentDictionary<(AddressAsKey, UInt256), byte[]>()
+            return new CachedResource(
+                new ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode>()
             );
         }
 
-        public bool Return(HintResource obj)
+        public bool Return(CachedResource obj)
         {
             obj.Clear();
             return true;
@@ -78,13 +77,13 @@ public class ResourcePool
         return _compactedSnapshotPool.Get();
     }
 
-    public HintResource GetHintResource()
+    public CachedResource GetCachedResource()
     {
-        return _hintResourcePool.Get();
+        return _cachedResourcePool.Get();
     }
 
-    public void ReturnHintResource(HintResource hintResource)
+    public void ReturnCachedResource(CachedResource cachedResource)
     {
-        _hintResourcePool.Return(hintResource);
+        _cachedResourcePool.Return(cachedResource);
     }
 }

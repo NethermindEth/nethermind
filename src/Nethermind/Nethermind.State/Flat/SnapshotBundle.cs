@@ -42,6 +42,8 @@ public class SnapshotBundle : IDisposable
     private ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> _changedSlots; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses;
 
+    private CachedResource _cachedResource;
+
     public int HintSequenceId => _hintSequenceId;
 
     private readonly bool _isReadOnly;
@@ -99,6 +101,7 @@ public class SnapshotBundle : IDisposable
         if (!_isReadOnly)
         {
             _currentPooledContent = resourcePool.GetSnapshotContent();
+            _cachedResource = resourcePool.GetCachedResource();
             ExpandCurrentPooledContent();
         }
     }
@@ -443,7 +446,7 @@ public class SnapshotBundle : IDisposable
         return new WriteScopeExiter(_hintLock);
     }
 
-    public Snapshot CollectAndApplyKnownState(StateId from, StateId to)
+    public (Snapshot, CachedResource) CollectAndApplyKnownState(StateId from, StateId to)
     {
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
 
@@ -457,6 +460,9 @@ public class SnapshotBundle : IDisposable
 
         _knownStates.Add(knownState);
 
+        var cachedResource = _cachedResource;
+        _cachedResource = _resourcePool.GetCachedResource();
+
         _currentPooledContent = _resourcePool.GetSnapshotContent();
         ExpandCurrentPooledContent();
 
@@ -466,7 +472,7 @@ public class SnapshotBundle : IDisposable
         }
         _loadedContractStorages.Clear();
 
-        return knownState;
+        return (knownState, cachedResource);
     }
 
     public StorageSnapshotBundle GatherStorageCache(Address address)
@@ -589,7 +595,11 @@ public class SnapshotBundle : IDisposable
         _persistenceReader.Dispose();
         _wasPrewarmed.Clear();
 
-        if (!_isReadOnly) _resourcePool.ReturnSnapshotContent(_currentPooledContent);
+        if (!_isReadOnly)
+        {
+            _resourcePool.ReturnSnapshotContent(_currentPooledContent);
+            _resourcePool.ReturnCachedResource(_cachedResource);
+        }
     }
 
     public void Clear(Address address, Hash256AsKey addressHash)

@@ -33,7 +33,7 @@ public class FlatDiffRepository : IFlatDiffRepository
     private IPersistence _persistence;
     private int _boundary;
 
-    private Channel<StateId> _compactorJobs;
+    private Channel<(StateId, CachedResource)> _compactorJobs;
     private Channel<StateId> _persistenceJob;
     private long _compactSize;
     private long _compactEveryBlockNum;
@@ -83,7 +83,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         _stateRootFinder = stateRootFinder;
         _logger = logManager.GetClassLogger<FlatDiffRepository>();
 
-        _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
+        _compactorJobs = Channel.CreateBounded<(StateId, CachedResource)>(config.MaxInFlightCompactJob);
         _persistenceJob = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
         _boundary = config.Boundary;
 
@@ -129,11 +129,11 @@ public class FlatDiffRepository : IFlatDiffRepository
 
     private async Task RunCompactor(CancellationToken cancellationToken)
     {
-        await foreach (var stateId in _compactorJobs.Reader.ReadAllAsync(cancellationToken))
+        await foreach (var (stateId, cachedResource) in _compactorJobs.Reader.ReadAllAsync(cancellationToken))
         {
             try
             {
-                CompactLevel(stateId);
+                CompactLevel(stateId, cachedResource);
                 if (stateId.blockNumber % _compactSize == 0)
                 {
                     await _persistenceJob.Writer.WriteAsync(stateId, cancellationToken);
@@ -192,9 +192,9 @@ public class FlatDiffRepository : IFlatDiffRepository
         await Task.WhenAny(jobTask, waiterTask);
     }
 
-    private void RunCompactJob(StateId stateId)
+    private void RunCompactJob(StateId stateId, CachedResource cachedResource)
     {
-        CompactLevel(stateId);
+        CompactLevel(stateId, cachedResource);
         PersistIfNeeded().Wait();
     }
 
@@ -227,7 +227,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         }
     }
 
-    private void CompactLevel(StateId stateId)
+    private void CompactLevel(StateId stateId, CachedResource cachedResource)
     {
         try
         {
@@ -239,7 +239,8 @@ public class FlatDiffRepository : IFlatDiffRepository
                 if (!_inMemorySnapshotStore.TryGetValue(last.Value, out lastSnapshot)) return;
             }
 
-            _trieNodeCache.Add(lastSnapshot);
+            _trieNodeCache.Add(lastSnapshot, cachedResource);
+            _resourcePool.ReturnCachedResource(cachedResource);
 
             if (_compactSize <= 1) return; // Disabled
             long blockNumber = stateId.blockNumber;
@@ -387,7 +388,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         return true;
     }
 
-    public void AddSnapshot(Snapshot snapshot)
+    public void AddSnapshot(Snapshot snapshot, CachedResource cachedResource)
     {
         long sw = Stopwatch.GetTimestamp();
 
@@ -423,16 +424,16 @@ public class FlatDiffRepository : IFlatDiffRepository
 
         if (_inlineCompaction)
         {
-            RunCompactJob(endBlock);
+            RunCompactJob(endBlock, cachedResource);
         }
         else
         {
-            if (!_compactorJobs.Writer.TryWrite(endBlock))
+            if (!_compactorJobs.Writer.TryWrite((endBlock, cachedResource)))
             {
                 _flatdiffimes.WithLabels("add_snapshot", "try_write_failed").Observe(Stopwatch.GetTimestamp() - sw);
                 sw = Stopwatch.GetTimestamp();
                 _logger.Warn("Compactor job stall!");
-                _compactorJobs.Writer.WriteAsync(endBlock).AsTask().Wait();
+                _compactorJobs.Writer.WriteAsync((endBlock, cachedResource)).AsTask().Wait();
                 _flatdiffimes.WithLabels("add_snapshot", "write_async").Observe(Stopwatch.GetTimestamp() - sw);
             }
             else

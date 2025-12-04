@@ -208,11 +208,11 @@ public class WorldStateScope : IWorldStateScopeProvider.IScope
 
         _storages.Clear();
 
-        Snapshot newSnapshot = _snapshotBundle.CollectAndApplyKnownState(_currentStateId, newStateId);
+        (Snapshot newSnapshot, CachedResource cachedResource) = _snapshotBundle.CollectAndApplyKnownState(_currentStateId, newStateId);
 
         if (!_isReadOnly)
         {
-            if (_currentStateId != newStateId) _flatDiffRepository.AddSnapshot(newSnapshot);
+            if (_currentStateId != newStateId) _flatDiffRepository.AddSnapshot(newSnapshot, cachedResource);
         }
 
         _currentStateId = newStateId;
