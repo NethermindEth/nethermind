@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -45,7 +44,7 @@ public class RewardTests
         Address owner = signer915.Address;
         masternodeVotingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), signer915.Address).Returns(owner);
         await chain.AddBlock(BuildSigningTx(
-            spec.BlockSignerContract,
+            spec,
             header915.Number,
             header915.Hash ?? header915.CalculateHash().ToHash256(),
             signer915));
@@ -84,7 +83,7 @@ public class RewardTests
         // === Second part of the test: signing hash in a different epoch still counts ===
 
         Transaction signingTx2 = BuildSigningTx(
-            spec.BlockSignerContract,
+            spec,
             header2685.Number,
             header2685.Hash!,
             signer2685);
@@ -157,7 +156,7 @@ public class RewardTests
 
         // Insert 1 signing tx for header (E + 15) in block (E + 16)
         Transaction txA = BuildSigningTx(
-            spec.BlockSignerContract,
+            spec,
             header915.Number,
             header915.Hash ?? header915.CalculateHash().ToHash256(),
             signerA);
@@ -172,13 +171,13 @@ public class RewardTests
         // - for header (E + 15)
         // - for header (2E - 15)
         Transaction txB1 = BuildSigningTx(
-            spec.BlockSignerContract,
+            spec,
             header915.Number,
             header915.Hash!,
             signerB);
 
         Transaction txB2 = BuildSigningTx(
-            spec.BlockSignerContract,
+            spec,
             header1785.Number,
             header1785.Hash!,
             signerB,
@@ -215,27 +214,14 @@ public class RewardTests
         }
     }
 
-    private static Transaction BuildSigningTx(Address contract, long blockNumber, Hash256 blockHash, PrivateKey signer, long nonce = 0)
+    private static Transaction BuildSigningTx(IXdcReleaseSpec spec, long blockNumber, Hash256 blockHash, PrivateKey signer, long nonce = 0)
     {
-        Span<byte> data = stackalloc byte[68];
-        // selector = 0xe341eaa4
-        data[0] = 0xe3; data[1] = 0x41; data[2] = 0xea; data[3] = 0xa4;
-        // uint256 blockNumber (big-endian, 32 bytes)
-        // encode into last 8 bytes of the 32-byte slot
-        var bn = BitConverter.GetBytes((ulong)blockNumber);
-        if (BitConverter.IsLittleEndian) Array.Reverse(bn);
-        // place at bytes [4..35] (offset 4, length 32)
-        // last 8 bytes of that 32 are the ulong
-        for (int i = 0; i < 8; i++) data[4 + 24 + i] = bn[i];
-        // bytes32 blockHash at [36..67]
-        blockHash.Bytes.CopyTo(data.Slice(36, 32));
-
-        return  Build.A.Transaction
+        return Build.A.Transaction
             .WithChainId(0)
             .WithNonce((UInt256)nonce)
             .WithGasLimit(200000)
-            .WithData(data.ToArray())
-            .To(contract)
+            .WithXdcSigningData(blockNumber, blockHash)
+            .ToBlockSignerContract(spec)
             .SignedAndResolved(signer)
             .TestObject;
     }

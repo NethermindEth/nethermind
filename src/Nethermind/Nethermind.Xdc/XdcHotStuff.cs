@@ -37,7 +37,7 @@ namespace Nethermind.Xdc
         private readonly ITimeoutTimer _timeoutTimer;
         private readonly IProcessExitSource _processExit;
         private readonly ILogger _logger;
-        private readonly IRewardCalculator  _rewardCalculator;
+        private readonly IRewardCalculator _rewardCalculator;
         private readonly ConcurrentDictionary<Hash256, byte> _rewardsDone = new();
 
         private CancellationTokenSource? _cancellationTokenSource;
@@ -392,9 +392,9 @@ namespace Nethermind.Xdc
             {
                 try
                 {
-                    var rewards = _rewardCalculator.CalculateRewards(block);
+                    BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
 
-                    //TODO What to do with the rewards? Save them in DB?
+                    //TODO Here we should save the rewards, perhaps in DB?
                     if (rewards.Length == 0)
                         _logger.Info($"[Rewards] Epoch checkpoint #{block.Number} => no rewards.");
                     else

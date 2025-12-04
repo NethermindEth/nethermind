@@ -236,7 +236,7 @@ namespace Nethermind.Xdc
 
             // 10% of the reward goes to the foundation wallet
             UInt256 foundationReward = reward / 10;
-            
+
             return (new BlockReward(owner, masterReward),  foundationReward);
         }
     }
