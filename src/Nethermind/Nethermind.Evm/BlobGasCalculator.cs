@@ -117,7 +117,7 @@ public static class BlobGasCalculator
 
         if (releaseSpec.IsEip7918Enabled)
         {
-            TryCalculateFeePerBlobGas(parentBlockHeader, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
+            TryCalculateFeePerBlobGas(excessBlobGas, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
             UInt256 floorCost = Eip7918Constants.BlobBaseCost * parentBlockHeader.BaseFeePerGas;
             UInt256 targetCost = Eip4844Constants.GasPerBlob * feePerBlobGas;
 
