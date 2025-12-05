@@ -289,8 +289,8 @@ namespace Nethermind.Facade
         public IEnumerable<FilterLog> GetLogs(
             BlockParameter fromBlock,
             BlockParameter toBlock,
-            object? address = null,
-            IEnumerable<object>? topics = null,
+            AddressAsKey[]? address = null,
+            IEnumerable<Hash256[]?>? topics = null,
             CancellationToken cancellationToken = default)
         {
             LogFilter filter = GetFilter(fromBlock, toBlock, address, topics);
@@ -300,8 +300,8 @@ namespace Nethermind.Facade
         public LogFilter GetFilter(
             BlockParameter fromBlock,
             BlockParameter toBlock,
-            object? address = null,
-            IEnumerable<object>? topics = null)
+            AddressAsKey[]? address = null,
+            IEnumerable<Hash256[]?>? topics = null)
         {
             return filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
         }
@@ -326,7 +326,7 @@ namespace Nethermind.Facade
         }
 
         public int NewFilter(BlockParameter? fromBlock, BlockParameter? toBlock,
-            object? address = null, IEnumerable<object>? topics = null)
+            AddressAsKey[]? address = null, IEnumerable<Hash256[]?>? topics = null)
         {
             LogFilter filter = filterStore.CreateLogFilter(fromBlock ?? BlockParameter.Latest, toBlock ?? BlockParameter.Latest, address, topics);
             filterStore.SaveFilter(filter);

@@ -7,12 +7,13 @@ using System.Text.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
 public class Filter : IJsonRpcParam
 {
-    public Address[]? Address { get; set; }
+    public AddressAsKey[]? Address { get; set; }
 
     public Hash256? BlockHash { get; set; }
 
@@ -47,8 +48,8 @@ public class Filter : IJsonRpcParam
                 BlockHash = new Hash256(blockHashElement.ToString());
             }
 
-            FromBlock = hasFromBlock ? new BlockParameter(fromBlockElement.GetInt64()) : BlockParameter.Earliest;
-            ToBlock = hasToBlock ? new BlockParameter(toBlockElement.GetInt64()) : BlockParameter.Latest;
+            FromBlock = hasFromBlock ? new BlockParameter(LongConverter.FromString(fromBlockElement.ToString())) : BlockParameter.Earliest;
+            ToBlock = hasToBlock ? new BlockParameter(LongConverter.FromString(toBlockElement.ToString())) : BlockParameter.Latest;
 
 
             if (filter.TryGetProperty("address"u8, out JsonElement addressElement))
@@ -67,12 +68,12 @@ public class Filter : IJsonRpcParam
         }
     }
 
-    private static Address[]? GetAddress(JsonElement token, JsonSerializerOptions options) => token switch
+    private static AddressAsKey[]? GetAddress(JsonElement token, JsonSerializerOptions options) => token switch
     {
         { ValueKind: JsonValueKind.Undefined } _ => null,
         { ValueKind: JsonValueKind.Null } _ => null,
-        { ValueKind: JsonValueKind.Array } _ => token.Deserialize<Address[]>(options),
-        { ValueKind: JsonValueKind.String } _ => [token.Deserialize<Address>()],
+        { ValueKind: JsonValueKind.Array } _ => token.Deserialize<AddressAsKey[]>(options),
+        { ValueKind: JsonValueKind.String } _ => [token.Deserialize<AddressAsKey>()],
         _ => throw new ArgumentException("invalid address field")
     };
 
