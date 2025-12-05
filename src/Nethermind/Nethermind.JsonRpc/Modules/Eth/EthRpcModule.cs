@@ -584,17 +584,24 @@ public partial class EthRpcModule(
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
     {
-        BlockParameter fromBlock = filter.FromBlock;
-        BlockParameter toBlock = filter.ToBlock;
+        // FromBlock and ToBlock can be:
+        // number, Earliest, Latest
+        // blockHash if fromBlock = toBlock
+        BlockParameter fromBlock = filter.FromBlock!;
+        BlockParameter toBlock = filter.ToBlock!;
 
         // because of lazy evaluation of enumerable, we need to do the validation here first
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
         long? headNumber = _blockFinder.Head?.Number;
-        if (headNumber < filter.FromBlock?.BlockNumber || headNumber < filter.ToBlock?.BlockNumber)
+        if (headNumber < fromBlock.BlockNumber || headNumber < toBlock.BlockNumber)
         {
             return ResultWrapper<IEnumerable<FilterLog>>.Fail("requested block range is in the future", ErrorCodes.InvalidParams);
+        }
+        if (fromBlock.BlockNumber > toBlock.BlockNumber)
+        {
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail("invalid block range params", ErrorCodes.InvalidParams);
         }
 
         SearchResult<BlockHeader> fromResult = blockFinder.SearchForHeader(fromBlock);
@@ -605,9 +612,7 @@ public partial class EthRpcModule(
 
         cancellationToken.ThrowIfCancellationRequested();
 
-
         SearchResult<BlockHeader> toResult;
-
         if (fromBlock == toBlock)
         {
             toResult = fromResult;
@@ -625,11 +630,6 @@ public partial class EthRpcModule(
 
         BlockHeader fromBlockHeader = fromResult.Object!;
         BlockHeader toBlockHeader = toResult.Object!;
-
-        if (fromBlockHeader.Number > toBlockHeader.Number)
-        {
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail("invalid block range params", ErrorCodes.InvalidParams);
-        }
 
         try
         {
