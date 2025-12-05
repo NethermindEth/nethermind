@@ -68,14 +68,27 @@ public class Filter : IJsonRpcParam
         }
     }
 
-    private static AddressAsKey[]? GetAddress(JsonElement token, JsonSerializerOptions options) => token switch
+    private static AddressAsKey[]? GetAddress(JsonElement token, JsonSerializerOptions options)
     {
-        { ValueKind: JsonValueKind.Undefined } _ => null,
-        { ValueKind: JsonValueKind.Null } _ => null,
-        { ValueKind: JsonValueKind.Array } _ => token.Deserialize<AddressAsKey[]>(options),
-        { ValueKind: JsonValueKind.String } _ => [token.Deserialize<AddressAsKey>()],
-        _ => throw new ArgumentException("invalid address field")
-    };
+        switch (token.ValueKind)
+        {
+            case JsonValueKind.Undefined or JsonValueKind.Null:
+                return null;
+            case JsonValueKind.String:
+                return [new AddressAsKey(new Address(token.ToString()))];
+            case JsonValueKind.Array:
+                var enumerator = token.EnumerateArray();
+                List<AddressAsKey> result = new();
+                while (enumerator.MoveNext())
+                {
+                    result.Add(new AddressAsKey(new Address(enumerator.Current.ToString())));
+                }
+
+                return result.ToArray();
+            default:
+                throw new ArgumentException("invalid address field");
+        }
+    }
 
     private static IEnumerable<Hash256[]?>? GetTopics(JsonElement? array, JsonSerializerOptions options)
     {
@@ -86,13 +99,27 @@ public class Filter : IJsonRpcParam
 
         foreach (var token in array.GetValueOrDefault().EnumerateArray())
         {
-            yield return token switch
+            switch (token.ValueKind)
             {
-                { ValueKind: JsonValueKind.Undefined } _ => null,
-                { ValueKind: JsonValueKind.Null } _ => null,
-                { ValueKind: JsonValueKind.Array } _ => token.Deserialize<Hash256[]>(options),
-                _ => [new Hash256(token.GetString()!)],
-            };
+                case JsonValueKind.Undefined or  JsonValueKind.Null:
+                    yield return null;
+                    break;
+                case JsonValueKind.String:
+                    yield return [new Hash256(token.GetString()!)];
+                    break;
+                case JsonValueKind.Array:
+                    var enumerator = token.EnumerateArray();
+                    List<Hash256> result = new();
+                    while (enumerator.MoveNext())
+                    {
+                        result.Add(new(enumerator.Current.ToString()));
+                    }
+
+                    yield return result.ToArray();
+                    break;
+                default:
+                    throw new ArgumentException("invalid topics field");
+            }
         }
     }
 }
