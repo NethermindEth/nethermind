@@ -216,10 +216,20 @@ namespace Nethermind.Blockchain.Filters
 
         private static FilterTopic? GetTopic(Hash256[]? topics)
         {
-            return new FilterTopic
+            if (topics?.Length == 1)
             {
-                Topics = topics
-            };
+                return new FilterTopic
+                {
+                    Topic = topics[0]
+                };
+            }
+            else
+            {
+                return new FilterTopic()
+                {
+                    Topics = topics
+                };
+            }
         }
 
         private class FilterTopic
