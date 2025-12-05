@@ -704,7 +704,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     new Address("0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"),
                     new Address("0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358")
                 ],
-                Topics = [[ TestItem.KeccakA, TestItem.KeccakD ]]
+                Topics = [[TestItem.KeccakA, TestItem.KeccakD]]
             };
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA, TestItem.KeccakD).WithData(TestItem.RandomDataA).TestObject;
@@ -926,12 +926,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             Task subA = Task.Run(() =>
             {
                 ITxPool txPool = Substitute.For<ITxPool>();
-                using NewPendingTransactionsSubscription subscription = new(
-                    // ReSharper disable once AccessToDisposedClosure
-                    jsonRpcDuplexClient: client,
-                    txPool: txPool,
-                    specProvider: _specProvider,
-                    logManager: LimboLogs.Instance);
+                using NewPendingTransactionsSubscription subscription =
+                    new(
+                        // ReSharper disable once AccessToDisposedClosure
+                        jsonRpcDuplexClient: client,
+                        txPool: txPool,
+                        specProvider: _specProvider,
+                        logManager: LimboLogs.Instance
+                    );
 
                 for (int i = 0; i < messages; i++)
                 {
@@ -942,12 +944,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             Task subB = Task.Run(() =>
             {
                 IBlockTree blockTree = Substitute.For<IBlockTree>();
-                using NewHeadSubscription subscription = new(
-                    // ReSharper disable once AccessToDisposedClosure
-                    jsonRpcDuplexClient: client,
-                    blockTree: blockTree,
-                    specProvider: new TestSpecProvider(new ReleaseSpec()),
-                    logManager: LimboLogs.Instance);
+                using NewHeadSubscription subscription =
+                    new(
+                        // ReSharper disable once AccessToDisposedClosure
+                        jsonRpcDuplexClient: client,
+                        blockTree: blockTree,
+                        specProvider: new TestSpecProvider(new ReleaseSpec()),
+                        logManager: LimboLogs.Instance
+                    );
 
                 for (int i = 0; i < messages; i++)
                 {

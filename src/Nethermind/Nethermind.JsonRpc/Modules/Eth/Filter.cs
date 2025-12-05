@@ -101,7 +101,7 @@ public class Filter : IJsonRpcParam
         {
             switch (token.ValueKind)
             {
-                case JsonValueKind.Undefined or  JsonValueKind.Null:
+                case JsonValueKind.Undefined or JsonValueKind.Null:
                     yield return null;
                     break;
                 case JsonValueKind.String:
