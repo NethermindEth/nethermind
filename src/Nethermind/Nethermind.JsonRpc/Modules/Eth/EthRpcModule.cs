@@ -619,7 +619,7 @@ public partial class EthRpcModule(
         }
         else
         {
-            toResult = blockFinder.SearchForHeader(fromBlock);
+            toResult = blockFinder.SearchForHeader(toBlock);
             if (toResult.IsError)
             {
                 return FailWithNoHeadersSyncedYet(toResult);
