@@ -1,0 +1,88 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Text.Json;
+using Nethermind.Logging;
+
+namespace Nethermind.OpcodeTracing.Plugin.Output;
+
+/// <summary>
+/// Writes opcode trace output to JSON files.
+/// </summary>
+public sealed class TraceOutputWriter
+{
+    private readonly ILogger _logger;
+    private readonly JsonSerializerOptions _serializerOptions = new()
+    {
+        WriteIndented = true
+    };
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TraceOutputWriter"/> class.
+    /// </summary>
+    /// <param name="logManager">The log manager.</param>
+    public TraceOutputWriter(ILogManager logManager)
+    {
+        _logger = logManager?.GetClassLogger<TraceOutputWriter>() ?? throw new ArgumentNullException(nameof(logManager));
+    }
+
+    /// <summary>
+    /// Writes a trace output to a JSON file.
+    /// </summary>
+    /// <param name="outputDirectory">The output directory path.</param>
+    /// <param name="traceOutput">The trace output to write.</param>
+    /// <returns>The full path to the created file, or null if writing failed.</returns>
+    public async Task<string?> WriteAsync(string outputDirectory, TraceOutput traceOutput)
+    {
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            if (_logger.IsError)
+            {
+                _logger.Error("Output directory is null or empty");
+            }
+            return null;
+        }
+
+        if (traceOutput is null)
+        {
+            if (_logger.IsError)
+            {
+                _logger.Error("Trace output is null");
+            }
+            return null;
+        }
+
+        try
+        {
+            // Ensure directory exists
+            if (!Directory.Exists(outputDirectory))
+            {
+                Directory.CreateDirectory(outputDirectory);
+            }
+
+            // Generate unique filename
+            string timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+            string fileName = $"opcode-trace-{traceOutput.Metadata.StartBlock}-{traceOutput.Metadata.EndBlock}-{timestamp}.json";
+            string filePath = Path.Combine(outputDirectory, fileName);
+
+            // Serialize and write
+            string json = JsonSerializer.Serialize(traceOutput, _serializerOptions);
+            await File.WriteAllTextAsync(filePath, json).ConfigureAwait(false);
+
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"Opcode trace written to: {filePath}");
+            }
+
+            return filePath;
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError)
+            {
+                _logger.Error($"Failed to write opcode trace: {ex.Message}", ex);
+            }
+            return null;
+        }
+    }
+}
