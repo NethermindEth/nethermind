@@ -43,7 +43,7 @@ public class TimeoutCertificateManagerTests
     {
         var tc = new TimeoutCertificate(1, Array.Empty<Signature>(), 0);
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshotByGapNumber(Arg.Any<ulong>())
+        snapshotManager.GetSnapshotByGapNumber(Arg.Any<long>())
                     .Returns((Snapshot?)null);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
@@ -69,7 +69,7 @@ public class TimeoutCertificateManagerTests
     {
         var tc = new TimeoutCertificate(1, Array.Empty<Signature>(), 0);
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshotByGapNumber(Arg.Any<ulong>())
+        snapshotManager.GetSnapshotByGapNumber(Arg.Any<long>())
             .Returns(new Snapshot(0, Hash256.Zero, Array.Empty<Address>()));
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
@@ -120,7 +120,7 @@ public class TimeoutCertificateManagerTests
     {
         Address[] masternodes = masternodesList.ToArray();
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshotByGapNumber(Arg.Any<ulong>())
+        snapshotManager.GetSnapshotByGapNumber(Arg.Any<long>())
             .Returns(new Snapshot(0, Hash256.Zero, masternodes));
 
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();

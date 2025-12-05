@@ -45,20 +45,20 @@
             "MinePeriod": 2
           },
           {
-            "MaxMasternodes":       108,
-            "SwitchRound":          460000,
-            "CertThreshold":        0.667,
+            "MaxMasternodes": 108,
+            "SwitchRound": 460000,
+            "CertThreshold": 0.667,
             "TimeoutSyncThreshold": 2,
-            "TimeoutPeriod":        20,
-            "MinePeriod":           2
+            "TimeoutPeriod": 20,
+            "MinePeriod": 2
           },
           {
-            "MaxMasternodes":       108,
-            "SwitchRound":          3200000,
-            "CertThreshold":        0.667,
+            "MaxMasternodes": 108,
+            "SwitchRound": 3200000,
+            "CertThreshold": 0.667,
             "TimeoutSyncThreshold": 3,
-            "TimeoutPeriod":        10,
-            "MinePeriod":           2
+            "TimeoutPeriod": 10,
+            "MinePeriod": 2
           }
         ]
       }
@@ -71,7 +71,8 @@
     "eip150Hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "eip155Block": 3,
     "eip158Block": 3,
-    "byzantiumBlock": 4
+    "byzantiumBlock": 4,
+    "depositContractAddress": "0x0000000000000000000000000000000000000088"
   },
   "genesis": {
     "nonce": "0x0",
