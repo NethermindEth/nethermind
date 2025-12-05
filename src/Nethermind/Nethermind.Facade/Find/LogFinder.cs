@@ -87,11 +87,6 @@ namespace Nethermind.Facade.Find
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (toBlock.Number > _blockFinder.Head?.Number)
-            {
-                throw new ArgumentException("requested block range is in the future");
-            }
-
             bool shouldUseBloom = ShouldUseBloomDatabase(fromBlock, toBlock);
             bool canUseBloom = CanUseBloomDatabase(toBlock, fromBlock);
             bool useBloom = shouldUseBloom && canUseBloom;

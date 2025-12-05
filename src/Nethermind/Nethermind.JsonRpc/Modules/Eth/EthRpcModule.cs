@@ -591,40 +591,45 @@ public partial class EthRpcModule(
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
-        if (!TryFindBlockHeaderOrUseLatest(_blockFinder, ref toBlock, out SearchResult<BlockHeader> toBlockResult, out long? sourceToBlockNumber))
+        long? headNumber = _blockFinder.Head?.Number;
+        if (headNumber < filter.FromBlock?.BlockNumber || headNumber < filter.ToBlock?.BlockNumber)
         {
-            return FailWithNoHeadersSyncedYet(toBlockResult);
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail("requested block range is in the future", ErrorCodes.InvalidParams);
+        }
+
+        SearchResult<BlockHeader> fromResult = blockFinder.SearchForHeader(fromBlock);
+        if (fromResult.IsError)
+        {
+            return FailWithNoHeadersSyncedYet(fromResult);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        SearchResult<BlockHeader> fromBlockResult;
-        long? sourceFromBlockNumber;
+
+        SearchResult<BlockHeader> toResult;
 
         if (fromBlock == toBlock)
         {
-            fromBlockResult = toBlockResult;
-            sourceFromBlockNumber = sourceToBlockNumber;
+            toResult = fromResult;
         }
-        else if (!TryFindBlockHeaderOrUseLatest(_blockFinder, ref fromBlock, out fromBlockResult, out sourceFromBlockNumber))
+        else
         {
-            return FailWithNoHeadersSyncedYet(fromBlockResult);
-        }
-
-        if (sourceFromBlockNumber > sourceToBlockNumber)
-        {
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail("invalid block range params", ErrorCodes.InvalidParams);
-        }
-
-        if (_blockFinder.Head?.Number is not null && sourceFromBlockNumber > _blockFinder.Head.Number)
-        {
-            return ResultWrapper<IEnumerable<FilterLog>>.Success([]);
+            toResult = blockFinder.SearchForHeader(fromBlock);
+            if (toResult.IsError)
+            {
+                return FailWithNoHeadersSyncedYet(toResult);
+            }
         }
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        BlockHeader fromBlockHeader = fromBlockResult.Object;
-        BlockHeader toBlockHeader = toBlockResult.Object;
+        BlockHeader fromBlockHeader = fromResult.Object!;
+        BlockHeader toBlockHeader = toResult.Object!;
+
+        if (fromBlockHeader.Number > toBlockHeader.Number)
+        {
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail("invalid block range params", ErrorCodes.InvalidParams);
+        }
 
         try
         {
@@ -655,30 +660,6 @@ public partial class EthRpcModule(
 
         ResultWrapper<IEnumerable<FilterLog>> FailWithNoHeadersSyncedYet(SearchResult<BlockHeader> blockResult)
             => GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(blockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
-
-        // If there is an error, we check if we seach by number and it's after the head, then try to use head instead
-        static bool TryFindBlockHeaderOrUseLatest(IBlockFinder blockFinder, ref BlockParameter blockParameter, out SearchResult<BlockHeader> blockResult, out long? sourceBlockNumber)
-        {
-            blockResult = blockFinder.SearchForHeader(blockParameter);
-
-            if (blockResult.IsError)
-            {
-                if (blockParameter.Type is BlockParameterType.BlockNumber &&
-                    blockFinder.Head?.Number < blockParameter.BlockNumber)
-                {
-                    blockResult = new SearchResult<BlockHeader>(blockFinder.Head.Header);
-
-                    sourceBlockNumber = blockParameter.BlockNumber.Value;
-                    return true;
-                }
-
-                sourceBlockNumber = null;
-                return false;
-            }
-
-            sourceBlockNumber = blockResult.Object.Number;
-            return true;
-        }
     }
 
     // https://github.com/ethereum/EIPs/issues/1186
