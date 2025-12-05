@@ -9,19 +9,21 @@ namespace Nethermind.Blockchain.Filters
 {
     public class AddressFilter
     {
-        public static readonly AddressFilter AnyAddress = new(addresses: new HashSet<AddressAsKey>());
+        public static readonly AddressFilter AnyAddress = new([]);
 
         private Bloom.BloomExtract[]? _addressesBloomIndexes;
         private Bloom.BloomExtract? _addressBloomExtract;
 
-        public AddressFilter(Address address)
+        public AddressFilter(AddressAsKey[] addresses)
         {
-            Address = address;
-        }
-
-        public AddressFilter(HashSet<AddressAsKey> addresses)
-        {
-            Addresses = addresses;
+            if (addresses.Length == 1)
+            {
+                Address = addresses[0];
+            }
+            else
+            {
+                Addresses = addresses.ToHashSet();
+            }
         }
 
         public Address? Address { get; }

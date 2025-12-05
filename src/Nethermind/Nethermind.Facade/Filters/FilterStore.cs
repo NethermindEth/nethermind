@@ -209,7 +209,7 @@ namespace Nethermind.Blockchain.Filters
                 return AddressFilter.AnyAddress;
             }
 
-            return new AddressFilter(address.ToHashSet());
+            return new AddressFilter(address);
         }
 
         private static FilterTopic?[]? GetFilterTopics(IEnumerable<Hash256[]?>? topics) => topics?.Select(GetTopic).ToArray();
