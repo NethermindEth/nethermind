@@ -212,7 +212,7 @@ public class AddressFilterTests
     [Test]
     public void Matches_any_bloom_when_set_is_forced_null()
     {
-        AddressFilter filter = new AddressFilter(addresses: null!);
+        AddressFilter filter = new AddressFilter([]);
 
         filter.Matches(BloomFromAddress(TestItem.AddressA)).Should().BeTrue();
         filter.Matches(BloomFromAddress(TestItem.AddressB)).Should().BeTrue();
@@ -222,7 +222,7 @@ public class AddressFilterTests
     [Test]
     public void Matches_any_bloom_when_set_is_forced_null_by_ref()
     {
-        AddressFilter filter = new AddressFilter(addresses: null!);
+        AddressFilter filter = new AddressFilter([]);
 
         BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();
         BloomStructRef bloomBRef = BloomFromAddress(TestItem.AddressB).ToStructRef();
