@@ -52,7 +52,7 @@ public static class T8nExecutor
             _logManager);
 
         stateProvider.CreateAccount(test.CurrentCoinbase, 0);
-        GeneralStateTestBase.InitializeTestState(test.Alloc, test.CurrentCoinbase, stateProvider, test.SpecProvider);
+        GeneralStateTestBase.InitializeTestState(test.Alloc, stateProvider, test.SpecProvider);
 
         Block block = test.ConstructBlock();
         var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
