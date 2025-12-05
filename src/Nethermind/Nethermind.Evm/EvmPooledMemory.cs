@@ -84,7 +84,12 @@ public struct EvmPooledMemory : IEvmMemory
 
     private static void CheckMemoryAccessViolation(in UInt256 location, ulong length, out ulong newLength, out bool outOfGas)
     {
-        if (location.IsLargerThanULong() || length > long.MaxValue)
+        // Check for overflow and ensure the word-aligned size fits in int.
+        // Word alignment can add up to 31 bytes, so we use (int.MaxValue - WordSize + 1) as the limit.
+        // This ensures that after word alignment, the size still fits in int for .NET array operations.
+        const ulong MaxMemorySize = int.MaxValue - WordSize + 1;
+
+        if (location.IsLargerThanULong() || length > MaxMemorySize)
         {
             outOfGas = true;
             newLength = 0;
@@ -92,7 +97,7 @@ public struct EvmPooledMemory : IEvmMemory
         }
 
         ulong totalSize = location.u0 + length;
-        if (totalSize < location.u0 || totalSize > long.MaxValue)
+        if (totalSize < location.u0 || totalSize > MaxMemorySize)
         {
             outOfGas = true;
             newLength = 0;
