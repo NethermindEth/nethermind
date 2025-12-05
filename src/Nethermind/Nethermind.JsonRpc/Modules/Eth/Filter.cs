@@ -15,8 +15,6 @@ public class Filter : IJsonRpcParam
 {
     public AddressAsKey[]? Address { get; set; }
 
-    public Hash256? BlockHash { get; set; }
-
     public BlockParameter? FromBlock { get; set; }
 
     public BlockParameter? ToBlock { get; set; }
@@ -45,7 +43,8 @@ public class Filter : IJsonRpcParam
                     throw new ArgumentException("either (fromBlock and toBlock) or blockHash have to be specified");
                 }
 
-                BlockHash = new Hash256(blockHashElement.ToString());
+                FromBlock = new(new Hash256(blockHashElement.ToString()));
+                ToBlock = FromBlock;
             }
             else
             {
@@ -82,7 +81,7 @@ public class Filter : IJsonRpcParam
                 List<AddressAsKey> result = new();
                 while (enumerator.MoveNext())
                 {
-                    result.Add(new AddressAsKey(new Address(enumerator.Current.ToString())));
+                    result.Add(new(new Address(enumerator.Current.ToString())));
                 }
 
                 return result.ToArray();
