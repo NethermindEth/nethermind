@@ -456,7 +456,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task LogsSubscription_with_valid_arguments_creating_result()
         {
-            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "{\"fromBlock\":\"latest\",\"toBlock\":\"latest\",\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"topics\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"}");
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"topics\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"}");
             var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
             expectedResult.Should().Be(serialized);
         }
@@ -464,7 +464,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task LogsSubscription_dispose_regression()
         {
-            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "{\"address\":[\"0x0000000000000000000000000000000000000314\"],\"fromBlock\":\"0x0\",\"toBlock\":\"latest\",\"topics\":[]}");
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "{\"address\":[\"0x0000000000000000000000000000000000000314\"],\"fromBlock\":\"0x0\",\"topics\":[]}");
             var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
             expectedResult.Should().Be(serialized);
         }
@@ -603,8 +603,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
-                Address = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099",
-                Topics = new[] { TestItem.KeccakA }
+                Address = [new Address("0xb7705ae4c6f81b66cdb323c65f4e8133690fc099")],
+                Topics = [[TestItem.KeccakA]]
             };
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -651,8 +651,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
-                Address = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099",
-                Topics = new[] { TestItem.KeccakA }
+                Address = [new Address("0xb7705ae4c6f81b66cdb323c65f4e8133690fc099")],
+                Topics = [[TestItem.KeccakA]]
             };
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -699,8 +699,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
-                Address = new[] { "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099", "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358" },
-                Topics = new[] { TestItem.KeccakA, TestItem.KeccakD }
+                Address =
+                [
+                    new Address("0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"),
+                    new Address("0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358")
+                ],
+                Topics = [[TestItem.KeccakA, TestItem.KeccakD]]
             };
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA, TestItem.KeccakD).WithData(TestItem.RandomDataA).TestObject;
@@ -922,12 +926,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             Task subA = Task.Run(() =>
             {
                 ITxPool txPool = Substitute.For<ITxPool>();
-                using NewPendingTransactionsSubscription subscription = new(
-                    // ReSharper disable once AccessToDisposedClosure
-                    jsonRpcDuplexClient: client,
-                    txPool: txPool,
-                    specProvider: _specProvider,
-                    logManager: LimboLogs.Instance);
+                using NewPendingTransactionsSubscription subscription =
+                    new(
+                        // ReSharper disable once AccessToDisposedClosure
+                        jsonRpcDuplexClient: client,
+                        txPool: txPool,
+                        specProvider: _specProvider,
+                        logManager: LimboLogs.Instance
+                    );
 
                 for (int i = 0; i < messages; i++)
                 {
@@ -938,12 +944,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             Task subB = Task.Run(() =>
             {
                 IBlockTree blockTree = Substitute.For<IBlockTree>();
-                using NewHeadSubscription subscription = new(
-                    // ReSharper disable once AccessToDisposedClosure
-                    jsonRpcDuplexClient: client,
-                    blockTree: blockTree,
-                    specProvider: new TestSpecProvider(new ReleaseSpec()),
-                    logManager: LimboLogs.Instance);
+                using NewHeadSubscription subscription =
+                    new(
+                        // ReSharper disable once AccessToDisposedClosure
+                        jsonRpcDuplexClient: client,
+                        blockTree: blockTree,
+                        specProvider: new TestSpecProvider(new ReleaseSpec()),
+                        logManager: LimboLogs.Instance
+                    );
 
                 for (int i = 0; i < messages; i++)
                 {
