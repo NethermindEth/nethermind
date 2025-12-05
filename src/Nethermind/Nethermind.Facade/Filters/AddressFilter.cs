@@ -14,6 +14,11 @@ namespace Nethermind.Blockchain.Filters
         private Bloom.BloomExtract[]? _addressesBloomIndexes;
         private Bloom.BloomExtract? _addressBloomExtract;
 
+        public AddressFilter(Address address)
+        {
+            Address = address;
+        }
+
         public AddressFilter(AddressAsKey[] addresses)
         {
             if (addresses.Length == 1)

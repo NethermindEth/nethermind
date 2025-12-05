@@ -603,8 +603,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
-                Address = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099",
-                Topics = new[] { TestItem.KeccakA }
+                Address = [new Address("0xb7705ae4c6f81b66cdb323c65f4e8133690fc099")],
+                Topics = [[TestItem.KeccakA]]
             };
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -651,8 +651,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
-                Address = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099",
-                Topics = new[] { TestItem.KeccakA }
+                Address = [new Address("0xb7705ae4c6f81b66cdb323c65f4e8133690fc099")],
+                Topics = [[TestItem.KeccakA]]
             };
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -699,8 +699,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
-                Address = new[] { "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099", "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358" },
-                Topics = new[] { TestItem.KeccakA, TestItem.KeccakD }
+                Address =
+                [
+                    new Address("0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"),
+                    new Address("0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358")
+                ],
+                Topics = [[ TestItem.KeccakA, TestItem.KeccakD ]]
             };
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA, TestItem.KeccakD).WithData(TestItem.RandomDataA).TestObject;
