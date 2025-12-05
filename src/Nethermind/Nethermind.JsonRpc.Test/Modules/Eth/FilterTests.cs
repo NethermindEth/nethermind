@@ -25,7 +25,7 @@ public class FilterTests
             yield return new TestCaseData("{}",
                 new Filter
                 {
-                    FromBlock = BlockParameter.Latest,
+                    FromBlock = BlockParameter.Earliest,
                     ToBlock = BlockParameter.Latest,
                 });
 
@@ -33,8 +33,6 @@ public class FilterTests
                 JsonSerializer.Serialize(
                     new
                     {
-                        fromBlock = "earliest",
-                        toBlock = "pending",
                         topics = new object?[]
                         {
                             null,
@@ -49,7 +47,7 @@ public class FilterTests
                 new Filter
                 {
                     FromBlock = BlockParameter.Earliest,
-                    ToBlock = BlockParameter.Pending,
+                    ToBlock = BlockParameter.Latest,
                     Topics =
                     [
                         null,
@@ -67,7 +65,6 @@ public class FilterTests
                     {
                         address = "0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda5c",
                         fromBlock = "0x1143ade",
-                        toBlock = "latest",
                         topics = new object?[]
                         {
                             "0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7",

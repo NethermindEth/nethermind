@@ -150,7 +150,6 @@ public class JsonRpcServiceTests
         var parameters = new
         {
             fromBlock = "0x1",
-            toBlock = "latest",
             address = "0x1f88f1f195afa192cfee860698584c030f4c9db2",
             topics = new List<object>
             {

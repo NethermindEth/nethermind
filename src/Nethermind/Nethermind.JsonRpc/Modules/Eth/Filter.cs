@@ -15,9 +15,9 @@ public class Filter : IJsonRpcParam
 {
     public AddressAsKey[]? Address { get; set; }
 
-    public BlockParameter? FromBlock { get; set; }
+    public BlockParameter FromBlock { get; set; }
 
-    public BlockParameter? ToBlock { get; set; }
+    public BlockParameter ToBlock { get; set; }
 
     public IEnumerable<Hash256[]?>? Topics { get; set; }
 

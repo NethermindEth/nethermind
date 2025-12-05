@@ -325,10 +325,10 @@ namespace Nethermind.Facade
             return filter is not null;
         }
 
-        public int NewFilter(BlockParameter? fromBlock, BlockParameter? toBlock,
+        public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock,
             AddressAsKey[]? address = null, IEnumerable<Hash256[]?>? topics = null)
         {
-            LogFilter filter = filterStore.CreateLogFilter(fromBlock ?? BlockParameter.Latest, toBlock ?? BlockParameter.Latest, address, topics);
+            LogFilter filter = filterStore.CreateLogFilter(fromBlock, toBlock, address, topics);
             filterStore.SaveFilter(filter);
             return filter.Id;
         }
