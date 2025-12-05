@@ -47,10 +47,11 @@ public class Filter : IJsonRpcParam
 
                 BlockHash = new Hash256(blockHashElement.ToString());
             }
-
-            FromBlock = hasFromBlock ? new BlockParameter(LongConverter.FromString(fromBlockElement.ToString())) : BlockParameter.Earliest;
-            ToBlock = hasToBlock ? new BlockParameter(LongConverter.FromString(toBlockElement.ToString())) : BlockParameter.Latest;
-
+            else
+            {
+                FromBlock = hasFromBlock ? new BlockParameter(LongConverter.FromString(fromBlockElement.ToString())) : BlockParameter.Earliest;
+                ToBlock = hasToBlock ? new BlockParameter(LongConverter.FromString(toBlockElement.ToString())) : BlockParameter.Latest;
+            }
 
             if (filter.TryGetProperty("address"u8, out JsonElement addressElement))
             {
