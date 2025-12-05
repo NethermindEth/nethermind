@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db.LogIndex;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
@@ -21,6 +22,6 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public abstract IEnumerable<Hash256> Topics { get; }
 
-        public abstract IList<int>? FilterBlockNumbers(IDictionary<Hash256, IList<int>> byTopic);
+        public abstract IList<LogPosition>? FilterPositions(IDictionary<Hash256, IList<LogPosition>> byTopic);
     }
 }

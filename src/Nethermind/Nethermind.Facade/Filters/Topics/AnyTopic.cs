@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db.LogIndex; // TODO: get rid of LogIndex usage
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
@@ -23,7 +24,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override IEnumerable<Hash256> Topics => [];
 
-        public override IList<int>? FilterBlockNumbers(IDictionary<Hash256, IList<int>> byTopic) => null;
+        public override IList<LogPosition>? FilterPositions(IDictionary<Hash256, IList<LogPosition>> byTopic) => null;
 
         public override string ToString() => "null";
     }

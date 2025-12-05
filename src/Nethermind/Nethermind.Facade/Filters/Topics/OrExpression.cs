@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db.LogIndex;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
@@ -74,14 +75,14 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override IEnumerable<Hash256> Topics => _subexpressions.SelectMany(e => e.Topics);
 
-        public override IList<int>? FilterBlockNumbers(IDictionary<Hash256, IList<int>> byTopic)
+        public override IList<LogPosition>? FilterPositions(IDictionary<Hash256, IList<LogPosition>> byTopic)
         {
-            IList<int>? result = null;
+            IList<LogPosition>? result = null;
             foreach (TopicExpression subexpression in _subexpressions)
             {
                 if (result == null)
-                    result = subexpression.FilterBlockNumbers(byTopic);
-                else if (subexpression.FilterBlockNumbers(byTopic) is { } next)
+                    result = subexpression.FilterPositions(byTopic);
+                else if (subexpression.FilterPositions(byTopic) is { } next)
                     result = AscListHelper.Union(result, next);
             }
 

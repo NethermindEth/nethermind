@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db.LogIndex;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
@@ -45,9 +46,9 @@ namespace Nethermind.Blockchain.Filters.Topics
             get { yield return _topic; }
         }
 
-        public override IList<int>? FilterBlockNumbers(IDictionary<Hash256, IList<int>> byTopic)
+        public override IList<LogPosition>? FilterPositions(IDictionary<Hash256, IList<LogPosition>> byTopic)
         {
-            return byTopic.TryGetValue(_topic, out IList<int>? result) ? result : [];
+            return byTopic.TryGetValue(_topic, out IList<LogPosition>? result) ? result : [];
         }
 
         private bool Equals(SpecificTopic other) => _topic.Equals(other._topic);

@@ -23,38 +23,50 @@ public static class LogIndexStorageRpcExtensions
     {
         (int from, int to) = ((int)fromBlock, (int)toBlock);
 
-        IList<int>? addressNumbers = null;
+        IList<LogPosition>? addressPositions = null;
         if (filter.AddressFilter.Address is { } address)
-            addressNumbers = storage.GetBlockNumbersFor(address, from, to);
+            addressPositions = storage.GetLogPositions(address, from, to);
         else if (filter.AddressFilter.Addresses is { Count: > 0 } addresses)
-            addressNumbers = AscListHelper.UnionAll(addresses.Select(a => storage.GetBlockNumbersFor(a, from, to)));
+            addressPositions = AscListHelper.UnionAll(addresses.Select(a => storage.GetLogPositions(a, from, to)));
 
         // TODO: consider passing storage directly to keep abstractions
         var topicIndex = 0;
-        Dictionary<Hash256, IList<int>>[]? byTopic = null;
+        Dictionary<Hash256, IList<LogPosition>>[]? byTopic = null;
         foreach (TopicExpression expression in filter.TopicsFilter.Expressions)
         {
-            byTopic ??= new Dictionary<Hash256, IList<int>>[LogIndexStorage.MaxTopics];
+            byTopic ??= new Dictionary<Hash256, IList<LogPosition>>[LogIndexStorage.MaxTopics];
             byTopic[topicIndex] = new();
 
             foreach (Hash256 topic in expression.Topics)
             {
                 var i = topicIndex;
-                byTopic[topicIndex].GetOrAdd(topic, _ => storage.GetBlockNumbersFor(i, topic, from, to));
+                byTopic[topicIndex].GetOrAdd(topic, _ => storage.GetLogPositions(i, topic, from, to));
             }
 
             topicIndex++;
         }
 
         if (byTopic is null)
-            return addressNumbers ?? [];
+            return addressPositions?.ToBlockNumbers() ?? [];
 
         // ReSharper disable once CoVariantArrayConversion
-        IList<int> topicNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);
+        IList<LogPosition> topicPositions = filter.TopicsFilter.FilterPositions(byTopic);
 
-        if (addressNumbers is null)
-            return topicNumbers;
+        if (addressPositions is null)
+            return topicPositions.ToBlockNumbers();
 
-        return AscListHelper.Intersect(addressNumbers, topicNumbers);
+        return AscListHelper.Intersect(addressPositions, topicPositions).ToBlockNumbers();
+    }
+
+    private static IList<int> ToBlockNumbers(this IList<LogPosition> positions)
+    {
+        var blockNumbers = new List<int>();
+        foreach (LogPosition position in positions)
+        {
+            if (blockNumbers.Count is 0 || blockNumbers[^1] != position.BlockNumber)
+                blockNumbers.Add(position.BlockNumber);
+        }
+
+        return blockNumbers;
     }
 }
