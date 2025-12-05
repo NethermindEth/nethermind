@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using System;
 
 namespace Nethermind.Network;
 
@@ -19,6 +20,8 @@ public interface IForkInfo
     ValidationResult ValidateForkId(ForkId peerId, BlockHeader? head);
 
     ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head);
+
+    ReadOnlySpan<Fork> GetAllForks();
 }
 
 public readonly record struct Fork(ForkActivation Activation, ForkId Id);
