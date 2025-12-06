@@ -23,7 +23,10 @@ public static class XdcExtensions
         ValueHash256 hash = ValueKeccak.Compute(_headerDecoder.Encode(header, RlpBehaviors.ForSealing).Bytes);
         return ecdsa.Sign(privateKey, in hash);
     }
-
+    public static bool IsSpecialTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
+    {
+        return currentTx.To is not null && ((currentTx.To == spec.BlockSignersAddress) || (currentTx.To == spec.RandomizeSMCBinary));
+    }
     public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
     {
         KeccakRlpStream stream = new();
