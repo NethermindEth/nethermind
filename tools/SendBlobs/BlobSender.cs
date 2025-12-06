@@ -362,8 +362,6 @@ internal class BlobSender
 
                 if (txHash is not null && blockResult.Transactions.Contains(txHash))
                 {
-                    string? receipt = await rpcClient.Post<string>("eth_getTransactionByHash", txHash.ToString(), true);
-
                     Console.WriteLine($"Found blob transaction in block {blockResult.Number}");
                     return;
                 }
