@@ -281,11 +281,16 @@ namespace Nethermind.Core
                 obj.Hash = default;
                 obj.ChainId = default;
                 obj.Type = default;
+                obj.IsAnchorTx = default;
+                obj.SourceHash = default;
+                obj.Mint = default;
+                obj.IsOPSystemTransaction = default;
                 obj.Nonce = default;
                 obj.GasPrice = default;
                 obj.GasBottleneck = default;
                 obj.DecodedMaxFeePerGas = default;
                 obj.GasLimit = default;
+                obj._spentGas = default;
                 obj.To = default;
                 obj.Value = default;
                 obj.Data = default;
@@ -309,6 +314,7 @@ namespace Nethermind.Core
         {
             tx.ChainId = ChainId;
             tx.Type = Type;
+            tx.IsAnchorTx = IsAnchorTx;
             tx.SourceHash = SourceHash;
             tx.Mint = Mint;
             tx.IsOPSystemTransaction = IsOPSystemTransaction;
