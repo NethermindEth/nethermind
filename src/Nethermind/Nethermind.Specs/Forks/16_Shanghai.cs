@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
@@ -13,6 +13,7 @@ namespace Nethermind.Specs.Forks
         protected Shanghai()
         {
             Name = "Shanghai";
+            MaximumUncleCount = 0;
             IsEip3651Enabled = true;
             IsEip3855Enabled = true;
             IsEip3860Enabled = true;

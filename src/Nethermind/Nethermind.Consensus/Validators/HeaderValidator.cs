@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -85,7 +85,7 @@ namespace Nethermind.Consensus.Validators
             return ValidateFieldLimit(header, ref error)
                    && ValidateHash(header, ref error)
                    && ValidateExtraData(header, spec = _specProvider.GetSpec(header), isUncle, ref error)
-                   && (orphaned || ValidateParent(header, parent, ref error))
+                   && (orphaned || ValidateParent(header, parent, ref error, ref orphaned))
                    && (orphaned || ValidateTotalDifficulty(header, parent, ref error))
                    && (orphaned || ValidateSeal(header, parent, isUncle, ref error))
                    && ValidateGasUsed(header, ref error)
@@ -164,7 +164,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        protected virtual bool ValidateParent(BlockHeader header, BlockHeader? parent, ref string? error)
+        protected virtual bool ValidateParent(BlockHeader header, BlockHeader? parent, ref string? error, ref bool orphaned)
         {
             if (parent is null)
             {
@@ -182,6 +182,8 @@ namespace Nethermind.Consensus.Validators
                     error = BlockErrorMessages.InvalidGenesisBlock;
                     return false;
                 }
+
+                orphaned = true;
             }
             else if (parent.Hash != header.ParentHash)
             {

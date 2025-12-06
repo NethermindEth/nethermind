@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -158,7 +158,7 @@ public class ChainSpecTest
             r.MaxCodeSize = long.MaxValue;
             r.Eip1559TransitionBlock = 15590L;
             r.IsTimeAdjustmentPostOlympic = true;
-            r.MaximumUncleCount = 2;
+            r.MaximumUncleCount = 0;
             r.WithdrawalTimestamp = ulong.MaxValue;
             r.Eip4844TransitionTimestamp = ulong.MaxValue;
         });

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -15,7 +15,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core;
 
-[DebuggerDisplay("{Hash} ({Number})")]
+[DebuggerDisplay("{Hash} ({Number}) > {ParentHash} {Difficulty}/{TotalDifficulty}")]
 public class Block
 {
     public Block(BlockHeader header, BlockBody body)
