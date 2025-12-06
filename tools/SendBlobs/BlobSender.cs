@@ -65,6 +65,7 @@ internal class BlobSender
         IReleaseSpec spec)
     {
         List<(Signer, ulong)> signers = [];
+        IBlobProofsManager proofs = IBlobProofsManager.For(spec.BlobProofVersion);
 
         if (waitForInclusion)
         {
@@ -96,12 +97,12 @@ internal class BlobSender
 
         int signerIndex = -1;
 
-        ulong excessBlobs = (ulong)blobTxCounts.Sum(btxc => btxc.blobCount) / 2;
+        ulong excessBlobs = EstimateTotalBlobs(blobTxCounts, spec) / 2;
 
         foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
         {
             int txCount = txs.txCount;
-            int blobCount = txs.blobCount;
+            int blobCount = ResolveBlobCount(txs.blobCount, txs.@break, spec);
             string @break = txs.@break;
 
             while (txCount > 0)
@@ -114,14 +115,6 @@ internal class BlobSender
 
                 Signer signer = signers[signerIndex].Item1;
                 ulong nonce = signers[signerIndex].Item2;
-
-                switch (@break)
-                {
-                    case "1": blobCount = 0; break;
-                    case "2": blobCount = (int)spec.MaxBlobCount + 1; break;
-                    case "14": blobCount = 100; break;
-                    case "15": blobCount = 1000; break;
-                }
 
                 byte[][] blobs = new byte[blobCount][];
 
@@ -140,8 +133,6 @@ internal class BlobSender
                         blobs[blobIndex][31] = 1;
                     }
                 }
-
-                IBlobProofsManager proofs = IBlobProofsManager.For(spec.BlobProofVersion);
 
                 ShardBlobNetworkWrapper blobsContainer = proofs.AllocateWrapper(blobs);
                 proofs.ComputeProofsAndCommitments(blobsContainer);
@@ -185,8 +176,8 @@ internal class BlobSender
                 if (result is not null)
                     signers[signerIndex] = new(signer, nonce + 1);
 
-                if (waitForInclusion)
-                    await WaitForBlobInclusion(_rpcClient, result, blockResult.Number);
+                if (waitForInclusion && result is Hash256 includedHash)
+                    await WaitForBlobInclusion(_rpcClient, includedHash, blockResult.Number);
             }
         }
     }
@@ -266,8 +257,8 @@ internal class BlobSender
 
         Hash256? hash = await SendTransaction(chainId, nonce, maxGasPrice, maxPriorityFeePerGas, maxFeePerBlobGas, receiver, blobHashes, blobsContainer, signer);
 
-        if (waitForInclusion)
-            await WaitForBlobInclusion(_rpcClient, hash, blockResult.Number);
+        if (waitForInclusion && hash is Hash256 includedHash)
+            await WaitForBlobInclusion(_rpcClient, includedHash, blockResult.Number);
     }
 
     private async Task<(UInt256 maxGasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas)> GetGasPrices
@@ -346,7 +337,7 @@ internal class BlobSender
         return result is not null ? tx.CalculateHash() : null;
     }
 
-    private async static Task WaitForBlobInclusion(IJsonRpcClient rpcClient, Hash256? txHash, UInt256 lastBlockNumber)
+    private async static Task WaitForBlobInclusion(IJsonRpcClient rpcClient, Hash256 txHash, UInt256 lastBlockNumber)
     {
         Console.WriteLine("Waiting for blob transaction to be included in a block");
         int waitInMs = 2000;
@@ -360,10 +351,8 @@ internal class BlobSender
             {
                 lastBlockNumber = blockResult.Number + 1;
 
-                if (txHash is not null && blockResult.Transactions.Contains(txHash))
+                if (blockResult.Transactions.Contains(txHash))
                 {
-                    string? receipt = await rpcClient.Post<string>("eth_getTransactionByHash", txHash.ToString(), true);
-
                     Console.WriteLine($"Found blob transaction in block {blockResult.Number}");
                     return;
                 }
@@ -377,4 +366,30 @@ internal class BlobSender
             if (retryCount == 0) break;
         }
     }
+
+    private static ulong EstimateTotalBlobs((int count, int blobCount, string @break)[] blobTxCounts, IReleaseSpec spec)
+    {
+        ulong total = 0;
+        foreach ((int count, int blobCount, string @break) option in blobTxCounts)
+        {
+            int resolvedBlobCount = ResolveBlobCount(option.blobCount, option.@break, spec);
+            if (resolvedBlobCount <= 0 || option.count <= 0)
+            {
+                continue;
+            }
+
+            total += (ulong)option.count * (ulong)resolvedBlobCount;
+        }
+
+        return total;
+    }
+
+    private static int ResolveBlobCount(int requestedCount, string breakCode, IReleaseSpec spec) => breakCode switch
+    {
+        "1" => 0,
+        "2" => (int)spec.MaxBlobCount + 1,
+        "14" => 100,
+        "15" => 1000,
+        _ => requestedCount
+    };
 }
