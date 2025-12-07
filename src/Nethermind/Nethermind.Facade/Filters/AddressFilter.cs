@@ -12,43 +12,24 @@ namespace Nethermind.Blockchain.Filters
         public static readonly AddressFilter AnyAddress = new([]);
 
         private Bloom.BloomExtract[]? _addressesBloomIndexes;
-        private Bloom.BloomExtract? _addressBloomExtract;
 
-        public AddressFilter(Address address)
+        public AddressFilter(Address address) : this([address])
         {
-            Address = address;
         }
 
-        public AddressFilter(AddressAsKey[] addresses)
+        public AddressFilter(IEnumerable<AddressAsKey> addresses)
         {
-            if (addresses.Length == 1)
-            {
-                Address = addresses[0];
-            }
-            else
-            {
-                Addresses = addresses.ToHashSet();
-            }
+            Addresses = addresses.ToHashSet();
         }
 
-        public Address? Address { get; }
-        public HashSet<AddressAsKey>? Addresses { get; }
+        public HashSet<AddressAsKey> Addresses { get; }
         private Bloom.BloomExtract[] AddressesBloomExtracts => _addressesBloomIndexes ??= CalculateBloomExtracts();
-        private Bloom.BloomExtract AddressBloomExtract => _addressBloomExtract ??= Bloom.GetExtract(Address);
 
-        public bool Accepts(Address address)
-        {
-            if (Addresses?.Count > 0)
-            {
-                return Addresses.Contains(address);
-            }
-
-            return Address is null || Address == address;
-        }
+        public bool Accepts(Address address) => Addresses.Contains(address);
 
         public bool Accepts(ref AddressStructRef address)
         {
-            if (Addresses?.Count > 0)
+            if (Addresses.Count > 0)
             {
                 foreach (var a in Addresses)
                 {
@@ -58,55 +39,39 @@ namespace Nethermind.Blockchain.Filters
                 return false;
             }
 
-            return Address is null || Address == address;
+            return true;
         }
 
         public bool Matches(Bloom bloom)
         {
-            if (Addresses is not null)
+            bool result = true;
+            var indexes = AddressesBloomExtracts;
+            for (var i = 0; i < indexes.Length; i++)
             {
-                bool result = true;
-                var indexes = AddressesBloomExtracts;
-                for (var i = 0; i < indexes.Length; i++)
+                result = bloom.Matches(indexes[i]);
+                if (result)
                 {
-                    result = bloom.Matches(indexes[i]);
-                    if (result)
-                    {
-                        break;
-                    }
+                    break;
                 }
+            }
 
-                return result;
-            }
-            if (Address is null)
-            {
-                return true;
-            }
-            return bloom.Matches(AddressBloomExtract);
+            return result;
         }
 
         public bool Matches(ref BloomStructRef bloom)
         {
-            if (Addresses is not null)
+            bool result = true;
+            var indexes = AddressesBloomExtracts;
+            for (var i = 0; i < indexes.Length; i++)
             {
-                bool result = true;
-                var indexes = AddressesBloomExtracts;
-                for (var i = 0; i < indexes.Length; i++)
+                result = bloom.Matches(indexes[i]);
+                if (result)
                 {
-                    result = bloom.Matches(indexes[i]);
-                    if (result)
-                    {
-                        break;
-                    }
+                    break;
                 }
+            }
 
-                return result;
-            }
-            if (Address is null)
-            {
-                return true;
-            }
-            return bloom.Matches(AddressBloomExtract);
+            return result;
         }
 
         private Bloom.BloomExtract[] CalculateBloomExtracts() => Addresses.Select(static a => Bloom.GetExtract(a)).ToArray();
