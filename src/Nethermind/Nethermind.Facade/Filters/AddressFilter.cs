@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Filters
         public HashSet<AddressAsKey> Addresses { get; }
         private Bloom.BloomExtract[] AddressesBloomExtracts => _addressesBloomIndexes ??= CalculateBloomExtracts();
 
-        public bool Accepts(Address address) => Addresses.Contains(address);
+        public bool Accepts(Address address) => Addresses.Count == 0 || Addresses.Contains(address);
 
         public bool Accepts(ref AddressStructRef address)
         {
