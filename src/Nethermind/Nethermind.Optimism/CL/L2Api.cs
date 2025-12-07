@@ -133,18 +133,20 @@ public class L2Api(
         };
     }
 
-    public Task<AccountProof?> GetProof(Address accountAddress, UInt256[] storageKeys, long blockNumber)
+    public async Task<AccountProof?> GetProof(...)
     {
-        // TODO: Retry logic
-        var result = l2EthRpc.eth_getProof(accountAddress, storageKeys, new BlockParameter(blockNumber));
-        if (result.Result.ResultType != ResultType.Success)
+        var blockParameter = new BlockParameter(blockNumber);
+        var result = l2EthRpc.eth_getProof(accountAddress, storageKeys, blockParameter);
+    
+        while (result?.Result.ResultType != ResultType.Success)
         {
-            return Task.FromResult<AccountProof?>(null);
+            if (_logger.IsWarn)
+                _logger.Warn($"Unable to get proof for account {accountAddress} at block {blockNumber}. Error: {result?.Result.Error}");
+            await Task.Delay(L2ApiRetryDelayMilliseconds);
+            result = l2EthRpc.eth_getProof(accountAddress, storageKeys, blockParameter);
         }
-        else
-        {
-            return Task.FromResult<AccountProof?>(result.Data);
-        }
+    
+        return result.Data;
     }
 
     public async Task<ForkchoiceUpdatedV1Result> ForkChoiceUpdatedV3(Hash256 headHash, Hash256 finalizedHash, Hash256 safeHash,
