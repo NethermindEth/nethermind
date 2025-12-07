@@ -133,7 +133,7 @@ public class L2Api(
         };
     }
 
-    public async Task<AccountProof?> GetProof(...)
+    public async Task<AccountProof?> GetProof(Address accountAddress, UInt256[] storageKeys, long blockNumber)
     {
         var blockParameter = new BlockParameter(blockNumber);
         var result = l2EthRpc.eth_getProof(accountAddress, storageKeys, blockParameter);
