@@ -37,6 +37,7 @@ public class EthereumIesEngineTests
         byte[] broken = new byte[prefixLen + 32];
         Array.Copy(validCipher, 0, broken, 0, prefixLen);
 
-        Assert.Throws<InvalidCipherTextException>(() => ecies.Decrypt(recipient, broken));
+        Exception ex = Assert.Throws<Exception>(() => ecies.Decrypt(recipient, broken));
+        Assert.That(ex.GetType().Name, Is.EqualTo("InvalidCipherTextException"));
     }
 }
