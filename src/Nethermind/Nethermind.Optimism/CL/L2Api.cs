@@ -141,7 +141,9 @@ public class L2Api(
         while (result?.Result.ResultType != ResultType.Success)
         {
             if (_logger.IsWarn)
+            {
                 _logger.Warn($"Unable to get proof for account {accountAddress} at block {blockNumber}. Error: {result?.Result.Error}");
+            }
             await Task.Delay(L2ApiRetryDelayMilliseconds);
             result = l2EthRpc.eth_getProof(accountAddress, storageKeys, blockParameter);
         }
