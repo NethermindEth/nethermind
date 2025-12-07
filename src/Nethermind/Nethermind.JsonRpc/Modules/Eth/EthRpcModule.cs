@@ -584,9 +584,6 @@ public partial class EthRpcModule(
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
     {
-        // FromBlock and ToBlock can be:
-        // number, Earliest, Latest
-        // blockHash if fromBlock = toBlock
         BlockParameter fromBlock = filter.FromBlock!;
         BlockParameter toBlock = filter.ToBlock!;
 

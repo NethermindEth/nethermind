@@ -7,7 +7,7 @@ using System.Text.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Json;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -36,7 +36,7 @@ public class Filter : IJsonRpcParam
             bool hasFromBlock = filter.TryGetProperty("fromBlock"u8, out JsonElement fromBlockElement);
             bool hasToBlock = filter.TryGetProperty("toBlock"u8, out JsonElement toBlockElement);
 
-            if (hasBlockHash)
+            if (hasBlockHash && blockHashElement.ValueKind != JsonValueKind.Null)
             {
                 if (hasFromBlock || hasToBlock)
                 {
@@ -48,8 +48,12 @@ public class Filter : IJsonRpcParam
             }
             else
             {
-                FromBlock = hasFromBlock ? new BlockParameter(LongConverter.FromString(fromBlockElement.ToString())) : BlockParameter.Earliest;
-                ToBlock = hasToBlock ? new BlockParameter(LongConverter.FromString(toBlockElement.ToString())) : BlockParameter.Latest;
+                FromBlock = hasFromBlock && fromBlockElement.ValueKind != JsonValueKind.Null
+                    ? BlockParameterConverter.GetBlockParameter(fromBlockElement.ToString())
+                    : BlockParameter.Earliest;
+                ToBlock = hasToBlock && toBlockElement.ValueKind != JsonValueKind.Null
+                    ? BlockParameterConverter.GetBlockParameter(toBlockElement.ToString())
+                    : BlockParameter.Latest;
             }
 
             if (filter.TryGetProperty("address"u8, out JsonElement addressElement))
