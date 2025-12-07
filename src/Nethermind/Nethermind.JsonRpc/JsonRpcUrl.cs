@@ -128,7 +128,9 @@ namespace Nethermind.JsonRpc
                 modulesHash = HashCode.Combine(modulesHash, StringComparer.OrdinalIgnoreCase.GetHashCode(m));
             }
 
-            return _hashCode = HashCode.Combine(Scheme, Host, Port, RpcEndpoint, IsAuthenticated, modulesHash);
+            int hash = HashCode.Combine(Scheme, Host, Port, RpcEndpoint, IsAuthenticated, modulesHash);
+            _hashCode = hash;
+            return hash;
         }
         public object Clone() => new JsonRpcUrl(Scheme, Host, Port, RpcEndpoint, IsAuthenticated, EnabledModules.ToArray());
         public override string ToString() => $"{Scheme}://{Host}:{Port}";
