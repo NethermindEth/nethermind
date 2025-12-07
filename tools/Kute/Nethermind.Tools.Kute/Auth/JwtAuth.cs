@@ -36,6 +36,7 @@ public sealed class JwtAuth : IAuth
         return handler.CreateToken(new SecurityTokenDescriptor
         {
             IssuedAt = _clock.UtcNow.UtcDateTime,
+            Expires = _clock.UtcNow.UtcDateTime.AddMinutes(5),
             SigningCredentials = new(_key, SecurityAlgorithms.HmacSha256)
         });
     }
