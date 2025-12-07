@@ -124,11 +124,11 @@ namespace Nethermind.Blockchain.Filters
             new(GetFilterId(setId));
 
         public LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock,
-            AddressAsKey[]? address = null, IEnumerable<Hash256[]?>? topics = null, bool setId = true) =>
+            AddressAsKey[]? addresses = null, IEnumerable<Hash256[]?>? topics = null, bool setId = true) =>
             new(GetFilterId(setId),
                 fromBlock,
                 toBlock,
-                GetAddress(address),
+                GetAddress(addresses),
                 GetTopicsFilter(topics));
 
         public void RemoveFilter(int filterId)
@@ -202,14 +202,14 @@ namespace Nethermind.Blockchain.Filters
             return AnyTopic.Instance;
         }
 
-        private static AddressFilter GetAddress(AddressAsKey[]? address)
+        private static AddressFilter GetAddress(AddressAsKey[]? addresses)
         {
-            if (address is null)
+            if (addresses is null)
             {
                 return AddressFilter.AnyAddress;
             }
 
-            return new AddressFilter(address);
+            return new AddressFilter(addresses);
         }
 
         private static FilterTopic?[]? GetFilterTopics(IEnumerable<Hash256[]?>? topics) => topics?.Select(GetTopic).ToArray();

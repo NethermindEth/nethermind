@@ -40,7 +40,7 @@ public class Filter : IJsonRpcParam
             {
                 if (hasFromBlock || hasToBlock)
                 {
-                    throw new ArgumentException("either (fromBlock and toBlock) or blockHash have to be specified");
+                    throw new ArgumentException("cannot specify both BlockHash and FromBlock/ToBlock, choose one or the other");
                 }
 
                 FromBlock = new(new Hash256(blockHashElement.ToString()));
