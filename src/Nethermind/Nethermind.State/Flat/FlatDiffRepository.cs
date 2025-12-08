@@ -691,7 +691,7 @@ public class FlatDiffRepository : IFlatDiffRepository
                     }
                     if (deleted > 0)
                     {
-                        _logger.Warn($"Should selfdestruct {toSelfDestructStorage.Key}. Deleted {deleted}");
+                        _logger.Warn($"Should selfdestruct {toSelfDestructStorage.Key}. Deleted {deleted}. Snapshot range {snapshot.From} {snapshot.To}");
                         throw new Exception($"Should sefl destruct not called properly {toSelfDestructStorage.Key}");
                     }
                     continue;

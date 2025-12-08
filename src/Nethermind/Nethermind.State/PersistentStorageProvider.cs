@@ -21,6 +21,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 
 namespace Nethermind.State;
@@ -217,7 +218,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         foreach (AddressAsKey address in toUpdateRoots)
         {
             // since the accounts could be empty accounts that are removing (EIP-158)
-            if (_stateProvider.AccountExists(address))
+            // Note: it could be that the TX remove the account but the underlying account was originally not missing
+            // hence, the storage Clear need to be called, hence the additional call to _currentScope.Get
+            if (_stateProvider.AccountExists(address) || _currentScope.Get(address) is not null)
             {
                 _toUpdateRoots[address] = true;
                 // Add storage tree, will accessed later, which may be in parallel
@@ -271,6 +274,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             {
                 if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
                 {
+                    if (kvp.Key == FlatWorldStateScope.DebugAddress) Console.Error.WriteLine("Update skipped");
                     // Wasn't updated don't recalculate
                     continue;
                 }
@@ -404,6 +408,11 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     public override void ClearStorage(Address address)
     {
         base.ClearStorage(address);
+
+        if (address == FlatWorldStateScope.DebugAddress)
+        {
+            Console.Error.WriteLine($"Clear on world state for debug address {address}");
+        }
 
         _toUpdateRoots.TryAdd(address, true);
 
@@ -590,6 +599,11 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             int writes = 0;
             int skipped = 0;
+
+            if (_address == FlatWorldStateScope.DebugAddress && BlockChange.HasClear)
+            {
+                Console.Error.WriteLine("Clear in process storage change");
+            }
 
             if (BlockChange.HasClear)
             {

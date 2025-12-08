@@ -508,5 +508,5 @@ public class DbConfig : IDbConfig
         TrieNodeConfig +
         "";
     public string? FlatStorageTopNodesNodesDbAdditionalRocksDbOptions { get; set; }
-    public ulong PreimageDbWriteBufferSize { get; set; } = (ulong)256.MiB();
+    public ulong PreimageDbWriteBufferSize { get; set; } = (ulong)16.MiB();
 }
