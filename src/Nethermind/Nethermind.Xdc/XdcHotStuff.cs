@@ -250,6 +250,11 @@ namespace Nethermind.Xdc
             {
                 _highestSelfMinedRound = currentRound;
                 Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
+
+                if ((roundParent.Number % spec.MergeSignRange == 0) || !(spec.TIP2019Block <= roundParent.Number))
+                {
+                    await ContractsUtils.CreateTransactionSign(roundParent, _signer, _stateDb, _txPool, spec);
+                }
             }
 
             if (spec.SwitchBlock < roundParent.Number)
@@ -257,10 +262,6 @@ namespace Nethermind.Xdc
                 await CommitCertificateAndVote(roundParent, epochInfo);
             }
 
-            if((roundParent.Number % spec.MergeSignRange == 0) || !(spec.TIP2019Block <= roundParent.Number))
-            {
-                await ContractsUtils.CreateTransactionSign(roundParent, _signer, _stateDb, _txPool, spec);
-            }
         }
 
         private XdcBlockHeader GetParentForRound()

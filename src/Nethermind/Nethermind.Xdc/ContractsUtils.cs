@@ -17,6 +17,7 @@ using Nethermind.Wallet;
 using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -35,7 +36,7 @@ internal static class ContractsUtils
     public static async Task CreateTransactionSign(XdcBlockHeader header, ISigner signer, IDb stateDb, ITxPool txPool, IXdcReleaseSpec spec)
     {
         UInt256 nonce = txPool.GetLatestPendingNonce(signer.Address);
-        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash, nonce, spec.BlockSignersAddress);
+        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash, nonce, spec.BlockSignersAddress, signer.Address);
 
         await signer.Sign(transaction);
 
@@ -44,6 +45,9 @@ internal static class ContractsUtils
         if(!added)
         {
             throw new Exception("Failed to add signed transaction to the pool.");
+        } else
+        {
+            Debug.WriteLine($"Added sign tx for block {header.Number}");
         }
 
         long blockNumber = header.Number;
@@ -61,7 +65,7 @@ internal static class ContractsUtils
             if(checkNumber > 0 && spec.EpochBlockOpening <= checkNumber && spec.EpochBlockRandomize >= checkNumber)
             {
                 var randomizeKeyValue = stateDb.Get(randomKey);
-                Transaction tx = CreateTxOpeningRandomize(nonce + 1, spec.RandomizeSMCBinary, randomizeKeyValue);
+                Transaction tx = CreateTxOpeningRandomize(nonce + 1, spec.RandomizeSMCBinary, randomizeKeyValue, signer.Address);
                 await signer.Sign(tx);
 
                 // add local somehow to tx pool
@@ -75,17 +79,17 @@ internal static class ContractsUtils
             var randomizeKeyValue = RandStringByte(32);
             if (checkNumber > 0 && spec.EpochBlockOpening <= checkNumber && spec.EpochBlockRandomize > checkNumber)
             {
-                Transaction tx = BuildTxSecretRandomize(nonce + 1, spec.RandomizeSMCBinary, (ulong)spec.EpochLength, randomizeKeyValue);
+                Transaction tx = BuildTxSecretRandomize(nonce + 1, spec.RandomizeSMCBinary, (ulong)spec.EpochLength, randomizeKeyValue, signer.Address);
                 await signer.Sign(tx);
                 // add local somehow to tx pool
                 bool addedOpening = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-                stateDb.PutSpan(randomKey, randomizeKeyValue);
 
+                stateDb.PutSpan(randomKey, randomizeKeyValue);
             }
         }
     }
 
-    private static Transaction CreateTxSign(UInt256 number, Hash256 hash, UInt256 nonce, Address blockSignersAddress)
+    internal static Transaction CreateTxSign(UInt256 number, Hash256 hash, UInt256 nonce, Address blockSignersAddress, Address sender)
     {
         var functionSelector = Bytes.FromHexString(HexSignMethod); // hexSetSecret like "0x..." (method id +)
         byte[] inputData = [.. functionSelector, .. number.PaddedBytes(32), .. hash.Bytes.PadLeft(32)];
@@ -97,6 +101,7 @@ internal static class ContractsUtils
         transaction.GasLimit = 200_000;
         transaction.GasPrice = 0;
         transaction.Data = inputData;
+        transaction.SenderAddress = sender;
 
         transaction.Type = TxType.Legacy;
 
@@ -105,7 +110,7 @@ internal static class ContractsUtils
         return transaction;
     }
 
-    private static Transaction CreateTxOpeningRandomize(UInt256 nonce, Address randomizeSMCBinary, byte[] randomizeKey)
+    internal static Transaction CreateTxOpeningRandomize(UInt256 nonce, Address randomizeSMCBinary, byte[] randomizeKey, Address sender)
     {
         var functionSelector = Bytes.FromHexString(HexSetOpening); // hexSetSecret like "0x..." (method id +)
         byte[] inputData = [.. functionSelector, .. randomizeKey];
@@ -117,6 +122,7 @@ internal static class ContractsUtils
         transaction.GasLimit = 200_000;
         transaction.GasPrice = 0;
         transaction.Data = inputData;
+        transaction.SenderAddress = sender;
 
         transaction.Type = TxType.Legacy;
 
@@ -125,7 +131,7 @@ internal static class ContractsUtils
         return transaction;
     }
 
-    public static Transaction BuildTxSecretRandomize(UInt256 nonce, Address randomizeSMCBinary, ulong epochNumber, byte[] randomizeKey)
+    internal static Transaction BuildTxSecretRandomize(UInt256 nonce, Address randomizeSMCBinary, ulong epochNumber, byte[] randomizeKey, Address sender)
     {
         var functionSelector = Bytes.FromHexString(HexSetSecret); // hexSetSecret like "0x..." (method id +)
         var secretNumb = RandomNumberGenerator.GetInt32((int)epochNumber);
@@ -155,6 +161,7 @@ internal static class ContractsUtils
         transaction.GasLimit = 200_000;
         transaction.GasPrice = 0;
         transaction.Data = inputData;
+        transaction.SenderAddress = sender;
 
         transaction.Type = TxType.Legacy;
 

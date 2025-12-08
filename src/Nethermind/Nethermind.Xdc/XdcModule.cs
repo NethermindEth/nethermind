@@ -11,6 +11,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
@@ -70,8 +71,9 @@ public class XdcModule : Module
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
 
             // block processing
+            .AddScoped<IBlockValidationModule, XdcBlockValidationModule>()
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
-            .AddSingleton<IBlockProducerEnvFactory, XdcBlockProductionEnvFactory>()
+            .AddScoped<IBlockProducerEnvFactory, XdcBlockProductionEnvFactory>()
             ;
     }
 

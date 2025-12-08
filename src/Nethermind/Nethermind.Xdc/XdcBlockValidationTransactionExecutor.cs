@@ -11,15 +11,15 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Xdc.Spec;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Xdc;
 
-internal class XdcTransactionExecutor(ITransactionProcessorAdapter txProcessorAdapter, IWorldState stateProvider, ISpecProvider specProvider)
+internal class XdcBlockValidationTransactionExecutor(ITransactionProcessorAdapter txProcessorAdapter, IWorldState stateProvider, ISpecProvider specProvider)
     : BlockProcessor.BlockValidationTransactionsExecutor(txProcessorAdapter, stateProvider)
 {
     public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)

@@ -29,7 +29,7 @@ internal class XdcTransactionProcessor(
         Address target = tx.To;
         Address sender = tx.SenderAddress;
 
-        if (xdcSpec.BlackListHFNumber == header.Number)
+        if (xdcSpec.BlackListHFNumber <= header.Number)
         {
             if (IsBlackListed(xdcSpec, sender) || IsBlackListed(xdcSpec, target))
             {
@@ -47,8 +47,8 @@ internal class XdcTransactionProcessor(
                     return TransactionResult.MalformedTransaction;
                 }
 
-                UInt256 blkNumber = new UInt256(tx.Data.Span[8..40], true);
-                if (blkNumber >= (UInt256)header.Number || blkNumber <= (UInt256)(header.Number - (xdcSpec.EpochLength * 2)))
+                UInt256 blkNumber = new UInt256(tx.Data.Span.Slice(4, 32), true);
+                if (blkNumber >= header.Number || blkNumber <= (header.Number - (xdcSpec.EpochLength * 2)))
                 {
                     // Invalid block number in special transaction data
                     return TransactionResult.MalformedTransaction;

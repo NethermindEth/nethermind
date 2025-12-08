@@ -9,13 +9,15 @@ using Nethermind.State;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using static Nethermind.Consensus.Processing.BlockProcessor;
 
 namespace Nethermind.Xdc;
 
-public class XdcBlockProductionEnvFactory(ILifetimeScope rootLifetime, IWorldStateManager worldStateManager, IBlockProducerTxSourceFactory txSourceFactory) : BlockProducerEnvFactory(rootLifetime, worldStateManager, txSourceFactory)
+public class XdcBlockProductionEnvFactory(ILifetimeScope rootLifetime, IWorldStateManager worldStateManager, IBlockProducerTxSourceFactory txSourceFactory)
+    : BlockProducerEnvFactory(rootLifetime, worldStateManager, txSourceFactory)
 {
     protected override ContainerBuilder ConfigureBuilder(ContainerBuilder builder) =>
         // Taiko does not seems to use `BlockProductionTransactionsExecutor`
         base.ConfigureBuilder(builder)
-            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, XdcTransactionExecutor>();
+            .AddScoped<IBlockProductionTransactionsExecutor, XdcBlockBuildingTransactionExecutor>();
 }

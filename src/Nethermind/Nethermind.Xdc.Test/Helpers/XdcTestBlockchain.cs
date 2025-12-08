@@ -235,7 +235,7 @@ public class XdcTestBlockchain : TestBlockchain
 
         xdcSpec.RandomizeSMCBinary = new Address("0x7c2E0c7B4F06C3cF4dA27AE5A6b89C4A0F1C9c41");
         xdcSpec.BlockSignersAddress = new Address("0xA45eEFb7d2a6800F9f39E35C0F0F8D5E0d7C3B22");
-        xdcSpec.TIP2019Block = 10;
+        xdcSpec.TIP2019Block = 0;
 
         V2ConfigParams[] v2ConfigParams = [
             new V2ConfigParams {
