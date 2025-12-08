@@ -36,7 +36,7 @@ public class DebugSimulateTestsBlocksAndTransactions
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor<GethLikeTxTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default));
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = await executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>> data = result.Data;
         Assert.That(data, Has.Count.EqualTo(7));
 
@@ -74,7 +74,7 @@ public class DebugSimulateTestsBlocksAndTransactions
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor<GethLikeTxTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default));
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result =
-            executor.Execute(payload, BlockParameter.Latest);
+            await executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>> data = result.Data;
 
         Assert.That(data, Has.Count.EqualTo(9));
@@ -113,7 +113,7 @@ public class DebugSimulateTestsBlocksAndTransactions
         SimulateTxExecutor<GethLikeTxTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default));
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result =
-            executor.Execute(payload, BlockParameter.Latest);
+            await executor.Execute(payload, BlockParameter.Latest);
         Assert.That(result.Result!.Error!, Does.Contain("insufficient sender balance"));
     }
 
@@ -123,7 +123,7 @@ public class DebugSimulateTestsBlocksAndTransactions
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
-        var result = chain.DebugRpcModule.debug_simulateV1(payload!, BlockParameter.Latest);
+        var result = await chain.DebugRpcModule.debug_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Data.First().Traces.First().TxHash, Is.EqualTo(new Core.Crypto.Hash256("0xea104c39737cea12ae19c0985b3bc799096f3dbd2574594c2ecb4d0731e042cc")));
     }
 
@@ -175,7 +175,7 @@ public class DebugSimulateTestsBlocksAndTransactions
         SimulateTxExecutor<GethLikeTxTrace> executor = new(mockBridge, chain.BlockFinder, new JsonRpcConfig(), new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default));
 
         // Execute and verify the error message includes block number
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = await executor.Execute(payload, BlockParameter.Latest);
 
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
         Assert.That(result.Result.Error, Does.Contain("No state available for block"));

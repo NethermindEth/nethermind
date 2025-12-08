@@ -95,7 +95,7 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
             TraceTransfers = true
         };
 
-        SimulateOutput<SimulateCallResult> result = chain.Bridge.Simulate(
+        SimulateOutput<SimulateCallResult> result = await chain.Bridge.Simulate(
             chain.BlockFinder.Head?.Header!,
             payload,
             new SimulateBlockMutatorTracerFactory(),
@@ -107,7 +107,7 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
         Assert.That(resultingAddress, Is.EqualTo(TestItem.AddressE));
 
         //Check that initial VM is intact
-        Address? mainChainRpcAddress = EcRecoverCall(chain, TestItem.AddressB, transactionData, contractAddress);
+        Address? mainChainRpcAddress = await EcRecoverCall(chain, TestItem.AddressB, transactionData, contractAddress);
         Assert.That(mainChainRpcAddress, Is.EqualTo(TestItem.AddressA));
     }
 }

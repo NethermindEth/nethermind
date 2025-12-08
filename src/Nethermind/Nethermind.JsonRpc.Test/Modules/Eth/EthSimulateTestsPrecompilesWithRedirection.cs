@@ -63,7 +63,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = await executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
         byte[]? returnData = result.Data[0].Calls.First().ReturnData;
@@ -135,7 +135,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         Hash256 headHash = chain.BlockFinder.Head!.Hash!;
         Address contractAddress = await EthRpcSimulateTestsBase.DeployEcRecoverContract(chain, TestItem.PrivateKeyB, EthSimulateTestsSimplePrecompiles.EcRecoverCallerContractBytecode);
 
-        EthRpcSimulateTestsBase.EcRecoverCall(chain, TestItem.AddressB, transactionData, contractAddress);
+        await EthRpcSimulateTestsBase.EcRecoverCall(chain, TestItem.AddressB, transactionData, contractAddress);
 
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
@@ -180,7 +180,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         Debug.Assert(contractAddress is not null, nameof(contractAddress) + " is not null");
         Assert.That(chain.ReadOnlyState.AccountExists(contractAddress), Is.True);
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = await executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
         byte[] addressBytes = result.Data[0].Calls.First().ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);

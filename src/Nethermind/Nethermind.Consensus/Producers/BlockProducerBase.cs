@@ -130,14 +130,14 @@ namespace Nethermind.Consensus.Producers
             return Task.FromResult((Block?)null);
         }
 
-        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
+        private async Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
             if (StateProvider.HasStateForBlock(parent))
             {
                 Block block = PrepareBlock(parent, payloadAttributes, flags);
                 if (PreparedBlockCanBeMined(block))
                 {
-                    Block? processedBlock = ProcessPreparedBlock(block, blockTracer, token);
+                    Block? processedBlock = await ProcessPreparedBlock(block, blockTracer, token);
                     if (processedBlock is null)
                     {
                         if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");
@@ -145,9 +145,9 @@ namespace Nethermind.Consensus.Producers
                     }
                     else
                     {
-                        if ((flags & IBlockProducer.Flags.DontSeal) != 0) return Task.FromResult(processedBlock);
+                        if ((flags & IBlockProducer.Flags.DontSeal) != 0) return processedBlock;
 
-                        return SealBlock(processedBlock, parent, token).ContinueWith((Func<Task<Block?>, Block?>)(t =>
+                        return await SealBlock(processedBlock, parent, token).ContinueWith((Func<Task<Block?>, Block?>)(t =>
                         {
                             if (t.IsCompletedSuccessfully)
                             {
@@ -183,13 +183,13 @@ namespace Nethermind.Consensus.Producers
                 }
             }
 
-            return Task.FromResult((Block?)null);
+            return null;
         }
 
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
             Sealer.SealBlock(block, token);
 
-        protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer,
+        protected virtual Task<Block?> ProcessPreparedBlock(Block block, IBlockTracer? blockTracer,
             CancellationToken token = default)
         {
             return Processor.Process(block, GetProcessingOptions(), blockTracer ?? NullBlockTracer.Instance, token);

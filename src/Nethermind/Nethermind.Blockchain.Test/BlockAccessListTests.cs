@@ -217,19 +217,19 @@ public class BlockAccessListTests()
             { slotChanges.Slot, slotChanges }
         };
 
-        SortedList<ushort, BalanceChange> balanceChangesList = new()
+        SortedList<int, BalanceChange> balanceChangesList = new()
         {
             { balanceChange.BlockAccessIndex, balanceChange },
             { balanceChange2.BlockAccessIndex, balanceChange2 }
         };
 
-        SortedList<ushort, NonceChange> nonceChangesList = new()
+        SortedList<int, NonceChange> nonceChangesList = new()
         {
             { nonceChange.BlockAccessIndex, nonceChange },
             { nonceChange2.BlockAccessIndex, nonceChange2 }
         };
 
-        SortedList<ushort, CodeChange> codeChangesList = new()
+        SortedList<int, CodeChange> codeChangesList = new()
         {
             { codeChange.BlockAccessIndex, codeChange },
         };
@@ -390,8 +390,8 @@ public class BlockAccessListTests()
                 TestItem.AddressA,
                 [],
                 [],
-                new SortedList<ushort, BalanceChange> { { 1, new(1, addressABalance) }, { 2, new(2, addressABalance2) }, { 3, new(3, addressABalance3) } },
-                new SortedList<ushort, NonceChange> { { 1, new(1, 1) }, { 2, new(2, 2) }, { 3, new(3, 3) } },
+                new SortedList<int, BalanceChange> { { 1, new(1, addressABalance) }, { 2, new(2, addressABalance2) }, { 3, new(3, addressABalance3) } },
+                new SortedList<int, NonceChange> { { 1, new(1, 1) }, { 2, new(2, 2) }, { 3, new(3, 3) } },
                 []
             )));
 
@@ -408,7 +408,7 @@ public class BlockAccessListTests()
                 TestItem.AddressC,
                 [],
                 [],
-                new SortedList<ushort, BalanceChange> { { 1, new(1, new UInt256(GasCostOf.Transaction)) }, { 2, new(2, new UInt256(gasUsedBeforeFinal)) }, { 3, new(3, new UInt256(gasUsed)) } },
+                new SortedList<int, BalanceChange> { { 1, new(1, new UInt256(GasCostOf.Transaction)) }, { 2, new(2, new UInt256(gasUsedBeforeFinal)) }, { 3, new(3, new UInt256(gasUsed)) } },
                 [],
                 []
             )));
@@ -417,7 +417,7 @@ public class BlockAccessListTests()
                 TestItem.AddressD,
                 [],
                 [],
-                new SortedList<ushort, BalanceChange> { { 4, new(4, 1.GWei()) } },
+                new SortedList<int, BalanceChange> { { 4, new(4, 1.GWei()) } },
                 [],
                 []
             )));
@@ -427,8 +427,8 @@ public class BlockAccessListTests()
                 [],
                 [],
                 [],
-                new SortedList<ushort, NonceChange> { { 2, new(2, 1) } },
-                new SortedList<ushort, CodeChange> { { 2, new(2, Eip2935TestConstants.Code) } }
+                new SortedList<int, NonceChange> { { 2, new(2, 1) } },
+                new SortedList<int, CodeChange> { { 2, new(2, Eip2935TestConstants.Code) } }
             )));
 
             Assert.That(newContractChanges2, Is.EqualTo(new AccountChanges(
@@ -625,7 +625,7 @@ public class BlockAccessListTests()
                     new("0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba"),
                     [],
                     [],
-                    new SortedList<ushort, BalanceChange> { { 1, new(1, 0x1319718811c8) } },
+                    new SortedList<int, BalanceChange> { { 1, new(1, 0x1319718811c8) } },
                     [],
                     []
                 )},
@@ -633,15 +633,15 @@ public class BlockAccessListTests()
                     new("0xaccc7d92b051544a255b8a899071040739bada75"),
                     [],
                     [],
-                    new SortedList<ushort, BalanceChange> { { 1, new(1, new(Bytes.FromHexString("0x3635c99aac6d15af9c"))) } },
-                    new SortedList<ushort, NonceChange> { { 1, new(1, 1) } },
+                    new SortedList<int, BalanceChange> { { 1, new(1, new(Bytes.FromHexString("0x3635c99aac6d15af9c"))) } },
+                    new SortedList<int, NonceChange> { { 1, new(1, 1) } },
                     []
                 )},
                 {new("0xd9c0e57d447779673b236c7423aeab84e931f3ba"), new(
                     new("0xd9c0e57d447779673b236c7423aeab84e931f3ba"),
                     [],
                     [],
-                    new SortedList<ushort, BalanceChange> { { 1, new(1, 0x64) } },
+                    new SortedList<int, BalanceChange> { { 1, new(1, 0x64) } },
                     [],
                     []
                 )},

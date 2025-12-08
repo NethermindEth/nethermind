@@ -193,8 +193,8 @@ public partial class BlockProcessor
                 _tracedAccessWorldState.GenerateBlockAccessList();
                 // body.BlockAccessList = _tracedAccessWorldState.GeneratedBlockAccessList;
                 // block.EncodedBlockAccessList = Rlp.Encode(_tracedAccessWorldState.GeneratedBlockAccessList).Bytes;
-                block.GeneratedBlockAccessList = _tracedAccessWorldState.BlockAccessList;
-                block.EncodedBlockAccessList = Rlp.Encode(_tracedAccessWorldState.BlockAccessList).Bytes;
+                block.GeneratedBlockAccessList = _tracedAccessWorldState.GeneratedBlockAccessList;
+                block.EncodedBlockAccessList = Rlp.Encode(_tracedAccessWorldState.GeneratedBlockAccessList).Bytes;
                 header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
             }
         }
