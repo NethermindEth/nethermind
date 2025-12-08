@@ -10,7 +10,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -21,11 +20,10 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
-using Nethermind.Trie;
+using RuntimeInformation = Nethermind.Core.Cpu.RuntimeInformation;
 
 namespace Nethermind.State;
 
-using Nethermind.Core.Cpu;
 
 /// <summary>
 /// Manages persistent storage allowing for snapshotting and restoring
@@ -402,44 +400,13 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
         public int Capacity => _dictionary.Capacity;
-        /*
-         *
-<<<<<<< HEAD
-           =======
-                   // Note: These all run in about 0.4ms. So the little overhead like attempting to sort the tasks
-                   // may make it worse. Always check on mainnet.
-
-                   using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
-                   foreach (PerContractState storage in _storages.Values)
-                   {
-                       storage.EnsureStorageTree(); // Cannot be called concurrently
-                       if (blockCommitter.TryRequestConcurrencyQuota())
-                       {
-                           commitTask.Add(Task.Factory.StartNew((ctx) =>
-                           {
-                               PerContractState st = (PerContractState)ctx;
-                               st.Commit();
-                               st.Return();
-                               blockCommitter.ReturnConcurrencyQuota();
-                           }, storage));
-                       }
-                       else
-                       {
-                           storage.Commit();
-                           storage.Return();
-                       }
-                   }
-
-                   Task.WaitAll(commitTask.AsSpan());
-
-           >>>>>>> origin/master
-                        */
 
         public void Reset()
         {
             _missingAreDefault = false;
             _dictionary.Clear();
         }
+
         public void ClearAndSetMissingAsDefault()
         {
             _missingAreDefault = true;
@@ -489,17 +456,13 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
-    private sealed class PerContractState : IReturnable
+    private sealed class PerContractState(Address address, PersistentStorageProvider provider) : IReturnable
     {
-        private static readonly Func<StorageCell, PerContractState, byte[]> _loadFromTreeStorageFunc = LoadFromTreeStorage;
         private IWorldStateScopeProvider.IStorageTree? _backend;
-
-        private readonly DefaultableDictionary BlockChange = new();
-        private bool _wasWritten = false;
-        private PersistentStorageProvider _provider;
-        private Address _address;
-
-        private PerContractState(Address address, PersistentStorageProvider provider) => Initialize(address, provider);
+        private readonly DefaultableDictionary _blockChange = new();
+        private bool _wasWritten;
+        private PersistentStorageProvider _provider = provider;
+        private Address _address = address;
 
         private void Initialize(Address address, PersistentStorageProvider provider)
         {
@@ -507,7 +470,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             _provider = provider;
         }
 
-        public int EstimatedChanges => BlockChange.EstimatedSize;
+        public int EstimatedChanges => _blockChange.EstimatedSize;
 
         public Hash256 StorageRoot
         {
@@ -546,8 +509,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         public void Return()
         {
-            _address = null;
-            _provider = null;
+            _address = null!;
+            _provider = null!;
             _backend = null;
             _wasWritten = false;
             Pool.Return(this);
@@ -556,24 +519,16 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         public void SaveChange(StorageCell storageCell, byte[] value)
         {
             _wasWritten = true;
-            ref ChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
-            if (!exists)
-            {
-                valueChanges = new StorageChangeTrace(value);
-            }
-            else
-            {
-                valueChanges = new StorageChangeTrace(valueChanges.Before, value);
-            }
+            ref StorageChangeTrace valueChanges = ref _blockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
+            valueChanges = !exists ? new StorageChangeTrace(value) : new StorageChangeTrace(valueChanges.Before, value);
         }
 
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
-            ref ChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
+            ref StorageChangeTrace valueChange = ref _blockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
                 byte[] value = LoadFromTreeStorage(storageCell);
-
                 valueChange = new(value, value);
             }
             else
@@ -581,7 +536,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 Db.Metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash) provider.PushToRegistryOnly(storageCell, valueChange.After);
+            if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
             return valueChange.After;
         }
 
@@ -591,8 +546,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             EnsureStorageTree();
             return !storageCell.IsHash
-                ? _backend.Get(storageCell.Index)
-                : _backend.Get(storageCell.Hash);
+                ? _backend!.Get(storageCell.Index)
+                : _backend!.Get(storageCell.Hash);
         }
 
         private static byte[] LoadFromTreeStorage(StorageCell storageCell, PerContractState @this)
@@ -613,7 +568,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 _blockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
             }
 
-            foreach (KeyValuePair<UInt256, ChangeTrace> kvp in _blockChange)
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in _blockChange)
             {
                 byte[] after = kvp.Value.After;
                 if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
@@ -662,7 +617,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 const int MaxItemSize = 512;
                 const int MaxPooledCount = 2048;
 
-                if (item.BlockChange.Capacity > MaxItemSize)
+                if (item._blockChange.Capacity > MaxItemSize)
                     return;
 
                 // shared pool fallback
@@ -672,7 +627,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     return;
                 }
 
-                item.BlockChange.Reset();
+                item._blockChange.Reset();
                 _pool.Enqueue(item);
             }
         }
