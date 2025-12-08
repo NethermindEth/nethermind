@@ -54,14 +54,14 @@ public class StatelessBlockProcessingEnv(
         StatelessBlockTree statelessBlockTree = new(witness.DecodedHeaders);
         ITransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, statelessBlockTree);
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =
-            null;
+            null; // todo: fix
             // new BlockProcessor.BlockValidationTransactionsExecutor(
-            //     WorldState,
+            //     stateProvider,
             //     new BlobBaseFeeCalculator(),
-            //     specProvider,
-
-            //     new ExecuteTransactionProcessorAdapter(txProcessor),
-            //     WorldState);
+            //     HoodiSpecProvider.Instance,
+            //     Substitute.For<IVirtualMachine>(),
+            //     Substitute.For<ICodeInfoRepository>(),
+            //     LimboLogs.Instance),
 
         IHeaderValidator headerValidator = new HeaderValidator(statelessBlockTree, sealValidator, specProvider, logManager);
         IBlockValidator blockValidator = new BlockValidator(new TxValidator(specProvider.ChainId), headerValidator,

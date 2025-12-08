@@ -97,7 +97,7 @@ public class BlockAccessListTests()
 
         Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
         SlotChanges slotChange = SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
-        SlotChanges expected = new(slot0, [parentHashStorageChange]);
+        SlotChanges expected = new(slot0, new SortedList<int, StorageChange>{{0, parentHashStorageChange}});
         Assert.That(slotChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(slotChange).Bytes);
@@ -164,7 +164,8 @@ public class BlockAccessListTests()
         StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None);
         Assert.That(storageChange, Is.EqualTo(storageChangeDecoded));
 
-        SlotChanges slotChanges = new([.. Enumerable.Repeat<byte>(100, 32)], [storageChange, storageChange]);
+        var storageChanges = new SortedList<int, StorageChange>{{ 10, storageChange}, {10, storageChange}};
+        SlotChanges slotChanges = new([.. Enumerable.Repeat<byte>(100, 32)], storageChanges);
         byte[] slotChangesBytes = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
         SlotChanges slotChangesDecoded = Rlp.Decode<SlotChanges>(slotChangesBytes, RlpBehaviors.None);
         Assert.That(slotChanges, Is.EqualTo(slotChangesDecoded));
@@ -343,7 +344,7 @@ public class BlockAccessListTests()
             .WithWithdrawals([withdrawal])
             .WithHeader(header).TestObject;
 
-        (Block processedBlock, TxReceipt[] _) = testBlockchain.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, _spec, CancellationToken.None);
+        (Block processedBlock, TxReceipt[] _) = await testBlockchain.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, _spec, CancellationToken.None);
         // Block processedBlock = testBlockchain.BlockchainProcessor.Process(block, ProcessingOptions.None, NullBlockTracer.Instance)!;
         // Block[] res = testBlockchain.BranchProcessor.Process(header, [block], ProcessingOptions.None, NullBlockTracer.Instance, CancellationToken.None);
         // Blockchain.AddBlockResult res = testBlockchain.BlockTree.SuggestBlock(block);
@@ -442,7 +443,7 @@ public class BlockAccessListTests()
 
             Assert.That(eip2935Changes, Is.EqualTo(new AccountChanges(
                 Eip2935Constants.BlockHashHistoryAddress,
-                new SortedDictionary<byte[], SlotChanges>(Bytes.Comparer) { { slot0, new SlotChanges(slot0, [parentHashStorageChange]) } },
+                new SortedDictionary<byte[], SlotChanges>(Bytes.Comparer) { { slot0, new SlotChanges(slot0, new SortedList<int, StorageChange>{{0, parentHashStorageChange}}) } },
                 [],
                 [],
                 [],
@@ -452,7 +453,7 @@ public class BlockAccessListTests()
             // second storage read is not a change, so not recorded
             Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges(
                 Eip4788Constants.BeaconRootsAddress,
-                new SortedDictionary<byte[], SlotChanges>(Bytes.Comparer) { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) } },
+                new SortedDictionary<byte[], SlotChanges>(Bytes.Comparer) { { eip4788Slot1, new SlotChanges(eip4788Slot1, new SortedList<int, StorageChange>{{0, timestampStorageChange}}) } },
                 new SortedSet<StorageRead> { ToStorageRead(eip4788Slot1), ToStorageRead(eip4788Slot2) },
                 [],
                 [],
@@ -554,7 +555,7 @@ public class BlockAccessListTests()
                 "0xf862940000f90827f1c53a10cb7a02335b175320002935f847f845a00000000000000000000000000000000000000000000000000000000000000000e3e280a0c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fdc0c0c0c0",
                 new AccountChanges(
                     Eip2935Constants.BlockHashHistoryAddress,
-                    new SortedDictionary<byte[], SlotChanges>(Bytes.Comparer) { { ToStorageSlot(0), new SlotChanges(ToStorageSlot(0), [new(0, Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"))]) } },
+                    new SortedDictionary<byte[], SlotChanges>(Bytes.Comparer) { { ToStorageSlot(0), new SlotChanges(ToStorageSlot(0), new SortedList<int, StorageChange>{{0, new(0, Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"))}}) } },
                     [],
                     [],
                     [],
@@ -605,7 +606,7 @@ public class BlockAccessListTests()
                 )},
                 {Eip2935Constants.BlockHashHistoryAddress, new(
                     Eip2935Constants.BlockHashHistoryAddress,
-                    new SortedDictionary<byte[], SlotChanges>(Bytes.Comparer) { { slot0, new SlotChanges(slot0, [parentHashStorageChange]) } },
+                    new SortedDictionary<byte[], SlotChanges>(Bytes.Comparer) { { slot0, new SlotChanges(slot0, new SortedList<int, StorageChange>{{0, parentHashStorageChange}}) } },
                     [],
                     [],
                     [],
@@ -613,7 +614,7 @@ public class BlockAccessListTests()
                 )},
                 {Eip4788Constants.BeaconRootsAddress, new(
                     Eip4788Constants.BeaconRootsAddress,
-                    new SortedDictionary<byte[], SlotChanges>(Bytes.Comparer) { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) } },
+                    new SortedDictionary<byte[], SlotChanges>(Bytes.Comparer) { { eip4788Slot1, new SlotChanges(eip4788Slot1, new SortedList<int, StorageChange>{{0, timestampStorageChange}}) } },
                     new SortedSet<StorageRead> {
                         ToStorageRead([0x20, 0x0b])
                     },

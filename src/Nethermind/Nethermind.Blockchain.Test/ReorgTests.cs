@@ -91,6 +91,7 @@ public class ReorgTests
             transactionComparerProvider.GetDefaultComparer());
         BlockhashCache blockhashCache = new(blockTreeBuilder.HeaderStore, LimboLogs.Instance);
         BlockhashProvider blockhashProvider = new(blockhashCache, stateProvider, LimboLogs.Instance);
+        ICodeInfoRepository codeInfoRepository = new EthereumCodeInfoRepository(stateProvider);
         VirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
@@ -100,14 +101,20 @@ public class ReorgTests
             specProvider,
             stateProvider,
             virtualMachine,
-            new EthereumCodeInfoRepository(stateProvider),
+            codeInfoRepository,
             LimboLogs.Instance);
 
         BlockProcessor blockProcessor = new(
             MainnetSpecProvider.Instance,
             Always.Valid,
             new RewardCalculator(specProvider),
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(
+                stateProvider,
+                new BlobBaseFeeCalculator(),
+                specProvider,
+                virtualMachine,
+                codeInfoRepository,
+                LimboLogs.Instance),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
