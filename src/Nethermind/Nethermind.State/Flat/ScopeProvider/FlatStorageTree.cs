@@ -119,7 +119,9 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
         {
             // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
             // this is just to warm up the nodes.
-            _ = _warmupStorageTree.Get(index);
+            ValueHash256 key = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(index, key.BytesAsSpan);
+            _ = _warmupStorageTree.Get(key.BytesAsSpan, keepChildRef: true);
         }
 
         return true;
