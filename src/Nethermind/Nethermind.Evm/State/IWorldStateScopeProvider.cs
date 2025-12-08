@@ -95,6 +95,7 @@ public interface IWorldStateScopeProvider
     {
         public event EventHandler<AccountUpdated> OnAccountUpdated;
 
+        // Note: Null account imply removal and clearing of storage.
         void Set(Address key, Account? account);
 
         IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries);
@@ -118,6 +119,8 @@ public interface IWorldStateScopeProvider
 
         /// <summary>
         /// Self-destruct. Maybe costly. Must be called first.
+        /// Note: Is called on new account or dead account at start of tx also.
+        /// Note: May not get called if the account is removed at the end of the time of commit.
         /// </summary>
         void Clear();
     }
