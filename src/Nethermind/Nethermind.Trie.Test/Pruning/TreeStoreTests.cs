@@ -973,6 +973,7 @@ namespace Nethermind.Trie.Test.Pruning
 
                 if (i > 4)
                 {
+                    fullTrieStore.WaitForPruning();
                     Assert.That(() => reorgBoundary, Is.EqualTo(i - 3).After(10000, 100));
                 }
                 else
