@@ -57,7 +57,7 @@ public class SnapshotBundle : IDisposable
     private static Histogram _snapshotBundleTimes = Metrics.CreateHistogram("snapshot_bundle_times", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "type", "is_prewarmer" },
-        Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
+        Buckets = Histogram.PowersOfTenDividedBuckets(1, 12, 5)
     });
     private Histogram.Child _accountPersistenceRead;
     private Histogram.Child _slotPersistenceRead;

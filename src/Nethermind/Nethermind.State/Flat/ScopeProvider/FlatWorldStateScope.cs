@@ -201,6 +201,15 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
             long sw = Stopwatch.GetTimestamp();
             // Commit will copy the trie nodes from the tree to the bundle.
             using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
+
+            commitTask.Add(Task.Factory.StartNew(() =>
+            {
+                sw = Stopwatch.GetTimestamp();
+                // Commit will copy the trie nodes from the tree to the bundle.
+                _stateTree.Commit();
+                _snapshotBundleTimes.WithLabels("statetree_commit").Observe(Stopwatch.GetTimestamp() - sw);
+            }));
+
             foreach (KeyValuePair<AddressAsKey, FlatStorageTree> storage in _storages)
             {
                 commitTask.Add(Task.Factory.StartNew((ctx) =>
@@ -213,11 +222,6 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
             Task.WaitAll(commitTask.AsSpan());
             _snapshotBundleTimes.WithLabels("storage_commit_wait").Observe(Stopwatch.GetTimestamp() - sw);
-
-            sw = Stopwatch.GetTimestamp();
-            // Commit will copy the trie nodes from the tree to the bundle.
-            _stateTree.Commit();
-            _snapshotBundleTimes.WithLabels("statetree_commit").Observe(Stopwatch.GetTimestamp() - sw);
         }
 
         _storages.Clear();
