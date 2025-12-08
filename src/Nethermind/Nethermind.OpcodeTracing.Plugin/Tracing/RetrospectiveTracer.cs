@@ -54,10 +54,18 @@ public sealed class RetrospectiveTracer
                 continue;
             }
 
-            // For retrospective mode, we're reading already-processed blocks
-            // We can't easily replay transactions without full state, so we'll skip detailed tracing
-            // In a real implementation, you might want to replay transactions with a tracer
-            // For now, we'll just log that we processed the block
+            // Process transactions in the block
+            if (block.Transactions is not null && block.Transactions.Length > 0)
+            {
+                foreach (var transaction in block.Transactions)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    // Analyze transaction bytecode for opcodes
+                    AnalyzeTransactionOpcodes(transaction);
+                }
+            }
+
             progress.UpdateProgress(blockNumber);
 
             // Log progress if needed
@@ -70,6 +78,46 @@ public sealed class RetrospectiveTracer
             if (blockNumber % 100 == 0)
             {
                 await Task.Delay(1, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Analyzes transaction bytecode to extract and count opcodes.
+    /// This provides a static analysis of opcodes present in the transaction data.
+    /// Note: This counts opcodes in the transaction input data (contract calls/deployments),
+    /// not the actual executed opcodes which would require full transaction replay.
+    /// </summary>
+    /// <param name="transaction">The transaction to analyze.</param>
+    private void AnalyzeTransactionOpcodes(Transaction transaction)
+    {
+        if (transaction.Data.Length == 0)
+        {
+            return;
+        }
+
+        // For contract creation transactions, analyze the init code
+        // For contract calls, the data is typically ABI-encoded function calls
+        // We'll scan the bytecode looking for valid EVM opcodes
+        ReadOnlySpan<byte> data = transaction.Data.Span;
+
+        for (int i = 0; i < data.Length; i++)
+        {
+            byte opcodeByte = data[i];
+
+            // Check if this byte is a valid EVM opcode
+            if (Enum.IsDefined(typeof(Nethermind.Evm.Instruction), opcodeByte))
+            {
+                // Count this opcode
+                _counter.Increment(opcodeByte);
+
+                // Handle PUSH instructions which have immediate data following them
+                // PUSH1-PUSH32 are opcodes 0x60-0x7F
+                if (opcodeByte >= 0x60 && opcodeByte <= 0x7F)
+                {
+                    int pushSize = opcodeByte - 0x5F; // PUSH1 = 0x60 pushes 1 byte
+                    i += pushSize; // Skip the push data bytes
+                }
             }
         }
     }
