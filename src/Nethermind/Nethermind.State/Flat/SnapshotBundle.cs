@@ -319,7 +319,10 @@ public class SnapshotBundle : IDisposable
         }
         else
         {
-            _cachedResource.TrieWarmerLoadedNodes.AddOrUpdate(path, static (path, trieNode) => trieNode, static (treePath, trieNode, newNode) => newNode, node);
+            _cachedResource.TrieWarmerLoadedNodes.AddOrUpdate(path,
+                static (path, trieNode) => trieNode,
+                static (treePath, trieNode, newNode) => newNode,
+                node);
         }
 
         if (isTrieWarmer)
@@ -366,47 +369,55 @@ public class SnapshotBundle : IDisposable
 
     public TrieNode FindStorageNodeOrUnknown(Hash256AsKey address, in TreePath path, Hash256 hash, int selfDestructStateIdx, bool isTrieWarmer)
     {
-        if (!DoTryFindNode(address, path, hash, selfDestructStateIdx, out TrieNode node))
+        TrieNode node;
+
+        if (_isReadOnly)
         {
-            if (!_isReadOnly)
+            if (DoTryFindStorageNodeExternal(address, path, hash, selfDestructStateIdx, out node))
             {
-                node = isTrieWarmer
-                    ? _cachedResource.LoadedStorageNodes.GetOrAdd((address, path), new TrieNode(NodeType.Unknown, hash))
-                    : _changedStorageNodes.GetOrAdd((address, path), new TrieNode(NodeType.Unknown, hash));
+                return node;
             }
-            else
+            return new TrieNode(NodeType.Unknown, hash);
+        }
+
+        if (!isTrieWarmer)
+        {
+            if (_changedStorageNodes.TryGetValue((address, path), out node))
             {
-                node = new TrieNode(NodeType.Unknown, hash);
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                return node;
             }
+        }
+
+        if (_cachedResource.LoadedStorageNodes.TryGetValue((address, path), out node) && node.Keccak == hash)
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            if (!isTrieWarmer) _changedStorageNodes.TryAdd((address, path), node);
+            return node;
+        }
+
+        if (!DoTryFindStorageNodeExternal(address, path, hash, selfDestructStateIdx, out node))
+        {
+            node = _cachedResource.LoadedStorageNodes.GetOrAdd((address, path), new TrieNode(NodeType.Unknown, hash));
+        }
+        else
+        {
+            _cachedResource.LoadedStorageNodes.AddOrUpdate((address, path),
+                static (key, param) => param,
+                static (key, originalValue, param) => param,
+                node);
         }
 
         return node;
     }
 
-    private bool DoTryFindNode(Hash256AsKey address, in TreePath path, Hash256 hash, int selfDestructStateIdx,
+    private bool DoTryFindStorageNodeExternal(Hash256AsKey address, in TreePath path, Hash256 hash, int selfDestructStateIdx,
         out TrieNode node)
     {
         if (_isDisposed)
         {
             node = null;
             return false;
-        }
-
-        if (!_isReadOnly)
-        {
-            if (_changedStorageNodes.TryGetValue((address, path), out node))
-            {
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                _nodeGetChanged.Inc();
-                return true;
-            }
-
-            if (_cachedResource.LoadedStorageNodes.TryGetValue((address, path), out node) && node.Keccak == hash)
-            {
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                _nodeGetChanged.Inc();
-                return true;
-            }
         }
 
         for (int i = _snapshots.Count - 1; i >= 0 && i >= selfDestructStateIdx; i--)
