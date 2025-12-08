@@ -218,9 +218,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         foreach (AddressAsKey address in toUpdateRoots)
         {
             // since the accounts could be empty accounts that are removing (EIP-158)
-            // Note: it could be that the TX remove the account but the underlying account was originally not missing
-            // hence, the storage Clear need to be called, hence the additional call to _currentScope.Get
-            if (_stateProvider.AccountExists(address) || _currentScope.Get(address) is not null)
+            if (_stateProvider.AccountExists(address))
             {
                 _toUpdateRoots[address] = true;
                 // Add storage tree, will accessed later, which may be in parallel
