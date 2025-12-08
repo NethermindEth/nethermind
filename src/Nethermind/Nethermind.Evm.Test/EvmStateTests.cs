@@ -194,7 +194,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void Restore_doesnt_add_refunds()
+        public void Restore_does_not_add_refunds()
         {
             EvmState parentEvmState = CreateEvmState();
             using (EvmState evmState = CreateEvmState(parentEvmState))

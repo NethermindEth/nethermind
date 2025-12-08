@@ -79,7 +79,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         }
     }
 
-    public void SetCondtion(Func<EvmState, bool>? condition = null)
+    public void SetCondition(Func<EvmState, bool>? condition = null)
     {
         if (CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting) _globalBreakCondition = condition;
     }

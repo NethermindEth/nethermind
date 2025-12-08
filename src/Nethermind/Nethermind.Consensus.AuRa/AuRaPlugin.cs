@@ -135,7 +135,7 @@ namespace Nethermind.Consensus.AuRa
         }
 
         /// <summary>
-        /// Some validation component that is active in rpc and validation but not in block produccer.
+        /// Some validation component that is active in RPC and validation but not in block producer.
         /// </summary>
         /// <param name="parameters"></param>
         /// <param name="specProvider"></param>

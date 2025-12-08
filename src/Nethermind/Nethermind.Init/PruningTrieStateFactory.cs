@@ -102,6 +102,7 @@ public class PruningTrieStateFactory(
         VerifyTrieStarter verifyTrieStarter = new(stateManager, processExit!, logManager);
         ManualPruningTrigger pruningTrigger = new();
         compositePruningTrigger.Add(pruningTrigger);
+        disposeStack.Push(compositePruningTrigger);
         PruningTrieStateAdminRpcModule adminRpcModule = new(
             pruningTrigger,
             blockTree,

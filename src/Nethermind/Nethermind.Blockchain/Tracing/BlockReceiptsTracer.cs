@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -199,7 +199,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     protected int CurrentIndex { get; private set; }
     private readonly List<TxReceipt> _txReceipts = new();
     protected Transaction? CurrentTx;
-    public IReadOnlyList<TxReceipt> TxReceipts => _txReceipts;
+    public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
     public TxReceipt LastReceipt => _txReceipts[^1];
     public bool IsTracingRewards => _otherTracer.IsTracingRewards;
 
@@ -216,7 +216,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
             _txReceipts.RemoveAt(_txReceipts.Count - 1);
         }
 
-        Block.Header.GasUsed = _txReceipts.Count > 0 ? _txReceipts.Last().GasUsedTotal : 0;
+        Block.Header.GasUsed = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
     }
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>

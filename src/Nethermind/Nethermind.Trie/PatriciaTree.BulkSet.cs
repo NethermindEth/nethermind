@@ -339,7 +339,7 @@ public partial class PatriciaTree
         Span<int> indexes)
     {
         // You know, I originally used another buffer to keep track of the entries per nibble. then ChatGPT gave me this.
-        // I dont know what is worst, that ChatGPT beat me to it, or that it is simpler.
+        // I don't know what is worse, that ChatGPT beat me to it, or that it is simpler.
 
         Span<int> counts = stackalloc int[TrieNode.BranchesCount];
         for (int i = 0; i < entries.Length; i++)

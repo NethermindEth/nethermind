@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Evm.State;
-using Nethermind.State.Healing;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 

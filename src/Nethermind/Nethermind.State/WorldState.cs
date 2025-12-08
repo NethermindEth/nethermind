@@ -61,6 +61,7 @@ namespace Nethermind.State
             if (_currentScope is null) ThrowOutOfScope();
         }
 
+        [Conditional("DEBUG")]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DebugGuardInScope()
         {

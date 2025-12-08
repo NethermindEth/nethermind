@@ -973,6 +973,7 @@ namespace Nethermind.Trie.Test.Pruning
 
                 if (i > 4)
                 {
+                    fullTrieStore.WaitForPruning();
                     Assert.That(() => reorgBoundary, Is.EqualTo(i - 3).After(10000, 100));
                 }
                 else
@@ -1493,7 +1494,7 @@ namespace Nethermind.Trie.Test.Pruning
                 }
             }
 
-            // Start from genesis for simplicty
+            // Start from genesis for simplicity
             BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(Keccak.EmptyTreeHash).TestObject;
             int blockNum = 100;
             int lastNRoots = 0;

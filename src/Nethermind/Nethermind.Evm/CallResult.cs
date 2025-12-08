@@ -6,7 +6,7 @@ using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm;
 
-public unsafe partial class VirtualMachine
+public partial class VirtualMachine
 {
     protected readonly ref struct CallResult
     {

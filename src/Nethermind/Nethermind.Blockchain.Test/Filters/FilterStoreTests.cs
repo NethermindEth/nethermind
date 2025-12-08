@@ -75,7 +75,7 @@ public class FilterStoreTests
         store.FilterRemoved += (s, e) => hasNotified = true;
         store.RemoveFilter(0);
 
-        Assert.That(hasNotified, Is.True, "notied");
+        Assert.That(hasNotified, Is.True, "notified");
         Assert.That(store.FilterExists(0), Is.False, "exists");
     }
 
@@ -166,6 +166,7 @@ public class FilterStoreTests
         Assert.That(() => store.FilterExists(1), Is.False.After(30, 5), "filter 1 doesn't exist");
         Assert.That(() => store.FilterExists(2), Is.False.After(30, 5), "filter 2 doesn't exist");
         Assert.That(() => store.FilterExists(3), Is.False.After(30, 5), "filter 3 doesn't exist");
+        store.RefreshFilter(0);
         Assert.That(() => removedFilterIds, Is.EquivalentTo([1, 2, 3]).After(30, 5));
     }
 }
