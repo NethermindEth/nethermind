@@ -137,7 +137,6 @@ public class L2Api(
     {
         var blockParameter = new BlockParameter(blockNumber);
         var result = l2EthRpc.eth_getProof(accountAddress, storageKeys, blockParameter);
-    
         while (result?.Result.ResultType != ResultType.Success)
         {
             if (_logger.IsWarn)
@@ -147,7 +146,6 @@ public class L2Api(
             await Task.Delay(L2ApiRetryDelayMilliseconds);
             result = l2EthRpc.eth_getProof(accountAddress, storageKeys, blockParameter);
         }
-    
         return result.Data;
     }
 
