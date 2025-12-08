@@ -116,7 +116,7 @@ public partial class BlockProcessor
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
     }
 
-    private bool ShouldComputeStateRoot(BlockHeader header) =>
+    protected bool ShouldComputeStateRoot(BlockHeader header) =>
         !header.IsGenesis || !_specProvider.GenesisStateUnavailable;
 
     protected virtual async Task<TxReceipt[]> ProcessBlock(
@@ -191,8 +191,10 @@ public partial class BlockProcessor
             else
             {
                 _tracedAccessWorldState.GenerateBlockAccessList();
-                body.BlockAccessList = _tracedAccessWorldState.GeneratedBlockAccessList;
-                block.EncodedBlockAccessList = Rlp.Encode(_tracedAccessWorldState.GeneratedBlockAccessList).Bytes;
+                // body.BlockAccessList = _tracedAccessWorldState.GeneratedBlockAccessList;
+                // block.EncodedBlockAccessList = Rlp.Encode(_tracedAccessWorldState.GeneratedBlockAccessList).Bytes;
+                block.GeneratedBlockAccessList = _tracedAccessWorldState.BlockAccessList;
+                block.EncodedBlockAccessList = Rlp.Encode(_tracedAccessWorldState.BlockAccessList).Bytes;
                 header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
             }
         }
@@ -235,7 +237,7 @@ public partial class BlockProcessor
         _receiptStorage.Insert(block, txReceipts, spec, false);
     }
 
-    private Block PrepareBlockForProcessing(Block suggestedBlock)
+    protected virtual Block PrepareBlockForProcessing(Block suggestedBlock)
     {
         if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
         BlockHeader bh = suggestedBlock.Header;

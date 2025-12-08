@@ -7,11 +7,14 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core.Collections;
+using System.Text.Json.Serialization;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
 public class SlotChanges(byte[] slot, SortedList<int, StorageChange> changes) : IEquatable<SlotChanges>
 {
+    [JsonConverter(typeof(ByteArrayConverter))]
     public byte[] Slot { get; init; } = slot;
     public EnumerableWithCount<StorageChange> Changes { get {
         bool includesPreState = false;

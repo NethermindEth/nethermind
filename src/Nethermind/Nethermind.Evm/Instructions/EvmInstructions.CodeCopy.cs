@@ -9,6 +9,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm;
+
 using Int256;
 using Nethermind.Evm.State;
 
@@ -152,13 +153,13 @@ internal static partial class EvmInstructions
         if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address))
             goto OutOfGas;
 
-        (vm.WorldState as TracedAccessWorldState)?.AddAccountRead(address);
-
         if (!result.IsZero)
         {
             // Update memory cost if the destination region requires expansion.
             if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result))
                 goto OutOfGas;
+
+            (vm.WorldState as TracedAccessWorldState)?.AddAccountRead(address);
 
             ICodeInfo codeInfo = vm.CodeInfoRepository
                 .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
@@ -189,6 +190,10 @@ internal static partial class EvmInstructions
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
             }
+        }
+        else
+        {
+            (vm.WorldState as TracedAccessWorldState)?.AddAccountRead(address);
         }
 
         return EvmExceptionType.None;

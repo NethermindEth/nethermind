@@ -234,7 +234,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
     {
         if (TracingEnabled)
         {
-            GeneratedBlockAccessList.DeleteAccount(address);
+            GeneratedBlockAccessList.DeleteAccount(address, _innerWorldState.GetBalance(address));
         }
         if (!ParallelExecutionEnabled)
         {
@@ -251,6 +251,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
             if (balance != 0)
             {
                 GeneratedBlockAccessList.AddBalanceChange(address, 0, balance);
+            }
+            if (nonce != 0)
+            {
+                GeneratedBlockAccessList.AddNonceChange(address, (ulong)nonce);
             }
         }
         if (!ParallelExecutionEnabled)

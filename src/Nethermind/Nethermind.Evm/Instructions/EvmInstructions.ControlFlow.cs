@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
+
 using Int256;
 
 internal static partial class EvmInstructions

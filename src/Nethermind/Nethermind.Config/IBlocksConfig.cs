@@ -67,4 +67,7 @@ public interface IBlocksConfig : IConfig
     bool ParallelExecution { get; set; }
 
     byte[] GetExtraDataBytes();
+
+    [ConfigItem(Description = "The max blob count after which the block producer should stop adding blobs. Minimum value is `0`.", DefaultValue = "null")]
+    int? BlockProductionBlobLimit { get; set; }
 }

@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json.Serialization;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
 public readonly struct BalanceChange(int blockAccessIndex, UInt256 postBalance) : IEquatable<BalanceChange>, IIndexedChange
 {
     public int BlockAccessIndex { get; init; } = blockAccessIndex;
+    [JsonConverter(typeof(UInt256Converter))]
     public UInt256 PostBalance { get; init; } = postBalance;
 
     public readonly bool Equals(BalanceChange other) =>

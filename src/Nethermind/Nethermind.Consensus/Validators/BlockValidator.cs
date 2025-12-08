@@ -4,10 +4,8 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
-using System.Text.Json;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
@@ -239,8 +237,8 @@ public class BlockValidator(
         {
             if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
             error ??= BlockErrorMessages.InvalidBlockLevelAccessListRoot(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
-            suggestedBlock.GeneratedBlockAccessList = processedBlock.BlockAccessList;
-            if (_logger.IsWarn) _logger.Warn($"Generated block access list:\n{suggestedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{suggestedBlock.BlockAccessList}");
+            if (_logger.IsWarn) _logger.Warn($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
+            suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
         }
 
         if (receipts.Length != processedBlock.Transactions.Length)

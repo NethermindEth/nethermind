@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -45,21 +45,29 @@ namespace Nethermind.Trie.Test.Pruning
             IPruningStrategy? pruningStrategy = null,
             IKeyValueStoreWithBatching? kvStore = null,
             IPersistenceStrategy? persistenceStrategy = null,
-            IPruningConfig? pruningConfig = null
+            IPruningConfig? pruningConfig = null,
+            IFinalizedStateProvider? finalizedStateProvider = null
         )
         {
             pruningStrategy ??= No.Pruning;
             kvStore ??= new TestMemDb();
             persistenceStrategy ??= No.Persistence;
-            return new(
+            pruningConfig ??= new PruningConfig()
+            {
+                TrackPastKeys = false // Default disable
+            };
+
+            finalizedStateProvider ??= new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
+            TrieStore trieStore = new(
                 new NodeStorage(kvStore, _scheme, requirePath: _scheme == INodeStorage.KeyScheme.HalfPath),
                 pruningStrategy,
                 persistenceStrategy,
-                pruningConfig ?? new PruningConfig()
-                {
-                    TrackPastKeys = false // Default disable
-                },
+                finalizedStateProvider,
+                pruningConfig,
                 _logManager);
+            if (finalizedStateProvider is TestFinalizedStateProvider testFinalizedStateProvider) testFinalizedStateProvider.TrieStore = trieStore;
+
+            return trieStore;
         }
 
         [SetUp]
@@ -758,7 +766,7 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.WaitForPruning();
             storage.Get(null, TreePath.FromNibble(new byte[] { 0 }), a.Keccak).Should().NotBeNull();
             storage.Get(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak).Should().NotBeNull();
-            fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak).Should().BeTrue();
+            fullTrieStore.IsNodeCached(null, TreePath.FromNibble(new byte[] { 0 }), a.Keccak).Should().BeTrue();
             fullTrieStore.IsNodeCached(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak).Should().BeTrue();
         }
 
@@ -900,7 +908,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true),
+                pruningStrategy: new TestPruningStrategy(shouldPrune: true, deleteObsoleteKeys: true),
                 persistenceStrategy: No.Persistence,
                 pruningConfig: new PruningConfig()
                 {
@@ -975,7 +983,7 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public async Task Will_NotRemove_ReCommittedNode()
+        public void Will_NotRemove_ReCommittedNode()
         {
             MemDb memDb = new();
 
@@ -999,8 +1007,7 @@ namespace Nethermind.Trie.Test.Pruning
                     committer.CommitNode(ref emptyPath, node);
                 }
 
-                // Pruning is done in background
-                await Task.Delay(TimeSpan.FromMilliseconds(10));
+                fullTrieStore.WaitForPruning();
             }
 
             memDb.Count.Should().Be(4);
@@ -1206,11 +1213,11 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.WaitForPruning();
 
             fullTrieStore.PrunePersistedNodes();
-            fullTrieStore.CachedNodesCount.Should().Be(52);
+            fullTrieStore.CachedNodesCount.Should().Be(65);
 
             fullTrieStore.PersistAndPruneDirtyCache();
             fullTrieStore.PrunePersistedNodes();
-            fullTrieStore.CachedNodesCount.Should().Be(20);
+            fullTrieStore.CachedNodesCount.Should().Be(36);
         }
 
         [TestCase(27, 1000, 31, 7)]
@@ -1425,6 +1432,128 @@ namespace Nethermind.Trie.Test.Pruning
             TrieStatsCollector collector = new TrieStatsCollector(new MemDb(), SimpleConsoleLogManager.Instance, expectAccounts: false);
             ptree.Accept(collector, rootHash: persistedRootHash);
             collector.Stats.MissingNodes.Should().Be(0);
+        }
+
+        [Test]
+        public void Will_KeepAllState_IfFinalizedLagsBehind()
+        {
+            MemDb memDb = new MemDb(writeDelay: 5, readDelay: 0);
+            TestPruningStrategy testPruningStrategy = new TestPruningStrategy(
+                shouldPrune: true,
+                deleteObsoleteKeys: true
+            );
+
+            int pruningBoundary = 4;
+            IPruningConfig pruningConfig = new PruningConfig()
+            {
+                PruningBoundary = pruningBoundary,
+                DirtyNodeShardBit = 4,
+                MaxBufferedCommitCount = 20,
+                TrackPastKeys = true
+            };
+
+            TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
+
+            TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: testPruningStrategy,
+                persistenceStrategy: No.Persistence,
+                pruningConfig: pruningConfig,
+                finalizedStateProvider: finalizedStateProvider);
+            testPruningStrategy.ShouldPruneEnabled = false;
+            testPruningStrategy.ShouldPrunePersistedEnabled = false;
+
+            PatriciaTree ptree = new PatriciaTree(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
+
+            void WriteRandomData(int seed)
+            {
+                ptree.Set(Keccak.Compute(seed.ToBigEndianByteArray()).Bytes, Keccak.Compute(seed.ToBigEndianByteArray()).BytesToArray());
+                ptree.Set(Keccak.Compute((seed * 10000).ToBigEndianByteArray()).Bytes, Keccak.Compute(seed.ToBigEndianByteArray()).BytesToArray());
+                ptree.Set(TestItem.KeccakA.Bytes, Keccak.Compute(seed.ToBigEndianByteArray()).BytesToArray());
+                ptree.Commit();
+            }
+
+            List<Hash256> rootsToTests = new List<Hash256>();
+            void VerifyAllTrieExceptGenesis()
+            {
+                PatriciaTree readOnlyPTree = new PatriciaTree(fullTrieStore.AsReadOnly().GetTrieStore(null), LimboLogs.Instance);
+                MemDb stubCodeDb = new MemDb();
+                for (int i = 1; i < rootsToTests.Count; i++)
+                {
+                    Console.Error.WriteLine($"Verify {i}");
+                    var rootsToTest = rootsToTests[i];
+                    TrieStatsCollector collector = new TrieStatsCollector(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
+                    ptree.Accept(collector, rootHash: rootsToTest);
+                    collector.Stats.MissingNodes.Should().Be(0);
+
+                    collector = new TrieStatsCollector(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
+                    readOnlyPTree.Accept(collector, rootHash: rootsToTest);
+                    collector.Stats.MissingNodes.Should().Be(0);
+                }
+            }
+
+            // Start from genesis for simplicty
+            BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(Keccak.EmptyTreeHash).TestObject;
+            int blockNum = 100;
+            int lastNRoots = 0;
+            for (int i = 1; i < blockNum; i++)
+            {
+                int seed = i;
+                Hash256 parentRoot = ptree.RootHash ?? Keccak.EmptyTreeHash;
+                using (fullTrieStore.BeginScope(baseBlock))
+                {
+                    using (fullTrieStore.BeginBlockCommit(i))
+                    {
+                        ptree.RootHash = parentRoot;
+                        WriteRandomData(seed);
+                        rootsToTests.Add(ptree.RootHash);
+                        if (i >= blockNum - pruningBoundary) lastNRoots++;
+                    }
+                }
+
+                // Branches sometimes
+                if ((i / 20) % 2 == 0)
+                {
+                    using (fullTrieStore.BeginScope(baseBlock))
+                    {
+                        using (fullTrieStore.BeginBlockCommit(i))
+                        {
+                            ptree.RootHash = parentRoot;
+                            WriteRandomData(seed * 1000);
+                            rootsToTests.Add(ptree.RootHash);
+                            if (i >= blockNum - pruningBoundary) lastNRoots++;
+                        }
+                    }
+                }
+
+                baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(ptree.RootHash).TestObject;
+                if (i == 1)
+                {
+                    finalizedStateProvider.SetFinalizedPoint(baseBlock);
+                }
+
+                if (i % 10 == 0)
+                {
+                    fullTrieStore.PersistAndPruneDirtyCache();
+                }
+                if (i == blockNum - 1)
+                {
+                    fullTrieStore.PersistAndPruneDirtyCache();
+                    fullTrieStore.PrunePersistedNodes();
+
+                    long cachedPersistedNode = fullTrieStore.CachedNodesCount - fullTrieStore.DirtyCachedNodesCount;
+                    long perStatePersistedNode = 20;
+                    if (_scheme == INodeStorage.KeyScheme.Hash)
+                    {
+                        cachedPersistedNode.Should().Be(perStatePersistedNode + 3);
+                    }
+                    else
+                    {
+                        cachedPersistedNode.Should().Be(rootsToTests.Count - lastNRoots + perStatePersistedNode); // The root is still kept
+                    }
+                    VerifyAllTrieExceptGenesis();
+                }
+            }
         }
     }
 }

@@ -4,7 +4,10 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
+using Nethermind.State;
 
 namespace Nethermind.Core.Test.Blockchain;
 
@@ -24,10 +27,17 @@ public class BasicTestBlockchain : TestBlockchain
 
     public async Task BuildSomeBlocks(int numOfBlocks)
     {
+        var nonce = WorldStateManager.GlobalStateReader.GetNonce(BlockTree.Head!.Header, TestItem.PrivateKeyA.Address);
         for (int i = 0; i < numOfBlocks; i++)
         {
-            await AddBlock(Builders.Build.A.Transaction.WithTo(TestItem.AddressD)
-                .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+            IReleaseSpec spec = SpecProvider.GetSpec(BlockTree.Head!.Header);
+
+            await AddBlock(Builders.Build.A.Transaction
+                .WithTo(TestItem.AddressD)
+                .WithNonce(nonce)
+                .WithGasLimit(GasCostOf.Transaction)
+                .SignedAndResolved(TestItem.PrivateKeyA, spec.IsEip155Enabled).TestObject);
+            nonce++;
         }
     }
 }

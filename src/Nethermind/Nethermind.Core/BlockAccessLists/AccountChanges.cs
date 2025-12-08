@@ -11,11 +11,13 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
 public class AccountChanges : IEquatable<AccountChanges>
 {
+    [JsonConverter(typeof(AddressConverter))]
     public Address Address { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
@@ -103,11 +105,12 @@ public class AccountChanges : IEquatable<AccountChanges>
     public bool TryGetSlotChanges(byte[] key, [NotNullWhen(true)] out SlotChanges? slotChanges)
         => _storageChanges.TryGetValue(key, out slotChanges);
     
-    public void ClearSlotChangesIfEmpty(byte[] key)
+    public void ClearEmptySlotChangesAndAddRead(byte[] key)
     {
         if (TryGetSlotChanges(key, out SlotChanges? slotChanges) && slotChanges.Changes.Count == 0)
         {
             _storageChanges.Remove(key);
+            _storageReads.Add(new(key));
         }
     }
 
