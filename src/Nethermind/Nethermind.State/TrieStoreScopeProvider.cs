@@ -192,7 +192,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public void Dispose()
         {
-            while (_dirtyStorageTree.TryDequeue(out var entry))
+            while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
                 if (!_dirtyAccounts.TryGetValue(key, out var account)) account = scope.Get(key);

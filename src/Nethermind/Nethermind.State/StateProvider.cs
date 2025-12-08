@@ -684,7 +684,7 @@ namespace Nethermind.State
             int writes = 0;
             int skipped = 0;
 
-            foreach (var key in _blockChanges.Keys)
+            foreach (AddressAsKey key in _blockChanges.Keys)
             {
                 ref ChangeTrace change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
                 if (change.Before != change.After)
