@@ -9,6 +9,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
@@ -96,11 +97,11 @@ public record SnapshotContent(
 ) {
     public void Reset()
     {
-        Accounts.Clear();
-        Storages.Clear();
-        SelfDestructedStorageAddresses.Clear();
-        StateNodes.Clear();
-        StorageNodes.Clear();
+        Accounts.NoResizeClear();
+        Storages.NoResizeClear();
+        SelfDestructedStorageAddresses.NoResizeClear();
+        StateNodes.NoResizeClear();
+        StorageNodes.NoResizeClear();
     }
 
     public Dictionary<MemoryType, long> EstimateMemory()

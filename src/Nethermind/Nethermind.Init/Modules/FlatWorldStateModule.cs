@@ -74,9 +74,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 InlineCompaction = config.InlineCompaction,
                 DisableTrieWarmer = config.DisableTrieWarmer
             })
-            .AddSingleton<RocksdbPersistence.Configuration>(new RocksdbPersistence.Configuration()
+            .AddSingleton<RocksdbPersistence.Configuration, IFlatDbConfig>((config) => new RocksdbPersistence.Configuration()
             {
-                UsePreimage = true
+                UsePreimage = config.UsePreimage
             })
             .AddSingleton<IStateReader, FlatStateReader>();
 

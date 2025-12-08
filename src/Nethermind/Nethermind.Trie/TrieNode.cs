@@ -703,7 +703,7 @@ namespace Nethermind.Trie
             return childNode;
         }
 
-        public TrieNode? GetChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int childIndex)
+        public TrieNode? GetChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int childIndex, bool keepChildRef = false)
         {
             /* extensions store value before the child while branches store children before the value
              * so just to treat them in the same way we update index on extensions
@@ -735,7 +735,7 @@ namespace Nethermind.Trie
             // Don't unresolve nodes with path length <= 4; there should be relatively few and they should fit
             // in RAM, but they are hit quite a lot, and don't have very good data locality.
             // That said, in practice, it does nothing notable, except for significantly improving benchmark score.
-            if (child?.IsPersisted == true && childPath.Length > 4 && childPath.Length % 2 == 0)
+            if (child?.IsPersisted == true && !keepChildRef && childPath.Length > 4 && childPath.Length % 2 == 0)
             {
                 UnresolveChild(childIndex);
             }
