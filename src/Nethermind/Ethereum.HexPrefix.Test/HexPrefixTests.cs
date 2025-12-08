@@ -16,7 +16,7 @@ namespace Ethereum.HexPrefix.Test
     public class HexPrefixTests
     {
         // ReSharper disable once MemberCanBePrivate.Global
-        // used as a test case source, hasbe public
+        // used as a test case source, has to be public
         public static IEnumerable<HexPrefixTest> LoadTests()
         {
             return TestLoader.LoadFromFile<Dictionary<string, HexPrefixTestJson>, HexPrefixTest>(

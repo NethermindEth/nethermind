@@ -1,152 +1,157 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
-using FluentAssertions;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
 
 [Parallelizable(ParallelScope.All)]
-public class OptimismHeaderValidatorTests
+[TestFixtureSource(typeof(Fork), nameof(Fork.AllAndNextToGenesis))]
+public class OptimismHeaderValidatorTests(Fork fork)
 {
+    private readonly ulong _timestamp = fork.Timestamp;
+
     private static readonly Hash256 PostCanyonWithdrawalsRoot = Keccak.OfAnEmptySequenceRlp;
 
-    [TestCaseSource(nameof(EIP1559ParametersExtraData))]
-    public void Validates_EIP1559Parameters_InExtraData_AfterHolocene((string HexString, bool IsValid) testCase)
+    private (BlockHeader genesis, BlockHeader header) BuildHeaders(Action<BlockHeaderBuilder>? postBuild = null)
     {
-        var genesis = Build.A.BlockHeader
+        BlockHeader genesis = Build.A.BlockHeader
             .WithNumber(0)
             .WithTimestamp(Spec.GenesisTimestamp)
             .TestObject;
-        var header = Build.A.BlockHeader
+
+        BlockHeaderBuilder builder = Build.A.BlockHeader
             .WithNumber(1)
             .WithParent(genesis)
-            .WithTimestamp(Spec.HoloceneTimeStamp)
+            .WithTimestamp(_timestamp)
             .WithDifficulty(0)
             .WithNonce(0)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
             .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
             .WithWithdrawalsRoot(PostCanyonWithdrawalsRoot)
-            .WithExtraData(Bytes.FromHexString(testCase.HexString)).TestObject;
+            .WithRequestsHash(_timestamp >= Spec.IsthmusTimeStamp
+                ? OptimismPostMergeBlockProducer.PostIsthmusRequestHash
+                : null
+            )
+            .WithExtraDataHex(_timestamp >= Spec.JovianTimeStamp
+                ? "0x0100000001000001bc0000000000000000"
+                : "0x0000000001000001bc"
+            );
+
+        postBuild?.Invoke(builder);
+
+        return (genesis, builder.TestObject);
+    }
+
+    private static IEnumerable<(string data, Valid isValid)> EIP1559ParametersExtraData => new (string data, Valid isValid)[]
+    {
+        new("0x0100000001000000000000000000000000", Valid.Since(Spec.JovianTimeStamp)),
+        new("0x0100000001000001bc0000000000000001", Valid.Since(Spec.JovianTimeStamp)),
+        new("0x0100000001ffffffff00000000000000ff", Valid.Since(Spec.JovianTimeStamp)),
+        new("0x01ffffffff0000000000000000000001ff", Valid.Since(Spec.JovianTimeStamp)),
+        new("0x01ffffffff000001bc01000000000000ff", Valid.Since(Spec.JovianTimeStamp)),
+        new("0x01ffffffffffffffffffffffffffffffff", Valid.Since(Spec.JovianTimeStamp)),
+
+        new("0x000000000100000000", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
+        new("0x0000000001000001bc", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
+        new("0x0000000001ffffffff", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
+        new("0x00ffffffff00000000", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
+        new("0x00ffffffff000001bc", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
+        new("0x00ffffffffffffffff", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
+
+        new("0x0", Valid.Never),
+        new("0xffffaaaa", Valid.Never),
+        new("0x01ffffffff00000000", Valid.Never),
+        new("0xff0000000100000001", Valid.Never),
+        new("0x000000000000000000", Valid.Never),
+        new("0x000000000000000001", Valid.Never),
+        new("0x01ffffffff000001bc00000000000000", Valid.Never),
+        new("0x01ffffffff000001bc000000000000000000", Valid.Never),
+    }.Select(x =>
+        (x.data, Valid.Before(Spec.HoloceneTimeStamp) | x.isValid) // No validation before Holocene
+    );
+
+    [TestCaseSource(nameof(EIP1559ParametersExtraData))]
+    public void Validates_EIP1559Parameters_InExtraData((string hexString, Valid isValid) testCase)
+    {
+        (BlockHeader genesis, BlockHeader header) = BuildHeaders(b => b.WithExtraDataHex(testCase.hexString));
 
         var validator = new OptimismHeaderValidator(
             AlwaysPoS.Instance,
             Substitute.For<IBlockTree>(),
-            Always.Valid, Spec.Instance,
-            Spec.BuildFor(header),
+            Always.Valid, Spec.Instance, Spec.BuildFor(header),
             TestLogManager.Instance);
 
-        var valid = validator.Validate(header, genesis);
-
-        valid.Should().Be(testCase.IsValid);
+        Assert.That(() => validator.Validate(header, genesis), Is.EqualTo(testCase.isValid.On(_timestamp)));
     }
 
-    [TestCaseSource(nameof(EIP1559ParametersExtraData))]
-    public void Ignores_ExtraData_BeforeHolocene((string HexString, bool _) testCase)
+    private static IEnumerable<(Hash256? requestHash, Valid isValid)> WithdrawalsRequestHashTestCases()
     {
-        var genesis = Build.A.BlockHeader
-            .WithNumber(0)
-            .WithTimestamp(Spec.GenesisTimestamp)
-            .TestObject;
-        var header = Build.A.BlockHeader
-            .WithNumber(1)
-            .WithParent(genesis)
-            .WithTimestamp(Spec.HoloceneTimeStamp - 1)
-            .WithDifficulty(0)
-            .WithNonce(0)
-            .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
-            .WithWithdrawalsRoot(PostCanyonWithdrawalsRoot)
-            .WithExtraData(Bytes.FromHexString(testCase.HexString)).TestObject;
-
-        var validator = new OptimismHeaderValidator(
-            AlwaysPoS.Instance,
-            Substitute.For<IBlockTree>(),
-            Always.Valid, Spec.Instance,
-            Spec.BuildFor(header),
-            TestLogManager.Instance);
-
-        var valid = validator.Validate(header, genesis);
-
-        valid.Should().BeTrue();
-    }
-
-    private static IEnumerable<TestCaseData> WithdrawalsRequestHashTestCases()
-    {
-        yield return new TestCaseData(Spec.CanyonTimestamp - 1, null, true)
-            .SetName("Pre Canyon - null request hash");
-        yield return new TestCaseData(Spec.CanyonTimestamp - 1, null, true)
-            .SetName("Pre Canyon - some request hash");
-
-        yield return new TestCaseData(Spec.CanyonTimestamp, null, true)
-            .SetName("Post Canyon - null request hash");
-        yield return new TestCaseData(Spec.CanyonTimestamp, TestItem.KeccakA, true)
-            .SetName("Post Canyon - some request hash");
-
-        yield return new TestCaseData(Spec.IsthmusTimeStamp, OptimismPostMergeBlockProducer.PostIsthmusRequestHash, true)
-            .SetName("Post Isthmus - expected request hash");
-        yield return new TestCaseData(Spec.IsthmusTimeStamp, null, false).SetName(
-            "Post Isthmus - invalid request hash");
+        yield return (null, Valid.Before(Spec.IsthmusTimeStamp));
+        yield return (TestItem.KeccakA, Valid.Before(Spec.IsthmusTimeStamp));
+        yield return (OptimismPostMergeBlockProducer.PostIsthmusRequestHash, Valid.Always);
     }
 
     [TestCaseSource(nameof(WithdrawalsRequestHashTestCases))]
-    public void ValidateRequestHash(ulong timestamp, Hash256? requestHash, bool isValid)
+    public void ValidateRequestHash((Hash256? requestHash, Valid isValid) testCase)
     {
-        var genesis = Build.A.BlockHeader
-            .WithNumber(0)
-            .WithTimestamp(Spec.GenesisTimestamp)
-            .TestObject;
-
-        var header = Build.A.BlockHeader
-            .WithNumber(1)
-            .WithParent(genesis)
-            .WithTimestamp(timestamp)
-            .WithDifficulty(0)
-            .WithNonce(0)
-            .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
-            .WithExtraData(Bytes.FromHexString("0x00ffffffffffffffff"))
-            .WithRequestsHash(requestHash)
-            .TestObject;
+        var (genesis, header) = BuildHeaders(b => b.WithRequestsHash(testCase.requestHash));
 
         var validator = new OptimismHeaderValidator(
             AlwaysPoS.Instance,
             Substitute.For<IBlockTree>(),
-            Always.Valid, Spec.Instance,
-            Spec.BuildFor(header),
+            Always.Valid, Spec.Instance, Spec.BuildFor(header),
             TestLogManager.Instance);
 
-        var valid = validator.Validate(header, genesis);
-
-        valid.Should().Be(isValid);
+        string? error = null;
+        Assert.That(() => validator.Validate(header, genesis, false, out error), Is.EqualTo(testCase.isValid.On(_timestamp)), () => error!);
     }
 
-    private static IEnumerable<(string, bool)> EIP1559ParametersExtraData()
+    private static IEnumerable<TestCaseData> GasLimitTestCases()
     {
-        // Valid
-        yield return ("0x000000000100000000", true);
-        yield return ("0x0000000001000001bc", true);
-        yield return ("0x0000000001ffffffff", true);
-        yield return ("0x00ffffffff00000000", true);
-        yield return ("0x00ffffffff000001bc", true);
-        yield return ("0x00ffffffffffffffff", true);
+        yield return new(1_000, 500, 0, Valid.Always);
+        yield return new(1_000, 1_000, 0, Valid.Always);
+        yield return new(1_000, 1_000, 500, Valid.Always);
+        yield return new(1_000, 1_000, 1_000, Valid.Always);
 
-        // Invalid
-        yield return ("0x0", false);
-        yield return ("0xffffaaaa", false);
-        yield return ("0x01ffffffff00000000", false);
-        yield return ("0xff0000000100000001", false);
-        yield return ("0x000000000000000000", false);
-        yield return ("0x000000000000000001", false);
-        yield return ("0x00ffffffff000001bc00", false);
+        yield return new TestCaseData(1_000, 500, null, Valid.Never).SetName("blobGasUsed missing");
+        yield return new TestCaseData(1_000, 1_000, null, Valid.Never).SetName("blobGasUsed missing, gasUsed = gasLimit");
+
+        yield return new TestCaseData(1_000, 1_000 + 1, 500, Valid.Never).SetName("gasUsed > gasLimit");
+        yield return new TestCaseData(1_000, 1_000 + 1, 1_000, Valid.Never).SetName("gasUsed > gasLimit, blobGasUsed = gasLimit");
+        yield return new TestCaseData(1_000, 1_000 + 1, 1_000 + 1, Valid.Never).SetName("blobGasUsed & gasUsed > gasLimit");
+
+        yield return new TestCaseData(1_000, 1_000, 1_000 + 1, Valid.Before(Spec.JovianTimeStamp)).SetName("blobGasUsed > gasLimit post Jovian");
+    }
+
+    [TestCaseSource(nameof(GasLimitTestCases))]
+    public void ValidateGasLimit(int gasLimit, int gasUsed, int? blobGasUsed, Valid isValid)
+    {
+        (BlockHeader genesis, BlockHeader header) = BuildHeaders(b => b
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed((ulong?)blobGasUsed)
+            .WithGasUsed(gasUsed)
+        );
+
+        var validator = new OptimismHeaderValidator(
+            AlwaysPoS.Instance,
+            Substitute.For<IBlockTree>(),
+            Always.Valid, Spec.Instance, Spec.BuildFor(header),
+            TestLogManager.Instance);
+
+        string? error = null;
+        Assert.That(() => validator.Validate(header, genesis, false, out error), Is.EqualTo(isValid.On(_timestamp)), () => error!);
     }
 }

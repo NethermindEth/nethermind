@@ -144,7 +144,7 @@ public class SurgeGasPriceOracleTests
     }
 
     [Test]
-    public async ValueTask GetGasPriceEstimate_WithZeroGasUsed_ReturnsAtleastMinGasPrice()
+    public async ValueTask GetGasPriceEstimate_WithZeroGasUsed_ReturnsAtLeastMinGasPrice()
     {
         Block headBlock = Build.A.Block.WithNumber(1).WithGasUsed(0).TestObject;
         _blockFinder.Head.Returns(headBlock);

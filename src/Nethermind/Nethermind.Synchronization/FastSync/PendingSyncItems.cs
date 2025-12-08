@@ -174,7 +174,7 @@ namespace Nethermind.Synchronization.FastSync
             }
             else
             {
-                // With snap sync, we want the top level nodes. Low level nodes are mostly snapsyncd.
+                // With snap sync, we want the top-level nodes. Low-level nodes are mostly snap-synced.
                 length = maxSize;
             }
 

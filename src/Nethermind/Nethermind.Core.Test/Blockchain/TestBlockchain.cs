@@ -51,7 +51,7 @@ namespace Nethermind.Core.Test.Blockchain;
 public class TestBlockchain : IDisposable
 {
     public const int DefaultTimeout = 10000;
-    protected long TestTimout { get; init; } = DefaultTimeout;
+    protected long TestTimeout { get; init; } = DefaultTimeout;
     public IStateReader StateReader => _fromContainer.StateReader;
     public IEthereumEcdsa EthereumEcdsa => _fromContainer.EthereumEcdsa;
     public INonceManager NonceManager => _fromContainer.NonceManager;
@@ -392,7 +392,7 @@ public class TestBlockchain : IDisposable
 
     protected virtual AutoCancelTokenSource CreateCancellationSource()
     {
-        return AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimout));
+        return AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimeout));
     }
 
     protected virtual async Task AddBlocksOnStart()

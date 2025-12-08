@@ -58,8 +58,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
             // we already have nonce ordered by previous code, we don't deal with it here
 
             // first order by whitelisted
-            int whitelistedComparision = IsWhiteListed(y).CompareTo(IsWhiteListed(x));
-            if (whitelistedComparision != 0) return whitelistedComparision;
+            int whitelistedComparison = IsWhiteListed(y).CompareTo(IsWhiteListed(x));
+            if (whitelistedComparison != 0) return whitelistedComparison;
 
             // then order by priority descending
             return GetPriority(y).CompareTo(GetPriority(x));

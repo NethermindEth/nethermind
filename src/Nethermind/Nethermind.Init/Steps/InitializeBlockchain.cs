@@ -54,8 +54,6 @@ namespace Nethermind.Init.Steps
                 blocksConfig.ExtraData :
                 "- binary data -");
 
-            IStateReader stateReader = setApi.StateReader!;
-
             _api.TxGossipPolicy.Policies.Add(new SpecDrivenTxGossipPolicy(chainHeadInfoProvider));
 
             ITxPool txPool = _api.TxPool = CreateTxPool(chainHeadInfoProvider);
