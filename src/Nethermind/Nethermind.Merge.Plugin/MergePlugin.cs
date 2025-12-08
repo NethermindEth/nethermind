@@ -339,6 +339,9 @@ public class BaseMergePluginModule : Module
                             : NoGCStrategy.Instance,
                         ctx.Resolve<ILogManager>());
                 })
+
+            // Testing rpc
+            .RegisterSingletonJsonRpcModule<ITestingRpcModule, TestingRpcModule>()
             ;
     }
 
