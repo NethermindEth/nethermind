@@ -464,7 +464,7 @@ public class SnapshotBundle : IDisposable
     {
         if (addr == FlatWorldStateScope.DebugAddress)
         {
-            Console.Error.WriteLine("set to {a}");
+            Console.Error.WriteLine($"set to {account}");
         }
         _changedAccounts[addr] = account;
     }
@@ -549,12 +549,16 @@ public class SnapshotBundle : IDisposable
             {
                 var address = addrK.Key;
                 var isNewAccount = addrK.Value;
-                selfDestructedStorageAddresses[address] = isNewAccount;
-
                 if (!isNewAccount)
                 {
+                    selfDestructedStorageAddresses[address] = false;
                     addressToClear.Add(address);
                     addressHashToClear.Add(address.Value.ToAccountPath.ToCommitment());
+                }
+                else
+                {
+                    // Note, if its already false, we should not set it to true
+                    selfDestructedStorageAddresses.TryAdd(address, true);
                 }
             }
 
@@ -638,7 +642,7 @@ public class SnapshotBundle : IDisposable
             isNewAccount = account == null;
             if (address == FlatWorldStateScope.DebugAddress)
             {
-                Console.Error.WriteLine("The clear is is new");
+                Console.Error.WriteLine($"The clear newness is {isNewAccount}");
             }
         }
         else
