@@ -1729,19 +1729,12 @@
       "nethermind.state": {
         "type": "Project",
         "dependencies": {
-<<<<<<< HEAD
           "Nethermind.Core": "[1.37.0-unstable, )",
           "Nethermind.Db": "[1.37.0-unstable, )",
           "Nethermind.Evm": "[1.37.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
           "Nethermind.Trie": "[1.37.0-unstable, )",
-=======
-          "Nethermind.Core": "[1.36.0-unstable, )",
-          "Nethermind.Db": "[1.36.0-unstable, )",
-          "Nethermind.Evm": "[1.36.0-unstable, )",
-          "Nethermind.Serialization.Rlp": "[1.36.0-unstable, )",
-          "Nethermind.Trie": "[1.36.0-unstable, )",
->>>>>>> c7899efd24 (Slight optimization)
+          "ZstdSharp.Port": "[0.8.6, )",
           "prometheus-net": "[8.2.1, )"
         }
       },
@@ -2273,15 +2266,11 @@
         "type": "CentralTransitive",
         "requested": "[8.2.1, )",
         "resolved": "8.2.1",
-<<<<<<< HEAD
         "contentHash": "3wVgdEPOCBF752s2xps5T+VH+c9mJK8S8GKEDg49084P6JZMumTZI5Te6aJ9MQpX0sx7om6JOnBpIi7ZBmmiDQ==",
         "dependencies": {
           "Microsoft.Extensions.Http": "3.1.0",
           "Microsoft.Extensions.ObjectPool": "7.0.0"
         }
-=======
-        "contentHash": "3wVgdEPOCBF752s2xps5T+VH+c9mJK8S8GKEDg49084P6JZMumTZI5Te6aJ9MQpX0sx7om6JOnBpIi7ZBmmiDQ=="
->>>>>>> c7899efd24 (Slight optimization)
       },
       "prometheus-net.AspNetCore": {
         "type": "CentralTransitive",
