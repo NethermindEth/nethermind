@@ -71,8 +71,19 @@ public class SnapshotBundle : IDisposable
     private Histogram.Child _findStateNodeTrieWarmer;
     private Histogram.Child _findStorageNode;
     private Histogram.Child _findStorageNodeTrieWarmer;
+    private Histogram.Child _setStateNodesTime;
+    private Histogram.Child _setStorageNodesTime;
+
     private Counter.Child _accountGet;
     private Counter.Child _slotGet;
+
+    private static Histogram _nodeDepth = Metrics.CreateHistogram("snapshot_set_node_depth", "aha", new HistogramConfiguration()
+    {
+        LabelNames = new[] { "type", "is_prewarmer" },
+        Buckets = Histogram.LinearBuckets(0, 1, 14)
+    });
+    private Histogram.Child _stateNodeDepth;
+    private Histogram.Child _storageNodeDepth;
 
     public SnapshotBundle(ArrayPoolList<Snapshot> snapshots,
         IPersistence.IPersistenceReader persistenceReader,
@@ -135,6 +146,12 @@ public class SnapshotBundle : IDisposable
         _findStateNodeTrieWarmer = _snapshotBundleTimes.WithLabels("find_state_node_trie_warmer", _isPrewarmer.ToString());
         _findStorageNode = _snapshotBundleTimes.WithLabels("find_storage_node", _isPrewarmer.ToString());
         _findStorageNodeTrieWarmer = _snapshotBundleTimes.WithLabels("find_storage_node_trie_warmer", _isPrewarmer.ToString());
+
+        _setStateNodesTime = _snapshotBundleTimes.WithLabels("set_state_nodes", _isPrewarmer.ToString());
+        _setStorageNodesTime = _snapshotBundleTimes.WithLabels("set_storage_nodes", _isPrewarmer.ToString());
+
+        _stateNodeDepth = _nodeDepth.WithLabels("state", _isPrewarmer.ToString());
+        _storageNodeDepth = _nodeDepth.WithLabels("storage", _isPrewarmer.ToString());
     }
 
     public bool TryGetAccount(Address address, out Account? acc)
@@ -262,22 +279,47 @@ public class SnapshotBundle : IDisposable
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash, bool isTrieWarmer)
     {
+        TrieNode node;
+        if (_isReadOnly)
+        {
+            if (DoFindStateNodeExternal(path, hash, out node))
+            {
+                return node;
+            }
+            return new TrieNode(NodeType.Unknown, hash);
+        }
+
         long sw = Stopwatch.GetTimestamp();
 
-        if (!DoTryFindStateNode(path, hash, out TrieNode node))
+        if (!isTrieWarmer)
         {
-            if (!_isReadOnly)
+            // _changedStateNodes is really hot, so we dont touch it during prewarmer.
+            if (_changedStateNodes.TryGetValue(path, out node))
             {
-                // The map to holds the unknown nodes is different for trie warmer and the main tries. This prevent
-                // random invalid block.
-                node = isTrieWarmer
-                    ? _cachedResource.TrieWarmerLoadedNodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, hash))
-                    : _changedStateNodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, hash));
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                _nodeGetChanged.Inc();
+                return node;
             }
-            else
-            {
-                node = new TrieNode(NodeType.Unknown, hash);
-            }
+        }
+
+        if (_cachedResource.TrieWarmerLoadedNodes.TryGetValue(path, out node) && node.Keccak == hash)
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+
+            if (!isTrieWarmer) _changedStateNodes.TryAdd(path, node);
+            _nodeGetChanged.Inc();
+            return node;
+        }
+
+        if (!DoFindStateNodeExternal(path, hash, out node))
+        {
+            // The map to holds the unknown nodes is different for trie warmer and the main tries. This prevent
+            // random invalid block.
+            node = _cachedResource.TrieWarmerLoadedNodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, hash));
+        }
+        else
+        {
+            _cachedResource.TrieWarmerLoadedNodes.AddOrUpdate(path, static (path, trieNode) => trieNode, static (treePath, trieNode, newNode) => newNode, node);
         }
 
         if (isTrieWarmer)
@@ -292,7 +334,7 @@ public class SnapshotBundle : IDisposable
         return node;
     }
 
-    private bool DoTryFindStateNode(in TreePath path, Hash256 hash, out TrieNode node)
+    private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, out TrieNode node)
     {
         if (_isDisposed)
         {
@@ -300,21 +342,11 @@ public class SnapshotBundle : IDisposable
             return false;
         }
 
-        if (!_isReadOnly)
+        if (_trieNodeCache.TryGet(null, path, hash, out node))
         {
-            if (_changedStateNodes.TryGetValue(path, out node))
-            {
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                _nodeGetChanged.Inc();
-                return true;
-            }
-
-            if (_cachedResource.TrieWarmerLoadedNodes.TryGetValue(path, out node) && node.Keccak == hash)
-            {
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                _nodeGetChanged.Inc();
-                return true;
-            }
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            _nodeGetTrieCache.Inc();
+            return true;
         }
 
         for (int i = _snapshots.Count - 1; i >= 0; i--)
@@ -325,13 +357,6 @@ public class SnapshotBundle : IDisposable
                 _nodeGetSnapshots.Inc();
                 return true;
             }
-        }
-
-        if (_trieNodeCache.TryGet(null, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            _nodeGetTrieCache.Inc();
-            return true;
         }
 
         _nodeGetMiss.Inc();
@@ -449,7 +474,13 @@ public class SnapshotBundle : IDisposable
     {
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
         if (_isDisposed) return;
+        if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
+
+        long sw = Stopwatch.GetTimestamp();
+        // Note: Hot path
         _changedStateNodes[path] = newNode;
+        _setStateNodesTime.Observe(Stopwatch.GetTimestamp() - sw);
+        _stateNodeDepth.Observe(path.Length);
     }
 
     // This is called only during trie commit
@@ -457,7 +488,13 @@ public class SnapshotBundle : IDisposable
     {
         if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
         if (_isDisposed) return;
+        if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
+
+        long sw = Stopwatch.GetTimestamp();
+        // Note: Hot path
         _changedStorageNodes[(addr, path)] = newNode;
+        _setStorageNodesTime.Observe(Stopwatch.GetTimestamp() - sw);
+        _storageNodeDepth.Observe(path.Length);
     }
 
     public void SetAccount(AddressAsKey addr, Account? account)

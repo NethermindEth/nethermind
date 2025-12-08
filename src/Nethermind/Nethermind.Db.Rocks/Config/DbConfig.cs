@@ -442,6 +442,7 @@ public class DbConfig : IDbConfig
         // "memtable=skiplist;" +
         // "prefix_extractor=capped:23;" + // 20 byte address + 3 byte prefix.
         "block_based_table_factory.block_cache=64000000;" +
+        // "block_based_table_factory.block_size=16000;" +
         "";
 
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }

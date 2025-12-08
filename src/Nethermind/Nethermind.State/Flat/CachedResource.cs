@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -17,8 +18,8 @@ public record CachedResource(
 {
     public void Clear()
     {
-        TrieWarmerLoadedNodes.Clear();
-        LoadedStorageNodes.Clear();
-        PrewarmedAddresses.Clear();
+        TrieWarmerLoadedNodes.NoResizeClear();
+        LoadedStorageNodes.NoResizeClear();
+        PrewarmedAddresses.NoResizeClear();
     }
 }

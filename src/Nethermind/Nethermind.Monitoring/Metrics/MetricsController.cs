@@ -327,7 +327,7 @@ namespace Nethermind.Monitoring.Metrics
             if (metricsConfig.InitializeStaticLabels && !_staticLabelsInitialized)
             {
                 _staticLabelsInitialized = true;
-                Prometheus.Metrics.DefaultRegistry.SetStaticLabels(_commonStaticTags);
+                // Prometheus.Metrics.DefaultRegistry.SetStaticLabels(_commonStaticTags);
             }
 
             _intervalMilliseconds = (metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds) * 1000 / 2;
