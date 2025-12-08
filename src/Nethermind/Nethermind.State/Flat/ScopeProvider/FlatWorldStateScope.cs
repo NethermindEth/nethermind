@@ -18,6 +18,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Prometheus;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -26,6 +27,12 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     // internal static Address DebugAddress = new Address("0x2c2b2df915e31d27e7a24c7c3cf9b114208a45e0");
     internal static Address DebugAddress = new Address("0x6ffedc1562918c07ae49b0ba210e6d80c7d61eab");
     internal static UInt256 DebugSlot = UInt256.Parse("0");
+
+    private static Histogram _snapshotBundleTimes = Prometheus.Metrics.CreateHistogram("flat_write_batch", "aha", new HistogramConfiguration()
+    {
+        LabelNames = new[] { "type" },
+        Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
+    });
 
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IWorldStateScopeProvider.ICodeDb _codeDb;
@@ -139,7 +146,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
             {
                 // Note: tree root not changed after write batch. Also not cleared. So the result is not correct.
                 // this is just for warming up
-                _ = _warmupStateTree.Get(address.ToAccountPath.Bytes);
+                _ = _warmupStateTree.Get(address.ToAccountPath.Bytes, keepChildRef: true);
             }
         }
         catch (AbstractMinimalTrieStore.UnsupportedOperationException)
@@ -183,8 +190,6 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
         // Invalidates trie node warmer tasks at this point. Write batch already do things in parallel.
-        Interlocked.Increment(ref _hintSequenceId);
-
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
@@ -193,30 +198,26 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         StateId newStateId = new StateId(blockNumber, RootHash);
         if (!_isReadOnly)
         {
-
+            long sw = Stopwatch.GetTimestamp();
             // Commit will copy the trie nodes from the tree to the bundle.
             using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
-
             foreach (KeyValuePair<AddressAsKey, FlatStorageTree> storage in _storages)
             {
-                if (_concurrencyQuota.TryRequestConcurrencyQuota())
+                commitTask.Add(Task.Factory.StartNew((ctx) =>
                 {
-                    commitTask.Add(Task.Factory.StartNew((ctx) =>
-                    {
-                        FlatStorageTree st = (FlatStorageTree)ctx;
-                        st.CommitTree();
-                        _concurrencyQuota.ReturnConcurrencyQuota();
-                    }, storage.Value));
-                }
-                else
-                {
-                    storage.Value.CommitTree();
-                }
+                    FlatStorageTree st = (FlatStorageTree)ctx;
+                    st.CommitTree();
+                    _concurrencyQuota.ReturnConcurrencyQuota();
+                }, storage.Value));
             }
 
             Task.WaitAll(commitTask.AsSpan());
+            _snapshotBundleTimes.WithLabels("storage_commit_wait").Observe(Stopwatch.GetTimestamp() - sw);
 
+            sw = Stopwatch.GetTimestamp();
+            // Commit will copy the trie nodes from the tree to the bundle.
             _stateTree.Commit();
+            _snapshotBundleTimes.WithLabels("statetree_commit").Observe(Stopwatch.GetTimestamp() - sw);
         }
 
         _storages.Clear();
@@ -272,9 +273,9 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
         public void Dispose()
         {
-            bool hasIt = false;
             try
             {
+                long sw = Stopwatch.GetTimestamp();
                 while (_dirtyStorageTree.TryDequeue(out var entry))
                 {
                     (AddressAsKey key, Hash256 storageRoot) = entry;
@@ -288,23 +289,25 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
                     OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
                     if (logger.IsTrace) Trace(key, storageRoot, account);
                 }
+                _snapshotBundleTimes.WithLabels("dirtystorage_dequeue").Observe(Stopwatch.GetTimestamp() - sw);
 
                 using (var stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count))
                 {
+                    sw = Stopwatch.GetTimestamp();
                     foreach (var kv in _dirtyAccounts)
                     {
                         stateSetter.Set(kv.Key, kv.Value);
                     }
+                    _snapshotBundleTimes.WithLabels("account_set").Observe(Stopwatch.GetTimestamp() - sw);
+                    sw = Stopwatch.GetTimestamp();
                 }
+                _snapshotBundleTimes.WithLabels("account_set_dispose").Observe(Stopwatch.GetTimestamp() - sw);
             }
             finally
             {
                 _dirtyAccounts.Clear();
 
-                if (hasIt)
-                {
-                    Console.Error.WriteLine($"Exit. Seuence it is {scope._hintSequenceId}");
-                }
+                Interlocked.Increment(ref scope._hintSequenceId);
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]

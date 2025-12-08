@@ -124,7 +124,7 @@ namespace Nethermind.Trie
             _bufferPool = bufferPool;
         }
 
-        public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
+        public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None, bool noConcurrent = false)
         {
             if (!_allowCommits)
             {
@@ -138,6 +138,8 @@ namespace Nethermind.Trie
                 > 4 => 0, // we separate at top level
                 _ => -1
             };
+
+            if (noConcurrent) maxLevelForConcurrentCommit = -1;
 
             _writeBeforeCommit = 0;
 
@@ -327,7 +329,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null, bool cachedOnly = false)
+        public virtual ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null, bool cachedOnly = false, bool keepChildRef = false)
         {
             byte[]? array = null;
             try
@@ -348,7 +350,7 @@ namespace Nethermind.Trie
                     root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
                 }
 
-                SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: false, cachedOnly: cachedOnly);
+                SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: false, cachedOnly: cachedOnly, keepChildRef: keepChildRef);
 
                 return result.IsNull ? ReadOnlySpan<byte>.Empty : result.Span;
             }
@@ -820,7 +822,7 @@ namespace Nethermind.Trie
             public TrieNode? OriginalChild;
         }
 
-        private SpanSource GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead, bool cachedOnly)
+        private SpanSource GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead, bool cachedOnly, bool keepChildRef = false)
         {
             int originalPathLength = path.Length;
 
@@ -861,7 +863,7 @@ namespace Nethermind.Trie
 
                             // Continue traversal to the child of the extension
                             path.AppendMut(node.Key);
-                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0, keepChildRef: keepChildRef);
                             remainingKey = remainingKey[node!.Key.Length..];
                             node = extensionChild;
 
@@ -874,7 +876,7 @@ namespace Nethermind.Trie
 
                     int nib = remainingKey[0];
                     path.AppendMut(nib);
-                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
+                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib, keepChildRef: keepChildRef);
 
                     // Continue loop with child as current node
                     node = child;

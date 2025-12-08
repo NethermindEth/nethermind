@@ -636,7 +636,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual bool ShouldValidate(ExecutionOptions opts) => !opts.HasFlag(ExecutionOptions.SkipValidation);
 
-        [MethodImpl(MethodImplOptions.NoOptimization)]
         private int ExecuteEvmCall<TTracingInst>(
             Transaction tx,
             BlockHeader header,
