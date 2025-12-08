@@ -18,5 +18,5 @@ public class BadBlock(Block block, bool includeFullTransactionData, ISpecProvide
     public byte[] Rlp { get; } = blockDecoder.Encode(block).Bytes;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public BlockAccessList? GeneratedBlockAccessList = block.GeneratedBlockAccessList;
+    public BlockAccessList? GeneratedBlockAccessList { get; } = block.GeneratedBlockAccessList;
 }
