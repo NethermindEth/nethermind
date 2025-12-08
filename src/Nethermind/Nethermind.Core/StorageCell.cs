@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -69,5 +70,12 @@ namespace Nethermind.Core
             MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _index), 1)).FastHash() ^ Address.GetHashCode();
 
         public override string ToString() => $"{Address}.{Index}";
+
+        public class OnlyAddressComparer : IEqualityComparer<StorageCell>
+        {
+            public static readonly OnlyAddressComparer Instance = new();
+            public bool Equals(StorageCell x, StorageCell y) => x.Address.Equals(y.Address);
+            public int GetHashCode(StorageCell obj) => obj.Address.GetHashCode();
+        }
     }
 }

@@ -20,7 +20,7 @@ public class ParallelRunner<TLocation, TData, TLogger>(
     ParallelScheduler<TLogger> scheduler,
     MultiVersionMemory<TLocation, TData, TLogger> memory,
     ParallelTrace<TLogger> parallelTrace,
-    IVm<TLocation, TData> vm,
+    IParallelTransactionProcessor<TLocation, TData> parallelTransactionProcessor,
     int? concurrencyLevel = null) where TLogger : struct, IFlag where TLocation : notnull
 {
     private int _threadIndex = -1;
@@ -91,7 +91,7 @@ public class ParallelRunner<TLocation, TData, TLogger>(
     /// Scheduler may return a validation task for this transaction as it will be the next high-priority.
     /// </remarks>
     private TxTask TryExecute(TxTask task) =>
-        vm.TryExecute(task.Version, out Version? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, TData> writeSet) == Status.ReadError
+        parallelTransactionProcessor.TryExecute(task.Version, out Version? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, TData> writeSet) == Status.ReadError
             ? !scheduler.AbortExecution(task.Version.TxIndex, blockingTx!.Value.TxIndex) ? task : TxTask.Empty
             : scheduler.FinishExecution(task.Version, memory.Record(task.Version, readSet, writeSet));
 
@@ -120,14 +120,14 @@ public class ParallelRunner<TLocation, TData, TLogger>(
 public sealed class ParallelRunner(
     ParallelScheduler<OffFlag> scheduler,
     MultiVersionMemory<StorageCell, object, OffFlag> memory,
-    ParallelTrace<OffFlag> parallelTrace, IVm<StorageCell, object> vm,
+    ParallelTrace<OffFlag> parallelTrace, IParallelTransactionProcessor<StorageCell, object> parallelTransactionProcessor,
     int? concurrencyLevel = null)
-    : ParallelRunner<StorageCell, object, OffFlag>(scheduler, memory, parallelTrace, vm, concurrencyLevel);
+    : ParallelRunner<StorageCell, object, OffFlag>(scheduler, memory, parallelTrace, parallelTransactionProcessor, concurrencyLevel);
 
 /// <summary>
 /// Abstraction of transaction execution.
 /// </summary>
-public interface IVm<TLocation, TData> where TLocation : notnull
+public interface IParallelTransactionProcessor<TLocation, TData> where TLocation : notnull
 {
     /// <summary>
     /// Execute transaction

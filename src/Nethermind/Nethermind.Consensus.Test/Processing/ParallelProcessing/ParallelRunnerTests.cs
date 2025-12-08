@@ -153,13 +153,14 @@ public class ParallelRunnerTests
         MultiVersionMemory<int, byte[], T> multiVersionMemory = new(blockSize, parallelTrace);
         ObjectPool<HashSet<int>> setObjectPool = new DefaultObjectPool<HashSet<int>>(new DefaultPooledObjectPolicy<HashSet<int>>(), 1024);
         ParallelScheduler<T> parallelScheduler = new(blockSize, parallelTrace, setObjectPool);
-        VmMock<T> vmMock = new VmMock<T>(blockSize, multiVersionMemory, operationsPerTx);
-        ParallelRunner<int, byte[], T> runner = new(parallelScheduler, multiVersionMemory, parallelTrace, vmMock, 12);
+        ParallelTransactionProcessorMock<T> parallelTransactionProcessorMock = new(blockSize, multiVersionMemory, operationsPerTx);
+        ParallelRunner<int, byte[], T> runner = new(parallelScheduler, multiVersionMemory, parallelTrace, parallelTransactionProcessorMock, 12);
 
         long start = Stopwatch.GetTimestamp();
         Task runnerTask = runner.Run();
         Task completedTask = await Task.WhenAny(runnerTask, Task.Delay(TimeSpan.FromSeconds(20)));
-        Dictionary<int, byte[]> result = multiVersionMemory.Snapshot();
+        DummyStats stats = new();
+        Dictionary<int, byte[]> result = multiVersionMemory.Snapshot(ref stats, DummyStats.Count);
         if (typeof(T) == typeof(OnFlag)) await PrintInfo(parallelTrace, result, expected);
         TimeSpan time = Stopwatch.GetElapsedTime(start);
         await TestContext.Out.WriteLineAsync($"Execution time: {time.TotalMilliseconds}ms");
@@ -172,6 +173,11 @@ public class ParallelRunnerTests
         {
             Assert.Fail($"Timeout! {DateTime.Now:hh:mm:ss::fffffff}");
         }
+    }
+
+    private struct DummyStats
+    {
+        public static void Count(ref DummyStats stats, int location, byte[] data) { }
     }
 
     private static async Task PrintInfo<T>(ParallelTrace<T> parallelTrace, Dictionary<int, byte[]> result, Dictionary<int, byte[]> expected) where T : struct, IFlag
@@ -190,7 +196,7 @@ public class ParallelRunnerTests
 
     }
 
-    private class VmMock<TLogger>(int blockSize, MultiVersionMemory<int, byte[], TLogger> memory, Operation[][] operationsPerTx) : IVm<int, byte[]> where TLogger : struct, IFlag
+    private class ParallelTransactionProcessorMock<TLogger>(int blockSize, MultiVersionMemory<int, byte[], TLogger> memory, Operation[][] operationsPerTx) : IParallelTransactionProcessor<int, byte[]> where TLogger : struct, IFlag
     {
         private readonly HashSet<Read<int>>[] _readSets = Enumerable.Range(0, blockSize).Select(_ => new HashSet<Read<int>>()).ToArray();
         private readonly Dictionary<int, byte[]>[] _writeSets = Enumerable.Range(0, blockSize).Select(_ => new Dictionary<int, byte[]>()).ToArray();

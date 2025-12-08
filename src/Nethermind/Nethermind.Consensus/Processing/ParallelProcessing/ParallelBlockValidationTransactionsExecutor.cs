@@ -31,8 +31,8 @@ public class ParallelBlockValidationTransactionsExecutor(
         OffParallelTrace trace = new();
         MultiVersionMemory multiVersionMemory = new(txCount, trace);
         ParallelScheduler scheduler = new(txCount, trace, _setPool);
-        ParallelVirtualMachine parallelVirtualMachine = new(block, parallelEnvFactory, multiVersionMemory, preBlockCaches, receipts, in _blockExecutionContext, transactionProcessedEventHandler);
-        ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelVirtualMachine);
+        ParallelTransactionProcessor parallelTransactionProcessor = new(block, parallelEnvFactory, multiVersionMemory, preBlockCaches, receipts, in _blockExecutionContext, transactionProcessedEventHandler);
+        ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor);
         parallelRunner.Run().GetAwaiter().GetResult();
 
         BlockReceiptsTracer.AccumulateBlockBloom(block, receipts);
@@ -43,14 +43,14 @@ public class ParallelBlockValidationTransactionsExecutor(
         _blockExecutionContext = blockExecutionContext;
 }
 
-public class ParallelVirtualMachine(
+public class ParallelTransactionProcessor(
     Block block,
     ParallelEnvFactory parallelEnvFactory,
     MultiVersionMemory multiVersionMemory,
     PreBlockCaches preBlockCaches,
     TxReceipt[] receipts,
     in BlockExecutionContext blockExecutionContext,
-    ITransactionProcessedEventHandler? transactionProcessedEventHandler) : IVm<StorageCell, object>
+    ITransactionProcessedEventHandler? transactionProcessedEventHandler) : IParallelTransactionProcessor<StorageCell, object>
 {
     private readonly ObjectPool<BlockReceiptsTracer> _tracers = new DefaultObjectPool<BlockReceiptsTracer>(new DefaultPooledObjectPolicy<BlockReceiptsTracer>());
     private readonly BlockExecutionContext _blockExecutionContext = blockExecutionContext;

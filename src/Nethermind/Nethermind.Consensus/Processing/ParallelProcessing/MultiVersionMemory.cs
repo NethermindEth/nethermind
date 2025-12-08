@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -62,8 +64,9 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
     // For given transaction incarnation it stores it's writeset into _data and updates _lastWrittenLocations
     private bool ApplyWriteSet(Version version, Dictionary<TLocation, TData> writeSet)
     {
-        DataDictionary<TLocation, Value> txData = _data[version.TxIndex]; // writes of current tx (currently from the previous incarnation)
-        ref HashSet<TLocation>? lastWritten = ref _lastWrittenLocations[version.TxIndex];
+        (int txIndex, int incarnation) = version;
+        DataDictionary<TLocation, Value> txData = _data[txIndex]; // writes of current tx (currently from the previous incarnation)
+        ref HashSet<TLocation>? lastWritten = ref _lastWrittenLocations[txIndex];
         lastWritten ??= new HashSet<TLocation>();
 
         txData.Lock.EnterWriteLock();
@@ -73,7 +76,7 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
             // This could help in ValidateReadSet where we wouldn't have to check actual value
             // The downside is that we need to do a Read and Write to dictionary most of the times
             // But maybe this will be simplified if used Dictionary with ReadWriterLock?
-            txData.Dictionary[write.Key] = new(version.Incarnation, write.Value);
+            txData.Dictionary[write.Key] = new(incarnation, write.Value);
         }
 
         // if previous incarnation written locations
@@ -201,11 +204,13 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
         return Status.NotFound;
     }
 
+    public delegate void UpdateStats<TStats>(ref TStats stats, TLocation location, TData data) where TStats : allows ref struct;
+
     /// <summary>
     /// Grabs the result write-set of the whole block
     /// </summary>
     /// <returns>Write a set of the block</returns>
-    public Dictionary<TLocation, TData> Snapshot()
+    public Dictionary<TLocation, TData> Snapshot<TStats>(ref TStats? stats, UpdateStats<TStats> itemAdded) where TStats : allows ref struct
     {
         Dictionary<TLocation, TData> result = new();
         // need to iterate backwards, as the later transaction writes are the final written to the same location
@@ -215,7 +220,10 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
             foreach (KeyValuePair<TLocation, Value> location in data.Dictionary)
             {
                 // only add if previously not added
-                result.TryAdd(location.Key, location.Value.Data);
+                if (result.TryAdd(location.Key, location.Value.Data))
+                {
+                    itemAdded.Invoke(ref stats, location.Key, location.Value.Data);
+                }
             }
         }
 

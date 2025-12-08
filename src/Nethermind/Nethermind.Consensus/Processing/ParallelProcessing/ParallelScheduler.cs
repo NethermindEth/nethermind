@@ -333,10 +333,11 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
     /// <returns>true if successful, false <see cref="TxState.Status"/> in not <see cref="TxStatus.Aborting"/> or <see cref="TxState.Incarnation"/> changed</returns>
     public bool TryValidationAbort(Version version)
     {
-        ref TxState state = ref _txStates[version.TxIndex];
+        (int txIndex, int incarnation) = version;
+        ref TxState state = ref _txStates[txIndex];
         ref long stateInt = ref Unsafe.As<TxState, long>(ref state);
-        TxState value = new(TxStatus.Aborting, version.Incarnation);
-        TxState requiredState = new(TxStatus.Executed, version.Incarnation);
+        TxState value = new(TxStatus.Aborting,incarnation);
+        TxState requiredState = new(TxStatus.Executed, incarnation);
         long requiredInt = Unsafe.As<TxState, long>(ref requiredState);
         long valueInt = Unsafe.As<TxState, long>(ref value);
 
@@ -344,7 +345,7 @@ public class ParallelScheduler<TLogger>(int txCount, ParallelTrace<TLogger> para
         bool abort = Interlocked.CompareExchange(ref stateInt, valueInt, requiredInt) == requiredInt;
         if (typeof(TLogger) == typeof(OnFlag) && abort)
         {
-            parallelTrace.Add($"Set Tx {version.TxIndex} status to Aborting");
+            parallelTrace.Add($"Set Tx {txIndex} status to Aborting");
         }
 
         return abort;
