@@ -458,7 +458,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return 0;
     }
 
-    [GeneratedRegex("(?<optionName>[A-Za-z0-9_]+)\\=(?<optionValue>[^; ]+);", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
+    [GeneratedRegex("(?<optionName>[A-Za-z0-9_\\.]+)\\=(?<optionValue>[^; ]+);", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractDbOptionsRegex();
 
     public static IDictionary<string, string> ExtractOptions(string dbOptions)
