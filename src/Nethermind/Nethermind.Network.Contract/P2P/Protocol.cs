@@ -14,6 +14,10 @@ namespace Nethermind.Network.Contract.P2P
         /// </summary>
         public const string Eth = "eth";
         /// <summary>
+        /// Ethereum Wire Archival
+        /// </summary>
+        public const string Etha = "etha";
+        /// <summary>
         /// Ethereum Snap Sync
         /// </summary>
         public const string Snap = "snap";
