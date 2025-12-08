@@ -141,7 +141,7 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
         _bundle.SetChangedSlot(_address, slot, value);
     }
 
-    private void SelfDestruct()
+    public void SelfDestruct()
     {
         if (_address == FlatWorldStateScope.DebugAddress) Console.Error.WriteLine($"Self destruct {_address}");
         _bundle.Clear(_address, _addressHash);
