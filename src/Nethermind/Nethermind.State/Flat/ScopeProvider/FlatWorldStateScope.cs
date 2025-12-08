@@ -247,6 +247,13 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
             if (key == DebugAddress) Console.Error.WriteLine($"Address Set {account}");
             _dirtyAccounts[key] = account;
             scope._snapshotBundle.SetAccount(key, account);
+
+            if (account == null)
+            {
+                // This may not get called by the storage write batch as the worldstate does not try to update storage
+                // at all if the end account is null. This is not a problem for trie, but is a problem for flat.
+                scope.CreateStorageTreeImpl(key).SelfDestruct();
+            }
         }
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries)
