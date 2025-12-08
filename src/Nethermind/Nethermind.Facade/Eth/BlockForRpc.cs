@@ -93,7 +93,6 @@ public class BlockForRpc
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
         RequestsHash = block.Header.RequestsHash;
         BlockAccessList = block.BlockAccessList;
-        GeneratedBlockAccessList = block.GeneratedBlockAccessList;
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -159,9 +158,6 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public BlockAccessList? BlockAccessList { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public BlockAccessList? GeneratedBlockAccessList { get; set; }
 
     private static object[] GetTransactionHashes(Transaction[] transactions)
     {
