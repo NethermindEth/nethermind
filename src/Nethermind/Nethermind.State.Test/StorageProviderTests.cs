@@ -760,6 +760,11 @@ public class StorageProviderTests
             {
                 baseScope.Commit(blockNumber);
             }
+
+            public void HintSet(Address address)
+            {
+
+            }
         }
 
         private class WriteBatchDecorator(
