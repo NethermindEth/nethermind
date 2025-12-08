@@ -81,9 +81,11 @@ namespace Nethermind.Evm
                     : GasCostOf.Call;
 
         public static long GetExpByteCost(this IReleaseSpec spec) =>
-            spec.UseExpDDosProtection
-                ? GasCostOf.ExpByteEip160
-                : GasCostOf.ExpByte;
+            spec.IsEip7904Enabled
+                ? GasCostOf.ExpPerByte
+                : spec.UseExpDDosProtection
+                    ? GasCostOf.ExpByteEip160
+                    : GasCostOf.ExpByte;
 
         public static ulong GetMaxBlobGasPerBlock(this IReleaseSpec spec) =>
             spec.MaxBlobCount * Eip4844Constants.GasPerBlob;

@@ -382,6 +382,11 @@ namespace Nethermind.Core.Specs
         int Eip7934MaxRlpBlockSize { get; }
 
         /// <summary>
+        ///  General repricing
+        /// </summary>
+        bool IsEip7904Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>

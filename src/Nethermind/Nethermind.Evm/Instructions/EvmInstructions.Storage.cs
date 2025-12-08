@@ -38,7 +38,7 @@ internal static partial class EvmInstructions
         Metrics.TloadOpcode++;
 
         // Deduct the fixed gas cost for TLOAD.
-        gasAvailable -= GasCostOf.TLoad;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.WarmStorageRead : GasCostOf.TLoad;
 
         // Attempt to pop the key (offset) from the stack; if unavailable, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -91,7 +91,7 @@ internal static partial class EvmInstructions
         if (vmState.IsStatic) goto StaticCallViolation;
 
         // Deduct the gas cost for TSTORE.
-        gasAvailable -= GasCostOf.TStore;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.WarmStorageRead : GasCostOf.TStore;
 
         // Pop the key (offset) from the stack; if unavailable, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -140,7 +140,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionMStore<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.VeryLow;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
 
         // Pop the memory offset; if not available, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -186,7 +186,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionMStore8<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.VeryLow;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
 
         // Pop the memory offset from the stack; if missing, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -232,7 +232,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionMLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.VeryLow;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
 
         // Pop the memory offset; if missing, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -285,7 +285,8 @@ internal static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
 
         // Calculate additional gas cost based on the length (using a division rounding-up method) and deduct the total cost.
-        gasAvailable -= GasCostOf.VeryLow + GasCostOf.VeryLow * EvmCalculations.Div32Ceiling(c, out bool outOfGas);
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
+        gasAvailable -= (vm.Spec.IsEip7904Enabled ? GasCostOf.CopyPerWord : GasCostOf.VeryLow) * EvmCalculations.Div32Ceiling(c, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
 
         EvmState vmState = vm.EvmState;
@@ -648,7 +649,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionCallDataLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.VeryLow;
+        gasAvailable -= vm.Spec.IsEip7904Enabled ? GasCostOf.BaseOpcode : GasCostOf.VeryLow;
 
         // Pop the offset from which to load call data.
         if (!stack.PopUInt256(out UInt256 result))
