@@ -388,7 +388,7 @@ public partial class BlockTree
         }
 
         SyncPivot = (updatedPivotBlockNumber, updatedPivotBlockHash);
-        _syncConfig.MaxAttemptsToUpdatePivot = 0; // Disable pivot updator
+        _syncConfig.MaxAttemptsToUpdatePivot = 0; // Disable pivot updater
 
         if (Logger.IsInfo) Logger.Info($"Pivot block has been set based on data from db. Pivot block number: {updatedPivotBlockNumber}, hash: {updatedPivotBlockHash}");
     }

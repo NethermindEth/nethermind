@@ -30,7 +30,6 @@ using Nethermind.Db.Blooms;
 
 namespace Nethermind.Blockchain
 {
-    [Todo(Improve.Refactor, "After the fast sync work there are some duplicated code parts for the 'by header' and 'by block' approaches.")]
     public partial class BlockTree : IBlockTree
     {
         // there is not much logic in the addressing here
@@ -1058,7 +1057,7 @@ namespace Nethermind.Blockchain
 
             if (bestPersisted < newPivotHeader.Number)
             {
-                if (Logger.IsTrace) Logger.Trace("Best persisted is lower than sync pivot. Using best persisted stata as pivot.");
+                if (Logger.IsTrace) Logger.Trace("Best persisted is lower than sync pivot. Using best persisted state as pivot.");
                 newPivotHeader = FindHeader(bestPersisted.Value, BlockTreeLookupOptions.RequireCanonical);
             }
             if (newPivotHeader is null) return;
@@ -1388,23 +1387,13 @@ namespace Nethermind.Blockchain
         private (BlockInfo? Info, ChainLevelInfo? Level) LoadInfo(long number, Hash256 blockHash, bool forceLoad)
         {
             ChainLevelInfo chainLevelInfo = LoadLevel(number, forceLoad);
-            if (chainLevelInfo is null)
-            {
-                return (null, null);
-            }
-
-            return (chainLevelInfo.FindBlockInfo(blockHash), chainLevelInfo);
+            return chainLevelInfo is null ? (null, null) : (chainLevelInfo.FindBlockInfo(blockHash), chainLevelInfo);
         }
 
-        private ChainLevelInfo? LoadLevel(long number, bool forceLoad = true)
-        {
-            if (number > Math.Max(BestKnownNumber, BestKnownBeaconNumber) && !forceLoad)
-            {
-                return null;
-            }
-
-            return _chainLevelInfoRepository.LoadLevel(number);
-        }
+        private ChainLevelInfo? LoadLevel(long number, bool forceLoad = true) =>
+            number > Math.Max(BestKnownNumber, BestKnownBeaconNumber) && !forceLoad
+                ? null
+                : _chainLevelInfoRepository.LoadLevel(number);
 
         /// <summary>
         /// To make cache useful even when we handle sync requests

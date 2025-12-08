@@ -8,6 +8,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -45,7 +46,7 @@ public unsafe partial class VirtualMachine(
     ILogManager? logManager) : IVirtualMachine
 {
     public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
-    private static readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    private static readonly UInt256 P255Int = (UInt256)BigInteger.Pow(2, 255);
     internal static readonly byte[] EofHash256 = KeccakHash.ComputeHashBytes(MAGIC);
     internal static ref readonly UInt256 P255 => ref P255Int;
     internal static readonly UInt256 BigInt256 = 256;
@@ -89,6 +90,7 @@ public unsafe partial class VirtualMachine(
     private OpCode[] _opcodeMethods;
     private static long _txCount;
 
+    private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     protected EvmState _currentState;
     protected ReadOnlyMemory<byte>? _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
@@ -99,7 +101,7 @@ public unsafe partial class VirtualMachine(
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
-    public ReadOnlyMemory<byte> ReturnDataBuffer { get; set; } = Array.Empty<byte>();
+    public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected Stack<EvmState> StateStack => _stateStack;
@@ -979,33 +981,34 @@ public unsafe partial class VirtualMachine(
         UInt256 transferValue = state.Env.TransferValue;
         long gasAvailable = state.GasAvailable;
 
-        IPrecompile precompile = ((PrecompileInfo)state.Env.CodeInfo).Precompile!;
+        IPrecompile precompile = state.Env.CodeInfo.Precompile!;
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
         long baseGasCost = precompile.BaseGasCost(spec);
         long dataGasCost = precompile.DataGasCost(callData, spec);
 
-        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, spec);
+        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec);
 
         // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
         // An additional issue was found in Parity,
         // where the Parity client incorrectly failed
         // to revert empty account deletions in a more limited set of contexts
         // involving out-of-gas calls to precompiled contracts;
-        // the new Geth behavior matches Parity’s,
+        // the new Geth behavior matches Parity's,
         // and empty accounts will cease to be a source of concern in general
         // in about one week once the state clearing process finishes.
-        if (state.Env.ExecutingAccount.Equals(_parityTouchBugAccount.Address)
-            && !wasCreated
-            && transferValue.IsZero
-            && spec.ClearEmptyAccountWhenTouched)
+        if (!wasCreated &&
+            transferValue.IsZero &&
+            spec.ClearEmptyAccountWhenTouched &&
+            state.Env.ExecutingAccount.Equals(_parityTouchBugAccount.Address))
         {
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        if (!UpdateGas(checked(baseGasCost + dataGasCost), ref gasAvailable))
+        if ((ulong)baseGasCost + (ulong)dataGasCost > (ulong)long.MaxValue ||
+            !UpdateGas(baseGasCost + dataGasCost, ref gasAvailable))
         {
-            return new(default, false, 0, true, EvmExceptionType.OutOfGas);
+            return new(output: default, precompileSuccess: false, fromVersion: 0, shouldRevert: true, EvmExceptionType.OutOfGas);
         }
 
         state.GasAvailable = gasAvailable;
@@ -1022,19 +1025,32 @@ public unsafe partial class VirtualMachine(
                 exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None
             )
             {
-                SubstateError = $"Precompile {precompile.GetStaticName()} failed with error: {output.Error}"
+                SubstateError = success ? null : GetErrorString(precompile, output.Error)
             };
         }
-        catch (DllNotFoundException exception)
+        catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
         {
-            if (_logger.IsError) _logger.Error($"Failed to load one of the dependencies of {precompile.GetType()} precompile", exception);
-            throw;
+            if (_logger.IsError) LogMissingDependency(precompile, exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException);
+            Environment.Exit(ExitCodes.MissingPrecompile);
+            throw; // Unreachable
         }
         catch (Exception exception)
         {
-            if (_logger.IsError) _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
+            if (_logger.IsError) LogExecutionException(precompile, exception);
             return new(output: default, precompileSuccess: false, fromVersion: 0, shouldRevert: true);
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void LogExecutionException(IPrecompile precompile, Exception exception)
+            => _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void LogMissingDependency(IPrecompile precompile, DllNotFoundException exception)
+            => _logger.Error($"Failed to load one of the dependencies of {precompile.GetType()} precompile", exception);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static string GetErrorString(IPrecompile precompile, string? error)
+            => $"Precompile {precompile.GetStaticName()} failed with error: {error}";
     }
 
     /// <summary>
@@ -1137,7 +1153,7 @@ public unsafe partial class VirtualMachine(
             }
 
             // Save the previous call's output into the VM state's memory.
-            vmState.Memory.Save(in localPreviousDest, previousCallOutput);
+            if (!vmState.Memory.TrySave(in localPreviousDest, previousCallOutput)) goto OutOfGas;
         }
 
         // Dispatch the bytecode interpreter.

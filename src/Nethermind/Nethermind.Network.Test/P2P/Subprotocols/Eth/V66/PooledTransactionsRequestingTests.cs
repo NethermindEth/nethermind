@@ -150,7 +150,7 @@ public class PooledTransactionsRequestingTests
     }
 
     [Test]
-    public async Task Should_request_from_others_after_timout()
+    public async Task Should_request_from_others_after_timeout()
     {
         await Task.Delay(Timeout);
 
@@ -170,7 +170,7 @@ public class PooledTransactionsRequestingTests
 
 
     [Test]
-    public async Task Should_not_request_from_others_if_received_immidietly()
+    public async Task Should_not_request_from_others_if_received_immediately()
     {
         HandleZeroMessage(_handler, new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(1111, new PooledTransactionsMessage(_txs)), Eth65MessageCode.PooledTransactions);
         await Task.Delay(Timeout);
