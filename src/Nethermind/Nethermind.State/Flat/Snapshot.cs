@@ -93,19 +93,16 @@ public record SnapshotContent(
     ConcurrentDictionary<AddressAsKey, bool> SelfDestructedStorageAddresses,
 
     // Use of a separate dictionary just for state have a small but measurable impact
-    // NonBlocking variant measurable write faster.
-    NonBlocking.ConcurrentDictionary<TreePath, TrieNode> StateNodes,
-    NonBlocking.ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> StorageNodes
+    ConcurrentDictionary<TreePath, TrieNode> StateNodes,
+    ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> StorageNodes
 ) {
     public void Reset()
     {
         Accounts.NoResizeClear();
         Storages.NoResizeClear();
         SelfDestructedStorageAddresses.NoResizeClear();
-        // StateNodes.NoResizeClear();
-        // StorageNodes.NoResizeClear();
-        StateNodes.Clear();
-        StorageNodes.Clear();
+        StateNodes.NoResizeClear();
+        StorageNodes.NoResizeClear();
     }
 
     public Dictionary<MemoryType, long> EstimateMemory()
