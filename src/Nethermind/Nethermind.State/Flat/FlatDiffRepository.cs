@@ -24,13 +24,20 @@ using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State.Flat;
 
-public class FlatDiffRepository : IFlatDiffRepository
+public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 {
     private ReaderWriterLockSlim _repoLock = new ReaderWriterLockSlim(); // Note: lock is for proteccting in memory and compacted states only
     private readonly ICanonicalStateRootFinder _stateRootFinder;
     private Dictionary<StateId, Snapshot> _compactedKnownStates = new();
     private InMemorySnapshotStore _inMemorySnapshotStore;
-    private ResourcePool _resourcePool = new ResourcePool();
+    private ResourcePool _resourcePool;
+    private List<(Hash256AsKey, TreePath)> _trieNodesSortBuffer = new List<(Hash256AsKey, TreePath)>(); // Presort make it faster
+    private readonly Task _compactorTask;
+
+    private Lock _readerCacheLock = new Lock();
+    private RefCountingPersistenceReader? _cachedReader = null;
+    private readonly TrieNodeCache _trieNodeCache;
+    private readonly Task _persistenceTask;
 
     private IPersistence _persistence;
     private int _boundary;
@@ -73,6 +80,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         IProcessExitSource exitSource,
         ICanonicalStateRootFinder stateRootFinder,
         IPersistence persistedPersistence,
+        ResourcePool resourcePool,
         ILogManager logManager,
         Configuration? config = null)
     {
@@ -83,6 +91,7 @@ public class FlatDiffRepository : IFlatDiffRepository
         _compactEveryBlockNum = config.CompactInterval;
         _inlineCompaction = config.InlineCompaction;
         _stateRootFinder = stateRootFinder;
+        _resourcePool = resourcePool;
         _logger = logManager.GetClassLogger<FlatDiffRepository>();
 
         _compactorJobs = Channel.CreateBounded<(StateId, CachedResource)>(config.MaxInFlightCompactJob);
@@ -93,17 +102,10 @@ public class FlatDiffRepository : IFlatDiffRepository
         _currentPersistedState = reader.CurrentState;
         _trieNodeCache = new TrieNodeCache(config.TrieCacheMemoryTarget, logManager);
 
-        for (int i = 0; i < config.ConcurrentCompactor; i++)
-        {
-            _ = RunCompactor(exitSource.Token);
-        }
-
-        _ = RunPersistence(exitSource.Token);
+        _compactorTask = RunCompactor(exitSource.Token);
+        _persistenceTask = RunPersistence(exitSource.Token);
     }
 
-    private Lock _readerCacheLock = new Lock();
-    private RefCountingPersistenceReader? _cachedReader = null;
-    private readonly TrieNodeCache _trieNodeCache;
 
     public IPersistence.IPersistenceReader LeaseReader()
     {
@@ -131,37 +133,49 @@ public class FlatDiffRepository : IFlatDiffRepository
 
     private async Task RunCompactor(CancellationToken cancellationToken)
     {
-        await foreach (var (stateId, cachedResource) in _compactorJobs.Reader.ReadAllAsync(cancellationToken))
+        try
         {
-            try
+            await foreach (var (stateId, cachedResource) in _compactorJobs.Reader.ReadAllAsync(cancellationToken))
             {
-                CompactLevel(stateId, cachedResource);
-                if (stateId.blockNumber % _compactSize == 0)
+                try
                 {
-                    await _persistenceJob.Writer.WriteAsync(stateId, cancellationToken);
+                    CompactLevel(stateId, cachedResource);
+                    if (stateId.blockNumber % _compactSize == 0)
+                    {
+                        await _persistenceJob.Writer.WriteAsync(stateId, cancellationToken);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error("Compact job failed", ex);
+                    throw;
                 }
             }
-            catch (Exception ex)
-            {
-                _logger.Error("Compact job failed", ex);
-                throw;
-            }
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
     private async Task RunPersistence(CancellationToken cancellationToken)
     {
-        await foreach (var _ in _persistenceJob.Reader.ReadAllAsync(cancellationToken))
+        try
         {
-            try
+            await foreach (var _ in _persistenceJob.Reader.ReadAllAsync(cancellationToken))
             {
-                await PersistIfNeeded();
+                try
+                {
+                    await PersistIfNeeded();
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error("Persistence job failed", ex);
+                    throw;
+                }
             }
-            catch (Exception ex)
-            {
-                _logger.Error("Persistence job failed", ex);
-                throw;
-            }
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
@@ -233,23 +247,7 @@ public class FlatDiffRepository : IFlatDiffRepository
     {
         try
         {
-            Snapshot lastSnapshot;
-            using (EnterRepolockReadOnly())
-            {
-                StateId? last = _inMemorySnapshotStore.GetLast();
-                if (last == null) return;
-                if (!_inMemorySnapshotStore.TryGetValue(last.Value, out lastSnapshot)) return;
-            }
-
-            var memory = lastSnapshot.EstimateMemory(); // Note: This is slow, do it outside.
-            foreach (var keyValuePair in memory)
-            {
-                _knownStatesMemory.WithLabels(keyValuePair.Key.ToString()).Inc(keyValuePair.Value);
-            }
-            _knownStatesMemory.WithLabels("count").Inc(1);
-
-            _trieNodeCache.Add(lastSnapshot, cachedResource);
-            _resourcePool.ReturnCachedResource(cachedResource);
+            if (PopulateTrieNodeCache(cachedResource)) return;
 
             if (_compactSize <= 1) return; // Disabled
             long blockNumber = stateId.blockNumber;
@@ -271,7 +269,7 @@ public class FlatDiffRepository : IFlatDiffRepository
 
             long startingBlockNumber = ((blockNumber - 1) / _compactSize) * _compactSize;
 
-            using SnapshotBundle gatheredCache = GatherCache(stateId, startingBlockNumber);
+            using SnapshotBundle gatheredCache = GatherCache(stateId, IFlatDiffRepository.SnapshotBundleUsage.Compactor, startingBlockNumber);
             if (gatheredCache.SnapshotCount == 1)
             {
                 return;
@@ -282,7 +280,7 @@ public class FlatDiffRepository : IFlatDiffRepository
             Snapshot snapshot = gatheredCache.CompactToKnownState();
             _flatdiffimes.WithLabels("compaction", "compact_to_known_state").Observe(Stopwatch.GetTimestamp() - sw);
             sw = Stopwatch.GetTimestamp();
-            memory = snapshot.EstimateMemory();
+            Dictionary<MemoryType, long> memory = snapshot.EstimateMemory();
 
             using (EnterRepolock())
             {
@@ -325,10 +323,39 @@ public class FlatDiffRepository : IFlatDiffRepository
         }
     }
 
-    public SnapshotBundle? GatherReaderAtBaseBlock(StateId baseBlock, bool isReadOnly = false)
+    private bool PopulateTrieNodeCache(CachedResource cachedResource)
+    {
+        Snapshot lastSnapshot;
+        using (EnterRepolockReadOnly())
+        {
+            StateId? last = _inMemorySnapshotStore.GetLast();
+            if (last == null) return true;
+            if (!TryLeaseState(last.Value, out lastSnapshot)) return true;
+        }
+
+        try
+        {
+            var memory = lastSnapshot.EstimateMemory(); // Note: This is slow, do it outside.
+            foreach (var keyValuePair in memory)
+            {
+                _knownStatesMemory.WithLabels(keyValuePair.Key.ToString()).Inc(keyValuePair.Value);
+            }
+            _knownStatesMemory.WithLabels("count").Inc(1);
+
+            _trieNodeCache.Add(lastSnapshot, cachedResource);
+            _resourcePool.ReturnCachedResource(IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing, cachedResource);
+            return false;
+        }
+        finally
+        {
+            lastSnapshot.Dispose();
+        }
+    }
+
+    public SnapshotBundle? GatherReaderAtBaseBlock(StateId baseBlock, IFlatDiffRepository.SnapshotBundleUsage usage)
     {
         // TODO: Throw if not enough or return null
-        return GatherCache(baseBlock, null, isReadOnly: isReadOnly);
+        return GatherCache(baseBlock, usage, null);
     }
 
     private static Histogram _knownStatesSize = Metrics.CreateHistogram("flatdiff_known_state_size", "timer",
@@ -338,9 +365,11 @@ public class FlatDiffRepository : IFlatDiffRepository
             Buckets = Histogram.LinearBuckets(0, 1, 100)
         });
 
-    private SnapshotBundle GatherCache(StateId baseBlock, long? earliestExclusive = null, bool isReadOnly = false)
-    {
+    private SnapshotBundle GatherCache(StateId baseBlock, IFlatDiffRepository.SnapshotBundleUsage usage, long? earliestExclusive = null) {
+        long sw = Stopwatch.GetTimestamp();
         using var _ = EnterRepolockReadOnly();
+        _flatdiffimes.WithLabels("gather_cache", "repolock").Observe(Stopwatch.GetTimestamp() - sw);
+        sw =  Stopwatch.GetTimestamp();
 
         ArrayPoolList<Snapshot> knownStates = new(Math.Max(1, (int)(_inMemorySnapshotStore.KnownStatesCount / _compactSize)));
 
@@ -371,6 +400,8 @@ public class FlatDiffRepository : IFlatDiffRepository
             if (state.From.blockNumber <= earliestExclusive) break;
         }
 
+        _flatdiffimes.WithLabels("gather_cache", "gather").Observe(Stopwatch.GetTimestamp() - sw);
+        sw =  Stopwatch.GetTimestamp();
         _knownStatesSize.Observe(knownStates.Count);
 
         // Note: By the time the previous loop finished checking all state, the big cache may have added new state and removed some
@@ -390,9 +421,18 @@ public class FlatDiffRepository : IFlatDiffRepository
 
         // TODO: Measure this
         knownStates.Reverse();
+        _flatdiffimes.WithLabels("gather_cache", "reverse").Observe(Stopwatch.GetTimestamp() - sw);
+        sw =  Stopwatch.GetTimestamp();
 
         if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestExclusive}, Got {knownStates.Count} known states, {_currentPersistedState}");
-        return new SnapshotBundle(knownStates, bigCacheReader, _trieNodeCache, _resourcePool, isReadOnly: isReadOnly);
+        var res = new SnapshotBundle(
+            knownStates,
+            bigCacheReader,
+            _trieNodeCache,
+            _resourcePool,
+            usage: usage);
+        _flatdiffimes.WithLabels("gather_cache", "done").Observe(Stopwatch.GetTimestamp() - sw);
+        return res;
     }
 
     public bool TryLeaseCompactedState(StateId stateId, out Snapshot entry)
@@ -428,7 +468,7 @@ public class FlatDiffRepository : IFlatDiffRepository
                 return;
             }
 
-            // snapshot should have 1 lease here
+            // snapshot should have 2 lease here
             _inMemorySnapshotStore.AddBlock(endBlock, snapshot);
 
             _flatdiffimes.WithLabels("add_snapshot", "add_block").Observe(Stopwatch.GetTimestamp() - sw);
@@ -600,7 +640,10 @@ public class FlatDiffRepository : IFlatDiffRepository
 
                     foreach (var stateId in _inMemorySnapshotStore.GetStatesAfterBlock(currentState.blockNumber))
                     {
-                        if (stateId.blockNumber < pickedSnapshot.Value.blockNumber) toRemoveStates.Add(stateId);
+                        if (stateId.blockNumber < pickedSnapshot.Value.blockNumber)
+                        {
+                            toRemoveStates.Add(stateId);
+                        }
                     }
                 }
                 else
@@ -613,7 +656,6 @@ public class FlatDiffRepository : IFlatDiffRepository
 
             // Add the canon snapshot
             Add(pickedState);
-
             pickedState.Dispose();
 
             sw = Stopwatch.GetTimestamp();
@@ -641,35 +683,35 @@ public class FlatDiffRepository : IFlatDiffRepository
 
     private void RemoveAndReleaseCompactedKnownState(StateId stateId)
     {
-        if (_compactedKnownStates.TryGetValue(stateId, out var existingState))
+        if (_compactedKnownStates.Remove(stateId, out var existingState))
         {
-            _compactedKnownStates.Remove(stateId);
-            existingState.Dispose();
             var memory = existingState.EstimateMemory();
             foreach (var keyValuePair in memory)
             {
                 _compactedMemory.WithLabels(keyValuePair.Key.ToString()).Dec(keyValuePair.Value);
             }
             _compactedMemory.WithLabels("count").Dec(1);
+
+            existingState.Dispose();
         }
     }
 
     private void RemoveAndReleaseKnownState(StateId stateId)
     {
+        if (!_repoLock.IsWriteLockHeld) throw new InvalidOperationException("Must hold write lock to repolock to change snapshot store");
         if (_inMemorySnapshotStore.TryGetValue(stateId, out var existingState))
         {
             _inMemorySnapshotStore.Remove(stateId);
-            existingState.Dispose();
             var memory = existingState.EstimateMemory();
             foreach (var keyValuePair in memory)
             {
                 _knownStatesMemory.WithLabels(keyValuePair.Key.ToString()).Dec(keyValuePair.Value);
             }
             _knownStatesMemory.WithLabels("count").Dec();
+
+            existingState.Dispose(); // After memory
         }
     }
-
-    private List<(Hash256AsKey, TreePath)> _trieNodesSortBuffer = new List<(Hash256AsKey, TreePath)>(); // Presort make it faster
 
     public void Add(Snapshot snapshot)
     {
@@ -684,6 +726,7 @@ public class FlatDiffRepository : IFlatDiffRepository
             {
                 if (toSelfDestructStorage.Value)
                 {
+                    /*
                     int deleted = batch.SelfDestruct(toSelfDestructStorage.Key.Value);
                     if (toSelfDestructStorage.Key.Value == FlatWorldStateScope.DebugAddress)
                     {
@@ -694,6 +737,7 @@ public class FlatDiffRepository : IFlatDiffRepository
                         _logger.Warn($"Should selfdestruct {toSelfDestructStorage.Key}. Deleted {deleted}. Snapshot range {snapshot.From} {snapshot.To}");
                         throw new Exception($"Should sefl destruct not called properly {toSelfDestructStorage.Key}");
                     }
+                    */
                     continue;
                 }
 
@@ -846,5 +890,14 @@ public class FlatDiffRepository : IFlatDiffRepository
 
             return _currentPersistedState;
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _compactorTask;
+        await _persistenceTask;
+        ClearReaderCache();
+
+        return;
     }
 }

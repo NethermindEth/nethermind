@@ -4,8 +4,11 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -15,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Prometheus;
 using ZstdSharp;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -50,12 +54,22 @@ public class RocksdbPersistence : IPersistence
     // TODO: Does not help with latency, or anything. Overall use slightly more disk space. Maybe remove.
     private byte[] _zstdDictionary;
     private readonly Configuration _configuration;
+    private readonly Histogram.Child _rocksdBPersistenceTimesSlotHit;
+    private readonly Histogram.Child _rocksdBPersistenceTimesSlotMiss;
+    private readonly Histogram.Child _rocksdBPersistenceTimesSlotCompareTime;
+    private readonly Histogram.Child _rocksdBPersistenceTimesAddressHash;
 
     public record Configuration(
         bool UsePreimage = false
     )
     {
     }
+
+    private static Histogram _rocksdBPersistenceTimes = Prometheus.Metrics.CreateHistogram("rocksdb_persistence_times", "aha", new HistogramConfiguration()
+    {
+        LabelNames = new[] { "type" },
+        Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
+    });
 
     public RocksdbPersistence(IColumnsDb<FlatDbColumns> db, [KeyFilter(DbNames.Preimage)] IDb preimageDb, Configuration configuration)
     {
@@ -65,6 +79,10 @@ public class RocksdbPersistence : IPersistence
 
         LoadZstdDictionary();
 
+        _rocksdBPersistenceTimesAddressHash = _rocksdBPersistenceTimes.WithLabels("address_hash");
+        _rocksdBPersistenceTimesSlotHit = _rocksdBPersistenceTimes.WithLabels("slot_hash_hit");
+        _rocksdBPersistenceTimesSlotMiss = _rocksdBPersistenceTimes.WithLabels("slot_hash_miss");
+        _rocksdBPersistenceTimesSlotCompareTime = _rocksdBPersistenceTimes.WithLabels("slot_hash_compare_time");
         // TrainDictionary();
     }
 
@@ -224,10 +242,12 @@ public class RocksdbPersistence : IPersistence
         else
         {
             ValueHash256 hashBuffer = ValueKeccak.Zero;
-            hashBuffer = addr.ToAccountPath;
+            hashBuffer = addr.ToAccountPath; // 75ns on average
             hashBuffer.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
 
+            // around 300ns on average. 30% keccak cache hit rate.
             StorageTree.ComputeKeyWithLookup(slot, buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]);
+
             return buffer[..StorageKeyLength];
         }
     }
