@@ -275,9 +275,7 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
 
     public readonly override int GetHashCode()
     {
-        // return (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Length);
-        uint pathHash = BinaryPrimitives.ReadUInt32BigEndian(Path.Bytes);
-        return (int)BitOperations.Crc32C(pathHash, (uint)Length);
+        return (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Length);
     }
 
     /// <summary>
