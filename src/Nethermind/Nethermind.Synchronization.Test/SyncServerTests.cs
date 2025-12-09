@@ -40,7 +40,6 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test;
 
-// TODO: add tests for new block notification for eth/69
 [Parallelizable(ParallelScope.All)]
 public class SyncServerTests
 {
