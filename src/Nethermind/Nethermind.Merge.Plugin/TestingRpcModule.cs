@@ -24,7 +24,6 @@ namespace Nethermind.Merge.Plugin;
 public class TestingRpcModule(
     IBlockchainProcessor processor,
     IGasLimitCalculator gasLimitCalculator,
-    IDifficultyCalculator difficultyCalculator,
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
     ILogManager logManager)
@@ -82,7 +81,7 @@ public class TestingRpcModule(
             ParentBeaconBlockRoot = payloadAttributes.ParentBeaconBlockRoot
         };
 
-        UInt256 difficulty = difficultyCalculator.Calculate(header, parent);
+        UInt256 difficulty = UInt256.Zero;
         header.Difficulty = difficulty;
         header.TotalDifficulty = parent.TotalDifficulty + difficulty;
         header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, specProvider.GetSpec(header));
