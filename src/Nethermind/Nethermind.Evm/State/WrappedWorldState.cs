@@ -22,10 +22,10 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual bool AccountExists(Address address)
         => _innerWorldState.AccountExists(address);
 
-    public virtual void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    public virtual void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
         => _innerWorldState.AddToBalance(address, balanceChange, spec);
 
-    public virtual void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public virtual void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
         => _innerWorldState.AddToBalance(address, balanceChange, spec, out oldBalance);
 
     public virtual bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
@@ -61,10 +61,10 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void DecrementNonce(Address address, UInt256 delta)
         => _innerWorldState.DecrementNonce(address, delta);
 
-    public virtual void DeleteAccount(Address address)
+    public virtual void DeleteAccount(Address address, int? blockAccessIndex = null)
         => _innerWorldState.DeleteAccount(address);
 
-    public virtual ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    public virtual ReadOnlySpan<byte> Get(in StorageCell storageCell, int? blockAccessIndex = null)
         => _innerWorldState.Get(storageCell);
 
     public ArrayPoolList<AddressAsKey>? GetAccountChanges()
@@ -91,10 +91,10 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => _innerWorldState.HasStateForBlock(baseBlock);
 
-    public virtual void IncrementNonce(Address address, UInt256 delta)
+    public virtual void IncrementNonce(Address address, UInt256 delta, int? blockAccessIndex = null)
         => _innerWorldState.IncrementNonce(address, delta);
 
-    public virtual void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public virtual void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce, int? blockAccessIndex = null)
         => _innerWorldState.IncrementNonce(address, delta, out oldNonce);
 
     public virtual bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
@@ -118,7 +118,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void Restore(Snapshot snapshot)
         => _innerWorldState.Restore(snapshot);
 
-    public virtual void Set(in StorageCell storageCell, byte[] newValue)
+    public virtual void Set(in StorageCell storageCell, byte[] newValue, int? blockAccessIndex = null)
         => _innerWorldState.Set(storageCell, newValue);
 
     public virtual void SetNonce(Address address, in UInt256 nonce)
@@ -127,7 +127,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public void SetTransientState(in StorageCell storageCell, byte[] newValue)
         => _innerWorldState.SetTransientState(storageCell, newValue);
 
-    public virtual void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    public virtual void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
         => _innerWorldState.SubtractFromBalance(address, balanceChange, spec);
 
     public virtual void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)

@@ -30,7 +30,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     public EnumerableWithCount<BalanceChange> BalanceChanges => new(_balanceChanges.Values.Where(c => c.BlockAccessIndex != -1), _balanceChanges.Count);
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IEnumerable<NonceChange> NonceChanges => _nonceChanges.Values;
+    public EnumerableWithCount<NonceChange> NonceChanges => new(_nonceChanges.Values.Where(c => c.BlockAccessIndex != -1), _nonceChanges.Count);
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IEnumerable<CodeChange> CodeChanges => _codeChanges.Values;

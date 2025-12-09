@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -81,14 +82,14 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         // combine intermidiate BALs and receipt tracers
     }
 
-    public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
         => AddToBalance(address, balanceChange, spec, out _);
 
-    public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
     {
         if (ParallelExecutionEnabled)
         {
-            oldBalance = _innerWorldState.GetBalance(address);
+            oldBalance = GetBalanceInternal(address, blockAccessIndex.Value);
         }
         else
         {
@@ -124,23 +125,29 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         return _innerWorldState.BeginScope(baseBlock);
     }
 
-    public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    public override ReadOnlySpan<byte> Get(in StorageCell storageCell, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         if (TracingEnabled)
         {
             GeneratedBlockAccessList.AddStorageRead(storageCell);
         }
-        return _innerWorldState.Get(storageCell);
+        return GetInternal(storageCell, blockAccessIndex.Value);
     }
 
-    public override void IncrementNonce(Address address, UInt256 delta)
+    public override void IncrementNonce(Address address, UInt256 delta, int? blockAccessIndex = null)
         => IncrementNonce(address, delta, out _);
 
-    public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         if (ParallelExecutionEnabled)
         {
-            oldNonce = _innerWorldState.GetNonce(address);
+            oldNonce = GetNonceInternal(address, blockAccessIndex.Value);
         }
         else
         {
@@ -176,11 +183,14 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         return ParallelExecutionEnabled && _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
     }
 
-    public override void Set(in StorageCell storageCell, byte[] newValue)
+    public override void Set(in StorageCell storageCell, byte[] newValue, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         if (TracingEnabled)
         {
-            ReadOnlySpan<byte> oldValue = _innerWorldState.Get(storageCell);
+            ReadOnlySpan<byte> oldValue = GetInternal(storageCell, blockAccessIndex.Value);
             GeneratedBlockAccessList.AddStorageChange(storageCell, [.. oldValue], newValue);
         }
         if (!ParallelExecutionEnabled)
@@ -196,29 +206,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
 
         AddAccountRead(address, blockAccessIndex);
 
-        if (ParallelExecutionEnabled)
-        {
-            // get from BAL -> suggested block -> inner world state
-            AccountChanges? accountChanges = GetGeneratingBlockAccessList().GetAccountChanges(address);
-            if (accountChanges is not null && accountChanges.BalanceChanges.Count == 1)
-            {
-                return accountChanges.BalanceChanges.First().PostBalance;
-            }
-
-            accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
-
-            if (accountChanges is not null && accountChanges.BalanceChanges.Count > 0)
-            {
-                return accountChanges.GetBalance(blockAccessIndex.Value);
-            }
-
-            return _innerWorldState.GetBalance(address);
-            
-        }
-        else
-        {
-            return _innerWorldState.GetBalance(address);
-        }
+        return GetBalanceInternal(address, blockAccessIndex.Value);
     }
 
     public override ValueHash256 GetCodeHash(Address address)
@@ -233,11 +221,14 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         return _innerWorldState.GetCode(address);
     }
 
-    public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         if (TracingEnabled)
         {
-            UInt256 before = _innerWorldState.GetBalance(address);
+            UInt256 before = GetBalanceInternal(address, blockAccessIndex.Value);
             UInt256 after = before - balanceChange;
             GeneratedBlockAccessList.AddBalanceChange(address, before, after);
         }
@@ -247,11 +238,14 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         }
     }
 
-    public override void DeleteAccount(Address address)
+    public override void DeleteAccount(Address address, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         if (TracingEnabled)
         {
-            GeneratedBlockAccessList.DeleteAccount(address, _innerWorldState.GetBalance(address));
+            GeneratedBlockAccessList.DeleteAccount(address, GetBalanceInternal(address, blockAccessIndex.Value));
         }
         if (!ParallelExecutionEnabled)
         {
@@ -381,4 +375,89 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
 
     private BlockAccessList GetGeneratingBlockAccessList(int? blockAccessIndex = null)
         => ParallelExecutionEnabled ? _intermediateBlockAccessLists[blockAccessIndex!.Value] : GeneratedBlockAccessList;
+
+    private UInt256 GetBalanceInternal(Address address, int blockAccessIndex)
+    {
+        if (ParallelExecutionEnabled)
+        {
+            // get from BAL -> suggested block -> inner world state
+            AccountChanges? accountChanges = GetGeneratingBlockAccessList().GetAccountChanges(address);
+            if (accountChanges is not null && accountChanges.BalanceChanges.Count == 1)
+            {
+                return accountChanges.BalanceChanges.First().PostBalance;
+            }
+
+            accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+
+            if (accountChanges is not null && accountChanges.BalanceChanges.Count > 0)
+            {
+                return accountChanges.GetBalance(blockAccessIndex);
+            }
+
+            // should never happen
+            Debug.Fail("Could not find balance during parallel execution");
+            return 0;
+        }
+        else
+        {
+            return _innerWorldState.GetBalance(address);
+        }
+    }
+
+    private UInt256 GetNonceInternal(Address address, int blockAccessIndex)
+    {
+        if (ParallelExecutionEnabled)
+        {
+            // get from BAL -> suggested block -> inner world state
+            AccountChanges? accountChanges = GetGeneratingBlockAccessList().GetAccountChanges(address);
+            if (accountChanges is not null && accountChanges.NonceChanges.Count == 1)
+            {
+                return accountChanges.NonceChanges.First().NewNonce;
+            }
+
+            accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+
+            if (accountChanges is not null && accountChanges.NonceChanges.Count > 0)
+            {
+                return accountChanges.GetNonce(blockAccessIndex);
+            }
+
+            Debug.Fail("Could not find nonce during parallel execution");
+            return 0;
+        }
+        else
+        {
+            return _innerWorldState.GetNonce(address);
+        }
+    }
+
+    private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell, int blockAccessIndex)
+    {
+        if (ParallelExecutionEnabled)
+        {
+            // get from BAL -> suggested block -> inner world state
+            AccountChanges? accountChanges = GetGeneratingBlockAccessList().GetAccountChanges(storageCell.Address);
+            accountChanges.TryGetSlotChanges(storageCell.Index.ToBigEndian(), out SlotChanges? slotChanges);
+
+            if (slotChanges is not null && slotChanges.Changes.Count == 1)
+            {
+                return slotChanges.Changes.First().NewValue;
+            }
+
+            accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
+            accountChanges.TryGetSlotChanges(storageCell.Index.ToBigEndian(), out slotChanges);
+
+            if (slotChanges is not null && slotChanges.Changes.Count > 0)
+            {
+                return slotChanges.Get(blockAccessIndex);
+            }
+
+            Debug.Fail("Could not find storage value during parallel execution");
+            return [];
+        }
+        else
+        {
+            return _innerWorldState.Get(storageCell);
+        }
+    }
 }

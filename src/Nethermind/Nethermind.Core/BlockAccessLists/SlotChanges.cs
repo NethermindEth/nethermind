@@ -79,4 +79,10 @@ public class SlotChanges(byte[] slot, SortedList<int, StorageChange> changes) : 
 
         return false;
     }
+
+    public byte[] Get(int blockAccessIndex)
+    {
+        return [];
+    }
+
 }

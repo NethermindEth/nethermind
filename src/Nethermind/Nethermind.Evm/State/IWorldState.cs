@@ -40,14 +40,14 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at cell</returns>
-    ReadOnlySpan<byte> Get(in StorageCell storageCell);
+    ReadOnlySpan<byte> Get(in StorageCell storageCell, int? blockAccessIndex = null);
 
     /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <param name="newValue">Value to store</param>
-    void Set(in StorageCell storageCell, byte[] newValue);
+    void Set(in StorageCell storageCell, byte[] newValue, int? blockAccessIndex = null);
 
     /// <summary>
     /// Get the transient storage value at the specified storage cell
@@ -93,7 +93,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void RecalculateStateRoot();
 
-    void DeleteAccount(Address address);
+    void DeleteAccount(Address address, int? blockAccessIndex = null);
 
     void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
     void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default);
@@ -112,20 +112,20 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// Note: This is different from whether the account has its hash updated</returns>
     bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
 
-    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null);
 
-    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
+    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null);
 
     bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
     bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
-    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null);
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
-    void IncrementNonce(Address address, UInt256 delta);
-    void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce);
+    void IncrementNonce(Address address, UInt256 delta, int? blockAccessIndex = null);
+    void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce, int? blockAccessIndex = null);
 
     void DecrementNonce(Address address, UInt256 delta);
 
