@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -36,17 +35,19 @@ public class SnapshotBundle : IDisposable
     // Notably it holds loaded caches from trie warmer.
     private CachedResource _cachedResource;
 
-    private readonly bool _isReadOnly;
+    private readonly bool _forStateReader;
 
     public int SnapshotCount => _snapshots.Count;
 
-    private ArrayPoolList<Snapshot> _snapshots;
+    internal ArrayPoolList<Snapshot> _snapshots;
     private readonly IPersistence.IPersistenceReader _persistenceReader;
     private readonly TrieNodeCache _trieNodeCache;
     private bool _isPrewarmer;
     private bool _isDisposed;
     private readonly ResourcePool _resourcePool;
 
+    private static Gauge _activeSnapshotBundle = Metrics.CreateGauge("snapshot_bundle_active", "active", "usage");
+    private static Counter _creeatedSnapshotBundle = Metrics.CreateCounter("snapshot_bundle_created", "created", "usage");
     private static Counter _snapshotBundleEvents = Metrics.CreateCounter("snapshot_bundle_evens", "event", "type", "is_prewarmer");
     private Counter.Child _nodeGetChanged;
     private Counter.Child _nodeGetSnapshots;
@@ -84,12 +85,13 @@ public class SnapshotBundle : IDisposable
     });
     private Histogram.Child _stateNodeDepth;
     private Histogram.Child _storageNodeDepth;
+    private IFlatDiffRepository.SnapshotBundleUsage _usage;
 
     public SnapshotBundle(ArrayPoolList<Snapshot> snapshots,
         IPersistence.IPersistenceReader persistenceReader,
         TrieNodeCache trieNodeCache,
         ResourcePool resourcePool,
-        bool isReadOnly = false,
+        IFlatDiffRepository.SnapshotBundleUsage usage,
         bool isPrewarmer = false)
     {
         _snapshots = snapshots;
@@ -97,14 +99,18 @@ public class SnapshotBundle : IDisposable
         _trieNodeCache = trieNodeCache;
         _resourcePool = resourcePool;
         _isPrewarmer = isPrewarmer;
-        _isReadOnly = isReadOnly;
+        _forStateReader = usage == IFlatDiffRepository.SnapshotBundleUsage.StateReader;
+        _usage = usage;
+        _activeSnapshotBundle.WithLabels(_usage.ToString()).Inc();
+        _creeatedSnapshotBundle.WithLabels(_usage.ToString()).Inc();
 
         SetupMetric();
 
-        if (!_isReadOnly)
+        if (!_forStateReader)
         {
-            _currentPooledContent = resourcePool.GetSnapshotContent();
-            _cachedResource = resourcePool.GetCachedResource();
+            _currentPooledContent = resourcePool.GetSnapshotContent(usage);
+            _cachedResource = resourcePool.GetCachedResource(usage);
+
             ExpandCurrentPooledContent();
         }
     }
@@ -168,7 +174,7 @@ public class SnapshotBundle : IDisposable
         }
 
         _accountGet.Inc();
-        if (!_isReadOnly && !excludeChanged)
+        if (!_forStateReader && !excludeChanged)
         {
             if (_changedAccounts.TryGetValue(address, out acc)) return true;
         }
@@ -228,7 +234,7 @@ public class SnapshotBundle : IDisposable
 
         _slotGet.Inc();
 
-        if (!_isReadOnly)
+        if (!_forStateReader)
         {
             if (_changedSlots.TryGetValue((address, index), out value))
             {
@@ -273,14 +279,14 @@ public class SnapshotBundle : IDisposable
 
     public void SetChangedSlot(AddressAsKey address, in UInt256 index, byte[] value)
     {
-        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
+        if (_forStateReader) throw new InvalidOperationException("Read only snapshot bundle");
         _changedSlots[(address, index)] = value;
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash, bool isTrieWarmer)
     {
         TrieNode node;
-        if (_isReadOnly)
+        if (_forStateReader)
         {
             if (DoFindStateNodeExternal(path, hash, out node))
             {
@@ -371,7 +377,7 @@ public class SnapshotBundle : IDisposable
     {
         TrieNode node;
 
-        if (_isReadOnly)
+        if (_forStateReader)
         {
             if (DoTryFindStorageNodeExternal(address, path, hash, selfDestructStateIdx, out node))
             {
@@ -483,7 +489,7 @@ public class SnapshotBundle : IDisposable
     // This is called only during trie commit
     public void SetStateNode(in TreePath path, TrieNode newNode)
     {
-        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
+        if (_forStateReader) throw new InvalidOperationException("Read only snapshot bundle");
         if (_isDisposed) return;
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
 
@@ -497,7 +503,7 @@ public class SnapshotBundle : IDisposable
     // This is called only during trie commit
     public void SetStorageNode(Hash256AsKey addr, in TreePath path, TrieNode newNode)
     {
-        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
+        if (_forStateReader) throw new InvalidOperationException("Read only snapshot bundle");
         if (_isDisposed) return;
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
 
@@ -522,9 +528,9 @@ public class SnapshotBundle : IDisposable
         return _cachedResource.PrewarmedAddresses.TryAdd((address, slot), true);
     }
 
-    public (Snapshot, CachedResource) CollectAndApplySnapshot(StateId from, StateId to, bool isReadOnly)
+    public (Snapshot, CachedResource) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
     {
-        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
+        if (_forStateReader) throw new InvalidOperationException("Read only snapshot bundle");
 
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.
@@ -532,28 +538,32 @@ public class SnapshotBundle : IDisposable
             from: from,
             to: to,
             content: _currentPooledContent,
-            pool: _resourcePool.SnapshotPool);
+            pool: _resourcePool.GetSnapshotPool(_usage));
 
         snapshot.AcquireLease(); // For this SnapshotBundle.
         _snapshots.Add(snapshot); // Now later reads are correct
 
         // Invalidate cached resources
-        CachedResource cachedResource = _cachedResource;
-        _cachedResource = _resourcePool.GetCachedResource();
-
-        // Make and apply new snapshot content.
-        _currentPooledContent = _resourcePool.GetSnapshotContent();
-        ExpandCurrentPooledContent();
-
-        if (isReadOnly)
+        if (returnSnapshot)
         {
-            // If its read only, return null, but we first need to dispose (decrement ref count) the compiled snapshot
-            snapshot.Dispose();
-            _resourcePool.ReturnCachedResource(cachedResource);
+            CachedResource cachedResource = _cachedResource;
+            _cachedResource = _resourcePool.GetCachedResource(_usage);
+
+            // Make and apply new snapshot content.
+            _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
+            ExpandCurrentPooledContent();
+
+            return (snapshot, cachedResource);
+        }
+        else
+        {
+            snapshot.Dispose(); // Revert the lease before
+
+            _cachedResource.Clear();
+            _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
+
             return (null, null);
         }
-
-        return (snapshot, cachedResource);
     }
 
     public Snapshot CompactToKnownState()
@@ -562,10 +572,10 @@ public class SnapshotBundle : IDisposable
         if (_snapshots.Count == 0)
             return new Snapshot(
                 new StateId(-1, ValueKeccak.EmptyTreeHash), new StateId(-1, ValueKeccak.EmptyTreeHash),
-                content: _resourcePool.GetSnapshotContent(),
-                pool: _resourcePool.SnapshotPool);
+                content: _resourcePool.GetSnapshotContent(_usage),
+                pool: _resourcePool.GetSnapshotPool(IFlatDiffRepository.SnapshotBundleUsage.Compactor));
 
-        SnapshotContent content = _resourcePool.GetCompactedSnapshotPool();
+        SnapshotContent content = _resourcePool.GetSnapshotContent(IFlatDiffRepository.SnapshotBundleUsage.Compactor);
 
         ConcurrentDictionary<AddressAsKey, Account> accounts = content.Accounts;
         ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> storages = content.Storages;
@@ -650,15 +660,17 @@ public class SnapshotBundle : IDisposable
             from,
             to,
             content: content,
-            pool: _resourcePool.CompactedSnapshotPool);
+            pool: _resourcePool.GetSnapshotPool(usage: IFlatDiffRepository.SnapshotBundleUsage.Compactor));
     }
 
     public void Dispose()
     {
+        if (_isDisposed) return;
         _isDisposed = true;
-        foreach (Snapshot knownState in _snapshots)
+
+        foreach (Snapshot snapshot in _snapshots)
         {
-            knownState.Dispose();
+            snapshot.Dispose();
         }
         _snapshots.Dispose();
 
@@ -671,17 +683,19 @@ public class SnapshotBundle : IDisposable
 
         _persistenceReader.Dispose();
 
-        if (!_isReadOnly)
+        if (!_forStateReader)
         {
-            _resourcePool.ReturnSnapshotContent(_currentPooledContent);
-            _resourcePool.ReturnCachedResource(_cachedResource);
+            _resourcePool.ReturnSnapshotContent(_usage, _currentPooledContent);
+            _resourcePool.ReturnCachedResource(_usage, _cachedResource);
         }
+
+        _activeSnapshotBundle.WithLabels(_usage.ToString()).Dec();
     }
 
     // Also called SelfDestruct
     public void Clear(Address address, Hash256AsKey addressHash)
     {
-        if (_isReadOnly) throw new InvalidOperationException("Read only snapshot bundle");
+        if (_forStateReader) throw new InvalidOperationException("Read only snapshot bundle");
         bool isNewAccount = false;
         if (DoTryGetAccount(address, excludeChanged: true, out Account? account))
         {

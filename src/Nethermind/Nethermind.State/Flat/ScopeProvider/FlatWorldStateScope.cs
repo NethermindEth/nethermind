@@ -50,6 +50,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     // tasks within the trie warmers's ring buffer.
     private int _hintSequenceId = 0;
     private StateId _currentStateId;
+    private readonly ResourcePool _resourcePool;
 
     public FlatWorldStateScope(
         StateId currentStateId,
@@ -58,6 +59,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         IFlatDiffRepository flatDiffRepository,
         FlatDiffRepository.Configuration configuration,
         ITrieWarmer trieCacheWarmer,
+        ResourcePool resourcePool,
         ILogManager logManager,
         bool isReadOnly = false)
     {
@@ -65,6 +67,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         _snapshotBundle = snapshotBundle;
         _codeDb = codeDb;
         _flatDiffRepository = flatDiffRepository;
+        _resourcePool = resourcePool;
 
         _concurrencyQuota = new ConcurrencyQuota(); // Used during tree commit.
         _stateTree = new StateTree(
@@ -226,11 +229,16 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
         _storages.Clear();
 
-        (Snapshot newSnapshot, CachedResource cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, _isReadOnly);
+        bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
 
-        if (!_isReadOnly)
+        (Snapshot newSnapshot, CachedResource cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);
+
+        if (shouldAddSnapshot)
         {
-            if (_currentStateId != newStateId) _flatDiffRepository.AddSnapshot(newSnapshot, cachedResource);
+            if (_currentStateId != newStateId)
+            {
+                _flatDiffRepository.AddSnapshot(newSnapshot, cachedResource);
+            }
         }
 
         _currentStateId = newStateId;

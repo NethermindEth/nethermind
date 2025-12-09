@@ -40,7 +40,7 @@ public class ReadonlyReaderRepository
             return snapshotBundle;
         }
 
-        SnapshotBundle? bundle = _flatDiffRepository.GatherReaderAtBaseBlock(baseBlock, isReadOnly: true);
+        SnapshotBundle? bundle = _flatDiffRepository.GatherReaderAtBaseBlock(baseBlock, IFlatDiffRepository.SnapshotBundleUsage.StateReader);
         if (bundle is null) return null;
 
         RefCountingDisposableBox<SnapshotBundle> newReader = new RefCountingDisposableBox<SnapshotBundle>(bundle);
