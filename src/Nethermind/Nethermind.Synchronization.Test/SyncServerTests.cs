@@ -76,6 +76,24 @@ public class SyncServerTests
     }
 
     [Test]
+    public void Eth69_does_not_request_peer_refresh_on_known_block_range_update()
+    {
+        Context ctx = new();
+        ctx.BlockTree.IsKnownBlock(100, TestItem.KeccakB).ReturnsForAnyArgs(true);
+        ctx.SyncServer.HintBlock(TestItem.KeccakB, 100, ctx.NodeWhoSentTheBlock);
+        ctx.PeerPool.DidNotReceiveWithAnyArgs().RefreshTotalDifficulty(null!, null!);
+    }
+
+    [Test]
+    public void Eth69_requests_peer_refresh_on_unknown_block_range_update()
+    {
+        Context ctx = new();
+        ctx.BlockTree.IsKnownBlock(100, TestItem.KeccakB).ReturnsForAnyArgs(false);
+        ctx.SyncServer.HintBlock(TestItem.KeccakB, 100, ctx.NodeWhoSentTheBlock);
+        ctx.PeerPool.Received().ReceivedWithAnyArgs();
+    }
+
+    [Test]
     public void When_finding_by_hash_block_info_is_not_loaded()
     {
         Context ctx = new();
