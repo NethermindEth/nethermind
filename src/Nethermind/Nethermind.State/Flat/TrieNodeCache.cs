@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
-using NonBlocking;
 
 namespace Nethermind.State.Flat;
 
@@ -17,6 +17,7 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public class TrieNodeCache
 {
+    // Not the nonblocking variant as it use slightly less memory
     private ConcurrentDictionary<Key, TrieNode>[] _cacheShards;
     private long[] _shardMemoryUsages;
     private int _shardCount = 256;
@@ -62,7 +63,33 @@ public class TrieNodeCache
 
     public void Add(Snapshot snapshot, CachedResource cachedResource)
     {
-        if (_maxCacheMemoryThreshold == 0) return;
+        if (_maxCacheMemoryThreshold == 0)
+        {
+            // Note: still need to be done
+            // this was explicitly skipped during block processing to make commit run faster,
+            // but if this is not done, it will ccause OOM.
+            foreach (var kv in cachedResource.TrieWarmerLoadedNodes)
+            {
+                kv.Value.PrunePersistedRecursively(1);
+            }
+
+            foreach (var kv in cachedResource.LoadedStorageNodes)
+            {
+                kv.Value.PrunePersistedRecursively(1);
+            }
+
+            foreach (var kv in snapshot.StateNodes)
+            {
+                kv.Value.PrunePersistedRecursively(1);
+            }
+
+            foreach (var kv in snapshot.StorageNodes)
+            {
+                kv.Value.PrunePersistedRecursively(1);
+            }
+
+            return;
+        }
 
         void AddtoCache(Key key, TrieNode newNode)
         {
@@ -76,7 +103,6 @@ public class TrieNodeCache
             }
 
             node = newNode;
-            node.PrunePersistedRecursively(1);
             if (_cacheShards[shardIdx].TryAdd(key, node))
             {
                 long memory = node.GetMemorySize(false);
@@ -87,6 +113,7 @@ public class TrieNodeCache
 
         foreach (var kv in cachedResource.TrieWarmerLoadedNodes)
         {
+            kv.Value.PrunePersistedRecursively(1);
             Key key = new Key(null, kv.Key);
             if (!snapshot.TryGetStateNode(kv.Key, out _))
             {
@@ -96,6 +123,7 @@ public class TrieNodeCache
 
         foreach (var kv in cachedResource.LoadedStorageNodes)
         {
+            kv.Value.PrunePersistedRecursively(1);
             Key key = new Key(kv.Key.Item1.Value, kv.Key.Item2);
             if (!snapshot.TryGetStorageNode(kv.Key.Item1, kv.Key.Item2, out _))
             {
@@ -105,12 +133,14 @@ public class TrieNodeCache
 
         foreach (var kv in snapshot.StateNodes)
         {
+            kv.Value.PrunePersistedRecursively(1);
             Key key = new Key(null, kv.Key);
             AddtoCache(key, kv.Value);
         }
 
         foreach (var kv in snapshot.StorageNodes)
         {
+            kv.Value.PrunePersistedRecursively(1);
             Key key = new Key(kv.Key.Item1.Value, kv.Key.Item2);
             AddtoCache(key, kv.Value);
         }

@@ -57,9 +57,8 @@ public class FlatDbConfig: IFlatDbConfig
     public bool VerifyWithTrie { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
 
-    // 1 GB is enough for 19% dirty load. Without it, then the diff layers on its own have around 35% dirty load.
-    // public long TrieCacheMemoryTarget { get; set; } = 512.MiB();
-    public long TrieCacheMemoryTarget { get; set; } = 256.MiB();
+    // 1 GB is enough for 10% dirty load. 512 MB is pretty good at around 20%. Without it, then the diff layers on its own have around 35% dirty load.
+    public long TrieCacheMemoryTarget { get; set; } = 512.MiB();
     public bool DisableTrieWarmer { get; set; } = false;
     public bool UsePreimage { get; set; }
 }

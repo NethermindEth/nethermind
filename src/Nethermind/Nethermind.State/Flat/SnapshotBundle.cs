@@ -26,8 +26,8 @@ public class SnapshotBundle : IDisposable
     private SnapshotContent _currentPooledContent;
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<AddressAsKey, Account?> _changedAccounts;
-    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes; // Bulkset can get nodes concurrently
-    private ConcurrentDictionary<TreePath, TrieNode> _changedStateNodes; // Bulkset can get nodes concurrently
+    private NonBlocking.ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes; // Bulkset can get nodes concurrently
+    private NonBlocking.ConcurrentDictionary<TreePath, TrieNode> _changedStateNodes; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> _changedSlots; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses;
 
@@ -580,8 +580,8 @@ public class SnapshotBundle : IDisposable
         ConcurrentDictionary<AddressAsKey, Account> accounts = content.Accounts;
         ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> storages = content.Storages;
         ConcurrentDictionary<AddressAsKey, bool> selfDestructedStorageAddresses = content.SelfDestructedStorageAddresses;
-        ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = content.StorageNodes;
-        ConcurrentDictionary<TreePath, TrieNode> stateNodes = content.StateNodes;
+        NonBlocking.ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = content.StorageNodes;
+        NonBlocking.ConcurrentDictionary<TreePath, TrieNode> stateNodes = content.StateNodes;
 
         if (_snapshots.Count == 1) return _snapshots[0];
 

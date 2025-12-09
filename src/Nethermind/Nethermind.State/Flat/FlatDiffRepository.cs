@@ -342,7 +342,9 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             }
             _knownStatesMemory.WithLabels("count").Inc(1);
 
+            long sw = Stopwatch.GetTimestamp();
             _trieNodeCache.Add(lastSnapshot, cachedResource);
+            _flatdiffimes.WithLabels("compaction", "add_to_trienode_cache").Observe(Stopwatch.GetTimestamp() - sw);
             _resourcePool.ReturnCachedResource(IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing, cachedResource);
             return false;
         }
