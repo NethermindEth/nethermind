@@ -136,6 +136,7 @@ public class Eth69ProtocolHandler(
         _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
         HeadNumber = blockRangeUpdate.LatestBlock;
         HeadHash = blockRangeUpdate.LatestBlockHash;
+        SyncServer.HintBlock(blockRangeUpdate.LatestBlockHash, blockRangeUpdate.LatestBlock, this);
     }
 
     private new async Task<ReceiptsMessage69> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
