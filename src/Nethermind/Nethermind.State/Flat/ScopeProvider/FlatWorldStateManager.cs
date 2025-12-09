@@ -25,6 +25,7 @@ public class FlatWorldStateManager : IWorldStateManager
     private readonly ILogManager _logManager;
     private readonly FlatDiffRepository.Configuration _configuration;
     private readonly FlatScopeProvider _mainWorldState;
+    private readonly ResourcePool _resourcePool;
 
     public FlatWorldStateManager(
         IFlatDiffRepository flatDiffRepository,
@@ -33,6 +34,7 @@ public class FlatWorldStateManager : IWorldStateManager
         TrieWarmer trieWarmer,
         IProcessExitSource exitSource,
         [KeyFilter(DbNames.Code)] IDb codeDb,
+        ResourcePool resourcePool,
         ILogManager logManager
     )
     {
@@ -42,7 +44,15 @@ public class FlatWorldStateManager : IWorldStateManager
         _logManager = logManager;
         _configuration = configuration;
         _exitSource = exitSource;
-        _mainWorldState = new FlatScopeProvider(codeDb, flatDiffRepository, configuration, trieWarmer, logManager);
+        _resourcePool = resourcePool;
+        _mainWorldState = new FlatScopeProvider(
+            codeDb,
+            flatDiffRepository,
+            configuration,
+            trieWarmer,
+            resourcePool,
+            IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing,
+            logManager);
     }
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
@@ -51,7 +61,15 @@ public class FlatWorldStateManager : IWorldStateManager
     public IReadOnlyKeyValueStore? HashServer => null;
     public IWorldStateScopeProvider CreateResettableWorldState()
     {
-        return new FlatScopeProvider(_codeDb, _flatDiffRepository, _configuration, new NoopTrieWarmer(), _logManager, isReadOnly: true);
+        return new FlatScopeProvider(
+            _codeDb,
+            _flatDiffRepository,
+            _configuration,
+            new NoopTrieWarmer(),
+            _resourcePool,
+            IFlatDiffRepository.SnapshotBundleUsage.ReadOnlyProcessingEnv,
+            _logManager,
+            isReadOnly: true);
     }
 
     event EventHandler<ReorgBoundaryReached>? IWorldStateManager.ReorgBoundaryReached
@@ -67,6 +85,8 @@ public class FlatWorldStateManager : IWorldStateManager
             _flatDiffRepository,
             _configuration,
             new NoopTrieWarmer(),
+            _resourcePool,
+            IFlatDiffRepository.SnapshotBundleUsage.ReadOnlyProcessingEnv,
             _logManager,
             isReadOnly: true);
         return new FakeOverridableWorldScope(scopeProvider, _flatStateReader);

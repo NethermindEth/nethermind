@@ -30,6 +30,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddSingleton<ICanonicalStateRootFinder, CanonicalStateRootFinder>()
             .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
             .AddSingleton<IFlatDiffRepository, FlatDiffRepository>()
+            .AddSingleton<ResourcePool>()
             .AddSingleton<Importer>()
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
             .AddSingleton<IPersistence, RocksdbPersistence>()

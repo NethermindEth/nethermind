@@ -17,20 +17,30 @@ namespace Nethermind.State;
 
 public class ResourcePool
 {
-    private ObjectPool<SnapshotContent> _snapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(true));
-    private ObjectPool<SnapshotContent> _compactedSnapshotPool = new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(true));
-    private ObjectPool<CachedResource> _cachedResourcePool = new DefaultObjectPool<CachedResource>(new CachedResourcePolicy());
 
-    public ObjectPool<SnapshotContent> SnapshotPool => _snapshotPool;
-    public ObjectPool<SnapshotContent> CompactedSnapshotPool => _compactedSnapshotPool;
+    private Dictionary<IFlatDiffRepository.SnapshotBundleUsage, ObjectPool<SnapshotContent>> _snapshotPools = new()
+    {
+        { IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing , new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing)) },
+        { IFlatDiffRepository.SnapshotBundleUsage.ReadOnlyProcessingEnv , new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(IFlatDiffRepository.SnapshotBundleUsage.ReadOnlyProcessingEnv)) },
+        { IFlatDiffRepository.SnapshotBundleUsage.StateReader , new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(IFlatDiffRepository.SnapshotBundleUsage.StateReader)) },
+        { IFlatDiffRepository.SnapshotBundleUsage.Compactor , new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(IFlatDiffRepository.SnapshotBundleUsage.Compactor)) },
+    };
 
-    private static Counter _createdSnapshotContent = Metrics.CreateCounter("resourcepool_created_snapshot_content", "created snapshot content");
+    private Dictionary<IFlatDiffRepository.SnapshotBundleUsage, ObjectPool<CachedResource>> _cachedResourcePools = new()
+    {
+        { IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing , new DefaultObjectPool<CachedResource>(new CachedResourcePolicy()) },
+        { IFlatDiffRepository.SnapshotBundleUsage.ReadOnlyProcessingEnv , new DefaultObjectPool<CachedResource>(new CachedResourcePolicy()) },
+        { IFlatDiffRepository.SnapshotBundleUsage.StateReader , new DefaultObjectPool<CachedResource>(new CachedResourcePolicy()) },
+        { IFlatDiffRepository.SnapshotBundleUsage.Compactor , new DefaultObjectPool<CachedResource>(new CachedResourcePolicy()) }
+    };
 
-    private class SnapshotContentPolicy(bool allow) : IPooledObjectPolicy<SnapshotContent>
+    private static Counter _createdSnapshotContent = Metrics.CreateCounter("resourcepool_created_snapshot_content", "created snapshot content", "compacted");
+
+    private class SnapshotContentPolicy(IFlatDiffRepository.SnapshotBundleUsage usage) : IPooledObjectPolicy<SnapshotContent>
     {
         public SnapshotContent Create()
         {
-            _createdSnapshotContent.Inc();
+            _createdSnapshotContent.WithLabels(usage.ToString()).Inc();
             return new SnapshotContent(
                 Accounts: new ConcurrentDictionary<AddressAsKey, Account?>(),
                 Storages: new ConcurrentDictionary<(AddressAsKey, UInt256), byte[]?>(),
@@ -43,7 +53,7 @@ public class ResourcePool
         public bool Return(SnapshotContent obj)
         {
             obj.Reset();
-            return allow;
+            return true;
         }
     }
 
@@ -65,28 +75,28 @@ public class ResourcePool
         }
     }
 
-    public SnapshotContent GetSnapshotContent()
+    public SnapshotContent GetSnapshotContent(IFlatDiffRepository.SnapshotBundleUsage usage)
     {
-        return _snapshotPool.Get();
+        return _snapshotPools[usage].Get();
     }
 
-    public void ReturnSnapshotContent(SnapshotContent snapshotContent)
+    public void ReturnSnapshotContent(IFlatDiffRepository.SnapshotBundleUsage usage, SnapshotContent snapshotContent)
     {
-        _snapshotPool.Return(snapshotContent);
+        _snapshotPools[usage].Return(snapshotContent);
     }
 
-    public SnapshotContent GetCompactedSnapshotPool()
+    public ObjectPool<SnapshotContent> GetSnapshotPool(IFlatDiffRepository.SnapshotBundleUsage usage)
     {
-        return _compactedSnapshotPool.Get();
+        return _snapshotPools[usage];
     }
 
-    public CachedResource GetCachedResource()
+    public CachedResource GetCachedResource(IFlatDiffRepository.SnapshotBundleUsage usage)
     {
-        return _cachedResourcePool.Get();
+        return _cachedResourcePools[usage].Get();
     }
 
-    public void ReturnCachedResource(CachedResource cachedResource)
+    public void ReturnCachedResource(IFlatDiffRepository.SnapshotBundleUsage usage, CachedResource cachedResource)
     {
-        _cachedResourcePool.Return(cachedResource);
+        _cachedResourcePools[usage].Return(cachedResource);
     }
 }

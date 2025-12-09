@@ -13,11 +13,19 @@ namespace Nethermind.State.Flat;
 public interface IFlatDiffRepository
 {
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-    SnapshotBundle? GatherReaderAtBaseBlock(StateId baseBlock, bool isReadOnly = false);
+    SnapshotBundle? GatherReaderAtBaseBlock(StateId baseBlock, SnapshotBundleUsage usage);
     void AddSnapshot(Snapshot snapshot, CachedResource cachedResource);
     void FlushCache(CancellationToken cancellationToken);
     bool HasStateForBlock(StateId stateId);
     StateId? FindStateIdForStateRoot(Hash256 stateRoot); // Ugh...
     StateId? FindLatestAvailableState();
     IPersistence.IPersistenceReader LeaseReader();
+
+    enum SnapshotBundleUsage
+    {
+        MainBlockProcessing,
+        StateReader,
+        ReadOnlyProcessingEnv,
+        Compactor,
+    }
 }
