@@ -127,4 +127,5 @@
   <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
   <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
   <Project Path="Nethermind.Xdc/Nethermind.Xdc.csproj" />
+  <Project Path="Paprika/src/Paprika/Paprika.csproj" />
 </Solution>

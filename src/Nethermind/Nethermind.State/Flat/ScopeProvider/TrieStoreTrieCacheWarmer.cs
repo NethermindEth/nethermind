@@ -3,6 +3,9 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Trie;
+using Prometheus;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 

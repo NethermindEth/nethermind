@@ -53,12 +53,14 @@ public interface IFlatDbConfig: IConfig
 
 public enum FlatLayout
 {
-    FlatSeparateTopStorage,
     Flat,
+    FlatSeparateTopStorage,
     FlatInTrie,
     PreimageFlat,
     LMDBFlat,
     FlatTruncatedLeaf,
+    PaprikaFlat,
+    PaprikaFlatSlotOnly
 }
 
 public class FlatDbConfig: IFlatDbConfig

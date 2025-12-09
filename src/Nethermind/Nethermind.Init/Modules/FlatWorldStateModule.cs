@@ -23,6 +23,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
+using Paprika.Store;
 
 namespace Nethermind.Init.Modules;
 
@@ -160,6 +161,28 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                     ctx.Resolve<ImportStateOnStateSyncFinished>();
                 });
         }
+
+        if (flatDbConfig.Layout == FlatLayout.PaprikaFlat)
+        {
+            builder
+                .AddSingleton<Paprika.IDb, IInitConfig>(ConfigureDb)
+                .AddSingleton<IPersistence, PaprikaAndRocksdbPersistence>()
+                .AddSingleton<PaprikaAndRocksdbPersistence.Configuration>(new PaprikaAndRocksdbPersistence.Configuration(
+                    UsePreimage: false
+                ))
+                ;
+        }
+
+        if (flatDbConfig.Layout == FlatLayout.PaprikaFlatSlotOnly)
+        {
+            builder
+                .AddSingleton<Paprika.IDb, IInitConfig>(ConfigureDb)
+                .AddSingleton<IPersistence, PaprikaOnlySlotAndRocksdbPersistence>()
+                .AddSingleton<PaprikaOnlySlotAndRocksdbPersistence.Configuration>(new PaprikaOnlySlotAndRocksdbPersistence.Configuration(
+                    UsePreimage: false
+                ))
+                ;
+        }
     }
 
     private LightningEnvironment ConfigureLightningEnv(IComponentContext arg)
@@ -189,6 +212,24 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
         return env;
     }
 
+    private Paprika.IDb ConfigureDb(IInitConfig initConfig)
+    {
+        if (initConfig.DiagnosticMode == DiagnosticMode.MemDb)
+        {
+            return PagedDb.NativeMemoryDb(
+                20.GiB(),
+                128);
+        }
+
+        var dbPath = initConfig.BaseDbPath + "/paprika/";
+
+        return PagedDb.MemoryMappedDb(
+            200.GiB(),
+            128, // TODO: CHange history depht to more than a byte
+            dbPath,
+            true);
+    }
+
     private class FlatBlockCacheAdjuster : IRocksDbConfigFactory, IDisposable
     {
         private readonly IRocksDbConfigFactory _rocksDbConfigFactory;
@@ -200,6 +241,14 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
         {
             _logger = logManager.GetClassLogger<FlatBlockCacheAdjuster>();
             _rocksDbConfigFactory = rocksDbConfigFactory;
+
+            bool isPaprika = flatDbConfig.Layout == FlatLayout.PaprikaFlat || flatDbConfig.Layout == FlatLayout.PaprikaFlatSlotOnly;
+            if (isPaprika && flatDbConfig.BlockCacheSizeBudget < 2.GiB())
+            {
+                _logger.Warn($"Increasing flat block cache budgett from {flatDbConfig.BlockCacheSizeBudget/1.GiB()}GB to 2GB");
+            }
+
+
             _flatDbBlockCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr((uint)flatDbConfig.BlockCacheSizeBudget));
 
             FlatDbColumns[] columns;
@@ -208,6 +257,16 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             {
                 columns =
                 [
+                    FlatDbColumns.StateNodes,
+                    FlatDbColumns.StorageNodes
+                ];
+            }
+            else if (isPaprika)
+            {
+                // Paprika take so much memory that trie really suffers.
+                columns =
+                [
+                    FlatDbColumns.Account,
                     FlatDbColumns.StateNodes,
                     FlatDbColumns.StorageNodes
                 ];

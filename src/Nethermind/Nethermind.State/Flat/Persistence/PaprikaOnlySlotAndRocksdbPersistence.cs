@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -11,11 +12,16 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Paprika;
+using Paprika.Data;
 using Prometheus;
+using ZstdSharp;
+using Account = Nethermind.Core.Account;
+using IDb = Nethermind.Db.IDb;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RocksdbPersistence : IPersistence
+public class PaprikaOnlySlotAndRocksdbPersistence : IPersistence
 {
     private readonly IColumnsDb<FlatDbColumns> _db;
     private static byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
@@ -34,10 +40,6 @@ public class RocksdbPersistence : IPersistence
     private const int StateNodesTopKeyLength = StateNodesTopPathLength + PathLengthLength;
 
     private const int StorageNodesKeyLength = StorageHashPrefixLength + FullPathLength + PathLengthLength;
-    // private const int StorageNodesTopThreshold = 4;
-    private const int StorageNodesTopThreshold = 3;
-    private const int StorageNodesTopPathLength = 2;
-    private const int StorageNodesTopKeyLength = StorageHashPrefixLength + StorageNodesTopPathLength + PathLengthLength;
 
     internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
@@ -46,28 +48,27 @@ public class RocksdbPersistence : IPersistence
     private readonly Histogram.Child _rocksdBPersistenceTimesSlotMiss;
     private readonly Histogram.Child _rocksdBPersistenceTimesSlotCompareTime;
     private readonly Histogram.Child _rocksdBPersistenceTimesAddressHash;
+    private readonly Paprika.IDb _paprikaDb;
 
     public record Configuration(
-        bool UsePreimage = false,
-        bool FlatInTrie = false,
-        bool SeparateStorageTop = false
-    )
-    {
+        bool UsePreimage = false
+    ) {
     }
 
     private static Histogram _rocksdBPersistenceTimes = DevMetric.Factory.CreateHistogram("rocksdb_persistence_times", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "type" },
-        // Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
         Buckets = [1]
     });
 
-    public RocksdbPersistence(
+    public PaprikaOnlySlotAndRocksdbPersistence(
         IColumnsDb<FlatDbColumns> db,
+        Paprika.IDb paprikaDb,
         Configuration configuration)
     {
         _configuration = configuration;
         _db = db;
+        _paprikaDb = paprikaDb;
 
         _rocksdBPersistenceTimesAddressHash = _rocksdBPersistenceTimes.WithLabels("address_hash");
         _rocksdBPersistenceTimesSlotHit = _rocksdBPersistenceTimes.WithLabels("slot_hash_hit");
@@ -88,15 +89,6 @@ public class RocksdbPersistence : IPersistence
         return new StateId(blockNumber, stateHash);
     }
 
-    internal static void SetCurrentState(IWriteOnlyKeyValueStore kv, StateId stateId)
-    {
-        Span<byte> bytes = stackalloc byte[8 + 32];
-        BinaryPrimitives.WriteInt64BigEndian(bytes[..8], stateId.blockNumber);
-        stateId.stateRoot.BytesAsSpan.CopyTo(bytes[8..]);
-
-        kv.PutSpan(CurrentStateKey, bytes);
-    }
-
     private ReadOnlySpan<byte> EncodeAccountKey(Span<byte> buffer, in Address addr)
     {
         if (_configuration.UsePreimage)
@@ -108,30 +100,18 @@ public class RocksdbPersistence : IPersistence
         {
             ValueHash256 hashBuffer = ValueKeccak.Zero;
             hashBuffer = addr.ToAccountPath;
-            hashBuffer.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
+            hashBuffer.Bytes[..StateKeyPrefixLength].CopyTo(buffer);
             return buffer[..StateKeyPrefixLength];
         }
     }
 
-    internal ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, in Address addr, in UInt256 slot)
+    internal static void SetCurrentState(IWriteOnlyKeyValueStore kv, StateId stateId)
     {
-        if (_configuration.UsePreimage)
-        {
-            addr.Bytes.CopyTo(buffer);
-            slot.ToBigEndian(buffer[StorageHashPrefixLength..]);
-            return buffer[..StorageKeyLength];
-        }
-        else
-        {
-            ValueHash256 hashBuffer = ValueKeccak.Zero;
-            hashBuffer = addr.ToAccountPath; // 75ns on average
-            hashBuffer.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
+        Span<byte> bytes = stackalloc byte[8 + 32];
+        BinaryPrimitives.WriteInt64BigEndian(bytes[..8], stateId.blockNumber);
+        stateId.stateRoot.BytesAsSpan.CopyTo(bytes[8..]);
 
-            // around 300ns on average. 30% keccak cache hit rate.
-            StorageTree.ComputeKeyWithLookup(slot, buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]);
-
-            return buffer[..StorageKeyLength];
-        }
+        kv.PutSpan(CurrentStateKey, bytes);
     }
 
     internal ReadOnlySpan<byte> EncodeStorageKeyHashed(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash)
@@ -163,17 +143,10 @@ public class RocksdbPersistence : IPersistence
         return buffer[..StorageNodesKeyLength];
     }
 
-    internal static ReadOnlySpan<byte> EncodeStorageNodeTopKey(Span<byte> buffer, Hash256 addr, in TreePath path)
-    {
-        addr.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
-        path.Path.Bytes[..StorageNodesTopPathLength].CopyTo(buffer[StorageHashPrefixLength..]);
-        buffer[StorageHashPrefixLength + StorageNodesTopPathLength] = (byte)path.Length;
-        return buffer[..StorageNodesTopKeyLength];
-    }
-
     public IPersistence.IPersistenceReader CreateReader()
     {
-        return new PersistenceReader(_db.CreateSnapshot(), this);
+        IReadOnlyBatch paprikaSnapshot = _paprikaDb.BeginReadOnlyBatch();
+        return new PersistenceReader(_db.CreateSnapshot(), paprikaSnapshot, this);
     }
 
     public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to)
@@ -187,33 +160,33 @@ public class RocksdbPersistence : IPersistence
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        return new WriteBatch(this, _db.StartWriteBatch(), dbSnap, to);
+        var paprikaBatch = _paprikaDb.BeginNextBatch();
+        return new WriteBatch(this, paprikaBatch, _db.StartWriteBatch(), dbSnap, to);
     }
 
     private class WriteBatch : IPersistence.IWriteBatch
     {
         private IWriteOnlyKeyValueStore state;
-        private IWriteOnlyKeyValueStore storage;
         private IWriteOnlyKeyValueStore stateNodes;
         private IWriteOnlyKeyValueStore stateTopNodes;
         private IWriteOnlyKeyValueStore storageNodes;
-        private IWriteOnlyKeyValueStore storageTopNodes;
 
-        private ISortedKeyValueStore storageSnap;
         private ISortedKeyValueStore storageNodesSnap;
-        private ISortedKeyValueStore storageTopNodesSnap;
+        private readonly IBatch _paprikaBatch;
 
         private AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
         WriteFlags _flags = WriteFlags.None;
-        private readonly RocksdbPersistence _mainDb;
+        private readonly PaprikaOnlySlotAndRocksdbPersistence _mainDb;
         private readonly IColumnsWriteBatch<FlatDbColumns> _batch;
         private readonly IColumnDbSnapshot<FlatDbColumns> _dbSnap;
         private readonly StateId _to;
-        private readonly bool _flatInTrie;
-        private readonly bool _separateStorageTop;
 
-        public WriteBatch(RocksdbPersistence mainDb,
+        public bool ConcurrentStorage => true;
+
+        public WriteBatch(
+            PaprikaOnlySlotAndRocksdbPersistence mainDb,
+            IBatch paprikaBatch,
             IColumnsWriteBatch<FlatDbColumns> batch,
             IColumnDbSnapshot<FlatDbColumns> dbSnap,
             StateId to)
@@ -223,27 +196,16 @@ public class RocksdbPersistence : IPersistence
             _dbSnap = dbSnap;
             _to = to;
 
-            _flatInTrie = mainDb._configuration.FlatInTrie;
-            _separateStorageTop = mainDb._configuration.SeparateStorageTop;
-            if (mainDb._configuration.FlatInTrie)
-            {
-                state = batch.GetColumnBatch(FlatDbColumns.StateNodes);
-                storage = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
-            }
-            else
-            {
-                state = batch.GetColumnBatch(FlatDbColumns.Account);
-                storage = batch.GetColumnBatch(FlatDbColumns.Storage);
-            }
+            state = batch.GetColumnBatch(FlatDbColumns.Account);
 
             stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
             stateTopNodes = batch.GetColumnBatch(FlatDbColumns.StateTopNodes);
             storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
-            storageTopNodes = batch.GetColumnBatch(FlatDbColumns.StorageTopNodes);
 
-            storageSnap = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage));
+            _paprikaBatch = paprikaBatch;
+            _paprikaBatch.SetMetadata((uint)to.blockNumber, to.stateRoot.ToCommitment().ToPaprikaKeccak());
+
             storageNodesSnap = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.StorageNodes));
-            storageTopNodesSnap = ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageTopNodes));
         }
 
         public void Dispose()
@@ -251,6 +213,9 @@ public class RocksdbPersistence : IPersistence
             SetCurrentState(_batch.GetColumnBatch(FlatDbColumns.Metadata), _to);
             _batch.Dispose();
             _dbSnap.Dispose();
+            _paprikaBatch.Commit(CommitOptions.FlushDataAndRoot).AsTask().Wait();
+            _paprikaBatch.Dispose();
+            _mainDb._paprikaDb.Flush();
         }
 
         public int SelfDestruct(Address addr)
@@ -274,37 +239,8 @@ public class RocksdbPersistence : IPersistence
                 }
             }
 
-            if (_separateStorageTop)
-            {
-                using (ISortedView storageNodeReader = storageTopNodesSnap.GetViewBetween(firstKey, lastKey))
-                {
-                    var storageNodeWriter = storageNodes;
-                    while (storageNodeReader.MoveNext())
-                    {
-                        storageNodeWriter.Remove(storageNodeReader.CurrentKey);
-                        removedEntry++;
-                    }
-                }
-            }
-
-            if (!_flatInTrie)
-            {
-                removedEntry = 0; // Debug
-                // for storage the prefix might change depending on the encoding
-                firstKey.Fill(0x00);
-                lastKey.Fill(0xff);
-                _mainDb.EncodeAccountKey(firstKey, addr);
-                _mainDb.EncodeAccountKey(lastKey, addr);
-                using (ISortedView storageReader = storageSnap.GetViewBetween(firstKey, lastKey))
-                {
-                    IWriteOnlyKeyValueStore? storageWriter = storage;
-                    while (storageReader.MoveNext())
-                    {
-                        storageWriter.Remove(storageReader.CurrentKey);
-                        removedEntry++;
-                    }
-                }
-            }
+            Key key = Key.StorageCell(NibblePath.FromKey(addr.ToPaprikaKeccak()), NibblePath.Empty);
+            _paprikaBatch.DeleteByPrefix(key);
 
             return removedEntry;
         }
@@ -322,21 +258,32 @@ public class RocksdbPersistence : IPersistence
 
         public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
         {
-            ReadOnlySpan<byte> theKey =  _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot);
-            storage.PutSpan(theKey, value, _flags);
+            ValueHash256 addrHash = addr.ToAccountPath.ToHash256();
+            ValueHash256 slotHash = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(slot, slotHash.BytesAsSpan);
+
+            SetStorageRaw(in addrHash, in slotHash, value);
         }
 
         public void RemoveStorage(Address addr, UInt256 slot)
         {
-            ReadOnlySpan<byte> theKey = _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot);
-            storage.Remove(theKey);
+            NibblePath contract = NibblePath.FromKey(addr.ToPaprikaKeccak());
+            Key key = Key.StorageCell(contract, slot.SlotToPaprikaKeccak());
+            _paprikaBatch.SetRaw(key, StorageTree.ZeroBytes);
+        }
+
+        private void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ReadOnlySpan<byte> value)
+        {
+            if (_mainDb._configuration.UsePreimage) throw new InvalidOperationException("Cannot set raw when using preimage");
+
+            NibblePath contract = NibblePath.FromKey(addrHash.ToPaprikaKeccak());
+            Key key = Key.StorageCell(contract, slotHash.ToPaprikaKeccak());
+            _paprikaBatch.SetRaw(key, value);
         }
 
         public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
         {
-            if (_mainDb._configuration.UsePreimage) throw new InvalidOperationException("Cannot set raw when using preimage");
-
-            storage.PutSpan(_mainDb.EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash.ValueHash256, slotHash.ValueHash256), value, _flags);
+            SetStorageRaw(addrHash.ValueHash256, slotHash.ValueHash256, value);
         }
 
         public void SetAccountRaw(Hash256 addrHash, Account account)
@@ -362,14 +309,7 @@ public class RocksdbPersistence : IPersistence
             }
             else
             {
-                if (_separateStorageTop && path.Length <= StorageNodesTopThreshold)
-                {
-                    storageTopNodes.PutSpan(EncodeStorageNodeTopKey(stackalloc byte[StorageNodesTopKeyLength], address, path), tn.FullRlp.Span, _flags);
-                }
-                else
-                {
-                    storageNodes.PutSpan(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, path), tn.FullRlp.Span, _flags);
-                }
+                storageNodes.PutSpan(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, path), tn.FullRlp.Span, _flags);
             }
         }
     }
@@ -378,38 +318,24 @@ public class RocksdbPersistence : IPersistence
     {
         private readonly IColumnDbSnapshot<FlatDbColumns> _db;
         private readonly IReadOnlyKeyValueStore _state;
-        private readonly IReadOnlyKeyValueStore _storage;
         private readonly IReadOnlyKeyValueStore _stateNodes;
         private readonly IReadOnlyKeyValueStore _stateTopNodes;
         private readonly IReadOnlyKeyValueStore _storageNodes;
-        private readonly IReadOnlyKeyValueStore _storageTopNodes;
-        private readonly RocksdbPersistence _mainDb;
+        private readonly PaprikaOnlySlotAndRocksdbPersistence _mainDb;
+        private readonly IReadOnlyBatch _paprikaSnapshot;
         private readonly bool _usePreimage;
-        private readonly bool _flatInTrie;
-        private readonly bool _separateStorageTop;
 
-        public PersistenceReader(IColumnDbSnapshot<FlatDbColumns> db, RocksdbPersistence mainDb)
+        public PersistenceReader(IColumnDbSnapshot<FlatDbColumns> db, IReadOnlyBatch paprikaSnapshot, PaprikaOnlySlotAndRocksdbPersistence mainDb)
         {
             _usePreimage = mainDb._configuration.UsePreimage;
-            _flatInTrie = mainDb._configuration.FlatInTrie;
-            _separateStorageTop = mainDb._configuration.SeparateStorageTop;
             _db = db;
             _mainDb = mainDb;
             CurrentState = ReadCurrentState(db.GetColumn(FlatDbColumns.Metadata));
-            if (_flatInTrie)
-            {
-                _state = _db.GetColumn(FlatDbColumns.StateNodes);
-                _storage = _db.GetColumn(FlatDbColumns.StorageNodes);
-            }
-            else
-            {
-                _state = _db.GetColumn(FlatDbColumns.Account);
-                _storage = _db.GetColumn(FlatDbColumns.Storage);
-            }
+            _paprikaSnapshot = paprikaSnapshot;
+            _state = _db.GetColumn(FlatDbColumns.Account);
             _stateNodes = _db.GetColumn(FlatDbColumns.StateNodes);
             _stateTopNodes = _db.GetColumn(FlatDbColumns.StateTopNodes);
             _storageNodes = _db.GetColumn(FlatDbColumns.StorageNodes);
-            _storageTopNodes = _db.GetColumn(FlatDbColumns.StorageTopNodes);
         }
 
         public StateId CurrentState { get; }
@@ -417,26 +343,8 @@ public class RocksdbPersistence : IPersistence
         public void Dispose()
         {
             _db.Dispose();
+            _paprikaSnapshot.Dispose();
         }
-
-        /*
-        private Decompressor RentDecompressor()
-        {
-            Decompressor? decompressor = _decompressor;
-            if (decompressor is null) return _mainDb.CreateDecompressor();
-            if (Interlocked.CompareExchange(ref _decompressor, null, decompressor) == decompressor) return decompressor;
-            return _mainDb.CreateDecompressor();
-        }
-
-        private void ReturnDecompressor(Decompressor decompressor)
-        {
-            if (Interlocked.CompareExchange(ref _decompressor, decompressor, null) == null)
-            {
-                return;
-            }
-            decompressor.Dispose();
-        }
-        */
 
         public bool TryGetAccount(Address address, out Account? acc)
         {
@@ -463,25 +371,25 @@ public class RocksdbPersistence : IPersistence
             }
         }
 
-        public bool TryGetSlot(Address address, in UInt256 index, out byte[] valueBytes)
+        public bool TryGetSlot(Address addr, in UInt256 slot, out byte[] valueBytes)
         {
-            ReadOnlySpan<byte> theKey = _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], address, index);
-            Span<byte> value = _storage.GetSpan(theKey);
-            try
+            NibblePath contract = NibblePath.FromKey(addr.ToPaprikaKeccak());
+            Key key = Key.StorageCell(contract, slot.SlotToPaprikaKeccak());
+
+            if (_paprikaSnapshot.TryGet(key, out ReadOnlySpan<byte> span))
             {
-                if (value.IsNullOrEmpty())
+                if (span.IsEmpty)
                 {
                     valueBytes = null;
                     return true;
                 }
 
-                valueBytes = value.ToArray();
+                valueBytes = span.ToArray();
                 return true;
             }
-            finally
-            {
-                _storage.DangerousReleaseMemory(value);
-            }
+
+            valueBytes = null;
+            return true;
         }
 
         public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
@@ -499,14 +407,7 @@ public class RocksdbPersistence : IPersistence
             }
             else
             {
-                if (_separateStorageTop && path.Length <= StorageNodesTopThreshold)
-                {
-                    return _storageTopNodes.Get(EncodeStorageNodeTopKey(stackalloc byte[StorageNodesTopKeyLength], address, in path));
-                }
-                else
-                {
-                    return _storageNodes.Get(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, in path));
-                }
+                return _storageNodes.Get(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, in path));
             }
         }
 
@@ -523,10 +424,22 @@ public class RocksdbPersistence : IPersistence
 
         public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash)
         {
+            return GetStorageRaw(addrHash!.ValueHash256, slotHash.ValueHash256);
+        }
+
+        public byte[]? GetStorageRaw(ValueHash256 addrHash, ValueHash256 slotHash)
+        {
             if (_usePreimage) throw new InvalidOperationException("Raw operation not available in preimage mode");
-            Span<byte> keySpan = stackalloc byte[StorageKeyLength];
-            ReadOnlySpan<byte> storageKey = _mainDb.EncodeStorageKeyHashed(keySpan, addrHash.ValueHash256, slotHash.ValueHash256);
-            return _storage.Get(storageKey);
+
+            NibblePath contract = NibblePath.FromKey(addrHash.ToPaprikaKeccak());
+            Key key = Key.StorageCell(contract, slotHash.ToPaprikaKeccak());
+
+            if (_paprikaSnapshot.TryGet(key, out ReadOnlySpan<byte> span))
+            {
+                return span.ToArray();
+            }
+
+            return null;
         }
     }
 }

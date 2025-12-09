@@ -36,6 +36,7 @@ public interface IPersistence
 
         void SetStorageRaw(Hash256? addrHash, Hash256 slotHash, ReadOnlySpan<byte> value);
         void SetAccountRaw(Hash256? addrHash, Account account);
+        bool ConcurrentStorage => false;
     }
 
     bool SupportConcurrentWrites => true;
