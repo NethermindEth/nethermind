@@ -31,14 +31,14 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public List<V2ConfigParams> V2Configs { get; set; } = new List<V2ConfigParams>();
 
     public Address[] GenesisMasterNodes { get; set; }
-    public Address BlockSignersAddress { get ; set ; }
-    public Address RandomizeSMCBinary { get ; set ; }
-    public long BlackListHFNumber { get ; set ; }
-    public long EpochBlockOpening { get ; set ; }
-    public long EpochBlockRandomize { get ; set ; }
-    public long MergeSignRange { get ; set ; }
-    public long TIP2019Block { get ; set ; }
-    public Address[] BlackListedAddresses { get ; set ; }
+    public Address BlockSignersAddress { get; set; }
+    public Address RandomizeSMCBinary { get; set; }
+    public long BlackListHFNumber { get; set; }
+    public long EpochBlockOpening { get; set; }
+    public long EpochBlockRandomize { get; set; }
+    public long MergeSignRange { get; set; }
+    public long TIP2019Block { get; set; }
+    public Address[] BlackListedAddresses { get; set; }
 
     public void ApplyV2Config(ulong round)
     {

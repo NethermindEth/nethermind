@@ -50,7 +50,7 @@ internal class SpecialTransactionsTests
 
             for (int i = 0; i < count; i++)
             {
-                (source, destination)  = swap(source, destination);
+                (source, destination) = swap(source, destination);
                 CreateTransferTxFrom(source, destination, amount, chain);
             }
         });
@@ -107,7 +107,7 @@ internal class SpecialTransactionsTests
         }
         while (!IsTimeForOnchainSignature(blockChain.SpecProvider.GetXdcSpec(head), head.Number - 1));
 
-        
+
 
         Assert.That(blockChain.BlockTree.Head.Number, Is.EqualTo(mergeSignBlockRange + 1));
 

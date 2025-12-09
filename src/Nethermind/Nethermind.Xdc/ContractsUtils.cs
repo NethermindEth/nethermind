@@ -42,7 +42,7 @@ internal static class ContractsUtils
 
         // add local somehow to tx pool
         bool added = txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
-        if(!added)
+        if (!added)
         {
             throw new Exception("Failed to add signed transaction to the pool.");
         }
@@ -59,7 +59,7 @@ internal static class ContractsUtils
 
         if (exists)
         {
-            if(checkNumber > 0 && spec.EpochBlockOpening <= checkNumber && spec.EpochBlockRandomize >= checkNumber)
+            if (checkNumber > 0 && spec.EpochBlockOpening <= checkNumber && spec.EpochBlockRandomize >= checkNumber)
             {
                 var randomizeKeyValue = stateDb.Get(randomKey);
                 Transaction tx = CreateTxOpeningRandomize(nonce + 1, spec.RandomizeSMCBinary, randomizeKeyValue, signer.Address);

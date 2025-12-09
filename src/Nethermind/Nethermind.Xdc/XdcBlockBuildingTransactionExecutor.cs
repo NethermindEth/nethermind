@@ -71,7 +71,7 @@ internal class XdcBlockBuildingTransactionExecutor(
                 // Check if we have gone over time or the payload has been requested
                 if (token.IsCancellationRequested) break;
 
-                if(!ProcessSingleTransaction(block, processingOptions, receiptsTracer, blockToProduce, ref includedTx, consideredTx, i, currentTx))
+                if (!ProcessSingleTransaction(block, processingOptions, receiptsTracer, blockToProduce, ref includedTx, consideredTx, i, currentTx))
                 {
                     break;
                 }
@@ -83,7 +83,8 @@ internal class XdcBlockBuildingTransactionExecutor(
                 blockToProduce.Transactions = includedTx.ToArray();
             }
             return receiptsTracer.TxReceipts.ToArray();
-        } finally
+        }
+        finally
         {
             includedTx.Dispose();
         }
