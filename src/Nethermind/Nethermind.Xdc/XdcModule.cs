@@ -71,9 +71,9 @@ public class XdcModule : Module
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
 
             // block processing
+            .AddSingleton<IBlockProducerEnvFactory, XdcBlockProductionEnvFactory>()
             .AddScoped<IBlockValidationModule, XdcBlockValidationModule>()
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
-            .AddScoped<IBlockProducerEnvFactory, XdcBlockProductionEnvFactory>()
             ;
     }
 

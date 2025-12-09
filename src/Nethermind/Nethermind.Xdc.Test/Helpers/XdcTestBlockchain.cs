@@ -233,8 +233,8 @@ public class XdcTestBlockchain : TestBlockchain
             ];
         xdcSpec.MergeSignRange = 15;
 
-        xdcSpec.RandomizeSMCBinary = new Address("0x7c2E0c7B4F06C3cF4dA27AE5A6b89C4A0F1C9c41");
-        xdcSpec.BlockSignersAddress = new Address("0xA45eEFb7d2a6800F9f39E35C0F0F8D5E0d7C3B22");
+        xdcSpec.RandomizeSMCBinary = new Address("0x0000000000000000000000000000000000000089");
+        xdcSpec.BlockSignersAddress = new Address("0x0000000000000000000000000000000000000090");
         xdcSpec.TIP2019Block = 0;
 
         V2ConfigParams[] v2ConfigParams = [
@@ -352,25 +352,8 @@ public class XdcTestBlockchain : TestBlockchain
             state.CreateAccount(genesisSpec!.BlockSignersAddress, 100_000);
             state.CreateAccount(genesisSpec!.RandomizeSMCBinary, 100_000);
 
-            var gasEaterCode = Prepare.EvmCode
-                .JUMPDEST()
-                .ADD(1, 1)
-                .POP()
-                .JUMP(0)
-                .Done;
-            var gasEaterHashcode = Keccak.Compute(gasEaterCode);
-            var gasEaterAddress = Address.FromNumber(new UInt256(gasEaterHashcode.Bytes.Slice(0, 32)));
-            state.CreateAccount(gasEaterAddress, 100_000);
-
             var dummyCode = Prepare.EvmCode
-                .PushData(0)
-                .PushData(0)
-                .PushData(0)
-                .PushData(0)
-                .PushData(1)
-                .PushData(gasEaterAddress)
-                .GAS()
-                .CALL()
+                .STOP()
                 .Done;
             var dummyCodeHashcode = Keccak.Compute(dummyCode);
 
@@ -437,6 +420,7 @@ public class XdcTestBlockchain : TestBlockchain
                 await AddBlock();
         }
     }
+
 
     public override async Task<Block> AddBlock(params Transaction[] transactions)
     {

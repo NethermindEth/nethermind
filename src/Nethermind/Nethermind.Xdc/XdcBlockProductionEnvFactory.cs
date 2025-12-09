@@ -19,5 +19,5 @@ public class XdcBlockProductionEnvFactory(ILifetimeScope rootLifetime, IWorldSta
     protected override ContainerBuilder ConfigureBuilder(ContainerBuilder builder) =>
         // Taiko does not seems to use `BlockProductionTransactionsExecutor`
         base.ConfigureBuilder(builder)
-            .AddScoped<IBlockProductionTransactionsExecutor, XdcBlockBuildingTransactionExecutor>();
+            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, XdcBlockBuildingTransactionExecutor>();
 }

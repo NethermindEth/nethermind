@@ -12,7 +12,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -40,6 +42,51 @@ internal class SpecialTransactionsTests
         return blockNumber % spec.MergeSignRange == 0;
     }
 
+    private Task ProposeBatchTransferTxFrom(PrivateKey source, PrivateKey destination, UInt256 amount, int count, XdcTestBlockchain chain)
+    {
+        return Task.Run(() =>
+        {
+            (PrivateKey, PrivateKey) swap(PrivateKey a, PrivateKey b) => (b, a);
+
+            for (int i = 0; i < count; i++)
+            {
+                (source, destination)  = swap(source, destination);
+                CreateTransferTxFrom(source, destination, amount, chain);
+                // propose the tx to the tx pool
+
+            }
+        });
+    }
+
+    private Transaction CreateTransferTxFrom(PrivateKey source, PrivateKey destination, UInt256 amount, XdcTestBlockchain chain)
+    {
+        // create a tx that transfers amount of eth from source address to destination address
+        Transaction tx = Build.A.Transaction
+            .WithSenderAddress(source.Address)
+            .WithTo(destination.Address)
+            .WithValue(amount)
+            .WithType(TxType.Legacy)
+            .TestObject;
+
+        // sign the tx
+        var signer = new Signer(chain.SpecProvider.ChainId, source, NullLogManager.Instance);
+        signer.Sign(tx);
+
+        tx.Hash = tx.CalculateHash();
+
+        var result = chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
+
+        return tx;
+    }
+
+    private PrivateKey[] FilledAccounts(XdcTestBlockchain chain)
+    {
+        var genesisSpec = chain.SpecProvider.GenesisSpec as XdcReleaseSpec;
+        var pks = chain.MasterNodeCandidates
+            .Where(k => genesisSpec!.GenesisMasterNodes.Contains(k.Address));
+        return pks.ToArray();
+    }
+
     [Test]
     public async Task Special_Tx_Is_Dispatched_On_MergeSignRange_Block()
     {
@@ -64,6 +111,8 @@ internal class SpecialTransactionsTests
         }
         while (!IsTimeForOnchainSignature(blockChain.SpecProvider.GetXdcSpec(head), head.Number - 1));
 
+        
+
         Assert.That(blockChain.BlockTree.Head.Number, Is.EqualTo(mergeSignBlockRange + 1));
 
         await Task.Delay(((XdcReleaseSpec)blockChain.SpecProvider.GetFinalSpec()).MinePeriod.Seconds()); // to avoid tight loop
@@ -87,9 +136,11 @@ internal class SpecialTransactionsTests
     {
         var blockChain = await XdcTestBlockchain.Create(1, true);
 
+        var mergeSignBlockRange = 5;
+
         blockChain.ChangeReleaseSpec((spec) =>
         {
-            spec.MergeSignRange = 5;
+            spec.MergeSignRange = mergeSignBlockRange;
             spec.IsEip1559Enabled = false;
         });
 
@@ -119,41 +170,57 @@ internal class SpecialTransactionsTests
     {
         var blockChain = await XdcTestBlockchain.Create(1, true);
 
+        var mergeSignBlockRange = 5;
+
         blockChain.ChangeReleaseSpec((spec) =>
         {
-            spec.MergeSignRange = 5;
+            spec.MergeSignRange = mergeSignBlockRange;
             spec.IsEip1559Enabled = false;
         });
 
         blockChain.StartHotStuffModule();
 
         XdcBlockHeader? head = blockChain.BlockTree.Head!.Header as XdcBlockHeader;
-        do
+        var spec = blockChain.SpecProvider.GetXdcSpec(head!);
+
+        var random = new Random();
+
+        var accounts = FilledAccounts(blockChain);
+
+        for (int i = 1; i < spec.MergeSignRange + 2; i++)
         {
+            if (head!.Number == mergeSignBlockRange + 1)
+            {
+                var source = accounts.ElementAt(random.Next() % accounts.Length);
+                var dest = accounts.Except([source]).ElementAt(random.Next() % (accounts.Length - 1));
+                await ProposeBatchTransferTxFrom(source, dest, 1, 2, blockChain);
+            }
+
             await blockChain.TriggerAndSimulateBlockProposalAndVoting();
             await Task.Delay(blockChain.SpecProvider.GetXdcSpec(head!).MinePeriod.Seconds()); // to avoid tight loop
             head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header;
         }
-        while (!IsTimeForOnchainSignature(blockChain.SpecProvider.GetXdcSpec(head), head.Number - 1));
 
-        var block = blockChain.BlockTree.Head!;
-        var spec = blockChain.SpecProvider.GetXdcSpec(head);
+        var block = (XdcBlockHeader)blockChain.BlockTree.Head.Header;
+        spec = blockChain.SpecProvider.GetXdcSpec(block!);
 
         var receipts = blockChain.ReceiptStorage.Get(block.Hash!);
 
         Assert.That(receipts, Is.Not.Empty);
+        Assert.That(receipts.Length, Is.GreaterThan(1));
 
         bool onlyEncounteredSpecialTx = true;
         foreach (var transaction in receipts)
         {
-            if(transaction.Recipient == spec.BlockSignersAddress || transaction.Recipient == spec.RandomizeSMCBinary)
+            if (transaction.Recipient == spec.BlockSignersAddress || transaction.Recipient == spec.RandomizeSMCBinary)
             {
-                if(!onlyEncounteredSpecialTx)
+                if (!onlyEncounteredSpecialTx)
                 {
                     // we encountered a normal transaction before so special txs are not lumped at the start
                     Assert.Fail();
                 }
-            } else
+            }
+            else
             {
                 onlyEncounteredSpecialTx = false;
             }
