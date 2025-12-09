@@ -43,6 +43,7 @@ public class ContractRewriter(
         bool result = false;
         foreach (KeyValuePair<Address, byte[]> contractOverride in overrides)
         {
+            stateProvider.CreateAccountIfNotExists(contractOverride.Key, 0, 0);
             stateProvider.InsertCode(contractOverride.Key, contractOverride.Value, spec);
             result = true;
         }
