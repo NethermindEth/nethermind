@@ -26,8 +26,8 @@
     <PackageVersion Include="Grpc.Tools" Version="2.76.0" />
     <PackageVersion Include="KubernetesClient" Version="18.0.5" />
     <PackageVersion Include="MathNet.Numerics.FSharp" Version="5.0.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="10.0.1" />
     <PackageVersion Include="Microsoft.Build.Tasks.Git" Version="8.0.0" />
     <PackageVersion Include="Microsoft.ClearScript.V8" Version="7.5.0" />
     <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-arm64" Version="7.5.0" />
@@ -37,13 +37,13 @@
     <PackageVersion Include="Microsoft.ClearScript.V8.Native.win-x64" Version="7.5.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="8.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.1" />
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.15.0" />
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
@@ -81,9 +81,9 @@
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="Snappier" Version="1.2.0" />
     <PackageVersion Include="Spectre.Console" Version="0.51.1" />
-    <PackageVersion Include="System.CommandLine" Version="2.0.0" />
-    <PackageVersion Include="System.Configuration.ConfigurationManager" Version="10.0.0" />
-    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.1" />
+    <PackageVersion Include="System.Configuration.ConfigurationManager" Version="10.0.1" />
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
     <PackageVersion Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="22.0.16" />
     <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.0.16" />
     <PackageVersion Include="Websocket.Client" Version="5.3.0" />
