@@ -8,8 +8,8 @@
     <PackageVersion Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="9.0.0" />
     <PackageVersion Include="Autofac" Version="9.0.0" />
     <PackageVersion Include="Autofac.Extensions.DependencyInjection" Version="10.0.0" />
-    <PackageVersion Include="BenchmarkDotNet" Version="0.15.6" />
-    <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.6" />
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.8" />
     <PackageVersion Include="BouncyCastle.Cryptography" Version="2.6.2" />
     <PackageVersion Include="Ckzg.Bindings" Version="2.1.5.1544" />
     <PackageVersion Include="Collections.Pooled" Version="1.0.82" />
@@ -80,7 +80,7 @@
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="Snappier" Version="1.2.0" />
-    <PackageVersion Include="Spectre.Console" Version="0.51.1" />
+    <PackageVersion Include="Spectre.Console" Version="0.54.0" />
     <PackageVersion Include="System.CommandLine" Version="2.0.1" />
     <PackageVersion Include="System.Configuration.ConfigurationManager" Version="10.0.1" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
