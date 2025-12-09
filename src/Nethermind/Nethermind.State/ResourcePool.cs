@@ -8,10 +8,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Prometheus;
-using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State;
 
@@ -34,7 +32,7 @@ public class ResourcePool
         { IFlatDiffRepository.SnapshotBundleUsage.Compactor , new DefaultObjectPool<CachedResource>(new CachedResourcePolicy()) }
     };
 
-    private static Counter _createdSnapshotContent = Metrics.CreateCounter("resourcepool_created_snapshot_content", "created snapshot content", "compacted");
+    private static Counter _createdSnapshotContent = DevMetric.Factory.CreateCounter("resourcepool_created_snapshot_content", "created snapshot content", "compacted");
 
     private class SnapshotContentPolicy(IFlatDiffRepository.SnapshotBundleUsage usage) : IPooledObjectPolicy<SnapshotContent>
     {

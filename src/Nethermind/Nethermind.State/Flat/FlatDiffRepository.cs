@@ -20,7 +20,6 @@ using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Prometheus;
-using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State.Flat;
 
@@ -50,15 +49,15 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     private ILogger _logger;
     private StateId _currentPersistedState;
 
-    private static Histogram _flatdiffimes = Metrics.CreateHistogram("flatdiff_times", "aha", new HistogramConfiguration()
+    private static Histogram _flatdiffimes = DevMetric.Factory.CreateHistogram("flatdiff_times", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "category", "type" },
         // Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
         Buckets = [1]
     });
 
-    private static Gauge _knownStatesMemory = Metrics.CreateGauge("flatdiff_knownstates_memory", "memory", "category");
-    private static Gauge _compactedMemory = Metrics.CreateGauge("flatdiff_compacted_memory", "memory", "category");
+    private static Gauge _knownStatesMemory = DevMetric.Factory.CreateGauge("flatdiff_knownstates_memory", "memory", "category");
+    private static Gauge _compactedMemory = DevMetric.Factory.CreateGauge("flatdiff_compacted_memory", "memory", "category");
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
@@ -361,7 +360,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         return GatherCache(baseBlock, usage, null);
     }
 
-    private static Histogram _knownStatesSize = Metrics.CreateHistogram("flatdiff_known_state_size", "timer",
+    private static Histogram _knownStatesSize = DevMetric.Factory.CreateHistogram("flatdiff_known_state_size", "timer",
         new HistogramConfiguration()
         {
             LabelNames = ["part"],

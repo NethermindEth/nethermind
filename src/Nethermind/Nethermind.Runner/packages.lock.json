@@ -1341,7 +1341,8 @@
           "Nethermind.Logging": "[1.37.0-unstable, )",
           "Nethermind.Numerics.Int256": "[1.3.6, )",
           "NonBlocking": "[2.1.2, )",
-          "TestableIO.System.IO.Abstractions.Wrappers": "[22.0.16, )"
+          "TestableIO.System.IO.Abstractions.Wrappers": "[22.0.16, )",
+          "prometheus-net": "[8.2.1, )"
         }
       },
       "nethermind.crypto": {

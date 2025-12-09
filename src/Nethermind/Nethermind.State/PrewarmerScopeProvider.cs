@@ -19,7 +19,7 @@ public class PrewarmerScopeProvider(
     bool populatePreBlockCache = true
 ) : IWorldStateScopeProvider, IPreBlockCaches
 {
-    internal static Histogram _timer = Prometheus.Metrics.CreateHistogram("prewarmer_dirty_get", "timer",
+    internal static Histogram _timer = DevMetric.Factory.CreateHistogram("prewarmer_dirty_get", "timer",
         new HistogramConfiguration()
         {
             LabelNames = ["part", "is_prewarmer"],
