@@ -346,6 +346,8 @@ public class BaseMergePluginModule : Module
             // Testing rpc
             .RegisterSingletonJsonRpcModule<ITestingRpcModule, TestingRpcModule>()
                 .AddSingleton<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
+                .AddSingleton<BlockchainProcessor.Options>((ctx) =>
+                new BlockchainProcessor.Options { StoreReceiptsByDefault = false })
             ;
     }
 
