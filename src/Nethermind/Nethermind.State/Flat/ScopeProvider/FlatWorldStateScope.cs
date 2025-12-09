@@ -182,11 +182,6 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
             storageRoot,
             address,
             _logManager);
-        if (address == DebugAddress)
-        {
-            var val = storage.Get(DebugSlot);
-            Console.Error.WriteLine($"Debug value is {val?.ToHexString()}");
-        }
 
         return storage;
     }

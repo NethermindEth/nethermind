@@ -75,6 +75,8 @@ public class SnapshotBundle : IDisposable
     private Histogram.Child _findStorageNodeTrieWarmer;
     private Histogram.Child _setStateNodesTime;
     private Histogram.Child _setStorageNodesTime;
+    private Histogram.Child _setSlotTime;
+    private Histogram.Child _setAccountTime;
 
     private Counter.Child _accountGet;
     private Counter.Child _slotGet;
@@ -146,6 +148,8 @@ public class SnapshotBundle : IDisposable
         _findStateNodeTrieWarmer = _snapshotBundleTimes.WithLabels("find_state_node_trie_warmer", _isPrewarmer.ToString());
         _findStorageNode = _snapshotBundleTimes.WithLabels("find_storage_node", _isPrewarmer.ToString());
         _findStorageNodeTrieWarmer = _snapshotBundleTimes.WithLabels("find_storage_node_trie_warmer", _isPrewarmer.ToString());
+        _setSlotTime = _snapshotBundleTimes.WithLabels("set_slot", _isPrewarmer.ToString());
+        _setAccountTime = _snapshotBundleTimes.WithLabels("set_account", _isPrewarmer.ToString());
 
         _setStateNodesTime = _snapshotBundleTimes.WithLabels("set_state_nodes", _isPrewarmer.ToString());
         _setStorageNodesTime = _snapshotBundleTimes.WithLabels("set_storage_nodes", _isPrewarmer.ToString());
@@ -271,7 +275,10 @@ public class SnapshotBundle : IDisposable
     public void SetChangedSlot(AddressAsKey address, in UInt256 index, byte[] value)
     {
         if (_forStateReader) throw new InvalidOperationException("Read only snapshot bundle");
+        long sw = Stopwatch.GetTimestamp();
+        // Note: Hot path
         _changedSlots[(address, index)] = value;
+        _setSlotTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash, bool isTrieWarmer)
@@ -363,8 +370,25 @@ public class SnapshotBundle : IDisposable
         return false;
     }
 
+    public TrieNode FindStorageNodeOrUnknown(Hash256AsKey address, in TreePath path, Hash256 hash,
+        int selfDestructStateIdx, bool isTrieWarmer)
+    {
+        long sw = Stopwatch.GetTimestamp();
+        var res = DoFindStorageNodeOrUnknown(address, path, hash, selfDestructStateIdx, isTrieWarmer);
 
-    public TrieNode FindStorageNodeOrUnknown(Hash256AsKey address, in TreePath path, Hash256 hash, int selfDestructStateIdx, bool isTrieWarmer)
+        if (isTrieWarmer)
+        {
+            _findStorageNodeTrieWarmer.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+        else
+        {
+            _findStorageNode.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+
+        return res;
+    }
+
+    public TrieNode DoFindStorageNodeOrUnknown(Hash256AsKey address, in TreePath path, Hash256 hash, int selfDestructStateIdx, bool isTrieWarmer)
     {
         TrieNode node;
 
@@ -509,7 +533,9 @@ public class SnapshotBundle : IDisposable
         {
             Console.Error.WriteLine($"set to {account}");
         }
+        long sw = Stopwatch.GetTimestamp();
         _changedAccounts[addr] = account;
+        _setAccountTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
 
     public bool ShouldPrewarm(Address address, UInt256? slot)
