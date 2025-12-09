@@ -90,9 +90,16 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
             if (item.Signature is null)
+            {
                 stream.EncodeNullObject();
+            }
             else
-                stream.Encode(item.Signature.BytesWithRecovery);
+            {
+                stream.StartByteArray(65, false);
+                stream.Write(item.Signature.RAsSpan);
+                stream.Write(item.Signature.SAsSpan);
+                stream.WriteByte(item.Signature.RecoveryId);
+            }
         }
 
         stream.Encode(item.GapNumber);
