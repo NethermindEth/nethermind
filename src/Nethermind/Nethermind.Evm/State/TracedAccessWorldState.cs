@@ -86,7 +86,14 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
-        _innerWorldState.AddToBalance(address, balanceChange, spec, out oldBalance);
+        if (ParallelExecutionEnabled)
+        {
+            oldBalance = _innerWorldState.GetBalance(address);
+        }
+        else
+        {
+            _innerWorldState.AddToBalance(address, balanceChange, spec, out oldBalance);
+        }
 
         if (TracingEnabled)
         {
