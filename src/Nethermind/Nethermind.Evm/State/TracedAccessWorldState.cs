@@ -131,7 +131,14 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
 
     public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
     {
-        _innerWorldState.IncrementNonce(address, delta, out oldNonce);
+        if (ParallelExecutionEnabled)
+        {
+            oldNonce = _innerWorldState.GetNonce(address);
+        }
+        else
+        {
+            _innerWorldState.IncrementNonce(address, delta, out oldNonce);
+        }
 
         if (TracingEnabled)
         {
@@ -141,7 +148,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
 
     public override void SetNonce(Address address, in UInt256 nonce)
     {
-        _innerWorldState.SetNonce(address, nonce);
+        if (!ParallelExecutionEnabled)
+        {
+            _innerWorldState.SetNonce(address, nonce);
+        }
 
         if (TracingEnabled)
         {
@@ -156,7 +166,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
             byte[] oldCode = _innerWorldState.GetCode(address) ?? [];
             GeneratedBlockAccessList.AddCodeChange(address, oldCode, code.ToArray());
         }
-        return _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
+        return ParallelExecutionEnabled && _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
     }
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
@@ -265,7 +275,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
 
     public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
-        if (!ParallelExecutionEnabled && !_innerWorldState.AccountExists(address))
+        if (!_innerWorldState.AccountExists(address))
         {
             CreateAccount(address, balance, nonce);
         }
