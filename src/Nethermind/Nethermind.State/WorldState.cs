@@ -38,7 +38,7 @@ namespace Nethermind.State
         private readonly ILogger _logger;
 
         private bool isPrewarmer;
-        private Counter _timeCounter = Prometheus.Metrics.CreateCounter("time_counter", "time_counter", "part", "is_prewarmer");
+        private Counter _timeCounter = DevMetric.Factory.CreateCounter("time_counter", "time_counter", "part", "is_prewarmer");
 
         public Hash256 StateRoot
         {
