@@ -411,8 +411,6 @@ public class DbConfig : IDbConfig
         // This **should** help given prefix extractor. But further increase index size.
         // "block_based_table_factory.index_type=kHashSearch;" +
 
-        "block_based_table_factory.block_cache=1000000000;" +
-
         // So that last level bloom is kept. Should accelerate miss state check.
         "optimize_filters_for_hits=false;" +
         "";
@@ -441,7 +439,7 @@ public class DbConfig : IDbConfig
         // "block_based_table_factory.block_restart_interval=6;" + // For storage the prefix have a lot in common.
         // "memtable=skiplist;" +
         // "prefix_extractor=capped:23;" + // 20 byte address + 3 byte prefix.
-        "block_based_table_factory.block_cache=64000000;" +
+        "block_based_table_factory.block_cache=1000000000;" +
         "block_based_table_factory.block_size=16000;" +
         "";
 
