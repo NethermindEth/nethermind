@@ -123,6 +123,7 @@ public class TrieNodeCache
 
         foreach (var kv in cachedResource.LoadedStorageNodes)
         {
+            if (kv.Value is null) continue;
             kv.Value.PrunePersistedRecursively(1);
             Key key = new Key(kv.Key.Item1.Value, kv.Key.Item2);
             if (!snapshot.TryGetStorageNode(kv.Key.Item1, kv.Key.Item2, out _))

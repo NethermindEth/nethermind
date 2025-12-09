@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -274,7 +275,9 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
 
     public readonly override int GetHashCode()
     {
-        return (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Length);
+        // return (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Length);
+        uint pathHash = BinaryPrimitives.ReadUInt32BigEndian(Path.Bytes);
+        return (int)BitOperations.Crc32C(pathHash, (uint)Length);
     }
 
     /// <summary>

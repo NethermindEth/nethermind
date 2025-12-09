@@ -26,8 +26,8 @@ public class SnapshotBundle : IDisposable
     private SnapshotContent _currentPooledContent;
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<AddressAsKey, Account?> _changedAccounts;
-    private NonBlocking.ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes; // Bulkset can get nodes concurrently
-    private NonBlocking.ConcurrentDictionary<TreePath, TrieNode> _changedStateNodes; // Bulkset can get nodes concurrently
+    private ConcurrentDictionary<TreePath, TrieNode> _changedStateNodes; // Bulkset can get nodes concurrently
+    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> _changedSlots; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses;
 
@@ -78,13 +78,6 @@ public class SnapshotBundle : IDisposable
     private Counter.Child _accountGet;
     private Counter.Child _slotGet;
 
-    private static Histogram _nodeDepth = Metrics.CreateHistogram("snapshot_set_node_depth", "aha", new HistogramConfiguration()
-    {
-        LabelNames = new[] { "type", "is_prewarmer" },
-        Buckets = Histogram.LinearBuckets(0, 1, 14)
-    });
-    private Histogram.Child _stateNodeDepth;
-    private Histogram.Child _storageNodeDepth;
     private IFlatDiffRepository.SnapshotBundleUsage _usage;
 
     public SnapshotBundle(ArrayPoolList<Snapshot> snapshots,
@@ -155,9 +148,6 @@ public class SnapshotBundle : IDisposable
 
         _setStateNodesTime = _snapshotBundleTimes.WithLabels("set_state_nodes", _isPrewarmer.ToString());
         _setStorageNodesTime = _snapshotBundleTimes.WithLabels("set_storage_nodes", _isPrewarmer.ToString());
-
-        _stateNodeDepth = _nodeDepth.WithLabels("state", _isPrewarmer.ToString());
-        _storageNodeDepth = _nodeDepth.WithLabels("storage", _isPrewarmer.ToString());
     }
 
     public bool TryGetAccount(Address address, out Account? acc)
@@ -312,7 +302,7 @@ public class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
 
-            if (!isTrieWarmer) _changedStateNodes.TryAdd(path, node);
+            // if (!isTrieWarmer) _changedStateNodes.TryAdd(path, node);
             _nodeGetChanged.Inc();
             return node;
         }
@@ -497,7 +487,6 @@ public class SnapshotBundle : IDisposable
         // Note: Hot path
         _changedStateNodes[path] = newNode;
         _setStateNodesTime.Observe(Stopwatch.GetTimestamp() - sw);
-        _stateNodeDepth.Observe(path.Length);
     }
 
     // This is called only during trie commit
@@ -511,7 +500,6 @@ public class SnapshotBundle : IDisposable
         // Note: Hot path
         _changedStorageNodes[(addr, path)] = newNode;
         _setStorageNodesTime.Observe(Stopwatch.GetTimestamp() - sw);
-        _storageNodeDepth.Observe(path.Length);
     }
 
     public void SetAccount(AddressAsKey addr, Account? account)
@@ -580,8 +568,8 @@ public class SnapshotBundle : IDisposable
         ConcurrentDictionary<AddressAsKey, Account> accounts = content.Accounts;
         ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> storages = content.Storages;
         ConcurrentDictionary<AddressAsKey, bool> selfDestructedStorageAddresses = content.SelfDestructedStorageAddresses;
-        NonBlocking.ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = content.StorageNodes;
-        NonBlocking.ConcurrentDictionary<TreePath, TrieNode> stateNodes = content.StateNodes;
+        ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = content.StorageNodes;
+        ConcurrentDictionary<TreePath, TrieNode> stateNodes = content.StateNodes;
 
         if (_snapshots.Count == 1) return _snapshots[0];
 
