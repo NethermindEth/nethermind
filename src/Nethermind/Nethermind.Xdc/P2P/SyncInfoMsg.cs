@@ -13,7 +13,7 @@ namespace Nethermind.Xdc.P2P;
 internal class SyncInfoMsg : P2PMessage
 {
     public override int PacketType => Xdpos2MessageCode.SyncInfoMsg;
-    public override string Protocol => "xdpos2";
+    public override string Protocol => "eth";
     public SyncInfo SyncInfo { get; set; }
     public override string ToString() => $"{nameof(SyncInfo)}({SyncInfo})";
 }

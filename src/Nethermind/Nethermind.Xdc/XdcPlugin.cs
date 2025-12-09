@@ -38,7 +38,7 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 63));
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 64));
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 65));
-        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new("xdpos2", 100));
+        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 100));
         return Task.CompletedTask;
     }
 

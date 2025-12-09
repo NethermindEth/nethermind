@@ -36,9 +36,9 @@ internal class Xdpos2ProtocolHandler(
 
     public override byte ProtocolVersion => 100;
 
-    public override string ProtocolCode => "xdpos2";
+    public override string ProtocolCode => "eth";
 
-    public override int MessageIdSpaceSize => throw new NotImplementedException();
+    public override int MessageIdSpaceSize => 18;
 
     protected override TimeSpan InitTimeout => throw new NotImplementedException();
 
@@ -87,7 +87,7 @@ internal class Xdpos2ProtocolHandler(
 
     public override void Init()
     {
-        SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(ProtocolCode, ProtocolVersion));
+        var x = SubprotocolRequested;
         ProtocolInitialized?.Invoke(this, new ProtocolInitializedEventArgs(this));
     }
 
