@@ -14,7 +14,11 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
+using Nethermind.Network;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
@@ -70,6 +74,10 @@ public class XdcModule : Module
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
+
+            //Network
+            .AddSingleton<IProtocolValidator, XdcProtocolValidator>()
+            .AddSingleton<IHeaderDecoder, XdcHeaderDecoder>()
             ;
     }
 

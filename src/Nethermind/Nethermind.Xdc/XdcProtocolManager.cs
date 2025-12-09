@@ -17,6 +17,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.State;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
@@ -27,7 +28,13 @@ using System.Text;
 
 namespace Nethermind.Xdc;
 
-internal class XdcProtocolManager(
+internal class XdcProtocolManager : ProtocolsManager
+{
+    private readonly ITimeoutCertificateManager timeoutCertificateManager;
+    private readonly IVotesManager votesManager;
+    private readonly ISyncInfoManager syncInfoManager;
+
+    public XdcProtocolManager(
     ITimeoutCertificateManager timeoutCertificateManager,
     IVotesManager votesManager,
     ISyncInfoManager syncInfoManager,
@@ -47,8 +54,19 @@ internal class XdcProtocolManager(
     ILogManager logManager,
     ITxPoolConfig txPoolConfdig,
     ISpecProvider specProvider,
-    ITxGossipPolicy? transactionsGossipPolicy = null) : ProtocolsManager(syncPeerPool, syncServer, backgroundTaskScheduler, txPool, discoveryApp, serializationService, rlpxHost, nodeStatsManager, protocolValidator, peerStorage, forkInfo, gossipPolicy, worldStateManager, logManager, txPoolConfdig, specProvider, transactionsGossipPolicy)
-{
+    ITxGossipPolicy? transactionsGossipPolicy = null) : base(syncPeerPool, syncServer, backgroundTaskScheduler, txPool, discoveryApp, serializationService, rlpxHost, nodeStatsManager, protocolValidator, peerStorage, forkInfo, gossipPolicy, worldStateManager, logManager, txPoolConfdig, specProvider, transactionsGossipPolicy)
+    {
+        foreach (Capability item in DefaultCapabilities)
+        {
+            if (item.ProtocolCode == Protocol.NodeData)
+                continue;
+            RemoveSupportedCapability(item);
+        }
+
+        this.timeoutCertificateManager = timeoutCertificateManager;
+        this.votesManager = votesManager;
+        this.syncInfoManager = syncInfoManager;
+    }
 
     protected override IDictionary<string, Func<ISession, int, IProtocolHandler>> GetProtocolFactories()
     {

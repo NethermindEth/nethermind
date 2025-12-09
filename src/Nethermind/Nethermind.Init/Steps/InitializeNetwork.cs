@@ -292,17 +292,6 @@ public class InitializeNetwork : IStep
     protected virtual IProtocolsManager CreateProtocolManager()
     {
         ISyncServer syncServer = _api.SyncServer!;
-
-        ProtocolValidator protocolValidator = new(
-          NodeStatsManager!,
-          _api.BlockTree,
-          _forkInfo,
-          _api.PeerManager!,
-          _networkConfig,
-          _api.LogManager);
-
-        _api.ProtocolValidator = protocolValidator;
-
         return new ProtocolsManager(
             _api.SyncPeerPool!,
             syncServer,
@@ -312,7 +301,7 @@ public class InitializeNetwork : IStep
             _api.MessageSerializationService,
             _api.RlpxPeer,
             NodeStatsManager,
-            protocolValidator,
+            _api.ProtocolValidator,
             _peerStorage,
             _forkInfo,
             _api.GossipPolicy,

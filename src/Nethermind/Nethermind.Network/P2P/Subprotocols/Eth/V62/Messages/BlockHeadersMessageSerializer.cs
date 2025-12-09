@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Collections.Pooled;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
@@ -11,7 +12,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     public class BlockHeadersMessageSerializer : IZeroInnerMessageSerializer<BlockHeadersMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockHeadersMessage>(NethermindSyncLimits.MaxHeaderFetch, nameof(BlockHeadersMessage.BlockHeaders));
-        private readonly HeaderDecoder _headerDecoder = new();
+        private readonly IHeaderDecoder _headerDecoder;
+
+        public BlockHeadersMessageSerializer(IHeaderDecoder headerDecoder = null)
+        {
+            _headerDecoder = headerDecoder ?? new HeaderDecoder();
+        }
 
         public void Serialize(IByteBuffer byteBuffer, BlockHeadersMessage message)
         {
@@ -43,10 +49,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public static BlockHeadersMessage Deserialize(RlpStream rlpStream)
+        public BlockHeadersMessage Deserialize(RlpStream rlpStream)
         {
             BlockHeadersMessage message = new();
-            message.BlockHeaders = Rlp.DecodeArrayPool<BlockHeader>(rlpStream, limit: RlpLimit);
+            message.BlockHeaders = _headerDecoder.DecodeArrayPool(rlpStream);
             return message;
         }
     }

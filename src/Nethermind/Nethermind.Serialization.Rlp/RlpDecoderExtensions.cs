@@ -28,6 +28,19 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
+        public static ArrayPoolList<T> DecodeArrayPool<T>(this IRlpStreamDecoder<T> decoder, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+        {
+            int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
+            int length = rlpStream.PeekNumberOfItemsRemaining(checkPosition);
+            rlpStream.GuardLimit(length, limit);
+            ArrayPoolList<T> result = new(length);
+            for (int i = 0; i < length; i++)
+            {
+                result.Add(decoder.Decode(rlpStream, rlpBehaviors));
+            }
+            return result;
+        }
+
         public static T[] DecodeArray<T>(this IRlpValueDecoder<T> decoder, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
