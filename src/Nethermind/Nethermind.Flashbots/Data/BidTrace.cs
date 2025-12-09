@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Flashbots.Data;
 
@@ -21,9 +22,11 @@ public class BidTrace
     public Hash256 BlockHash { get; set; }
 
     [JsonPropertyName("builder_public_key")]
+    [JsonConverter(typeof(PublicKeyConverter))]
     public PublicKey BuilderPublicKey { get; set; }
 
     [JsonPropertyName("proposer_public_key")]
+    [JsonConverter(typeof(PublicKeyConverter))]
     public PublicKey ProposerPublicKey { get; set; }
 
     [JsonPropertyName("proposer_fee_recipient")]

@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (hasExtraStorage)
             {
-                // The server will always give one node extra after limitpath if it can fit in the response.
+                // The server will always give one node extra after the limit path if it can fit in the response.
                 // When we have extra storage, the extra storage must not be re-stored as it may have already been set
                 // by another top level partition. If the sync pivot moved and the storage was modified, it must not be saved
                 // here along with updated ancestor so that healing can detect that the storage need to be healed.

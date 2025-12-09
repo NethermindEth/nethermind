@@ -59,11 +59,12 @@ public class TaikoTransactionProcessor(
 
         if (!tx.IsAnchorTx && !baseFees.IsZero && spec.FeeCollector is not null)
         {
-            if (((ITaikoReleaseSpec)spec).IsOntakeEnabled)
+            var taikoSpec = (ITaikoReleaseSpec)spec;
+            if (taikoSpec.IsOntakeEnabled || taikoSpec.IsShastaEnabled)
             {
-                byte basefeeSharingPctg = header.DecodeOntakeExtraData() ?? 0;
+                byte basefeeSharingPct = (taikoSpec.IsShastaEnabled ? header.DecodeShastaExtraData() : header.DecodeOntakeExtraData()) ?? 0;
 
-                UInt256 feeCoinbase = baseFees * basefeeSharingPctg / 100;
+                UInt256 feeCoinbase = baseFees * basefeeSharingPct / 100;
 
                 if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
                 {

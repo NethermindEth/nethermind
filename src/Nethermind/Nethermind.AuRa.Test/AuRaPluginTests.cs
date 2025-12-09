@@ -27,7 +27,7 @@ namespace Nethermind.AuRa.Test
     public class AuRaPluginTests
     {
         [Test]
-        public void Init_when_not_AuRa_doesnt_trow()
+        public void Init_when_not_AuRa_does_not_throw()
         {
             ChainSpec chainSpec = new();
             AuRaPlugin auRaPlugin = new(chainSpec);

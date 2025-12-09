@@ -104,6 +104,6 @@ public static class Metrics
 
     [DetailedMetric]
     [ExponentialPowerHistogramMetric(Start = 100, Factor = 1.25, Count = 50)]
-    [Description("Histogram of block prorcessing time")]
+    [Description("Histogram of block processing time")]
     public static IMetricObserver BlockProcessingTimeMicros { get; set; } = new NoopMetricObserver();
 }

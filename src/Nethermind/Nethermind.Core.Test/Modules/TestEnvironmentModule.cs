@@ -42,7 +42,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
         builder
             .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Error)) // Limbologs actually have IsTrace set to true, so actually slow.
             .AddSingleton<IDbFactory>((_) => new MemDbFactory())
-            // These two dont use db provider
+            // These two don't use the DB provider
             .AddKeyedSingleton<IFullDb>(DbNames.PeersDb, (_) => new MemDb())
             .AddKeyedSingleton<IFullDb>(DbNames.DiscoveryNodes, (_) => new MemDb())
             .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig))

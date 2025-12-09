@@ -463,7 +463,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void NullableComparision()
+        public void NullableComparison()
         {
             Bytes.NullableEqualityComparer.Equals(null, null).Should().BeTrue();
         }

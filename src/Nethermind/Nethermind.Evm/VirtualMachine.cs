@@ -8,6 +8,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -89,6 +90,7 @@ public unsafe partial class VirtualMachine(
     private OpCode[] _opcodeMethods;
     private static long _txCount;
 
+    private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     protected EvmState _currentState;
     protected ReadOnlyMemory<byte>? _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
@@ -99,7 +101,7 @@ public unsafe partial class VirtualMachine(
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
-    public ReadOnlyMemory<byte> ReturnDataBuffer { get; set; } = Array.Empty<byte>();
+    public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected Stack<EvmState> StateStack => _stateStack;
@@ -1026,10 +1028,11 @@ public unsafe partial class VirtualMachine(
                 SubstateError = success ? null : GetErrorString(precompile, output.Error)
             };
         }
-        catch (DllNotFoundException exception)
+        catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
         {
-            if (_logger.IsError) LogMissingDependency(precompile, exception);
-            throw;
+            if (_logger.IsError) LogMissingDependency(precompile, exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException);
+            Environment.Exit(ExitCodes.MissingPrecompile);
+            throw; // Unreachable
         }
         catch (Exception exception)
         {
@@ -1150,7 +1153,7 @@ public unsafe partial class VirtualMachine(
             }
 
             // Save the previous call's output into the VM state's memory.
-            vmState.Memory.Save(in localPreviousDest, previousCallOutput);
+            if (!vmState.Memory.TrySave(in localPreviousDest, previousCallOutput)) goto OutOfGas;
         }
 
         // Dispatch the bytecode interpreter.

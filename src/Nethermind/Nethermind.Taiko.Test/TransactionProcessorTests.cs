@@ -62,10 +62,10 @@ public class TransactionProcessorTests
     }
 
     [TestCaseSource(nameof(FeesDistributionTests))]
-    public void Fees_distributed_correctly(byte basefeeSharingPctg, UInt256 goesToTreasury, UInt256 goesToBeneficiary, ulong gasPrice)
+    public void Fees_distributed_correctly(byte basefeeSharingPct, UInt256 goesToTreasury, UInt256 goesToBeneficiary, ulong gasPrice)
     {
         long gasLimit = 100000;
-        Address benefeciaryAddress = TestItem.AddressC;
+        Address beneficiaryAddress = TestItem.AddressC;
 
         Transaction tx = Build.A.Transaction
             .WithValue(1)
@@ -74,12 +74,12 @@ public class TransactionProcessorTests
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         var extraData = new byte[32];
-        extraData[31] = basefeeSharingPctg;
+        extraData[31] = basefeeSharingPct;
 
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx)
             .WithBaseFeePerGas(gasPrice)
             .WithExtraData(extraData)
-            .WithBeneficiary(benefeciaryAddress).WithGasLimit(gasLimit).TestObject;
+            .WithBeneficiary(beneficiaryAddress).WithGasLimit(gasLimit).TestObject;
 
         _transactionProcessor!.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
         _transactionProcessor!.Execute(tx, NullTxTracer.Instance);
@@ -87,7 +87,7 @@ public class TransactionProcessorTests
         Assert.Multiple(() =>
         {
             Assert.That(_stateProvider!.GetBalance(_spec.FeeCollector!), Is.EqualTo(goesToTreasury));
-            Assert.That(_stateProvider.GetBalance(benefeciaryAddress), Is.EqualTo(goesToBeneficiary));
+            Assert.That(_stateProvider.GetBalance(beneficiaryAddress), Is.EqualTo(goesToBeneficiary));
         });
     }
 
@@ -95,8 +95,8 @@ public class TransactionProcessorTests
     {
         get
         {
-            static object[] Typed(int basefeeSharingPctg, ulong goesToTreasury, ulong goesToBeneficiary, ulong gasPrice)
-                => [(byte)basefeeSharingPctg, (UInt256)goesToTreasury, (UInt256)goesToBeneficiary, gasPrice];
+            static object[] Typed(int basefeeSharingPct, ulong goesToTreasury, ulong goesToBeneficiary, ulong gasPrice)
+                => [(byte)basefeeSharingPct, (UInt256)goesToTreasury, (UInt256)goesToBeneficiary, gasPrice];
 
             yield return new TestCaseData(Typed(0, 21000, 0, 1)) { TestName = "All goes to treasury" };
             yield return new TestCaseData(Typed(100, 0, 21000, 1)) { TestName = "All goes to beneficiary" };
@@ -176,7 +176,7 @@ public class TransactionProcessorTests
     {
         _spec.FeeCollector = TestItem.AddressC;
         _spec.IsOntakeEnabled = isOntakeEnabled;
-        byte defaultBasefeeSharingPctg = 25;
+        byte defaultBaseFeeSharingPct = 25;
 
         _stateProvider!.CreateAccount(TestItem.AddressB, 100.Ether());
 
@@ -194,7 +194,7 @@ public class TransactionProcessorTests
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
 
         var extraData = new byte[32];
-        extraData[31] = defaultBasefeeSharingPctg;
+        extraData[31] = defaultBaseFeeSharingPct;
 
         Block block = Build.A.Block.WithNumber(1)
             .WithBeneficiary(SelfDestructAddress)
@@ -220,7 +220,7 @@ public class TransactionProcessorTests
         UInt256 expectedBaseFees = tracer.BurntFees;
         if (isOntakeEnabled)
         {
-            expectedBaseFees -= expectedBaseFees * defaultBasefeeSharingPctg / 100;
+            expectedBaseFees -= expectedBaseFees * defaultBaseFeeSharingPct / 100;
         }
 
         receivedBaseFees.Should().Be(expectedBaseFees, "Burnt fees should be paid to treasury");

@@ -31,7 +31,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
         depth == 0 ? headBlock.Hash
         : depth == 1 ? headBlock.ParentHash
         : depth > MaxDepth ? null
-        : _flatCache.TryGet(headBlock.ParentHash!, out Hash256[] array) ? array[depth - 1]
+        : _flatCache.TryGet(headBlock.ParentHash!, out Hash256[] array) ? array[depth - 2]
         : Load(headBlock, depth, out _)?.Hash;
 
     private CacheNode? Load(BlockHeader blockHeader, int depth, out Hash256[]? hashes, CancellationToken cancellationToken = default)
@@ -58,8 +58,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                     }
 
                     currentNode = new CacheNode(currentHeader);
-                    needToAdd = true;
-                    needToAddAny = true;
+                    needToAddAny |= needToAdd = currentHeader.Hash is not null;
                 }
             }
 
@@ -101,14 +100,19 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             }
         }
 
-        if (blocks.Count == FlatCacheLength(blockHeader))
+        int ancestorCount = blocks.Count - 1;
+        if (ancestorCount == FlatCacheLength(blockHeader))
         {
-            hashes = new Hash256[blocks.Count];
-            for (int i = 0; i < blocks.Count; i++)
+            hashes = new Hash256[ancestorCount];
+            for (int i = 1; i < blocks.Count; i++)
             {
-                hashes[i] = blocks[i].Node.Hash;
+                hashes[i - 1] = blocks[i].Node.Hash;
             }
-            _flatCache.Set(blockHeader.Hash, hashes);
+
+            if (blockHeader.Hash is not null)
+            {
+                _flatCache.Set(blockHeader.Hash, hashes);
+            }
         }
 
         int index = depth - skipped;
@@ -118,7 +122,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                 : null;
     }
 
-    private static int FlatCacheLength(BlockHeader blockHeader) => (int)(Math.Min(MaxDepth, blockHeader.Number) + 1);
+    private static int FlatCacheLength(BlockHeader blockHeader) => (int)Math.Min(MaxDepth, blockHeader.Number);
 
     public Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken = default)
     {
@@ -129,15 +133,20 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             {
                 if (!cancellationToken.IsCancellationRequested)
                 {
-                    if (!_flatCache.TryGet(blockHeader.Hash, out hashes))
+                    bool emptyHash = blockHeader.Hash is null;
+
+                    if (emptyHash || !_flatCache.TryGet(blockHeader.Hash, out hashes))
                     {
                         if (_flatCache.TryGet(blockHeader.ParentHash, out Hash256[] parentHashes))
                         {
                             int length = FlatCacheLength(blockHeader);
                             hashes = new Hash256[length];
-                            hashes[0] = blockHeader.Hash;
-                            Array.Copy(parentHashes, 0, hashes, 1, Math.Min(length - 1, MaxDepth));
-                            _flatCache.Set(blockHeader.Hash, hashes);
+                            hashes[0] = blockHeader.ParentHash;
+                            Array.Copy(parentHashes, 0, hashes, 1, length - 1);
+                            if (!emptyHash)
+                            {
+                                _flatCache.Set(blockHeader.Hash, hashes);
+                            }
                         }
                         else
                         {
