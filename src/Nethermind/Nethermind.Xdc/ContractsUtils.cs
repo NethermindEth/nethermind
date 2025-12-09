@@ -45,9 +45,6 @@ internal static class ContractsUtils
         if(!added)
         {
             throw new Exception("Failed to add signed transaction to the pool.");
-        } else
-        {
-            Debug.WriteLine($"Added sign tx for block {header.Number}");
         }
 
         long blockNumber = header.Number;

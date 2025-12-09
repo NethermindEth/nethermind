@@ -52,15 +52,12 @@ internal class SpecialTransactionsTests
             {
                 (source, destination)  = swap(source, destination);
                 CreateTransferTxFrom(source, destination, amount, chain);
-                // propose the tx to the tx pool
-
             }
         });
     }
 
     private Transaction CreateTransferTxFrom(PrivateKey source, PrivateKey destination, UInt256 amount, XdcTestBlockchain chain)
     {
-        // create a tx that transfers amount of eth from source address to destination address
         Transaction tx = Build.A.Transaction
             .WithSenderAddress(source.Address)
             .WithTo(destination.Address)
@@ -68,7 +65,6 @@ internal class SpecialTransactionsTests
             .WithType(TxType.Legacy)
             .TestObject;
 
-        // sign the tx
         var signer = new Signer(chain.SpecProvider.ChainId, source, NullLogManager.Instance);
         signer.Sign(tx);
 
