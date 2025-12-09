@@ -32,7 +32,7 @@ public class ContractRewriter(
         {
             if (timestamp >= overrides.Key && parentTimestamp < overrides.Key)
             {
-                result &= InsertOverwriteCode(overrides.Value, stateProvider, spec);
+                result |= InsertOverwriteCode(overrides.Value, stateProvider, spec);
             }
         }
         return result;
