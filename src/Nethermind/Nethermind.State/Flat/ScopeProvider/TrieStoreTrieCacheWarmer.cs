@@ -13,7 +13,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Prometheus;
-using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -54,7 +53,7 @@ public sealed class TrieWarmer : ITrieWarmer
         int sequenceId);
 
     Task? _warmerJob = null;
-    private static Counter _trieWarmEr = Metrics.CreateCounter("triestore_trie_warmer", "hit rate", "type");
+    private static Counter _trieWarmEr = DevMetric.Factory.CreateCounter("triestore_trie_warmer", "hit rate", "type");
     private static Counter.Child _bufferFull = _trieWarmEr.WithLabels("buffer_full");
     private ConcurrentStack<WarmerWorkers> _awaitingWorkers = new ConcurrentStack<WarmerWorkers>();
     private WarmerWorkers? _mainWarmer = null;

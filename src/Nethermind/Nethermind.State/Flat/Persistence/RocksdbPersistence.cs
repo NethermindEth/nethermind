@@ -65,7 +65,7 @@ public class RocksdbPersistence : IPersistence
     {
     }
 
-    private static Histogram _rocksdBPersistenceTimes = Prometheus.Metrics.CreateHistogram("rocksdb_persistence_times", "aha", new HistogramConfiguration()
+    private static Histogram _rocksdBPersistenceTimes = DevMetric.Factory.CreateHistogram("rocksdb_persistence_times", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "type" },
         // Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)

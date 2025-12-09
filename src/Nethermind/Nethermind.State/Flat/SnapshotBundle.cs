@@ -14,7 +14,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Prometheus;
-using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State.Flat;
 
@@ -46,16 +45,16 @@ public class SnapshotBundle : IDisposable
     private bool _isDisposed;
     private readonly ResourcePool _resourcePool;
 
-    private static Gauge _activeSnapshotBundle = Metrics.CreateGauge("snapshot_bundle_active", "active", "usage");
-    private static Counter _creeatedSnapshotBundle = Metrics.CreateCounter("snapshot_bundle_created", "created", "usage");
-    private static Counter _snapshotBundleEvents = Metrics.CreateCounter("snapshot_bundle_evens", "event", "type", "is_prewarmer");
+    private static Gauge _activeSnapshotBundle = DevMetric.Factory.CreateGauge("snapshot_bundle_active", "active", "usage");
+    private static Counter _creeatedSnapshotBundle = DevMetric.Factory.CreateCounter("snapshot_bundle_created", "created", "usage");
+    private static Counter _snapshotBundleEvents = DevMetric.Factory.CreateCounter("snapshot_bundle_evens", "event", "type", "is_prewarmer");
     private Counter.Child _nodeGetChanged;
     private Counter.Child _nodeGetSnapshots;
     private Counter.Child _nodeGetTrieCache;
     private Counter.Child _nodeGetMiss;
     private Counter.Child _nodeGetSelfDestruct;
 
-    private static Histogram _snapshotBundleTimes = Metrics.CreateHistogram("snapshot_bundle_times", "aha", new HistogramConfiguration()
+    private static Histogram _snapshotBundleTimes = DevMetric.Factory.CreateHistogram("snapshot_bundle_times", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "type", "is_prewarmer" },
         // Buckets = Histogram.PowersOfTenDividedBuckets(1, 12, 5)

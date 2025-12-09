@@ -28,7 +28,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     internal static Address DebugAddress = new Address("0x6ffedc1562918c07ae49b0ba210e6d80c7d61eab");
     internal static UInt256 DebugSlot = UInt256.Parse("0");
 
-    private static Histogram _snapshotBundleTimes = Prometheus.Metrics.CreateHistogram("flat_write_batch", "aha", new HistogramConfiguration()
+    private static Histogram _snapshotBundleTimes = DevMetric.Factory.CreateHistogram("flat_write_batch", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "type" },
         // Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
