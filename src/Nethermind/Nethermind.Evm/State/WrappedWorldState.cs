@@ -19,7 +19,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 
     public Hash256 StateRoot => _innerWorldState.StateRoot;
 
-    public virtual bool AccountExists(Address address)
+    public virtual bool AccountExists(Address address, int? blockAccessIndex = null)
         => _innerWorldState.AccountExists(address);
 
     public virtual void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
@@ -52,7 +52,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
         => _innerWorldState.CreateAccount(address, balance, nonce);
 
-    public virtual void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public virtual void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null)
         => _innerWorldState.CreateAccountIfNotExists(address, balance, nonce);
 
     public virtual void CreateEmptyAccountIfDeleted(Address address) =>
@@ -73,13 +73,13 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual UInt256 GetBalance(Address address, int? blockAccessIndex = null)
         => _innerWorldState.GetBalance(address, blockAccessIndex);
 
-    public virtual byte[]? GetCode(Address address)
+    public virtual byte[]? GetCode(Address address, int? blockAccessIndex = null)
         => _innerWorldState.GetCode(address);
 
     public byte[]? GetCode(in ValueHash256 codeHash)
         => _innerWorldState.GetCode(codeHash);
 
-    public virtual ValueHash256 GetCodeHash(Address address)
+    public virtual ValueHash256 GetCodeHash(Address address, int? blockAccessIndex = null)
         => _innerWorldState.GetCodeHash(address);
 
     public byte[] GetOriginal(in StorageCell storageCell)
@@ -97,14 +97,17 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce, int? blockAccessIndex = null)
         => _innerWorldState.IncrementNonce(address, delta, out oldNonce);
 
-    public virtual bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+    public virtual bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false, int? blockAccessIndex = null)
         => _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
 
-    public virtual bool IsContract(Address address)
+    public virtual bool IsContract(Address address, int? blockAccessIndex = null)
         => _innerWorldState.IsContract(address);
 
-    public virtual bool IsDeadAccount(Address address)
+    public virtual bool IsDeadAccount(Address address, int? blockAccessIndex = null)
         => _innerWorldState.IsDeadAccount(address);
+
+    public virtual bool IsStorageEmpty(Address address, int? blockAccessIndex = null)
+        => _innerWorldState.IsStorageEmpty(address);
 
     public virtual void RecalculateStateRoot()
         => _innerWorldState.RecalculateStateRoot();

@@ -25,7 +25,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     IDisposable BeginScope(BlockHeader? baseBlock);
     bool IsInScope { get; }
     new UInt256 GetBalance(Address address, int? blockAccessIndex = null);
-    new ValueHash256 GetCodeHash(Address address);
+    new ValueHash256 GetCodeHash(Address address, int? blockAccessIndex = null);
     bool HasStateForBlock(BlockHeader? baseBlock);
 
     /// <summary>
@@ -96,7 +96,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void DeleteAccount(Address address, int? blockAccessIndex = null);
 
     void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
-    void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default);
+    void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null);
     void CreateEmptyAccountIfDeleted(Address address);
 
     /// <summary>
@@ -110,7 +110,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="isGenesis">Indicates whether the insertion is part of the genesis block setup.</param>
     /// <returns>True if the code was inserted to the database at that hash; otherwise false if it was already there.
     /// Note: This is different from whether the account has its hash updated</returns>
-    bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
+    bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false, int? blockAccessIndex = null);
 
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null);
 

@@ -173,11 +173,14 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         }
     }
 
-    public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+    public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         if (TracingEnabled)
         {
-            byte[] oldCode = _innerWorldState.GetCode(address) ?? [];
+            byte[] oldCode = GetCodeInternal(address, blockAccessIndex.Value) ?? [];
             GeneratedBlockAccessList.AddCodeChange(address, oldCode, code.ToArray());
         }
         return ParallelExecutionEnabled && _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
@@ -209,16 +212,22 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         return GetBalanceInternal(address, blockAccessIndex.Value);
     }
 
-    public override ValueHash256 GetCodeHash(Address address)
+    public override ValueHash256 GetCodeHash(Address address, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         AddAccountRead(address);
-        return _innerWorldState.GetCodeHash(address);
+        return GetCodeHashInternal(address, blockAccessIndex.Value);
     }
 
-    public override byte[]? GetCode(Address address)
+    public override byte[]? GetCode(Address address, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         AddAccountRead(address);
-        return _innerWorldState.GetCode(address);
+        return GetCodeInternal(address, blockAccessIndex.Value);
     }
 
     public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
@@ -258,7 +267,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         if (TracingEnabled)
         {
             GeneratedBlockAccessList.AddAccountRead(address);
-            // move inside bal
+            // todo move inside bal
             if (balance != 0)
             {
                 GeneratedBlockAccessList.AddBalanceChange(address, 0, balance);
@@ -274,9 +283,12 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         }
     }
 
-    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null)
     {
-        if (!_innerWorldState.AccountExists(address))
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
+        if (!AccountExistsInternal(address, blockAccessIndex.Value))
         {
             CreateAccount(address, balance, nonce);
         }
@@ -316,22 +328,40 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         return new(snapshot.StorageSnapshot, snapshot.StateSnapshot, blockAccessListSnapshot);
     }
 
-    public override bool AccountExists(Address address)
+    public override bool AccountExists(Address address, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         AddAccountRead(address);
-        return _innerWorldState.AccountExists(address);
+        return AccountExistsInternal(address, blockAccessIndex.Value);
     }
 
-    public override bool IsContract(Address address)
+    public override bool IsContract(Address address, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         AddAccountRead(address);
         return _innerWorldState.IsContract(address);
     }
 
-    public override bool IsDeadAccount(Address address)
+    public override bool IsStorageEmpty(Address address, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
+        // read is already added in IsNonZeroAccount
+        return _innerWorldState.IsStorageEmpty(address);
+    }
+
+    public override bool IsDeadAccount(Address address, int? blockAccessIndex = null)
+    {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         AddAccountRead(address);
-        return _innerWorldState.IsDeadAccount(address);
+        return IsDeadAccountInternal(address, blockAccessIndex.Value);
     }
 
     public override void ClearStorage(Address address)
@@ -431,6 +461,38 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         }
     }
 
+    private byte[]? GetCodeInternal(Address address, int blockAccessIndex)
+    {
+        if (ParallelExecutionEnabled)
+        {
+            // get from BAL -> suggested block -> inner world state
+            AccountChanges? accountChanges = GetGeneratingBlockAccessList().GetAccountChanges(address);
+            if (accountChanges is not null && accountChanges.CodeChanges.Count == 1)
+            {
+                return accountChanges.CodeChanges.First().NewCode;
+            }
+
+            accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+
+            if (accountChanges is not null && accountChanges.NonceChanges.Count > 0)
+            {
+                return accountChanges.GetCode(blockAccessIndex);
+            }
+
+            Debug.Fail("Could not find code during parallel execution");
+            return [];
+        }
+        else
+        {
+            return _innerWorldState.GetCode(address);
+        }
+    }
+
+    private ValueHash256 GetCodeHashInternal(Address address, int blockAccessIndex)
+        => ParallelExecutionEnabled ?
+                ValueKeccak.Compute(GetCodeInternal(address, blockAccessIndex)) :
+                _innerWorldState.GetCodeHash(address);
+
     private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell, int blockAccessIndex)
     {
         if (ParallelExecutionEnabled)
@@ -460,4 +522,41 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
             return _innerWorldState.Get(storageCell);
         }
     }
+
+    private bool AccountExistsInternal(Address address, int blockAccessIndex)
+    {
+        if (ParallelExecutionEnabled)
+        {
+            AccountChanges? accountChanges = GetGeneratingBlockAccessList().GetAccountChanges(address);
+            if (accountChanges is not null && accountChanges.NonceChanges.Count == 1)
+            {
+                // account created or destroyed in current tx
+                NonceChange nonceChange = accountChanges.NonceChanges.First();
+                return nonceChange.NewNonce != 0;
+            }
+
+            accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+            if (accountChanges is not null)
+            {
+                // check if existed before current tx
+                return accountChanges.AccountExists(blockAccessIndex);
+            }
+
+            Debug.Fail("Could not find nonce during parallel execution");
+            return false;
+        }
+        else
+        {
+            return _innerWorldState.AccountExists(address);
+        }
+    }
+
+    private bool IsDeadAccountInternal(Address address, int blockAccessIndex)
+        => ParallelExecutionEnabled ?
+                !AccountExistsInternal(address, blockAccessIndex) ||
+                (
+                    GetBalanceInternal(address, blockAccessIndex) == 0 &&
+                    GetNonceInternal(address, blockAccessIndex) == 0 &&
+                    GetCodeHashInternal(address, blockAccessIndex) == ValueKeccak.EmptyTreeHash) :
+                _innerWorldState.IsDeadAccount(address);
 }

@@ -33,7 +33,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     public EnumerableWithCount<NonceChange> NonceChanges => new(_nonceChanges.Values.Where(c => c.BlockAccessIndex != -1), _nonceChanges.Count);
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IEnumerable<CodeChange> CodeChanges => _codeChanges.Values;
+    public EnumerableWithCount<CodeChange> CodeChanges => new(_codeChanges.Values.Where(c => c.BlockAccessIndex != -1), _codeChanges.Count);
 
     [JsonIgnore]
     public ValueHash256 CodeHash { get => _codeHash; set => _codeHash = value; }
@@ -220,6 +220,11 @@ public class AccountChanges : IEquatable<AccountChanges>
         return 0;
     }
 
+    public byte[] GetCode(int blockAccessIndex)
+    {
+        return [];
+    }
+
     public bool IsStorageEmpty(int blockAccessIndex)
     {
         return false;
@@ -231,6 +236,6 @@ public class AccountChanges : IEquatable<AccountChanges>
         return new();
     }
 
-    public bool AccountExists()
+    public bool AccountExists(int blockAccessIndex)
         => !_isDestroyed; // check through BAL
 }

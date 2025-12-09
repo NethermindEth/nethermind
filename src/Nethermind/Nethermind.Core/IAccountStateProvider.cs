@@ -26,14 +26,14 @@ namespace Nethermind.Core
         }
 
         [SkipLocalsInit]
-        bool IsStorageEmpty(Address address)
+        bool IsStorageEmpty(Address address, int? blockAccessIndex = null)
         {
             TryGetAccount(address, out AccountStruct account);
             return account.IsStorageEmpty;
         }
 
         [SkipLocalsInit]
-        ValueHash256 GetCodeHash(Address address)
+        ValueHash256 GetCodeHash(Address address, int? blockAccessIndex = null)
         {
             TryGetAccount(address, out AccountStruct account);
             return account.CodeHash;
