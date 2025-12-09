@@ -44,34 +44,36 @@ namespace Nethermind.Blockchain.Filters
 
         public bool Matches(Bloom bloom)
         {
-            bool result = true;
-            var indexes = AddressesBloomExtracts;
-            for (var i = 0; i < indexes.Length; i++)
+            if (AddressesBloomExtracts.Length == 0)
             {
-                result = bloom.Matches(indexes[i]);
-                if (result)
+                return true;
+            }
+            foreach (Bloom.BloomExtract index in AddressesBloomExtracts)
+            {
+                if (bloom.Matches(index))
                 {
-                    break;
+                    return true;
                 }
             }
 
-            return result;
+            return false;
         }
 
         public bool Matches(ref BloomStructRef bloom)
         {
-            bool result = true;
-            var indexes = AddressesBloomExtracts;
-            for (var i = 0; i < indexes.Length; i++)
+            if (AddressesBloomExtracts.Length == 0)
             {
-                result = bloom.Matches(indexes[i]);
-                if (result)
+                return true;
+            }
+            foreach (Bloom.BloomExtract index in AddressesBloomExtracts)
+            {
+                if (bloom.Matches(index))
                 {
-                    break;
+                    return true;
                 }
             }
 
-            return result;
+            return false;
         }
 
         private Bloom.BloomExtract[] CalculateBloomExtracts() => Addresses.Select(static a => Bloom.GetExtract(a)).ToArray();

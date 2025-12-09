@@ -202,15 +202,7 @@ namespace Nethermind.Blockchain.Filters
             return AnyTopic.Instance;
         }
 
-        private static AddressFilter GetAddress(AddressAsKey[]? addresses)
-        {
-            if (addresses is null)
-            {
-                return AddressFilter.AnyAddress;
-            }
-
-            return new AddressFilter(addresses);
-        }
+        private static AddressFilter GetAddress(AddressAsKey[]? addresses) => addresses is null ? AddressFilter.AnyAddress : new AddressFilter(addresses);
 
         private static FilterTopic?[]? GetFilterTopics(IEnumerable<Hash256[]?>? topics) => topics?.Select(GetTopic).ToArray();
 

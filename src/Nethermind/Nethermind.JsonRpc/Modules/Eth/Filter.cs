@@ -112,7 +112,7 @@ public class Filter : IJsonRpcParam
                     yield return [new Hash256(token.GetString()!)];
                     break;
                 case JsonValueKind.Array:
-                    var enumerator = token.EnumerateArray();
+                    JsonElement.ArrayEnumerator enumerator = token.EnumerateArray();
                     List<Hash256> result = new();
                     while (enumerator.MoveNext())
                     {
