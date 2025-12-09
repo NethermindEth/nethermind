@@ -8,6 +8,7 @@ using Nethermind.Consensus.Processing.ParallelProcessing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.State;
+using Nethermind.Trie;
 
 
 namespace Nethermind.Init.Modules;
@@ -18,7 +19,9 @@ public class ParallelModule(IBlocksConfig blocksConfig) : Module
     {
         if (blocksConfig.ParallelBlockProcessing)
         {
-            builder.AddSingleton<IMainProcessingModule, ParallelMainProcessingModule>();
+            builder
+                .AddSingleton<NodeStorageCache>()
+                .AddSingleton<IMainProcessingModule, ParallelMainProcessingModule>();
         }
     }
 
@@ -30,6 +33,7 @@ public class ParallelModule(IBlocksConfig blocksConfig) : Module
                 .AddSingleton<PreBlockCaches>()
                 .AddScoped<IBlockCachePreWarmer, NoBlockCachePreWarmer>()
                 .Add<PrewarmerEnvFactory>()
+                .Add<ParallelEnvFactory>()
                 .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, ParallelBlockValidationTransactionsExecutor>();
         }
     }
