@@ -31,7 +31,8 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     private static Histogram _snapshotBundleTimes = Prometheus.Metrics.CreateHistogram("flat_write_batch", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "type" },
-        Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
+        // Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
+        Buckets = [1]
     });
 
     private readonly SnapshotBundle _snapshotBundle;

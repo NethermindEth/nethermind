@@ -53,7 +53,8 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     private static Histogram _flatdiffimes = Metrics.CreateHistogram("flatdiff_times", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "category", "type" },
-        Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
+        // Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
+        Buckets = [1]
     });
 
     private static Gauge _knownStatesMemory = Metrics.CreateGauge("flatdiff_knownstates_memory", "memory", "category");
@@ -364,7 +365,8 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         new HistogramConfiguration()
         {
             LabelNames = ["part"],
-            Buckets = Histogram.LinearBuckets(0, 1, 100)
+            // Buckets = Histogram.LinearBuckets(0, 1, 100)
+            Buckets = [1]
         });
 
     private SnapshotBundle GatherCache(StateId baseBlock, IFlatDiffRepository.SnapshotBundleUsage usage, long? earliestExclusive = null) {

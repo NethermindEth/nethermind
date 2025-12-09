@@ -23,7 +23,8 @@ public class PrewarmerScopeProvider(
         new HistogramConfiguration()
         {
             LabelNames = ["part", "is_prewarmer"],
-            Buckets = Histogram.PowersOfTenDividedBuckets(5, 10, 5)
+            // Buckets = Histogram.PowersOfTenDividedBuckets(5, 10, 5)
+            Buckets = [1]
         });
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
