@@ -139,13 +139,11 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
 
     private void Set(UInt256 slot, byte[] value)
     {
-        if (_address == FlatWorldStateScope.DebugAddress && slot == FlatWorldStateScope.DebugSlot) Console.Error.WriteLine($"set {_address} {slot}, {value?.ToHexString()}");
         _bundle.SetChangedSlot(_address, slot, value);
     }
 
     public void SelfDestruct()
     {
-        if (_address == FlatWorldStateScope.DebugAddress) Console.Error.WriteLine($"Self destruct {_address}");
         _bundle.Clear(_address, _addressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
 
