@@ -47,9 +47,10 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public virtual void Set(in StorageCell storageCell, byte[] newValue)
+        /// <returns>Return true if this is the first update for this cell</returns>
+        public virtual bool Set(in StorageCell storageCell, byte[] newValue)
         {
-            PushUpdate(in storageCell, newValue);
+            return PushUpdate(in storageCell, newValue);
         }
 
         /// <summary>
@@ -211,11 +212,14 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(in StorageCell cell, byte[] value)
+        /// <returns>Return true if this is the first update for this cell</returns>
+        private bool PushUpdate(in StorageCell cell, byte[] value)
         {
             StackList<int> stack = SetupRegistry(cell);
+            bool isNewStack = stack.Count == 0;
             stack.Push(_changes.Count);
             _changes.Add(new Change(in cell, value, ChangeType.Update));
+            return isNewStack;
         }
 
         /// <summary>

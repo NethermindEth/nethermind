@@ -4,11 +4,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -60,7 +57,9 @@ public class RocksdbPersistence : IPersistence
     private readonly Histogram.Child _rocksdBPersistenceTimesAddressHash;
 
     public record Configuration(
-        bool UsePreimage = false
+        bool UsePreimage = false,
+        bool FlatInTrie = false,
+        bool SeparateStorageTop = true
     )
     {
     }
@@ -72,7 +71,10 @@ public class RocksdbPersistence : IPersistence
         Buckets = [1]
     });
 
-    public RocksdbPersistence(IColumnsDb<FlatDbColumns> db, [KeyFilter(DbNames.Preimage)] IDb preimageDb, Configuration configuration)
+    public RocksdbPersistence(
+        IColumnsDb<FlatDbColumns> db,
+        [KeyFilter(DbNames.Preimage)] IDb preimageDb,
+        Configuration configuration)
     {
         _configuration = configuration;
         _db = db;
@@ -312,32 +314,75 @@ public class RocksdbPersistence : IPersistence
         return new WriteBatch(this, _preimageDb.StartWriteBatch(), _db.StartWriteBatch(), dbSnap, compressor, to);
     }
 
-    private class WriteBatch(
-        RocksdbPersistence mainDb,
-        IWriteBatch preimageWriteBatch,
-        IColumnsWriteBatch<FlatDbColumns> batch,
-        IColumnDbSnapshot<FlatDbColumns> dbSnap,
-        Compressor compressor,
-        StateId to
-    ): IPersistence.IWriteBatch
+    private class WriteBatch : IPersistence.IWriteBatch
     {
-        IWriteOnlyKeyValueStore state = batch.GetColumnBatch(FlatDbColumns.State);
-        IWriteOnlyKeyValueStore storage = batch.GetColumnBatch(FlatDbColumns.Storage);
-        IWriteOnlyKeyValueStore stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
-        IWriteOnlyKeyValueStore stateTopNodes = batch.GetColumnBatch(FlatDbColumns.StateTopNodes);
-        IWriteOnlyKeyValueStore storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
-        IWriteOnlyKeyValueStore storageTopNodes = batch.GetColumnBatch(FlatDbColumns.StorageTopNodes);
+        private IWriteOnlyKeyValueStore state;
+        private IWriteOnlyKeyValueStore storage;
+        private IWriteOnlyKeyValueStore stateNodes;
+        private IWriteOnlyKeyValueStore stateTopNodes;
+        private IWriteOnlyKeyValueStore storageNodes;
+        private IWriteOnlyKeyValueStore storageTopNodes;
+
+        private ISortedKeyValueStore storageSnap;
+        private ISortedKeyValueStore storageNodesSnap;
+        private ISortedKeyValueStore storageTopNodesSnap;
+
         private AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
         WriteFlags _flags = WriteFlags.None;
+        private readonly RocksdbPersistence _mainDb;
+        private readonly IWriteBatch _preimageWriteBatch;
+        private readonly IColumnsWriteBatch<FlatDbColumns> _batch;
+        private readonly IColumnDbSnapshot<FlatDbColumns> _dbSnap;
+        private readonly Compressor _compressor;
+        private readonly StateId _to;
+        private readonly bool _flatInTrie;
+        private readonly bool _separateStorageTop;
+
+        public WriteBatch(RocksdbPersistence mainDb,
+            IWriteBatch preimageWriteBatch,
+            IColumnsWriteBatch<FlatDbColumns> batch,
+            IColumnDbSnapshot<FlatDbColumns> dbSnap,
+            Compressor compressor,
+            StateId to)
+        {
+            _mainDb = mainDb;
+            _preimageWriteBatch = preimageWriteBatch;
+            _batch = batch;
+            _dbSnap = dbSnap;
+            _compressor = compressor;
+            _to = to;
+
+            _flatInTrie = mainDb._configuration.FlatInTrie;
+            _separateStorageTop = mainDb._configuration.SeparateStorageTop;
+            if (mainDb._configuration.FlatInTrie)
+            {
+                state = batch.GetColumnBatch(FlatDbColumns.StateNodes);
+                storage = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
+            }
+            else
+            {
+                state = batch.GetColumnBatch(FlatDbColumns.State);
+                storage = batch.GetColumnBatch(FlatDbColumns.Storage);
+            }
+
+            stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
+            stateTopNodes = batch.GetColumnBatch(FlatDbColumns.StateTopNodes);
+            storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
+            storageTopNodes = batch.GetColumnBatch(FlatDbColumns.StorageTopNodes);
+
+            storageSnap = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage));
+            storageNodesSnap = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.StorageNodes));
+            storageTopNodesSnap = ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageTopNodes));
+        }
 
         public void Dispose()
         {
-            SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), to);
-            batch.Dispose();
-            dbSnap.Dispose();
-            preimageWriteBatch.Dispose();
-            compressor.Dispose();
+            SetCurrentState(_batch.GetColumnBatch(FlatDbColumns.Metadata), _to);
+            _batch.Dispose();
+            _dbSnap.Dispose();
+            _preimageWriteBatch.Dispose();
+            _compressor.Dispose();
         }
 
         public int SelfDestruct(Address addr)
@@ -351,7 +396,7 @@ public class RocksdbPersistence : IPersistence
             accountPath.Bytes[..StorageHashPrefixLength].CopyTo(lastKey);
 
             int removedEntry = 0;
-            using (ISortedView storageNodeReader = ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes)).GetViewBetween(firstKey, lastKey))
+            using (ISortedView storageNodeReader = storageNodesSnap.GetViewBetween(firstKey, lastKey))
             {
                 var storageNodeWriter = storageNodes;
                 while (storageNodeReader.MoveNext())
@@ -361,29 +406,35 @@ public class RocksdbPersistence : IPersistence
                 }
             }
 
-            using (ISortedView storageNodeReader = ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageTopNodes)).GetViewBetween(firstKey, lastKey))
+            if (_separateStorageTop)
             {
-                var storageNodeWriter = storageNodes;
-                while (storageNodeReader.MoveNext())
+                using (ISortedView storageNodeReader = storageTopNodesSnap.GetViewBetween(firstKey, lastKey))
                 {
-                    storageNodeWriter.Remove(storageNodeReader.CurrentKey);
-                    removedEntry++;
+                    var storageNodeWriter = storageNodes;
+                    while (storageNodeReader.MoveNext())
+                    {
+                        storageNodeWriter.Remove(storageNodeReader.CurrentKey);
+                        removedEntry++;
+                    }
                 }
             }
 
-            removedEntry = 0; // Debug
-            // for storage the prefix might change depending on the encoding
-            firstKey.Fill(0x00);
-            lastKey.Fill(0xff);
-            mainDb.EncodeAccountKey(firstKey, addr);
-            mainDb.EncodeAccountKey(lastKey, addr);
-            using (ISortedView storageReader = ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)).GetViewBetween(firstKey, lastKey))
+            if (!_flatInTrie)
             {
-                var storageWriter = storage;
-                while (storageReader.MoveNext())
+                removedEntry = 0; // Debug
+                // for storage the prefix might change depending on the encoding
+                firstKey.Fill(0x00);
+                lastKey.Fill(0xff);
+                _mainDb.EncodeAccountKey(firstKey, addr);
+                _mainDb.EncodeAccountKey(lastKey, addr);
+                using (ISortedView storageReader = storageSnap.GetViewBetween(firstKey, lastKey))
                 {
-                    storageWriter.Remove(storageReader.CurrentKey);
-                    removedEntry++;
+                    IWriteOnlyKeyValueStore? storageWriter = storage;
+                    while (storageReader.MoveNext())
+                    {
+                        storageWriter.Remove(storageReader.CurrentKey);
+                        removedEntry++;
+                    }
                 }
             }
 
@@ -392,41 +443,41 @@ public class RocksdbPersistence : IPersistence
 
         public void RemoveAccount(Address addr)
         {
-            state.Remove(mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr));
+            state.Remove(_mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr));
         }
 
         public void SetAccount(Address addr, Account account)
         {
             using var stream = _accountDecoder.EncodeToNewNettyStream(account);
-            state.PutSpan(mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr), stream.AsSpan());
+            state.PutSpan(_mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr), stream.AsSpan());
         }
 
         public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
         {
             ValueHash256 hash256 = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(slot, hash256.BytesAsSpan);
-            preimageWriteBatch.PutSpan(hash256.Bytes, slot.ToBigEndian());
+            _preimageWriteBatch.PutSpan(hash256.Bytes, slot.ToBigEndian());
 
-            ReadOnlySpan<byte> theKey =  mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot);
+            ReadOnlySpan<byte> theKey =  _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot);
             storage.PutSpan(theKey, value, _flags);
         }
 
         public void RemoveStorage(Address addr, UInt256 slot)
         {
-            ReadOnlySpan<byte> theKey = mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot);
+            ReadOnlySpan<byte> theKey = _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot);
             storage.Remove(theKey);
         }
 
         public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
         {
-            if (mainDb._configuration.UsePreimage) throw new InvalidOperationException("Cannot set raw when using preimage");
+            if (_mainDb._configuration.UsePreimage) throw new InvalidOperationException("Cannot set raw when using preimage");
 
-            storage.PutSpan(mainDb.EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash.ValueHash256, slotHash.ValueHash256), value, _flags);
+            storage.PutSpan(_mainDb.EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash.ValueHash256, slotHash.ValueHash256), value, _flags);
         }
 
         public void SetAccountRaw(Hash256 addrHash, Account account)
         {
-            if (mainDb._configuration.UsePreimage) throw new InvalidOperationException("Cannot set raw when using preimage");
+            if (_mainDb._configuration.UsePreimage) throw new InvalidOperationException("Cannot set raw when using preimage");
             using var stream = _accountDecoder.EncodeToNewNettyStream(account);
 
             state.PutSpan(addrHash.Bytes[..StateKeyPrefixLength], stream.AsSpan(), _flags);
@@ -447,7 +498,7 @@ public class RocksdbPersistence : IPersistence
             }
             else
             {
-                if (path.Length <= StorageNodesTopThreshold)
+                if (_separateStorageTop && path.Length <= StorageNodesTopThreshold)
                 {
                     storageTopNodes.PutSpan(EncodeStorageNodeTopKey(stackalloc byte[StorageNodesTopKeyLength], address, path), tn.FullRlp.Span, _flags);
                 }
@@ -469,16 +520,28 @@ public class RocksdbPersistence : IPersistence
         private readonly IReadOnlyKeyValueStore _storageNodes;
         private readonly IReadOnlyKeyValueStore _storageTopNodes;
         private readonly RocksdbPersistence _mainDb;
-
-        // private Decompressor? _decompressor; // Simple single pool decompressor
+        private readonly bool _usePreimage;
+        private readonly bool _flatInTrie;
+        private readonly bool _separateStorageTop;
 
         public PersistenceReader(IColumnDbSnapshot<FlatDbColumns> db, RocksdbPersistence mainDb)
         {
+            _usePreimage = mainDb._configuration.UsePreimage;
+            _flatInTrie = mainDb._configuration.FlatInTrie;
+            _separateStorageTop = mainDb._configuration.SeparateStorageTop;
             _db = db;
             _mainDb = mainDb;
             CurrentState = ReadCurrentState(db.GetColumn(FlatDbColumns.Metadata));
-            _state = _db.GetColumn(FlatDbColumns.State);
-            _storage = _db.GetColumn(FlatDbColumns.Storage);
+            if (_flatInTrie)
+            {
+                _state = _db.GetColumn(FlatDbColumns.StateNodes);
+                _storage = _db.GetColumn(FlatDbColumns.StorageNodes);
+            }
+            else
+            {
+                _state = _db.GetColumn(FlatDbColumns.State);
+                _storage = _db.GetColumn(FlatDbColumns.Storage);
+            }
             _stateNodes = _db.GetColumn(FlatDbColumns.StateNodes);
             _stateTopNodes = _db.GetColumn(FlatDbColumns.StateTopNodes);
             _storageNodes = _db.GetColumn(FlatDbColumns.StorageNodes);
@@ -572,7 +635,7 @@ public class RocksdbPersistence : IPersistence
             }
             else
             {
-                if (path.Length <= StorageNodesTopThreshold)
+                if (_separateStorageTop && path.Length <= StorageNodesTopThreshold)
                 {
                     return _storageTopNodes.Get(EncodeStorageNodeTopKey(stackalloc byte[StorageNodesTopKeyLength], address, in path));
                 }
@@ -590,13 +653,13 @@ public class RocksdbPersistence : IPersistence
 
         private byte[]? GetAccountRaw(in ValueHash256 accountHash)
         {
-            if (_mainDb._configuration.UsePreimage) throw new InvalidOperationException("Raw operation not available in preimage mode");
+            if (_usePreimage) throw new InvalidOperationException("Raw operation not available in preimage mode");
             return _state.GetSpan(accountHash.Bytes[..StateKeyPrefixLength]).ToArray();
         }
 
         public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash)
         {
-            if (_mainDb._configuration.UsePreimage) throw new InvalidOperationException("Raw operation not available in preimage mode");
+            if (_usePreimage) throw new InvalidOperationException("Raw operation not available in preimage mode");
             Span<byte> keySpan = stackalloc byte[StorageKeyLength];
             ReadOnlySpan<byte> storageKey = _mainDb.EncodeStorageKeyHashed(keySpan, addrHash.ValueHash256, slotHash.ValueHash256);
             return _storage.Get(storageKey);

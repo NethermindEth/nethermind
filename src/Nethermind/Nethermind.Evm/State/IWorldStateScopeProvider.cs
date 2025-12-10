@@ -92,7 +92,7 @@ public interface IWorldStateScopeProvider
         /// <returns></returns>
         byte[] Get(in ValueHash256 hash);
 
-        void HintSet(UInt256 index) { }
+        void HintSet(in UInt256 index);
     }
 
     public interface IWorldStateWriteBatch : IDisposable

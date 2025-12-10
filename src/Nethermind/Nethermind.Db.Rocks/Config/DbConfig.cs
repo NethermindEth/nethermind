@@ -420,6 +420,7 @@ public class DbConfig : IDbConfig
     // Note: No prefix extractor for state.Dont forget.
     public string? FlatStateDbRocksDbOptions { get; set; } =
         FlatCommonConfig +
+        // "use_direct_reads=true;" + //  For testing
         // "prefix_extractor=capped:3;" + // I forget why.
         "block_based_table_factory.block_cache=64000000;" +
         "";
@@ -439,8 +440,9 @@ public class DbConfig : IDbConfig
         // "block_based_table_factory.block_restart_interval=6;" + // For storage the prefix have a lot in common.
         // "memtable=skiplist;" +
         // "prefix_extractor=capped:23;" + // 20 byte address + 3 byte prefix.
-        "block_based_table_factory.block_cache=1000000000;" +
-        "block_based_table_factory.block_size=16000;" +
+        // "use_direct_reads=true;" + //  For testing
+        "block_based_table_factory.block_cache=500000000;" +
+        "block_based_table_factory.block_size=16000;" + // Using 4kb size is faster, IO wise, but uses additional 500 MB of memory, which if put on block cache is much betterr.
         "";
 
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
@@ -475,6 +477,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.filter_policy=ribbonfilter:15;" +
 
         // Make it
+        // "optimize_filters_for_hits=true;" +
         "optimize_filters_for_hits=true;" +
 
         "";
@@ -494,14 +497,14 @@ public class DbConfig : IDbConfig
     public string? FlatStateTopNodesDbAdditionalRocksDbOptions { get; set; }
 
     public string? FlatStateNodesDbAdditionalRocksDbOptions { get; set; }
-    public ulong FlatStorageNodesDbWriteBufferSize { get; set; } = (ulong)128.MiB();
+    public ulong FlatStorageNodesDbWriteBufferSize { get; set; } = (ulong)64.MiB();
     public ulong FlatStorageNodesDbWriteBufferNumber { get; set; } = 4;
     public string? FlatStorageNodesDbRocksDbOptions { get; set; } =
         TrieNodeConfig +
         "";
     public string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong FlatStorageTopNodesDbWriteBufferSize { get; set; } = (ulong)128.MiB();
+    public ulong FlatStorageTopNodesDbWriteBufferSize { get; set; } = (ulong)64.MiB();
     public ulong FlatStorageTopNodesNodesDbWriteBufferNumber { get; set; } = 4;
     public string? FlatStorageTopNodesNodesDbRocksDbOptions { get; set; } =
         TrieNodeConfig +

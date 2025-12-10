@@ -57,8 +57,7 @@ public class SnapshotBundle : IDisposable
     private static Histogram _snapshotBundleTimes = DevMetric.Factory.CreateHistogram("snapshot_bundle_times", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "type", "is_prewarmer" },
-        // Buckets = Histogram.PowersOfTenDividedBuckets(1, 12, 5)
-        Buckets = [1]
+        Buckets = Histogram.PowersOfTenDividedBuckets(1, 12, 5)
     });
     private Histogram.Child _accountPersistenceRead;
     private Histogram.Child _slotPersistenceRead;
@@ -681,12 +680,10 @@ public class SnapshotBundle : IDisposable
     {
         if (_isDisposed) return;
         _isDisposed = true;
-
         foreach (Snapshot snapshot in _snapshots)
         {
             snapshot.Dispose();
         }
-        _snapshots.Dispose();
 
         // Null them in case unexpected mutation from trie warmer
         _snapshots = null;

@@ -33,8 +33,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddSingleton<ResourcePool>()
             .AddSingleton<Importer>()
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
-            .AddSingleton<IPersistence, RocksdbPersistence>()
-            // .AddSingleton<IPersistence, TrieOnlyRocksdbPersistence>()
             .AddSingleton<TrieWarmer>()
 
             // These fake db are workaround for missing metrics with column db. Probably not a good idea though as
@@ -75,9 +73,28 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 InlineCompaction = config.InlineCompaction,
                 DisableTrieWarmer = config.DisableTrieWarmer
             })
+
+            .AddSingleton<IPersistence, IFlatDbConfig, IComponentContext>((flatDbConfig, ctx) =>
+            {
+                if (
+                    flatDbConfig.Layout == FlatLayout.PreimageFlat
+                    || flatDbConfig.Layout == FlatLayout.Flat
+                    || flatDbConfig.Layout == FlatLayout.FlatNoSeparateTopStorage
+                    || flatDbConfig.Layout == FlatLayout.FlatInTrie
+                    )
+                {
+                    return ctx.Resolve<RocksdbPersistence>();
+                }
+
+                throw new Exception($"Unsupported layout {flatDbConfig.Layout}");
+            })
+
+            .AddSingleton<RocksdbPersistence>()
             .AddSingleton<RocksdbPersistence.Configuration, IFlatDbConfig>((config) => new RocksdbPersistence.Configuration()
             {
-                UsePreimage = config.UsePreimage
+                UsePreimage = config.Layout == FlatLayout.PreimageFlat,
+                FlatInTrie = config.Layout == FlatLayout.FlatInTrie,
+                SeparateStorageTop = (config.Layout != FlatLayout.FlatInTrie && config.Layout != FlatLayout.FlatNoSeparateTopStorage)
             })
             .AddSingleton<IStateReader, FlatStateReader>();
 
