@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -20,7 +20,8 @@ public class PreBedrockHeaderValidator(
     protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {
         error = null;
-        return typeof(TOrphaned) == typeof(OnFlag) || ValidateParent(header, parent, ref error);
+        bool orphaned = false;
+        return typeof(TOrphaned) == typeof(OnFlag) || ValidateParent(header, parent, ref error, ref orphaned);
     }
 }
 

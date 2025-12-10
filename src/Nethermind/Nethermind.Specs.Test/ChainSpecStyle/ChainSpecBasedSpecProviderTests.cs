@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
@@ -64,6 +65,7 @@ public class ChainSpecBasedSpecProviderTests
         expectedSpec.Eip1559TransitionBlock = 0;
         expectedSpec.DifficultyBombDelay = 0;
         expectedSpec.IsEip3855Enabled = isEip3855Enabled;
+        expectedSpec.MaximumUncleCount = 0;
         TestSpecProvider testProvider = TestSpecProvider.Instance;
         testProvider.NextForkSpec = expectedSpec;
         testProvider.TerminalTotalDifficulty = 0;
@@ -167,39 +169,45 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
-    [TestCaseSource(nameof(SepoliaActivations))]
-    public void Sepolia_loads_properly(ForkActivation forkActivation)
+    [Test]
+    public void Sepolia_loads_properly()
     {
-        ChainSpec chainSpec = LoadChainSpecFromChainFolder("sepolia");
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-        SepoliaSpecProvider sepolia = SepoliaSpecProvider.Instance;
-
-        CompareSpecs(sepolia, provider, forkActivation);
-        using (Assert.EnterMultipleScope())
+        foreach (var testCase in SepoliaActivations)
         {
-            Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(SepoliaSpecProvider.Instance.TerminalTotalDifficulty));
-            Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.Zero);
-            Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(long.MaxValue));
-            Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Sepolia));
-            Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Sepolia));
+            var forkActivation = (ForkActivation)testCase.Arguments[0]!;
 
-            IEnumerable<ulong> timestamps = GetTransitionTimestamps(chainSpec.Parameters);
-            foreach (ulong t in timestamps)
+            ChainSpec chainSpec = LoadChainSpecFromChainFolder("sepolia");
+            ChainSpecBasedSpecProvider provider = new(chainSpec);
+            SepoliaSpecProvider sepolia = SepoliaSpecProvider.Instance;
+
+            CompareSpecs(sepolia, provider, forkActivation);
+            using (Assert.EnterMultipleScope())
             {
-                Assert.That(ValidateSlotByTimestamp(t, SepoliaSpecProvider.BeaconChainGenesisTimestampConst), Is.True);
+                Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(SepoliaSpecProvider.Instance.TerminalTotalDifficulty));
+                Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.Zero);
+                Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(long.MaxValue));
+                Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Sepolia));
+                Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Sepolia));
+
+                IEnumerable<ulong> timestamps = GetTransitionTimestamps(chainSpec.Parameters);
+                foreach (ulong t in timestamps)
+                {
+                    Assert.That(ValidateSlotByTimestamp(t, SepoliaSpecProvider.BeaconChainGenesisTimestampConst), Is.True);
+                }
             }
+
+            IReleaseSpec postCancunSpec = provider.GetSpec((2, SepoliaSpecProvider.CancunTimestamp));
+            VerifyCancunSpecificsForMainnetAndSepolia(postCancunSpec);
+
+            IReleaseSpec postPragueSpec = provider.GetSpec((2, SepoliaSpecProvider.PragueTimestamp));
+            VerifyPragueSpecificsForMainnetHoodiAndSepolia(provider.ChainId, postPragueSpec);
+
+            IReleaseSpec postOsakaSpec = provider.GetSpec((2, SepoliaSpecProvider.OsakaTimestamp));
+            IReleaseSpec postBPO1Spec = provider.GetSpec((2, SepoliaSpecProvider.BPO1Timestamp));
+            IReleaseSpec postBPO2Spec = provider.GetSpec((2, SepoliaSpecProvider.BPO2Timestamp));
+            VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postOsakaSpec, postBPO1Spec, postBPO2Spec);
         }
 
-        IReleaseSpec postCancunSpec = provider.GetSpec((2, SepoliaSpecProvider.CancunTimestamp));
-        VerifyCancunSpecificsForMainnetAndSepolia(postCancunSpec);
-
-        IReleaseSpec postPragueSpec = provider.GetSpec((2, SepoliaSpecProvider.PragueTimestamp));
-        VerifyPragueSpecificsForMainnetHoodiAndSepolia(provider.ChainId, postPragueSpec);
-
-        IReleaseSpec postOsakaSpec = provider.GetSpec((2, SepoliaSpecProvider.OsakaTimestamp));
-        IReleaseSpec postBPO1Spec = provider.GetSpec((2, SepoliaSpecProvider.BPO1Timestamp));
-        IReleaseSpec postBPO2Spec = provider.GetSpec((2, SepoliaSpecProvider.BPO2Timestamp));
-        VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postOsakaSpec, postBPO1Spec, postBPO2Spec);
     }
 
     private static void VerifyCancunSpecificsForMainnetAndSepolia(IReleaseSpec spec)
@@ -282,33 +290,39 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
-    [TestCaseSource(nameof(HoodiActivations))]
-    public void Hoodi_loads_properly(ForkActivation forkActivation)
+    [Test]
+    public void Hoodi_loads_properly()
     {
-        ChainSpec chainSpec = LoadChainSpecFromChainFolder("hoodi");
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-        ISpecProvider hardCodedSpec = HoodiSpecProvider.Instance;
-
-        CompareSpecs(hardCodedSpec, provider, forkActivation);
-        using (Assert.EnterMultipleScope())
+        foreach (TestCaseData testCase in HoodiActivations)
         {
-            Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(hardCodedSpec.TerminalTotalDifficulty));
-            Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.Zero);
-            Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.Zero);
-            Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Hoodi));
-            Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Hoodi));
+            ForkActivation forkActivation = (ForkActivation)testCase.Arguments[0]!;
+
+            ChainSpec chainSpec = LoadChainSpecFromChainFolder("hoodi");
+            ChainSpecBasedSpecProvider provider = new(chainSpec);
+            ISpecProvider hardCodedSpec = HoodiSpecProvider.Instance;
+
+            CompareSpecs(hardCodedSpec, provider, forkActivation);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(hardCodedSpec.TerminalTotalDifficulty));
+                Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.Zero);
+                Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.Zero);
+                Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Hoodi));
+                Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Hoodi));
+            }
+
+            IReleaseSpec postCancunSpec = provider.GetSpec((2, HoodiSpecProvider.CancunTimestamp));
+            VerifyCancunSpecificsForMainnetAndSepolia(postCancunSpec);
+
+            IReleaseSpec postPragueSpec = provider.GetSpec((2, HoodiSpecProvider.PragueTimestamp));
+            VerifyPragueSpecificsForMainnetHoodiAndSepolia(provider.ChainId, postPragueSpec);
+
+            IReleaseSpec postOsakaSpec = provider.GetSpec((2, HoodiSpecProvider.OsakaTimestamp));
+            IReleaseSpec postBPO1Spec = provider.GetSpec((2, HoodiSpecProvider.BPO1Timestamp));
+            IReleaseSpec postBPO2Spec = provider.GetSpec((2, HoodiSpecProvider.BPO2Timestamp));
+            VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postOsakaSpec, postBPO1Spec, postBPO2Spec);
         }
 
-        IReleaseSpec postCancunSpec = provider.GetSpec((2, HoodiSpecProvider.CancunTimestamp));
-        VerifyCancunSpecificsForMainnetAndSepolia(postCancunSpec);
-
-        IReleaseSpec postPragueSpec = provider.GetSpec((2, HoodiSpecProvider.PragueTimestamp));
-        VerifyPragueSpecificsForMainnetHoodiAndSepolia(provider.ChainId, postPragueSpec);
-
-        IReleaseSpec postOsakaSpec = provider.GetSpec((2, HoodiSpecProvider.OsakaTimestamp));
-        IReleaseSpec postBPO1Spec = provider.GetSpec((2, HoodiSpecProvider.BPO1Timestamp));
-        IReleaseSpec postBPO2Spec = provider.GetSpec((2, HoodiSpecProvider.BPO2Timestamp));
-        VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postOsakaSpec, postBPO1Spec, postBPO2Spec);
 
     }
 
@@ -558,56 +572,62 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
-    [TestCaseSource(nameof(MainnetActivations))]
-    public void Mainnet_loads_properly(ForkActivation forkActivation)
+    [Test]
+    public void Mainnet_loads_properly()
     {
-        ChainSpec chainSpec = LoadChainSpecFromChainFolder("foundation");
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-        MainnetSpecProvider mainnet = MainnetSpecProvider.Instance;
-
-        CompareSpecs(mainnet, provider, forkActivation, CompareSpecsOptions.CheckDifficultyBomb);
-
-        using (Assert.EnterMultipleScope())
+        foreach (TestCaseData testCase in MainnetActivations)
         {
-            Assert.That(provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip170));
-            Assert.That(provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxInitCodeSize, Is.EqualTo(2 * CodeSizeConstants.MaxCodeSizeEip170));
-            Assert.That(provider.GetSpec((ForkActivation)(long.MaxValue - 1)).IsEip2537Enabled, Is.False);
-            Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(MainnetSpecProvider.LondonBlockNumber));
-            Assert.That(provider.GetSpec((ForkActivation)4_369_999).DifficultyBombDelay, Is.EqualTo(0_000_000));
-            Assert.That(provider.GetSpec((ForkActivation)4_370_000).DifficultyBombDelay, Is.EqualTo(3_000_000));
-            Assert.That(provider.GetSpec((ForkActivation)7_279_999).DifficultyBombDelay, Is.EqualTo(3_000_000));
-            Assert.That(provider.GetSpec((ForkActivation)7_279_999).DifficultyBombDelay, Is.EqualTo(3_000_000));
-            Assert.That(provider.GetSpec((ForkActivation)7_280_000).DifficultyBombDelay, Is.EqualTo(5_000_000));
-            Assert.That(provider.GetSpec((ForkActivation)9_199_999).DifficultyBombDelay, Is.EqualTo(5_000_000));
-            Assert.That(provider.GetSpec((ForkActivation)9_200_000).DifficultyBombDelay, Is.EqualTo(9_000_000));
-            Assert.That(provider.GetSpec((ForkActivation)12_000_000).DifficultyBombDelay, Is.EqualTo(9_000_000));
-            Assert.That(provider.GetSpec((ForkActivation)12_964_999).DifficultyBombDelay, Is.EqualTo(9_000_000));
-            Assert.That(provider.GetSpec((ForkActivation)12_965_000).DifficultyBombDelay, Is.EqualTo(9_700_000));
-            Assert.That(provider.GetSpec((ForkActivation)13_772_999).DifficultyBombDelay, Is.EqualTo(9_700_000));
-            Assert.That(provider.GetSpec((ForkActivation)13_773_000).DifficultyBombDelay, Is.EqualTo(10_700_000));
-            Assert.That(provider.GetSpec((ForkActivation)15_049_999).DifficultyBombDelay, Is.EqualTo(10_700_000));
-            Assert.That(provider.GetSpec((ForkActivation)15_050_000).DifficultyBombDelay, Is.EqualTo(11_400_000));
-            Assert.That(provider.GetSpec((ForkActivation)99_414_000).DifficultyBombDelay, Is.EqualTo(11_400_000));
-            Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(MainnetSpecProvider.Instance.TerminalTotalDifficulty));
-            Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Mainnet));
-            Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Mainnet));
+            var forkActivation = (ForkActivation)testCase.Arguments[0]!;
 
-            IEnumerable<ulong> timestamps = GetTransitionTimestamps(chainSpec.Parameters);
-            foreach (ulong t in timestamps)
+
+            ChainSpec chainSpec = LoadChainSpecFromChainFolder("foundation");
+            ChainSpecBasedSpecProvider provider = new(chainSpec);
+            MainnetSpecProvider mainnet = MainnetSpecProvider.Instance;
+
+            CompareSpecs(mainnet, provider, forkActivation, CompareSpecsOptions.CheckDifficultyBomb);
+
+            using (Assert.EnterMultipleScope())
             {
-                Assert.That(ValidateSlotByTimestamp(t, MainnetSpecProvider.BeaconChainGenesisTimestampConst), Is.True);
+                Assert.That(provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip170));
+                Assert.That(provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxInitCodeSize, Is.EqualTo(2 * CodeSizeConstants.MaxCodeSizeEip170));
+                Assert.That(provider.GetSpec((ForkActivation)(long.MaxValue - 1)).IsEip2537Enabled, Is.False);
+                Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(MainnetSpecProvider.LondonBlockNumber));
+                Assert.That(provider.GetSpec((ForkActivation)4_369_999).DifficultyBombDelay, Is.EqualTo(0_000_000));
+                Assert.That(provider.GetSpec((ForkActivation)4_370_000).DifficultyBombDelay, Is.EqualTo(3_000_000));
+                Assert.That(provider.GetSpec((ForkActivation)7_279_999).DifficultyBombDelay, Is.EqualTo(3_000_000));
+                Assert.That(provider.GetSpec((ForkActivation)7_279_999).DifficultyBombDelay, Is.EqualTo(3_000_000));
+                Assert.That(provider.GetSpec((ForkActivation)7_280_000).DifficultyBombDelay, Is.EqualTo(5_000_000));
+                Assert.That(provider.GetSpec((ForkActivation)9_199_999).DifficultyBombDelay, Is.EqualTo(5_000_000));
+                Assert.That(provider.GetSpec((ForkActivation)9_200_000).DifficultyBombDelay, Is.EqualTo(9_000_000));
+                Assert.That(provider.GetSpec((ForkActivation)12_000_000).DifficultyBombDelay, Is.EqualTo(9_000_000));
+                Assert.That(provider.GetSpec((ForkActivation)12_964_999).DifficultyBombDelay, Is.EqualTo(9_000_000));
+                Assert.That(provider.GetSpec((ForkActivation)12_965_000).DifficultyBombDelay, Is.EqualTo(9_700_000));
+                Assert.That(provider.GetSpec((ForkActivation)13_772_999).DifficultyBombDelay, Is.EqualTo(9_700_000));
+                Assert.That(provider.GetSpec((ForkActivation)13_773_000).DifficultyBombDelay, Is.EqualTo(10_700_000));
+                Assert.That(provider.GetSpec((ForkActivation)15_049_999).DifficultyBombDelay, Is.EqualTo(10_700_000));
+                Assert.That(provider.GetSpec((ForkActivation)15_050_000).DifficultyBombDelay, Is.EqualTo(11_400_000));
+                Assert.That(provider.GetSpec((ForkActivation)99_414_000).DifficultyBombDelay, Is.EqualTo(11_400_000));
+                Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(MainnetSpecProvider.Instance.TerminalTotalDifficulty));
+                Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Mainnet));
+                Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Mainnet));
+
+                IEnumerable<ulong> timestamps = GetTransitionTimestamps(chainSpec.Parameters);
+                foreach (ulong t in timestamps)
+                {
+                    Assert.That(ValidateSlotByTimestamp(t, MainnetSpecProvider.BeaconChainGenesisTimestampConst), Is.True);
+                }
             }
+
+            IReleaseSpec postCancunSpec = provider.GetSpec(MainnetSpecProvider.CancunActivation);
+            IReleaseSpec postPragueSpec = provider.GetSpec(MainnetSpecProvider.PragueActivation);
+            IReleaseSpec postOsakaSpec = provider.GetSpec(MainnetSpecProvider.OsakaActivation);
+            IReleaseSpec postBPO1Spec = provider.GetSpec(MainnetSpecProvider.BPO1Activation);
+            IReleaseSpec postBPO2Spec = provider.GetSpec(MainnetSpecProvider.BPO2Activation);
+
+            VerifyCancunSpecificsForMainnetAndSepolia(postCancunSpec);
+            VerifyPragueSpecificsForMainnetHoodiAndSepolia(provider.ChainId, postPragueSpec);
+            VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postOsakaSpec, postBPO1Spec, postBPO2Spec);
         }
-
-        IReleaseSpec postCancunSpec = provider.GetSpec(MainnetSpecProvider.CancunActivation);
-        IReleaseSpec postPragueSpec = provider.GetSpec(MainnetSpecProvider.PragueActivation);
-        IReleaseSpec postOsakaSpec = provider.GetSpec(MainnetSpecProvider.OsakaActivation);
-        IReleaseSpec postBPO1Spec = provider.GetSpec(MainnetSpecProvider.BPO1Activation);
-        IReleaseSpec postBPO2Spec = provider.GetSpec(MainnetSpecProvider.BPO2Activation);
-
-        VerifyCancunSpecificsForMainnetAndSepolia(postCancunSpec);
-        VerifyPragueSpecificsForMainnetHoodiAndSepolia(provider.ChainId, postPragueSpec);
-        VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postOsakaSpec, postBPO1Spec, postBPO2Spec);
     }
 
     [Flags]
