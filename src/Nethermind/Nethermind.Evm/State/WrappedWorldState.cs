@@ -12,6 +12,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.State;
 
+// needed?
 public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 {
     protected IWorldState _innerWorldState = innerWorldState;
@@ -72,6 +73,9 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 
     public virtual UInt256 GetBalance(Address address, int? blockAccessIndex = null)
         => _innerWorldState.GetBalance(address, blockAccessIndex);
+
+    public virtual UInt256 GetNonce(Address address, int? blockAccessIndex = null)
+        => _innerWorldState.GetNonce(address, blockAccessIndex);
 
     public virtual byte[]? GetCode(Address address, int? blockAccessIndex = null)
         => _innerWorldState.GetCode(address);
@@ -139,7 +143,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual Snapshot TakeSnapshot(bool newTransactionStart = false)
         => _innerWorldState.TakeSnapshot(newTransactionStart);
 
-    public virtual bool TryGetAccount(Address address, out AccountStruct account)
+    public virtual bool TryGetAccount(Address address, out AccountStruct account, int? blockAccessIndex = null)
         => _innerWorldState.TryGetAccount(address, out account);
 
     public void WarmUp(AccessList? accessList)

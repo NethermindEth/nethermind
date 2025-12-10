@@ -221,9 +221,23 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         if (!blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
-        AddAccountRead(address, blockAccessIndex);
-
+        if (TracingEnabled)
+        {
+            AddAccountRead(address);
+        }
         return GetBalanceInternal(address, blockAccessIndex.Value);
+    }
+
+    public override UInt256 GetNonce(Address address, int? blockAccessIndex = null)
+    {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
+        if (TracingEnabled)
+        {
+            AddAccountRead(address);
+        }
+        return GetNonceInternal(address, blockAccessIndex.Value);
     }
 
     public override ValueHash256 GetCodeHash(Address address, int? blockAccessIndex = null)
@@ -231,7 +245,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         if (!blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
-        AddAccountRead(address);
+        if (TracingEnabled)
+        {
+            AddAccountRead(address);
+        }
         return GetCodeHashInternal(address, blockAccessIndex.Value);
     }
 
@@ -240,7 +257,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         if (!blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
-        AddAccountRead(address);
+        if (TracingEnabled)
+        {
+            AddAccountRead(address);
+        }
         return GetCodeInternal(address, blockAccessIndex.Value);
     }
 
@@ -280,7 +300,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
     {
         if (TracingEnabled)
         {
-            GeneratedBlockAccessList.AddAccountRead(address);
+            AddAccountRead(address);
             // todo move inside bal
             if (balance != 0)
             {
@@ -308,20 +328,29 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         }
     }
 
-    // maybe should remove?
-    public override bool TryGetAccount(Address address, out AccountStruct account)
+    public override bool TryGetAccount(Address address, out AccountStruct account, int? blockAccessIndex = null)
     {
-        AddAccountRead(address);
-        return _innerWorldState.TryGetAccount(address, out account);
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
+        if (TracingEnabled)
+        {
+            AddAccountRead(address);
+        }
+        
+        if (ParallelExecutionEnabled)
+        {
+            account = GetAccountInternal(address, blockAccessIndex.Value) ?? AccountStruct.TotallyEmpty;
+            return !account.IsTotallyEmpty;
+        }
+        else
+        {
+            return _innerWorldState.TryGetAccount(address, out account);
+        }
     }
 
     public void AddAccountRead(Address address, int? blockAccessIndex = null)
-    {
-        if (TracingEnabled)
-        {
-            GetGeneratingBlockAccessList(blockAccessIndex).AddAccountRead(address);
-        }
-    }
+        => GetGeneratingBlockAccessList(blockAccessIndex).AddAccountRead(address);
 
     public override void Restore(Snapshot snapshot)
     {
@@ -347,7 +376,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         if (!blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
-        AddAccountRead(address);
+        if (TracingEnabled)
+        {
+            AddAccountRead(address);
+        }
         return AccountExistsInternal(address, blockAccessIndex.Value);
     }
 
@@ -356,7 +388,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         if (!blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
-        AddAccountRead(address);
+        if (TracingEnabled)
+        {
+            AddAccountRead(address);
+        }
         return IsContractInternal(address, blockAccessIndex.Value);
     }
 
@@ -375,13 +410,19 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         if (!blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
-        AddAccountRead(address);
+        if (TracingEnabled)
+        {
+            AddAccountRead(address);
+        }
         return IsDeadAccountInternal(address, blockAccessIndex.Value);
     }
 
     public override void ClearStorage(Address address)
     {
-        AddAccountRead(address);
+        if (TracingEnabled)
+        {
+            AddAccountRead(address);
+        }
         if (!ParallelExecutionEnabled)
         {
             _innerWorldState.ClearStorage(address);
@@ -411,12 +452,6 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
             _innerWorldState.RecalculateStateRoot();
         }
     }
-
-    // needed? also trygetaccount?
-    // public override bool IsStorageEmpty(Address address)
-    // {
-    //     return false;
-    // }
 
     private BlockAccessList GetGeneratingBlockAccessList(int? blockAccessIndex = null)
         => ParallelExecutionEnabled ? _intermediateBlockAccessLists[blockAccessIndex!.Value] : GeneratedBlockAccessList;
@@ -611,4 +646,11 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
             return _innerWorldState.IsStorageEmpty(address);
         }
     }
+
+    private AccountStruct? GetAccountInternal(Address address, int blockAccessIndex)
+        => AccountExistsInternal(address, blockAccessIndex) ? new(
+                GetNonceInternal(address, blockAccessIndex),
+                GetBalanceInternal(address, blockAccessIndex),
+                Keccak.EmptyTreeHash, // never used
+                GetCodeHashInternal(address, blockAccessIndex)) : null;
 }

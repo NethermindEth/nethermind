@@ -9,10 +9,10 @@ namespace Nethermind.Core
 {
     public interface IAccountStateProvider
     {
-        bool TryGetAccount(Address address, out AccountStruct account);
+        bool TryGetAccount(Address address, out AccountStruct account, int? blockAccessIndex = null);
 
         [SkipLocalsInit]
-        UInt256 GetNonce(Address address)
+        UInt256 GetNonce(Address address, int? blockAccessIndex = null)
         {
             TryGetAccount(address, out AccountStruct account);
             return account.Nonce;
