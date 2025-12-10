@@ -3,11 +3,13 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -163,10 +165,11 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
     {
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch =
             new TrieStoreScopeProvider.StorageTreeBulkWriteBatch(
-                Math.Max(TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1, estimatedEntries),
+                estimatedEntries,
                 _tree,
                 onRootUpdated,
-                _address);
+                _address,
+                commit: true);
 
         return new StorageTreeBulkWriteBatch(
             storageTreeBulkWriteBatch,
