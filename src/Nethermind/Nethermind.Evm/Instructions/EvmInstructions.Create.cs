@@ -191,7 +191,7 @@ internal static partial class EvmInstructions
         }
 
         // Increment the nonce of the executing account to reflect the contract creation.
-        state.IncrementNonce(env.ExecutingAccount);
+        state.IncrementNonce(env.ExecutingAccount, vm.TxExecutionContext.BlockAccessIndex);
 
         // Analyze and compile the initialization code.
         CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo? codeInfo, out _);
@@ -201,8 +201,8 @@ internal static partial class EvmInstructions
 
         // Check for contract address collision. If the contract already exists and contains code or non-zero state,
         // then the creation should be aborted.
-        bool accountExists = state.AccountExists(contractAddress);
-        if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state))
+        bool accountExists = state.AccountExists(contractAddress, vm.TxExecutionContext.BlockAccessIndex);
+        if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state, vm.TxExecutionContext.BlockAccessIndex))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
@@ -210,14 +210,14 @@ internal static partial class EvmInstructions
         }
 
         // If the contract address refers to a dead account, clear its storage before creation.
-        if (state.IsDeadAccount(contractAddress))
+        if (state.IsDeadAccount(contractAddress, vm.TxExecutionContext.BlockAccessIndex))
         {
             // Note: Seems to be needed on block 21827914 for some reason
             state.ClearStorage(contractAddress);
         }
 
         // Deduct the transfer value from the executing account's balance.
-        state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+        state.SubtractFromBalance(env.ExecutingAccount, value, spec, vm.TxExecutionContext.BlockAccessIndex);
 
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.

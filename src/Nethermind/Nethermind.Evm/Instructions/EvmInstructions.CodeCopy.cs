@@ -273,7 +273,7 @@ internal static partial class EvmInstructions
                 gasAvailable -= GasCostOf.VeryLow;
 
                 // Determine if the account is a contract by checking the loaded CodeHash.
-                bool isCodeLengthNotZero = vm.WorldState.IsContract(address);
+                bool isCodeLengthNotZero = vm.WorldState.IsContract(address, vm.TxExecutionContext.BlockAccessIndex);
                 // If the original instruction was GT, invert the check to match the semantics.
                 if (nextInstruction == Instruction.GT)
                 {

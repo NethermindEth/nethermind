@@ -33,7 +33,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    byte[] GetOriginal(in StorageCell storageCell);
+    byte[] GetOriginal(in StorageCell storageCell, int? blockAccessIndex = null); //needed?
 
     /// <summary>
     /// Get the persistent storage value at the specified storage cell
@@ -54,14 +54,14 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at cell</returns>
-    ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell);
+    ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell, int? blockAccessIndex = null);
 
     /// <summary>
     /// Set the provided value to transient storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <param name="newValue">Value to store</param>
-    void SetTransientState(in StorageCell storageCell, byte[] newValue);
+    void SetTransientState(in StorageCell storageCell, byte[] newValue, int? blockAccessIndex = null);
 
     /// <summary>
     /// Reset all storage
@@ -129,7 +129,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void DecrementNonce(Address address, UInt256 delta);
 
-    void IncrementNonce(Address address) => IncrementNonce(address, UInt256.One);
+    void IncrementNonce(Address address, int? blockAccessIndex = null) => IncrementNonce(address, UInt256.One, blockAccessIndex);
 
     void DecrementNonce(Address address) => DecrementNonce(address, UInt256.One);
 
@@ -149,5 +149,5 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
 
-    void ResetTransient();
+    void ResetTransient(int? blockAccessIndex = null);
 }

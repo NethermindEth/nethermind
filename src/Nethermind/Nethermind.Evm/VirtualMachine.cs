@@ -958,9 +958,9 @@ public unsafe partial class VirtualMachine(
         if (_parityTouchBugAccount.ShouldDelete)
         {
             // potential edge case?
-            if (_worldState.AccountExists(_parityTouchBugAccount.Address))
+            if (_worldState.AccountExists(_parityTouchBugAccount.Address, TxExecutionContext.BlockAccessIndex))
             {
-                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Spec);
+                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Spec, TxExecutionContext.BlockAccessIndex);
             }
 
             _parityTouchBugAccount.ShouldDelete = false;
@@ -990,7 +990,7 @@ public unsafe partial class VirtualMachine(
         long baseGasCost = precompile.BaseGasCost(spec);
         long dataGasCost = precompile.DataGasCost(callData, spec);
 
-        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, spec);
+        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, spec, TxExecutionContext.BlockAccessIndex);
 
         // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
         // An additional issue was found in Parity,
@@ -1088,12 +1088,12 @@ public unsafe partial class VirtualMachine(
         {
             IReleaseSpec spec = BlockExecutionContext.Spec;
             // Ensure the executing account has sufficient balance and exists in the world state.
-            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
+            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec, TxExecutionContext.BlockAccessIndex);
 
             // For contract creation calls, increment the nonce if the specification requires it.
             if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
             {
-                _worldState.IncrementNonce(env.ExecutingAccount);
+                _worldState.IncrementNonce(env.ExecutingAccount, TxExecutionContext.BlockAccessIndex);
             }
         }
 

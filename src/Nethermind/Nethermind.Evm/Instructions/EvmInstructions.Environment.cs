@@ -569,14 +569,14 @@ internal static partial class EvmInstructions
 
         IWorldState state = vm.WorldState;
         // For dead accounts, the specification requires pushing zero.
-        if (state.IsDeadAccount(address))
+        if (state.IsDeadAccount(address, vm.TxExecutionContext.BlockAccessIndex))
         {
             stack.PushZero<TTracingInst>();
         }
         else
         {
             // Otherwise, push the account's code hash.
-            ValueHash256 hash = state.GetCodeHash(address);
+            ValueHash256 hash = state.GetCodeHash(address, vm.TxExecutionContext.BlockAccessIndex);
             stack.Push32Bytes<TTracingInst>(in hash);
         }
 
@@ -613,13 +613,13 @@ internal static partial class EvmInstructions
         if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
-        if (state.IsDeadAccount(address))
+        if (state.IsDeadAccount(address, vm.TxExecutionContext.BlockAccessIndex))
         {
             stack.PushZero<TTracingInst>();
         }
         else
         {
-            Memory<byte> code = state.GetCode(address);
+            Memory<byte> code = state.GetCode(address, vm.TxExecutionContext.BlockAccessIndex);
             // If the code passes EOF validation, push the EOF-specific hash.
             if (EofValidator.IsEof(code, out _))
             {
@@ -628,7 +628,7 @@ internal static partial class EvmInstructions
             else
             {
                 // Otherwise, push the standard code hash.
-                stack.PushBytes<TTracingInst>(state.GetCodeHash(address).Bytes);
+                stack.PushBytes<TTracingInst>(state.GetCodeHash(address, vm.TxExecutionContext.BlockAccessIndex).Bytes);
             }
         }
 

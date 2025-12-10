@@ -257,7 +257,7 @@ internal static partial class EvmInstructions
         }
         else if (!inheritor.Equals(executingAccount))
         {
-            state.AddToBalance(inheritor, result, spec);
+            state.AddToBalance(inheritor, result, spec, vm.TxExecutionContext.BlockAccessIndex);
         }
 
         // Special handling when SELFDESTRUCT is limited to the same transaction.
@@ -265,7 +265,7 @@ internal static partial class EvmInstructions
             goto Stop; // Avoid burning ETH if contract is not destroyed per EIP clarification
 
         // Subtract the balance from the executing account.
-        state.SubtractFromBalance(executingAccount, result, spec);
+        state.SubtractFromBalance(executingAccount, result, spec, vm.TxExecutionContext.BlockAccessIndex);
 
     // Jump forward to be unpredicted by the branch predictor.
     Stop:
