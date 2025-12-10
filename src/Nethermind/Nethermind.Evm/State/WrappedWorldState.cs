@@ -12,7 +12,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.State;
 
-// needed?
 public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 {
     protected IWorldState _innerWorldState = innerWorldState;
