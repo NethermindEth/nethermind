@@ -28,10 +28,10 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
         => _innerWorldState.AddToBalance(address, balanceChange, spec, out oldBalance);
 
-    public virtual bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    public virtual bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
         => _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
 
-    public virtual bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public virtual bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
         => _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
 
     public virtual IDisposable BeginScope(BlockHeader? baseBlock)

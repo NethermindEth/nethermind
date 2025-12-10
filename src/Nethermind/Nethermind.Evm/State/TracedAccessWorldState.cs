@@ -12,7 +12,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Evm.State;
 
@@ -82,7 +81,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
 
     public void GenerateBlockAccessList()
     {
-        // combine intermidiate BALs and receipt tracers
+        // combine intermediate BALs and receipt tracers
     }
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
@@ -106,12 +105,24 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         }
     }
 
-    public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
         => AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out _);
 
-    public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
     {
-        bool res = _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
+        bool res;
+        if (ParallelExecutionEnabled)
+        {
+            res = !AccountExistsInternal(address, blockAccessIndex.Value);
+            oldBalance = GetBalanceInternal(address, blockAccessIndex.Value);
+        }
+        else
+        {
+            res = _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
+        }
 
         if (TracingEnabled)
         {
