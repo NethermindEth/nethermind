@@ -88,7 +88,7 @@ internal class Xdpos2ProtocolHandler(
     public override void Init()
     {
         var x = SubprotocolRequested;
-        ProtocolInitialized?.Invoke(this, new ProtocolInitializedEventArgs(this));
+        var y = ProtocolInitialized;
     }
 
     private void Handle(VoteMsg voteMsg)
