@@ -122,9 +122,10 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
             ValueHash256 key = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(index, key.BytesAsSpan);
             _ = _warmupStorageTree.Get(key.BytesAsSpan, keepChildRef: true);
+            return true;
         }
 
-        return true;
+        return false;
     }
 
     private bool TryGet(in UInt256 index, out byte[]? value)
@@ -162,7 +163,7 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
     {
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch =
             new TrieStoreScopeProvider.StorageTreeBulkWriteBatch(
-                estimatedEntries,
+                Math.Max(TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1, estimatedEntries),
                 _tree,
                 onRootUpdated,
                 _address);

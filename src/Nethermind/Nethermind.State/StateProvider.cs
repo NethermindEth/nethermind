@@ -818,11 +818,6 @@ namespace Nethermind.State
             StackList<int> stack = SetupCache(address);
             stack.Push(_changes.Count);
             _changes.Add(new Change(address, account, ChangeType.New));
-            if (address == FlatWorldStateScope.DebugAddress)
-            {
-                Console.Error.WriteLine($"Push new {account}");
-            }
-            _tree.HintSet(address);
         }
 
         private void PushRecreateEmpty(Address address, Account account, StackList<int> stack)

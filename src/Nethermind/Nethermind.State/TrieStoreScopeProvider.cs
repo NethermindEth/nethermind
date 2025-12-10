@@ -237,7 +237,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         AddressAsKey address) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // Slight optimization on small contract as the index hash can be precalculated in some case.
-        private const int MIN_ENTRIES_TO_BATCH = 16;
+        public const int MIN_ENTRIES_TO_BATCH = 16;
 
         private bool _hasSelfDestruct;
         private bool _wasSetCalled = false;

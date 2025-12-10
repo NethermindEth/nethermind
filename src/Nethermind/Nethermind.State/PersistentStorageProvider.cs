@@ -117,7 +117,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             if (TryGetCachedValue(storageCell, out _))
             {
-                GetOrCreateStorage(storageCell.Address).HintSet(storageCell);
+                // GetOrCreateStorage(storageCell.Address).HintSet(storageCell);
             }
 
             return true;
@@ -301,6 +301,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)
                 ))
                 .ToPooledList(_storages.Count);
+            // Sort by decreasing changes. Slightly better parallelism.
+            storages.Sort((it1, it2) => it1.ContractState.EstimatedChanges.CompareTo(it2.ContractState.EstimatedChanges) * -1);
 
             ParallelUnbalancedWork.For(
                 0,
