@@ -49,7 +49,7 @@ namespace Nethermind.Evm
         /// DELEGATECALL behaves like a library call and it uses the value information from the caller even
         /// as no transfer happens.
         /// </summary>
-        public UInt256 Value { get; private set; }
+        public UInt256 Value;
 
         /// <summary>
         /// Parameters / arguments of the current call.
