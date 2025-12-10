@@ -248,7 +248,7 @@ internal class SpecialTransactionsTests
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
-        var txSign = ContractsUtils.CreateTxSign((UInt256)head.Number, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignersAddress, blockChain.Signer.Address);
+        var txSign = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignersAddress, blockChain.Signer.Address);
         await blockChain.Signer.Sign(txSign);
 
         TransactionResult? result = null;
@@ -345,7 +345,7 @@ internal class SpecialTransactionsTests
 
         if (isSpecialTx)
         {
-            tx = ContractsUtils.CreateTxSign((UInt256)head.Number, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignersAddress, blockChain.Signer.Address);
+            tx = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignersAddress, blockChain.Signer.Address);
         }
         else
         {
@@ -399,7 +399,7 @@ internal class SpecialTransactionsTests
 
 
         var blockNumber = head.Number - 1;
-        Transaction? tx = ContractsUtils.CreateTxSign((UInt256)blockNumber, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignersAddress, blockChain.Signer.Address);
+        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)blockNumber, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignersAddress, blockChain.Signer.Address);
 
         await blockChain.Signer.Sign(tx);
 
@@ -429,7 +429,7 @@ internal class SpecialTransactionsTests
 
 
         var blockNumber = head.Number;
-        Transaction? tx = ContractsUtils.CreateTxSign((UInt256)blockNumber, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignersAddress, blockChain.Signer.Address);
+        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)blockNumber, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignersAddress, blockChain.Signer.Address);
 
         await blockChain.Signer.Sign(tx);
 
@@ -459,7 +459,7 @@ internal class SpecialTransactionsTests
 
 
         var blockNumber = head.Number + 1;
-        Transaction? tx = ContractsUtils.CreateTxSign((UInt256)blockNumber, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignersAddress, blockChain.Signer.Address);
+        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)blockNumber, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignersAddress, blockChain.Signer.Address);
 
         await blockChain.Signer.Sign(tx);
 

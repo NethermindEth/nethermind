@@ -310,22 +310,7 @@ public class XdcTestBlockchain : TestBlockchain
     {
         if (_useHotStuffModule)
         {
-            return new XdcHotStuff(
-                BlockTree,
-                XdcContext,
-                SpecProvider,
-                Container.Resolve<IBlockProducer>(),
-                EpochSwitchManager,
-                SnapshotManager,
-                QuorumCertificateManager,
-                VotesManager,
-                Signer,
-                Container.Resolve<ITimeoutTimer>(),
-                Container.Resolve<IProcessExitSource>(),
-                new MemDb(),
-                Container.Resolve<ITxPool>(),
-                LogManager
-                );
+            return Container.Resolve<IBlockProducerRunner>();
         }
         return base.CreateBlockProducerRunner();
     }

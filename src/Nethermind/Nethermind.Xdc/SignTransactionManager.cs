@@ -28,12 +28,13 @@ using static System.Net.Mime.MediaTypeNames;
 
 namespace Nethermind.Xdc;
 
-internal static class ContractsUtils
+internal class SignTransactionManager(IDb stateDb, ISigner signer, ITxPool txPool) : ISignTransactionManager
 {
     const string HexSignMethod = "e341eaa4";
     const string HexSetSecret = "34d38600";
     const string HexSetOpening = "e11f5ba2";
-    public static async Task CreateTransactionSign(XdcBlockHeader header, ISigner signer, IDb stateDb, ITxPool txPool, IXdcReleaseSpec spec)
+
+    public async Task CreateTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         UInt256 nonce = txPool.GetLatestPendingNonce(signer.Address);
         Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash, nonce, spec.BlockSignersAddress, signer.Address);
@@ -193,7 +194,7 @@ internal static class ContractsUtils
         return Convert.ToBase64String(cipherBytes);
     }
 
-    public static byte[] RandStringByte(int n)
+    internal static byte[] RandStringByte(int n)
     {
         const string letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789";
         var result = new byte[n];
