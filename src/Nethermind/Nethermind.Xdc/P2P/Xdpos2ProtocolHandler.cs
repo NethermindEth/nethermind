@@ -44,17 +44,6 @@ internal class Xdpos2ProtocolHandler(
 
     protected override TimeSpan InitTimeout => base.InitTimeout;
 
-    public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
-    public override event EventHandler<ProtocolEventArgs> SubprotocolRequested;
-
-    public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
-    {
-    }
-
-    public override void Dispose()
-    {        
-    }
-
     public override void HandleMessage(ZeroPacket message)
     {
         var size = message.Content.ReadableBytes;
@@ -90,13 +79,6 @@ internal class Xdpos2ProtocolHandler(
                     break;
                 }
         }
-    }
-
-    public override void Init()
-    {
-        IsPriority = true;
-        var x = SubprotocolRequested;
-        var y = ProtocolInitialized;
     }
 
     private void Handle(VoteMsg voteMsg)
