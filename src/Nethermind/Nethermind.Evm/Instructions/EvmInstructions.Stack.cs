@@ -159,7 +159,7 @@ internal static partial class EvmInstructions
             }
 
             // Validate the jump destination and update the program counter if valid.
-            if (!Jump((int)destination, ref programCounter, in vm.EvmState.Env))
+            if (!Jump((int)destination, ref programCounter, vm.EvmState.Env))
                 goto InvalidJumpDestination;
 
             goto Success;

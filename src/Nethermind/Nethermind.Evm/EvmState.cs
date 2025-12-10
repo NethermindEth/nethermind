@@ -66,13 +66,13 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     |-----------------------------------------------------------------------|
     | 72-103: EvmPooledMemory _memory (32 bytes)                            |
     |-----------------------------------------------------------------------|
-    | 104-223: ExecutionEnvironment _env (120 bytes)                        |
+    | 104-111: ExecutionEnvironment _env (8 bytes)                        |
     |-----------------------------------------------------------------------|
-    | 224-247: StackAccessTracker _accessTracker (24 bytes)                 |
+    | 112-135: StackAccessTracker _accessTracker (24 bytes)                 |
     |-----------------------------------------------------------------------|
-    | 248-259: Snapshot _snapshot (12 bytes)                                |
+    | 136-147: Snapshot _snapshot (12 bytes)                                |
     |-----------------------------------------------------------------------|
-    | 260-263: padding (4 bytes)                                            |
+    | 148-153: padding (6 bytes)                                            |
     |=======================================================================|
      */
 
@@ -96,7 +96,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     private bool _isDisposed = true;
 
     private EvmPooledMemory _memory;
-    private ExecutionEnvironment _env;
+    private ExecutionEnvironment? _env;
     private StackAccessTracker _accessTracker;
     private Snapshot _snapshot;
 
@@ -110,7 +110,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public static EvmState RentTopLevel(
         long gasAvailable,
         ExecutionType executionType,
-        in ExecutionEnvironment env,
+        ExecutionEnvironment env,
         in StackAccessTracker accessedItems,
         in Snapshot snapshot)
     {
@@ -139,10 +139,11 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         ExecutionType executionType,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
-        in ExecutionEnvironment env,
+        ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot,
-        bool isTopLevel = false)
+        bool isTopLevel = false,
+        bool ownsEnv = true)
     {
         EvmState state = Rent();
         state.Initialize(
@@ -171,7 +172,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         bool isTopLevel,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
-        in ExecutionEnvironment env,
+        ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot)
     {
@@ -226,7 +227,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public bool IsPrecompile => Env.CodeInfo?.IsPrecompile ?? false;
 
     public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
-    public ref readonly ExecutionEnvironment Env => ref _env;
+    public ExecutionEnvironment Env => _env!;
     public ref EvmPooledMemory Memory => ref _memory; // TODO: move to CallEnv
     public ref readonly Snapshot Snapshot => ref _snapshot; // TODO: move to CallEnv
 
@@ -255,7 +256,11 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         _memory.Dispose();
         _memory = default;
         _accessTracker = default;
-        _env = default;
+        if (_env is not null)
+        {
+            _env.Return();
+        }
+        _env = null;
         _snapshot = default;
 
         _statePool.Enqueue(this);

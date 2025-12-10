@@ -621,7 +621,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 accessTracker.WarmUp(tx.SenderAddress!);
             }
 
-            env = new ExecutionEnvironment(
+            env = ExecutionEnvironment.Rent(
                 codeInfo: codeInfo,
                 executingAccount: recipient,
                 caller: tx.SenderAddress!,
@@ -646,7 +646,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IntrinsicGas gas,
             in StackAccessTracker accessedItems,
             long gasAvailable,
-            in ExecutionEnvironment env,
+            ExecutionEnvironment env,
             out TransactionSubstate substate,
             out GasConsumed gasConsumed)
             where TTracingInst : struct, IFlag
@@ -683,7 +683,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             ExecutionType executionType = tx.IsContractCreation ? ((spec.IsEofEnabled && tx.IsEofContractCreation) ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
 
-            using (EvmState state = EvmState.RentTopLevel(gasAvailable, executionType, in env, in accessedItems, in snapshot))
+            using (EvmState state = EvmState.RentTopLevel(gasAvailable, executionType, env, in accessedItems, in snapshot))
             {
                 substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
                 Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
