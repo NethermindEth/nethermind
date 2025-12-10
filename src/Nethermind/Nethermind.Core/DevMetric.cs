@@ -7,7 +7,6 @@ namespace Nethermind.Core;
 
 public static class DevMetric
 {
-    // public static CollectorRegistry _customRegistry = Prometheus.Metrics.NewCustomRegistry();
-    // public static MetricFactory Factory = Prometheus.Metrics.WithCustomRegistry(_customRegistry);
-    public static MetricFactory Factory = Prometheus.Metrics.DefaultFactory;
+    public static MetricFactory Factory = Prometheus.Metrics.WithCustomRegistry(Prometheus.Metrics.NewCustomRegistry()); // Custom registry does not publish by default
+    // public static MetricFactory Factory = Prometheus.Metrics.DefaultFactory;
 }
