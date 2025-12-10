@@ -142,8 +142,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot,
-        bool isTopLevel = false,
-        bool ownsEnv = true)
+        bool isTopLevel = false)
     {
         EvmState state = Rent();
         state.Initialize(
