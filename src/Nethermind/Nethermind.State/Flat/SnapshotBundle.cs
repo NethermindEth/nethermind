@@ -79,6 +79,7 @@ public class SnapshotBundle : IDisposable
     private Histogram.Child _setStateNodesTime;
     private Histogram.Child _setStorageNodesTime;
     private Histogram.Child _setSlotTime;
+    private Histogram.Child _setSlotToZeroTime;
     private Histogram.Child _setAccountTime;
 
     private Counter.Child _accountGet;
@@ -159,6 +160,7 @@ public class SnapshotBundle : IDisposable
         _findStorageNode = _snapshotBundleTimes.WithLabels("find_storage_node", _isPrewarmer.ToString());
         _findStorageNodeTrieWarmer = _snapshotBundleTimes.WithLabels("find_storage_node_trie_warmer", _isPrewarmer.ToString());
         _setSlotTime = _snapshotBundleTimes.WithLabels("set_slot", _isPrewarmer.ToString());
+        _setSlotToZeroTime = _snapshotBundleTimes.WithLabels("set_slot_zero", _isPrewarmer.ToString());
         _setAccountTime = _snapshotBundleTimes.WithLabels("set_account", _isPrewarmer.ToString());
 
         _setStateNodesTime = _snapshotBundleTimes.WithLabels("set_state_nodes", _isPrewarmer.ToString());
@@ -288,7 +290,14 @@ public class SnapshotBundle : IDisposable
         long sw = Stopwatch.GetTimestamp();
         // Note: Hot path
         _changedSlots[(address, index)] = value;
-        _setSlotTime.Observe(Stopwatch.GetTimestamp() - sw);
+        if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
+        {
+            _setSlotToZeroTime.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+        else
+        {
+            _setSlotTime.Observe(Stopwatch.GetTimestamp() - sw);
+        }
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash, bool isTrieWarmer)

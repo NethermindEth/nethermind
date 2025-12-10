@@ -378,15 +378,14 @@ public class DbConfig : IDbConfig
         "wal_compression=kZSTD;" + // I think it does not work.
 
         // This used to be on trie, but its here now. Attempt to reduce LSM depth at cost of write amp.
-        "max_bytes_for_level_multiplier=30;" +
-        "max_bytes_for_level_base=350000000;" +
+        "max_bytes_for_level_multiplier=20;" +
+        "max_bytes_for_level_base=250000000;" +
 
         "block_based_table_factory.metadata_block_size=4096;" +
         "block_based_table_factory.block_restart_interval=4;" +
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
         "block_based_table_factory.data_block_hash_table_util_ratio=0.7;" +
         "block_based_table_factory.prepopulate_block_cache=kFlushOnly;" +
-        "block_based_table_factory.filter_policy=ribbonfilter:8;" + // Note: Really impact index size. This seems to be about 1 GIG inn size.
         "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;" +
         "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +
         "block_based_table_factory.whole_key_filtering=true;" + // should be default. Just in case.
@@ -423,6 +422,7 @@ public class DbConfig : IDbConfig
         // "use_direct_reads=true;" + //  For testing
         // "prefix_extractor=capped:3;" + // I forget why.
         "block_based_table_factory.block_cache=64000000;" +
+        "block_based_table_factory.filter_policy=ribbonfilter:12;" +
         "";
 
     public string? FlatStateDbAdditionalRocksDbOptions { get; set; }
@@ -443,6 +443,7 @@ public class DbConfig : IDbConfig
         // "use_direct_reads=true;" + //  For testing
         "block_based_table_factory.block_cache=500000000;" +
         "block_based_table_factory.block_size=16000;" + // Using 4kb size is faster, IO wise, but uses additional 500 MB of memory, which if put on block cache is much betterr.
+        "block_based_table_factory.filter_policy=ribbonfilter:8;" +
         "";
 
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
