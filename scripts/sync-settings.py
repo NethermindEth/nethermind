@@ -129,13 +129,13 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
     pivot = json.loads(response.text)
 
     pivotHash = pivot['result']['hash']
-    pivotTotalDifficulty = int(pivot['result'].get('totalDifficulty', '0x0'), 16)
 
     print(configuration + ' LatestBlock: ' + str(latestBlock))
     print(configuration + ' PivotNumber: ' + str(baseBlock))
     print(configuration + ' PivotHash: ' + str(pivotHash))
     if not isPoS:
-      print(configuration + ' PivotTotalDifficulty: ' + str(pivotTotalDifficulty))
+        pivotTotalDifficulty = int(pivot['result'].get('totalDifficulty', '0x0'), 16)
+        print(configuration + ' PivotTotalDifficulty: ' + str(pivotTotalDifficulty))
 
     with open(f'{CONFIGS_PATH}/{configuration}.json', 'r') as mainnetCfg:
         data = json.load(mainnetCfg)
