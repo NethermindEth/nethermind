@@ -42,7 +42,15 @@ public interface IFlatDbConfig: IConfig
     bool DisableTrieWarmer { get; set; }
 
     [ConfigItem(Description = "Use preimage", DefaultValue = "false")]
-    bool UsePreimage { get; set; }
+    FlatLayout Layout { get; set; }
+}
+
+public enum FlatLayout
+{
+    Flat,
+    FlatNoSeparateTopStorage,
+    FlatInTrie,
+    PreimageFlat
 }
 
 public class FlatDbConfig: IFlatDbConfig
@@ -60,5 +68,5 @@ public class FlatDbConfig: IFlatDbConfig
     // 1 GB is enough for 10% dirty load. 512 MB is pretty good at around 20%. Without it, then the diff layers on its own have around 35% dirty load.
     public long TrieCacheMemoryTarget { get; set; } = 512.MiB();
     public bool DisableTrieWarmer { get; set; } = false;
-    public bool UsePreimage { get; set; }
+    public FlatLayout Layout { get; set; }
 }

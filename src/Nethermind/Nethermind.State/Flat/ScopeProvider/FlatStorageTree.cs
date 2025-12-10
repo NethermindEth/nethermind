@@ -100,7 +100,7 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
         WarmUpSlot(index);
     }
 
-    public void HintSet(UInt256 index)
+    public void HintSet(in UInt256 index)
     {
         WarmUpSlot(index);
     }

@@ -153,6 +153,10 @@ namespace Nethermind.State
             return GetArray(hash.Bytes, null);
         }
 
+        public void HintSet(in UInt256 index)
+        {
+        }
+
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)
         {
