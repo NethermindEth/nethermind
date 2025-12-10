@@ -49,6 +49,18 @@ namespace Nethermind.Facade
 
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>;
-        bool HasStateForBlock(BlockHeader? baseBlock);
+
+        /// <summary>
+        /// Checks if state is available for the given block header.
+        /// </summary>
+        /// <param name="baseBlock">The block header to check state availability for.</param>
+        /// <returns>True if state is available, false otherwise.</returns>
+        /// <remarks>
+        /// Three cases:
+        /// - Archive nodes (FastSync=false, SnapSync=false, PruningMode=None): Always returns true.
+        /// - Pruning nodes (PruningMode != None): Returns true if block is within pruning boundary (requestedBlock &lt;= head - boundary).
+        /// - Else: Delegates to IStateReader.HasStateForBlock for accurate state availability.
+        /// </remarks>
+        bool HasStateForBlock(BlockHeader baseBlock);
     }
 }

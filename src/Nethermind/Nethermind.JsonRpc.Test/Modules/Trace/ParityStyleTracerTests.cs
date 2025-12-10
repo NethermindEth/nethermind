@@ -9,11 +9,11 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -29,9 +29,9 @@ public class ParityStyleTracerTests
 {
     private BlockTree? _blockTree;
     private IPoSSwitcher? _poSSwitcher;
+    private IBlockchainBridge? _blockchainBridge;
     private ITraceRpcModule _traceRpcModule;
     private IContainer _container;
-    private IBlockProcessingQueue _blockProcessingQueue;
 
     [SetUp]
     public async Task Setup()
@@ -39,7 +39,6 @@ public class ParityStyleTracerTests
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
 
         _blockTree = Build.A.BlockTree()
-            .WithoutSettingHead
             .WithSpecProvider(specProvider)
             .TestObject;
 
@@ -48,17 +47,19 @@ public class ParityStyleTracerTests
             .TestObject;
 
         _poSSwitcher = Substitute.For<IPoSSwitcher>();
+        _blockchainBridge = Substitute.For<IBlockchainBridge>();
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(cp))
             .AddSingleton<ISpecProvider>(specProvider)
             .AddSingleton<IPoSSwitcher>(_poSSwitcher)
             .AddSingleton<IBlockTree>(_blockTree)
+            .AddSingleton<IBlockchainBridge>(_blockchainBridge)
             .Build();
 
         await _container.Resolve<PseudoNethermindRunner>().StartBlockProcessing(default);
         _traceRpcModule = _container.Resolve<IRpcModuleFactory<ITraceRpcModule>>().Create();
-        _blockProcessingQueue = _container.Resolve<IBlockProcessingQueue>();
-
     }
 
     [TearDown]
