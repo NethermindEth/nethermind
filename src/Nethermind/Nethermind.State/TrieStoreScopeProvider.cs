@@ -234,7 +234,8 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         int estimatedEntries,
         StorageTree storageTree,
         Action<Address, Hash256> onRootUpdated,
-        AddressAsKey address) : IWorldStateScopeProvider.IStorageWriteBatch
+        AddressAsKey address,
+        bool commit = false) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // Slight optimization on small contract as the index hash can be precalculated in some case.
         public const int MIN_ENTRIES_TO_BATCH = 16;
@@ -295,7 +296,14 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
             if (hasSet)
             {
-                storageTree.UpdateRootHash(_bulkWrite?.Count > 64);
+                if (commit)
+                {
+                    storageTree.Commit();
+                }
+                else
+                {
+                    storageTree.UpdateRootHash(_bulkWrite?.Count > 64);
+                }
                 onRootUpdated(address, storageTree.RootHash);
             }
         }
