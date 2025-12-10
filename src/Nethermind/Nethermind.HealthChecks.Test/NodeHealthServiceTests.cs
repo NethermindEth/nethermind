@@ -8,7 +8,6 @@ using System.Linq;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -38,7 +37,6 @@ public class NodeHealthServiceTests
     {
         IBlockTree blockFinder = Substitute.For<IBlockTree>();
         ISyncServer syncServer = Substitute.For<ISyncServer>();
-        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
         IBlockProducerRunner blockProducerRunner = Substitute.For<IBlockProducerRunner>();
         ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
@@ -148,7 +146,7 @@ public class NodeHealthServiceTests
         public bool ExpectedHealthy { get; set; }
         public string ExpectedMessage { get; set; }
         public string ExpectedLongMessage { get; set; }
-        public List<string> ExpectedErrors { get; set; }
+        public string[] ExpectedErrors { get; set; }
 
         public override string ToString() =>
             $"Lp: {Lp} ExpectedHealthy: {ExpectedHealthy}, ExpectedDescription: {ExpectedMessage}, ExpectedLongDescription: {ExpectedLongMessage}";
@@ -165,7 +163,7 @@ public class NodeHealthServiceTests
                 IsProcessingBlocks = true,
                 PeerCount = 10,
                 ExpectedHealthy = true,
-                ExpectedErrors = new(),
+                ExpectedErrors = [],
                 ExpectedMessage = "Fully synced. Peers: 10.",
                 ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 10."
             };
@@ -176,7 +174,7 @@ public class NodeHealthServiceTests
                 IsProcessingBlocks = true,
                 PeerCount = 0,
                 ExpectedHealthy = false,
-                ExpectedErrors = new() { "NoPeers" },
+                ExpectedErrors = new[] { "NoPeers" },
                 ExpectedMessage = "Fully synced. Node is not connected to any peers.",
                 ExpectedLongMessage = "The node is now fully synced with a network. Node is not connected to any peers."
             };
@@ -186,7 +184,7 @@ public class NodeHealthServiceTests
                 IsSyncing = true,
                 PeerCount = 7,
                 ExpectedHealthy = false,
-                ExpectedErrors = new(),
+                ExpectedErrors = [],
                 ExpectedMessage = "Still syncing. Peers: 7.",
                 ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Peers: 7."
             };
@@ -197,7 +195,7 @@ public class NodeHealthServiceTests
                 IsProcessingBlocks = false,
                 PeerCount = 7,
                 ExpectedHealthy = false,
-                ExpectedErrors = new() { "NotProcessingBlocks" },
+                ExpectedErrors = new[] { "NotProcessingBlocks" },
                 ExpectedMessage = "Fully synced. Peers: 7. Stopped processing blocks.",
                 ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 7. The node stopped processing blocks."
             };
@@ -210,7 +208,7 @@ public class NodeHealthServiceTests
                 IsProcessingBlocks = false,
                 PeerCount = 4,
                 ExpectedHealthy = true,
-                ExpectedErrors = new(),
+                ExpectedErrors = [],
                 ExpectedMessage = "Still syncing. Peers: 4.",
                 ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Peers: 4."
             };
@@ -223,7 +221,7 @@ public class NodeHealthServiceTests
                 IsProcessingBlocks = false,
                 PeerCount = 0,
                 ExpectedHealthy = false,
-                ExpectedErrors = new() { "NoPeers" },
+                ExpectedErrors = new[] { "NoPeers" },
                 ExpectedMessage = "Still syncing. Node is not connected to any peers.",
                 ExpectedLongMessage = "The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Node is not connected to any peers."
             };
@@ -236,7 +234,7 @@ public class NodeHealthServiceTests
                 IsProcessingBlocks = false,
                 PeerCount = 1,
                 ExpectedHealthy = false,
-                ExpectedErrors = new() { "NotProcessingBlocks", "NotProducingBlocks" },
+                ExpectedErrors = new[] { "NotProcessingBlocks", "NotProducingBlocks" },
                 ExpectedMessage = "Fully synced. Peers: 1. Stopped processing blocks. Stopped producing blocks.",
                 ExpectedLongMessage = "The node is now fully synced with a network. Peers: 1. The node stopped processing blocks. The node stopped producing blocks."
             };
@@ -249,7 +247,7 @@ public class NodeHealthServiceTests
                 IsProcessingBlocks = true,
                 PeerCount = 1,
                 ExpectedHealthy = true,
-                ExpectedErrors = new(),
+                ExpectedErrors = [],
                 ExpectedMessage = "Fully synced. Peers: 1.",
                 ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 1."
             };
@@ -263,7 +261,7 @@ public class NodeHealthServiceTests
                 PeerCount = 1,
                 AvailableDiskSpacePercent = 4.73,
                 ExpectedHealthy = false,
-                ExpectedErrors = new() { "LowDiskSpace" },
+                ExpectedErrors = new[] { "LowDiskSpace" },
                 ExpectedMessage = "Fully synced. Peers: 1. Low free disk space.",
                 ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 1. The node is running out of free disk space in 'C:/' - only {1.5:F2} GB ({4.73:F2}%) left."
             };
