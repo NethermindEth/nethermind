@@ -15,6 +15,8 @@ namespace Nethermind.Evm
     public sealed class ExecutionEnvironment
     {
         private static readonly ConcurrentQueue<ExecutionEnvironment> _pool = new();
+        private UInt256 _value;
+        private UInt256 _transferValue;
 
         /// <summary>
         /// Parsed bytecode for the current call.
@@ -42,14 +44,14 @@ namespace Nethermind.Evm
         /// <summary>
         /// ETH value transferred in this call.
         /// </summary>
-        public UInt256 TransferValue { get; private set; }
+        public ref readonly UInt256 TransferValue => ref _transferValue;
 
         /// <summary>
         /// Value information passed (it is different from transfer value in DELEGATECALL.
         /// DELEGATECALL behaves like a library call and it uses the value information from the caller even
         /// as no transfer happens.
         /// </summary>
-        public UInt256 Value;
+        public ref readonly UInt256 Value => ref _value;
 
         /// <summary>
         /// Parameters / arguments of the current call.
@@ -77,8 +79,8 @@ namespace Nethermind.Evm
             env.Caller = caller;
             env.CodeSource = codeSource;
             env.CallDepth = callDepth;
-            env.TransferValue = transferValue;
-            env.Value = value;
+            env._transferValue = transferValue;
+            env._value = value;
             env.InputData = inputData;
             return env;
         }
@@ -93,8 +95,8 @@ namespace Nethermind.Evm
             Caller = null!;
             CodeSource = null;
             CallDepth = 0;
-            TransferValue = default;
-            Value = default;
+            _transferValue = default;
+            _value = default;
             InputData = default;
             _pool.Enqueue(this);
         }

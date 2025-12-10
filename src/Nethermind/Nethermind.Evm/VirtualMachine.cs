@@ -978,7 +978,7 @@ public unsafe partial class VirtualMachine(
     private CallResult RunPrecompile(EvmState state)
     {
         ReadOnlyMemory<byte> callData = state.Env.InputData;
-        UInt256 transferValue = state.Env.TransferValue;
+        ref readonly UInt256 transferValue = ref state.Env.TransferValue;
         long gasAvailable = state.GasAvailable;
 
         IPrecompile precompile = state.Env.CodeInfo.Precompile!;
