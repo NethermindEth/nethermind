@@ -72,7 +72,8 @@
     "eip155Block": 3,
     "eip158Block": 3,
     "byzantiumBlock": 4,
-    "depositContractAddress": "0x0000000000000000000000000000000000000088"
+    "depositContractAddress": "0x0000000000000000000000000000000000000088",
+    "eip6110TransitionTimestamp": 0
   },
   "genesis": {
     "nonce": "0x0",
