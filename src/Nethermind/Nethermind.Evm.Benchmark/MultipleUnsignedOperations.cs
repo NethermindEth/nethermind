@@ -101,7 +101,6 @@ public class MultipleUnsignedOperations
         _evmState.Dispose();
     }
 
-
     [Benchmark]
     public void ExecuteCode()
     {
