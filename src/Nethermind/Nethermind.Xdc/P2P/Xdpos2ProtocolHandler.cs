@@ -7,6 +7,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -79,6 +80,11 @@ internal class Xdpos2ProtocolHandler(
                     break;
                 }
         }
+    }
+
+    protected override void EnrichStatusMessage(StatusMessage statusMessage)
+    {
+        // We do not want to add ForkId to status message in XDPoS
     }
 
     private void Handle(VoteMsg voteMsg)
