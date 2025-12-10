@@ -19,42 +19,42 @@ namespace Nethermind.Evm
         /// <summary>
         /// Parsed bytecode for the current call.
         /// </summary>
-        public ICodeInfo CodeInfo;
+        public ICodeInfo CodeInfo { get; private set; } = null!;
 
         /// <summary>
         /// Currently executing account (in DELEGATECALL this will be equal to caller).
         /// </summary>
-        public Address ExecutingAccount;
+        public Address ExecutingAccount { get; private set; } = null!;
 
         /// <summary>
         /// Caller
         /// </summary>
-        public Address Caller;
+        public Address Caller { get; private set; } = null!;
 
         /// <summary>
         /// Bytecode source (account address).
         /// </summary>
-        public Address? CodeSource;
+        public Address? CodeSource { get; private set; }
 
         /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
-        public int CallDepth;
+        public int CallDepth { get; private set; }
 
         /// <summary>
         /// ETH value transferred in this call.
         /// </summary>
-        public UInt256 TransferValue;
+        public UInt256 TransferValue { get; private set; }
 
         /// <summary>
         /// Value information passed (it is different from transfer value in DELEGATECALL.
         /// DELEGATECALL behaves like a library call and it uses the value information from the caller even
         /// as no transfer happens.
         /// </summary>
-        public UInt256 Value;
+        public UInt256 Value { get; private set; }
 
         /// <summary>
         /// Parameters / arguments of the current call.
         /// </summary>
-        public ReadOnlyMemory<byte> InputData;
+        public ReadOnlyMemory<byte> InputData { get; private set; }
 
         private ExecutionEnvironment() { }
 
@@ -88,9 +88,9 @@ namespace Nethermind.Evm
         /// </summary>
         public void Return()
         {
-            CodeInfo = null;
-            ExecutingAccount = null;
-            Caller = null;
+            CodeInfo = null!;
+            ExecutingAccount = null!;
+            Caller = null!;
             CodeSource = null;
             CallDepth = 0;
             TransferValue = default;
