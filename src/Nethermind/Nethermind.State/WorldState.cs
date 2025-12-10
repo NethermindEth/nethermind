@@ -261,7 +261,9 @@ namespace Nethermind.State
 
             if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
 
+            long sw = Stopwatch.GetTimestamp();
             _currentScope = ScopeProvider.BeginScope(baseBlock);
+            _timeCounter.WithLabels("begin_scope", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
             _stateProvider.SetScope(_currentScope);
             _persistentStorageProvider.SetBackendScope(_currentScope);
 
@@ -269,7 +271,9 @@ namespace Nethermind.State
             {
                 Reset();
                 _stateProvider.SetScope(null);
+                long sw = Stopwatch.GetTimestamp();
                 _currentScope.Dispose();
+                _timeCounter.WithLabels("dispose_scope", isPrewarmer.ToString()).Inc(Stopwatch.GetTimestamp() - sw);
                 _currentScope = null;
                 _isInScope = false;
                 if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");

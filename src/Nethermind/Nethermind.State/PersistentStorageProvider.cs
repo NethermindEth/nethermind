@@ -111,10 +111,19 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         return value;
     }
 
-    public override void Set(in StorageCell storageCell, byte[] newValue)
+    public override bool Set(in StorageCell storageCell, byte[] newValue)
     {
-        base.Set(storageCell, newValue);
-        GetOrCreateStorage(storageCell.Address).HintSet(storageCell);
+        if (base.Set(storageCell, newValue))
+        {
+            if (TryGetCachedValue(storageCell, out _))
+            {
+                GetOrCreateStorage(storageCell.Address).HintSet(storageCell);
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
 
