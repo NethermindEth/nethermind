@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Evm.State;
 
@@ -343,7 +346,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
         AddAccountRead(address);
-        return _innerWorldState.IsContract(address);
+        return IsContractInternal(address, blockAccessIndex.Value);
     }
 
     public override bool IsStorageEmpty(Address address, int? blockAccessIndex = null)
@@ -351,8 +354,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         if (!blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
-        // read is already added in IsNonZeroAccount
-        return _innerWorldState.IsStorageEmpty(address);
+        // don't need to add read, already added in IsNonZeroAccount
+    
+        return IsStorageEmptyInternal(address, blockAccessIndex.Value);
     }
 
     public override bool IsDeadAccount(Address address, int? blockAccessIndex = null)
@@ -530,9 +534,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
             AccountChanges? accountChanges = GetGeneratingBlockAccessList().GetAccountChanges(address);
             if (accountChanges is not null && accountChanges.NonceChanges.Count == 1)
             {
-                // account created or destroyed in current tx
-                NonceChange nonceChange = accountChanges.NonceChanges.First();
-                return nonceChange.NewNonce != 0;
+                // if nonce is changed in this tx must exists
+                // could have been created this tx
+                return true;
             }
 
             accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
@@ -557,6 +561,43 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
                 (
                     GetBalanceInternal(address, blockAccessIndex) == 0 &&
                     GetNonceInternal(address, blockAccessIndex) == 0 &&
-                    GetCodeHashInternal(address, blockAccessIndex) == ValueKeccak.EmptyTreeHash) :
+                    GetCodeHashInternal(address, blockAccessIndex) == Keccak.OfAnEmptyString) :
                 _innerWorldState.IsDeadAccount(address);
+
+    private bool IsContractInternal(Address address, int blockAccessIndex)
+        => ParallelExecutionEnabled ?
+                GetCodeHashInternal(address, blockAccessIndex) != Keccak.OfAnEmptyString :
+                _innerWorldState.IsContract(address);
+
+    private bool IsStorageEmptyInternal(Address address, int blockAccessIndex)
+    {
+        if (ParallelExecutionEnabled)
+        {
+            AccountChanges? accountChanges = GetGeneratingBlockAccessList().GetAccountChanges(address);
+            HashSet<byte[]> zeroedSlots = [];
+            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+            {
+                if (!slotChanges.Changes.Last().NewValue.IsZero())
+                {
+                    return false;
+                }
+                zeroedSlots.Add(slotChanges.Slot);
+            }
+
+            accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+            if (accountChanges is not null)
+            {
+                HashSet<byte[]> allSlots = accountChanges.GetAllSlots(blockAccessIndex);
+                return allSlots.SetEquals(zeroedSlots);
+            }
+
+            // todo fix error handling
+            Debug.Fail("Could not find nonce during parallel execution");
+            return false;
+        }
+        else
+        {
+            return _innerWorldState.IsStorageEmpty(address);
+        }
+    }
 }

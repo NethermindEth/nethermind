@@ -230,6 +230,11 @@ public class AccountChanges : IEquatable<AccountChanges>
         return false;
     }
 
+    public HashSet<byte[]> GetAllSlots(int blockAccessIndex)
+    {
+        return [];
+    }
+
     // add to codechanges when generating?
     public ValueHash256 GetCodeHash(int blockAccessIndex)
     {
