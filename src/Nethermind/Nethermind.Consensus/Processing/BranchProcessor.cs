@@ -87,7 +87,7 @@ public class BranchProcessor(
 
             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
-            BlockHeader? preBlockBaseBlock = baseBlock;
+            BlockHeader? parentBlock = baseBlock;
 
             bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
             int blocksCount = suggestedBlocks.Count;
@@ -102,10 +102,10 @@ public class BranchProcessor(
                     // Refresh spec
                     spec = specProvider.GetSpec(suggestedBlock.Header);
                 }
-                // If prewarmCancellation is not null it means we are in first iteration of loop
+                // If prewarmCancellation is not null, it means we are in first iteration of loop
                 // and started prewarming at method entry, so don't start it again
                 backgroundCancellation ??= new CancellationTokenSource();
-                preWarmTask ??= PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
+                preWarmTask ??= PreWarmTransactions(suggestedBlock, parentBlock, spec, backgroundCancellation.Token);
                 prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
                 if (blocksCount > 64 && i % 8 == 0)
@@ -165,7 +165,7 @@ public class BranchProcessor(
                     worldStateCloser = stateProvider.BeginScope(previousBranchStateRoot);
                 }
 
-                preBlockBaseBlock = processedBlock.Header;
+                parentBlock = processedBlock.Header;
                 // Make sure the prewarm task is finished before we reset the state
                 WaitAndClear(ref preWarmTask);
                 prefetchBlockhash = null;
@@ -200,11 +200,11 @@ public class BranchProcessor(
         }
     }
 
-    private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
+    private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader parentBlock, IReleaseSpec spec, CancellationToken token) =>
         suggestedBlock.Transactions.Length < 3
             ? null
             : preWarmer?.PreWarmCaches(suggestedBlock,
-                preBlockBaseBlock,
+                parentBlock,
                 spec,
                 token,
                 beaconBlockRootHandler);

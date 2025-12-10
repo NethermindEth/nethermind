@@ -48,10 +48,18 @@ public class TestBlockchainUtil(
                 (h) => txPool.TxPoolHeadChanged -= h,
                 b => true);
 
-        Block? invalidBlock = null;
+        Task invalidBlockTask = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)
+            ? Task.CompletedTask
+            : Wait.ForEventCondition<IBlockchainProcessor.InvalidBlockEventArgs>(cancellationToken,
+                (h) => invalidBlockDetector.OnInvalidBlock += h,
+                (h) => invalidBlockDetector.OnInvalidBlock -= h,
+                b => true);
+
+
+        IBlockchainProcessor.InvalidBlockEventArgs? invalidBlock = null;
         void OnInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs e)
         {
-            invalidBlock = e.InvalidBlock;
+            invalidBlock = e;
         }
 
         invalidBlockDetector.OnInvalidBlock += OnInvalidBlock;
@@ -77,7 +85,7 @@ public class TestBlockchainUtil(
             cancellationToken.ThrowIfCancellationRequested();
             block = await blockProducer.BuildBlock(parentHeader: parentToBuildOn, cancellationToken: cancellationToken);
 
-            if (invalidBlock is not null) Assert.Fail($"Invalid block {invalidBlock} produced");
+            if (invalidBlock is not null) Assert.Fail($"Invalid block {invalidBlock.InvalidBlock} produced with exception {invalidBlock.Exception}");
 
             if (block is not null)
             {
@@ -105,11 +113,12 @@ public class TestBlockchainUtil(
             }
             iteration++;
         }
-        blockTree.SuggestBlock(block!).Should().Be(AddBlockResult.Added);
+        blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
 
         tcs.TrySetResult();
 
-        await waitforHead;
+        await await Task.WhenAny(invalidBlockTask, waitforHead);
+        if (invalidBlock is not null) Assert.Fail($"Invalid block {invalidBlock.InvalidBlock} processed with exception {invalidBlock.Exception}");
 
         await txNewHead; // Wait for tx new head event so that processed tx was removed from txpool
 

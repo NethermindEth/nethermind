@@ -139,7 +139,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 env.SimulateRequestState.Validate = payload.Validation;
                 env.SimulateRequestState.BlobBaseFeeOverride = spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null;
 
-                (Block processedBlock, TxReceipt[] receipts) = env.BlockProcessor.ProcessOne(
+                (Block processedBlock, TxReceipt[] _) = env.BlockProcessor.ProcessOne(
                     callBlock,
                     processingFlags,
                     cancellationBlockTracer,

@@ -38,24 +38,27 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 {
     protected override void Load(ContainerBuilder builder)
     {
+        IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
+        IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+        IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+        INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
+        IReceiptConfig receiptConfig = configProvider.GetConfig<IReceiptConfig>();
+        ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
         builder
             .AddServiceStopper()
             .AddModule(new AppInputModule(chainSpec, configProvider, logManager))
             .AddModule(new NetworkModule(configProvider))
-            .AddModule(new DiscoveryModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<INetworkConfig>()))
-            .AddModule(new DbModule(
-                configProvider.GetConfig<IInitConfig>(),
-                configProvider.GetConfig<IReceiptConfig>(),
-                configProvider.GetConfig<ISyncConfig>()
-            ))
-            .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
-            .AddModule(new PrewarmerModule(configProvider.GetConfig<IBlocksConfig>()))
+            .AddModule(new DiscoveryModule(initConfig, networkConfig))
+            .AddModule(new DbModule(initConfig, receiptConfig, syncConfig))
+            .AddModule(new WorldStateModule(initConfig))
+            .AddModule(new PrewarmerModule(blocksConfig))
+            .AddModule(new ParallelModule(blocksConfig))
             .AddModule(new BuiltInStepsModule())
-            .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
+            .AddModule(new RpcModules(jsonRpcConfig))
             .AddModule(new EraModule())
             .AddSource(new ConfigRegistrationSource())
-            .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
-            .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>()))
+            .AddModule(new BlockProcessingModule(initConfig, blocksConfig))
+            .AddModule(new BlockTreeModule(receiptConfig))
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
@@ -72,8 +75,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 
             .AddSingleton<IHardwareInfo, HardwareInfo>()
 
-            .AddSingleton<ITimestamper>(_ => Core.Timestamper.Default)
-            .AddSingleton<ITimerFactory>(_ => Core.Timers.TimerFactory.Default)
+            .AddSingleton<ITimestamper>(_ => Timestamper.Default)
+            .AddSingleton<ITimerFactory>(_ => TimerFactory.Default)
             .AddSingleton<IFileSystem>(_ => new FileSystem())
             ;
 

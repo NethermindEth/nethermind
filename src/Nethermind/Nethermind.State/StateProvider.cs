@@ -48,13 +48,12 @@ namespace Nethermind.State
         private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
 
         private readonly List<Change> _changes = new(Resettable.StartCapacity);
-        internal IWorldStateScopeProvider.IScope? _tree;
+        private IWorldStateScopeProvider.IScope? _tree;
 
         private bool _needsStateRootUpdate;
         private IWorldStateScopeProvider.ICodeDb? _codeDb;
 
-        public StateProvider(
-            ILogManager logManager)
+        public StateProvider(ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
         }
