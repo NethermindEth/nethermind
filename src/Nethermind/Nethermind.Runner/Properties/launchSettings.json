@@ -114,7 +114,7 @@
     },
     "Xdc": {
       "commandName": "Project",
-      "commandLineArgs": "-c xdc --data-dir .data --Network.DiagTracerEnabled True --Network.StaticPeers enode://bc10b3f8c5b269e108056cf95f17de812b735f5830ab28fd45939ba579d0c073e1bf1c6890603652ad23faca1d56e2e218578caf75036757e757736ff6550121@172.21.58.14:30304",
+      "commandLineArgs": "-c xdc --data-dir .data --Network.DiagTracerEnabled True --Network.StaticPeers enode://bc10b3f8c5b269e108056cf95f17de812b735f5830ab28fd45939ba579d0c073e1bf1c6890603652ad23faca1d56e2e218578caf75036757e757736ff6550121@172.21.58.14:30304 --Network.OnlyStaticPeers true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

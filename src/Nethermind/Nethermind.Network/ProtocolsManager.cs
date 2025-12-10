@@ -230,7 +230,6 @@ namespace Nethermind.Network
                         69 => new Eth69ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfdig, _specProvider, _txGossipPolicy),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
-
                     InitSyncPeerProtocol(session, ethHandler);
                     return ethHandler;
                 },
@@ -242,7 +241,6 @@ namespace Nethermind.Network
                         _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
                     };
                     InitSatelliteProtocol(session, handler);
-
                     return handler;
                 },
                 [Protocol.NodeData] = (session, version) =>
@@ -253,7 +251,6 @@ namespace Nethermind.Network
                         _ => throw new NotSupportedException($"{Protocol.NodeData}.{version} is not supported.")
                     };
                     InitSatelliteProtocol(session, handler);
-
                     return handler;
                 }
             };
