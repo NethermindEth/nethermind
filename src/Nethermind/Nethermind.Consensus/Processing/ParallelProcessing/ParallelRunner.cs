@@ -21,12 +21,13 @@ public class ParallelRunner<TLocation, TData, TLogger>(
     MultiVersionMemory<TLocation, TData, TLogger> memory,
     ParallelTrace<TLogger> parallelTrace,
     IParallelTransactionProcessor<TLocation, TData> parallelTransactionProcessor,
-    int? concurrencyLevel = null) where TLogger : struct, IFlag where TLocation : notnull
+    int? concurrencyLevel = null) : IDisposable where TLogger : struct, IFlag where TLocation : notnull
 {
     private int _threadIndex = -1;
+    private readonly CancellationTokenSource _cts = new();
 
     /// <summary>
-    /// Runs the Block-STM based processing
+    /// Runs the Block-STM-based processing
     /// </summary>
     public async Task Run()
     {
@@ -42,37 +43,50 @@ public class ParallelRunner<TLocation, TData, TLogger>(
             tasks.Add(Task.Run(Loop));
         }
 
-        // We need to wait only for the first task, if one reads scheduler.Done, all other will too
-        await Task.WhenAny(tasks.AsSpan());
+        // We need to wait only for the first task if one reads scheduler.Done, all other will too
+        try
+        {
+            await Task.WhenAll(tasks.AsSpan());
+        }
+        catch
+        {
+            throw;
+        }
 
         // TODO: This seems to perform slightly better without async:
         // ParallelUnbalancedWork.For(0, concurrency, Loop);
     }
 
-    private void Loop()
-    {
-        Loop(Interlocked.Increment(ref _threadIndex));
-    }
+    private void Loop() => Loop(Interlocked.Increment(ref _threadIndex));
 
     private void Loop(int threadIndex)
     {
-        long start = Stopwatch.GetTimestamp();
-        using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
-        TxTask task = scheduler.NextTask();
-        do
+        CancellationToken token = _cts.Token;
+        try
         {
-            if (typeof(TLogger) == typeof(OnFlag) && !task.IsEmpty) parallelTrace.Add($"NextTask: {task} on thread {threadIndex}");
-            // There can be 3 kinds of tasks
-            // Only 1 task per transaction should be run at the same time
-            task = task switch
+            long start = Stopwatch.GetTimestamp();
+            using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
+            TxTask task = scheduler.NextTask();
+            do
             {
-                { IsEmpty: true } => scheduler.NextTask(), // no-op task - try fetch next
-                { Validating: false } => TryExecute(task), // execution task
-                { Validating: true } => NeedsReexecution(task.Version) // validation task
-            };
-        } while (!scheduler.Done);
+                if (typeof(TLogger) == typeof(OnFlag) && !task.IsEmpty) parallelTrace.Add($"NextTask: {task} on thread {threadIndex}");
+                // There can be 3 kinds of tasks
+                // Only 1 task per transaction should be run at the same time
+                task = task switch
+                {
+                    { IsEmpty: true } => scheduler.NextTask(), // no-op task - try fetch next
+                    { Validating: false } => TryExecute(task), // execution task
+                    { Validating: true } => NeedsReexecution(task.Version) // validation task
+                };
+            } while (!scheduler.Done && !token.IsCancellationRequested);
 
-        if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Thread {threadIndex} finished in {Stopwatch.GetElapsedTime(start)}");
+            if (typeof(TLogger) == typeof(OnFlag)) parallelTrace.Add($"Thread {threadIndex} finished in {Stopwatch.GetElapsedTime(start)}");
+        }
+        catch (Exception)
+        {
+            _cts.Cancel();
+            throw;
+        }
     }
 
     /// <summary>
@@ -115,6 +129,8 @@ public class ParallelRunner<TLocation, TData, TLogger>(
 
         return scheduler.FinishValidation(version.TxIndex, aborted);
     }
+
+    public void Dispose() => _cts.Dispose();
 }
 
 public sealed class ParallelRunner(

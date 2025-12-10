@@ -1,21 +1,26 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
 
 public class ParallelBlockValidationTransactionsExecutor(
+    ITransactionProcessorAdapter transactionProcessorAdapter,
     ParallelEnvFactory parallelEnvFactory,
     PreBlockCaches preBlockCaches,
+    IBlockFinder blockFinder,
     ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
@@ -31,20 +36,25 @@ public class ParallelBlockValidationTransactionsExecutor(
         OffParallelTrace trace = new();
         MultiVersionMemory multiVersionMemory = new(txCount, trace);
         ParallelScheduler scheduler = new(txCount, trace, _setPool);
-        ParallelTransactionProcessor parallelTransactionProcessor = new(block, parallelEnvFactory, multiVersionMemory, preBlockCaches, receipts, in _blockExecutionContext, transactionProcessedEventHandler);
-        ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor);
+        BlockHeader parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, preBlockCaches, receipts, in _blockExecutionContext, transactionProcessedEventHandler);
+        using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor, 4);
         parallelRunner.Run().GetAwaiter().GetResult();
 
         BlockReceiptsTracer.AccumulateBlockBloom(block, receipts);
         return receipts;
     }
 
-    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+    {
+        transactionProcessorAdapter.SetBlockExecutionContext(blockExecutionContext);
         _blockExecutionContext = blockExecutionContext;
+    }
 }
 
 public class ParallelTransactionProcessor(
     Block block,
+    BlockHeader parentBlock,
     ParallelEnvFactory parallelEnvFactory,
     MultiVersionMemory multiVersionMemory,
     PreBlockCaches preBlockCaches,
@@ -59,13 +69,14 @@ public class ParallelTransactionProcessor(
     {
         int txIndex = version.TxIndex;
         blockingTx = null;
-        ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv txProcessorSource = parallelEnvFactory.Create(version, multiVersionMemory, preBlockCaches);
-        using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(block.Header);
-        ITransactionProcessor transactionProcessor = scope.TransactionProcessor;
-        transactionProcessor.SetBlockExecutionContext(_blockExecutionContext);
-        BlockReceiptsTracer tracer = _tracers.Get();
-        tracer.StartNewBlockTrace(block);
         Transaction transaction = block.Transactions[txIndex];
+
+        using IReadOnlyTxProcessingScope scope = CreateProcessingScope(
+            out ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv env,
+            out ITransactionProcessor transactionProcessor);
+
+        using ITxTracer txTracer = PrepareTracers(out BlockReceiptsTracer tracer);
+
         try
         {
             TransactionResult result = transactionProcessor.Execute(transaction, tracer);
@@ -87,8 +98,26 @@ public class ParallelTransactionProcessor(
         finally
         {
             _tracers.Return(tracer);
-            readSet = txProcessorSource.WorldStateScopeProvider.ReadSet;
-            writeSet = txProcessorSource.WorldStateScopeProvider.WriteSet;
+            readSet = env.WorldStateScopeProvider.ReadSet;
+            writeSet = env.WorldStateScopeProvider.WriteSet;
+        }
+
+        IReadOnlyTxProcessingScope CreateProcessingScope(
+            out ParallelEnvFactory.ParallelAutoReadOnlyTxProcessingEnv environment,
+            out ITransactionProcessor txProcessor)
+        {
+            environment = parallelEnvFactory.Create(version, multiVersionMemory, preBlockCaches);
+            IReadOnlyTxProcessingScope s = environment.Build(parentBlock);
+            txProcessor = s.TransactionProcessor;
+            txProcessor.SetBlockExecutionContext(_blockExecutionContext);
+            return s;
+        }
+
+        ITxTracer PrepareTracers(out BlockReceiptsTracer blockReceiptsTracer)
+        {
+            blockReceiptsTracer = _tracers.Get();
+            blockReceiptsTracer.StartNewBlockTrace(block);
+            return blockReceiptsTracer.StartNewTxTrace(transaction);
         }
     }
 }

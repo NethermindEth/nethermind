@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
@@ -28,6 +29,8 @@ namespace Nethermind.Consensus.Processing
         public class InvalidBlockEventArgs : EventArgs
         {
             public Block InvalidBlock { get; init; }
+            public InvalidBlockException Exception { get; init; }
+
         }
     }
 }

@@ -12,7 +12,7 @@ namespace Nethermind.Blockchain.Find
     {
         public static BlockHeader? FindParentHeader(this IBlockFinder finder, BlockHeader header, BlockTreeLookupOptions options)
         {
-            return finder.FindHeader(header.ParentHash, options, blockNumber: header.Number - 1);
+            return finder.FindHeader(header.ParentHash!, options, blockNumber: header.Number - 1);
         }
 
         public static Block? FindParent(this IBlockFinder finder, Block block, BlockTreeLookupOptions options)

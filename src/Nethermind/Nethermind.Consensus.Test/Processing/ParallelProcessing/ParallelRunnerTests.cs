@@ -154,7 +154,7 @@ public class ParallelRunnerTests
         ObjectPool<HashSet<int>> setObjectPool = new DefaultObjectPool<HashSet<int>>(new DefaultPooledObjectPolicy<HashSet<int>>(), 1024);
         ParallelScheduler<T> parallelScheduler = new(blockSize, parallelTrace, setObjectPool);
         ParallelTransactionProcessorMock<T> parallelTransactionProcessorMock = new(blockSize, multiVersionMemory, operationsPerTx);
-        ParallelRunner<int, byte[], T> runner = new(parallelScheduler, multiVersionMemory, parallelTrace, parallelTransactionProcessorMock, 12);
+        using ParallelRunner<int, byte[], T> runner = new(parallelScheduler, multiVersionMemory, parallelTrace, parallelTransactionProcessorMock, 12);
 
         long start = Stopwatch.GetTimestamp();
         Task runnerTask = runner.Run();
