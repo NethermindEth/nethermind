@@ -22,7 +22,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 
     /*
     Type layout for 'EvmState'
-    Size: 264 bytes. Paddings: 9 bytes (%3 of empty space)
+    Size: 176 bytes. Paddings: 5 bytes (%3 of empty space)
     |=======================================================================|
     | Object Header (8 bytes)                                               |
     |-----------------------------------------------------------------------|
@@ -66,13 +66,13 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     |-----------------------------------------------------------------------|
     | 72-103: EvmPooledMemory _memory (32 bytes)                            |
     |-----------------------------------------------------------------------|
-    | 104-111: ExecutionEnvironment _env (8 bytes)                        |
+    | 104-111: ExecutionEnvironment _env (8 bytes)                          |
     |-----------------------------------------------------------------------|
-    | 112-135: StackAccessTracker _accessTracker (24 bytes)                 |
+    | 112-143: StackAccessTracker _accessTracker (32 bytes)                 |
     |-----------------------------------------------------------------------|
-    | 136-147: Snapshot _snapshot (12 bytes)                                |
+    | 144-155: Snapshot _snapshot (12 bytes)                                |
     |-----------------------------------------------------------------------|
-    | 148-153: padding (6 bytes)                                            |
+    | 156-159: padding (4 bytes)                                            |
     |=======================================================================|
      */
 
