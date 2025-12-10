@@ -155,12 +155,15 @@ Plugins extend Nethermind functionality through the `INethermindPlugin` interfac
 public interface INethermindPlugin
 {
     string Name { get; }
-    void InitTxTypesAndRlpDecoders(INethermindApi api);
-    Task Init(INethermindApi nethermindApi);
-    Task InitNetworkProtocol();
-    Task InitRpcModules();
+    string Description { get; }
+    string Author { get; }
+    void InitTxTypesAndRlpDecoders(INethermindApi api) { }
+    Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
+    Task InitNetworkProtocol() => Task.CompletedTask;
+    Task InitRpcModules() => Task.CompletedTask;
     bool MustInitialize => false;
     bool Enabled { get; }
+    IModule? Module => null;
 }
 ```
 
