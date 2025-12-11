@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -20,7 +20,7 @@ public class GnosisSpecProvider : ISpecProvider
     public const ulong ShanghaiTimestamp = 0x64c8edbc;
     public const ulong CancunTimestamp = 0x65ef4dbc;
     public const ulong PragueTimestamp = 0x68122dbc;
-    public const ulong BalancerTimestamp = 0x99999999; //todo: update
+    public const ulong BalancerTimestamp = 0x693a0980; //todo: update
     public static readonly Address FeeCollector = new("0x6BBe78ee9e474842Dbd4AB4987b3CeFE88426A92");
 
     private GnosisSpecProvider() { }

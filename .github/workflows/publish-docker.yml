@@ -48,7 +48,7 @@ jobs:
       - name: Build and push image to Docker Hub (staging)
         run: |
           branch=$(echo "${{ github.ref }}" | sed -e "s/refs\/heads\///g")
-          image_name=${{ vars.DOCKER_REPO }}/${{ github.event.inputs.image-name || 'nethermind' }}
+          image_name=nethermindeth/${{ github.event.inputs.image-name || 'nethermind' }}
           tag=$(echo "${{ github.event.inputs.tag || '$branch' }}" | sed 's/\//-/g') # replace '/' with '-'
 
           echo "Building image with tag $tag"
