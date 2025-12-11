@@ -46,7 +46,7 @@ public class ResourcePool
                 Storages: new ConcurrentDictionary<(AddressAsKey, UInt256), byte[]?>(),
                 SelfDestructedStorageAddresses: new ConcurrentDictionary<AddressAsKey, bool>(),
                 StateNodes: new ConcurrentDictionary<TreePath, TrieNode>(),
-                StorageNodes: new ShardedConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode>()
+                StorageNodes: new ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode>()
             );
         }
 
