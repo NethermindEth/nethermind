@@ -44,7 +44,7 @@ public unsafe partial class VirtualMachine
         vm.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
         vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0));
 
-        ExecutionEnvironment env = ExecutionEnvironment.Rent(
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(
             codeInfo: new CodeInfo(bytecode),
             executingAccount: addressOne,
             caller: addressOne,
@@ -54,7 +54,7 @@ public unsafe partial class VirtualMachine
             value: 0,
             inputData: default);
 
-        using (var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, env, new StackAccessTracker(), state.TakeSnapshot()))
+        using (EvmState evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, env, new StackAccessTracker(), state.TakeSnapshot()))
         {
             vm.EvmState = evmState;
             vm._worldState = state;

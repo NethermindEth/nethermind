@@ -12,7 +12,7 @@ namespace Nethermind.Evm
     /// <summary>
     /// Execution environment for EVM calls. Pooled to avoid allocation and GC write barrier overhead.
     /// </summary>
-    public sealed class ExecutionEnvironment
+    public sealed class ExecutionEnvironment : IDisposable
     {
         private static readonly ConcurrentQueue<ExecutionEnvironment> _pool = new();
         private UInt256 _value;
@@ -88,7 +88,7 @@ namespace Nethermind.Evm
         /// <summary>
         /// Returns the ExecutionEnvironment to the pool for reuse.
         /// </summary>
-        public void Return()
+        public void Dispose()
         {
             CodeInfo = null!;
             ExecutingAccount = null!;
