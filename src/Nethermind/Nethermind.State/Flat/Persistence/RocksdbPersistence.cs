@@ -3,9 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.IO;
-using System.Reflection;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,7 +13,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Prometheus;
-using ZstdSharp;
 
 namespace Nethermind.State.Flat.Persistence;
 
@@ -46,10 +42,6 @@ public class RocksdbPersistence : IPersistence
     internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
     private readonly IKeyValueStoreWithBatching _preimageDb;
 
-    // Compress accounts here instead of in rocksdb, allowing disabling rocksdb's compression.
-    // Unfortunately, only works well with accounts due to many redundant hash.
-    // TODO: Does not help with latency, or anything. Overall use slightly more disk space. Maybe remove.
-    private byte[] _zstdDictionary;
     private readonly Configuration _configuration;
     private readonly Histogram.Child _rocksdBPersistenceTimesSlotHit;
     private readonly Histogram.Child _rocksdBPersistenceTimesSlotMiss;
@@ -80,120 +72,10 @@ public class RocksdbPersistence : IPersistence
         _db = db;
         _preimageDb = preimageDb;
 
-        LoadZstdDictionary();
-
         _rocksdBPersistenceTimesAddressHash = _rocksdBPersistenceTimes.WithLabels("address_hash");
         _rocksdBPersistenceTimesSlotHit = _rocksdBPersistenceTimes.WithLabels("slot_hash_hit");
         _rocksdBPersistenceTimesSlotMiss = _rocksdBPersistenceTimes.WithLabels("slot_hash_miss");
         _rocksdBPersistenceTimesSlotCompareTime = _rocksdBPersistenceTimes.WithLabels("slot_hash_compare_time");
-        // TrainDictionary();
-    }
-
-    /*
-    private Decompressor CreateDecompressor()
-    {
-        Decompressor decomp = new Decompressor();
-        decomp.LoadDictionary(_zstdDictionary);
-        return decomp;
-    }
-    */
-
-    private void LoadZstdDictionary()
-    {
-        var assembly = Assembly.GetExecutingAssembly();
-        const string resourceName = "Nethermind.State.Flat.Persistence.zstddictionary.bin";
-        using Stream? stream = assembly.GetManifestResourceStream(resourceName)
-                               ?? throw new InvalidOperationException($"Resource '{resourceName}' not found.");
-
-        using var ms = new MemoryStream();
-        stream.CopyTo(ms);
-        _zstdDictionary =  ms.ToArray();
-        Console.Error.WriteLine($"Dictionary size is {_zstdDictionary.Length}");
-    }
-
-    internal void TrainDictionary()
-    {
-        using var snapshot = _db.CreateSnapshot();
-
-        List<byte[]> data = new List<byte[]>();
-
-        FlatDbColumns[] columnsToTest =
-        [
-            FlatDbColumns.Account,
-            // FlatDbColumns.Storage,
-            // FlatDbColumns.StateTopNodes,
-            // FlatDbColumns.StateNodes,
-            // FlatDbColumns.StorageTopNodes,
-            // FlatDbColumns.StorageNodes,
-        ];
-
-        Random rand = new Random(0);
-
-        byte[] key = new byte[32];
-        byte[] maxKey = new byte[32];
-        Keccak.MaxValue.Bytes.CopyTo(maxKey);
-
-        int totalSize = 0;
-
-        foreach (FlatDbColumns column in columnsToTest)
-        {
-            ISortedKeyValueStore col = snapshot.GetColumn(column) as ISortedKeyValueStore;
-            for (int i = 0; i < 10000; i++)
-            {
-                rand.NextBytes(key);
-
-                using ISortedView view = col.GetViewBetween(key, maxKey);
-
-                if (view.MoveNext())
-                {
-                    data.Add(view.CurrentValue.ToArray());
-                    totalSize += view.CurrentValue.Length;
-                }
-            }
-        }
-
-        Console.Error.WriteLine($"Training dictionary");
-        byte[] dictionary = DictBuilder.TrainFromBuffer(data, 1024 * 2);
-        Console.Error.WriteLine($"Trained a dictionary of size {dictionary.Length} from {data.Count} samples of total size {totalSize}");
-
-        File.WriteAllBytes(Path.Combine(Directory.GetCurrentDirectory(), "flatdictionary.bin"), dictionary);
-
-        using Compressor compressor = new Compressor();
-        compressor.LoadDictionary(dictionary);
-
-        foreach (FlatDbColumns column in columnsToTest)
-        {
-            int compressed = 0;
-            int uncompressed = 0;
-
-            ISortedKeyValueStore col = snapshot.GetColumn(column) as ISortedKeyValueStore;
-            for (int i = 0; i < 10000; i++)
-            {
-                rand.NextBytes(key);
-
-                using ISortedView view = col.GetViewBetween(key, maxKey);
-
-                if (view.MoveNext())
-                {
-                    data.Add(view.CurrentValue.ToArray());
-                    totalSize += view.CurrentValue.Length;
-                }
-            }
-            for (int i = 0; i < 10000; i++)
-            {
-                rand.NextBytes(key);
-
-                using ISortedView view = col.GetViewBetween(key, maxKey);
-
-                if (view.MoveNext())
-                {
-                    uncompressed += view.CurrentValue.Length;
-                    compressed += compressor.Wrap(view.CurrentValue).Length;
-                }
-            }
-
-            Console.Error.WriteLine($"Expected ratio for {column} {(double)compressed / uncompressed}. Comppressed {compressed:N}, Uncompressed {uncompressed:N}");
-        }
     }
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
@@ -308,10 +190,7 @@ public class RocksdbPersistence : IPersistence
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        Compressor compressor = new Compressor();
-        compressor.LoadDictionary(_zstdDictionary);
-
-        return new WriteBatch(this, _preimageDb.StartWriteBatch(), _db.StartWriteBatch(), dbSnap, compressor, to);
+        return new WriteBatch(this, _preimageDb.StartWriteBatch(), _db.StartWriteBatch(), dbSnap, to);
     }
 
     private class WriteBatch : IPersistence.IWriteBatch
@@ -334,7 +213,6 @@ public class RocksdbPersistence : IPersistence
         private readonly IWriteBatch _preimageWriteBatch;
         private readonly IColumnsWriteBatch<FlatDbColumns> _batch;
         private readonly IColumnDbSnapshot<FlatDbColumns> _dbSnap;
-        private readonly Compressor _compressor;
         private readonly StateId _to;
         private readonly bool _flatInTrie;
         private readonly bool _separateStorageTop;
@@ -343,14 +221,12 @@ public class RocksdbPersistence : IPersistence
             IWriteBatch preimageWriteBatch,
             IColumnsWriteBatch<FlatDbColumns> batch,
             IColumnDbSnapshot<FlatDbColumns> dbSnap,
-            Compressor compressor,
             StateId to)
         {
             _mainDb = mainDb;
             _preimageWriteBatch = preimageWriteBatch;
             _batch = batch;
             _dbSnap = dbSnap;
-            _compressor = compressor;
             _to = to;
 
             _flatInTrie = mainDb._configuration.FlatInTrie;
@@ -382,7 +258,6 @@ public class RocksdbPersistence : IPersistence
             _batch.Dispose();
             _dbSnap.Dispose();
             _preimageWriteBatch.Dispose();
-            _compressor.Dispose();
         }
 
         public int SelfDestruct(Address addr)
