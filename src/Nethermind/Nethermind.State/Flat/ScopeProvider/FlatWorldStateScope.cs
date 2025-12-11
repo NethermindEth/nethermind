@@ -127,9 +127,6 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     public void HintGet(Address address, Account? account)
     {
         _warmer.PushJob(this, address, null, null, _hintSequenceId);
-
-        // during storage root update, the account will get re-fetched then updated.
-        _snapshotBundle.SetAccount(address, account);
     }
 
     public void HintSet(Address address)
@@ -188,6 +185,8 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
+        _snapshotBundle.BeginBatchedSet();
+
         // Invalidates trie node warmer tasks at this point. Write batch already do things in parallel.
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
@@ -316,6 +315,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
                 _dirtyAccounts.Clear();
 
                 Interlocked.Increment(ref scope._hintSequenceId);
+                scope._snapshotBundle.EndBatchedSet();
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
