@@ -88,7 +88,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual byte[] GetOriginal(in StorageCell storageCell, int? blockAccessIndex = null)
         => _innerWorldState.GetOriginal(storageCell);
 
-    public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell, int? blockAccessIndex = null)
+    public virtual ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell, int? blockAccessIndex = null)
         => _innerWorldState.GetTransientState(storageCell);
 
     public bool HasStateForBlock(BlockHeader? baseBlock)
@@ -118,7 +118,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void Reset(bool resetBlockChanges = true)
         => _innerWorldState.Reset(resetBlockChanges);
 
-    public void ResetTransient(int? blockAccessIndex = null)
+    public virtual void ResetTransient(int? blockAccessIndex = null)
         => _innerWorldState.ResetTransient();
 
     public virtual void Restore(Snapshot snapshot)
@@ -130,7 +130,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void SetNonce(Address address, in UInt256 nonce)
         => _innerWorldState.SetNonce(address, nonce);
 
-    public void SetTransientState(in StorageCell storageCell, byte[] newValue, int? blockAccessIndex = null)
+    public virtual void SetTransientState(in StorageCell storageCell, byte[] newValue, int? blockAccessIndex = null)
         => _innerWorldState.SetTransientState(storageCell, newValue);
 
     public virtual void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
