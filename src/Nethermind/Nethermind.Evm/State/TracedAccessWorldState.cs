@@ -151,6 +151,18 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         return GetInternal(storageCell, blockAccessIndex.Value);
     }
 
+    public override byte[] GetOriginal(in StorageCell storageCell, int? blockAccessIndex = null)
+    {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
+        if (TracingEnabled)
+        {
+            GeneratedBlockAccessList.AddStorageRead(storageCell);
+        }
+        return GetOriginalInternal(storageCell, blockAccessIndex.Value);
+    }
+
     public override void IncrementNonce(Address address, UInt256 delta, int? blockAccessIndex = null)
         => IncrementNonce(address, delta, out _);
 
@@ -570,6 +582,27 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         else
         {
             return _innerWorldState.Get(storageCell);
+        }
+    }
+
+    private byte[] GetOriginalInternal(in StorageCell storageCell, int blockAccessIndex)
+    {
+        if (ParallelExecutionEnabled)
+        {
+            AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
+            accountChanges.TryGetSlotChanges(storageCell.Index.ToBigEndian(), out SlotChanges? slotChanges);
+
+            if (slotChanges is not null && slotChanges.Changes.Count > 0)
+            {
+                return slotChanges.Get(blockAccessIndex);
+            }
+
+            Debug.Fail("Could not find storage value during parallel execution");
+            return [];
+        }
+        else
+        {
+            return _innerWorldState.GetOriginal(storageCell);
         }
     }
 
