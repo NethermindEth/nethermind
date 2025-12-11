@@ -7,6 +7,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Org.BouncyCastle.Bcpg;
+using Prometheus;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 

@@ -515,7 +515,7 @@ public class DbConfig : IDbConfig
     public string? FlatStateTopNodesDbAdditionalRocksDbOptions { get; set; }
 
     public string? FlatStateNodesDbAdditionalRocksDbOptions { get; set; }
-    public ulong FlatStorageNodesDbWriteBufferSize { get; set; } = (ulong)64.MiB();
+    public ulong FlatStorageNodesDbWriteBufferSize { get; set; } = (ulong)128.MiB();
     public ulong FlatStorageNodesDbWriteBufferNumber { get; set; } = 4;
     public string? FlatStorageNodesDbRocksDbOptions
     {

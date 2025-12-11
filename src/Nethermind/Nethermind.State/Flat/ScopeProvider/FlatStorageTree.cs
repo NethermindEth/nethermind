@@ -96,7 +96,7 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
     {
         // Note: VERY hot code.
         // 90% of the read goes through prewarmer, not actually go through this class, meaning this method is called
-        // a lot. Unlike with account, setting the setted slot have a measurable net negative impact on performance.
+        // a lot. Setting the setted slot have a measurable net negative impact on performance.
         // Trying to set this value async through trie warmer proved to be hard to pull of and result in random invalid
         // block.
         WarmUpSlot(index);
