@@ -767,20 +767,48 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             _flatdiffimes.WithLabels("persistence", "accounts").Observe(Stopwatch.GetTimestamp() - sw);
             sw = Stopwatch.GetTimestamp();
 
-            foreach (var kv in snapshot.Storages)
+            Task storageWrite = Task.CompletedTask;
+            if (batch.ConcurrentStorage)
             {
-                ((Address addr, UInt256 slot), byte[] value) = kv;
+                storageWrite = Task.Run(() =>
+                {
+                    long sw2 = Stopwatch.GetTimestamp();
+                    foreach (var kv in snapshot.Storages)
+                    {
+                        ((Address addr, UInt256 slot), byte[] value) = kv;
 
-                if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
-                {
-                    batch.RemoveStorage(addr, slot);
-                }
-                else
-                {
-                    batch.SetStorage(addr, slot, value);
-                }
+                        if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
+                        {
+                            batch.RemoveStorage(addr, slot);
+                        }
+                        else
+                        {
+                            batch.SetStorage(addr, slot, value);
+                        }
+                    }
+
+                    _flatdiffimes.WithLabels("persistence", "storages").Observe(Stopwatch.GetTimestamp() - sw2);
+                });
             }
-            _flatdiffimes.WithLabels("persistence", "storages").Observe(Stopwatch.GetTimestamp() - sw);
+            else
+            {
+                foreach (var kv in snapshot.Storages)
+                {
+                    ((Address addr, UInt256 slot), byte[] value) = kv;
+
+                    if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
+                    {
+                        batch.RemoveStorage(addr, slot);
+                    }
+                    else
+                    {
+                        batch.SetStorage(addr, slot, value);
+                    }
+                }
+                _flatdiffimes.WithLabels("persistence", "storages").Observe(Stopwatch.GetTimestamp() - sw);
+            }
+
+
             sw = Stopwatch.GetTimestamp();
 
             _trieNodesSortBuffer.Clear();
@@ -840,6 +868,8 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
                 node.IsPersisted = true;
             }
             _flatdiffimes.WithLabels("persistence", "trienodes").Observe(Stopwatch.GetTimestamp() - sw);
+
+            storageWrite.Wait();
 
             sw = Stopwatch.GetTimestamp();
         }

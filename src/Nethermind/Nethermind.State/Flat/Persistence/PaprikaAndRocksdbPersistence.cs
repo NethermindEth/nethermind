@@ -176,6 +176,8 @@ public class PaprikaAndRocksdbPersistence : IPersistence
         private readonly IColumnDbSnapshot<FlatDbColumns> _dbSnap;
         private readonly StateId _to;
 
+        public bool ConcurrentStorage => true;
+
         public WriteBatch(
             PaprikaAndRocksdbPersistence mainDb,
             IBatch paprikaBatch,
