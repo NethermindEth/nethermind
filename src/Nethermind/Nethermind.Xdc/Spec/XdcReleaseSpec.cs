@@ -31,6 +31,9 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public List<V2ConfigParams> V2Configs { get; set; } = new List<V2ConfigParams>();
 
     public Address[] GenesisMasterNodes { get; set; }
+    public Address BlockSignersAddress { get; set; }
+    public long MergeSignRange { get; set; }
+    public long TIP2019Block { get; set; }
 
     public void ApplyV2Config(ulong round)
     {
@@ -98,8 +101,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public List<V2ConfigParams> V2Configs { get; set; }
     Address[] GenesisMasterNodes { get; set; }
     Address BlockSignersAddress { get; set; }
-    long TIP2019Block { get; set; }
     long MergeSignRange { get; set; }
-
+    long TIP2019Block { get; set; }
     public void ApplyV2Config(ulong round);
 }
