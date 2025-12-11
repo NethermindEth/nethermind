@@ -10,4 +10,12 @@
     <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="prometheus-net" />
+    <PackageReference Include="ZstdSharp.Port" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Remove="Flat\Persistence\flatdictionary.bin" />
+    <EmbeddedResource Include="Flat\Persistence\zstddictionary.bin" />
+  </ItemGroup>
 </Project>

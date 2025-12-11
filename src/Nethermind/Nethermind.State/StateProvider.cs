@@ -22,6 +22,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.ScopeProvider;
 using Metrics = Nethermind.Db.Metrics;
 using static Nethermind.State.StateProvider;
 
@@ -181,6 +182,11 @@ namespace Nethermind.State
         {
             _needsStateRootUpdate = true;
 
+            if (address == FlatWorldStateScope.DebugAddress)
+            {
+                Console.Error.WriteLine($"Balance change {balanceChange}, {isSubtracting}");
+            }
+
             Account GetThroughCacheCheckExists()
             {
                 Account result = GetThroughCache(address);
@@ -327,6 +333,10 @@ namespace Nethermind.State
 
         public void DeleteAccount(Address address)
         {
+            if (address == FlatWorldStateScope.DebugAddress)
+            {
+                Console.Error.WriteLine($"delete address {Environment.StackTrace}");
+            }
             _needsStateRootUpdate = true;
             PushDelete(address);
         }
@@ -778,7 +788,13 @@ namespace Nethermind.State
         }
 
         private void PushDelete(Address address)
-            => Push(address, null, ChangeType.Delete);
+        {
+            Push(address, null, ChangeType.Delete);
+            if (address == FlatWorldStateScope.DebugAddress)
+            {
+                Console.Error.WriteLine("Delete account");
+            }
+        }
 
         private void Push(Address address, Account? touchedAccount, ChangeType changeType)
         {
@@ -789,6 +805,10 @@ namespace Nethermind.State
                 return;
             }
 
+            if (address == FlatWorldStateScope.DebugAddress)
+            {
+                Console.Error.WriteLine($"Push {changeType}, {touchedAccount}");
+            }
             stack.Push(_changes.Count);
             _changes.Add(new Change(address, touchedAccount, changeType));
         }
@@ -804,6 +824,10 @@ namespace Nethermind.State
         {
             stack.Push(_changes.Count);
             _changes.Add(new Change(address, account, ChangeType.RecreateEmpty));
+            if (address == FlatWorldStateScope.DebugAddress)
+            {
+                Console.Error.WriteLine($"Push recreate empty {account}");
+            }
         }
 
         private StackList<int> SetupCache(Address address)

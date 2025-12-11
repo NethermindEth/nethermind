@@ -21,7 +21,7 @@ namespace Nethermind.State
 {
     public class StorageTree : PatriciaTree, IWorldStateScopeProvider.IStorageTree
     {
-        private const int LookupSize = 1024;
+        public const int LookupSize = 1024;
         private static readonly FrozenDictionary<UInt256, byte[]> Lookup = CreateLookup();
         public static readonly byte[] ZeroBytes = [0];
 
@@ -151,6 +151,10 @@ namespace Nethermind.State
         public byte[] Get(in ValueHash256 hash)
         {
             return GetArray(hash.Bytes, null);
+        }
+
+        public void HintSet(in UInt256 index)
+        {
         }
 
         [SkipLocalsInit]
