@@ -21,19 +21,28 @@ public class AccountChanges : IEquatable<AccountChanges>
     public Address Address { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IEnumerable<SlotChanges> StorageChanges => _storageChanges.Values;
+    public EnumerableWithCount<SlotChanges> StorageChanges => new(_storageChanges.Values, _storageChanges.Count);
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IEnumerable<StorageRead> StorageReads => _storageReads;
+    public EnumerableWithCount<StorageRead> StorageReads => new(_storageReads, _storageReads.Count);
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public EnumerableWithCount<BalanceChange> BalanceChanges => new(_balanceChanges.Values.Where(c => c.BlockAccessIndex != -1), _balanceChanges.Count);
+    public EnumerableWithCount<BalanceChange> BalanceChanges =>
+        _balanceChanges.Keys.FirstOrDefault() == -1 ?
+            new(_balanceChanges.Values.Skip(1), _balanceChanges.Count - 1) :
+            new(_balanceChanges.Values, _balanceChanges.Count);
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public EnumerableWithCount<NonceChange> NonceChanges => new(_nonceChanges.Values.Where(c => c.BlockAccessIndex != -1), _nonceChanges.Count);
+    public EnumerableWithCount<NonceChange> NonceChanges =>
+        _nonceChanges.Keys.FirstOrDefault() == -1 ?
+            new(_nonceChanges.Values.Skip(1), _nonceChanges.Count - 1) :
+            new(_nonceChanges.Values, _nonceChanges.Count);
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public EnumerableWithCount<CodeChange> CodeChanges => new(_codeChanges.Values.Where(c => c.BlockAccessIndex != -1), _codeChanges.Count);
+    public EnumerableWithCount<CodeChange> CodeChanges =>
+        _codeChanges.Keys.FirstOrDefault() == -1 ?
+            new(_codeChanges.Values.Skip(1), _codeChanges.Count - 1) :
+            new(_codeChanges.Values, _codeChanges.Count);
 
     [JsonIgnore]
     public ValueHash256 CodeHash { get => _codeHash; set => _codeHash = value; }
@@ -243,4 +252,13 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     public bool AccountExists(int blockAccessIndex)
         => !_isDestroyed; // check through BAL
+
+    // assumes prestate not loaded
+    public void CheckWasChanged()
+    {
+        _wasChanged = _balanceChanges.Count > 0 || _nonceChanges.Count > 0 || _codeChanges.Count > 0 || _storageChanges.Count > 0;
+    }
+
+    public bool AccountChanged => _wasChanged;
+    private bool _wasChanged = false;
 }

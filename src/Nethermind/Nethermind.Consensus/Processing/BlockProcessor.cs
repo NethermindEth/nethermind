@@ -171,7 +171,7 @@ public partial class BlockProcessor
         if (BlockchainProcessor.IsMainProcessingThread)
         {
             // Get the accounts that have been changed
-            block.AccountChanges = _stateProvider.GetAccountChanges(); // how to handle?
+            block.AccountChanges = _stateProvider.GetAccountChanges();
         }
 
         await stateApplication;

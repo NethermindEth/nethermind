@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -16,7 +17,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 {
     [JsonIgnore]
     public int Index = 0;
-    public readonly IEnumerable<AccountChanges> AccountChanges => _accountChanges.Values;
+    public readonly EnumerableWithCount<AccountChanges> AccountChanges => new(_accountChanges.Values, _accountChanges.Count);
     public readonly bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
     private readonly SortedDictionary<Address, AccountChanges> _accountChanges;

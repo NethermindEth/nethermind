@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -43,6 +44,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
     {
         foreach (AccountChanges accountChanges in blockAccessList.AccountChanges)
         {
+            // check if changed before loading prestate
+            accountChanges.CheckWasChanged();
+
             _innerWorldState.TryGetAccount(accountChanges.Address, out AccountStruct account);
             accountChanges.AddBalanceChange(new(-1, account.Balance));
             accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
@@ -472,6 +476,11 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
             _innerWorldState.Reset(resetBlockChanges);
         }
     }
+
+    public override ArrayPoolList<AddressAsKey> GetAccountChanges() =>
+        ParallelExecutionEnabled ?
+            _suggestedBlockAccessList.AccountChanges.Where(a => a.AccountChanged).Select(a => new AddressAsKey(a.Address)).ToPooledList(_suggestedBlockAccessList.AccountChanges.Count) :
+            _innerWorldState.GetAccountChanges();
 
     private BlockAccessList GetGeneratingBlockAccessList(int? blockAccessIndex = null)
         => ParallelExecutionEnabled ? _intermediateBlockAccessLists[blockAccessIndex!.Value] : GeneratedBlockAccessList;

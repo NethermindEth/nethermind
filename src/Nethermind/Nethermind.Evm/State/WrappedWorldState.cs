@@ -67,7 +67,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual ReadOnlySpan<byte> Get(in StorageCell storageCell, int? blockAccessIndex = null)
         => _innerWorldState.Get(storageCell);
 
-    public ArrayPoolList<AddressAsKey>? GetAccountChanges()
+    public virtual ArrayPoolList<AddressAsKey>? GetAccountChanges()
         => _innerWorldState.GetAccountChanges();
 
     public virtual UInt256 GetBalance(Address address, int? blockAccessIndex = null)
