@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -68,7 +69,7 @@ internal class StorageTrieStoreAdapter(
     {
         public override TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
-            bundle.SetStorageNode(addressHash, path, node);
+            bundle.SetStorageNodeBatched(addressHash, path, node);
             return node;
         }
     }

@@ -26,7 +26,7 @@ public class SnapshotBundle : IDisposable
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<AddressAsKey, Account?> _changedAccounts;
     private ConcurrentDictionary<TreePath, TrieNode> _changedStateNodes; // Bulkset can get nodes concurrently
-    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes; // Bulkset can get nodes concurrently
+    private ShardedConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> _changedSlots; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses;
 
@@ -165,6 +165,7 @@ public class SnapshotBundle : IDisposable
 
         _setStateNodesTime = _snapshotBundleTimes.WithLabels("set_state_nodes", _isPrewarmer.ToString());
         _setStorageNodesTime = _snapshotBundleTimes.WithLabels("set_storage_nodes", _isPrewarmer.ToString());
+        _setStorageNodesBatchedTime = _snapshotBundleTimes.WithLabels("set_storage_nodes_batched", _isPrewarmer.ToString());
     }
 
     public bool TryGetAccount(Address address, out Account? acc)
@@ -555,6 +556,41 @@ public class SnapshotBundle : IDisposable
         _setStorageNodesTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
 
+    private ShardedConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode>.WriteBatch? _storageNodeWriteBatch;
+    private Histogram.Child _setStorageNodesBatchedTime;
+
+    public void BeginBatchedSet()
+    {
+        _storageNodeWriteBatch = CreateStorageNodeWriteBatch();
+    }
+
+    public void SetStorageNodeBatched(Hash256AsKey addr, in TreePath path, TrieNode newNode)
+    {
+        if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
+        if (_storageNodeWriteBatch is null) throw new InvalidOperationException("BeginBatchedSet must be called");
+
+        long sw = Stopwatch.GetTimestamp();
+        // Note: Hot path
+        _storageNodeWriteBatch!.Set((addr, path), newNode);
+        _setStorageNodesBatchedTime.Observe(Stopwatch.GetTimestamp() - sw);
+    }
+
+    public void EndBatchedSet()
+    {
+        _storageNodeWriteBatch!.Dispose();
+        _storageNodeWriteBatch = null;
+    }
+
+
+    public ShardedConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode>.WriteBatch CreateStorageNodeWriteBatch()
+    {
+        if (_forStateReader) throw new InvalidOperationException("Read only snapshot bundle");
+        if (_isDisposed) throw new InvalidOperationException("Snapshot batch disposed");
+
+        return _changedStorageNodes.BeginWriteBatch();
+    }
+
+
     public void SetAccount(AddressAsKey addr, Account? account)
     {
         if (addr == FlatWorldStateScope.DebugAddress)
@@ -623,7 +659,7 @@ public class SnapshotBundle : IDisposable
         ConcurrentDictionary<AddressAsKey, Account> accounts = content.Accounts;
         ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> storages = content.Storages;
         ConcurrentDictionary<AddressAsKey, bool> selfDestructedStorageAddresses = content.SelfDestructedStorageAddresses;
-        ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = content.StorageNodes;
+        ShardedConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = content.StorageNodes;
         ConcurrentDictionary<TreePath, TrieNode> stateNodes = content.StateNodes;
 
         if (_snapshots.Count == 1) return _snapshots[0];
