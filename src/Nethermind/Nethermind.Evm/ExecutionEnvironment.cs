@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
@@ -48,7 +49,7 @@ namespace Nethermind.Evm
 
         /// <summary>
         /// Value information passed (it is different from transfer value in DELEGATECALL.
-        /// DELEGATECALL behaves like a library call and it uses the value information from the caller even
+        /// DELEGATECALL behaves like a library call, and it uses the value information from the caller even
         /// as no transfer happens.
         /// </summary>
         public ref readonly UInt256 Value => ref _value;
@@ -90,15 +91,34 @@ namespace Nethermind.Evm
         /// </summary>
         public void Dispose()
         {
-            CodeInfo = null!;
-            ExecutingAccount = null!;
-            Caller = null!;
-            CodeSource = null;
-            CallDepth = 0;
-            _transferValue = default;
-            _value = default;
-            InputData = default;
-            _pool.Enqueue(this);
+            if (ExecutingAccount is not null)
+            {
+                CodeInfo = null!;
+                ExecutingAccount = null!;
+                Caller = null!;
+                CodeSource = null;
+                CallDepth = 0;
+                _transferValue = default;
+                _value = default;
+                InputData = default;
+                _pool.Enqueue(this);
+            }
+#if DEBUG
+            GC.SuppressFinalize(this);
+#endif
         }
+
+#if DEBUG
+
+        private readonly StackTrace _creationStackTrace = new();
+
+        ~ExecutionEnvironment()
+        {
+            if (ExecutingAccount is null)
+            {
+                Console.Error.WriteLine($"Warning: {nameof(ExecutionEnvironment)} was not disposed. Created at: {_creationStackTrace}");
+            }
+        }
+#endif
     }
 }

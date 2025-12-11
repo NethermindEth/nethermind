@@ -100,10 +100,6 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     private StackAccessTracker _accessTracker;
     private Snapshot _snapshot;
 
-#if DEBUG
-    private StackTrace? _creationStackTrace;
-#endif
-
     /// <summary>
     /// Rent a top level <see cref="EvmState"/>.
     /// </summary>
@@ -267,6 +263,9 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     }
 
 #if DEBUG
+
+    private StackTrace? _creationStackTrace;
+
     ~EvmState()
     {
         if (!_isDisposed)
