@@ -38,8 +38,8 @@ public class WorldStateMetricsDecorator(IWorldState innerWorldState) : WrappedWo
     public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default, int? _ = null) =>
         _innerWorldState.CreateAccountIfNotExists(address, in balance, in nonce);
 
-    public override void CreateEmptyAccountIfDeleted(Address address) =>
-        _innerWorldState.CreateEmptyAccountIfDeleted(address);
+    // public override void CreateEmptyAccountIfDeleted(Address address) =>
+    //     _innerWorldState.CreateEmptyAccountIfDeleted(address);
 
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false, int? _ = null)
         => _innerWorldState.InsertCode(address, in codeHash, code, spec, isGenesis);

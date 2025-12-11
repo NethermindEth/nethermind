@@ -37,10 +37,10 @@ public class CachedCodeInfoRepository(
         return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
-    {
-        return baseCodeInfoRepository.GetExecutableCodeHash(address, spec);
-    }
+    // public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
+    // {
+    //     return baseCodeInfoRepository.GetExecutableCodeHash(address, spec);
+    // }
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, int? blockAccessIndex = null)
     {

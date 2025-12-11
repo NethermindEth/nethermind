@@ -62,9 +62,9 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
             : codeInfoRepository.TryGetDelegation(address, vmSpec, out delegatedAddress);
 
 
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) => _codeOverrides.TryGetValue(address, out var result)
-        ? result.codeHash
-        : codeInfoRepository.GetExecutableCodeHash(address, spec);
+    // public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) => _codeOverrides.TryGetValue(address, out var result)
+    //     ? result.codeHash
+    //     : codeInfoRepository.GetExecutableCodeHash(address, spec);
 
     public void ResetOverrides()
     {

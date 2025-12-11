@@ -465,6 +465,14 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool enablePara
         }
     }
 
+    public override void Reset(bool resetBlockChanges = true)
+    {
+        if (!ParallelExecutionEnabled)
+        {
+            _innerWorldState.Reset(resetBlockChanges);
+        }
+    }
+
     private BlockAccessList GetGeneratingBlockAccessList(int? blockAccessIndex = null)
         => ParallelExecutionEnabled ? _intermediateBlockAccessLists[blockAccessIndex!.Value] : GeneratedBlockAccessList;
 
