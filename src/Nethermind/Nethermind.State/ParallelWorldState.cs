@@ -22,7 +22,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
     public bool TracingEnabled { get; set; } = false;
     public bool ParallelExecutionEnabled => TracingEnabled && enableParallelExecution;
 
-    public BlockAccessList GeneratedBlockAccessList { get; set; }= new();
+    public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     private BlockAccessList _suggestedBlockAccessList;
     private BlockAccessList[] _intermediateBlockAccessLists;
     private TransientStorageProvider[] _transientStorageProviders;
@@ -76,7 +76,25 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         {
             if (accountChanges.BalanceChanges.Count > 0)
             {
-                _innerWorldState.AddToBalance(accountChanges.Address, _innerWorldState.GetBalance(accountChanges.Address) - accountChanges.BalanceChanges.Last().PostBalance, spec);
+                UInt256 oldBalance = _innerWorldState.GetBalance(accountChanges.Address) ;
+                UInt256 newBalance = accountChanges.BalanceChanges.Last().PostBalance;
+                _innerWorldState.AddToBalance(accountChanges.Address, oldBalance - newBalance, spec);
+            }
+
+            if (accountChanges.NonceChanges.Count > 0)
+            {
+                _innerWorldState.SetNonce(accountChanges.Address, accountChanges.NonceChanges.Last().NewNonce);
+            }
+
+            if (accountChanges.CodeChanges.Count > 0)
+            {
+                _innerWorldState.InsertCode(accountChanges.Address, accountChanges.CodeChanges.Last().NewCode, spec);
+            }
+
+            foreach (SlotChanges slotChange in accountChanges.StorageChanges)
+            {
+                StorageCell storageCell = new(accountChanges.Address, new(slotChange.Slot));
+                _innerWorldState.Set(storageCell, slotChange.Changes.Last().NewValue);
             }
         }
         _innerWorldState.Commit(spec);
