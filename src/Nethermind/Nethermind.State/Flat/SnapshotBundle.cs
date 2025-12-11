@@ -571,7 +571,9 @@ public class SnapshotBundle : IDisposable
 
         long sw = Stopwatch.GetTimestamp();
         // Note: Hot path
-        _storageNodeWriteBatch!.Set((addr, path), newNode);
+        // _storageNodeWriteBatch!.Set((addr, path), newNode);
+
+        _changedStorageNodes[(addr, path)] = newNode;
         _setStorageNodesBatchedTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
 
