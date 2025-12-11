@@ -118,7 +118,7 @@ namespace Nethermind.State
             return _stateProvider.IsContract(address);
         }
 
-        public byte[] GetOriginal(in StorageCell storageCell)
+        public byte[] GetOriginal(in StorageCell storageCell, int? _ = null)
         {
             DebugGuardInScope();
             return _persistentStorageProvider.GetOriginal(storageCell);
@@ -133,12 +133,12 @@ namespace Nethermind.State
             DebugGuardInScope();
             _persistentStorageProvider.Set(storageCell, newValue);
         }
-        public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
+        public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell, int? _ = null)
         {
             DebugGuardInScope();
             return _transientStorageProvider.Get(storageCell);
         }
-        public void SetTransientState(in StorageCell storageCell, byte[] newValue)
+        public void SetTransientState(in StorageCell storageCell, byte[] newValue, int? _ = null)
         {
             DebugGuardInScope();
             _transientStorageProvider.Set(storageCell, newValue);
@@ -389,7 +389,7 @@ namespace Nethermind.State
             return _stateProvider.ChangedAddresses();
         }
 
-        public void ResetTransient()
+        public void ResetTransient(int? _ = null)
         {
             DebugGuardInScope();
             _transientStorageProvider.Reset();

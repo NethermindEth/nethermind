@@ -150,7 +150,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             : codeHash;
     }
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress, int? blockAccessIndex) =>
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress, int? blockAccessIndex = null) =>
         ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCachedCode(_worldState, address, spec, blockAccessIndex).CodeSpan, out delegatedAddress);
 
     // public bool TryGetDelegation(in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
