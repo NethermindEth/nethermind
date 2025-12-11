@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -16,6 +17,8 @@ namespace Nethermind.Trie.Pruning;
 public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnlyTrieStore baseStore) : ITrieStore
 {
     private readonly INodeStorage _nodeStorage = new NodeStorage(keyValueStore);
+    // public ConcurrentDictionary<TrieNode, bool>? DebugNodeCollector { get; set; }
+    public ConcurrentDictionary<Hash256, byte[]>? RlpCollector { get; set; }
 
     public void Dispose()
     {
@@ -25,12 +28,22 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
     {
         // We always return Unknown even if baseStore return unknown, like archive node.
-        return baseStore.FindCachedOrUnknown(address, in path, hash);
+        TrieNode node = baseStore.FindCachedOrUnknown(address, in path, hash);
+        if (RlpCollector != null && node.NodeType != NodeType.Unknown)
+        {
+            // DebugNodeCollector.TryAdd(node, true);
+            RlpCollector.TryAdd(node.Keccak, node.FullRlp.Span.ToArray());
+        }
+        return node;
     }
 
     public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
         byte[]? rlp = TryLoadRlp(address, in path, hash, flags);
+        if (RlpCollector is not null && rlp is not null)
+        {
+            RlpCollector.TryAdd(hash, rlp);
+        }
         if (rlp is null) throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
         return rlp;
     }
