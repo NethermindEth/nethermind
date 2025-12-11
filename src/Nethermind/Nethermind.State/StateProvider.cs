@@ -496,28 +496,28 @@ namespace Nethermind.State
                 => _logger.Trace($"Creating account: {address} with balance {balance.ToHexString(skipLeadingZeros: true)} and nonce {nonce.ToHexString(skipLeadingZeros: true)}");
         }
 
-        public void CreateEmptyAccountIfDeletedOrNew(Address address)
-        {
-            if (_intraTxCache.TryGetValue(address, out Stack<int> value))
-            {
-                //we only want to persist empty accounts if they were deleted or created as empty
-                //we don't want to do it for account empty due to a change (e.g. changed balance to zero)
-                var lastChange = _changes[value.Peek()];
-                if (lastChange.ChangeType == ChangeType.Delete ||
-                    (lastChange.ChangeType is ChangeType.Touch or ChangeType.New && lastChange.Account.IsEmpty))
-                {
-                    _needsStateRootUpdate = true;
-                    if (_logger.IsTrace) Trace(address);
+        // public void CreateEmptyAccountIfDeletedOrNew(Address address)
+        // {
+        //     if (_intraTxCache.TryGetValue(address, out Stack<int> value))
+        //     {
+        //         //we only want to persist empty accounts if they were deleted or created as empty
+        //         //we don't want to do it for account empty due to a change (e.g. changed balance to zero)
+        //         var lastChange = _changes[value.Peek()];
+        //         if (lastChange.ChangeType == ChangeType.Delete ||
+        //             (lastChange.ChangeType is ChangeType.Touch or ChangeType.New && lastChange.Account.IsEmpty))
+        //         {
+        //             _needsStateRootUpdate = true;
+        //             if (_logger.IsTrace) Trace(address);
 
-                    Account account = Account.TotallyEmpty;
-                    PushRecreateEmpty(address, account, value);
-                }
-            }
+        //             Account account = Account.TotallyEmpty;
+        //             PushRecreateEmpty(address, account, value);
+        //         }
+        //     }
 
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void Trace(Address address)
-                => _logger.Trace($"Creating zombie account: {address}");
-        }
+        //     [MethodImpl(MethodImplOptions.NoInlining)]
+        //     void Trace(Address address)
+        //         => _logger.Trace($"Creating zombie account: {address}");
+        // }
 
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
         {
