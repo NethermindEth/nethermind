@@ -45,6 +45,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, static n => n.EndsWith("Transition"));
             AddTransitions(transitionTimestamps, _chainSpec.Parameters, static n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
             AddBlobScheduleTransitions(transitionTimestamps, _chainSpec);
+            AddCensoringScheduleTransitions(transitionTimestamps, _chainSpec);
             TimestampFork = transitionTimestamps.Count > 0 ? transitionTimestamps.Min : ISpecProvider.TimestampForkNever;
 
             static void AddTransitions<T>(
@@ -119,11 +120,33 @@ namespace Nethermind.Specs.ChainSpecStyle
                 }
             }
 
+            static void AddCensoringScheduleTransitions(SortedSet<ulong> transitions, ChainSpec chainSpec)
+            {
+                if (chainSpec.Parameters.CensoringSchedule is not { Count: > 0 })
+                {
+                    return;
+                }
+
+                ulong genesisTimestamp = chainSpec.Genesis?.Timestamp ?? 0;
+
+                foreach (CensoringScheduleSettings settings in chainSpec.Parameters.CensoringSchedule)
+                {
+                    if (settings.Timestamp <= genesisTimestamp)
+                    {
+                        continue;
+                    }
+
+                    transitions.Add(settings.Timestamp);
+                }
+            }
+
             (ForkActivation Activation, IReleaseSpec Spec)[] allTransitions = CreateTransitions(_chainSpec, transitionBlockNumbers, transitionTimestamps);
 
+            // on master need to add a new transition from code overwrites
             LoadTransitions(allTransitions);
 
-            TransitionActivations = CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps);
+            IEnumerable<ulong> censoringTransitionTimestamps = _chainSpec.Parameters.CensoringSchedule.Select(cs => cs.Timestamp);
+            TransitionActivations = [.. CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps).Where(a => ShouldIncludeTransition(a, censoringTransitionTimestamps))];
 
             if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
@@ -132,6 +155,9 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
+
+        private static bool ShouldIncludeTransition(ForkActivation a, IEnumerable<ulong> censoringTransitionTimestamps)
+            => a.Timestamp is null || a.Timestamp == GnosisSpecProvider.BalancerTimestamp || !censoringTransitionTimestamps.Contains(a.Timestamp.Value);
 
         private (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
             ChainSpec chainSpec,
@@ -300,6 +326,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
 
             SetBlobScheduleParameters();
+            SetCensoringScheduleParameters();
 
             return releaseSpec;
 
@@ -323,6 +350,19 @@ namespace Nethermind.Specs.ChainSpecStyle
                     releaseSpec.TargetBlobCount = Eip4844Constants.DefaultTargetBlobCount;
                     releaseSpec.MaxBlobCount = Eip4844Constants.DefaultMaxBlobCount;
                     releaseSpec.BlobBaseFeeUpdateFraction = Eip4844Constants.DefaultBlobGasPriceUpdateFraction;
+                }
+            }
+
+            void SetCensoringScheduleParameters()
+            {
+                CensoringScheduleSettings? censoringSchedule = chainSpec.Parameters.CensoringSchedule?.OrderByDescending(cs => cs).FirstOrDefault(cs => cs.Timestamp <= releaseStartTimestamp);
+
+                if (censoringSchedule is not null)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Gnosis patch applied, timestamp {censoringSchedule.Timestamp}");
+                    releaseSpec.CensoredSenders = [.. censoringSchedule.Senders.Select(x => new AddressAsKey(x))];
+                    releaseSpec.CensoredTo = [.. censoringSchedule.To.Select(x => new AddressAsKey(x))];
+                    releaseSpec.Is7702PatchEnabled = censoringSchedule.Is7702PatchEnabled;
                 }
             }
         }
