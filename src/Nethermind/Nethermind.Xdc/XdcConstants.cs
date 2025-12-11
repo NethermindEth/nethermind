@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Xdc;
@@ -20,6 +21,8 @@ internal static class XdcConstants
 
     public const int InMemoryRound2Epochs = 65536;   // One epoch ~ 0.5h, 65536 epochs ~ 3.7y, ~10MB memory
 
+    public const int BlockSignersCacheLimit = 9000;
+
     public const long TargetGasLimit = 84000000; // XDC default gas limit per block
 
     public const byte ConsensusVersion = 0x02;
@@ -28,7 +31,6 @@ internal static class XdcConstants
 
     // --- Compile-time constants ---
     public const int InMemorySnapshots = 128;       // Number of recent vote snapshots to keep in memory
-    public const int BlockSignersCacheLimit = 9000;
     public const int M2ByteLength = 4;
 
     public const int PeriodicJobPeriod = 60;
@@ -37,4 +39,14 @@ internal static class XdcConstants
 
     public static readonly Hash256 UncleHash = Keccak.OfAnEmptySequenceRlp; // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW
     public static readonly UInt256 DifficultyDefault = UInt256.One;
+    public const int RangeReturnSigner = 150;
+    public const int MinimunMinerBlockPerEpoch = 1;
+    public const int LimitPenaltyEpochV2 = 0;
+
+    public static byte[] VoteMethod = Bytes.FromHexString("0x6dd7d8ea");
+	public static byte[] UnvoteMethod = Bytes.FromHexString("0x02aa9be2");
+    public static byte[] ProposeMethod = Bytes.FromHexString("0x01267951");
+    public static byte[] ResignMethod = Bytes.FromHexString("0xae6e43f5");
+    public static byte[] SignMethod = Bytes.FromHexString("0xe341eaa4");
+
 }

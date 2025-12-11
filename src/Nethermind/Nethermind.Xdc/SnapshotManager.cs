@@ -12,6 +12,7 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 

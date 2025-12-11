@@ -45,6 +45,7 @@ public class XdcModule : Module
             .AddSingleton<ISealer, XdcSealer>()
 
             // penalty handler
+            .AddSingleton<IPenaltyHandler, PenaltyHandler>()
 
             // reward handler
 
