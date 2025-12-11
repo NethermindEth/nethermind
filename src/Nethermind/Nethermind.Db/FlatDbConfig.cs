@@ -43,6 +43,9 @@ public interface IFlatDbConfig: IConfig
 
     [ConfigItem(Description = "Use preimage", DefaultValue = "false")]
     FlatLayout Layout { get; set; }
+
+    [ConfigItem(Description = "Block cache size budget", DefaultValue = "1000000000")]
+    long BlockCacheSizeBudget { get; set; }
 }
 
 public enum FlatLayout
@@ -69,4 +72,5 @@ public class FlatDbConfig: IFlatDbConfig
     public long TrieCacheMemoryTarget { get; set; } = 512.MiB();
     public bool DisableTrieWarmer { get; set; } = false;
     public FlatLayout Layout { get; set; }
+    public long BlockCacheSizeBudget { get; set; } = 1.GiB();
 }
