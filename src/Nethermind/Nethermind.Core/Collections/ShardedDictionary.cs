@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Collections;
 
+// TODO: Maybe remove or redo until it is actually faster
 public class ShardedConcurrentDictionary<TKey, TValue>: IEnumerable<KeyValuePair<TKey, TValue>>
     where TKey : notnull
 {
