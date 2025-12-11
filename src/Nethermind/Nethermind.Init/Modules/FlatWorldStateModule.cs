@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Steps;
 using Nethermind.State;
 using Nethermind.State.Flat;
@@ -87,6 +88,13 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 }
 
                 throw new Exception($"Unsupported layout {flatDbConfig.Layout}");
+            })
+
+            .AddDecorator<IDbConfig>((ctx, dbConfig) =>
+            {
+                IFlatDbConfig flatConfig = ctx.Resolve<IFlatDbConfig>();
+                dbConfig.IsFlatInTrie = flatConfig.Layout == FlatLayout.FlatInTrie;
+                return dbConfig;
             })
 
             .AddSingleton<RocksdbPersistence>()

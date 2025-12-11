@@ -342,25 +342,13 @@ public class DbConfig : IDbConfig
         "";
     public ulong? FlatMetadataDbRowCacheSize { get; set; } = (ulong?)1.MiB();
     public string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
-    public bool? FlatStateDbVerifyChecksum { get; set; } = false; // YOLO
+    public bool? FlatAccountDbVerifyChecksum { get; set; } = false; // YOLO
 
-    public bool FlatStateDbEnableFileWarmer { get; set; } = false;
-    public ulong FlatStateDbWriteBufferSize { get; set; } = (ulong)64.MiB();
-    public ulong FlatStateDbRowCacheSize { get; set; } = 0;
-    public ulong FlatStateDbWriteBufferNumber { get; set; } = 4;
-    public bool FlatStateDbSkipDefaultDbOptions { get; set; } = true;
-
-    private const string FlatCommonConfigWithPlainTable =
-        MinimumBasicOption +
-        "memtable=prefix_hash:1000;" +
-
-        "min_write_buffer_number_to_merge=2;" +
-
-        // This used to be on trie, but its here now. Attempt to reduce LSM depth at cost of write amp.
-        "max_bytes_for_level_multiplier=30;" +
-        "max_bytes_for_level_base=350000000;" +
-        "plain_table_factory={};" +
-        "";
+    public bool FlatAccountDbEnableFileWarmer { get; set; } = false;
+    public ulong FlatAccountDbWriteBufferSize { get; set; } = (ulong)64.MiB();
+    public ulong FlatAccountDbRowCacheSize { get; set; } = 0;
+    public ulong FlatAccountDbWriteBufferNumber { get; set; } = 4;
+    public bool FlatAccountDbSkipDefaultDbOptions { get; set; } = true;
 
     private const string FlatCommonConfigWithBlockBased =
         MinimumBasicOption +
@@ -414,18 +402,21 @@ public class DbConfig : IDbConfig
         "optimize_filters_for_hits=false;" +
         "";
 
-    public const string FlatCommonConfig = FlatCommonConfigWithBlockBased;
+    public string? FlatDbCommonFlatOptions { get; set; } = FlatCommonConfigWithBlockBased;
 
-    // Note: No prefix extractor for state.Dont forget.
-    public string? FlatStateDbRocksDbOptions { get; set; } =
-        FlatCommonConfig +
-        // "use_direct_reads=true;" + //  For testing
+    public string? FlatAccountDbRocksDbOptions
+    {
+        get { return FlatDbCommonFlatOptions + field; }
+        set { field = value ?? ""; }
+    } =
+        // Note: No prefix extractor for state.Dont forget.
         // "prefix_extractor=capped:3;" + // I forget why.
+
         "block_based_table_factory.block_cache=64000000;" +
         "block_based_table_factory.filter_policy=ribbonfilter:12;" +
         "";
 
-    public string? FlatStateDbAdditionalRocksDbOptions { get; set; }
+    public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
     public bool? FlatStorageDbVerifyChecksum { get; set; }
     public bool FlatStorageDbSkipDefaultDbOptions { get; set; } = true;
     public bool FlatStorageDbEnableFileWarmer { get; set; }
@@ -433,14 +424,11 @@ public class DbConfig : IDbConfig
     public ulong FlatStorageDbWriteBufferSize { get; set; }= (ulong)64.MiB();
     public ulong FlatStorageDbWriteBufferNumber { get; set; } = 4;
 
-    public string? FlatStorageDbRocksDbOptions { get; set; } =
-        FlatCommonConfig +
-        // v"plain_table_factory={user_key_len=52;};" +
-        // "block_based_table_factory.index_type=kBinarySearch;" +
-        // "block_based_table_factory.block_restart_interval=6;" + // For storage the prefix have a lot in common.
-        // "memtable=skiplist;" +
-        // "prefix_extractor=capped:23;" + // 20 byte address + 3 byte prefix.
-        // "use_direct_reads=true;" + //  For testing
+    public string? FlatStorageDbRocksDbOptions
+    {
+        get { return FlatDbCommonFlatOptions + field; }
+        set { field = value ?? ""; }
+    } =
         "block_based_table_factory.block_cache=500000000;" +
         "block_based_table_factory.block_size=16000;" + // Using 4kb size is faster, IO wise, but uses additional 500 MB of memory, which if put on block cache is much betterr.
         "block_based_table_factory.filter_policy=ribbonfilter:8;" +
@@ -449,16 +437,13 @@ public class DbConfig : IDbConfig
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
 
     // Largely the same as statedb, but more write focused.
-    private const string TrieNodeConfig =
-
+    public string? FlatDbStandardTrieOptions { get; set; } =
         // "use_direct_reads=true;" +
         // For trie which is heavy in compaction. Use direct io to prevent taking up space in os cache.
         "use_direct_io_for_flush_and_compaction=true;" +
 
         // LZ4 seems to be slightly faster here
         "compression=kLZ4Compression;" +
-
-        "wal_compression=kZSTD;" +
 
         // Default value is 16.
         // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
@@ -483,33 +468,69 @@ public class DbConfig : IDbConfig
 
         "";
 
+    public string? FlatDbFlatInTrieOptions { get; set; } =
+        // LZ4 seems to be slightly faster here
+        "compression=kLZ4Compression;" +
+
+        // Default value is 16.
+        // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
+        // They key within the same restart is delta-encoded with the key before it. This mean a read will have to go
+        // through potentially "BlockRestartInterval" number of key, probably. That is my understanding.
+        // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
+        // cache utilization.
+        "block_based_table_factory.block_restart_interval=8;" +
+
+        // This adds a hashtable-like index per block (the 32kb block)
+        // This reduce CPU and therefore latency under high block cache hit scenario.
+        // It seems to increase disk space use by about 1 GB.
+        "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
+        "block_based_table_factory.data_block_hash_table_util_ratio=0.75;" +
+
+        "block_based_table_factory.block_size=32000;" +
+        "block_based_table_factory.filter_policy=ribbonfilter:8;" +
+
+        "optimize_filters_for_hits=false;" +
+        "";
+
+    public bool IsFlatInTrie { get; set; }
+
+    public string? FlatDbCommonTrieOptions => IsFlatInTrie ? FlatDbFlatInTrieOptions: FlatDbStandardTrieOptions;
+
     // Only 1 gig in total, but almost 1/3rd of the writes.
     public ulong FlatStateTopNodesDbWriteBufferSize { get; set; } = (ulong)64.MiB();
     public ulong FlatStateTopNodesDbWriteBufferNumber { get; set; } = 4;
-    public string? FlatStateTopNodesDbRocksDbOptions { get; set; }  =
-        TrieNodeConfig +
-        "";
+    public string? FlatStateTopNodesDbRocksDbOptions
+    {
+        get { return FlatDbCommonTrieOptions + field; }
+        set { field = value ?? ""; }
+    } = "";
 
     public ulong FlatStateNodesDbWriteBufferSize { get; set; } = (ulong)64.MiB();
     public ulong FlatStateNodesDbWriteBufferNumber { get; set; } = 4;
-    public string? FlatStateNodesDbRocksDbOptions { get; set; } =
-        TrieNodeConfig +
-        "";
+    public string? FlatStateNodesDbRocksDbOptions
+    {
+        get { return FlatDbCommonTrieOptions + field; }
+        set { field = value ?? ""; }
+    } = "";
     public string? FlatStateTopNodesDbAdditionalRocksDbOptions { get; set; }
 
     public string? FlatStateNodesDbAdditionalRocksDbOptions { get; set; }
     public ulong FlatStorageNodesDbWriteBufferSize { get; set; } = (ulong)64.MiB();
     public ulong FlatStorageNodesDbWriteBufferNumber { get; set; } = 4;
-    public string? FlatStorageNodesDbRocksDbOptions { get; set; } =
-        TrieNodeConfig +
-        "";
+    public string? FlatStorageNodesDbRocksDbOptions
+    {
+        get { return FlatDbCommonTrieOptions + field; }
+        set { field = value ?? ""; }
+    } = "";
     public string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
 
     public ulong FlatStorageTopNodesDbWriteBufferSize { get; set; } = (ulong)64.MiB();
     public ulong FlatStorageTopNodesNodesDbWriteBufferNumber { get; set; } = 4;
-    public string? FlatStorageTopNodesNodesDbRocksDbOptions { get; set; } =
-        TrieNodeConfig +
-        "";
+    public string? FlatStorageTopNodesNodesDbRocksDbOptions
+    {
+        get { return FlatDbCommonTrieOptions + field; }
+        set { field = value ?? ""; }
+    } = "";
     public string? FlatStorageTopNodesNodesDbAdditionalRocksDbOptions { get; set; }
     public ulong PreimageDbWriteBufferSize { get; set; } = (ulong)16.MiB();
 }

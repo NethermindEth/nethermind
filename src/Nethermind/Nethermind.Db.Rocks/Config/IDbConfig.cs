@@ -104,6 +104,10 @@ public interface IDbConfig : IConfig
     string L1OriginDbRocksDbOptions { get; set; }
     string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 
+    string? FlatDbStandardTrieOptions { set; get; }
+    string? FlatDbFlatInTrieOptions { set; get; }
+    bool IsFlatInTrie { set; get; }
+
     ulong FlatDbWriteBufferSize { get; set; }
     ulong FlatDbWriteBufferNumber { get; set; }
     bool? FlatDbVerifyChecksum { get; set; }
@@ -115,14 +119,14 @@ public interface IDbConfig : IConfig
     ulong? FlatMetadataDbRowCacheSize { get; set; }
     string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
 
-    bool? FlatStateDbVerifyChecksum { get; set; }
-    bool FlatStateDbSkipDefaultDbOptions { get; set; }
-    bool FlatStateDbEnableFileWarmer { get; set; }
-    ulong FlatStateDbWriteBufferSize { get; set; }
-    ulong FlatStateDbRowCacheSize { get; set; }
-    ulong FlatStateDbWriteBufferNumber { get; set; }
-    string? FlatStateDbRocksDbOptions { get; set; }
-    string? FlatStateDbAdditionalRocksDbOptions { get; set; }
+    bool? FlatAccountDbVerifyChecksum { get; set; }
+    bool FlatAccountDbSkipDefaultDbOptions { get; set; }
+    bool FlatAccountDbEnableFileWarmer { get; set; }
+    ulong FlatAccountDbWriteBufferSize { get; set; }
+    ulong FlatAccountDbRowCacheSize { get; set; }
+    ulong FlatAccountDbWriteBufferNumber { get; set; }
+    string? FlatAccountDbRocksDbOptions { get; set; }
+    string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
 
     bool? FlatStorageDbVerifyChecksum { get; set; }
     bool FlatStorageDbSkipDefaultDbOptions { get; set; }
