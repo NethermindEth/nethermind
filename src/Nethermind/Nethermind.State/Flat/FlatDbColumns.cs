@@ -6,7 +6,7 @@ namespace Nethermind.State.Flat;
 public enum FlatDbColumns
 {
     Metadata,
-    State,
+    Account,
     Storage,
     StateNodes,
     StateTopNodes,

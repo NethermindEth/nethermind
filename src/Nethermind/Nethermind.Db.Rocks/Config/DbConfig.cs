@@ -484,13 +484,13 @@ public class DbConfig : IDbConfig
         "";
 
     // Only 1 gig in total, but almost 1/3rd of the writes.
-    public ulong FlatStateTopNodesDbWriteBufferSize { get; set; } = (ulong)128.MiB();
+    public ulong FlatStateTopNodesDbWriteBufferSize { get; set; } = (ulong)64.MiB();
     public ulong FlatStateTopNodesDbWriteBufferNumber { get; set; } = 4;
     public string? FlatStateTopNodesDbRocksDbOptions { get; set; }  =
         TrieNodeConfig +
         "";
 
-    public ulong FlatStateNodesDbWriteBufferSize { get; set; } = (ulong)128.MiB();
+    public ulong FlatStateNodesDbWriteBufferSize { get; set; } = (ulong)64.MiB();
     public ulong FlatStateNodesDbWriteBufferNumber { get; set; } = 4;
     public string? FlatStateNodesDbRocksDbOptions { get; set; } =
         TrieNodeConfig +

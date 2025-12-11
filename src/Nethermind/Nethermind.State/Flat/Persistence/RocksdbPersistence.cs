@@ -119,7 +119,7 @@ public class RocksdbPersistence : IPersistence
 
         FlatDbColumns[] columnsToTest =
         [
-            FlatDbColumns.State,
+            FlatDbColumns.Account,
             // FlatDbColumns.Storage,
             // FlatDbColumns.StateTopNodes,
             // FlatDbColumns.StateNodes,
@@ -362,7 +362,7 @@ public class RocksdbPersistence : IPersistence
             }
             else
             {
-                state = batch.GetColumnBatch(FlatDbColumns.State);
+                state = batch.GetColumnBatch(FlatDbColumns.Account);
                 storage = batch.GetColumnBatch(FlatDbColumns.Storage);
             }
 
@@ -539,7 +539,7 @@ public class RocksdbPersistence : IPersistence
             }
             else
             {
-                _state = _db.GetColumn(FlatDbColumns.State);
+                _state = _db.GetColumn(FlatDbColumns.Account);
                 _storage = _db.GetColumn(FlatDbColumns.Storage);
             }
             _stateNodes = _db.GetColumn(FlatDbColumns.StateNodes);
