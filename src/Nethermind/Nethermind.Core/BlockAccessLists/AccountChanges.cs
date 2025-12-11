@@ -261,14 +261,26 @@ public class AccountChanges : IEquatable<AccountChanges>
         return lastCode;
     }
 
-    public bool IsStorageEmpty(int blockAccessIndex)
-    {
-        return false;
-    }
-
     public HashSet<byte[]> GetAllSlots(int blockAccessIndex)
     {
-        return [];
+        HashSet<byte[]> slots = [];
+        foreach (SlotChanges slotChange in _storageChanges.Values)
+        {
+            byte[] lastValue = [];
+            foreach (StorageChange storageChange in slotChange.Changes)
+            {
+                if (storageChange.BlockAccessIndex > blockAccessIndex)
+                {
+                    if (!lastValue.IsZero())
+                    {
+                        slots.Add(slotChange.Slot);
+                    }
+                    break;
+                }
+                lastValue = storageChange.NewValue;
+            }
+        }
+        return slots;
     }
 
     // add to codechanges when generating?
