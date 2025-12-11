@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Steps;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Importer;
@@ -104,11 +105,73 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 FlatInTrie = config.Layout == FlatLayout.FlatInTrie,
                 SeparateStorageTop = (config.Layout != FlatLayout.FlatInTrie && config.Layout != FlatLayout.FlatNoSeparateTopStorage)
             })
-            .AddSingleton<IStateReader, FlatStateReader>();
+            .AddSingleton<IStateReader, FlatStateReader>()
+
+            .AddDecorator<IRocksDbConfigFactory, FlatBlockCacheAdjuster>()
+            ;
+
 
         if (flatDbConfig.ImportFromPruningTrieState)
         {
             builder.AddStep(typeof(ImportFlatDb));
+        }
+    }
+
+    private class FlatBlockCacheAdjuster : IRocksDbConfigFactory, IDisposable
+    {
+        private readonly IRocksDbConfigFactory _rocksDbConfigFactory;
+        private readonly IntPtr _flatDbBlockCache;
+        private readonly HashSet<(string, string?)> _columnsWithBlockCache;
+        private readonly ILogger _logger;
+
+        public FlatBlockCacheAdjuster(IRocksDbConfigFactory rocksDbConfigFactory, IFlatDbConfig flatDbConfig, ILogManager logManager)
+        {
+            _logger = logManager.GetClassLogger<FlatBlockCacheAdjuster>();
+            _rocksDbConfigFactory = rocksDbConfigFactory;
+            _flatDbBlockCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr((uint)flatDbConfig.BlockCacheSizeBudget));
+
+            FlatDbColumns[] columns;
+
+            if (flatDbConfig.Layout == FlatLayout.FlatInTrie)
+            {
+                columns =
+                [
+                    FlatDbColumns.StateNodes,
+                    FlatDbColumns.StorageNodes
+                ];
+            }
+            else
+            {
+                columns =
+                [
+                    FlatDbColumns.Account,
+                    FlatDbColumns.Storage
+                ];
+            }
+
+            _columnsWithBlockCache = new HashSet<(string, string?)>();
+            foreach (FlatDbColumns col in columns)
+            {
+                _columnsWithBlockCache.Add(("Flat", col.ToString()));
+                _columnsWithBlockCache.Add(("Flat" + col.ToString(), null));
+            }
+        }
+
+        public void Dispose()
+        {
+            RocksDbSharp.Native.Instance.rocksdb_cache_destroy(_flatDbBlockCache);
+        }
+
+        public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
+        {
+            IRocksDbConfig config = _rocksDbConfigFactory.GetForDatabase(databaseName, columnName);
+            if (_columnsWithBlockCache.Contains((databaseName, columnName)))
+            {
+                _logger.Warn($"Adjusting db {databaseName}, {columnName} with shared block cache");
+                config = new AdjustedRocksdbConfig(config, "", config.WriteBufferSize.GetValueOrDefault(), _flatDbBlockCache);
+            }
+
+            return config;
         }
     }
 }
