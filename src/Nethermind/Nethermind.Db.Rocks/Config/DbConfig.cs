@@ -377,6 +377,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;" +
         "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +
         "block_based_table_factory.whole_key_filtering=true;" + // should be default. Just in case.
+        "block_based_table_factory.block_cache=64000000;" +
 
         // Important tunables
 
@@ -412,7 +413,6 @@ public class DbConfig : IDbConfig
         // Note: No prefix extractor for state.Dont forget.
         // "prefix_extractor=capped:3;" + // I forget why.
 
-        "block_based_table_factory.block_cache=64000000;" +
         "block_based_table_factory.filter_policy=ribbonfilter:12;" +
         "";
 
@@ -429,7 +429,6 @@ public class DbConfig : IDbConfig
         get { return FlatDbCommonFlatOptions + field; }
         set { field = value ?? ""; }
     } =
-        "block_based_table_factory.block_cache=500000000;" +
         "block_based_table_factory.block_size=16000;" + // Using 4kb size is faster, IO wise, but uses additional 500 MB of memory, which if put on block cache is much betterr.
         "block_based_table_factory.filter_policy=ribbonfilter:8;" +
         "";
@@ -478,7 +477,7 @@ public class DbConfig : IDbConfig
         // through potentially "BlockRestartInterval" number of key, probably. That is my understanding.
         // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
         // cache utilization.
-        "block_based_table_factory.block_restart_interval=8;" +
+        "block_based_table_factory.block_restart_interval=6;" +
 
         // This adds a hashtable-like index per block (the 32kb block)
         // This reduce CPU and therefore latency under high block cache hit scenario.
@@ -489,6 +488,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.block_size=32000;" +
         "block_based_table_factory.filter_policy=ribbonfilter:8;" +
 
+        // very important for null check
         "optimize_filters_for_hits=false;" +
         "";
 

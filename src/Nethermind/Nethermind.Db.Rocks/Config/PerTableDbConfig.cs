@@ -63,6 +63,7 @@ public class PerTableDbConfig : IRocksDbConfig
     public bool EnableFileWarmer => ReadConfig<bool>(nameof(EnableFileWarmer));
     public double CompressibilityHint => ReadConfig<double>(nameof(CompressibilityHint));
     public bool FlushOnExit => ReadConfig<bool?>(nameof(FlushOnExit)) ?? true;
+    public IntPtr? BlockCache => null;
 
     private T? ReadConfig<T>(string propertyName)
     {

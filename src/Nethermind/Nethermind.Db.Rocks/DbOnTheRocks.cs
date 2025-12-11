@@ -489,8 +489,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _writeBufferSize = ulong.Parse(optionsAsDict["write_buffer_size"]);
         _maxWriteBufferNumber = int.Parse(optionsAsDict["max_write_buffer_number"]);
 
+        ulong blockCacheSize = 0;
+        if (optionsAsDict.TryGetValue("block_based_table_factory.block_cache", out string? blockCacheSizeStr))
+        {
+            blockCacheSize = ulong.Parse(blockCacheSizeStr);
+        }
+
         var isUsingPlainTable = optionsAsDict.ContainsKey("plain_table_factory");
-        BlockBasedTableOptions? tableOptions = null;
         if (isUsingPlainTable)
         {
             // It just need to set the default factory.
@@ -508,7 +513,17 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         else
         {
-            tableOptions = new();
+            BlockBasedTableOptions? tableOptions = new();
+            // note: the ordering is important.
+            // changes to the table options must be applied before setting to set.
+            if (dbConfig.BlockCache is not null)
+            {
+                tableOptions.SetBlockCache(dbConfig.BlockCache.Value);
+            }
+            else if (sharedCache is not null && blockCacheSize == 0)
+            {
+                tableOptions.SetBlockCache(sharedCache.Value);
+            }
             options.SetBlockBasedTableFactory(tableOptions);
         }
 
@@ -520,17 +535,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         finally
         {
             Marshal.FreeHGlobal(optsPtr);
-        }
-
-        ulong blockCacheSize = 0;
-        if (optionsAsDict.TryGetValue("block_based_table_factory.block_cache", out string? blockCacheSizeStr))
-        {
-            blockCacheSize = ulong.Parse(blockCacheSizeStr);
-        }
-
-        if (sharedCache is not null && blockCacheSize == 0 && tableOptions is not null)
-        {
-            tableOptions.SetBlockCache(sharedCache.Value);
         }
 
         if (dbConfig.WriteBufferSize is not null)
