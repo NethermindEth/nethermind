@@ -32,7 +32,7 @@ public class ContractRewriter(
         {
             if (timestamp >= overrides.Key && parentTimestamp < overrides.Key)
             {
-                result &= InsertOverwriteCode(overrides.Value, stateProvider, spec);
+                result |= InsertOverwriteCode(overrides.Value, stateProvider, spec);
             }
         }
         return result;
@@ -43,6 +43,7 @@ public class ContractRewriter(
         bool result = false;
         foreach (KeyValuePair<Address, byte[]> contractOverride in overrides)
         {
+            stateProvider.CreateAccountIfNotExists(contractOverride.Key, 0, 0);
             stateProvider.InsertCode(contractOverride.Key, contractOverride.Value, spec);
             result = true;
         }
