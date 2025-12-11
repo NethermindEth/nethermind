@@ -18,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
+
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
 namespace Nethermind.Evm.TransactionProcessing
@@ -51,7 +52,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private SystemTransactionProcessor? _systemTransactionProcessor;
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
-        private readonly TracedAccessWorldState? _tracedAccessWorldState;
+        private readonly IBlockAccessListBuilder? _balBuilder;
 
         [Flags]
         protected enum ExecutionOptions
@@ -107,7 +108,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState = worldState;
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
-            _tracedAccessWorldState = worldState as TracedAccessWorldState;
+            _balBuilder = worldState as IBlockAccessListBuilder;
             _blobBaseFeeCalculator = blobBaseFeeCalculator;
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
@@ -276,9 +277,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
 
-                    if (_tracedAccessWorldState is not null && _tracedAccessWorldState.TracingEnabled && IncludeAccountRead(res))
+                    if (_balBuilder is not null && _balBuilder.TracingEnabled && IncludeAccountRead(res))
                     {
-                        _tracedAccessWorldState.AddAccountRead(authority, VirtualMachine.TxExecutionContext.BlockAccessIndex);
+                        _balBuilder.AddAccountRead(authority, VirtualMachine.TxExecutionContext.BlockAccessIndex);
                     }
                 }
                 else

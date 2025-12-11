@@ -21,13 +21,13 @@ public class CodeInfoRepository : ICodeInfoRepository
     private static readonly CodeLruCache _codeCache = new();
     private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
-    private readonly TracedAccessWorldState? _tracedAccessWorldState;
+    private readonly IBlockAccessListBuilder? _balBuilder;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
-        _tracedAccessWorldState = _worldState as TracedAccessWorldState;
+        _balBuilder = _worldState as IBlockAccessListBuilder;
     }
 
     public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress, int? blockAccessIndex = null)
@@ -35,9 +35,9 @@ public class CodeInfoRepository : ICodeInfoRepository
         delegationAddress = null;
         if (vmSpec.IsPrecompile(codeSource)) // _localPrecompiles have to have all precompiles
         {
-            if (_tracedAccessWorldState is not null && _tracedAccessWorldState.TracingEnabled)
+            if (_balBuilder is not null && _balBuilder.TracingEnabled)
             {
-                _tracedAccessWorldState.AddAccountRead(codeSource);
+                _balBuilder.AddAccountRead(codeSource);
             }
             return _localPrecompiles[codeSource];
         }
@@ -136,19 +136,19 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// </summary>
     /// <param name="worldState"></param>
     /// <param name="address"></param>
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
-    {
-        ValueHash256 codeHash = _worldState.GetCodeHash(address);
-        if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
-        {
-            return Keccak.OfAnEmptyString.ValueHash256;
-        }
+    // public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
+    // {
+    //     ValueHash256 codeHash = _worldState.GetCodeHash(address);
+    //     if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
+    //     {
+    //         return Keccak.OfAnEmptyString.ValueHash256;
+    //     }
 
-        ICodeInfo codeInfo = InternalGetCachedCode(_worldState, address, spec, null); //todo: is used?
-        return codeInfo.IsEmpty
-            ? Keccak.OfAnEmptyString.ValueHash256
-            : codeHash;
-    }
+    //     ICodeInfo codeInfo = InternalGetCachedCode(_worldState, address, spec, null); //todo: is used?
+    //     return codeInfo.IsEmpty
+    //         ? Keccak.OfAnEmptyString.ValueHash256
+    //         : codeHash;
+    // }
 
     public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress, int? blockAccessIndex = null) =>
         ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCachedCode(_worldState, address, spec, blockAccessIndex).CodeSpan, out delegatedAddress);

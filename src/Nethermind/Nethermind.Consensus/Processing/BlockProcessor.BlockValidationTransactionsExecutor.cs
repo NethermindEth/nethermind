@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.Processing
             BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
             : IBlockProcessor.IBlockTransactionsExecutor
         {
-            private readonly TracedAccessWorldState? _tracedAccessWorldState = stateProvider as TracedAccessWorldState;
+            private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
             private ITransactionProcessorAdapter? _transactionProcessor;
             private BlockExecutionContext _blockExecutionContext;
 
@@ -44,7 +44,7 @@ namespace Nethermind.Consensus.Processing
                 Metrics.ResetBlockStats();
 
                 int len = block.Transactions.Length;
-                if (_tracedAccessWorldState.ParallelExecutionEnabled)
+                if (_balBuilder.ParallelExecutionEnabled)
                 {
                         var transactionProcessors = new ITransactionProcessorAdapter[len];
                         for (int i = 0; i < len; i++)
@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.Processing
                     {
                         Transaction tx = state.txs[i];
                         ITransactionProcessorAdapter transactionProcessor = state.transactionProcessors[i];
-                        TracedAccessWorldState worldState = (state.stateProvider as TracedAccessWorldState)!;
+                        // TracedAccessWorldState worldState = (state.stateProvider as TracedAccessWorldState)!;
                         ProcessTransactionParallel(
                             transactionProcessor,
                             state.stateProvider,
@@ -91,11 +91,11 @@ namespace Nethermind.Consensus.Processing
 
                     for (int i = 0; i < block.Transactions.Length; i++)
                     {
-                        _tracedAccessWorldState?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+                        _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                         Transaction currentTx = block.Transactions[i];
                         ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                     }
-                    _tracedAccessWorldState?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+                    _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                 }
 
                 return [.. receiptsTracer.TxReceipts];

@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.FSharp.Data.UnitSystems.SI.UnitNames;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -38,7 +36,7 @@ public partial class BlockProcessor
     : IBlockProcessor
 {
     private readonly ILogger _logger;
-    private readonly TracedAccessWorldState? _tracedAccessWorldState;
+    private readonly IBlockAccessListBuilder? _balBuilder;
     protected readonly WorldStateMetricsDecorator _stateProvider;
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = ReceiptsRootCalculator.Instance;
     private readonly ISpecProvider _specProvider;
@@ -83,7 +81,7 @@ public partial class BlockProcessor
         _executionRequestsProcessor = executionRequestsProcessor;
 
         _logger = _logManager.GetClassLogger();
-        _tracedAccessWorldState = stateProvider as TracedAccessWorldState;
+        _balBuilder = stateProvider as IBlockAccessListBuilder;
         _stateProvider = new(stateProvider);
     }
 
@@ -182,7 +180,7 @@ public partial class BlockProcessor
         }
 
         // move everything inside some bal generator class?
-        if (_tracedAccessWorldState is not null && spec.BlockLevelAccessListsEnabled)
+        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
         {
             if (block.IsGenesis)
             {
@@ -190,11 +188,11 @@ public partial class BlockProcessor
             }
             else
             {
-                _tracedAccessWorldState.GenerateBlockAccessList();
+                _balBuilder.GenerateBlockAccessList();
                 // body.BlockAccessList = _tracedAccessWorldState.GeneratedBlockAccessList;
                 // block.EncodedBlockAccessList = Rlp.Encode(_tracedAccessWorldState.GeneratedBlockAccessList).Bytes;
-                block.GeneratedBlockAccessList = _tracedAccessWorldState.GeneratedBlockAccessList;
-                block.EncodedBlockAccessList = Rlp.Encode(_tracedAccessWorldState.GeneratedBlockAccessList).Bytes;
+                block.GeneratedBlockAccessList = _balBuilder.GeneratedBlockAccessList;
+                block.EncodedBlockAccessList = Rlp.Encode(_balBuilder.GeneratedBlockAccessList).Bytes;
                 header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
             }
         }
@@ -341,26 +339,26 @@ public partial class BlockProcessor
 
     private void SetupBlockAccessLists(IReleaseSpec spec, int txCount)
     {
-        if (_tracedAccessWorldState is not null && spec.BlockLevelAccessListsEnabled)
+        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
         {
-            _tracedAccessWorldState.TracingEnabled = true;
+            _balBuilder.TracingEnabled = true;
 
-            if (_tracedAccessWorldState.ParallelExecutionEnabled)
+            if (_balBuilder.ParallelExecutionEnabled)
             {
-                _tracedAccessWorldState.SetupGeneratedAccessLists(txCount);
+                _balBuilder.SetupGeneratedAccessLists(txCount);
             }
             else
             {
-                _tracedAccessWorldState.GeneratedBlockAccessList = new();
+                _balBuilder.GeneratedBlockAccessList = new();
             }
         }
     }
 
     private Task ApplyBlockAccessListToState(IReleaseSpec spec, bool shouldComputeStateRoot)
     {
-        if (_tracedAccessWorldState is not null && _tracedAccessWorldState.ParallelExecutionEnabled)
+        if (_balBuilder is not null && _balBuilder.ParallelExecutionEnabled)
         {
-            return Task.Run(() => _tracedAccessWorldState.ApplyStateChanges(spec, shouldComputeStateRoot));
+            return Task.Run(() => _balBuilder.ApplyStateChanges(spec, shouldComputeStateRoot));
         }
         return Task.CompletedTask;
     }
