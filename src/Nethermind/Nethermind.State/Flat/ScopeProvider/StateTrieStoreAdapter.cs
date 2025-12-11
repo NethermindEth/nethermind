@@ -69,7 +69,7 @@ internal class StorageTrieStoreAdapter(
     {
         public override TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
-            bundle.SetStorageNodeBatched(addressHash, path, node);
+            bundle.SetStorageNode(addressHash, path, node);
             return node;
         }
     }

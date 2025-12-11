@@ -93,7 +93,7 @@ public record SnapshotContent(
     ConcurrentDictionary<TreePath, TrieNode> StateNodes,
 
     // TODO: change back to concurrent dictionary. It does not seems to make a difference.
-    ShardedConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> StorageNodes
+    ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> StorageNodes
 ) {
     public void Reset()
     {
