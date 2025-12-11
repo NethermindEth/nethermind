@@ -255,10 +255,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         _memory.Dispose();
         _memory = default;
         _accessTracker = default;
-        if (_env is not null)
-        {
-            _env.Return();
-        }
+        _env?.Return();
         _env = null;
         _snapshot = default;
 
