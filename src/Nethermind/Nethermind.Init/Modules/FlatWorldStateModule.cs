@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -18,6 +19,7 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.Importer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
+using Paprika.Store;
 
 namespace Nethermind.Init.Modules;
 
@@ -83,7 +85,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                     || flatDbConfig.Layout == FlatLayout.Flat
                     || flatDbConfig.Layout == FlatLayout.FlatNoSeparateTopStorage
                     || flatDbConfig.Layout == FlatLayout.FlatInTrie
-                    )
+                )
                 {
                     return ctx.Resolve<RocksdbPersistence>();
                 }
@@ -115,6 +117,35 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
         {
             builder.AddStep(typeof(ImportFlatDb));
         }
+
+        if (flatDbConfig.Layout == FlatLayout.PaprikaFlat)
+        {
+            builder
+                .AddSingleton<Paprika.IDb, IInitConfig>(ConfigureDb)
+                .AddSingleton<IPersistence, PaprikaAndRocksdbPersistence>()
+                .AddSingleton<PaprikaAndRocksdbPersistence.Configuration>(new PaprikaAndRocksdbPersistence.Configuration(
+                    UsePreimage: false
+                ))
+                ;
+        }
+    }
+
+    private Paprika.IDb ConfigureDb(IInitConfig initConfig)
+    {
+        if (initConfig.DiagnosticMode == DiagnosticMode.MemDb)
+        {
+            return PagedDb.NativeMemoryDb(
+                20.GiB(),
+                128);
+        }
+
+        var dbPath = initConfig.BaseDbPath + "/paprika/";
+
+        return PagedDb.MemoryMappedDb(
+            200.GiB(),
+            128, // TODO: CHange history depht to more than a byte
+            dbPath,
+            true);
     }
 
     private class FlatBlockCacheAdjuster : IRocksDbConfigFactory, IDisposable
