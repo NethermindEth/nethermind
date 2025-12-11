@@ -39,7 +39,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             // a failure in writes in one of the DB will break the db.
             .AddDatabase(DbNames.Preimage)
             .AddDatabase(DbNames.FlatMetadata)
-            .AddDatabase(DbNames.FlatState)
+            .AddDatabase(DbNames.FlatAccount)
             .AddDatabase(DbNames.FlatStorage)
             .AddDatabase(DbNames.FlatStateNodes)
             .AddDatabase(DbNames.FlatStateTopNodes)
@@ -50,7 +50,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 return new FakeColumnsDb<FlatDbColumns>(new Dictionary<FlatDbColumns, IDb>()
                 {
                     { FlatDbColumns.Metadata, ctx.ResolveKeyed<IDb>(DbNames.FlatMetadata) },
-                    { FlatDbColumns.State, ctx.ResolveKeyed<IDb>(DbNames.FlatState) },
+                    { FlatDbColumns.Account, ctx.ResolveKeyed<IDb>(DbNames.FlatAccount) },
                     { FlatDbColumns.Storage, ctx.ResolveKeyed<IDb>(DbNames.FlatStorage) },
                     { FlatDbColumns.StateNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStateNodes) },
                     { FlatDbColumns.StorageNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStorageNodes) },
