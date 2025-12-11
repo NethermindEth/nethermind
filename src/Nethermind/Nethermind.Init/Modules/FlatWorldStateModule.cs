@@ -128,6 +128,17 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 ))
                 ;
         }
+
+        if (flatDbConfig.Layout == FlatLayout.PaprikaFlatSlotOnly)
+        {
+            builder
+                .AddSingleton<Paprika.IDb, IInitConfig>(ConfigureDb)
+                .AddSingleton<IPersistence, PaprikaOnlySlotAndRocksdbPersistence>()
+                .AddSingleton<PaprikaOnlySlotAndRocksdbPersistence.Configuration>(new PaprikaOnlySlotAndRocksdbPersistence.Configuration(
+                    UsePreimage: false
+                ))
+                ;
+        }
     }
 
     private Paprika.IDb ConfigureDb(IInitConfig initConfig)
