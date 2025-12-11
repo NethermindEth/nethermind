@@ -30,10 +30,6 @@ namespace Nethermind.Xdc;
 
 internal class SignTransactionManager(IDb stateDb, ISigner signer, ITxPool txPool) : ISignTransactionManager
 {
-    const string HexSignMethod = "e341eaa4";
-    const string HexSetSecret = "34d38600";
-    const string HexSetOpening = "e11f5ba2";
-
     public async Task CreateTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         UInt256 nonce = txPool.GetLatestPendingNonce(signer.Address);
@@ -89,8 +85,7 @@ internal class SignTransactionManager(IDb stateDb, ISigner signer, ITxPool txPoo
 
     internal static Transaction CreateTxSign(UInt256 number, Hash256 hash, UInt256 nonce, Address blockSignersAddress, Address sender)
     {
-        var functionSelector = Bytes.FromHexString(HexSignMethod); // hexSetSecret like "0x..." (method id +)
-        byte[] inputData = [.. functionSelector, .. number.PaddedBytes(32), .. hash.Bytes.PadLeft(32)];
+        byte[] inputData = [.. XdcConstants.SignMethod, .. number.PaddedBytes(32), .. hash.Bytes.PadLeft(32)];
 
         var transaction = new Transaction();
         transaction.Nonce = nonce;
@@ -110,8 +105,7 @@ internal class SignTransactionManager(IDb stateDb, ISigner signer, ITxPool txPoo
 
     internal static Transaction CreateTxOpeningRandomize(UInt256 nonce, Address randomizeSMCBinary, byte[] randomizeKey, Address sender)
     {
-        var functionSelector = Bytes.FromHexString(HexSetOpening); // hexSetSecret like "0x..." (method id +)
-        byte[] inputData = [.. functionSelector, .. randomizeKey];
+        byte[] inputData = [.. XdcConstants.SetOpening, .. randomizeKey];
 
         var transaction = new Transaction();
         transaction.Nonce = nonce;
@@ -131,7 +125,6 @@ internal class SignTransactionManager(IDb stateDb, ISigner signer, ITxPool txPoo
 
     internal static Transaction BuildTxSecretRandomize(UInt256 nonce, Address randomizeSMCBinary, ulong epochNumber, byte[] randomizeKey, Address sender)
     {
-        var functionSelector = Bytes.FromHexString(HexSetSecret); // hexSetSecret like "0x..." (method id +)
         var secretNumb = RandomNumberGenerator.GetInt32((int)epochNumber);
 
         var secrets = new long[] { secretNumb };
@@ -140,7 +133,7 @@ internal class SignTransactionManager(IDb stateDb, ISigner signer, ITxPool txPoo
         var arrSizeOfSecrets = (UInt256)sizeOfArray;
         var arrLengthOfSecrets = (UInt256)secrets.Length;
 
-        List<byte> input = [.. functionSelector, .. arrSizeOfSecrets.PaddedBytes(32), .. arrLengthOfSecrets.PaddedBytes(32)];
+        List<byte> input = [.. XdcConstants.SetSecret, .. arrSizeOfSecrets.PaddedBytes(32), .. arrLengthOfSecrets.PaddedBytes(32)];
 
         foreach (var secret in secrets)
         {
