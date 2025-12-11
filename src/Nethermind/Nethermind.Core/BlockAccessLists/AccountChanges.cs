@@ -221,17 +221,44 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     public UInt256 GetNonce(int blockAccessIndex)
     {
-        return 0;
+        UInt256 lastNonce = UInt256.MaxValue;
+        foreach (KeyValuePair<int, NonceChange> change in _nonceChanges)
+        {
+            if (change.Key > blockAccessIndex)
+            {
+                return lastNonce;
+            }
+            lastNonce = change.Value.NewNonce;
+        }
+        return lastNonce;
     }
 
     public UInt256 GetBalance(int blockAccessIndex)
     {
-        return 0;
+        UInt256 lastBalance = UInt256.MaxValue;
+        foreach (KeyValuePair<int, BalanceChange> change in _balanceChanges)
+        {
+            if (change.Key > blockAccessIndex)
+            {
+                return lastBalance;
+            }
+            lastBalance = change.Value.PostBalance;
+        }
+        return lastBalance;
     }
 
     public byte[] GetCode(int blockAccessIndex)
     {
-        return [];
+        byte[] lastCode = [];
+        foreach (KeyValuePair<int, CodeChange> change in _codeChanges)
+        {
+            if (change.Key > blockAccessIndex)
+            {
+                return lastCode;
+            }
+            lastCode = change.Value.NewCode;
+        }
+        return lastCode;
     }
 
     public bool IsStorageEmpty(int blockAccessIndex)
@@ -245,10 +272,8 @@ public class AccountChanges : IEquatable<AccountChanges>
     }
 
     // add to codechanges when generating?
-    public ValueHash256 GetCodeHash(int blockAccessIndex)
-    {
-        return new();
-    }
+    public ValueHash256 GetCodeHash(int blockAccessIndex) =>
+        ValueKeccak.Compute(GetCode(blockAccessIndex));
 
     public bool AccountExists(int blockAccessIndex)
         => !_isDestroyed; // check through BAL
