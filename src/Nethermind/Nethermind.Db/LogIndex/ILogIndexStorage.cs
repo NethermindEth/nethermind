@@ -18,7 +18,7 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     int? GetMinBlockNumber();
 
     IList<int> GetBlockNumbersFor(Address address, int from, int to);
-    IList<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to);
+    IList<int> GetBlockNumbersFor(int topicIndex, Hash256 topic, int from, int to);
 
     IList<LogPosition> GetLogPositions(Address address, int from, int to);
     IList<LogPosition> GetLogPositions(int index, Hash256 topic, int from, int to);

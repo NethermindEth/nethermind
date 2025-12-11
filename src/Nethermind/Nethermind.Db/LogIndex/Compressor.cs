@@ -1,165 +1,164 @@
-// // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
-// // SPDX-License-Identifier: LGPL-3.0-only
-//
-// using System;
-// using System.Collections.Concurrent;
-// using System.Diagnostics;
-// using System.Threading;
-// using System.Threading.Tasks;
-// using System.Threading.Tasks.Dataflow;
-// using Nethermind.Core;
-// using Nethermind.Core.Extensions;
-//
-// namespace Nethermind.Db.LogIndex;
-//
-// partial class LogIndexStorage
-// {
-//     private class Compressor : ICompressor
-//     {
-//         public int MinLengthToCompress { get; }
-//
-//         // Used instead of a channel to prevent duplicates
-//         private readonly ConcurrentDictionary<byte[], bool> _compressQueue = new(Bytes.EqualityComparer);
-//         private readonly LogIndexStorage _storage;
-//         private readonly ActionBlock<(int?, byte[])> _processing;
-//         private readonly ManualResetEventSlim _startEvent = new(false);
-//         private readonly ManualResetEventSlim _queueEmptyEvent = new(true);
-//
-//         private int _processingCount = 0;
-//         private PostMergeProcessingStats _stats = new();
-//
-//         public PostMergeProcessingStats GetAndResetStats()
-//         {
-//             _stats.QueueLength = _processing.InputCount;
-//             return Interlocked.Exchange(ref _stats, new());
-//         }
-//
-//         public Compressor(LogIndexStorage storage, int compressionDistance, int parallelism)
-//         {
-//             _storage = storage;
-//
-//             MinLengthToCompress = compressionDistance * BlockNumSize;
-//
-//             if (parallelism < 1) throw new ArgumentException("Compression parallelism degree must be a positive value.", nameof(parallelism));
-//             _processing = new(x => CompressValue(x.Item1, x.Item2), new() { MaxDegreeOfParallelism = parallelism, BoundedCapacity = 10_000 });
-//         }
-//
-//         public bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue)
-//         {
-//             if (dbValue.Length < MinLengthToCompress)
-//                 return false;
-//
-//             var dbKeyArr = dbKey.ToArray();
-//             if (!_compressQueue.TryAdd(dbKeyArr, true))
-//                 return false;
-//
-//             if (_processing.Post((topicIndex, dbKeyArr)))
-//                 return true;
-//
-//             _compressQueue.TryRemove(dbKeyArr, out _);
-//             return false;
-//         }
-//
-//         public async Task EnqueueAsync(int? topicIndex, byte[] dbKey)
-//         {
-//             await _processing.SendAsync((topicIndex, dbKey));
-//             _queueEmptyEvent.Reset();
-//         }
-//
-//         public Task WaitUntilEmptyAsync(TimeSpan waitTime, CancellationToken cancellationToken) =>
-//             _queueEmptyEvent.WaitHandle.WaitOneAsync(waitTime, cancellationToken);
-//
-//         private void CompressValue(int? topicIndex, byte[] dbKey)
-//         {
-//             if (_storage.HasBackgroundError)
-//                 return;
-//
-//             Interlocked.Increment(ref _processingCount);
-//
-//             try
-//             {
-//                 _startEvent.Wait();
-//
-//                 if (_storage.HasBackgroundError)
-//                     return;
-//
-//                 var execTimestamp = Stopwatch.GetTimestamp();
-//                 IDb db = _storage.GetDb(topicIndex);
-//
-//                 var timestamp = Stopwatch.GetTimestamp();
-//                 Span<byte> dbValue = db.Get(dbKey);
-//                 _stats.GettingValue.Include(Stopwatch.GetElapsedTime(timestamp));
-//
-//                 // Do not compress blocks that can be reorged, as compressed data is immutable
-//                 if (!UseBackwardSyncFor(dbKey))
-//                     dbValue = _storage.RemoveReorgableBlocks(dbValue);
-//
-//                 if (dbValue.Length < MinLengthToCompress)
-//                     return;
-//
-//                 var truncateBlock =   GetValLastBlockNum(dbValue);
-//
-//                 ReverseBlocksIfNeeded(dbValue);
-//
-//                 var postfixBlock = GetValBlockNum(dbValue);
-//
-//                 ReadOnlySpan<byte> key = ExtractKey(dbKey);
-//                 Span<byte> dbKeyComp = stackalloc byte[key.Length + BlockNumSize];
-//                 key.CopyTo(dbKeyComp);
-//                 SetKeyBlockNum(dbKeyComp[key.Length..], postfixBlock);
-//
-//                 timestamp = Stopwatch.GetTimestamp();
-//                 dbValue = _storage.CompressDbValue(dbKey, dbValue);
-//                 _stats.CompressingValue.Include(Stopwatch.GetElapsedTime(timestamp));
-//
-//                 // Put compressed value at a new key and clear the uncompressed one
-//                 timestamp = Stopwatch.GetTimestamp();
-//                 using (IWriteBatch batch = db.StartWriteBatch())
-//                 {
-//                     Span<byte> truncateOp = MergeOps.Create(
-//                         MergeOp.Truncate, truncateBlock, stackalloc byte[MergeOps.Size]
-//                     );
-//
-//                     batch.PutSpan(dbKeyComp, dbValue);
-//                     batch.Merge(dbKey, truncateOp);
-//                 }
-//
-//                 _stats.PuttingValues.Include(Stopwatch.GetElapsedTime(timestamp));
-//
-//                 if (topicIndex is null)
-//                     Interlocked.Increment(ref _stats.CompressedAddressKeys);
-//                 else
-//                     Interlocked.Increment(ref _stats.CompressedTopicKeys);
-//
-//                 _stats.Execution.Include(Stopwatch.GetElapsedTime(execTimestamp));
-//             }
-//             catch (Exception ex)
-//             {
-//                 _storage.OnBackgroundError<Compressor>(ex);
-//             }
-//             finally
-//             {
-//                 _compressQueue.TryRemove(dbKey, out _);
-//
-//                 var processingCount = Interlocked.Decrement(ref _processingCount);
-//
-//                 if (_processing.InputCount == 0 && processingCount == 0)
-//                     _queueEmptyEvent.Set();
-//             }
-//         }
-//
-//         public void Start() => _startEvent.Set();
-//
-//         public Task StopAsync()
-//         {
-//             _processing.Complete();
-//             return _processing.Completion; // Wait for the compression queue to finish
-//         }
-//
-//         public void Dispose()
-//         {
-//             _startEvent.Dispose();
-//             _queueEmptyEvent.Dispose();
-//         }
-//     }
-// }
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Threading.Tasks.Dataflow;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
+
+namespace Nethermind.Db.LogIndex;
+
+partial class LogIndexStorage
+{
+    private class Compressor : ICompressor
+    {
+        public int MinLengthToCompress { get; }
+
+        // Used instead of a channel to prevent duplicates
+        private readonly ConcurrentDictionary<byte[], bool> _compressQueue = new(Bytes.EqualityComparer);
+        private readonly LogIndexStorage _storage;
+        private readonly ActionBlock<(int?, byte[])> _processing;
+        private readonly ManualResetEventSlim _startEvent = new(false);
+        private readonly ManualResetEventSlim _queueEmptyEvent = new(true);
+
+        private int _processingCount;
+        private PostMergeProcessingStats _stats = new();
+
+        public PostMergeProcessingStats GetAndResetStats()
+        {
+            _stats.QueueLength = _processing.InputCount;
+            return Interlocked.Exchange(ref _stats, new());
+        }
+
+        public Compressor(LogIndexStorage storage, int compressionDistance, int parallelism)
+        {
+            _storage = storage;
+
+            MinLengthToCompress = compressionDistance * ValueSize;
+
+            if (parallelism < 1) throw new ArgumentException("Compression parallelism degree must be a positive value.", nameof(parallelism));
+            _processing = new(x => CompressValue(x.Item1, x.Item2), new() { MaxDegreeOfParallelism = parallelism, BoundedCapacity = 10_000 });
+        }
+
+        public bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue)
+        {
+            if (dbValue.Length < MinLengthToCompress)
+                return false;
+
+            var dbKeyArr = dbKey.ToArray();
+            if (!_compressQueue.TryAdd(dbKeyArr, true))
+                return false;
+
+            if (_processing.Post((topicIndex, dbKeyArr)))
+                return true;
+
+            _compressQueue.TryRemove(dbKeyArr, out _);
+            return false;
+        }
+
+        public async Task EnqueueAsync(int? topicIndex, byte[] dbKey)
+        {
+            await _processing.SendAsync((topicIndex, dbKey));
+            _queueEmptyEvent.Reset();
+        }
+
+        public Task WaitUntilEmptyAsync(TimeSpan waitTime, CancellationToken cancellationToken) =>
+            _queueEmptyEvent.WaitHandle.WaitOneAsync(waitTime, cancellationToken);
+
+        private void CompressValue(int? topicIndex, byte[] dbKey)
+        {
+            if (_storage.HasBackgroundError)
+                return;
+
+            Interlocked.Increment(ref _processingCount);
+
+            try
+            {
+                _startEvent.Wait();
+
+                if (_storage.HasBackgroundError)
+                    return;
+
+                var execTimestamp = Stopwatch.GetTimestamp();
+                IDb db = _storage.GetDb(topicIndex);
+
+                var timestamp = Stopwatch.GetTimestamp();
+                Span<byte> dbValue = db.Get(dbKey);
+                _stats.GettingValue.Include(Stopwatch.GetElapsedTime(timestamp));
+
+                // Do not compress blocks that can be reorged, as compressed data is immutable
+                if (!UseBackwardSyncFor(dbKey))
+                    dbValue = _storage.RemoveReorgableBlocks(dbValue);
+
+                if (dbValue.Length < MinLengthToCompress)
+                    return;
+
+                LogPosition postfixPosition = GetFirstLogPosition(dbValue);
+                LogPosition truncatePosition = GetLastLogPosition(dbValue);
+
+                ReverseBlocksIfNeeded(dbValue);
+
+                ReadOnlySpan<byte> key = ExtractKey(dbKey);
+                Span<byte> dbKeyComp = stackalloc byte[key.Length + LogPosition.Size];
+                key.CopyTo(dbKeyComp);
+                SetKeyBlockNum(dbKeyComp[key.Length..], postfixPosition);
+
+                timestamp = Stopwatch.GetTimestamp();
+                dbValue = _storage.CompressDbValue(dbKey, dbValue);
+                _stats.CompressingValue.Include(Stopwatch.GetElapsedTime(timestamp));
+
+                // Put compressed value at a new key and clear the uncompressed one
+                timestamp = Stopwatch.GetTimestamp();
+                using (IWriteBatch batch = db.StartWriteBatch())
+                {
+                    Span<byte> truncateOp = MergeOps.Create(
+                        MergeOp.Truncate, truncatePosition, stackalloc byte[MergeOps.Size]
+                    );
+
+                    batch.PutSpan(dbKeyComp, dbValue);
+                    batch.Merge(dbKey, truncateOp);
+                }
+
+                _stats.PuttingValues.Include(Stopwatch.GetElapsedTime(timestamp));
+
+                if (topicIndex is null)
+                    Interlocked.Increment(ref _stats.CompressedAddressKeys);
+                else
+                    Interlocked.Increment(ref _stats.CompressedTopicKeys);
+
+                _stats.Execution.Include(Stopwatch.GetElapsedTime(execTimestamp));
+            }
+            catch (Exception ex)
+            {
+                _storage.OnBackgroundError<Compressor>(ex);
+            }
+            finally
+            {
+                _compressQueue.TryRemove(dbKey, out _);
+
+                var processingCount = Interlocked.Decrement(ref _processingCount);
+
+                if (_processing.InputCount == 0 && processingCount == 0)
+                    _queueEmptyEvent.Set();
+            }
+        }
+
+        public void Start() => _startEvent.Set();
+
+        public Task StopAsync()
+        {
+            _processing.Complete();
+            return _processing.Completion; // Wait for the compression queue to finish
+        }
+
+        public void Dispose()
+        {
+            _startEvent.Dispose();
+            _queueEmptyEvent.Dispose();
+        }
+    }
+}

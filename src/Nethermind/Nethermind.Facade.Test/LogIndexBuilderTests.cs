@@ -54,7 +54,7 @@ public class LogIndexBuilderTests
         public IList<int> GetBlockNumbersFor(Address address, int from, int to) =>
             throw new NotImplementedException();
 
-        public IList<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to) =>
+        public IList<int> GetBlockNumbersFor(int topicIndex, Hash256 topic, int from, int to) =>
             throw new NotImplementedException();
 
         public IList<LogPosition> GetLogPositions(Address address, int from, int to) =>

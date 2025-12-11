@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using static Nethermind.TurboPForBindings.TurboPFor;
+using static Nethermind.Db.LogIndex.TurboPFor2;
 
 namespace Nethermind.Db.LogIndex;
 
@@ -19,40 +19,31 @@ partial class LogIndexStorage
         CompressionAlgorithm.DecompressFunc decompressionFunc
     )
     {
-        public delegate nuint CompressFunc(ReadOnlySpan<int> @in, nuint n, Span<byte> @out);
-        public delegate nuint DecompressFunc(ReadOnlySpan<byte> @in, nuint n, Span<int> @out);
+        public delegate nuint CompressFunc(ReadOnlySpan<long> @in, nuint n, Span<byte> @out);
+        public delegate nuint DecompressFunc(ReadOnlySpan<byte> @in, nuint n, Span<long> @out);
 
         private static readonly Dictionary<string, CompressionAlgorithm> SupportedMap = new();
 
         public static IReadOnlyDictionary<string, CompressionAlgorithm> Supported => SupportedMap;
 
         public static KeyValuePair<string, CompressionAlgorithm> Best =>
-            SupportedMap.TryGetValue(nameof(p4nd1enc256v32), out CompressionAlgorithm p256)
-                ? KeyValuePair.Create(nameof(p4nd1enc256v32), p256)
-                : KeyValuePair.Create(nameof(p4nd1enc128v32), SupportedMap[nameof(p4nd1enc128v32)]);
+            KeyValuePair.Create(nameof(p4nd1enc64), SupportedMap[nameof(p4nd1enc64)]);
 
         static CompressionAlgorithm()
         {
+            // TODO: check if supported without AVX2
             SupportedMap.Add(
-                nameof(p4nd1enc128v32),
-                new(nameof(p4nd1enc128v32), p4nd1enc128v32, p4nd1dec128v32)
+                nameof(p4nd1enc64),
+                new(nameof(p4nd1enc64), p4nd1enc64, p4nd1dec64)
             );
-
-            if (Supports256Blocks)
-            {
-                SupportedMap.Add(
-                    nameof(p4nd1enc256v32),
-                    new(nameof(p4nd1enc256v32), p4nd1enc256v32, p4nd1dec256v32)
-                );
-            }
         }
 
         public string Name => name;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public nuint Compress(ReadOnlySpan<int> @in, nuint n, Span<byte> @out) => compressionFunc(@in, n, @out);
+        public nuint Compress(ReadOnlySpan<long> @in, nuint n, Span<byte> @out) => compressionFunc(@in, n, @out);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public nuint Decompress(ReadOnlySpan<byte> @in, nuint n, Span<int> @out) => decompressionFunc(@in, n, @out);
+        public nuint Decompress(ReadOnlySpan<byte> @in, nuint n, Span<long> @out) => decompressionFunc(@in, n, @out);
     }
 }

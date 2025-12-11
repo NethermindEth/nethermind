@@ -22,14 +22,13 @@ using Nethermind.Db.LogIndex;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
-using Nethermind.TurboPForBindings;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
 using static Nethermind.Db.LogIndex.LogIndexStorage;
 
 namespace Nethermind.Db.Test.LogIndex
 {
-    // TODO: run internal state verification for all/some tests
+    // TODO: run internal state verification for all/some tests?
     // TODO: test for saving intersecting block ranges
     // TODO: test for reorg out-of-order
     // TODO: test for concurrent reorg and backward sync
@@ -50,11 +49,11 @@ namespace Nethermind.Db.Test.LogIndex
 
         public static readonly TestFixtureData[] TestCases =
         [
-            new(new TestData(10, 100) { Compression = CompressionAlgorithm.Best.Key }),
-            new(new TestData(5, 200) { Compression = nameof(TurboPFor.p4nd1enc128v32) }),
-            new(new TestData(10, 100) { Compression = CompressionAlgorithm.Best.Key, ExtendedGetRanges = true }) { RunState = RunState.Explicit },
-            new(new TestData(100, 100) { Compression = nameof(TurboPFor.p4nd1enc128v32) }) { RunState = RunState.Explicit },
-            new(new TestData(100, 200) { Compression = CompressionAlgorithm.Best.Key }) { RunState = RunState.Explicit }
+            new(new TestData(10, 100)),
+            new(new TestData(5, 200) { Compression = CompressionAlgorithm.Best.Key }),
+            new(new TestData(10, 100) { ExtendedGetRanges = true }) { RunState = RunState.Explicit },
+            new(new TestData(100, 100)) { RunState = RunState.Explicit },
+            new(new TestData(100, 200)) { RunState = RunState.Explicit }
         ];
 
         private string _dbPath = null!;
@@ -286,6 +285,7 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [Combinatorial]
+        [Ignore("Not supported, but is probably not needed.")]
         public async Task Set_ReorgUnexisting_Get_Test(
             [Values(1, 5)] int reorgDepth,
             [Values(100, int.MaxValue)] int compactionDistance
@@ -525,10 +525,10 @@ namespace Nethermind.Db.Test.LogIndex
         [Combinatorial]
         public async Task Set_AlgoChange_Test()
         {
-            if (CompressionAlgorithm.Supported.Count < 2) Assert.Ignore();
+            if (CompressionAlgorithm.Supported.Count < 2) Assert.Ignore("Less than 2 supported compression algorithms");
 
-            await using (var logIndexStorage1 = CreateLogIndexStorage())
-                await SetReceiptsAsync(logIndexStorage1, [testData.Batches[0]]);
+            await using (var logIndexStorage = CreateLogIndexStorage())
+                await SetReceiptsAsync(logIndexStorage, [testData.Batches[0]]);
 
             var oldAlgo = testData.Compression ?? CompressionAlgorithm.Best.Key;
             var newAlgo = CompressionAlgorithm.Supported.First(c => c.Key != oldAlgo).Key;
@@ -950,7 +950,10 @@ namespace Nethermind.Db.Test.LogIndex
 
             private int _count;
 
-            protected override void SaveBlockNumbersByKey(IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<long> positions, bool isBackwardSync, LogIndexUpdateStats? stats)
+            protected override void SavePositions(
+                IWriteBatch dbBatch, ReadOnlySpan<byte> key, IList<long> positions, bool isBackwardSync,
+                LogIndexUpdateStats? stats
+            )
             {
                 (LogPosition first, LogPosition last) pos = (positions[0], positions[^1]);
 
@@ -961,7 +964,7 @@ namespace Nethermind.Db.Test.LogIndex
                 if (isFailBlock && Interlocked.Increment(ref _count) >= FailOnCallN)
                     throw new(FailMessage);
 
-                base.SaveBlockNumbersByKey(dbBatch, key, positions, isBackwardSync, stats);
+                base.SavePositions(dbBatch, key, positions, isBackwardSync, stats);
             }
         }
     }

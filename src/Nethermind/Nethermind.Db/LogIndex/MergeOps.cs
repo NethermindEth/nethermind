@@ -25,40 +25,22 @@ partial class LogIndexStorage
 
     public static class MergeOps
     {
-        public const int Size = BlockNumSize + 1;
-        public const int Size2 = ValSize + 1;
+        public const int Size = ValueSize + 1;
 
         public static bool Is(MergeOp op, ReadOnlySpan<byte> operand)
         {
             return operand.Length == Size && operand[0] == (byte)op;
         }
 
-        public static bool Is(MergeOp op, ReadOnlySpan<byte> operand, out int fromBlock)
+        public static bool Is(MergeOp op, ReadOnlySpan<byte> operand, out LogPosition position)
         {
             if (operand.Length == Size && operand[0] == (byte)op)
             {
-                fromBlock = GetValLastBlockNum(operand);
+                position = GetLastLogPosition(operand);
                 return true;
             }
 
-            fromBlock = 0;
-            return false;
-        }
-
-        public static bool Is2(MergeOp op, ReadOnlySpan<byte> operand)
-        {
-            return operand.Length == Size2 && operand[0] == (byte)op;
-        }
-
-        public static bool Is2(MergeOp op, ReadOnlySpan<byte> operand, out long fromBlock)
-        {
-            if (operand.Length == Size2 && operand[0] == (byte)op)
-            {
-                fromBlock = GetValLastLogPos(operand);
-                return true;
-            }
-
-            fromBlock = 0;
+            position = 0;
             return false;
         }
 
@@ -66,82 +48,38 @@ partial class LogIndexStorage
             Is(MergeOp.Reorg, operand) ||
             Is(MergeOp.Truncate, operand);
 
-        public static bool IsAny2(ReadOnlySpan<byte> operand) =>
-            Is2(MergeOp.Reorg, operand) ||
-            Is2(MergeOp.Truncate, operand);
-
-        public static Span<byte> Create(MergeOp op, int fromBlock, Span<byte> buffer)
+        public static Span<byte> Create(MergeOp op, LogPosition position, Span<byte> buffer)
         {
             Span<byte> dbValue = buffer[..Size];
             dbValue[0] = (byte)op;
-            SetValBlockNum(dbValue[1..], fromBlock);
+            SetFirstLogPosition(dbValue[1..], position);
             return dbValue;
         }
 
         // TODO: use ArrayPool?
-        public static Span<byte> Create(MergeOp op, int fromBlock)
+        public static Span<byte> Create(MergeOp op, LogPosition position)
         {
             var buffer = new byte[Size];
-            return Create(op, fromBlock, buffer);
+            return Create(op, position, buffer);
         }
 
-        public static Span<byte> Create(MergeOp op, long fromPosition, Span<byte> buffer)
-        {
-            Span<byte> dbValue = buffer[..Size2];
-            dbValue[0] = (byte)op;
-            SetValBlockNum(dbValue[1..], fromPosition);
-            return dbValue;
-        }
-
-        // TODO: use ArrayPool?
-        public static Span<byte> Create(MergeOp op, long fromPosition)
-        {
-            var buffer = new byte[Size2];
-            return Create(op, fromPosition, buffer);
-        }
-
-        // public static Span<byte> ApplyTo(Span<byte> operand, MergeOp op, int block, bool isBackward)
-        // {
-        //     // In most cases the searched block will be near or at the end of the operand, if present there
-        //     var i = LastBlockSearch(operand, block, isBackward);
-        //
-        //     if (op is MergeOp.Reorg)
-        //     {
-        //         if (i < 0) return Span<byte>.Empty;
-        //         if (i >= operand.Length) return operand;
-        //         return operand[..i];
-        //     }
-        //
-        //     if (op is MergeOp.Truncate)
-        //     {
-        //         if (i < 0) return operand;
-        //         if (i >= operand.Length) return Span<byte>.Empty;
-        //         return operand[(i + BlockNumSize)..];
-        //     }
-        //
-        //     throw new ArgumentOutOfRangeException(nameof(op), op, "Unsupported merge operation.");
-        // }
-
-        public static Span<byte> ApplyTo(Span<byte> operand, MergeOp op, long pos, bool isBackward)
+        public static Span<byte> ApplyTo(Span<byte> operand, MergeOp op, LogPosition position, bool isBackward)
         {
             // In most cases the searched block will be near or at the end of the operand, if present there
-            var i = LastValueSearch(operand, pos, isBackward);
+            var i = LastValueSearch(operand, position, isBackward);
 
-            if (op is MergeOp.Reorg)
+            return op switch
             {
-                if (i < 0) return Span<byte>.Empty;
-                if (i >= operand.Length) return operand;
-                return operand[..i];
-            }
+                MergeOp.Reorg when i < 0 => Span<byte>.Empty,
+                MergeOp.Reorg when i >= operand.Length => operand,
+                MergeOp.Reorg => operand[..i],
 
-            if (op is MergeOp.Truncate)
-            {
-                if (i < 0) return operand;
-                if (i >= operand.Length) return Span<byte>.Empty;
-                return operand[(i + ValSize)..];
-            }
+                MergeOp.Truncate when i < 0 => operand,
+                MergeOp.Truncate when i >= operand.Length => Span<byte>.Empty,
+                MergeOp.Truncate => operand[(i + ValueSize)..],
 
-            throw new ArgumentOutOfRangeException(nameof(op), op, "Unsupported merge operation.");
+                _ => throw new ArgumentOutOfRangeException(nameof(op), op, "Unsupported merge operation.")
+            };
         }
 
         public static bool TryParse(string input, out Span<byte> mergeOp)
