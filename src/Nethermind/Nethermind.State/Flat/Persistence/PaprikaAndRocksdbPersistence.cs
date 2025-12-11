@@ -15,6 +15,7 @@ using Nethermind.Trie;
 using Paprika;
 using Paprika.Data;
 using Prometheus;
+using ZstdSharp;
 using Account = Nethermind.Core.Account;
 using IDb = Nethermind.Db.IDb;
 
@@ -57,7 +58,6 @@ public class PaprikaAndRocksdbPersistence : IPersistence
     private static Histogram _rocksdBPersistenceTimes = DevMetric.Factory.CreateHistogram("rocksdb_persistence_times", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "type" },
-        // Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
         Buckets = [1]
     });
 
@@ -99,14 +99,6 @@ public class PaprikaAndRocksdbPersistence : IPersistence
         kv.PutSpan(CurrentStateKey, bytes);
     }
 
-    private ReadOnlySpan<byte> EncodeAccountKey(Span<byte> buffer, in Address addr)
-    {
-        ValueHash256 hashBuffer = ValueKeccak.Zero;
-        hashBuffer = addr.ToAccountPath;
-        hashBuffer.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
-        return buffer[..StateKeyPrefixLength];
-    }
-
     internal ReadOnlySpan<byte> EncodeStorageKeyHashed(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash)
     {
         addrHash.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
@@ -136,11 +128,13 @@ public class PaprikaAndRocksdbPersistence : IPersistence
         return buffer[..StorageNodesKeyLength];
     }
 
+    private AccountCompressor _accountCompressor = new AccountCompressor();
+
     public IPersistence.IPersistenceReader CreateReader()
     {
         IReadOnlyBatch paprikaSnapshot = _paprikaDb.BeginReadOnlyBatch();
 
-        return new PersistenceReader(_db.CreateSnapshot(), paprikaSnapshot, this);
+        return new PersistenceReader(_db.CreateSnapshot(), paprikaSnapshot, this, accountCompressor: _accountCompressor);
     }
 
     public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to)
@@ -155,12 +149,12 @@ public class PaprikaAndRocksdbPersistence : IPersistence
         }
 
         var paprikaBatch = _paprikaDb.BeginNextBatch();
-        return new WriteBatch(this, paprikaBatch, _db.StartWriteBatch(), dbSnap, to);
+        var compressor = _accountCompressor.CreateCompressor();
+        return new WriteBatch(this, paprikaBatch, _db.StartWriteBatch(), dbSnap, compressor, to);
     }
 
     private class WriteBatch : IPersistence.IWriteBatch
     {
-        private IWriteOnlyKeyValueStore state;
         private IWriteOnlyKeyValueStore stateNodes;
         private IWriteOnlyKeyValueStore stateTopNodes;
         private IWriteOnlyKeyValueStore storageNodes;
@@ -175,6 +169,7 @@ public class PaprikaAndRocksdbPersistence : IPersistence
         private readonly IColumnsWriteBatch<FlatDbColumns> _batch;
         private readonly IColumnDbSnapshot<FlatDbColumns> _dbSnap;
         private readonly StateId _to;
+        private readonly Compressor _accountCompressor;
 
         public bool ConcurrentStorage => true;
 
@@ -183,14 +178,15 @@ public class PaprikaAndRocksdbPersistence : IPersistence
             IBatch paprikaBatch,
             IColumnsWriteBatch<FlatDbColumns> batch,
             IColumnDbSnapshot<FlatDbColumns> dbSnap,
+            Compressor accountCompressor,
             StateId to)
         {
             _mainDb = mainDb;
             _batch = batch;
             _dbSnap = dbSnap;
             _to = to;
+            _accountCompressor = accountCompressor;
 
-            state = batch.GetColumnBatch(FlatDbColumns.Account);
             stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
             stateTopNodes = batch.GetColumnBatch(FlatDbColumns.StateTopNodes);
             storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
@@ -209,6 +205,7 @@ public class PaprikaAndRocksdbPersistence : IPersistence
             _paprikaBatch.Commit(CommitOptions.FlushDataAndRoot).AsTask().Wait();
             _paprikaBatch.Dispose();
             _mainDb._paprikaDb.Flush();
+            _accountCompressor.Dispose();
         }
 
         public int SelfDestruct(Address addr)
@@ -240,13 +237,22 @@ public class PaprikaAndRocksdbPersistence : IPersistence
 
         public void RemoveAccount(Address addr)
         {
-            state.Remove(_mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr));
+            NibblePath contract = NibblePath.FromKey(addr.ToPaprikaKeccak());
+
+            _paprikaBatch.Destroy(contract);
         }
 
         public void SetAccount(Address addr, Account account)
         {
             using var stream = _accountDecoder.EncodeToNewNettyStream(account);
-            state.PutSpan(_mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr), stream.AsSpan());
+
+            Span<byte> accountBuffer = stackalloc byte[256]; // Account is like 90 bytes or something
+            int compressedSize = _accountCompressor.Wrap(stream.AsSpan(), accountBuffer);
+
+            NibblePath contract = NibblePath.FromKey(addr.ToPaprikaKeccak());
+            Key key = Key.Account(contract);
+
+            _paprikaBatch.SetRaw(key, accountBuffer[..compressedSize]);
         }
 
         public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
@@ -284,7 +290,13 @@ public class PaprikaAndRocksdbPersistence : IPersistence
             if (_mainDb._configuration.UsePreimage) throw new InvalidOperationException("Cannot set raw when using preimage");
             using var stream = _accountDecoder.EncodeToNewNettyStream(account);
 
-            state.PutSpan(addrHash.Bytes[..StateKeyPrefixLength], stream.AsSpan(), _flags);
+            Span<byte> accountBuffer = stackalloc byte[256]; // Account is like 90 bytes or something
+            int compressedSize = _accountCompressor.Wrap(stream.AsSpan(), accountBuffer);
+
+            NibblePath contract = NibblePath.FromKey(addrHash.ToPaprikaKeccak());
+            Key key = Key.Account(contract);
+
+            _paprikaBatch.SetRaw(key, accountBuffer[..compressedSize]);
         }
 
         public void SetTrieNodes(Hash256? address, TreePath path, TrieNode tn)
@@ -310,25 +322,25 @@ public class PaprikaAndRocksdbPersistence : IPersistence
     private class PersistenceReader : IPersistence.IPersistenceReader
     {
         private readonly IColumnDbSnapshot<FlatDbColumns> _db;
-        private readonly IReadOnlyKeyValueStore _state;
         private readonly IReadOnlyKeyValueStore _stateNodes;
         private readonly IReadOnlyKeyValueStore _stateTopNodes;
         private readonly IReadOnlyKeyValueStore _storageNodes;
         private readonly PaprikaAndRocksdbPersistence _mainDb;
         private readonly IReadOnlyBatch _paprikaSnapshot;
+        private readonly AccountCompressor _accountCompressor;
         private readonly bool _usePreimage;
 
-        public PersistenceReader(IColumnDbSnapshot<FlatDbColumns> db, IReadOnlyBatch paprikaSnapshot, PaprikaAndRocksdbPersistence mainDb)
+        public PersistenceReader(IColumnDbSnapshot<FlatDbColumns> db, IReadOnlyBatch paprikaSnapshot, PaprikaAndRocksdbPersistence mainDb, AccountCompressor accountCompressor)
         {
             _usePreimage = mainDb._configuration.UsePreimage;
             _db = db;
             _mainDb = mainDb;
             CurrentState = ReadCurrentState(db.GetColumn(FlatDbColumns.Metadata));
-            _state = _db.GetColumn(FlatDbColumns.Account);
             _paprikaSnapshot = paprikaSnapshot;
             _stateNodes = _db.GetColumn(FlatDbColumns.StateNodes);
             _stateTopNodes = _db.GetColumn(FlatDbColumns.StateTopNodes);
             _storageNodes = _db.GetColumn(FlatDbColumns.StorageNodes);
+            _accountCompressor = accountCompressor;
         }
 
         public StateId CurrentState { get; }
@@ -339,29 +351,35 @@ public class PaprikaAndRocksdbPersistence : IPersistence
             _paprikaSnapshot.Dispose();
         }
 
-        public bool TryGetAccount(Address address, out Account? acc)
+        public bool TryGetAccount(Address addr, out Account? acc)
         {
-            Span<byte> value = _state.GetSpan(_mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], address));
-            try
+            Key key = Key.Account(addr.ToPaprikaKeccak());
+            if (_paprikaSnapshot.TryGet(key, out ReadOnlySpan<byte> accBytes))
             {
-                if (address == FlatWorldStateScope.DebugAddress)
-                {
-                    Console.Error.WriteLine($"Get {address}, got {value.ToHexString()}");
-                }
-                if (value.IsNullOrEmpty())
+                if (accBytes.Length == 0)
                 {
                     acc = null;
                     return true;
                 }
 
-                var ctx = new Rlp.ValueDecoderContext(value);
-                acc = _mainDb._accountDecoder.Decode(ref ctx);
-                return true;
+                Decompressor decompressor = _accountCompressor.RentDecompresor();
+                try
+                {
+                    Span<byte> outBuffer = stackalloc byte[256];
+                    int outSize = decompressor.Unwrap(accBytes, outBuffer);
+
+                    var ctx = new Rlp.ValueDecoderContext(outBuffer[..outSize]);
+                    acc = _mainDb._accountDecoder.Decode(ref ctx);
+                    return true;
+                }
+                finally
+                {
+                    _accountCompressor.ReturnDecompressor(decompressor);
+                }
             }
-            finally
-            {
-                _state.DangerousReleaseMemory(value);
-            }
+
+            acc = null;
+            return true;
         }
 
         public bool TryGetSlot(Address addr, in UInt256 slot, out byte[] valueBytes)
@@ -412,7 +430,29 @@ public class PaprikaAndRocksdbPersistence : IPersistence
         private byte[]? GetAccountRaw(in ValueHash256 accountHash)
         {
             if (_usePreimage) throw new InvalidOperationException("Raw operation not available in preimage mode");
-            return _state.GetSpan(accountHash.Bytes[..StateKeyPrefixLength]).ToArray();
+            Key key = Key.Account(accountHash.ToPaprikaKeccak());
+            if (_paprikaSnapshot.TryGet(key, out ReadOnlySpan<byte> accBytes))
+            {
+                if (accBytes.Length == 0)
+                {
+                    return null;
+                }
+
+                Decompressor decompressor = _accountCompressor.RentDecompresor();
+                try
+                {
+                    Span<byte> outBuffer = stackalloc byte[256];
+                    int outSize = decompressor.Unwrap(accBytes, outBuffer);
+
+                    return outBuffer[..outSize].ToArray();
+                }
+                finally
+                {
+                    _accountCompressor.ReturnDecompressor(decompressor);
+                }
+            }
+
+            return null;
         }
 
         public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash)
