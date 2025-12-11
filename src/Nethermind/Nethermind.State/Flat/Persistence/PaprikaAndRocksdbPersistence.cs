@@ -208,6 +208,7 @@ public class PaprikaAndRocksdbPersistence : IPersistence
             _dbSnap.Dispose();
             _paprikaBatch.Commit(CommitOptions.FlushDataAndRoot).AsTask().Wait();
             _paprikaBatch.Dispose();
+            _mainDb._paprikaDb.Flush();
         }
 
         public int SelfDestruct(Address addr)
@@ -250,12 +251,11 @@ public class PaprikaAndRocksdbPersistence : IPersistence
 
         public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
         {
-            ValueHash256 hash256 = ValueKeccak.Zero;
-            StorageTree.ComputeKeyWithLookup(slot, hash256.BytesAsSpan);
+            ValueHash256 addrHash = addr.ToAccountPath.ToHash256();
+            ValueHash256 slotHash = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(slot, slotHash.BytesAsSpan);
 
-            NibblePath contract = NibblePath.FromKey(addr.ToPaprikaKeccak());
-            Key key = Key.StorageCell(contract, slot.SlotToPaprikaKeccak());
-            _paprikaBatch.SetRaw(key, value);
+            SetStorageRaw(in addrHash, in slotHash, value);
         }
 
         public void RemoveStorage(Address addr, UInt256 slot)
@@ -265,13 +265,18 @@ public class PaprikaAndRocksdbPersistence : IPersistence
             _paprikaBatch.SetRaw(key, StorageTree.ZeroBytes);
         }
 
-        public void SetStorageRaw(Hash256 addr, Hash256 slotHash, ReadOnlySpan<byte> value)
+        private void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ReadOnlySpan<byte> value)
         {
             if (_mainDb._configuration.UsePreimage) throw new InvalidOperationException("Cannot set raw when using preimage");
 
-            NibblePath contract = NibblePath.FromKey(addr.ToPaprikaKeccak());
+            NibblePath contract = NibblePath.FromKey(addrHash.ToPaprikaKeccak());
             Key key = Key.StorageCell(contract, slotHash.ToPaprikaKeccak());
-            _paprikaBatch.SetRaw(key, StorageTree.ZeroBytes);
+            _paprikaBatch.SetRaw(key, value);
+        }
+
+        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
+        {
+            SetStorageRaw(addrHash.ValueHash256, slotHash.ValueHash256, value);
         }
 
         public void SetAccountRaw(Hash256 addrHash, Account account)
@@ -411,6 +416,11 @@ public class PaprikaAndRocksdbPersistence : IPersistence
         }
 
         public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash)
+        {
+            return GetStorageRaw(addrHash!.ValueHash256, slotHash.ValueHash256);
+        }
+
+        public byte[]? GetStorageRaw(ValueHash256 addrHash, ValueHash256 slotHash)
         {
             if (_usePreimage) throw new InvalidOperationException("Raw operation not available in preimage mode");
 
