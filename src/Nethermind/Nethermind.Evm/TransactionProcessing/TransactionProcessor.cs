@@ -590,6 +590,7 @@ namespace Nethermind.Evm.TransactionProcessing
             out ExecutionEnvironment env)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
+            if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
             ICodeInfo? codeInfo;
             ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data : default;
             if (tx.IsContractCreation)

@@ -67,6 +67,7 @@ namespace Nethermind.Evm.Benchmark
         public void GlobalCleanup()
         {
             _evmState.Dispose();
+            _environment.Dispose();
         }
 
         [Benchmark]

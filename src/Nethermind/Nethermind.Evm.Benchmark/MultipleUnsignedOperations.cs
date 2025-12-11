@@ -99,6 +99,7 @@ public class MultipleUnsignedOperations
     public void GlobalCleanup()
     {
         _evmState.Dispose();
+        _environment.Dispose();
     }
 
     [Benchmark]
