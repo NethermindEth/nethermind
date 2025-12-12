@@ -99,10 +99,6 @@ internal class XdcBlockBuildingTransactionExecutor(
         if (action == TxAction.Add)
         {
             includedTx.Add(currentTx);
-            if (blockToProduce is not null)
-            {
-                blockToProduce.TxByteLength += currentTx.GetLength(false);
-            }
         }
 
         return true;
