@@ -243,14 +243,14 @@ namespace Nethermind.Trie
             else if (node.NodeType == NodeType.Extension)
             {
                 int previousPathLength = node.AppendChildPath(ref path, 0);
-                TrieNode extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
-                if (extensionChild is null)
+                if (node.IsChildDirty(0))
                 {
-                    ThrowInvalidExtension();
-                }
+                    TrieNode extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                    if (extensionChild is null)
+                    {
+                        ThrowInvalidExtension();
+                    }
 
-                if (extensionChild.IsDirty)
-                {
                     TrieNode newExtensionChild = Commit(committer, ref path, extensionChild, maxLevelForConcurrentCommit);
                     if (!ReferenceEquals(newExtensionChild, extensionChild))
                     {
@@ -259,6 +259,12 @@ namespace Nethermind.Trie
                 }
                 else
                 {
+                    TrieNode extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                    if (extensionChild is null)
+                    {
+                        ThrowInvalidExtension();
+                    }
+
                     if (_logger.IsTrace) TraceExtensionSkip(extensionChild);
                 }
                 path.TruncateMut(previousPathLength);
@@ -314,7 +320,7 @@ namespace Nethermind.Trie
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 
-        private void SetRootHash(Hash256? value, bool resetObjects)
+        public void SetRootHash(Hash256? value, bool resetObjects)
         {
             _rootHash = value ?? Keccak.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
             if (_rootHash == Keccak.EmptyTreeHash)
@@ -329,7 +335,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null, bool cachedOnly = false, bool keepChildRef = false)
+        public virtual ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
             byte[]? array = null;
             try
@@ -350,13 +356,44 @@ namespace Nethermind.Trie
                     root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
                 }
 
-                SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: false, cachedOnly: cachedOnly, keepChildRef: keepChildRef);
+                SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: false);
 
                 return result.IsNull ? ReadOnlySpan<byte>.Empty : result.Span;
             }
             catch (TrieException e)
             {
                 EnhanceException(rawKey, rootHash ?? RootHash, e);
+                throw;
+            }
+            finally
+            {
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
+            }
+        }
+
+        [SkipLocalsInit]
+        [DebuggerStepThrough]
+        public void WarmUpPath(ReadOnlySpan<byte> rawKey, bool warmUpPotentialNewNode)
+        {
+            byte[]? array = null;
+            try
+            {
+                int nibblesCount = 2 * rawKey.Length;
+                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                        ? stackalloc byte[MaxKeyStackAlloc]
+                        : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
+                    [..nibblesCount]; // Slice to exact size;
+
+                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+
+                TreePath emptyPath = TreePath.Empty;
+                TrieNode root = RootRef;
+
+                DoWarmUpPath(nibbles, ref emptyPath, root, warmUpPotentialNewNode);
+            }
+            catch (TrieException e)
+            {
+                EnhanceException(rawKey, RootHash, e);
                 throw;
             }
             finally
@@ -376,7 +413,7 @@ namespace Nethermind.Trie
                 {
                     root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
                 }
-                SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true, cachedOnly: false);
+                SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true);
                 return result.ToArray();
             }
             catch (TrieException e)
@@ -405,7 +442,7 @@ namespace Nethermind.Trie
                 {
                     root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
                 }
-                SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true, cachedOnly: false);
+                SpanSource result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true);
 
                 return result.ToArray() ?? [];
             }
@@ -822,7 +859,7 @@ namespace Nethermind.Trie
             public TrieNode? OriginalChild;
         }
 
-        private SpanSource GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead, bool cachedOnly, bool keepChildRef = false)
+        private SpanSource GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead)
         {
             int originalPathLength = path.Length;
 
@@ -833,11 +870,6 @@ namespace Nethermind.Trie
                     if (node is null)
                     {
                         // If node read, then missing node. If value read.... what is it suppose to be then?
-                        return default;
-                    }
-
-                    if (cachedOnly && node.NodeType == NodeType.Unknown && node.FullRlp.IsNull)
-                    {
                         return default;
                     }
 
@@ -863,7 +895,7 @@ namespace Nethermind.Trie
 
                             // Continue traversal to the child of the extension
                             path.AppendMut(node.Key);
-                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0, keepChildRef: keepChildRef);
+                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
                             remainingKey = remainingKey[node!.Key.Length..];
                             node = extensionChild;
 
@@ -876,7 +908,98 @@ namespace Nethermind.Trie
 
                     int nib = remainingKey[0];
                     path.AppendMut(nib);
-                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib, keepChildRef: keepChildRef);
+                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
+
+                    // Continue loop with child as current node
+                    node = child;
+                    remainingKey = remainingKey[1..];
+                }
+            }
+            finally
+            {
+                path.TruncateMut(originalPathLength);
+            }
+        }
+
+        // Dedicated warm up code
+        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool warmUpPotentialNewNode)
+        {
+            int originalPathLength = path.Length;
+
+            try
+            {
+                while (true)
+                {
+                    if (node is null)
+                    {
+                        // If node read, then missing node. If value read.... what is it suppose to be then?
+                        return;
+                    }
+
+                    node.ResolveNode(TrieStore, path);
+
+                    if (node.IsLeaf || node.IsExtension)
+                    {
+                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
+                        if (commonPrefixLength == node.Key!.Length)
+                        {
+                            if (node.IsLeaf)
+                            {
+                                // Um..... leaf cannot have child
+                                return;
+                            }
+
+                            // Continue traversal to the child of the extension
+                            path.AppendMut(node.Key);
+                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0, keepChildRef: true);
+                            remainingKey = remainingKey[node!.Key.Length..];
+                            node = extensionChild;
+
+                            continue;
+                        }
+
+                        // No node match
+                        return;
+                    }
+
+                    int nextNib = remainingKey[0];
+
+                    if (warmUpPotentialNewNode)
+                    {
+                        // When a node (this path) is deleted and its parent is a branch with only one other child, it
+                        // will get replaced to an extension, in which case, the other only child need to be loaded.
+                        // Node: this will fail to consider if multiple child was deleted though...
+                        int nodeIdxToWarmup = -1;
+                        for (int i = 0; i < TrieNode.BranchesCount; i++)
+                        {
+                            if (i == nextNib) continue;
+
+                            if (!node.IsChildNull(i))
+                            {
+                                if (nodeIdxToWarmup != -1)
+                                {
+                                    // So more than one non null node that is not part of this path.
+                                    nodeIdxToWarmup = -1;
+                                    break;
+                                }
+                                else
+                                {
+                                    nodeIdxToWarmup = i;
+                                }
+                            }
+                        }
+
+                        if (nodeIdxToWarmup != -1)
+                        {
+                            path.AppendMut(nodeIdxToWarmup);
+                            TrieNode? theOtherOnlyChild = node.GetChildWithChildPath(TrieStore, ref path, nodeIdxToWarmup, keepChildRef: true);
+                            theOtherOnlyChild?.ResolveNode(TrieStore, path);
+                            path.TruncateOne();
+                        }
+                    }
+
+                    path.AppendMut(nextNib);
+                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nextNib, keepChildRef: true);
 
                     // Continue loop with child as current node
                     node = child;
