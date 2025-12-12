@@ -54,6 +54,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
     public long PosdaoTransition { get; set; } = TransitionDisabled;
 
     public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode { get; set; } = new Dictionary<long, IDictionary<Address, byte[]>>();
+    public IDictionary<ulong, IDictionary<Address, byte[]>> RewriteBytecodeTimestamp { get; set; } = new Dictionary<ulong, IDictionary<Address, byte[]>>();
 
     public Address WithdrawalContractAddress { get; set; }
 

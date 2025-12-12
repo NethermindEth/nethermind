@@ -149,6 +149,7 @@ public class ChainParameters
     public int Eip7934MaxRlpBlockSize { get; set; }
 
     public SortedSet<BlobScheduleSettings>? BlobSchedule { get; set; } = [];
+    public SortedSet<CensoringScheduleSettings>? CensoringSchedule { get; set; } = [];
 
     #region EIP-4844 parameters
     /// <summary>

@@ -95,4 +95,5 @@ public static class TxErrorMessages
 
     public const string NonceTooHigh = "NonceTooHigh: Nonce exceeds max nonce";
 
+    public const string Censored = "Censored";
 }
