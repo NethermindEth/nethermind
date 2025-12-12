@@ -7,7 +7,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Filters
 {
-    public class AddressFilter
+    public class AddressFilter(HashSet<AddressAsKey> addresses)
     {
         public static readonly AddressFilter AnyAddress = new([]);
 
@@ -17,12 +17,7 @@ namespace Nethermind.Blockchain.Filters
         {
         }
 
-        public AddressFilter(IEnumerable<AddressAsKey> addresses)
-        {
-            Addresses = addresses.ToHashSet();
-        }
-
-        public HashSet<AddressAsKey> Addresses { get; }
+        public HashSet<AddressAsKey> Addresses { get; } = addresses;
         private Bloom.BloomExtract[] AddressesBloomExtracts => _addressesBloomIndexes ??= CalculateBloomExtracts();
 
         public bool Accepts(Address address) => Addresses.Count == 0 || Addresses.Contains(address);
@@ -31,7 +26,7 @@ namespace Nethermind.Blockchain.Filters
         {
             if (Addresses.Count > 0)
             {
-                foreach (var a in Addresses)
+                foreach (AddressAsKey a in Addresses)
                 {
                     if (a == address) return true;
                 }
@@ -45,8 +40,8 @@ namespace Nethermind.Blockchain.Filters
         public bool Matches(Bloom bloom)
         {
             bool result = true;
-            var indexes = AddressesBloomExtracts;
-            for (var i = 0; i < indexes.Length; i++)
+            Bloom.BloomExtract[]? indexes = AddressesBloomExtracts;
+            for (int i = 0; i < indexes.Length; i++)
             {
                 result = bloom.Matches(indexes[i]);
                 if (result)
@@ -61,8 +56,8 @@ namespace Nethermind.Blockchain.Filters
         public bool Matches(ref BloomStructRef bloom)
         {
             bool result = true;
-            var indexes = AddressesBloomExtracts;
-            for (var i = 0; i < indexes.Length; i++)
+            Bloom.BloomExtract[]? indexes = AddressesBloomExtracts;
+            for (int i = 0; i < indexes.Length; i++)
             {
                 result = bloom.Matches(indexes[i]);
                 if (result)
