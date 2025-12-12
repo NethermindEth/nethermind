@@ -14,9 +14,6 @@ namespace Nethermind.Evm.Gas;
 public readonly struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static GasState<EthereumGasPolicy> InitializeForTransaction(long gasLimit, long intrinsicGas) => new(gasLimit);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long GetRemainingGas(in GasState<EthereumGasPolicy> gasState) => gasState.RemainingGas;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
