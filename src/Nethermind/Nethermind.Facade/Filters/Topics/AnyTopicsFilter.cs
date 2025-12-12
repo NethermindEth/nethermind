@@ -8,25 +8,17 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
-    public class AnyTopicsFilter : TopicsFilter
+    public class AnyTopicsFilter(params TopicExpression[] expressions) : TopicsFilter
     {
-
-        private readonly TopicExpression[] _expressions;
-
-        public AnyTopicsFilter(params TopicExpression[] expressions)
-        {
-            _expressions = expressions;
-        }
-
         public override bool Accepts(LogEntry entry) => Accepts(entry.Topics);
 
         private bool Accepts(Hash256[] topics)
         {
-            for (int i = 0; i < _expressions.Length; i++)
+            for (int i = 0; i < expressions.Length; i++)
             {
                 for (int j = 0; j < topics.Length; j++)
                 {
-                    if (_expressions[i].Accepts(topics[j]))
+                    if (expressions[i].Accepts(topics[j]))
                     {
                         return true;
                     }
@@ -45,11 +37,11 @@ namespace Nethermind.Blockchain.Filters.Topics
 
             Span<byte> buffer = stackalloc byte[32];
             var iterator = new KeccaksIterator(entry.TopicsRlp, buffer);
-            for (int i = 0; i < _expressions.Length; i++)
+            for (int i = 0; i < expressions.Length; i++)
             {
                 if (iterator.TryGetNext(out var keccak))
                 {
-                    if (_expressions[i].Accepts(ref keccak))
+                    if (expressions[i].Accepts(ref keccak))
                     {
                         return true;
                     }
@@ -67,9 +59,9 @@ namespace Nethermind.Blockchain.Filters.Topics
         {
             bool result = true;
 
-            for (int i = 0; i < _expressions.Length; i++)
+            for (int i = 0; i < expressions.Length; i++)
             {
-                result = _expressions[i].Matches(bloom);
+                result = expressions[i].Matches(bloom);
                 if (result)
                 {
                     break;
@@ -83,9 +75,9 @@ namespace Nethermind.Blockchain.Filters.Topics
         {
             bool result = true;
 
-            for (int i = 0; i < _expressions.Length; i++)
+            for (int i = 0; i < expressions.Length; i++)
             {
-                result = _expressions[i].Matches(ref bloom);
+                result = expressions[i].Matches(ref bloom);
                 if (result)
                 {
                     break;

@@ -9,16 +9,12 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
-    public class SequenceTopicsFilter : TopicsFilter, IEquatable<SequenceTopicsFilter>
+    public class SequenceTopicsFilter(params TopicExpression[] expressions)
+        : TopicsFilter, IEquatable<SequenceTopicsFilter>
     {
         public static readonly SequenceTopicsFilter AnyTopic = new();
 
-        private readonly TopicExpression[] _expressions;
-
-        public SequenceTopicsFilter(params TopicExpression[] expressions)
-        {
-            _expressions = expressions;
-        }
+        private readonly TopicExpression[] _expressions = expressions;
 
         public override bool Accepts(LogEntry entry) => Accepts(entry.Topics);
 
