@@ -136,7 +136,7 @@ public static class T8nExecutor
     }
 
     private static IBlockhashProvider ConstructBlockHashProvider(T8nTest test) =>
-        new T8nBlockHashProvider(test.BlockHashes.ToDictionary<KeyValuePair<string, Hash256>, long, Hash256?>(kvp => long.Parse(kvp.Key), kvp => kvp.Value));
+        new T8nBlockHashProvider(test.BlockHashes.ToDictionary(kvp => long.Parse(kvp.Key), kvp => kvp.Value));
 
     private static void ApplyRewards(Block block, IWorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
     {
