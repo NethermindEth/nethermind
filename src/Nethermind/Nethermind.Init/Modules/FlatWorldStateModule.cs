@@ -105,7 +105,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             {
                 UsePreimage = config.Layout == FlatLayout.PreimageFlat,
                 FlatInTrie = config.Layout == FlatLayout.FlatInTrie,
-                SeparateStorageTop = (config.Layout != FlatLayout.FlatInTrie && config.Layout != FlatLayout.Flat)
+                SeparateStorageTop = config.Layout == FlatLayout.FlatSeparateTopStorage
             })
             .AddSingleton<IStateReader, FlatStateReader>()
 
