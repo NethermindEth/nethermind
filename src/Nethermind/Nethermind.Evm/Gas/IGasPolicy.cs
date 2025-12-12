@@ -14,15 +14,6 @@ namespace Nethermind.Evm.Gas;
 public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 {
     /// <summary>
-    /// Initialize gas state for a new transaction with intrinsic gas already deducted.
-    /// Called by TransactionProcessor before ExecuteTransaction.
-    /// </summary>
-    /// <param name="gasLimit">The gas limit provided for the transaction.</param>
-    /// <param name="intrinsicGas">Intrinsic gas already calculated.</param>
-    /// <returns>Initialized gas state with remaining gas</returns>
-    static abstract GasState<TSelf> InitializeForTransaction(long gasLimit, long intrinsicGas);
-
-    /// <summary>
     /// Get the remaining single-dimensional gas available for execution.
     /// This is what's checked against zero to detect out-of-gas conditions.
     /// </summary>
