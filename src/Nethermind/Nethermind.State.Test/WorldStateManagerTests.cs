@@ -5,6 +5,7 @@ using System;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -76,14 +77,19 @@ public class WorldStateManagerTests
     public void ShouldAnnounceReorgOnDispose()
     {
         int lastBlock = 256;
-        int reorgDepth = 128; // Default reorg depth with snap serving
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IConfigProvider configProvider = new ConfigProvider();
+        int reorgDepth = configProvider.GetConfig<ISyncConfig>().SnapServingMaxDepth;
+        IFinalizedStateProvider manualFinalizedStateProvider = Substitute.For<IFinalizedStateProvider>();
+        manualFinalizedStateProvider.FinalizedBlockNumber.Returns(lastBlock - reorgDepth);
+        manualFinalizedStateProvider.GetFinalizedStateRootAt(lastBlock - reorgDepth)
+            .Returns(new Hash256("0xec6063a04d48f4b2258f36efaef76a23ba61875f5303fcf8ede2f5d160def35d"));
 
         {
             using IContainer ctx = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
+                .AddSingleton<IFinalizedStateProvider>(manualFinalizedStateProvider)
                 .AddSingleton(blockTree)
                 .Build();
 

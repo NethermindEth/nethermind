@@ -461,11 +461,13 @@ public class OptimismEthRpcModuleTest
             .WithSenderAddress(TestItem.AddressA)
             .TestObject;
 
+        ulong timestamp = 10;
         Block block = Build.A.Block
             .WithHeader(Build.A.BlockHeader
                 .WithNumber(1)
                 .WithHash(TestItem.KeccakC)
                 .TestObject)
+            .WithTimestamp(timestamp)
             .WithTransactions(tx)
             .TestObject;
 
@@ -481,7 +483,7 @@ public class OptimismEthRpcModuleTest
         };
 
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetReceiptAndGasInfo(tx.Hash!).Returns((receipt, new TxGasInfo(1), 0));
+        bridge.GetTxReceiptInfo(tx.Hash!).Returns((receipt, timestamp, new TxGasInfo(1), 0));
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);

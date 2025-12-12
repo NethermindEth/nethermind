@@ -12,24 +12,15 @@ public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamDecoder
 {
     private static CodeChangeDecoder? _instance = null;
     public static CodeChangeDecoder Instance => _instance ??= new();
+    private static readonly RlpLimit _codeLimit = new(Eip7928Constants.MaxCodeSize, "", ReadOnlyMemory<char>.Empty);
 
     public CodeChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
-        // var tmp = ctx.Data[ctx.Position..].ToArray();
-
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
-        // tmp = tmp[..(length + 1)];
-        // Console.WriteLine("code change:" + length);
-        // Console.WriteLine(Bytes.ToHexString(tmp));
-
         ushort blockAccessIndex = ctx.DecodeUShort();
-        byte[] newCode = ctx.DecodeByteArray();
-        if (newCode.Length > Eip7928Constants.MaxCodeSize)
-        {
-            throw new RlpException("New code exceeded maxium length.");
-        }
+        byte[] newCode = ctx.DecodeByteArray(_codeLimit);
 
         CodeChange codeChange = new()
         {

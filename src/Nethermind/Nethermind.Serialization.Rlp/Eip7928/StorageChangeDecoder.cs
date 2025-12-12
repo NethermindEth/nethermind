@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
@@ -14,17 +13,11 @@ public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamD
 
     public StorageChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
-        // var tmp = ctx.Data[ctx.Position..].ToArray();
-
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
-        // tmp = tmp[..(length + 1)];
-        // Console.WriteLine("storage change:" + length);
-        // Console.WriteLine(Bytes.ToHexString(tmp));
-
         ushort blockAccessIndex = ctx.DecodeUShort();
-        byte[] newValue = ctx.DecodeByteArray();
+        byte[] newValue = ctx.DecodeByteArray(RlpLimit.L32);
         if (newValue.Length != 32)
         {
             throw new RlpException("Invalid storage value, should be 32 bytes.");
@@ -33,7 +26,7 @@ public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamD
         StorageChange storageChange = new()
         {
             BlockAccessIndex = blockAccessIndex,
-            NewValue = new(newValue)
+            NewValue = newValue
         };
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
@@ -61,9 +54,9 @@ public class StorageChangeDecoder : IRlpValueDecoder<StorageChange>, IRlpStreamD
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.BlockAccessIndex);
-        stream.Encode(item.NewValue.Unwrap());
+        stream.Encode(item.NewValue);
     }
 
     public static int GetContentLength(StorageChange item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOf(item.BlockAccessIndex) + Rlp.LengthOf(item.NewValue.Unwrap());
+        => Rlp.LengthOf(item.BlockAccessIndex) + Rlp.LengthOf(item.NewValue);
 }

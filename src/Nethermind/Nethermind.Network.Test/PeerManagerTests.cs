@@ -78,8 +78,7 @@ namespace Nethermind.Network.Test
             ctx.SetupPersistedPeers(1);
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
-            await Task.Delay(_travisDelay);
-            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1));
+            Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1).After(_travisDelay, 10));
         }
 
         [Test, Retry(3)]
@@ -305,8 +304,7 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
-            await Task.Delay(_travisDelay);
-            Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(0));
+            Assert.That(() => ctx.PeerManager.ActivePeers.Count, Is.EqualTo(0).After(_travisDelay, 10));
         }
 
         [Test, Retry(3)]
@@ -351,8 +349,7 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 ctx.DiscoverNew(25);
-                await Task.Delay(_travisDelay);
-                Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(25));
+                Assert.That(() => ctx.PeerManager.ActivePeers.Count, Is.EqualTo(25).After(_travisDelay, 10));
             }
         }
 
@@ -411,8 +408,7 @@ namespace Nethermind.Network.Test
 
             ctx.PeerPool.GetOrAdd(networkNode);
 
-            await Task.Delay(_travisDelay);
-            ctx.PeerPool.ActivePeers.Count.Should().Be(0);
+            Assert.That(() => ctx.PeerPool.ActivePeers.Count, Is.EqualTo(0).After(_travisDelay, 10));
         }
 
         private readonly int _travisDelay = 500;
@@ -432,8 +428,7 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 ctx.CreateNewIncomingSessions(25);
-                await Task.Delay(_travisDelay);
-                Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(25));
+                Assert.That(() => ctx.PeerManager.ActivePeers.Count, Is.EqualTo(25).After(_travisDelay, 10));
             }
         }
 
@@ -550,8 +545,7 @@ namespace Nethermind.Network.Test
                 ctx.TestNodeSource.AddNode(new Node(TestItem.PublicKeyA, node.Host, node.Port));
             }
 
-            await Task.Delay(_travisDelay);
-            ctx.PeerManager.ActivePeers.Count(static p => p.Node.IsStatic).Should().Be(nodesCount);
+            Assert.That(() => ctx.PeerManager.ActivePeers.Count(static p => p.Node.IsStatic), Is.EqualTo(nodesCount).After(_travisDelay, 10));
         }
 
         [Test, Retry(5)]
@@ -618,8 +612,7 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             var node = new NetworkNode(ctx.GenerateEnode());
-            await Task.Delay(_travisDelay);
-            ctx.PeerPool.TryRemove(node.NodeId, out _).Should().BeFalse();
+            Assert.That(() => ctx.PeerPool.TryRemove(node.NodeId, out _), Is.False.After(_travisDelay, 10));
         }
 
         private class Context : IAsyncDisposable

@@ -12,13 +12,17 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<NeighborsMsg>
+public class NeighborsMsgSerializer(
+    IEcdsa ecdsa,
+    [KeyFilter(IProtectedPrivateKey.NodeKey)]
+    IPrivateKeyGenerator nodeKey,
+    INodeIdResolver nodeIdResolver)
+    : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<NeighborsMsg>
 {
     private static readonly Func<RlpStream, Node> _decodeItem = static ctx =>
     {
         int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(lastPosition);
-
         ReadOnlySpan<byte> ip = ctx.DecodeByteArraySpan();
         IPEndPoint address = GetAddress(ip, ctx.DecodeInt());
         if (count > 3)
@@ -29,12 +33,6 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
         ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan();
         return new Node(new PublicKey(id), address);
     };
-
-    public NeighborsMsgSerializer(IEcdsa ecdsa,
-        [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey,
-        INodeIdResolver nodeIdResolver) : base(ecdsa, nodeKey, nodeIdResolver)
-    {
-    }
 
     public void Serialize(IByteBuffer byteBuffer, NeighborsMsg msg)
     {

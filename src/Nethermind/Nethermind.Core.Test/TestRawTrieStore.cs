@@ -17,72 +17,26 @@ namespace Nethermind.Core.Test;
 /// </summary>
 /// <param name="nodeStorage"></param>
 /// <param name="isReadOnly"></param>
-public class TestRawTrieStore(INodeStorage nodeStorage, bool isReadOnly = false) : IPruningTrieStore, IReadOnlyTrieStore
+public class TestRawTrieStore(INodeStorage nodeStorage, bool isReadOnly = false) : RawTrieStore(nodeStorage), IPruningTrieStore
 {
     public TestRawTrieStore(IKeyValueStoreWithBatching kv) : this(new NodeStorage(kv))
     {
     }
 
-    void IDisposable.Dispose()
-    {
-    }
-
-    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags)
-    {
-        if (isReadOnly) return NullCommitter.Instance;
-        return new RawScopedTrieStore.Committer(nodeStorage, address, writeFlags);
-    }
-
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
-    {
-        return new TrieNode(NodeType.Unknown, hash);
-    }
-
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
-    {
-        byte[]? ret = nodeStorage.Get(address, path, hash, flags);
-        if (ret is null) throw new MissingTrieNodeException("Node missing", address, path, hash);
-        return ret;
-    }
-
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
-    {
-        return nodeStorage.Get(address, path, hash, flags);
-    }
-
-    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
-    {
-        return nodeStorage.KeyExists(address, path, keccak);
-    }
-
-    public INodeStorage.KeyScheme Scheme { get; } = nodeStorage.Scheme;
-
-    public bool HasRoot(Hash256 stateRoot)
-    {
-        return nodeStorage.KeyExists(null, TreePath.Empty, stateRoot);
-    }
-
-    public IDisposable BeginScope(BlockHeader? baseBlock)
-    {
-        return new Reactive.AnonymousDisposable(() => { });
-    }
-
-    public IScopedTrieStore GetTrieStore(Hash256? address)
-    {
-        return new RawScopedTrieStore(nodeStorage, address);
-    }
-
-    public IBlockCommitter BeginBlockCommit(long blockNumber)
-    {
-        return NullCommitter.Instance;
-    }
+    private readonly INodeStorage _nodeStorage = nodeStorage;
 
     public void PersistCache(CancellationToken cancellationToken)
     {
     }
 
+    public override ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags)
+    {
+        if (isReadOnly) return NullCommitter.Instance;
+        return new RawScopedTrieStore.Committer(_nodeStorage, address, writeFlags);
+    }
+
     public IReadOnlyTrieStore AsReadOnly() =>
-        new TestRawTrieStore(nodeStorage, true);
+        new TestRawTrieStore(_nodeStorage, true);
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
@@ -94,6 +48,7 @@ public class TestRawTrieStore(INodeStorage nodeStorage, bool isReadOnly = false)
 
     private Lock _scopeLock = new Lock();
     private Lock _pruneLock = new Lock();
+
     public TrieStore.StableLockScope PrepareStableState(CancellationToken cancellationToken)
     {
         var scopeLockScope = _scopeLock.EnterScope();

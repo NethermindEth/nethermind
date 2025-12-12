@@ -14,22 +14,20 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
     private static BlockAccessListDecoder? _instance = null;
     public static BlockAccessListDecoder Instance => _instance ??= new();
 
+    private static readonly RlpLimit _accountsLimit = new(Eip7928Constants.MaxAccounts, "", ReadOnlyMemory<char>.Empty);
+
     public int GetLength(BlockAccessList item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public BlockAccessList Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
-        AccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance);
-        if (accountChanges.Length > Eip7928Constants.MaxAccounts)
-        {
-            throw new RlpException("Number of accounts exceeded maximum.");
-        }
+        AccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
 
-        Address lastAddress = Address.Zero;
+        Address? lastAddress = null;
         SortedDictionary<Address, AccountChanges> accountChangesMap = new(accountChanges.ToDictionary(a =>
         {
             Address address = a.Address;
-            if (address.CompareTo(lastAddress) <= 0)
+            if (lastAddress is not null && address.CompareTo(lastAddress) <= 0)
             {
                 throw new RlpException("Account changes were in incorrect order.");
             }
@@ -37,11 +35,6 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
             return address;
         }, a => a));
         BlockAccessList blockAccessList = new(accountChangesMap);
-
-        if (!accountChanges.SequenceEqual(accountChangesMap.Values))
-        {
-            throw new RlpException("Accounts were in incorrect order.");
-        }
 
         return blockAccessList;
     }
@@ -57,10 +50,8 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
     }
 
     public void Encode(RlpStream stream, BlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        stream.EncodeArray([.. item.GetAccountChanges()], rlpBehaviors);
-    }
+        => stream.EncodeArray([.. item.AccountChanges], rlpBehaviors);
 
     private static int GetContentLength(BlockAccessList item, RlpBehaviors rlpBehaviors)
-        => AccountChangesDecoder.Instance.GetContentLength([.. item.GetAccountChanges()], rlpBehaviors);
+        => AccountChangesDecoder.Instance.GetContentLength([.. item.AccountChanges], rlpBehaviors);
 }

@@ -16,7 +16,6 @@ namespace Nethermind.Core.Crypto
 {
     [DebuggerStepThrough]
     [DebuggerDisplay("{ToString()}")]
-    [JsonConverter(typeof(ValueHash256Converter))]
     public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>
     {
         // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
@@ -117,7 +116,6 @@ namespace Nethermind.Core.Crypto
         public int CompareTo(Hash256AsKey other) => _key.CompareTo(other._key);
     }
 
-    [JsonConverter(typeof(Hash256Converter))]
     [DebuggerStepThrough]
     public sealed class Hash256 : IEquatable<Hash256>, IComparable<Hash256>
     {

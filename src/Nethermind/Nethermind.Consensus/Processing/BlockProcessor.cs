@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -15,6 +16,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -35,7 +37,7 @@ public partial class BlockProcessor
     : IBlockProcessor
 {
     private readonly ILogger _logger;
-    private readonly TracedAccessWorldState? _tracedAccessWorldState;
+    private readonly IBlockAccessListBuilder? _balBuilder;
     protected readonly WorldStateMetricsDecorator _stateProvider;
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = ReceiptsRootCalculator.Instance;
     private readonly ISpecProvider _specProvider;
@@ -80,17 +82,17 @@ public partial class BlockProcessor
         _executionRequestsProcessor = executionRequestsProcessor;
 
         _logger = _logManager.GetClassLogger();
-        _tracedAccessWorldState = stateProvider as TracedAccessWorldState;
+        _balBuilder = stateProvider as IBlockAccessListBuilder;
         _stateProvider = new(stateProvider);
     }
 
-    public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
+    public async Task<(Block Block, TxReceipt[] Receipts)> ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
+        TxReceipt[] receipts = await ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -113,10 +115,10 @@ public partial class BlockProcessor
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
     }
 
-    private bool ShouldComputeStateRoot(BlockHeader header) =>
+    protected bool ShouldComputeStateRoot(BlockHeader header) =>
         !header.IsGenesis || !_specProvider.GenesisStateUnavailable;
 
-    protected virtual TxReceipt[] ProcessBlock(
+    protected virtual async Task<TxReceipt[]> ProcessBlock(
         Block block,
         IBlockTracer blockTracer,
         ProcessingOptions options,
@@ -127,14 +129,13 @@ public partial class BlockProcessor
         BlockHeader header = block.Header;
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
+        // need one receipts / block tracer per thread & combine
         ReceiptsTracer.StartNewBlockTrace(block);
 
+        SetupBlockAccessLists(spec, block.BlockAccessList, block.Transactions.Length, block.IsGenesis);
+        bool shouldComputeStateRoot = ShouldComputeStateRoot(header);
+        Task stateApplication = ApplyBlockAccessListToState(spec, shouldComputeStateRoot);
         _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
-
-        if (_tracedAccessWorldState is not null)
-        {
-            _tracedAccessWorldState.Enabled = spec.BlockLevelAccessListsEnabled;
-        }
 
         StoreBeaconRoot(block, spec);
         _blockHashStore.ApplyBlockhashStateChanges(header, spec);
@@ -172,20 +173,29 @@ public partial class BlockProcessor
             block.AccountChanges = _stateProvider.GetAccountChanges();
         }
 
-        if (ShouldComputeStateRoot(header))
+        await stateApplication;
+        if (shouldComputeStateRoot)
         {
             _stateProvider.RecalculateStateRoot();
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        if (_tracedAccessWorldState is not null && spec.BlockLevelAccessListsEnabled && !block.IsGenesis)
+        // move everything inside some bal generator class?
+        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
         {
-            body.BlockAccessList = _tracedAccessWorldState.BlockAccessList;
-            header.BlockAccessListHash = new(ValueKeccak.Compute(Rlp.Encode(_tracedAccessWorldState.BlockAccessList).Bytes).Bytes);
-        }
-        else
-        {
-            header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+            if (block.IsGenesis)
+            {
+                header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+            }
+            else
+            {
+                _balBuilder.GenerateBlockAccessList();
+                // body.BlockAccessList = _tracedAccessWorldState.GeneratedBlockAccessList;
+                // block.EncodedBlockAccessList = Rlp.Encode(_tracedAccessWorldState.GeneratedBlockAccessList).Bytes;
+                block.GeneratedBlockAccessList = _balBuilder.GeneratedBlockAccessList;
+                block.EncodedBlockAccessList = Rlp.Encode(_balBuilder.GeneratedBlockAccessList).Bytes;
+                header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
+            }
         }
 
         header.Hash = header.CalculateHash();
@@ -226,7 +236,7 @@ public partial class BlockProcessor
         _receiptStorage.Insert(block, txReceipts, spec, false);
     }
 
-    private Block PrepareBlockForProcessing(Block suggestedBlock)
+    protected virtual Block PrepareBlockForProcessing(Block suggestedBlock)
     {
         if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
         BlockHeader bh = suggestedBlock.Header;
@@ -326,5 +336,33 @@ public partial class BlockProcessor
                 _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
             }
         }
+    }
+
+    private void SetupBlockAccessLists(IReleaseSpec spec, BlockAccessList? suggestedBal, int txCount, bool isGenesis)
+    {
+        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
+        {
+            _balBuilder.TracingEnabled = true;
+            _balBuilder.IsGenesis = isGenesis;
+
+            if (_balBuilder.ParallelExecutionEnabled)
+            {
+                _balBuilder.SetupGeneratedAccessLists(txCount);
+                _balBuilder.LoadSuggestedBlockAccessList(suggestedBal.Value);
+            }
+            else
+            {
+                _balBuilder.GeneratedBlockAccessList = new();
+            }
+        }
+    }
+
+    private Task ApplyBlockAccessListToState(IReleaseSpec spec, bool shouldComputeStateRoot)
+    {
+        if (_balBuilder is not null && _balBuilder.ParallelExecutionEnabled)
+        {
+            return Task.Run(() => _balBuilder.ApplyStateChanges(spec, shouldComputeStateRoot));
+        }
+        return Task.CompletedTask;
     }
 }

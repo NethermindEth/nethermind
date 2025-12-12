@@ -116,7 +116,7 @@ public class PowForwardHeaderProvider(
         }
 
         LastResponseBatch = newResponse;
-        return LastResponseBatch;
+        return newResponse.ToPooledList(newResponse.Count);
     }
 
     private void OnNewBestPeer(PeerInfo newBestPeer)

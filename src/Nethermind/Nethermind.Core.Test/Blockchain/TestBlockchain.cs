@@ -62,6 +62,7 @@ public class TestBlockchain : IDisposable
     public IBranchProcessor BranchProcessor => _fromContainer.MainProcessingContext.BranchProcessor;
     public IBlockProcessor BlockProcessor => _fromContainer.MainProcessingContext.BlockProcessor;
     public IBlockchainProcessor BlockchainProcessor => _fromContainer.MainProcessingContext.BlockchainProcessor;
+    public IBlockProcessingQueue BlockProcessingQueue => _fromContainer.MainProcessingContext.BlockProcessingQueue;
     public IBlockPreprocessorStep BlockPreprocessorStep => _fromContainer.BlockPreprocessorStep;
 
     public IBlockTree BlockTree => _fromContainer.BlockTree;
@@ -98,8 +99,7 @@ public class TestBlockchain : IDisposable
 
     public static readonly UInt256 InitialValue = 1000.Ether();
 
-    protected AutoCancelTokenSource _cts;
-    public CancellationToken CancellationToken => _cts.Token;
+    public CancellationToken CancellationToken => CreateCancellationSource().Token;
 
     private TestBlockchainUtil TestUtil => _fromContainer.TestBlockchainUtil;
     private PoWTestBlockchainUtil PoWTestUtil => _fromContainer.PoWTestBlockchainUtil;
@@ -108,7 +108,7 @@ public class TestBlockchain : IDisposable
     public ManualTimestamper Timestamper => _fromContainer.ManualTimestamper;
     protected IBlocksConfig BlocksConfig => Container.Resolve<IBlocksConfig>();
 
-    public ProducedBlockSuggester Suggester { get; protected set; } = null!;
+    public virtual IProducedBlockSuggester Suggester { get; protected set; } = null!;
 
     public IExecutionRequestsProcessor MainExecutionRequestsProcessor => ((MainProcessingContext)_fromContainer.MainProcessingContext).LifetimeScope.Resolve<IExecutionRequestsProcessor>();
     public IChainLevelInfoRepository ChainLevelInfoRepository => _fromContainer.ChainLevelInfoRepository;
@@ -123,7 +123,7 @@ public class TestBlockchain : IDisposable
     protected ChainSpec ChainSpec => _chainSpec ??= CreateChainSpec();
 
     // Resolving all these component at once is faster.
-    private FromContainer _fromContainer = null!;
+    protected FromContainer _fromContainer = null!;
     public class FromContainer(
         Lazy<IStateReader> stateReader,
         Lazy<IEthereumEcdsa> ethereumEcdsa,
@@ -218,8 +218,6 @@ public class TestBlockchain : IDisposable
         BlockProducerRunner.Start();
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
 
-        _cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimout));
-
         if (testConfiguration.SuggestGenesisOnStart)
         {
             // The block added event is not waited by genesis, but its needed to wait here so that `AddBlock` wait correctly.
@@ -255,12 +253,12 @@ public class TestBlockchain : IDisposable
             .AddSingleton<IUnclesValidator>(Always.Valid)
             .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD))
 
-            .AddSingleton<IBlockProducer>((_) => this.BlockProducer)
-            .AddSingleton<IBlockProducerRunner>((_) => this.BlockProducerRunner)
+            .AddSingleton<IBlockProducer>((_) => BlockProducer)
+            .AddSingleton<IBlockProducerRunner>((_) => BlockProducerRunner)
 
             .AddSingleton<TestBlockchainUtil.Config, Configuration>((cfg) => new TestBlockchainUtil.Config(cfg.SlotTime))
 
-            .AddSingleton<PoWTestBlockchainUtil>((ctx) => new PoWTestBlockchainUtil(
+            .AddSingleton((ctx) => new PoWTestBlockchainUtil(
                 ctx.Resolve<IBlockProducerRunner>(),
                 ctx.Resolve<IManualBlockProductionTrigger>(),
                 ctx.Resolve<ManualTimestamper>(),
@@ -373,6 +371,11 @@ public class TestBlockchain : IDisposable
                 genesisBlockBuilder.WithEmptyRequestsHash();
             }
 
+            if (specProvider.GenesisSpec.BlockLevelAccessListsEnabled)
+            {
+                genesisBlockBuilder.WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp);
+            }
+
             Block genesisBlock = genesisBlockBuilder.TestObject;
 
             foreach (IGenesisPostProcessor genesisPostProcessor in postProcessors)
@@ -388,17 +391,23 @@ public class TestBlockchain : IDisposable
         }
     }
 
+    protected virtual AutoCancelTokenSource CreateCancellationSource()
+    {
+        return AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimout));
+    }
+
     protected virtual async Task AddBlocksOnStart()
     {
         await AddBlock();
         await AddBlock(CreateTransactionBuilder().WithNonce(0).TestObject);
         await AddBlock(CreateTransactionBuilder().WithNonce(1).TestObject, CreateTransactionBuilder().WithNonce(2).TestObject);
 
+        using AutoCancelTokenSource cts = CreateCancellationSource();
         while (true)
         {
-            CancellationToken.ThrowIfCancellationRequested();
+            cts.Token.ThrowIfCancellationRequested();
             if (BlockTree.Head?.Number == 3) return;
-            await Task.Delay(1, CancellationToken);
+            await Task.Delay(1, cts.Token);
         }
     }
 
@@ -425,41 +434,47 @@ public class TestBlockchain : IDisposable
 
     public async Task WaitForNewHead()
     {
-        await BlockTree.WaitForNewBlock(_cts.Token);
+        await BlockTree.WaitForNewBlock(CreateCancellationSource().Token);
     }
 
     public Task WaitForNewHeadWhere(Func<Block, bool> predicate)
     {
+        AutoCancelTokenSource cts = CreateCancellationSource();
         return Wait.ForEventCondition<BlockReplacementEventArgs>(
-            _cts.Token,
+            CreateCancellationSource().Token,
             (h) => BlockTree.BlockAddedToMain += h,
             (h) => BlockTree.BlockAddedToMain -= h,
             (e) => predicate(e.Block));
     }
 
-    public virtual async Task AddBlock(params Transaction[] transactions)
+    public virtual Task<Block> AddBlock(params Transaction[] transactions)
     {
-        await TestUtil.AddBlockAndWaitForHead(false, _cts.Token, transactions);
+        return TestUtil.AddBlockAndWaitForHead(false, CreateCancellationSource().Token, transactions);
     }
 
-    public async Task AddBlock(TestBlockchainUtil.AddBlockFlags flags, params Transaction[] transactions)
+    public Task<Block> AddBlock(TestBlockchainUtil.AddBlockFlags flags, params Transaction[] transactions)
     {
-        await TestUtil.AddBlock(flags, _cts.Token, transactions);
+        return TestUtil.AddBlock(flags, CreateCancellationSource().Token, transactions);
+    }
+
+    public virtual Task<Block> AddBlockFromParent(BlockHeader parent, params Transaction[] transactions)
+    {
+        return TestUtil.AddBlock(parent, TestBlockchainUtil.AddBlockFlags.DoNotWaitForHead, CreateCancellationSource().Token, transactions);
     }
 
     public async Task AddBlockMayMissTx(params Transaction[] transactions)
     {
-        await TestUtil.AddBlockAndWaitForHead(true, _cts.Token, transactions);
+        await TestUtil.AddBlockAndWaitForHead(true, CreateCancellationSource().Token, transactions);
     }
 
     public async Task AddBlockThroughPoW(params Transaction[] transactions)
     {
-        await PoWTestUtil.AddBlockAndWaitForHead(_cts.Token, transactions);
+        await PoWTestUtil.AddBlockAndWaitForHead(CreateCancellationSource().Token, transactions);
     }
 
     public async Task AddBlockDoNotWaitForHead(params Transaction[] transactions)
     {
-        await TestUtil.AddBlockDoNotWaitForHead(false, _cts.Token, transactions);
+        await TestUtil.AddBlockDoNotWaitForHead(false, CreateCancellationSource().Token, transactions);
     }
 
     public void AddTransactions(params Transaction[] txs)

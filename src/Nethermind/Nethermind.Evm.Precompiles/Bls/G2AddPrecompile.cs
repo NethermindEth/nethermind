@@ -30,35 +30,29 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     [SkipLocalsInit]
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsG2AddPrecompile++;
 
         const int expectedInputLength = 2 * BlsConst.LenG2;
-        if (inputData.Length != expectedInputLength)
-        {
-            return IPrecompile.Failure;
-        }
+        if (inputData.Length != expectedInputLength) return Errors.InvalidInputLength;
 
         G2 x = new(stackalloc long[G2.Sz]);
         G2 y = new(stackalloc long[G2.Sz]);
-        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span) || !y.TryDecodeRaw(inputData[BlsConst.LenG2..].Span))
+        Result result = x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span) &&
+                        y.TryDecodeRaw(inputData[BlsConst.LenG2..].Span);
+
+        if (result)
         {
-            return IPrecompile.Failure;
+            // adding to infinity point has no effect
+            if (x.IsInf()) return inputData[BlsConst.LenG2..].ToArray();
+
+            if (y.IsInf()) return inputData[..BlsConst.LenG2].ToArray();
+
+            G2 res = x.Add(y);
+            return res.EncodeRaw();
         }
 
-        // adding to infinity point has no effect
-        if (x.IsInf())
-        {
-            return (inputData[BlsConst.LenG2..].ToArray(), true);
-        }
-
-        if (y.IsInf())
-        {
-            return (inputData[..BlsConst.LenG2].ToArray(), true);
-        }
-
-        G2 res = x.Add(y);
-        return (res.EncodeRaw(), true);
+        return result.Error!;
     }
 }

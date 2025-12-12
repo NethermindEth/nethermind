@@ -11,6 +11,9 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
+    public Task<ResultWrapper<GetPayloadV5Result?>> engine_getPayloadV6(byte[] payloadId)
+        => _getPayloadHandlerV5.HandleAsync(payloadId);
+
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
         => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests), EngineApiVersions.Amsterdam);
 }

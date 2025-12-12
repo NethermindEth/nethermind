@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -55,10 +55,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             EnsureGossipPolicy();
         }
 
-        public void DisableTxFiltering()
-        {
-            _floodController.IsEnabled = false;
-        }
+        public void DisableTxFiltering() => _floodController.IsEnabled = false;
 
         public override byte ProtocolVersion => EthVersions.Eth62;
         public override string ProtocolCode => Protocol.Eth;
@@ -168,9 +165,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
-                    GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
-                    ReportIn(getBlockHeadersMessage, size);
-                    BackgroundTaskScheduler.ScheduleSyncServe(getBlockHeadersMessage, Handle);
+                    HandleInBackground<GetBlockHeadersMessage, BlockHeadersMessage>(message, Handle);
                     break;
                 case Eth62MessageCode.BlockHeaders:
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
@@ -178,9 +173,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     Handle(headersMsg, size);
                     break;
                 case Eth62MessageCode.GetBlockBodies:
-                    GetBlockBodiesMessage getBodiesMsg = Deserialize<GetBlockBodiesMessage>(message.Content);
-                    ReportIn(getBodiesMsg, size);
-                    BackgroundTaskScheduler.ScheduleSyncServe(getBodiesMsg, Handle);
+                    HandleInBackground<GetBlockBodiesMessage, BlockBodiesMessage>(message, Handle);
                     break;
                 case Eth62MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
@@ -243,11 +236,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected void Handle(TransactionsMessage msg)
         {
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
-
             BackgroundTaskScheduler.ScheduleBackgroundTask((iList, 0), _handleSlow);
         }
 
-        private ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
+        protected virtual ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
         {
             IOwnedReadOnlyList<Transaction> transactions = request.txs;
             ReadOnlySpan<Transaction> transactionsSpan = transactions.AsSpan();
@@ -255,6 +247,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 int startIdx = request.startIndex;
                 bool isTrace = Logger.IsTrace;
+
                 for (int i = startIdx; i < transactionsSpan.Length; i++)
                 {
                     if (cancellationToken.IsCancellationRequested)

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -11,7 +13,7 @@ namespace Nethermind.Serialization.Rlp
 
     public interface IRlpDecoder<in T> : IRlpDecoder
     {
-        int GetLength(T item, RlpBehaviors rlpBehaviors);
+        int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 
     public interface IRlpStreamDecoder<T> : IRlpDecoder<T>
@@ -37,5 +39,52 @@ namespace Nethermind.Serialization.Rlp
             Rlp.ValueDecoderContext context = new(bytes);
             return decoder.Decode(ref context, rlpBehaviors);
         }
+    }
+
+    public abstract class RlpStreamDecoder<T> : IRlpStreamDecoder<T>
+    {
+        public abstract int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+
+        public T Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            try
+            {
+                return DecodeInternal(rlpStream, rlpBehaviors);
+            }
+            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+            {
+                ThrowRlpException(e);
+                return default;
+            }
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        protected static void ThrowRlpException(Exception exception)
+        {
+            throw new RlpException($"Cannot decode stream of {nameof(T)}", exception);
+        }
+
+        protected abstract T DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+
+        public abstract void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    }
+
+    public abstract class RlpValueDecoder<T> : RlpStreamDecoder<T>, IRlpValueDecoder<T>
+    {
+        public T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            try
+            {
+                return DecodeInternal(ref decoderContext, rlpBehaviors);
+            }
+            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+            {
+                ThrowRlpException(e);
+                return default;
+            }
+        }
+
+        protected abstract T DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 }

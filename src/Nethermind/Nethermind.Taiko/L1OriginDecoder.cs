@@ -8,11 +8,11 @@ using System;
 
 namespace Nethermind.Taiko;
 
-public class L1OriginDecoder : IRlpStreamDecoder<L1Origin>
+public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
 {
     const int BuildPayloadArgsIdLength = 8;
 
-    public L1Origin Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override L1Origin DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         (int _, int contentLength) = rlpStream.ReadPrefixAndContentLength();
         int itemsCount = rlpStream.PeekNumberOfItemsRemaining(maxSearch: contentLength);
@@ -36,7 +36,7 @@ public class L1OriginDecoder : IRlpStreamDecoder<L1Origin>
         return new(rlpStream.Data.ToArray()!);
     }
 
-    public void Encode(RlpStream stream, L1Origin item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, L1Origin item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetLength(item, rlpBehaviors));
 
@@ -55,7 +55,7 @@ public class L1OriginDecoder : IRlpStreamDecoder<L1Origin>
         }
     }
 
-    public int GetLength(L1Origin item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(L1Origin item, RlpBehaviors rlpBehaviors)
     {
         return Rlp.LengthOfSequence(
             Rlp.LengthOf(item.BlockId)

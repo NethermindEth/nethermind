@@ -3,19 +3,22 @@
 
 using System;
 using System.Linq;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly struct StorageRead(Bytes32 key) : IEquatable<StorageRead>, IComparable<StorageRead>
+public readonly struct StorageRead(byte[] key) : IEquatable<StorageRead>, IComparable<StorageRead>
 {
-    public Bytes32 Key { get; init; } = key;
+    [JsonConverter(typeof(ByteArrayConverter))]
+    public byte[] Key { get; init; } = key;
 
     public int CompareTo(StorageRead other)
-        => Bytes.BytesComparer.Compare(Key.Unwrap(), other.Key.Unwrap());
+        => Bytes.BytesComparer.Compare(Key, other.Key);
 
     public readonly bool Equals(StorageRead other) =>
-        Key.Unwrap().SequenceEqual(other.Key.Unwrap());
+        Key.SequenceEqual(other.Key);
 
     public override readonly bool Equals(object? obj) =>
         obj is StorageRead other && Equals(other);
@@ -28,7 +31,4 @@ public readonly struct StorageRead(Bytes32 key) : IEquatable<StorageRead>, IComp
 
     public static bool operator !=(StorageRead left, StorageRead right) =>
         !(left == right);
-
-    public override readonly string? ToString()
-        => $"0x{Bytes.ToHexString(Key.Unwrap())}";
 }

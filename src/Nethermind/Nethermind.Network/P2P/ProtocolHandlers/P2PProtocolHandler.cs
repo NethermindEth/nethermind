@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -29,8 +30,9 @@ public class P2PProtocolHandler(
     PublicKey localNodeId,
     INodeStatsManager nodeStatsManager,
     IMessageSerializationService serializer,
+    IBackgroundTaskScheduler backgroundTaskScheduler,
     ILogManager logManager)
-    : ProtocolHandlerBase(session, nodeStatsManager, serializer, logManager), IPingSender, IP2PProtocolHandler
+    : ProtocolHandlerBase(session, nodeStatsManager, serializer, backgroundTaskScheduler, logManager), IPingSender, IP2PProtocolHandler
 {
     private TaskCompletionSource<Packet> _pongCompletionSource;
     private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));

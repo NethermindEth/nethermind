@@ -232,16 +232,16 @@ public class BlockchainBridgeTests
         _receiptStorage.FindBlockHash(txHash).Returns(blockHash);
         _receiptStorage.Get(block).Returns([receipt]);
 
-        (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) result = postEip4844
-            ? (receipt, new(effectiveGasPrice, 1, 262144), 0)
-            : (receipt, new(effectiveGasPrice), 0);
+        (TxReceipt? Receipt, ulong BlockTimestamp, TxGasInfo? GasInfo, int LogIndexStart) result = postEip4844
+            ? (receipt, MainnetSpecProvider.CancunBlockTimestamp, new(effectiveGasPrice, 1, 262144), 0)
+            : (receipt, MainnetSpecProvider.CancunBlockTimestamp, new(effectiveGasPrice), 0);
 
         if (!isCanonical)
         {
-            result = (null, null, 0);
+            result = (null, 0, null, 0);
         }
 
-        _blockchainBridge.GetReceiptAndGasInfo(txHash).Should().BeEquivalentTo(result);
+        _blockchainBridge.GetTxReceiptInfo(txHash).Should().BeEquivalentTo(result);
     }
 
     [Test]

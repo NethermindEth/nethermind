@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
@@ -25,12 +26,12 @@ public class InvalidBlockDetector
 
     internal class BlockProcessorInterceptor(IBlockProcessor baseBlockProcessor, InvalidBlockDetector invalidBlockDetector) : IBlockProcessor
     {
-        public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
+        public async Task<(Block Block, TxReceipt[] Receipts)> ProcessOne(Block suggestedBlock, ProcessingOptions options,
             IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
         {
             try
             {
-                return baseBlockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                return await baseBlockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
             }
             catch (InvalidBlockException)
             {

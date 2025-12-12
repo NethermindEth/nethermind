@@ -52,7 +52,7 @@ public unsafe partial class VirtualMachine
             FromVersion = fromVersion;
         }
 
-        public CallResult(EvmExceptionType exceptionType)
+        private CallResult(EvmExceptionType exceptionType)
         {
             StateToExecute = null;
             Output = (null, StatusCode.FailureBytes);
@@ -70,5 +70,6 @@ public unsafe partial class VirtualMachine
         //EvmExceptionType.Revert is returned when the top frame encounters a REVERT opcode, which is not an exception.
         public bool IsException => ExceptionType != EvmExceptionType.None && ExceptionType != EvmExceptionType.Revert;
         public int FromVersion { get; }
+        public string? SubstateError { get; init; }
     }
 }

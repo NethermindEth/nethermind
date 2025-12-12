@@ -24,7 +24,7 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test.Collections
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.None)]
+    [Parallelizable(ParallelScope.Self)]
     public class DistinctValueSortedPoolTests
     {
         private const int Capacity = 16;
@@ -73,13 +73,12 @@ namespace Nethermind.TxPool.Test.Collections
         [TestCaseSource(nameof(DistinctTestCases))]
         public void Distinct_transactions_are_all_added(Transaction[] transactions, int expectedCount)
         {
-
             var pool = new TxDistinctSortedPool(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
 
-            foreach (var transaction in transactions)
+            Parallel.ForEach(transactions, transaction =>
             {
                 pool.TryInsert(transaction.Hash, transaction);
-            }
+            });
 
             pool.Count.Should().Be(expectedCount);
         }
@@ -219,14 +218,11 @@ namespace Nethermind.TxPool.Test.Collections
             int capacityMultiplier = 10;
             int expectedAllCount = Capacity * capacityMultiplier;
 
-            WithFinalizer newOne;
-            for (int i = 0; i < expectedAllCount; i++)
+            Parallel.For(0, expectedAllCount, i =>
             {
-                newOne = new WithFinalizer();
+                WithFinalizer newOne = new();
                 pool.TryInsert(newOne.Index, newOne);
-            }
-
-            newOne = null;
+            });
 
             CollectAndFinalize();
 

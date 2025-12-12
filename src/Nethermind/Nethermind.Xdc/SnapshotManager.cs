@@ -1,87 +1,99 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Frozen;
-using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-internal class SnapshotManager : ISnapshotManager
+
+internal class SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHandler penaltyHandler) : ISnapshotManager
 {
-    public Address[] CalculateNextEpochMasternodes(XdcBlockHeader xdcHeader)
+
+    private readonly LruCache<Hash256, Snapshot> _snapshotCache = new(128, 128, "XDC Snapshot cache");
+
+    private readonly SnapshotDecoder _snapshotDecoder = new();
+
+    public Snapshot? GetSnapshotByGapNumber(ulong gapNumber)
     {
-        throw new NotImplementedException();
+        var gapBlockHeader = blockTree.FindHeader((long)gapNumber) as XdcBlockHeader;
+
+        if (gapBlockHeader is null)
+            return null;
+
+        Snapshot? snapshot = _snapshotCache.Get(gapBlockHeader.Hash);
+        if (snapshot is not null)
+        {
+            return snapshot;
+        }
+
+        Span<byte> key = gapBlockHeader.Hash.Bytes;
+        if (!snapshotDb.KeyExists(key))
+            return null;
+        Span<byte> value = snapshotDb.Get(key);
+        if (value.IsEmpty)
+            return null;
+
+        var decoded = _snapshotDecoder.Decode(value);
+        snapshot = decoded;
+        _snapshotCache.Set(gapBlockHeader.Hash, snapshot);
+        return snapshot;
     }
 
-    public Address GetBlockSealer(BlockHeader header)
+    public Snapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec)
     {
-        throw new NotImplementedException();
+        var gapBlockNum = Math.Max(0, blockNumber - blockNumber % spec.EpochLength - spec.Gap);
+        return GetSnapshotByGapNumber((ulong)gapBlockNum);
     }
 
-    public ulong GetLastSignersCount()
+    public void StoreSnapshot(Snapshot snapshot)
     {
-        throw new NotImplementedException();
+        Span<byte> key = snapshot.HeaderHash.Bytes;
+
+        if (snapshotDb.KeyExists(key))
+            return;
+
+        var rlpEncodedSnapshot = _snapshotDecoder.Encode(snapshot);
+
+        snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
     }
 
-    public Address[] GetPenalties(XdcBlockHeader xdcHeader)
+    public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec)
     {
-        throw new NotImplementedException();
-    }
+        int maxMasternodes = spec.MaxMasternodes;
+        var previousSnapshot = GetSnapshotByBlockNumber(blockNumber, spec);
 
-    public bool HasSignedRecently(Snapshot snapshot, long number, Address signer)
-    {
-        throw new NotImplementedException();
-    }
+        if (previousSnapshot is null)
+            throw new InvalidOperationException($"No snapshot found for header #{blockNumber}");
 
-    public bool IsInTurn(Snapshot snapshot, long number, Address signer)
-    {
-        throw new NotImplementedException();
-    }
+        var candidates = previousSnapshot.NextEpochCandidates;
 
-    public bool IsValidVote(Snapshot snapshot, Address address, bool authorize)
-    {
-        throw new NotImplementedException();
-    }
+        if (blockNumber == spec.SwitchBlock + 1)
+        {
+            if (candidates.Length > maxMasternodes)
+            {
+                Array.Resize(ref candidates, maxMasternodes);
+                return (candidates, []);
+            }
 
-    public void TryCacheSnapshot(Snapshot snapshot)
-    {
-        throw new NotImplementedException();
-    }
+            return (candidates, []);
+        }
 
-    public bool TryGetSnapshot(long number, Hash256 hash, out Snapshot snapshot)
-    {
-        throw new NotImplementedException();
-    }
+        Address[] penalties = penaltyHandler.HandlePenalties(blockNumber, parentHash, candidates);
 
-    public bool TryGetSnapshot(XdcBlockHeader header, out Snapshot snapshot)
-    {
-        throw new NotImplementedException();
-    }
+        candidates = candidates
+            .Except(penalties)        // remove penalties
+            .Take(maxMasternodes)     // enforce max cap
+            .ToArray();
 
-    public bool TryGetSnapshot(ulong gapNumber, bool isGapNumber, out Snapshot snap)
-    {
-        throw new NotImplementedException();
-    }
-
-    public bool TryStoreSnapshot(Snapshot snapshot)
-    {
-        throw new NotImplementedException();
-    }
-
-    internal Address[] GetMasternodes(XdcBlockHeader xdcHeader)
-    {
-        throw new NotImplementedException();
-    }
-
-    Address[] ISnapshotManager.GetMasternodes(XdcBlockHeader xdcHeader)
-    {
-        return GetMasternodes(xdcHeader);
+        return (candidates, penalties);
     }
 }

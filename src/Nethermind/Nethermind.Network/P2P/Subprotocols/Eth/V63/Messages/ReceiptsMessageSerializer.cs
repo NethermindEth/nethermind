@@ -8,6 +8,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
@@ -34,7 +35,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(contentLength);
 
-            // Track last‐seen block number & its RLP behavior
+            // Track the last ‐ seen block number & its RLP behavior
             long lastBlockNumber = -1;
             RlpBehaviors behaviors = RlpBehaviors.None;
 
@@ -89,7 +90,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public ReceiptsMessage Deserialize(RlpStream rlpStream)
         {
-            ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeArrayPoolList(_decodeArrayFunc, true);
+            ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeArrayPoolList(_decodeArrayFunc);
             ReceiptsMessage message = new(data);
 
             return message;

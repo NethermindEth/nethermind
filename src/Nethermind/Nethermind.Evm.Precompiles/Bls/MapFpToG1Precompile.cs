@@ -30,26 +30,21 @@ public class MapFpToG1Precompile : IPrecompile<MapFpToG1Precompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     [SkipLocalsInit]
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsMapFpToG1Precompile++;
 
         const int expectedInputLength = BlsConst.LenFp;
-        if (inputData.Length != expectedInputLength)
-        {
-            return IPrecompile.Failure;
-        }
+        if (inputData.Length != expectedInputLength) return Errors.InvalidInputLength;
 
         G1 res = new(stackalloc long[G1.Sz]);
-        if (!BlsExtensions.ValidRawFp(inputData.Span))
-        {
-            return IPrecompile.Failure;
-        }
+        Result result = BlsExtensions.ValidRawFp(inputData.Span);
+        if (!result) return result.Error!;
 
         // map field point to G1
         ReadOnlySpan<byte> fp = inputData[BlsConst.LenFpPad..BlsConst.LenFp].Span;
         res.MapTo(fp);
 
-        return (res.EncodeRaw(), true);
+        return res.EncodeRaw();
     }
 }

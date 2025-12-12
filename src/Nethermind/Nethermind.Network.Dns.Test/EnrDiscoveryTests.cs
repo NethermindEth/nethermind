@@ -50,7 +50,7 @@ public class EnrDiscoveryTests
         EnrRecordParser parser = new(singer);
         EnrTreeCrawler crawler = new(new(Substitute.For<InterfaceLogger>()));
         int verified = 0;
-        await foreach (string record in crawler.SearchTree("all.mainnet.ethdisco.net"))
+        await foreach (string record in crawler.SearchTree("all.mainnet.ethdisco.net", default))
         {
             NodeRecord nodeRecord = parser.ParseRecord(record);
             if (!nodeRecord.Snap)

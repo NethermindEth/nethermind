@@ -321,7 +321,7 @@ public class FilterManagerTests
 
         // adding always a simple block filter and test
         Block block = Build.A.Block.TestObject;
-        BlockFilter blockFilter = new(_currentFilterId++, 0);
+        BlockFilter blockFilter = new(_currentFilterId++);
         filters.Add(blockFilter);
 
         _filterStore.GetFilters<LogFilter>().Returns(filters.OfType<LogFilter>().ToArray());
@@ -334,7 +334,7 @@ public class FilterManagerTests
         foreach (TxReceipt receipt in receipts)
         {
             _mainProcessingContext.TransactionProcessed += Raise.EventWith(_branchProcessor,
-                new TxProcessedEventArgs(index, Build.A.Transaction.TestObject, receipt));
+                new TxProcessedEventArgs(index, Build.A.Transaction.TestObject, block.Header, receipt));
             index++;
         }
 

@@ -109,9 +109,6 @@ internal static partial class EvmInstructions
         Address codeSource = stack.PopAddress();
         if (codeSource is null) goto StackUnderflow;
 
-        // Charge gas for accessing the account's code (including delegation logic if applicable).
-        if (!EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) goto OutOfGas;
-
         ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         // Determine the call value based on the call type.
         UInt256 callValue;
@@ -129,6 +126,13 @@ internal static partial class EvmInstructions
         {
             goto StackUnderflow;
         }
+
+        // Pop additional parameters: data offset, data length, output offset, and output length.
+        if (!stack.PopUInt256(out UInt256 dataOffset) ||
+            !stack.PopUInt256(out UInt256 dataLength) ||
+            !stack.PopUInt256(out UInt256 outputOffset) ||
+            !stack.PopUInt256(out UInt256 outputLength))
+            goto StackUnderflow;
 
         // For non-delegate calls, the transfer value is the call value.
         UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
@@ -162,18 +166,13 @@ internal static partial class EvmInstructions
             gasExtra += GasCostOf.NewAccount;
         }
 
-        // Pop additional parameters: data offset, data length, output offset, and output length.
-        if (!stack.PopUInt256(out UInt256 dataOffset) ||
-            !stack.PopUInt256(out UInt256 dataLength) ||
-            !stack.PopUInt256(out UInt256 outputOffset) ||
-            !stack.PopUInt256(out UInt256 outputLength))
-            goto StackUnderflow;
-
         // Update gas: call cost, memory expansion for input and output, and extra gas.
+        // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!EvmCalculations.UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
             !EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataLength) ||
             !EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in outputOffset, outputLength) ||
-            !EvmCalculations.UpdateGas(gasExtra, ref gasAvailable))
+            !EvmCalculations.UpdateGas(gasExtra, ref gasAvailable) ||
+            !EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource))
             goto OutOfGas;
 
         // Retrieve code information for the call and schedule background analysis if needed.
@@ -208,7 +207,7 @@ internal static partial class EvmInstructions
 
         // Check call depth and balance of the caller.
         if (env.CallDepth >= MaxCallDepth ||
-            (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue))
+            (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount, vm.TxExecutionContext.BlockAccessIndex) < transferValue))
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = Array.Empty<byte>();
@@ -240,7 +239,7 @@ internal static partial class EvmInstructions
         // Take a snapshot of the state for potential rollback.
         Snapshot snapshot = state.TakeSnapshot();
         // Subtract the transfer value from the caller's balance.
-        state.SubtractFromBalance(caller, in transferValue, spec);
+        state.SubtractFromBalance(caller, in transferValue, spec, vm.TxExecutionContext.BlockAccessIndex);
 
         // Fast-path for calls to externally owned accounts (non-contracts)
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
@@ -290,7 +289,7 @@ internal static partial class EvmInstructions
         static EvmExceptionType FastCall(VirtualMachine vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
         {
             IWorldState state = vm.WorldState;
-            state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
+            state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec, vm.TxExecutionContext.BlockAccessIndex);
             Metrics.IncrementEmptyCalls();
 
             vm.ReturnData = null;

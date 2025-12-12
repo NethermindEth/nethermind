@@ -9,7 +9,9 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm;
+
 using Int256;
+using Nethermind.Evm.State;
 
 internal static partial class EvmInstructions
 {
@@ -157,6 +159,8 @@ internal static partial class EvmInstructions
             if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result))
                 goto OutOfGas;
 
+            (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address);
+
             ICodeInfo codeInfo = vm.CodeInfoRepository
                 .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
 
@@ -186,6 +190,10 @@ internal static partial class EvmInstructions
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
             }
+        }
+        else
+        {
+            (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address);
         }
 
         return EvmExceptionType.None;
@@ -231,6 +239,8 @@ internal static partial class EvmInstructions
         if (!EvmCalculations.ChargeAccountAccessGas(ref gasAvailable, vm, address))
             goto OutOfGas;
 
+        (vm.WorldState as IBlockAccessListBuilder)?.AddAccountRead(address);
+
         // Attempt a peephole optimization when tracing is not active and code is available.
         ReadOnlySpan<byte> codeSection = vm.EvmState.Env.CodeInfo.CodeSpan;
         if (!TTracingInst.IsActive && programCounter < codeSection.Length)
@@ -263,7 +273,7 @@ internal static partial class EvmInstructions
                 gasAvailable -= GasCostOf.VeryLow;
 
                 // Determine if the account is a contract by checking the loaded CodeHash.
-                bool isCodeLengthNotZero = vm.WorldState.IsContract(address);
+                bool isCodeLengthNotZero = vm.WorldState.IsContract(address, vm.TxExecutionContext.BlockAccessIndex);
                 // If the original instruction was GT, invert the check to match the semantics.
                 if (nextInstruction == Instruction.GT)
                 {

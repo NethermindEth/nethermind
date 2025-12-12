@@ -88,12 +88,6 @@ internal static partial class EvmInstructions
         ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         IWorldState state = vm.WorldState;
 
-        // Ensure the executing account exists in the world state. If not, create it with a zero balance.
-        if (!state.AccountExists(env.ExecutingAccount))
-        {
-            state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
-        }
-
         // Pop parameters off the stack: value to transfer, memory position for the initialization code,
         // and the length of the initialization code.
         if (!stack.PopUInt256(out UInt256 value) ||
@@ -145,7 +139,7 @@ internal static partial class EvmInstructions
         ReadOnlyMemory<byte> initCode = vm.EvmState.Memory.Load(in memoryPositionOfInitCode, in initCodeLength);
 
         // Check that the executing account has sufficient balance to transfer the specified value.
-        UInt256 balance = state.GetBalance(env.ExecutingAccount);
+        UInt256 balance = state.GetBalance(env.ExecutingAccount, vm.TxExecutionContext.BlockAccessIndex);
         if (value > balance)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
@@ -197,7 +191,7 @@ internal static partial class EvmInstructions
         }
 
         // Increment the nonce of the executing account to reflect the contract creation.
-        state.IncrementNonce(env.ExecutingAccount);
+        state.IncrementNonce(env.ExecutingAccount, vm.TxExecutionContext.BlockAccessIndex);
 
         // Analyze and compile the initialization code.
         CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo? codeInfo, out _);
@@ -207,8 +201,8 @@ internal static partial class EvmInstructions
 
         // Check for contract address collision. If the contract already exists and contains code or non-zero state,
         // then the creation should be aborted.
-        bool accountExists = state.AccountExists(contractAddress);
-        if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state))
+        bool accountExists = state.AccountExists(contractAddress, vm.TxExecutionContext.BlockAccessIndex);
+        if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state, vm.TxExecutionContext.BlockAccessIndex))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
@@ -216,13 +210,14 @@ internal static partial class EvmInstructions
         }
 
         // If the contract address refers to a dead account, clear its storage before creation.
-        if (state.IsDeadAccount(contractAddress))
+        if (state.IsDeadAccount(contractAddress, vm.TxExecutionContext.BlockAccessIndex))
         {
+            // Note: Seems to be needed on block 21827914 for some reason
             state.ClearStorage(contractAddress);
         }
 
         // Deduct the transfer value from the executing account's balance.
-        state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+        state.SubtractFromBalance(env.ExecutingAccount, value, spec, vm.TxExecutionContext.BlockAccessIndex);
 
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.

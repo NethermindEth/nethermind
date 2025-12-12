@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -40,7 +42,7 @@ public unsafe partial class VirtualMachine
         BlockHeader _header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, MainnetSpecProvider.PragueActivation.BlockNumber, Int64.MaxValue, 1UL, Bytes.Empty, 0, 0);
 
         vm.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
-        vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0));
+        vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0, 0));
 
         ExecutionEnvironment env = new(
             executingAccount: addressOne,
@@ -63,7 +65,7 @@ public unsafe partial class VirtualMachine
             RunOpCodes<OffFlag>(vm, state, evmState, spec);
         }
 
-        TransactionProcessor processor = new(MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
+        TransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
         processor.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
 
         RunTransactions(processor, state, spec);
@@ -189,11 +191,13 @@ public unsafe partial class VirtualMachine
         public Hash256 GetBlockhash(BlockHeader currentBlock, long number)
             => GetBlockhash(currentBlock, number, specProvider.GetSpec(currentBlock));
 
-        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec)
+        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
         {
             return Keccak.Compute(spec!.IsBlockHashInStateAvailable
                 ? (Eip2935Constants.RingBufferSize + number).ToString()
-                : (number).ToString());
+                : number.ToString());
         }
+
+        public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => Task.CompletedTask;
     }
 }

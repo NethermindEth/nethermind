@@ -33,7 +33,7 @@ public class TraceSimulateTestsBlocksAndTransactions
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor<ParityLikeTxTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new ParityStyleSimulateBlockTracerFactory(ParityTraceTypes.Trace));
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result = executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result = await executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>> data = result.Data;
         Assert.That(data, Has.Count.EqualTo(7));
 
@@ -51,7 +51,7 @@ public class TraceSimulateTestsBlocksAndTransactions
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
-        Transaction txMainnetAtoB = EthSimulateTestsBlocksAndTransactions.GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+        Transaction txMainnetAtoB = EthSimulateTestsBlocksAndTransactions.GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
 
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateEthMovedPayload(chain, nonceA);
 
@@ -69,8 +69,7 @@ public class TraceSimulateTestsBlocksAndTransactions
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor<ParityLikeTxTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new ParityStyleSimulateBlockTracerFactory(ParityTraceTypes.Trace));
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result =
-            executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result = await executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>> data = result.Data;
 
         Assert.That(data, Has.Count.EqualTo(9));
@@ -89,7 +88,7 @@ public class TraceSimulateTestsBlocksAndTransactions
         UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
 
         Transaction txMainnetAtoB =
-            EthSimulateTestsBlocksAndTransactions.GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+            EthSimulateTestsBlocksAndTransactions.GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
 
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransactionsForcedFail(chain, nonceA);
 
@@ -108,8 +107,7 @@ public class TraceSimulateTestsBlocksAndTransactions
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor<ParityLikeTxTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new ParityStyleSimulateBlockTracerFactory(ParityTraceTypes.Trace));
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result =
-            executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result = await executor.Execute(payload, BlockParameter.Latest);
         Assert.That(result.Result!.Error!, Does.Contain("insufficient sender balance"));
     }
 
@@ -119,8 +117,8 @@ public class TraceSimulateTestsBlocksAndTransactions
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
-        var result = chain.TraceRpcModule.trace_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Data.First().Traces.First().BlockHash, Is.EqualTo(new Core.Crypto.Hash256("0xd9c39af5424396af21a799dae45b805833815499067b18937807eb68ad32e488")));
+        var result = await chain.TraceRpcModule.trace_simulateV1(payload!, BlockParameter.Latest);
+        Assert.That(result.Data.First().Traces.First().BlockHash, Is.EqualTo(new Core.Crypto.Hash256("0x45635998c509d5571fcc391772c5af77f3f202b70ea9fafb48ea8eb475288b59")));
     }
 
     [Test]
@@ -132,7 +130,7 @@ public class TraceSimulateTestsBlocksAndTransactions
         Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
         JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
         IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>> data = (IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>)successResponse.Result!;
-        Assert.That(data.First().Traces.First().BlockHash, Is.EqualTo(new Core.Crypto.Hash256("0xd9c39af5424396af21a799dae45b805833815499067b18937807eb68ad32e488")));
+        Assert.That(data.First().Traces.First().BlockHash, Is.EqualTo(new Core.Crypto.Hash256("0x45635998c509d5571fcc391772c5af77f3f202b70ea9fafb48ea8eb475288b59")));
     }
 
     [Test]

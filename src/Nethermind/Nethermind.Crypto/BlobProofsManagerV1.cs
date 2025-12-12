@@ -75,6 +75,11 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
 
     public bool ValidateProofs(ShardBlobNetworkWrapper wrapper)
     {
+        if (wrapper.Version is not ProofVersion.V1)
+        {
+            return false;
+        }
+
         using ArrayPoolSpan<byte> cells = new(wrapper.Blobs.Length * Ckzg.BytesPerBlob * 2);
         using ArrayPoolSpan<byte> flatCommitments = new(wrapper.Blobs.Length * Ckzg.BytesPerCommitment * Ckzg.CellsPerExtBlob);
         using ArrayPoolSpan<byte> flatProofs = new(wrapper.Blobs.Length * Ckzg.BytesPerProof * Ckzg.CellsPerExtBlob);

@@ -327,9 +327,7 @@ public class Startup : IStartup
 
         if (healthChecksConfig.Enabled)
         {
-            string executableDir = Path.GetDirectoryName(Environment.ProcessPath) ?? Directory.GetCurrentDirectory();
-            string wwwrootPath = Path.Combine(executableDir, "wwwroot");
-            PhysicalFileProvider fileProvider = new(wwwrootPath);
+            var fileProvider = new ManifestEmbeddedFileProvider(typeof(Startup).Assembly, "wwwroot");
 
             app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
             app.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });

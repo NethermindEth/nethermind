@@ -9,46 +9,75 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.State;
 
 namespace Nethermind.State.OverridableEnv;
 
-public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository) : IOverridableCodeInfoRepository
+public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository, IWorldState worldState) : IOverridableCodeInfoRepository
 {
-    private readonly Dictionary<Address, ICodeInfo> _codeOverwrites = new();
+    private readonly Dictionary<Address, (ICodeInfo codeInfo, ValueHash256 codeHash)> _codeOverrides = new();
+    private readonly Dictionary<Address, (ICodeInfo codeInfo, Address initialAddr)> _precompileOverrides = new();
 
-    public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
+    public ICodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress, int? blockAccessIndex = null)
     {
         delegationAddress = null;
-        return _codeOverwrites.TryGetValue(codeSource, out ICodeInfo result)
-            ? result
-            : codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
-    }
+        if (_precompileOverrides.TryGetValue(codeSource, out var precompile)) return precompile.codeInfo;
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
-        codeInfoRepository.InsertCode(code, codeOwner, spec);
-
-    public void SetCodeOverwrite(
-        IReleaseSpec vmSpec,
-        Address key,
-        ICodeInfo value,
-        Address? redirectAddress = null)
-    {
-        if (redirectAddress is not null)
+        if (_codeOverrides.TryGetValue(codeSource, out var result))
         {
-            _codeOverwrites[redirectAddress] = this.GetCachedCodeInfo(key, vmSpec);
+            return !result.codeInfo.IsEmpty &&
+                   ICodeInfoRepository.TryGetDelegatedAddress(result.codeInfo.CodeSpan, out delegationAddress) &&
+                   followDelegation
+                ? GetCachedCodeInfo(delegationAddress, false, vmSpec, out Address? _)
+                : result.codeInfo;
         }
 
-        _codeOverwrites[key] = value;
+        return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, int? blockAccessIndex = null) =>
+        codeInfoRepository.InsertCode(code, codeOwner, spec);
+
+    public void SetCodeOverride(
+        IReleaseSpec vmSpec,
+        Address key,
+        ICodeInfo value)
+    {
+        _codeOverrides[key] = (value, ValueKeccak.Compute(value.CodeSpan));
+    }
+
+    public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
+    {
+        _precompileOverrides[targetAddr] = (this.GetCachedCodeInfo(precompileAddr, vmSpec), precompileAddr);
+        _codeOverrides[precompileAddr] = (new CodeInfo(worldState.GetCode(precompileAddr)), worldState.GetCodeHash(precompileAddr));
+    }
+
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec, int? blockAccessIndex = null) =>
         codeInfoRepository.SetDelegation(codeSource, authority, spec);
 
-    public bool TryGetDelegation(Address address, IReleaseSpec vmSpec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        codeInfoRepository.TryGetDelegation(address, vmSpec, out delegatedAddress);
+    public bool TryGetDelegation(Address address, IReleaseSpec vmSpec,
+        [NotNullWhen(true)] out Address? delegatedAddress, int? blockAccessIndex = null) =>
+        _codeOverrides.TryGetValue(address, out var result)
+            ? ICodeInfoRepository.TryGetDelegatedAddress(result.codeInfo.CodeSpan, out delegatedAddress)
+            : codeInfoRepository.TryGetDelegation(address, vmSpec, out delegatedAddress);
 
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
-        codeInfoRepository.GetExecutableCodeHash(address, spec);
 
-    public void ResetOverrides() => _codeOverwrites.Clear();
+    // public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) => _codeOverrides.TryGetValue(address, out var result)
+    //     ? result.codeHash
+    //     : codeInfoRepository.GetExecutableCodeHash(address, spec);
+
+    public void ResetOverrides()
+    {
+        _precompileOverrides.Clear();
+        _codeOverrides.Clear();
+    }
+
+    public void ResetPrecompileOverrides()
+    {
+        foreach (var (_, precompileInfo) in _precompileOverrides)
+        {
+            _codeOverrides.Remove(precompileInfo.initialAddr);
+        }
+        _precompileOverrides.Clear();
+    }
 }

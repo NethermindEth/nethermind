@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -30,18 +31,16 @@ namespace Nethermind.Synchronization.Test.FastSync
     [TestFixture(4, 0)]
     [TestFixture(4, 100)]
     [Parallelizable(ParallelScope.Fixtures)]
-    public class StateSyncFeedTests : StateSyncFeedTestsBase
+    public class StateSyncFeedTests(int peerCount, int maxNodeLatency)
+        : StateSyncFeedTestsBase(peerCount, maxNodeLatency)
     {
         // Useful for set and forget run. But this test is taking a long time to have it set to other than 1.
         private const int TestRepeatCount = 1;
 
-        public StateSyncFeedTests(int peerCount, int maxNodeLatency) : base(peerCount, maxNodeLatency)
-        {
-        }
-
         [Test]
         [TestCaseSource(nameof(Scenarios))]
         [Repeat(TestRepeatCount)]
+        [Explicit("This test is not stable, especially on slow Github Actions machines")]
         public async Task Big_test((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager)
@@ -59,10 +58,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.CompareTrees("BEFORE FIRST SYNC", true);
 
             await using IContainer container = PrepareDownloader(dbContext, mock =>
-                mock.SetFilter(((MemDb)dbContext.RemoteStateDb).Keys.Take(((MemDb)dbContext.RemoteStateDb).Keys.Count - 4).Select(k =>
-                {
-                    return HashKey(k);
-                }).ToArray()));
+                mock.SetFilter(((MemDb)dbContext.RemoteStateDb).Keys.Take(((MemDb)dbContext.RemoteStateDb).Keys.Count - 4).Select(HashKey).ToArray()));
 
             SafeContext ctx = container.Resolve<SafeContext>();
             await ActivateAndWait(ctx);
@@ -80,7 +76,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.RemoteStateTree.UpdateRootHash();
             dbContext.RemoteStateTree.Commit();
 
-            ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
+            await ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
 
             ctx.Feed.FallAsleep();
             ctx.Pool.WakeUpAll();
@@ -100,7 +96,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.RemoteStateTree.UpdateRootHash();
             dbContext.RemoteStateTree.Commit();
 
-            ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
+            await ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
 
             ctx.Feed.FallAsleep();
             ctx.Pool.WakeUpAll();
@@ -249,7 +245,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.Pool.WakeUpAll();
             ctx.Feed.FallAsleep();
 
-            ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
+            await ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
 
             foreach (SyncPeerMock mock in ctx.SyncPeerMocks)
             {
@@ -257,7 +253,6 @@ namespace Nethermind.Synchronization.Test.FastSync
             }
 
             await ActivateAndWait(ctx, TimeoutLength);
-
 
             dbContext.CompareTrees("END");
         }
@@ -458,6 +453,89 @@ namespace Nethermind.Synchronization.Test.FastSync
             await ActivateAndWait(ctx);
 
             dbContext.CompareTrees("END");
+        }
+
+        [Test]
+        [Repeat(TestRepeatCount)]
+        [CancelAfter(10000)]
+        public async Task Pending_items_cache_mechanism_works_across_root_changes(CancellationToken cancellation)
+        {
+            DbContext dbContext = new(_logger, _logManager)
+            {
+                RemoteCodeDb =
+                {
+                    [Keccak.Compute(TrieScenarios.Code0).Bytes] = TrieScenarios.Code0,
+                    [Keccak.Compute(TrieScenarios.Code1).Bytes] = TrieScenarios.Code1,
+                },
+            };
+
+            // Set some data
+            for (byte i = 0; i < 12; i++)
+            {
+                StorageTree storage = SetStorage(dbContext.RemoteTrieStore, (byte)(i + 1), TestItem.Addresses[i]);
+                dbContext.RemoteStateTree.Set(
+                    TestItem.Addresses[i],
+                    TrieScenarios.AccountJustState0
+                        .WithChangedBalance((UInt256)(i + 10))
+                        .WithChangedNonce((UInt256)1)
+                        .WithChangedCodeHash(Keccak.Compute(TrieScenarios.Code0))
+                        .WithChangedStorageRoot(storage.RootHash));
+            }
+            dbContext.RemoteStateTree.UpdateRootHash();
+            dbContext.RemoteStateTree.Commit();
+
+            await using IContainer container = PrepareDownloader(dbContext);
+            SafeContext ctx = container.Resolve<SafeContext>();
+
+            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes);
+
+            async Task<int> RunOneRequest()
+            {
+                using StateSyncBatch request = (await ctx.Feed.PrepareRequest(cancellation))!;
+                if (request is null) return 0;
+                PeerInfo peer = new PeerInfo(ctx.SyncPeerMocks[0]);
+                await ctx.Downloader.Dispatch(peer, request!, cancellation);
+                int requestCount = request.RequestedNodes?.Count ?? 0;
+                ctx.Feed.HandleResponse(request, peer);
+                return requestCount;
+            }
+
+            int totalRequest = 0;
+            for (int i = 0; i < 5; i++)
+            {
+                int oneCycleRequest = await RunOneRequest();
+                if (oneCycleRequest == 0) break;
+                totalRequest += oneCycleRequest;
+            }
+
+            for (byte i = 0; i < 4; i++)
+            {
+                StorageTree storage = SetStorage(dbContext.RemoteTrieStore, (byte)(i + 2), TestItem.Addresses[i]);
+                dbContext.RemoteStateTree.Set(
+                    TestItem.Addresses[i],
+                    TrieScenarios.AccountJustState0
+                        .WithChangedBalance((UInt256)(i + 100))
+                        .WithChangedNonce((UInt256)2)
+                        .WithChangedCodeHash(Keccak.Compute(TrieScenarios.Code1))
+                        .WithChangedStorageRoot(storage.RootHash));
+            }
+            dbContext.RemoteStateTree.UpdateRootHash();
+            dbContext.RemoteStateTree.Commit();
+
+            await ctx.SuggestBlocksWithUpdatedRootHash(dbContext.RemoteStateTree.RootHash);
+
+            ctx.Feed.FallAsleep();
+            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes);
+
+            int remainingRequest = 0;
+            for (int i = 0; i < 1000; i++)
+            {
+                int requestCount = await RunOneRequest();
+                if (requestCount is 0) break;
+                remainingRequest += requestCount;
+            }
+
+            remainingRequest.Should().Be(100); // Without the cache this would be 111
         }
     }
 }

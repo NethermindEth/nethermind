@@ -64,7 +64,7 @@ public abstract class TransactionProcessorTests
 
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        _transactionProcessor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
@@ -231,18 +231,6 @@ public abstract class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
         TransactionResult result = Execute(tx, block);
         Assert.That(result.TransactionExecuted, Is.False);
-    }
-
-    [TestCase(true, true)]
-    [TestCase(true, false)]
-    [TestCase(false, true)]
-    [TestCase(false, false)]
-    public void Will_not_cause_quick_fail_above_block_gas_limit_during_calls(bool withStateDiff, bool withTrace)
-    {
-        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
-        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
-        TransactionResult result = CallAndRestore(tx, block);
-        Assert.That(result.TransactionExecuted, Is.True);
     }
 
     [Test]

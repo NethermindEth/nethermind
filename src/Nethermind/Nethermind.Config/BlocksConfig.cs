@@ -58,12 +58,17 @@ namespace Nethermind.Config
         public ulong SecondsPerSlot { get; set; } = 12;
 
         public bool PreWarmStateOnBlockProcessing { get; set; } = true;
+
+        public bool CachePrecompilesOnBlockProcessing { get; set; } = true;
+
         public int PreWarmStateConcurrency { get; set; } = 0;
 
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
         public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
 
         public int GenesisTimeoutMs { get; set; } = 40_000;
+
+        public bool ParallelExecution { get; set; } = true; // tmp
 
         public string ExtraData
         {
@@ -85,15 +90,17 @@ namespace Nethermind.Config
                 _extraDataBytes = bytes;
             }
         }
-        public byte[] GetExtraDataBytes()
-        {
-            return _extraDataBytes;
-        }
+
+        public bool BuildBlocksOnMainState { get; set; }
+
+        public byte[] GetExtraDataBytes() => _extraDataBytes;
 
         public string GasToken { get => GasTokenTicker; set => GasTokenTicker = value; }
 
         public static string GasTokenTicker { get; set; } = "ETH";
 
         public long BlockProductionMaxTxKilobytes { get; set; } = DefaultMaxTxKilobytes;
+
+        public int? BlockProductionBlobLimit { get; set; }
     }
 }

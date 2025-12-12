@@ -13,9 +13,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
+public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder headerDecoder = null) : IBlockStore
 {
-    private readonly BlockDecoder _blockDecoder = new();
+    private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
     public const int CacheSize = 128 + 32;
 
     private readonly ClockCache<ValueHash256, Block>
@@ -89,7 +89,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
         MemoryManager<byte>? memoryOwner = blockDb.GetOwnedMemory(keyWithBlockNumber);
         memoryOwner ??= blockDb.GetOwnedMemory(blockHash.Bytes);
 
-        return BlockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner?.Memory ?? Memory<byte>.Empty, RlpBehaviors.None);
+        return _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner?.Memory ?? Memory<byte>.Empty, RlpBehaviors.None);
     }
 
     public void Cache(Block block)

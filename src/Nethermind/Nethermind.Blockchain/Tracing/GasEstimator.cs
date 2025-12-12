@@ -76,6 +76,9 @@ public class GasEstimator(
             return 0;
         }
 
+        // If transaction is simple transfer return intrinsic gas
+        if (tx.To is not null && tx.Data.IsEmpty && TryExecutableTransaction(tx, header, lowerBound, token, gasTracer)) return lowerBound;
+
         // Execute binary search to find the optimal gas estimation.
         return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token, out err);
     }

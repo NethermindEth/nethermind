@@ -18,6 +18,13 @@ namespace Ethereum.Rlp.Test
     [TestFixture]
     public class RlpTests
     {
+        private sealed class TestRlpStream : Nethermind.Serialization.Rlp.RlpStream
+        {
+            public TestRlpStream(int length) : base(length) { }
+            public TestRlpStream(byte[] data) : base(data) { }
+            public void CallWriteZero(int length) => base.WriteZero(length);
+        }
+
         private class RlpTestJson
         {
             public object In { get; set; }
@@ -118,6 +125,45 @@ namespace Ethereum.Rlp.Test
 
             byte[] expectedNonce = new byte[] { 136, 0, 0, 0, 0, 0, 0, 0, 1 };
             Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((UInt256)1UL, HeaderDecoder.NonceLength).Bytes, Is.EqualTo(expectedNonce), "nonce bytes");
+        }
+
+        [Test]
+        public void WriteZero_ClearsAndAdvances_OnPreFilledBuffer()
+        {
+            byte[] buffer = Enumerable.Repeat((byte)0xAB, 32).ToArray();
+            var stream = new TestRlpStream(buffer);
+            stream.Position = 5;
+            stream.CallWriteZero(7);
+
+            Assert.That(stream.Position, Is.EqualTo(12));
+            Assert.That(buffer.AsSpan(5, 7).ToArray(), Is.EqualTo(new byte[7]));
+            Assert.That(buffer.AsSpan(0, 5).ToArray(), Is.EqualTo(Enumerable.Repeat((byte)0xAB, 5).ToArray()));
+            Assert.That(buffer.AsSpan(12).ToArray(), Is.EqualTo(Enumerable.Repeat((byte)0xAB, 20).ToArray()));
+        }
+
+        [Test]
+        public void WriteZero_AdvancesByRequestedLength_OnNewBuffer()
+        {
+            var stream = new TestRlpStream(16);
+            stream.Position = 3;
+            stream.CallWriteZero(4);
+            Assert.That(stream.Position, Is.EqualTo(7));
+            Assert.That(stream.Data.AsSpan(3, 4).ToArray(), Is.EqualTo(new byte[4]));
+        }
+
+        [Test]
+        public void EncodeBloom_Empty_Writes256Zeros()
+        {
+            int total = Nethermind.Serialization.Rlp.Rlp.LengthOf(Bloom.Empty);
+            var stream = new TestRlpStream(total);
+            stream.Encode(Bloom.Empty);
+            var bytes = stream.Data.AsSpan().ToArray();
+
+            Assert.That(bytes.Length, Is.EqualTo(total));
+            Assert.That(bytes[0], Is.EqualTo(185));
+            Assert.That(bytes[1], Is.EqualTo(1));
+            Assert.That(bytes[2], Is.EqualTo(0));
+            Assert.That(bytes.AsSpan(3, 256).ToArray(), Is.EqualTo(new byte[256]));
         }
 
         [Test]

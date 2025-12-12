@@ -12,6 +12,7 @@ using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Facade.Eth;
 
@@ -64,6 +65,12 @@ public class BlockForRpc
             {
                 ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
             }
+
+            // Set TD only if network is not merged
+            if (specProvider.MergeBlockNumber is null)
+            {
+                TotalDifficulty = block.Difficulty.IsZero ? null : block.TotalDifficulty ?? UInt256.Zero;
+            }
         }
 
         Number = block.Number;
@@ -73,7 +80,7 @@ public class BlockForRpc
         Size = _blockDecoder.GetLength(block, RlpBehaviors.None);
         StateRoot = block.StateRoot;
         Timestamp = block.Timestamp;
-        TotalDifficulty = block.Difficulty.IsZero ? null : block.TotalDifficulty ?? UInt256.Zero;
+
         if (!skipTxs)
         {
             Transactions = includeFullTransactionData
@@ -85,6 +92,7 @@ public class BlockForRpc
         Withdrawals = block.Withdrawals;
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
         RequestsHash = block.Header.RequestsHash;
+        BlockAccessList = block.BlockAccessList;
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -120,7 +128,6 @@ public class BlockForRpc
     public Hash256 StateRoot { get; set; }
     [JsonConverter(typeof(NullableRawLongConverter))]
     public long? Step { get; set; }
-
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UInt256? TotalDifficulty { get; set; }
     public bool ShouldSerializeStep() => _isAuRaBlock;
@@ -148,6 +155,9 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? RequestsHash { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BlockAccessList? BlockAccessList { get; set; }
 
     private static object[] GetTransactionHashes(Transaction[] transactions)
     {

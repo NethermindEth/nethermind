@@ -85,11 +85,22 @@ namespace Nethermind.Hive
                 "HIVE_CHAIN_ID", "HIVE_BOOTNODE", "HIVE_TESTNET", "HIVE_NODETYPE", "HIVE_FORK_HOMESTEAD",
                 "HIVE_FORK_DAO_BLOCK", "HIVE_FORK_DAO_VOTE", "HIVE_FORK_TANGERINE", "HIVE_FORK_SPURIOUS",
                 "HIVE_FORK_METROPOLIS", "HIVE_FORK_BYZANTIUM", "HIVE_FORK_CONSTANTINOPLE", "HIVE_FORK_PETERSBURG",
-                "HIVE_MINER", "HIVE_MINER_EXTRA", "HIVE_FORK_BERLIN", "HIVE_FORK_LONDON"
+                "HIVE_MINER", "HIVE_MINER_EXTRA", "HIVE_FORK_BERLIN", "HIVE_FORK_LONDON",
+                "HIVE_MERGE_BLOCK_ID", "HIVE_SHANGHAI_TIMESTAMP", "HIVE_CANCUN_TIMESTAMP",
+                "HIVE_CANCUN_BLOB_TARGET", "HIVE_CANCUN_BLOB_MAX", "HIVE_CANCUN_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_PRAGUE_TIMESTAMP", "HIVE_PRAGUE_BLOB_TARGET", "HIVE_PRAGUE_BLOB_MAX",
+                "HIVE_PRAGUE_BLOB_BASE_FEE_UPDATE_FRACTION", "HIVE_OSAKA_TIMESTAMP", "HIVE_OSAKA_BLOB_TARGET",
+                "HIVE_OSAKA_BLOB_MAX", "HIVE_OSAKA_BLOB_BASE_FEE_UPDATE_FRACTION", "HIVE_AMSTERDAM_TIMESTAMP",
+                "HIVE_AMSTERDAM_BLOB_TARGET", "HIVE_AMSTERDAM_BLOB_MAX", "HIVE_AMSTERDAM_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_BPO1_TIMESTAMP", "HIVE_BPO1_BLOB_TARGET", "HIVE_BPO1_BLOB_MAX", "HIVE_BPO1_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_BPO2_TIMESTAMP", "HIVE_BPO2_BLOB_TARGET", "HIVE_BPO2_BLOB_MAX", "HIVE_BPO2_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_BPO3_TIMESTAMP", "HIVE_BPO3_BLOB_TARGET", "HIVE_BPO3_BLOB_MAX", "HIVE_BPO3_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_BPO4_TIMESTAMP", "HIVE_BPO4_BLOB_TARGET", "HIVE_BPO4_BLOB_MAX", "HIVE_BPO4_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_BPO5_TIMESTAMP", "HIVE_BPO5_BLOB_TARGET", "HIVE_BPO5_BLOB_MAX", "HIVE_BPO5_BLOB_BASE_FEE_UPDATE_FRACTION"
             };
             foreach (string variableName in variableNames)
             {
-                if (_logger.IsInfo) _logger.Info($"{variableName}: {Environment.GetEnvironmentVariable(variableName)}");
+                if (_logger.IsInfo) _logger.Info($"{variableName}: {Environment.GetEnvironmentVariable(variableName) ?? "null"}");
             }
         }
 
@@ -123,10 +134,8 @@ namespace Nethermind.Hive
                         parent = blockTree.Genesis;
                     }
 
-                    if (_logger.IsInfo)
-                        _logger.Info(
-                            $"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
-                    await ProcessBlock(block, parent);
+                    if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
+                    await ProcessBlock(block, parent!);
                     parent = block.Header;
                 }
                 catch (RlpException e)
@@ -170,7 +179,7 @@ namespace Nethermind.Hive
                     parent = blockTree.Genesis;
                 }
 
-                await ProcessBlock(block, parent);
+                await ProcessBlock(block, parent!);
                 parent = block.Header;
             }
         }
@@ -191,7 +200,7 @@ namespace Nethermind.Hive
             }
         }
 
-        private async Task ProcessBlock(Block block, BlockHeader? parent)
+        private async Task ProcessBlock(Block block, BlockHeader parent)
         {
             try
             {

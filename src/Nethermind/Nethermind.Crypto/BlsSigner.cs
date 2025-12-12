@@ -44,7 +44,7 @@ public static class BlsSigner
     public static bool Verify(G1Affine publicKey, Signature signature, ReadOnlySpan<byte> message)
     {
         int len = 2 * GT.Sz;
-        using ArrayPoolList<long> buf = new(len, len);
+        using ArrayPoolListRef<long> buf = new(len, len);
 
         GT p1 = new(buf.AsSpan()[..GT.Sz]);
         p1.MillerLoop(signature.Point, G1Affine.Generator(stackalloc long[G1Affine.Sz]));

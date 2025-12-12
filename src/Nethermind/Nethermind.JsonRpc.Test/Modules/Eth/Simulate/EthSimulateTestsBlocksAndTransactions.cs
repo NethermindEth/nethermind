@@ -141,10 +141,11 @@ public class EthSimulateTestsBlocksAndTransactions
         };
     }
 
-    public static Transaction GetTransferTxData(UInt256 nonce, IEthereumEcdsa ethereumEcdsa, PrivateKey from, Address to, UInt256 amount)
+    public static Transaction GetTransferTxData(UInt256 nonce, IEthereumEcdsa ethereumEcdsa, PrivateKey from, Address to, UInt256 amount, TxType type = TxType.EIP1559)
     {
         Transaction tx = new()
         {
+            Type = type,
             Value = amount,
             Nonce = nonce,
             GasLimit = 50_000,
@@ -171,7 +172,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = await executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
         Assert.That(data.Count, Is.EqualTo(7));
 
@@ -192,7 +193,7 @@ public class EthSimulateTestsBlocksAndTransactions
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
-        Transaction txMainnetAtoB = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+        Transaction txMainnetAtoB = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
 
         SimulatePayload<TransactionForRpc> payload = CreateEthMovedPayload(chain, nonceA);
 
@@ -211,7 +212,7 @@ public class EthSimulateTestsBlocksAndTransactions
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            executor.Execute(payload, BlockParameter.Latest);
+            await executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
 
         Assert.That(data.Count, Is.EqualTo(9));
@@ -233,7 +234,7 @@ public class EthSimulateTestsBlocksAndTransactions
         UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
 
         Transaction txMainnetAtoB =
-            GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+            GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
 
         SimulatePayload<TransactionForRpc> payload = CreateTransactionsForcedFail(chain, nonceA);
 
@@ -253,7 +254,7 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            executor.Execute(payload, BlockParameter.Latest);
+            await executor.Execute(payload, BlockParameter.Latest);
         Assert.That(result.Result!.Error!.Contains("insufficient sender balance"), Is.True);
     }
 
@@ -276,6 +277,7 @@ public class EthSimulateTestsBlocksAndTransactions
                             },
                             "calls": [
                               {
+                                "type": "0x3",
                                 "from": "0xc000000000000000000000000000000000000000",
                                 "to": "0xc100000000000000000000000000000000000000",
                                 "gas": "0x5208",
@@ -301,7 +303,7 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulatePayload<TransactionForRpc> payload = CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
+        var result = await chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         var logs = result.Data.First().Calls.First().Logs.ToArray();
         Assert.That(logs.First().Address == new Address("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"));
     }
