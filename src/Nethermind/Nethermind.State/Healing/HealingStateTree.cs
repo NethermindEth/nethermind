@@ -24,11 +24,11 @@ public sealed class HealingStateTree : StateTree
         _recovery = recovery;
     }
 
-    public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null, bool cachedOnly = false, bool keepChildRef = false)
+    public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
     {
         try
         {
-            return base.Get(rawKey, rootHash, cachedOnly, keepChildRef: keepChildRef);
+            return base.Get(rawKey, rootHash);
         }
         catch (MissingTrieNodeException e)
         {

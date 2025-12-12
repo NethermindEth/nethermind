@@ -35,7 +35,7 @@ public class RocksdbPersistence : IPersistence
     private const int StateNodesTopKeyLength = StateNodesTopPathLength + PathLengthLength;
 
     private const int StorageNodesKeyLength = StorageHashPrefixLength + FullPathLength + PathLengthLength;
-    private const int StorageNodesTopThreshold = 4;
+    private const int StorageNodesTopThreshold = 3;
     private const int StorageNodesTopPathLength = 2;
     private const int StorageNodesTopKeyLength = StorageHashPrefixLength + StorageNodesTopPathLength + PathLengthLength;
 

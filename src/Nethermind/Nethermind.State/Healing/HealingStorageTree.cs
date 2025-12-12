@@ -27,7 +27,7 @@ public sealed class HealingStorageTree : StorageTree
         _recovery = recovery;
     }
 
-    public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null, bool cachedOnly = false, bool keepChildRef = false)
+    public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
     {
         try
         {
@@ -38,7 +38,7 @@ public sealed class HealingStorageTree : StorageTree
             Hash256 fullPath = new Hash256(rawKey);
             if (Recover(e.Path, e.Hash, fullPath))
             {
-                return base.Get(rawKey, rootHash, cachedOnly: cachedOnly, keepChildRef: keepChildRef);
+                return base.Get(rawKey, rootHash);
             }
 
             throw;

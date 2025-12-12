@@ -55,8 +55,10 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
         _tree = new StorageTree(_storageTrieAdapter, storageRoot, logManager);
         _tree.RootHash = storageRoot;
 
+        // Set the rootref manually. Cut the call to find nodes by about 1/4th.
         _warmupStorageTree = new StorageTree(_warmerStorageTrieAdapter, logManager);
-        _warmupStorageTree.RootHash = storageRoot;
+        _warmupStorageTree.SetRootHash(storageRoot, false);
+        _warmupStorageTree.RootRef = _tree.RootRef;
 
         _config = config;
 
@@ -104,6 +106,7 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
 
     public void HintSet(in UInt256 index)
     {
+        // TODO: The effect is... very hard to notice. Evaluate if we should disable this for the 0.2% overhead that it cost.
         WarmUpSlot(index);
     }
 
@@ -123,7 +126,7 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
             // this is just to warm up the nodes.
             ValueHash256 key = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(index, key.BytesAsSpan);
-            _ = _warmupStorageTree.Get(key.BytesAsSpan, keepChildRef: true);
+            _warmupStorageTree.WarmUpPath(key.BytesAsSpan, true);
             return true;
         }
 
@@ -199,4 +202,3 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
         }
     }
 }
-

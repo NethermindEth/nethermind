@@ -216,10 +216,10 @@ namespace Nethermind.State
         private bool PushUpdate(in StorageCell cell, byte[] value)
         {
             StackList<int> stack = SetupRegistry(cell);
-            bool isNewStack = stack.Count == 0;
+            bool isNewUpdate = stack.Count == 0 || (stack.Count == 1 && stack.TryPeek(out var item) && _changes[item].ChangeType == ChangeType.JustCache);
             stack.Push(_changes.Count);
             _changes.Add(new Change(in cell, value, ChangeType.Update));
-            return isNewStack;
+            return isNewUpdate;
         }
 
         /// <summary>

@@ -1588,7 +1588,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         public void FlushToDirtyNodes()
         {
-            if (_logger.IsDebug) _logger.Debug("Flushing commit buffer");
+            if (_logger.IsInfo) _logger.Info("Flushing commit buffer");
             long startTime = Stopwatch.GetTimestamp();
             Parallel.For(0, _trieStore._shardedDirtyNodeCount, (i) =>
             {
@@ -1604,7 +1604,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
 
             TimeSpan elapsed = Stopwatch.GetElapsedTime(startTime);
-            if (_logger.IsDebug) _logger.Debug($"Flushed {count} commit buffers in {elapsed.Milliseconds}ms");
+            if (_logger.IsInfo) _logger.Info($"Flushed {count} commit buffers in {elapsed.Milliseconds}ms");
         }
 
         private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TreePath path, Hash256 keccak) => _dirtyNodesBuffer[_trieStore.GetNodeShardIdx(path, keccak)];

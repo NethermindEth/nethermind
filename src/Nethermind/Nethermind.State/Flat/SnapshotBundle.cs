@@ -74,6 +74,7 @@ public class SnapshotBundle : IDisposable
     private Histogram.Child _findStorageNodeNodeCache;
     private Histogram.Child _findStateNodeTrieWarmer;
     private Histogram.Child _findStorageNode;
+    private Histogram.Child _findStorageNodeInitializer;
     private Histogram.Child _findStorageNodeTrieWarmer;
     private Histogram.Child _setStateNodesTime;
     private Histogram.Child _setStorageNodesTime;
@@ -156,6 +157,7 @@ public class SnapshotBundle : IDisposable
 
         _findStateNodeTrieWarmer = _snapshotBundleTimes.WithLabels("find_state_node_trie_warmer", _isPrewarmer.ToString());
         _findStorageNode = _snapshotBundleTimes.WithLabels("find_storage_node", _isPrewarmer.ToString());
+        _findStorageNodeInitializer = _snapshotBundleTimes.WithLabels("find_storage_node_initializer", _isPrewarmer.ToString());
         _findStorageNodeTrieWarmer = _snapshotBundleTimes.WithLabels("find_storage_node_trie_warmer", _isPrewarmer.ToString());
         _setSlotTime = _snapshotBundleTimes.WithLabels("set_slot", _isPrewarmer.ToString());
         _setSlotToZeroTime = _snapshotBundleTimes.WithLabels("set_slot_zero", _isPrewarmer.ToString());
@@ -388,7 +390,7 @@ public class SnapshotBundle : IDisposable
     }
 
     public TrieNode FindStorageNodeOrUnknown(Hash256AsKey address, in TreePath path, Hash256 hash,
-        int selfDestructStateIdx, bool isTrieWarmer)
+        int selfDestructStateIdx, bool isTrieWarmer, bool storageInitializer = false)
     {
         long sw = Stopwatch.GetTimestamp();
         var res = DoFindStorageNodeOrUnknown(address, path, hash, selfDestructStateIdx, isTrieWarmer);
@@ -399,7 +401,14 @@ public class SnapshotBundle : IDisposable
         }
         else
         {
-            _findStorageNode.Observe(Stopwatch.GetTimestamp() - sw);
+            if (storageInitializer)
+            {
+                _findStorageNodeInitializer.Observe(Stopwatch.GetTimestamp() - sw);
+            }
+            else
+            {
+                _findStorageNode.Observe(Stopwatch.GetTimestamp() - sw);
+            }
         }
 
         return res;

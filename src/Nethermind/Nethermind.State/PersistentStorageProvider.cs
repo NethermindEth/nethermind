@@ -115,11 +115,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         if (base.Set(storageCell, newValue))
         {
-            if (TryGetCachedValue(storageCell, out _))
-            {
-                // GetOrCreateStorage(storageCell.Address).HintSet(storageCell);
-            }
-
+            GetOrCreateStorage(storageCell.Address).HintSet(storageCell);
             return true;
         }
 

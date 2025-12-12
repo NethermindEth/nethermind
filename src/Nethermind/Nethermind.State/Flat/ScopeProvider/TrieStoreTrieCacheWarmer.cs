@@ -41,7 +41,7 @@ public class NoopTrieWarmer : ITrieWarmer
 
 public sealed class TrieWarmer : ITrieWarmer
 {
-    private SpmcRingBuffer<Job> _jobBuffer = new SpmcRingBuffer<Job>(256);
+    private SpmcRingBuffer<Job> _jobBuffer = new SpmcRingBuffer<Job>(512);
 
     // If path is not null, its an address warmup.
     // if storage tree is not null, its a storage warmup.
@@ -65,11 +65,11 @@ public sealed class TrieWarmer : ITrieWarmer
 
     public TrieWarmer(IProcessExitSource processExitSource, ILogManager logManager)
     {
-        int processorCount = Environment.ProcessorCount;
+        int workerCount = Environment.ProcessorCount;
         _warmerJob = Task.Run<Task>(async () =>
         {
-            using ArrayPoolList<Task> tasks = new ArrayPoolList<Task>(processorCount);
-            for (int i = 0; i < processorCount; i++)
+            using ArrayPoolList<Task> tasks = new ArrayPoolList<Task>(workerCount);
+            for (int i = 0; i < workerCount; i++)
             {
                 bool isMain = i == 0;
                 var worker = new WarmerWorkers(this, isMain);
