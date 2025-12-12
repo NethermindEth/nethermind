@@ -84,16 +84,23 @@ internal sealed class CallFilter:  IIncomingTxFilter
         logger.Info("Initializing Call Filter");
         foreach (var stuff in txPoolConfig.BlacklistedFunctionCalls)
         {
-            var data = stuff.Split(';');
-            _blacklistedFunctionCalls[new AddressAsKey(new Address(data[0]))] = new HashSet<string>(data[1..]);
-            logger.Info($"{data[0]} {data[1]} {data[2]}");
+            var data = stuff.Split(';', StringSplitOptions.RemoveEmptyEntries);
+            if (data.Length < 2)
+            {
+                logger.Warn($"Ignoring malformed BlacklistedFunctionCalls entry: \"{stuff}\" (expected address;selector...)");
+                continue;
+            }
+
+            var address = data[0];
+            var selectors = data[1..];
+            _blacklistedFunctionCalls[new AddressAsKey(new Address(address))] = new HashSet<string>(selectors);
+            logger.Info($"Blacklisting {address} selectors: {string.Join(", ", selectors)}");
         }
         _gethStyleTracer = bridge;
         _logger = logger;
     }
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        _logger.Info("We are in call tracer!");
         var options = new GethTraceOptions() { Tracer = NativeCallTracer.CallTracer };
         GethLikeTxTrace? trace = _gethStyleTracer.Trace(BlockParameter.Latest, tx, options, CancellationToken.None);
 
