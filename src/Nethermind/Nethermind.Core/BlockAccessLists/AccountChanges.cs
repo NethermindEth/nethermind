@@ -44,18 +44,20 @@ public class AccountChanges : IEquatable<AccountChanges>
             new(_codeChanges.Values.Skip(1), _codeChanges.Count - 1) :
             new(_codeChanges.Values, _codeChanges.Count);
 
+    // [JsonIgnore]
+    // public ValueHash256 CodeHash { get => _codeHash; set => _codeHash = value; }
+
     [JsonIgnore]
-    public ValueHash256 CodeHash { get => _codeHash; set => _codeHash = value; }
+    public bool ExistedBeforeBlock { get; set; }
 
     private readonly SortedDictionary<byte[], SlotChanges> _storageChanges;
     private readonly SortedSet<StorageRead> _storageReads;
     private readonly SortedList<int, BalanceChange> _balanceChanges;
     private readonly SortedList<int, NonceChange> _nonceChanges;
     private readonly SortedList<int, CodeChange> _codeChanges;
-    private bool _isDestroyed = false;
-    private ValueHash256 _codeHash;
+    // private bool _isDestroyed = false;
+    // private ValueHash256 _codeHash;
     // private bool _existedPreBlock = false;
-    // fetch whole account in prestate load?
 
     public AccountChanges()
     {
@@ -150,13 +152,13 @@ public class AccountChanges : IEquatable<AccountChanges>
         _storageChanges.Clear();
         _nonceChanges.Clear();
         _codeChanges.Clear();
-        _isDestroyed = true;
+        // _isDestroyed = true;
     }
 
-    public void CreateAccount()
-    {
-        _isDestroyed = false;
-    }
+    // public void CreateAccount()
+    // {
+    //     _isDestroyed = false;
+    // }
 
     public void AddBalanceChange(BalanceChange balanceChange)
         => _balanceChanges.Add(balanceChange.BlockAccessIndex, balanceChange);
@@ -287,8 +289,41 @@ public class AccountChanges : IEquatable<AccountChanges>
     public ValueHash256 GetCodeHash(int blockAccessIndex) =>
         ValueKeccak.Compute(GetCode(blockAccessIndex));
 
+    // check if account exists at start of tx at index
     public bool AccountExists(int blockAccessIndex)
-        => !_isDestroyed; // check through BAL
+    {
+        if (ExistedBeforeBlock)
+        {
+            // cannot be destroyed if already exists
+            return true;
+        }
+
+        foreach (KeyValuePair<int, NonceChange> change in _nonceChanges)
+        {
+            if (change.Key < blockAccessIndex)
+            {
+                return true;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        foreach (KeyValuePair<int, BalanceChange> change in _balanceChanges)
+        {
+            if (change.Key < blockAccessIndex)
+            {
+                return true;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return false;
+    }
 
     // assumes prestate not loaded
     public void CheckWasChanged()

@@ -50,10 +50,12 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
             // check if changed before loading prestate
             accountChanges.CheckWasChanged();
 
-            _innerWorldState.TryGetAccount(accountChanges.Address, out AccountStruct account);
+            bool exists = _innerWorldState.TryGetAccount(accountChanges.Address, out AccountStruct account);
+            accountChanges.ExistedBeforeBlock = exists;
+
             accountChanges.AddBalanceChange(new(-1, account.Balance));
             accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
-            accountChanges.CodeHash = account.CodeHash;
+            // accountChanges.CodeHash = account.CodeHash;
 
             foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
             {
