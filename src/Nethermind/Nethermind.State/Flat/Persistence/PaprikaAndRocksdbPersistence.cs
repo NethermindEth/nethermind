@@ -245,10 +245,7 @@ public class PaprikaAndRocksdbPersistence : IPersistence
             NibblePath contract = NibblePath.FromKey(addr.ToPaprikaKeccak());
             Key key = Key.Account(contract);
 
-            if (_paprikaReader.TryGet(key, out _))
-            {
-                _paprikaBatch.Destroy(contract);
-            }
+            _paprikaBatch.SetRaw(key, StorageTree.ZeroBytes);
         }
 
         public void SetAccount(Address addr, Account account)
@@ -366,6 +363,12 @@ public class PaprikaAndRocksdbPersistence : IPersistence
             if (_paprikaSnapshot.TryGet(key, out ReadOnlySpan<byte> accBytes))
             {
                 if (accBytes.Length == 0)
+                {
+                    acc = null;
+                    return true;
+                }
+
+                if (Bytes.AreEqual(accBytes, StorageTree.ZeroBytes))
                 {
                     acc = null;
                     return true;
