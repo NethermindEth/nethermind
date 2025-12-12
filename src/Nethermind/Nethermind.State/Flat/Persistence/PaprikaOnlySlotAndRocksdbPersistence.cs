@@ -63,7 +63,6 @@ public class PaprikaOnlySlotAndRocksdbPersistence : IPersistence
 
     public PaprikaOnlySlotAndRocksdbPersistence(
         IColumnsDb<FlatDbColumns> db,
-        [KeyFilter(DbNames.Preimage)] IDb preimageDb,
         Paprika.IDb paprikaDb,
         Configuration configuration)
     {
@@ -101,7 +100,7 @@ public class PaprikaOnlySlotAndRocksdbPersistence : IPersistence
         {
             ValueHash256 hashBuffer = ValueKeccak.Zero;
             hashBuffer = addr.ToAccountPath;
-            hashBuffer.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
+            hashBuffer.Bytes[..StateKeyPrefixLength].CopyTo(buffer);
             return buffer[..StateKeyPrefixLength];
         }
     }
@@ -248,9 +247,7 @@ public class PaprikaOnlySlotAndRocksdbPersistence : IPersistence
 
         public void RemoveAccount(Address addr)
         {
-            NibblePath contract = NibblePath.FromKey(addr.ToPaprikaKeccak());
-
-            _paprikaBatch.Destroy(contract);
+            state.Remove(_mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr));
         }
 
         public void SetAccount(Address addr, Account account)

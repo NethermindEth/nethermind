@@ -82,8 +82,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             {
                 if (
                     flatDbConfig.Layout == FlatLayout.PreimageFlat
+                    || flatDbConfig.Layout == FlatLayout.FlatSeparateTopStorage
                     || flatDbConfig.Layout == FlatLayout.Flat
-                    || flatDbConfig.Layout == FlatLayout.FlatNoSeparateTopStorage
                     || flatDbConfig.Layout == FlatLayout.FlatInTrie
                 )
                 {
@@ -105,7 +105,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             {
                 UsePreimage = config.Layout == FlatLayout.PreimageFlat,
                 FlatInTrie = config.Layout == FlatLayout.FlatInTrie,
-                SeparateStorageTop = (config.Layout != FlatLayout.FlatInTrie && config.Layout != FlatLayout.FlatNoSeparateTopStorage)
+                SeparateStorageTop = (config.Layout != FlatLayout.FlatInTrie && config.Layout != FlatLayout.Flat)
             })
             .AddSingleton<IStateReader, FlatStateReader>()
 
@@ -170,6 +170,14 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
         {
             _logger = logManager.GetClassLogger<FlatBlockCacheAdjuster>();
             _rocksDbConfigFactory = rocksDbConfigFactory;
+
+            bool isPaprika = flatDbConfig.Layout == FlatLayout.PaprikaFlat || flatDbConfig.Layout == FlatLayout.PaprikaFlatSlotOnly;
+            if (isPaprika && flatDbConfig.BlockCacheSizeBudget < 2.GiB())
+            {
+                _logger.Warn($"Increasing flat block cache budgett from {flatDbConfig.BlockCacheSizeBudget/1.GiB()}GB to 2GB");
+            }
+
+
             _flatDbBlockCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr((uint)flatDbConfig.BlockCacheSizeBudget));
 
             FlatDbColumns[] columns;
@@ -178,6 +186,16 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             {
                 columns =
                 [
+                    FlatDbColumns.StateNodes,
+                    FlatDbColumns.StorageNodes
+                ];
+            }
+            else if (isPaprika)
+            {
+                // Paprika take so much memory that trie really suffers.
+                columns =
+                [
+                    FlatDbColumns.Account,
                     FlatDbColumns.StateNodes,
                     FlatDbColumns.StorageNodes
                 ];

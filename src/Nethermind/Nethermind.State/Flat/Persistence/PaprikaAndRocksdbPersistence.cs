@@ -149,8 +149,9 @@ public class PaprikaAndRocksdbPersistence : IPersistence
         }
 
         var paprikaBatch = _paprikaDb.BeginNextBatch();
+        var paprikaReader = _paprikaDb.BeginReadOnlyBatch();
         var compressor = _accountCompressor.CreateCompressor();
-        return new WriteBatch(this, paprikaBatch, _db.StartWriteBatch(), dbSnap, compressor, to);
+        return new WriteBatch(this, paprikaBatch, paprikaReader, _db.StartWriteBatch(), dbSnap, compressor, to);
     }
 
     private class WriteBatch : IPersistence.IWriteBatch
@@ -170,12 +171,14 @@ public class PaprikaAndRocksdbPersistence : IPersistence
         private readonly IColumnDbSnapshot<FlatDbColumns> _dbSnap;
         private readonly StateId _to;
         private readonly Compressor _accountCompressor;
+        private readonly IReadOnlyBatch _paprikaReader;
 
         public bool ConcurrentStorage => true;
 
         public WriteBatch(
             PaprikaAndRocksdbPersistence mainDb,
             IBatch paprikaBatch,
+            IReadOnlyBatch paprikaReader,
             IColumnsWriteBatch<FlatDbColumns> batch,
             IColumnDbSnapshot<FlatDbColumns> dbSnap,
             Compressor accountCompressor,
@@ -192,6 +195,7 @@ public class PaprikaAndRocksdbPersistence : IPersistence
             storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
 
             _paprikaBatch = paprikaBatch;
+            _paprikaReader = paprikaReader;
             _paprikaBatch.SetMetadata((uint)to.blockNumber, to.stateRoot.ToCommitment().ToPaprikaKeccak());
 
             storageNodesSnap = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.StorageNodes));
@@ -204,6 +208,7 @@ public class PaprikaAndRocksdbPersistence : IPersistence
             _dbSnap.Dispose();
             _paprikaBatch.Commit(CommitOptions.FlushDataAndRoot).AsTask().Wait();
             _paprikaBatch.Dispose();
+            _paprikaReader.Dispose();
             _mainDb._paprikaDb.Flush();
             _accountCompressor.Dispose();
         }
@@ -237,15 +242,13 @@ public class PaprikaAndRocksdbPersistence : IPersistence
 
         public void RemoveAccount(Address addr)
         {
-            /*
-            NibblePath contract = NibblePath.FromKey(addr.ToPaprikaKeccak());
-            _paprikaBatch.Destroy(contract);
-            */
-
-            // Destroy does not work reliably
             NibblePath contract = NibblePath.FromKey(addr.ToPaprikaKeccak());
             Key key = Key.Account(contract);
-            _paprikaBatch.SetRaw(key, []);
+
+            if (_paprikaReader.TryGet(key, out _))
+            {
+                _paprikaBatch.Destroy(contract);
+            }
         }
 
         public void SetAccount(Address addr, Account account)
