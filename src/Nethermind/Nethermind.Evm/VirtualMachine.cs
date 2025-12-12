@@ -97,7 +97,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     private ICodeInfoRepository _codeInfoRepository;
 
-    private Array _opcodeMethods;
+    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref GasState<TGasPolicy>, ref int, EvmExceptionType>[] _opcodeMethods;
     private static long _txCount;
 
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
@@ -878,16 +878,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 spec.EvmInstructionsNoTrace = GenerateOpCodes<TTracingInst>(spec);
             }
             // Ensure the non-traced opcode set is generated and assign it to the _opcodeMethods field.
-            _opcodeMethods = spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec);
+            _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref GasState<TGasPolicy>, ref int, EvmExceptionType>[])(spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec));
         }
         else
         {
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
-            _opcodeMethods = spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec);
+            _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref GasState<TGasPolicy>, ref int, EvmExceptionType>[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
         }
     }
 
-    protected virtual Array GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
+    protected virtual delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref GasState<TGasPolicy>, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         => EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
 
@@ -1226,12 +1226,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Set the program counter from the current VM state; it may not be zero if resuming after a call.
         int programCounter = EvmState.ProgramCounter;
 
-        // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks and casts.
-        // If we don't use a pointer we have to cast for each call (delegate*<...> can't be used as a generic arg)
-        // Or have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
-        var opcodeArray =
-            (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref GasState<TGasPolicy>, ref int, EvmExceptionType>[])
-            _opcodeMethods;
+        // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
+        // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
+        var opcodeArray = _opcodeMethods;
         fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref GasState<TGasPolicy>, ref int, EvmExceptionType>*
                opcodeMethods = &opcodeArray[0])
         {

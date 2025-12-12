@@ -152,8 +152,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         const int WarmUpIterations = 40;
 
-        var opcodes = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref GasState<TGasPolicy>, ref int, EvmExceptionType>[])
-            vm.GenerateOpCodes<TTracingInst>(spec);
+        var opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
         EvmStack stack = new(0, txTracer, evmState.DataStack);
