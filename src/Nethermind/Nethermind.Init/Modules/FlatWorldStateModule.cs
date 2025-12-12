@@ -80,8 +80,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             {
                 if (
                     flatDbConfig.Layout == FlatLayout.PreimageFlat
+                    || flatDbConfig.Layout == FlatLayout.FlatSeparateTopStorage
                     || flatDbConfig.Layout == FlatLayout.Flat
-                    || flatDbConfig.Layout == FlatLayout.FlatNoSeparateTopStorage
                     || flatDbConfig.Layout == FlatLayout.FlatInTrie
                     )
                 {
@@ -103,7 +103,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             {
                 UsePreimage = config.Layout == FlatLayout.PreimageFlat,
                 FlatInTrie = config.Layout == FlatLayout.FlatInTrie,
-                SeparateStorageTop = (config.Layout != FlatLayout.FlatInTrie && config.Layout != FlatLayout.FlatNoSeparateTopStorage)
+                SeparateStorageTop = config.Layout == FlatLayout.FlatSeparateTopStorage,
             })
             .AddSingleton<IStateReader, FlatStateReader>()
 
