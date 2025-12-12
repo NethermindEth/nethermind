@@ -157,7 +157,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
         EvmStack stack = new(0, txTracer, evmState.DataStack);
-        GasState<TGasPolicy> gasState = new (long.MaxValue);
+        GasState<TGasPolicy> gasState = new(long.MaxValue);
         int pc = 0;
 
         for (int repeat = 0; repeat < WarmUpIterations; repeat++)
@@ -181,7 +181,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                 state.Reset(resetBlockChanges: true);
                 stack = new(0, txTracer, evmState.DataStack);
-                gasState = new (long.MaxValue);
+                gasState = new(long.MaxValue);
                 pc = 0;
             }
         }
