@@ -31,18 +31,19 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
-        if (!spec.WithdrawalsEnabled || block.Withdrawals is null) // The second check seems redundant
+        if (!spec.WithdrawalsEnabled)
             return;
 
         if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
 
-        int count = block.Withdrawals.Length;
+        Withdrawal[] withdrawals = block.Withdrawals!;
+        int count = withdrawals.Length;
         using ArrayPoolList<ulong> amounts = new(count);
         using ArrayPoolList<Address> addresses = new(count);
 
         for (int i = 0; i < count; i++)
         {
-            Withdrawal withdrawal = block.Withdrawals[i];
+            Withdrawal withdrawal = withdrawals[i];
 
             addresses.Add(withdrawal.Address);
             amounts.Add(withdrawal.AmountInGwei);
