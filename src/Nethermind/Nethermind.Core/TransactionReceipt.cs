@@ -65,7 +65,6 @@ namespace Nethermind.Core
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
 
-
         public Bloom CalculateBloom()
             => _bloom = Logs?.Length == 0 ? Bloom.Empty : new Bloom(Logs);
     }

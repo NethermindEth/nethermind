@@ -15,12 +15,14 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
+using Nethermind.Evm.Gas;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
+using static Nethermind.Evm.VirtualMachineStatics;
 
 #if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
@@ -29,32 +31,33 @@ using Nethermind.Evm.Tracing.Debugger;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.Evm;
 
-using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
 public sealed class EthereumVirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     ILogManager? logManager
-) : VirtualMachine(blockHashProvider, specProvider, logManager)
+) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager)
 {
 }
 
-public unsafe partial class VirtualMachine(
-    IBlockhashProvider? blockHashProvider,
-    ISpecProvider? specProvider,
-    ILogManager? logManager) : IVirtualMachine
+/// <summary>
+/// Static fields shared across all VirtualMachine generic instantiations.
+/// Moved out of the generic class to avoid duplication per type parameter.
+/// </summary>
+public static class VirtualMachineStatics
 {
     public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
-    private static readonly UInt256 P255Int = (UInt256)BigInteger.Pow(2, 255);
-    internal static readonly byte[] EofHash256 = KeccakHash.ComputeHashBytes(MAGIC);
-    internal static ref readonly UInt256 P255 => ref P255Int;
-    internal static readonly UInt256 BigInt256 = 256;
-    internal static readonly UInt256 BigInt32 = 32;
 
-    internal static readonly byte[] BytesZero = [0];
+    public static readonly UInt256 P255Int = (UInt256)BigInteger.Pow(2, 255);
+    public static readonly byte[] EofHash256 = KeccakHash.ComputeHashBytes(EvmObjectFormat.EofValidator.MAGIC);
+    public static ref readonly UInt256 P255 => ref P255Int;
+    public static readonly UInt256 BigInt256 = 256;
+    public static readonly UInt256 BigInt32 = 32;
 
-    internal static readonly byte[] BytesZero32 =
+    public static readonly byte[] BytesZero = [0];
+
+    public static readonly byte[] BytesZero32 =
     {
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
@@ -62,7 +65,7 @@ public unsafe partial class VirtualMachine(
         0, 0, 0, 0, 0, 0, 0, 0
     };
 
-    internal static readonly byte[] BytesMax32 =
+    public static readonly byte[] BytesMax32 =
     {
         255, 255, 255, 255, 255, 255, 255, 255,
         255, 255, 255, 255, 255, 255, 255, 255,
@@ -70,9 +73,16 @@ public unsafe partial class VirtualMachine(
         255, 255, 255, 255, 255, 255, 255, 255
     };
 
-    internal static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
-    internal static readonly OutOfGasException PrecompileOutOfGasException = new();
+    public static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
+    public static readonly OutOfGasException PrecompileOutOfGasException = new();
+}
 
+public unsafe partial class VirtualMachine<TGasPolicy>(
+    IBlockhashProvider? blockHashProvider,
+    ISpecProvider? specProvider,
+    ILogManager? logManager) : IVirtualMachine
+    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+{
     private readonly ValueHash256 _chainId = ((UInt256)specProvider.ChainId).ToValueHash();
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
@@ -87,7 +97,7 @@ public unsafe partial class VirtualMachine(
 
     private ICodeInfoRepository _codeInfoRepository;
 
-    private OpCode[] _opcodeMethods;
+    private Array _opcodeMethods;
     private static long _txCount;
 
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
@@ -803,7 +813,7 @@ public unsafe partial class VirtualMachine(
             // If running a precompile on a top-level call frame, and it fails, assign a general execution failure.
             if (currentState.IsPrecompile && currentState.IsTopLevel)
             {
-                failure = PrecompileExecutionFailureException;
+                failure = VirtualMachineStatics.PrecompileExecutionFailureException;
                 goto Failure;
             }
 
@@ -868,18 +878,18 @@ public unsafe partial class VirtualMachine(
                 spec.EvmInstructionsNoTrace = GenerateOpCodes<TTracingInst>(spec);
             }
             // Ensure the non-traced opcode set is generated and assign it to the _opcodeMethods field.
-            _opcodeMethods = (OpCode[])(spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = spec.EvmInstructionsNoTrace ??= GenerateOpCodes<TTracingInst>(spec);
         }
         else
         {
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
-            _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
+            _opcodeMethods = spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec);
         }
     }
 
-    protected virtual OpCode[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
+    protected virtual Array GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
-        => EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
+        => EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
 
     /// <summary>
     /// Reports the final outcome of a transaction action to the transaction tracer, taking into account
@@ -964,22 +974,11 @@ public unsafe partial class VirtualMachine(
         }
     }
 
-    protected static bool UpdateGas(long gasCost, ref long gasAvailable)
-    {
-        if (gasAvailable < gasCost)
-        {
-            return false;
-        }
-
-        gasAvailable -= gasCost;
-        return true;
-    }
-
     private CallResult RunPrecompile(EvmState state)
     {
         ReadOnlyMemory<byte> callData = state.Env.InputData;
-        ref readonly UInt256 transferValue = ref state.Env.TransferValue;
-        long gasAvailable = state.GasAvailable;
+        UInt256 transferValue = state.Env.TransferValue;
+        GasState<TGasPolicy> gasState = new(state.GasAvailable);
 
         IPrecompile precompile = state.Env.CodeInfo.Precompile!;
 
@@ -1006,12 +1005,12 @@ public unsafe partial class VirtualMachine(
         }
 
         if ((ulong)baseGasCost + (ulong)dataGasCost > (ulong)long.MaxValue ||
-            !UpdateGas(baseGasCost + dataGasCost, ref gasAvailable))
+            !TGasPolicy.UpdateGas(ref gasState, baseGasCost + dataGasCost))
         {
             return new(output: default, precompileSuccess: false, fromVersion: 0, shouldRevert: true, EvmExceptionType.OutOfGas);
         }
 
-        state.GasAvailable = gasAvailable;
+        state.GasAvailable = TGasPolicy.GetRemainingGas(in gasState);
 
         try
         {
@@ -1126,7 +1125,7 @@ public unsafe partial class VirtualMachine(
         EvmStack stack = new(vmState.DataStackHead, _txTracer, AsAlignedSpan(vmState.DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength));
 
         // Cache the available gas from the state for local use.
-        long gasAvailable = vmState.GasAvailable;
+        GasState<TGasPolicy> gasState = new(vmState.GasAvailable);
 
         // If a previous call result exists, push its bytes onto the stack.
         if (previousCallResult is not null)
@@ -1147,7 +1146,7 @@ public unsafe partial class VirtualMachine(
             UInt256 localPreviousDest = previousCallOutputDestination;
 
             // Attempt to update the memory cost; if insufficient gas is available, jump to the out-of-gas handler.
-            if (!UpdateMemoryCost(vmState, ref gasAvailable, in localPreviousDest, (ulong)previousCallOutput.Length))
+            if (!UpdateMemoryCost(vmState, ref gasState, in localPreviousDest, (ulong)previousCallOutput.Length))
             {
                 goto OutOfGas;
             }
@@ -1163,8 +1162,8 @@ public unsafe partial class VirtualMachine(
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
         return _txTracer.IsCancelable switch
         {
-            false => RunByteCode<TTracingInst, OffFlag>(ref stack, gasAvailable),
-            true => RunByteCode<TTracingInst, OnFlag>(ref stack, gasAvailable),
+            false => RunByteCode<TTracingInst, OffFlag>(ref stack, ref gasState),
+            true => RunByteCode<TTracingInst, OnFlag>(ref stack, ref gasState),
         };
 
     Empty:
@@ -1189,10 +1188,10 @@ public unsafe partial class VirtualMachine(
     /// A struct implementing <see cref="IFlag"/> that indicates at compile time whether cancellation support is enabled.
     /// </typeparam>
     /// <param name="stack">
-    /// A reference to the current EVM stack used for execution.
+    ///     A reference to the current EVM stack used for execution.
     /// </param>
-    /// <param name="gasAvailable">
-    /// The amount of gas available for executing the bytecode.
+    /// <param name="gasState">
+    ///     The gas state to update
     /// </param>
     /// <returns>
     /// A <see cref="CallResult"/> that encapsulates the outcome of the execution, which can be a successful result,
@@ -1205,7 +1204,7 @@ public unsafe partial class VirtualMachine(
     [SkipLocalsInit]
     protected virtual unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
-        long gasAvailable)
+        scoped ref GasState<TGasPolicy> gasState)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
@@ -1230,7 +1229,11 @@ public unsafe partial class VirtualMachine(
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks and casts.
         // If we don't use a pointer we have to cast for each call (delegate*<...> can't be used as a generic arg)
         // Or have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
-        fixed (OpCode* opcodeMethods = &_opcodeMethods[0])
+        var opcodeArray =
+            (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref GasState<TGasPolicy>, ref int, EvmExceptionType>[])
+            _opcodeMethods;
+        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref GasState<TGasPolicy>, ref int, EvmExceptionType>*
+               opcodeMethods = &opcodeArray[0])
         {
             int opCodeCount = 0;
             ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
@@ -1239,7 +1242,8 @@ public unsafe partial class VirtualMachine(
             {
 #if DEBUG
                 // Allow the debugger to inspect and possibly pause execution for debugging purposes.
-                debugger?.TryWait(ref _currentState, ref programCounter, ref gasAvailable, ref stack.Head);
+                long currentGasForDebugger = TGasPolicy.GetRemainingGas(in gasState);
+                debugger?.TryWait(ref _currentState, ref programCounter, ref currentGasForDebugger, ref stack.Head);
 #endif
                 // Fetch the current instruction from the code section.
                 Instruction instruction = Unsafe.Add(ref code, programCounter);
@@ -1250,7 +1254,7 @@ public unsafe partial class VirtualMachine(
 
                 // If tracing is enabled, start an instruction trace.
                 if (TTracingInst.IsActive)
-                    StartInstructionTrace(instruction, gasAvailable, programCounter, in stack);
+                    StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gasState), programCounter, in stack);
 
                 // Advance the program counter to point to the next instruction.
                 programCounter++;
@@ -1259,19 +1263,19 @@ public unsafe partial class VirtualMachine(
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
                 if (Instruction.POP == instruction)
                 {
-                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gasAvailable, ref programCounter);
+                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gasState, ref programCounter);
                 }
                 else
                 {
                     // Retrieve the opcode function pointer corresponding to the current instruction.
-                    OpCode opcodeMethod = opcodeMethods[(int)instruction];
+                    var opcodeMethod = opcodeMethods[(int)instruction];
                     // Invoke the opcode method, which may modify the stack, gas, and program counter.
                     // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
-                    exceptionType = opcodeMethod(this, ref stack, ref gasAvailable, ref programCounter);
+                    exceptionType = opcodeMethod(this, ref stack, ref gasState, ref programCounter);
                 }
 
                 // If gas is exhausted, jump to the out-of-gas handler.
-                if (gasAvailable < 0)
+                if (TGasPolicy.GetRemainingGas(in gasState) < 0)
                 {
                     OpCodeCount += opCodeCount;
                     goto OutOfGas;
@@ -1282,7 +1286,7 @@ public unsafe partial class VirtualMachine(
 
                 // If tracing is enabled, complete the trace for the current instruction.
                 if (TTracingInst.IsActive)
-                    EndInstructionTrace(gasAvailable);
+                    EndInstructionTrace(TGasPolicy.GetRemainingGas(in gasState));
 
                 // If return data has been set, exit the loop to process the returned value.
                 if (ReturnData is not null)
@@ -1296,8 +1300,8 @@ public unsafe partial class VirtualMachine(
         {
             // If tracing is enabled, complete the trace for the current instruction.
             if (TTracingInst.IsActive)
-                EndInstructionTrace(gasAvailable);
-            UpdateCurrentState(programCounter, gasAvailable, stack.Head);
+                EndInstructionTrace(TGasPolicy.GetRemainingGas(in gasState));
+            UpdateCurrentState(programCounter, TGasPolicy.GetRemainingGas(in gasState), stack.Head);
         }
         else
         {
@@ -1318,7 +1322,8 @@ public unsafe partial class VirtualMachine(
     DataReturn:
 #if DEBUG
         // Allow debugging before processing the return data.
-        debugger?.TryWait(ref _currentState, ref programCounter, ref gasAvailable, ref stack.Head);
+        long currentGasForDebugger2 = TGasPolicy.GetRemainingGas(in gasState);
+        debugger?.TryWait(ref _currentState, ref programCounter, ref currentGasForDebugger2, ref stack.Head);
 #endif
         // Process the return data based on its runtime type.
         if (ReturnData is EvmState state)
@@ -1337,12 +1342,12 @@ public unsafe partial class VirtualMachine(
         return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true, exceptionType);
 
     OutOfGas:
-        gasAvailable = 0;
+        TGasPolicy.SetOutOfGas(ref gasState);
         // Set the exception type to OutOfGas if gas has been exhausted.
         exceptionType = EvmExceptionType.OutOfGas;
     ReturnFailure:
         // Return a failure CallResult based on the remaining gas and the exception type.
-        return GetFailureReturn(gasAvailable, exceptionType);
+        return GetFailureReturn(TGasPolicy.GetRemainingGas(in gasState), exceptionType);
 
         // Converts the code section bytes into a read-only span of instructions.
         // Lightest weight conversion as mostly just helpful when debugging to see what the opcodes are.
@@ -1388,11 +1393,11 @@ public unsafe partial class VirtualMachine(
         state.FunctionIndex = SectionIndex;
     }
 
-    private static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
+    private static bool UpdateMemoryCost(EvmState vmState, ref GasState<TGasPolicy> gasState, in UInt256 position, in UInt256 length)
     {
         long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
         if (outOfGas) return false;
-        return memoryCost == 0L || UpdateGas(memoryCost, ref gasAvailable);
+        return memoryCost == 0L || TGasPolicy.UpdateGas(ref gasState, memoryCost);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
