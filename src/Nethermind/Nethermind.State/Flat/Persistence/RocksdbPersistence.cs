@@ -51,7 +51,7 @@ public class RocksdbPersistence : IPersistence
     public record Configuration(
         bool UsePreimage = false,
         bool FlatInTrie = false,
-        bool SeparateStorageTop = true
+        bool SeparateStorageTop = false
     )
     {
     }
