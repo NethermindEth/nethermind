@@ -16,6 +16,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 {
     protected IWorldState _innerWorldState = innerWorldState;
     public bool IsInScope => _innerWorldState.IsInScope;
+    // todo: need to pass through bal index
 
     public Hash256 StateRoot => _innerWorldState.StateRoot;
 

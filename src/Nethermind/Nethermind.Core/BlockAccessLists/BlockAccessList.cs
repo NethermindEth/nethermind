@@ -20,19 +20,16 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public readonly EnumerableWithCount<AccountChanges> AccountChanges => new(_accountChanges.Values, _accountChanges.Count);
     public readonly bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
-    private readonly SortedDictionary<Address, AccountChanges> _accountChanges;
-    private readonly Stack<Change> _changes;
+    private readonly SortedDictionary<Address, AccountChanges> _accountChanges = [];
+    private readonly Stack<Change> _changes = new();
 
     public BlockAccessList()
     {
-        _accountChanges = [];
-        _changes = new();
     }
 
     public BlockAccessList(SortedDictionary<Address, AccountChanges> accountChanges)
     {
         _accountChanges = accountChanges;
-        _changes = new();
     }
 
     public readonly bool Equals(BlockAccessList other) =>

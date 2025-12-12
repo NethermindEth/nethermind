@@ -16,6 +16,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -131,7 +132,7 @@ public partial class BlockProcessor
         // need one receipts / block tracer per thread & combine
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        SetupBlockAccessLists(spec, block.Transactions.Length);
+        SetupBlockAccessLists(spec, block.BlockAccessList, block.Transactions.Length, block.IsGenesis);
         bool shouldComputeStateRoot = ShouldComputeStateRoot(header);
         Task stateApplication = ApplyBlockAccessListToState(spec, shouldComputeStateRoot);
         _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
@@ -337,15 +338,17 @@ public partial class BlockProcessor
         }
     }
 
-    private void SetupBlockAccessLists(IReleaseSpec spec, int txCount)
+    private void SetupBlockAccessLists(IReleaseSpec spec, BlockAccessList? suggestedBal, int txCount, bool isGenesis)
     {
         if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
         {
             _balBuilder.TracingEnabled = true;
+            _balBuilder.IsGenesis = isGenesis;
 
             if (_balBuilder.ParallelExecutionEnabled)
             {
                 _balBuilder.SetupGeneratedAccessLists(txCount);
+                _balBuilder.LoadSuggestedBlockAccessList(suggestedBal.Value);
             }
             else
             {

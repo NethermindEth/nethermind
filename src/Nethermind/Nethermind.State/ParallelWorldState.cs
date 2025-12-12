@@ -20,7 +20,8 @@ namespace Nethermind.State;
 public class ParallelWorldState(IWorldState innerWorldState, bool enableParallelExecution) : WrappedWorldState(innerWorldState), IBlockAccessListBuilder, IPreBlockCaches
 {
     public bool TracingEnabled { get; set; } = false;
-    public bool ParallelExecutionEnabled => TracingEnabled && enableParallelExecution;
+    public bool IsGenesis { get; set; } = false;
+    public bool ParallelExecutionEnabled => TracingEnabled && enableParallelExecution && !IsGenesis;
 
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     private BlockAccessList _suggestedBlockAccessList;

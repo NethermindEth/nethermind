@@ -9,10 +9,12 @@ namespace Nethermind.Evm.State;
 
 public interface IBlockAccessListBuilder
 {
+    public bool IsGenesis { get; set; }
     public bool TracingEnabled { get; set; }
     public bool ParallelExecutionEnabled { get; }
     public BlockAccessList GeneratedBlockAccessList { get; set; }
     public void ApplyStateChanges(IReleaseSpec spec, bool shouldComputeStateRoot);
+    public void LoadSuggestedBlockAccessList(BlockAccessList suggested);
     public void SetupGeneratedAccessLists(int txCount);
     public void GenerateBlockAccessList();
     public void AddAccountRead(Address address, int? blockAccessIndex = null);
