@@ -24,49 +24,54 @@ namespace Nethermind.Blockchain.Filters
 
         public bool Accepts(ref AddressStructRef address)
         {
-            if (Addresses.Count > 0)
+            if (Addresses.Count <= 0)
             {
-                foreach (AddressAsKey a in Addresses)
-                {
-                    if (a == address) return true;
-                }
-
-                return false;
+                return true;
             }
 
-            return true;
+            foreach (AddressAsKey a in Addresses)
+            {
+                if (a == address) return true;
+            }
+
+            return false;
+
         }
 
         public bool Matches(Bloom bloom)
         {
-            bool result = true;
-            Bloom.BloomExtract[]? indexes = AddressesBloomExtracts;
-            for (int i = 0; i < indexes.Length; i++)
+            if (AddressesBloomExtracts.Length == 0)
             {
-                result = bloom.Matches(indexes[i]);
-                if (result)
+                return true;
+            }
+
+            for (var i = 0; i < AddressesBloomExtracts.Length; i++)
+            {
+                if (bloom.Matches(AddressesBloomExtracts[i]))
                 {
-                    break;
+                    return true;
                 }
             }
 
-            return result;
+            return false;
         }
 
         public bool Matches(ref BloomStructRef bloom)
         {
-            bool result = true;
-            Bloom.BloomExtract[]? indexes = AddressesBloomExtracts;
-            for (int i = 0; i < indexes.Length; i++)
+            if (AddressesBloomExtracts.Length == 0)
             {
-                result = bloom.Matches(indexes[i]);
-                if (result)
+                return true;
+            }
+
+            for (var i = 0; i < AddressesBloomExtracts.Length; i++)
+            {
+                if (bloom.Matches(AddressesBloomExtracts[i]))
                 {
-                    break;
+                    return true;
                 }
             }
 
-            return result;
+            return false;
         }
 
         private Bloom.BloomExtract[] CalculateBloomExtracts() => Addresses.Select(static a => Bloom.GetExtract(a)).ToArray();

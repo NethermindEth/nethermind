@@ -36,7 +36,7 @@ namespace Nethermind.Facade
 
         int NewBlockFilter();
         int NewPendingTransactionFilter();
-        int NewFilter(BlockParameter? fromBlock, BlockParameter? toBlock, HashSet<AddressAsKey>? address = null, IEnumerable<Hash256[]?>? topics = null);
+        int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? address = null, IEnumerable<Hash256[]?>? topics = null);
         void UninstallFilter(int filterId);
         bool FilterExists(int filterId);
         Hash256[] GetBlockFilterChanges(int filterId);
