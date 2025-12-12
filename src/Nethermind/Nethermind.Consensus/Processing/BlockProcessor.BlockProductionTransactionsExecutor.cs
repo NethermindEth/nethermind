@@ -87,7 +87,7 @@ namespace Nethermind.Consensus.Processing
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
-            private TxAction ProcessTransaction(
+            protected TxAction ProcessTransaction(
                 Block block,
                 Transaction currentTx,
                 int index,
