@@ -11,6 +11,7 @@ using Nethermind.Synchronization;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -45,6 +46,7 @@ namespace Nethermind.Network
             for (int index = 0; index < transitionActivations.Length; index++)
             {
                 ForkActivation forkActivation = transitionActivations[index];
+
                 BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, forkActivation.Activation);
                 crc = Crc32Algorithm.Append(crc, blockNumberBytes);
                 SetFork(index + 1, crc, new(forkActivation, new ForkId(crc, GetNextActivation(index, transitionActivations))));
