@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using System.Text.Json.Serialization;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -57,7 +58,7 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         Value = transaction.Value;
         Gas = transaction.GasLimit;
         IsSystemTx = transaction.IsOPSystemTransaction;
-        Input = transaction.Data.ToArray();
+        Input = transaction.Data.AsArray();
         Nonce = receipt?.DepositNonce ?? 0;
 
         DepositReceiptVersion = receipt?.DepositReceiptVersion;
