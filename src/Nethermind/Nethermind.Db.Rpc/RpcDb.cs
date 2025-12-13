@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
@@ -98,7 +99,7 @@ namespace Nethermind.Db.Rpc
             byte[] value = null;
             if (response.Result is not null)
             {
-                value = Bytes.FromHexString((string)response.Result);
+                value = Bytes.FromHexString(response.Result.ToString());
                 if (_recordDb is not null)
                 {
                     _recordDb[key] = value;

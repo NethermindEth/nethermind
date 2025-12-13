@@ -59,7 +59,7 @@ namespace Nethermind.Db.FullPruning
             bool firstDb = _index == -1;
 
             // if first DB, then we will put it into main directory and not use indexed subdirectory
-            string dbName = firstDb ? originalSetting.DbName : originalSetting.DbName + _index;
+            string dbName = originalSetting.DbName;
             string dbPath = firstDb ? originalSetting.DbPath : _fileSystem.Path.Combine(originalSetting.DbPath, _index.ToString());
             DbSettings dbSettings = originalSetting.Clone(dbName, dbPath);
             dbSettings.CanDeleteFolder = !firstDb; // we cannot delete main db folder, only indexed subfolders

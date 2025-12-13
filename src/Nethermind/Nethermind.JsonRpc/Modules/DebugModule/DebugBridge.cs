@@ -64,6 +64,8 @@ public class DebugBridge : IDebugBridge
         IDb headersDb = dbProvider.HeadersDb ?? throw new ArgumentNullException(nameof(dbProvider.HeadersDb));
         IDb codeDb = dbProvider.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
         IDb metadataDb = dbProvider.MetadataDb ?? throw new ArgumentNullException(nameof(dbProvider.MetadataDb));
+        IDb blockNumbersDb = dbProvider.BlockNumbersDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockNumbersDb));
+        IDb bloomDb = dbProvider.BloomDb ?? throw new ArgumentNullException(nameof(dbProvider.BloomDb));
 
         _dbMappings = new Dictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase)
         {
@@ -73,6 +75,9 @@ public class DebugBridge : IDebugBridge
             {DbNames.Headers, headersDb},
             {DbNames.Metadata, metadataDb},
             {DbNames.Code, codeDb},
+            {DbNames.Blocks, blocksDb},
+            {DbNames.BlockNumbers, blockNumbersDb},
+            {DbNames.Bloom, bloomDb},
         };
 
         _blockStore = new BlockStore(blocksDb);
