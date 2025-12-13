@@ -28,12 +28,9 @@ public static partial class Merkle
         }
     }
 
-    private static readonly UInt256 RootOfNull;
-
     static Merkle()
     {
         BuildZeroHashes();
-        RootOfNull = new UInt256(new Root(SHA256.HashData([])).AsSpan().ToArray());
     }
 
     public static ulong NextPowerOfTwo(uint v)
