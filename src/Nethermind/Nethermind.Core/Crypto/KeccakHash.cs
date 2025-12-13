@@ -795,56 +795,47 @@ namespace Nethermind.Core.Crypto
         [SkipLocalsInit]
         public static void KeccakF1600Avx512F(Span<ulong> state)
         {
-            {
-                // Redundant statement that removes all the in loop bounds checks
-                _ = state[24];
-            }
+            ref ulong s = ref MemoryMarshal.GetReference(state);
+            ref ulong rc = ref MemoryMarshal.GetArrayDataReference(RoundConstants);
 
-            ref ulong stateRef = ref MemoryMarshal.GetReference(state);
-            // Can straight load and over-read for start elements
-            Vector512<ulong> mask = Vector512.Create(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, 0UL, 0UL, 0UL);
-            Vector512<ulong> c0 = Unsafe.As<ulong, Vector512<ulong>>(ref stateRef);
-            // Clear the over-read values from first vectors
-            c0 = Vector512.BitwiseAnd(mask, c0);
-            Vector512<ulong> c1 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref stateRef, 5));
-            c1 = Vector512.BitwiseAnd(mask, c1);
-            Vector512<ulong> c2 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref stateRef, 10));
-            c2 = Vector512.BitwiseAnd(mask, c2);
-            Vector512<ulong> c3 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref stateRef, 15));
-            c3 = Vector512.BitwiseAnd(mask, c3);
+            // Load 5x5 state as 5 rows (5 lanes used in each zmm)
+            Vector512<ulong> c0 = Unsafe.As<ulong, Vector512<ulong>>(ref s);
+            Vector512<ulong> c1 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 5));
+            Vector512<ulong> c2 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 10));
+            Vector512<ulong> c3 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 15));
 
-            // Can't over-read for the last elements (8 items in vector 5 to be remaining)
-            // so read a Vector256 and ulong then combine
-            Vector256<ulong> c4a = Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref stateRef, 20));
-            Vector256<ulong> c4b = Vector256.Create(Unsafe.Add(ref stateRef, 24), 0UL, 0UL, 0UL);
-            Vector512<ulong> c4 = Vector512<ulong>.Zero;
-            c4 = Avx512F.InsertVector256(c4, c4a, 0);
-            c4 = Avx512F.InsertVector256(c4, c4b, 1);
+            // Safe tail load for row4 (20..24) without over-read
+            Vector256<ulong> c4lo = Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref s, 20));
+            Vector256<ulong> c4hi = Vector256.Create(Unsafe.Add(ref s, 24), 0UL, 0UL, 0UL);
+            Vector512<ulong> c4 = Avx512F.InsertVector256(Vector512<ulong>.Zero, c4lo, 0);
+            c4 = Avx512F.InsertVector256(c4, c4hi, 1);
 
-            // Hoisted, reused permutes - now from readonly fields
-            Vector512<ulong> permute1 = Permute1;
-            Vector512<ulong> permute2 = Permute2;
-            Vector512<ulong> thetaIdxRot4 = ThetaIdxRot4;
+            // Common lane permutes (rotate within the 5 live lanes)
+            Vector512<ulong> rot4 = Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL);
+            Vector512<ulong> rot1 = Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL);
+            Vector512<ulong> rot2 = Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL);
+            Vector512<ulong> rot3 = Vector512.Create(3UL, 4UL, 0UL, 1UL, 2UL, 5UL, 6UL, 7UL);
 
-            // Hoisted rho vectors - from readonly fields to avoid pre-spill before GC-static probe
-            Vector512<ulong> rhoVec0 = RhoVec0;
-            Vector512<ulong> rhoVec1 = RhoVec1;
-            Vector512<ulong> rhoVec2 = RhoVec2;
-            Vector512<ulong> rhoVec3 = RhoVec3;
-            Vector512<ulong> rhoVec4 = RhoVec4;
+            // Rho bit-rotation counts - PER ROW (y fixed, x varies)
+            Vector512<ulong> rho0 = Vector512.Create(0UL, 1, 62, 28, 27, 0, 0, 0);
+            Vector512<ulong> rho1 = Vector512.Create(36UL, 44, 6, 55, 20, 0, 0, 0);
+            Vector512<ulong> rho2 = Vector512.Create(3UL, 10, 43, 25, 39, 0, 0, 0);
+            Vector512<ulong> rho3 = Vector512.Create(41UL, 45, 15, 21, 8, 0, 0, 0);
+            Vector512<ulong> rho4 = Vector512.Create(18UL, 2, 61, 56, 14, 0, 0, 0);
 
-            // Use constant for loop so Jit expects to loop; unroll once
+            Vector512<ulong> zero = Vector512<ulong>.Zero;
+
             for (int round = 0; round < ROUNDS; round += 2)
             {
-                // Iteration 1
                 {
-                    // Theta step
-                    Vector512<ulong> parity = Avx512F.TernaryLogic(Avx512F.TernaryLogic(c0, c1, c2, 0x96), c3, c4, 0x96);
+                    // Theta - 5-way xor via ternary logic
+                    Vector512<ulong> parity = Avx512F.TernaryLogic(
+                        Avx512F.TernaryLogic(c0, c1, c2, 0x96),
+                        c3, c4, 0x96);
 
-                    // Compute Theta (reuse permutes)
-                    Vector512<ulong> bVecRot1Rotated = Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, permute1), 1);
-                    Vector512<ulong> bVecRot4 = Avx512F.PermuteVar8x64(parity, thetaIdxRot4);
-                    Vector512<ulong> theta = Avx512F.Xor(bVecRot4, bVecRot1Rotated);
+                    Vector512<ulong> theta = Avx512F.Xor(
+                        Avx512F.PermuteVar8x64(parity, rot4),
+                        Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, rot1), 1));
 
                     c0 = Avx512F.Xor(c0, theta);
                     c1 = Avx512F.Xor(c1, theta);
@@ -852,110 +843,73 @@ namespace Nethermind.Core.Crypto
                     c3 = Avx512F.Xor(c3, theta);
                     c4 = Avx512F.Xor(c4, theta);
 
-                    // Rho step
-                    c0 = Avx512F.RotateLeftVariable(c0, rhoVec0);
-                    c1 = Avx512F.RotateLeftVariable(c1, rhoVec1);
-                    c2 = Avx512F.RotateLeftVariable(c2, rhoVec2);
-                    c3 = Avx512F.RotateLeftVariable(c3, rhoVec3);
-                    c4 = Avx512F.RotateLeftVariable(c4, rhoVec4);
+                    // Rho - per-lane bit rotates
+                    c0 = Avx512F.RotateLeftVariable(c0, rho0);
+                    c1 = Avx512F.RotateLeftVariable(c1, rho1);
+                    c2 = Avx512F.RotateLeftVariable(c2, rho2);
+                    c3 = Avx512F.RotateLeftVariable(c3, rho3);
+                    c4 = Avx512F.RotateLeftVariable(c4, rho4);
 
-                    // Pi step
-                    Vector512<ulong> indexes = Vector512.Create(0UL, 8 + 1, 2, 3, 4, 5, 6, 7);
-                    Vector512<ulong> c0Pi = Avx512F.PermuteVar8x64x2(c0, indexes, c1);
-                    indexes = indexes.WithElement(1, 1ul);
-                    indexes = indexes.WithElement(2, 8 + 2ul);
-                    c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, indexes, c2);
-                    indexes = indexes.WithElement(2, 2ul);
-                    indexes = indexes.WithElement(3, 8 + 3ul);
-                    c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, indexes, c3);
-                    indexes = indexes.WithElement(3, 3ul);
-                    indexes = indexes.WithElement(4, 8 + 4ul);
-                    c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, indexes, c4);
+                    // Pi - rotate each row by its row-index, then transpose (columns become Pi rows)
+                    Vector512<ulong> r0 = c0;
+                    Vector512<ulong> r1 = Avx512F.PermuteVar8x64(c1, rot1);
+                    Vector512<ulong> r2 = Avx512F.PermuteVar8x64(c2, rot2);
+                    Vector512<ulong> r3 = Avx512F.PermuteVar8x64(c3, rot3);
+                    Vector512<ulong> r4 = Avx512F.PermuteVar8x64(c4, rot4);
 
-                    indexes = indexes.WithElement(0, 3ul);
-                    indexes = indexes.WithElement(1, 8 + 4ul);
-                    indexes = indexes.WithElement(4, 4ul);
-                    Vector512<ulong> c1Pi = Avx512F.PermuteVar8x64x2(c0, indexes, c1);
-                    indexes = indexes.WithElement(0, 0ul);
-                    indexes = indexes.WithElement(1, 1ul);
-                    indexes = indexes.WithElement(2, 8 + 0ul);
-                    c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, indexes, c2);
-                    indexes = indexes.WithElement(2, 2ul);
-                    indexes = indexes.WithElement(3, 8 + 1ul);
-                    c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, indexes, c3);
-                    indexes = indexes.WithElement(3, 3ul);
-                    indexes = indexes.WithElement(4, 8 + 2ul);
-                    c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, indexes, c4);
+                    // Treat missing rows as zero (rows 5..7)
 
-                    indexes = indexes.WithElement(0, 1ul);
-                    indexes = indexes.WithElement(1, 8 + 2ul);
-                    indexes = indexes.WithElement(4, 4ul);
-                    Vector512<ulong> c2Pi = Avx512F.PermuteVar8x64x2(c0, indexes, c1);
-                    indexes = indexes.WithElement(0, 0ul);
-                    indexes = indexes.WithElement(1, 1ul);
-                    indexes = indexes.WithElement(2, 8 + 3ul);
-                    c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, indexes, c2);
-                    indexes = indexes.WithElement(2, 2ul);
-                    indexes = indexes.WithElement(3, 8 + 4ul);
-                    c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, indexes, c3);
-                    indexes = indexes.WithElement(3, 3ul);
-                    indexes = indexes.WithElement(4, 8 + 0ul);
-                    c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, indexes, c4);
+                    // Stage 1 - unpack (interleave within 128-bit lanes)
+                    Vector512<ulong> t0 = Avx512F.UnpackLow(r0, r1);
+                    Vector512<ulong> t1 = Avx512F.UnpackHigh(r0, r1);
+                    Vector512<ulong> t2 = Avx512F.UnpackLow(r2, r3);
+                    Vector512<ulong> t3 = Avx512F.UnpackHigh(r2, r3);
+                    Vector512<ulong> t4 = Avx512F.UnpackLow(r4, zero);
+                    Vector512<ulong> t5 = Avx512F.UnpackHigh(r4, zero);
 
-                    indexes = indexes.WithElement(0, 4ul);
-                    indexes = indexes.WithElement(1, 8 + 0ul);
-                    indexes = indexes.WithElement(4, 4ul);
-                    Vector512<ulong> c3Pi = Avx512F.PermuteVar8x64x2(c0, indexes, c1);
-                    indexes = indexes.WithElement(0, 0ul);
-                    indexes = indexes.WithElement(1, 1ul);
-                    indexes = indexes.WithElement(2, 8 + 1ul);
-                    c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, indexes, c2);
-                    indexes = indexes.WithElement(2, 2ul);
-                    indexes = indexes.WithElement(3, 8 + 2ul);
-                    c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, indexes, c3);
-                    indexes = indexes.WithElement(3, 3ul);
-                    indexes = indexes.WithElement(4, 8 + 3ul);
-                    c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, indexes, c4);
+                    // Stage 2 - group (0,4), (2,6), (1,5), (3,7)
+                    Vector512<ulong> s0 = Avx512F.Shuffle4x128(t0, t2, 0x44);
+                    Vector512<ulong> s1 = Avx512F.Shuffle4x128(t0, t2, 0xEE);
+                    Vector512<ulong> s2 = Avx512F.Shuffle4x128(t1, t3, 0x44);
 
-                    indexes = indexes.WithElement(0, 2ul);
-                    indexes = indexes.WithElement(1, 8 + 3ul);
-                    indexes = indexes.WithElement(4, 4ul);
-                    Vector512<ulong> c4Pi = Avx512F.PermuteVar8x64x2(c0, indexes, c1);
-                    c0 = c0Pi;
-                    c1 = c1Pi;
-                    indexes = indexes.WithElement(0, 0ul);
-                    indexes = indexes.WithElement(1, 1ul);
-                    indexes = indexes.WithElement(2, 8 + 4ul);
-                    c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, indexes, c2);
-                    c2 = c2Pi;
-                    indexes = indexes.WithElement(2, 2ul);
-                    indexes = indexes.WithElement(3, 8 + 0ul);
-                    c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, indexes, c3);
-                    c3 = c3Pi;
-                    indexes = indexes.WithElement(3, 3ul);
-                    indexes = indexes.WithElement(4, 8 + 1ul);
-                    c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, indexes, c4);
-                    c4 = c4Pi;
+                    Vector512<ulong> s4 = Avx512F.Shuffle4x128(t4, zero, 0x44);
+                    Vector512<ulong> s5 = Avx512F.Shuffle4x128(t4, zero, 0xEE);
+                    Vector512<ulong> s6 = Avx512F.Shuffle4x128(t5, zero, 0x44);
 
-                    // Chi step
-                    c0 = Avx512F.TernaryLogic(c0, Avx512F.PermuteVar8x64(c0, permute1), Avx512F.PermuteVar8x64(c0, permute2), 0xD2);
-                    c1 = Avx512F.TernaryLogic(c1, Avx512F.PermuteVar8x64(c1, permute1), Avx512F.PermuteVar8x64(c1, permute2), 0xD2);
-                    c2 = Avx512F.TernaryLogic(c2, Avx512F.PermuteVar8x64(c2, permute1), Avx512F.PermuteVar8x64(c2, permute2), 0xD2);
-                    c3 = Avx512F.TernaryLogic(c3, Avx512F.PermuteVar8x64(c3, permute1), Avx512F.PermuteVar8x64(c3, permute2), 0xD2);
-                    c4 = Avx512F.TernaryLogic(c4, Avx512F.PermuteVar8x64(c4, permute1), Avx512F.PermuteVar8x64(c4, permute2), 0xD2);
+                    // Stage 3 - final columns (only need 0..4)
+                    Vector512<ulong> col0 = Avx512F.Shuffle4x128(s0, s4, 0x88); // index 0
+                    Vector512<ulong> col1 = Avx512F.Shuffle4x128(s2, s6, 0x88); // index 1
+                    Vector512<ulong> col2 = Avx512F.Shuffle4x128(s0, s4, 0xDD); // index 2
+                    Vector512<ulong> col3 = Avx512F.Shuffle4x128(s2, s6, 0xDD); // index 3
+                    Vector512<ulong> col4 = Avx512F.Shuffle4x128(s1, s5, 0x88); // index 4
 
-                    // Iota step - single load + xor
-                    c0 = Vector512.Xor(c0, Vector512.CreateScalarUnsafe(Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(RoundConstants), round)));
+                    // Column-to-row remap: y=0,1,2,3,4 -> col0,col3,col1,col4,col2
+                    Vector512<ulong> b0 = col0;
+                    Vector512<ulong> b1 = col3;
+                    Vector512<ulong> b2 = col1;
+                    Vector512<ulong> b3 = col4;
+                    Vector512<ulong> b4 = col2;
+
+                    // Chi - row-wise ternary logic (same as your current)
+                    c0 = Avx512F.TernaryLogic(b0, Avx512F.PermuteVar8x64(b0, rot1), Avx512F.PermuteVar8x64(b0, rot2), 0xD2);
+                    c1 = Avx512F.TernaryLogic(b1, Avx512F.PermuteVar8x64(b1, rot1), Avx512F.PermuteVar8x64(b1, rot2), 0xD2);
+                    c2 = Avx512F.TernaryLogic(b2, Avx512F.PermuteVar8x64(b2, rot1), Avx512F.PermuteVar8x64(b2, rot2), 0xD2);
+                    c3 = Avx512F.TernaryLogic(b3, Avx512F.PermuteVar8x64(b3, rot1), Avx512F.PermuteVar8x64(b3, rot2), 0xD2);
+                    c4 = Avx512F.TernaryLogic(b4, Avx512F.PermuteVar8x64(b4, rot1), Avx512F.PermuteVar8x64(b4, rot2), 0xD2);
+
+                    // Iota - xor round constant into lane 0 only
+                    c0 = Avx512F.Xor(c0, Vector512.CreateScalar(rc));
+                    rc = ref Unsafe.Add(ref rc, 1);
                 }
-                // Iteration 2
                 {
-                    // Theta step
-                    Vector512<ulong> parity = Avx512F.TernaryLogic(Avx512F.TernaryLogic(c0, c1, c2, 0x96), c3, c4, 0x96);
+                    // Theta - 5-way xor via ternary logic
+                    Vector512<ulong> parity = Avx512F.TernaryLogic(
+                        Avx512F.TernaryLogic(c0, c1, c2, 0x96),
+                        c3, c4, 0x96);
 
-                    // Compute Theta
-                    Vector512<ulong> bVecRot1Rotated = Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, permute1), 1);
-                    Vector512<ulong> bVecRot4 = Avx512F.PermuteVar8x64(parity, thetaIdxRot4);
-                    Vector512<ulong> theta = Avx512F.Xor(bVecRot4, bVecRot1Rotated);
+                    Vector512<ulong> theta = Avx512F.Xor(
+                        Avx512F.PermuteVar8x64(parity, rot4),
+                        Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, rot1), 1));
 
                     c0 = Avx512F.Xor(c0, theta);
                     c1 = Avx512F.Xor(c1, theta);
@@ -963,122 +917,74 @@ namespace Nethermind.Core.Crypto
                     c3 = Avx512F.Xor(c3, theta);
                     c4 = Avx512F.Xor(c4, theta);
 
-                    // Rho step
-                    c0 = Avx512F.RotateLeftVariable(c0, rhoVec0);
-                    c1 = Avx512F.RotateLeftVariable(c1, rhoVec1);
-                    c2 = Avx512F.RotateLeftVariable(c2, rhoVec2);
-                    c3 = Avx512F.RotateLeftVariable(c3, rhoVec3);
-                    c4 = Avx512F.RotateLeftVariable(c4, rhoVec4);
+                    // Rho - per-lane bit rotates
+                    c0 = Avx512F.RotateLeftVariable(c0, rho0);
+                    c1 = Avx512F.RotateLeftVariable(c1, rho1);
+                    c2 = Avx512F.RotateLeftVariable(c2, rho2);
+                    c3 = Avx512F.RotateLeftVariable(c3, rho3);
+                    c4 = Avx512F.RotateLeftVariable(c4, rho4);
 
-                    // Pi step
-                    Vector512<ulong> indexes = Vector512.Create(0UL, 8 + 1, 2, 3, 4, 5, 6, 7);
-                    Vector512<ulong> c0Pi = Avx512F.PermuteVar8x64x2(c0, indexes, c1);
-                    indexes = indexes.WithElement(1, 1ul);
-                    indexes = indexes.WithElement(2, 8 + 2ul);
-                    c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, indexes, c2);
-                    indexes = indexes.WithElement(2, 2ul);
-                    indexes = indexes.WithElement(3, 8 + 3ul);
-                    c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, indexes, c3);
-                    indexes = indexes.WithElement(3, 3ul);
-                    indexes = indexes.WithElement(4, 8 + 4ul);
-                    c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, indexes, c4);
+                    // Pi - rotate each row by its row-index, then transpose (columns become Pi rows)
+                    Vector512<ulong> r0 = c0;
+                    Vector512<ulong> r1 = Avx512F.PermuteVar8x64(c1, rot1);
+                    Vector512<ulong> r2 = Avx512F.PermuteVar8x64(c2, rot2);
+                    Vector512<ulong> r3 = Avx512F.PermuteVar8x64(c3, rot3);
+                    Vector512<ulong> r4 = Avx512F.PermuteVar8x64(c4, rot4);
 
-                    indexes = indexes.WithElement(0, 3ul);
-                    indexes = indexes.WithElement(1, 8 + 4ul);
-                    indexes = indexes.WithElement(4, 4ul);
-                    Vector512<ulong> c1Pi = Avx512F.PermuteVar8x64x2(c0, indexes, c1);
-                    indexes = indexes.WithElement(0, 0ul);
-                    indexes = indexes.WithElement(1, 1ul);
-                    indexes = indexes.WithElement(2, 8 + 0ul);
-                    c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, indexes, c2);
-                    indexes = indexes.WithElement(2, 2ul);
-                    indexes = indexes.WithElement(3, 8 + 1ul);
-                    c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, indexes, c3);
-                    indexes = indexes.WithElement(3, 3ul);
-                    indexes = indexes.WithElement(4, 8 + 2ul);
-                    c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, indexes, c4);
+                    // Treat missing rows as zero (rows 5..7)
 
-                    indexes = indexes.WithElement(0, 1ul);
-                    indexes = indexes.WithElement(1, 8 + 2ul);
-                    indexes = indexes.WithElement(4, 4ul);
-                    Vector512<ulong> c2Pi = Avx512F.PermuteVar8x64x2(c0, indexes, c1);
-                    indexes = indexes.WithElement(0, 0ul);
-                    indexes = indexes.WithElement(1, 1ul);
-                    indexes = indexes.WithElement(2, 8 + 3ul);
-                    c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, indexes, c2);
-                    indexes = indexes.WithElement(2, 2ul);
-                    indexes = indexes.WithElement(3, 8 + 4ul);
-                    c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, indexes, c3);
-                    indexes = indexes.WithElement(3, 3ul);
-                    indexes = indexes.WithElement(4, 8 + 0ul);
-                    c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, indexes, c4);
+                    // Stage 1 - unpack (interleave within 128-bit lanes)
+                    Vector512<ulong> t0 = Avx512F.UnpackLow(r0, r1);
+                    Vector512<ulong> t1 = Avx512F.UnpackHigh(r0, r1);
+                    Vector512<ulong> t2 = Avx512F.UnpackLow(r2, r3);
+                    Vector512<ulong> t3 = Avx512F.UnpackHigh(r2, r3);
+                    Vector512<ulong> t4 = Avx512F.UnpackLow(r4, zero);
+                    Vector512<ulong> t5 = Avx512F.UnpackHigh(r4, zero);
 
-                    indexes = indexes.WithElement(0, 4ul);
-                    indexes = indexes.WithElement(1, 8 + 0ul);
-                    indexes = indexes.WithElement(4, 4ul);
-                    Vector512<ulong> c3Pi = Avx512F.PermuteVar8x64x2(c0, indexes, c1);
-                    indexes = indexes.WithElement(0, 0ul);
-                    indexes = indexes.WithElement(1, 1ul);
-                    indexes = indexes.WithElement(2, 8 + 1ul);
-                    c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, indexes, c2);
-                    indexes = indexes.WithElement(2, 2ul);
-                    indexes = indexes.WithElement(3, 8 + 2ul);
-                    c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, indexes, c3);
-                    indexes = indexes.WithElement(3, 3ul);
-                    indexes = indexes.WithElement(4, 8 + 3ul);
-                    c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, indexes, c4);
+                    // Stage 2 - group (0,4), (2,6), (1,5), (3,7)
+                    Vector512<ulong> s0 = Avx512F.Shuffle4x128(t0, t2, 0x44);
+                    Vector512<ulong> s1 = Avx512F.Shuffle4x128(t0, t2, 0xEE);
+                    Vector512<ulong> s2 = Avx512F.Shuffle4x128(t1, t3, 0x44);
 
-                    indexes = indexes.WithElement(0, 2ul);
-                    indexes = indexes.WithElement(1, 8 + 3ul);
-                    indexes = indexes.WithElement(4, 4ul);
-                    Vector512<ulong> c4Pi = Avx512F.PermuteVar8x64x2(c0, indexes, c1);
-                    c0 = c0Pi;
-                    c1 = c1Pi;
-                    indexes = indexes.WithElement(0, 0ul);
-                    indexes = indexes.WithElement(1, 1ul);
-                    indexes = indexes.WithElement(2, 8 + 4ul);
-                    c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, indexes, c2);
-                    c2 = c2Pi;
-                    indexes = indexes.WithElement(2, 2ul);
-                    indexes = indexes.WithElement(3, 8 + 0ul);
-                    c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, indexes, c3);
-                    c3 = c3Pi;
-                    indexes = indexes.WithElement(3, 3ul);
-                    indexes = indexes.WithElement(4, 8 + 1ul);
-                    c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, indexes, c4);
-                    c4 = c4Pi;
+                    Vector512<ulong> s4 = Avx512F.Shuffle4x128(t4, zero, 0x44);
+                    Vector512<ulong> s5 = Avx512F.Shuffle4x128(t4, zero, 0xEE);
+                    Vector512<ulong> s6 = Avx512F.Shuffle4x128(t5, zero, 0x44);
 
-                    // Chi step
-                    c0 = Avx512F.TernaryLogic(c0, Avx512F.PermuteVar8x64(c0, permute1), Avx512F.PermuteVar8x64(c0, permute2), 0xD2);
-                    c1 = Avx512F.TernaryLogic(c1, Avx512F.PermuteVar8x64(c1, permute1), Avx512F.PermuteVar8x64(c1, permute2), 0xD2);
-                    c2 = Avx512F.TernaryLogic(c2, Avx512F.PermuteVar8x64(c2, permute1), Avx512F.PermuteVar8x64(c2, permute2), 0xD2);
-                    c3 = Avx512F.TernaryLogic(c3, Avx512F.PermuteVar8x64(c3, permute1), Avx512F.PermuteVar8x64(c3, permute2), 0xD2);
-                    c4 = Avx512F.TernaryLogic(c4, Avx512F.PermuteVar8x64(c4, permute1), Avx512F.PermuteVar8x64(c4, permute2), 0xD2);
+                    // Stage 3 - final columns (only need 0..4)
+                    Vector512<ulong> col0 = Avx512F.Shuffle4x128(s0, s4, 0x88); // index 0
+                    Vector512<ulong> col1 = Avx512F.Shuffle4x128(s2, s6, 0x88); // index 1
+                    Vector512<ulong> col2 = Avx512F.Shuffle4x128(s0, s4, 0xDD); // index 2
+                    Vector512<ulong> col3 = Avx512F.Shuffle4x128(s2, s6, 0xDD); // index 3
+                    Vector512<ulong> col4 = Avx512F.Shuffle4x128(s1, s5, 0x88); // index 4
 
-                    // Iota step - single load + xor
-                    c0 = Vector512.Xor(c0, Vector512.CreateScalarUnsafe(Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(RoundConstants), round + 1)));
+                    // Column-to-row remap: y=0,1,2,3,4 -> col0,col3,col1,col4,col2
+                    Vector512<ulong> b0 = col0;
+                    Vector512<ulong> b1 = col3;
+                    Vector512<ulong> b2 = col1;
+                    Vector512<ulong> b3 = col4;
+                    Vector512<ulong> b4 = col2;
+
+                    // Chi - row-wise ternary logic (same as your current)
+                    c0 = Avx512F.TernaryLogic(b0, Avx512F.PermuteVar8x64(b0, rot1), Avx512F.PermuteVar8x64(b0, rot2), 0xD2);
+                    c1 = Avx512F.TernaryLogic(b1, Avx512F.PermuteVar8x64(b1, rot1), Avx512F.PermuteVar8x64(b1, rot2), 0xD2);
+                    c2 = Avx512F.TernaryLogic(b2, Avx512F.PermuteVar8x64(b2, rot1), Avx512F.PermuteVar8x64(b2, rot2), 0xD2);
+                    c3 = Avx512F.TernaryLogic(b3, Avx512F.PermuteVar8x64(b3, rot1), Avx512F.PermuteVar8x64(b3, rot2), 0xD2);
+                    c4 = Avx512F.TernaryLogic(b4, Avx512F.PermuteVar8x64(b4, rot1), Avx512F.PermuteVar8x64(b4, rot2), 0xD2);
+
+                    // Iota - xor round constant into lane 0 only
+                    c0 = Avx512F.Xor(c0, Vector512.CreateScalar(rc));
+                    rc = ref Unsafe.Add(ref rc, 1);
                 }
             }
 
-            // Can over-write for first elements
-            Unsafe.As<ulong, Vector512<ulong>>(ref stateRef) = c0;
-            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref stateRef, 5)) = c1;
-            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref stateRef, 10)) = c2;
-            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref stateRef, 15)) = c3;
+            // Store - same strategy as your original
+            Unsafe.As<ulong, Vector512<ulong>>(ref s) = c0;
+            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 5)) = c1;
+            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 10)) = c2;
+            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 15)) = c3;
 
-            // Tail - 256-bit for 20..23, scalar for 24 (avoid overrun)
-            Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref stateRef, 20)) = c4.GetLower();
-            Unsafe.Add(ref stateRef, 24) = c4.GetElement(4);
+            Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref s, 20)) = c4.GetLower();
+            Unsafe.Add(ref s, 24) = c4.GetElement(4);
         }
-
-        // Small constants as static readonly so the JIT won't pre-spill them
-        private static readonly Vector512<ulong> Permute1 = Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL);
-        private static readonly Vector512<ulong> Permute2 = Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL);
-        private static readonly Vector512<ulong> ThetaIdxRot4 = Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL);
-        private static readonly Vector512<ulong> RhoVec0 = Vector512.Create(0UL, 1UL, 62UL, 28UL, 27UL, 0UL, 0UL, 0UL);
-        private static readonly Vector512<ulong> RhoVec1 = Vector512.Create(36UL, 44UL, 6UL, 55UL, 20UL, 0UL, 0UL, 0UL);
-        private static readonly Vector512<ulong> RhoVec2 = Vector512.Create(3UL, 10UL, 43UL, 25UL, 39UL, 0UL, 0UL, 0UL);
-        private static readonly Vector512<ulong> RhoVec3 = Vector512.Create(41UL, 45UL, 15UL, 21UL, 8UL, 0UL, 0UL, 0UL);
-        private static readonly Vector512<ulong> RhoVec4 = Vector512.Create(18UL, 2UL, 61UL, 56UL, 14UL, 0UL, 0UL, 0UL);
     }
 }
