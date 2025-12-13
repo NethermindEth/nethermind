@@ -53,7 +53,7 @@ internal static partial class EvmInstructions
         stack.PushBytes<TTracingInst>(value);
 
         // If storage tracing is enabled, record the operation (ensuring gas remains non-negative).
-        if (vm.TxTracer.IsTracingStorage)
+        if (vm.TxTracer.IsTracingOpLevelStorage)
         {
             if (gasAvailable < 0) goto OutOfGas;
             vm.TxTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
@@ -106,7 +106,7 @@ internal static partial class EvmInstructions
         vm.WorldState.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
 
         // If storage tracing is enabled, retrieve the current stored value and log the operation.
-        if (vm.TxTracer.IsTracingStorage)
+        if (vm.TxTracer.IsTracingOpLevelStorage)
         {
             if (gasAvailable < 0) goto OutOfGas;
             ReadOnlySpan<byte> currentValue = vm.WorldState.GetTransientState(in storageCell);
@@ -400,7 +400,7 @@ internal static partial class EvmInstructions
             TraceSstore(vm, newIsZero, in storageCell, bytes);
         }
 
-        if (vm.TxTracer.IsTracingStorage)
+        if (vm.TxTracer.IsTracingOpLevelStorage)
         {
             vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
@@ -560,7 +560,7 @@ internal static partial class EvmInstructions
             TraceSstore(vm, newIsZero, in storageCell, bytes);
         }
 
-        if (vm.TxTracer.IsTracingStorage)
+        if (vm.TxTracer.IsTracingOpLevelStorage)
         {
             vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
@@ -626,7 +626,7 @@ internal static partial class EvmInstructions
         stack.PushBytes<TTracingInst>(value);
 
         // Log the storage load operation if tracing is enabled.
-        if (vm.TxTracer.IsTracingStorage)
+        if (vm.TxTracer.IsTracingOpLevelStorage)
         {
             vm.TxTracer.LoadOperationStorage(executingAccount, result, value);
         }
