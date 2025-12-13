@@ -45,4 +45,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: asc
-          path: "*.zip.asc"
+          path: |
+            "*.zip.asc"
+            "*.zip"
