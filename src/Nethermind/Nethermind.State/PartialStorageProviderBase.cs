@@ -144,16 +144,8 @@ namespace Nethermind.State
         /// <summary>
         /// Commit persistent storage
         /// </summary>
-        public void Commit(bool commitRoots = true)
-        {
-            Commit(NullStateTracer.Instance, commitRoots);
-        }
-
-        /// <summary>
-        /// Commit persistent storage
-        /// </summary>
         /// <param name="stateTracer">State tracer</param>
-        public void Commit(IStorageTracer tracer, bool commitRoots = true)
+        public void Commit(IStorageTracer tracer)
         {
             if (_changes.Count == 0)
             {
@@ -163,16 +155,6 @@ namespace Nethermind.State
             {
                 CommitCore(tracer);
             }
-
-            if (commitRoots)
-            {
-                CommitStorageRoots();
-            }
-        }
-
-        protected virtual void CommitStorageRoots()
-        {
-            // Commit storage roots
         }
 
         /// <summary>
@@ -279,6 +261,31 @@ namespace Nethermind.State
 
             public bool IsNull => ChangeType == ChangeType.Null;
         }
+
+        /*
+        protected struct ChangeTrace
+        {
+            public static readonly ChangeTrace _zeroBytes = new(StorageTree.ZeroBytes, StorageTree.ZeroBytes);
+            public static ref readonly ChangeTrace ZeroBytes => ref _zeroBytes;
+
+            public ChangeTrace(byte[]? before, byte[]? after)
+            {
+                After = after ?? StorageTree.ZeroBytes;
+                Before = before ?? StorageTree.ZeroBytes;
+            }
+
+            public ChangeTrace(byte[]? after)
+            {
+                After = after ?? StorageTree.ZeroBytes;
+                Before = StorageTree.ZeroBytes;
+                IsInitialValue = true;
+            }
+
+            public byte[] Before;
+            public byte[] After;
+            public bool IsInitialValue;
+        }
+        */
 
         /// <summary>
         /// Type of change to track
