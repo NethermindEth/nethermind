@@ -149,6 +149,8 @@ jobs:
           PACKAGE_PREFIX: ${{ needs.build.outputs.package-prefix }}
           PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
-          cp $GITHUB_WORKSPACE/$PACKAGE_DIR/**/*.zip* $GITHUB_WORKSPACE/$PACKAGE_DIR
+          cp $GITHUB_WORKSPACE/$PACKAGE_DIR/**/*.zip \
+            $GITHUB_WORKSPACE/$PACKAGE_DIR/**/*.zip.asc \
+            $GITHUB_WORKSPACE/$PACKAGE_DIR
           rm -rf $GITHUB_WORKSPACE/$PACKAGE_DIR/*/
           $SCRIPTS_PATH/publish-github.sh
