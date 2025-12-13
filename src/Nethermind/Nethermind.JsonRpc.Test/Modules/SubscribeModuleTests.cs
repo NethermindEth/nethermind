@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IBlockTree _blockTree = null!;
         private ITxPool _txPool = null!;
         private IReceiptStorage _receiptStorage = null!;
-        private IFilterStore _filterStore = null!;
+        private FilterStore _filterStore = null!;
         private ISubscriptionManager _subscriptionManager = null!;
         private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
         private IJsonSerializer _jsonSerializer = null!;
@@ -128,7 +128,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }));
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
-            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), blockReplacementEventArgs);
+            _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
 
             subscriptionId = newHeadSubscription.Id;
@@ -148,7 +148,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }));
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
-            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), blockEventArgs);
+            _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockEventArgs);
             semaphoreSlim.Wait(TimeSpan.FromMilliseconds(500));
 
             subscriptionId = logsSubscription.Id;
@@ -603,8 +603,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
-                Address = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099",
-                Topics = new[] { TestItem.KeccakA }
+                Address = [new Address("0xb7705ae4c6f81b66cdb323c65f4e8133690fc099")],
+                Topics = [[TestItem.KeccakA]]
             };
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -651,8 +651,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
-                Address = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099",
-                Topics = new[] { TestItem.KeccakA }
+                Address = [new Address("0xb7705ae4c6f81b66cdb323c65f4e8133690fc099")],
+                Topics = [[TestItem.KeccakA]]
             };
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -699,8 +699,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
-                Address = new[] { "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099", "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358" },
-                Topics = new[] { TestItem.KeccakA, TestItem.KeccakD }
+                Address =
+                [
+                    new Address("0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"),
+                    new Address("0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358")
+                ],
+                Topics = [[TestItem.KeccakA, TestItem.KeccakD]]
             };
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA, TestItem.KeccakD).WithData(TestItem.RandomDataA).TestObject;
@@ -769,7 +773,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             BlockReplacementEventArgs blockEventArgs = new(block);
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
-            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), blockEventArgs);
+            _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
             jsonRpcResults.Count.Should().Be(1);
@@ -922,12 +926,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             Task subA = Task.Run(() =>
             {
                 ITxPool txPool = Substitute.For<ITxPool>();
-                using NewPendingTransactionsSubscription subscription = new(
-                    // ReSharper disable once AccessToDisposedClosure
-                    jsonRpcDuplexClient: client,
-                    txPool: txPool,
-                    specProvider: _specProvider,
-                    logManager: LimboLogs.Instance);
+                using NewPendingTransactionsSubscription subscription =
+                    new(
+                        // ReSharper disable once AccessToDisposedClosure
+                        jsonRpcDuplexClient: client,
+                        txPool: txPool,
+                        specProvider: _specProvider,
+                        logManager: LimboLogs.Instance
+                    );
 
                 for (int i = 0; i < messages; i++)
                 {
@@ -938,18 +944,20 @@ namespace Nethermind.JsonRpc.Test.Modules
             Task subB = Task.Run(() =>
             {
                 IBlockTree blockTree = Substitute.For<IBlockTree>();
-                using NewHeadSubscription subscription = new(
-                    // ReSharper disable once AccessToDisposedClosure
-                    jsonRpcDuplexClient: client,
-                    blockTree: blockTree,
-                    specProvider: new TestSpecProvider(new ReleaseSpec()),
-                    logManager: LimboLogs.Instance);
+                using NewHeadSubscription subscription =
+                    new(
+                        // ReSharper disable once AccessToDisposedClosure
+                        jsonRpcDuplexClient: client,
+                        blockTree: blockTree,
+                        specProvider: new TestSpecProvider(new ReleaseSpec()),
+                        logManager: LimboLogs.Instance
+                    );
 
                 for (int i = 0; i < messages; i++)
                 {
                     BlockReplacementEventArgs eventArgs = new(Build.A.Block.TestObject);
                     blockTree.BlockAddedToMain += Raise.EventWith(eventArgs);
-                    _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), eventArgs);
+                    _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), eventArgs);
                 }
             });
 
@@ -1204,7 +1212,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }));
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
-            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), blockEventArgs);
+            _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
 
             jsonRpcResults.Count.Should().Be(1);

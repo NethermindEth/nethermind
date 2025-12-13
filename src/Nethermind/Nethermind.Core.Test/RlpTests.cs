@@ -272,5 +272,41 @@ namespace Nethermind.Core.Test
                 isACopy.Should().NotBe(sliceValue);
             }
         }
+
+        [TestCase(50)]
+        [TestCase(100)]
+        public void Over_limit_throws(int limit)
+        {
+            RlpStream stream = Prepare100BytesStream();
+            RlpLimit rlpLimit = new(limit);
+            if (limit < 100)
+            {
+                Assert.Throws<RlpLimitException>(() => stream.DecodeByteArray(rlpLimit));
+            }
+            else
+            {
+                Assert.DoesNotThrow(() => stream.DecodeByteArray(rlpLimit));
+            }
+        }
+
+        [Test]
+        public void Not_enough_bytes_throws()
+        {
+            RlpStream stream = Prepare100BytesStream();
+            stream.Data[1] = 101; // tamper with length, it is more than available bytes
+            Assert.Throws<RlpLimitException>(() => stream.DecodeByteArray());
+        }
+
+        private static RlpStream Prepare100BytesStream()
+        {
+            byte[] randomBytes = new byte[100];
+            Random.Shared.NextBytes(randomBytes);
+
+            int requiredLength = Rlp.LengthOf(randomBytes);
+            RlpStream stream = new(requiredLength);
+            stream.Encode(randomBytes);
+            stream.Reset();
+            return stream;
+        }
     }
 }

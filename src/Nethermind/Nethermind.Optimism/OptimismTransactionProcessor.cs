@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -45,7 +45,7 @@ public class OptimismTransactionProcessor(
 
         TransactionResult result = base.Execute(tx, tracer, opts);
 
-        if (!result && tx.IsDeposit() && result.Error != "block gas limit exceeded")
+        if (!result && tx.IsDeposit() && result.Error != TransactionResult.ErrorType.BlockGasLimitExceeded)
         {
             // deposit tx should be included
             WorldState.Restore(snapshot);
@@ -58,7 +58,7 @@ public class OptimismTransactionProcessor(
                 WorldState.IncrementNonce(tx.SenderAddress!);
             }
             header.GasUsed += tx.GasLimit;
-            tracer.MarkAsFailed(tx.To!, tx.GasLimit, [], $"failed deposit: {result.Error}");
+            tracer.MarkAsFailed(tx.To!, tx.GasLimit, [], $"failed deposit: {result.ErrorDescription}");
             result = TransactionResult.Ok;
         }
 
@@ -72,7 +72,7 @@ public class OptimismTransactionProcessor(
         senderReservedGasPayment = UInt256.Zero;
         blobBaseFee = UInt256.Zero;
 
-        bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
+        bool validate = ShouldValidateGas(tx, opts);
 
         UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
 
@@ -81,10 +81,10 @@ public class OptimismTransactionProcessor(
             return TransactionResult.InsufficientSenderBalance;
         }
 
-        if (validate && !tx.IsDeposit())
+        if (!tx.IsDeposit())
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-            if (!tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
+            if (validate && !tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
                 return TransactionResult.MinerPremiumNegative;
@@ -122,7 +122,7 @@ public class OptimismTransactionProcessor(
             senderReservedGasPayment += l1Cost; // no overflow here, otherwise previous check would fail
         }
 
-        if (validate)
+        if (!senderReservedGasPayment.IsZero)
             WorldState.SubtractFromBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
 
         return TransactionResult.Ok;

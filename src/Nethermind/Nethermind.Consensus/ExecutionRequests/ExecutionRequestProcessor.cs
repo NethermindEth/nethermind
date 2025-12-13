@@ -61,27 +61,36 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         if (!spec.RequestsEnabled || block.IsGenesis)
             return;
 
-        using ArrayPoolList<byte[]> requests = new(3);
-
-        ProcessDeposits(block, receipts, spec, requests);
-
-        if (spec.WithdrawalRequestsEnabled)
+        ArrayPoolListRef<byte[]> requests = new(3);
+        try
         {
-            ReadRequests(block, state, spec.Eip7002ContractAddress, requests, _withdrawalTransaction, ExecutionRequestType.WithdrawalRequest,
-                BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
-        }
+            ProcessDeposits(block, receipts, spec, ref requests);
 
-        if (spec.ConsolidationRequestsEnabled)
+            if (spec.WithdrawalRequestsEnabled)
+            {
+                ReadRequests(block, state, spec.Eip7002ContractAddress, ref requests, _withdrawalTransaction,
+                    ExecutionRequestType.WithdrawalRequest,
+                    BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
+            }
+
+            if (spec.ConsolidationRequestsEnabled)
+            {
+                ReadRequests(block, state, spec.Eip7251ContractAddress, ref requests, _consolidationTransaction,
+                    ExecutionRequestType.ConsolidationRequest,
+                    BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
+            }
+
+            block.ExecutionRequests = [.. requests];
+            block.Header.RequestsHash =
+                ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
+        }
+        finally
         {
-            ReadRequests(block, state, spec.Eip7251ContractAddress, requests, _consolidationTransaction, ExecutionRequestType.ConsolidationRequest,
-                BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
+            requests.Dispose();
         }
-
-        block.ExecutionRequests = [.. requests];
-        block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
     }
 
-    private void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec, ArrayPoolList<byte[]> requests)
+    private void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec, ref ArrayPoolListRef<byte[]> requests)
     {
         if (!spec.DepositsEnabled)
             return;
@@ -115,15 +124,15 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
     private void DecodeDepositRequest(Block block, LogEntry log, Span<byte> buffer)
     {
-        object[] result = null;
+        object[] result;
         try
         {
             result = _abiEncoder.Decode(AbiEncodingStyle.None, DepositEventAbi, log.Data);
             ValidateLayout(result, block);
         }
-        catch (Exception e) when (e is AbiException or OverflowException)
+        catch (AbiException e)
         {
-            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout(e.Message));
+            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout(e.Message), e);
         }
 
         int offset = 0;
@@ -160,7 +169,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         }
     }
 
-    private void ReadRequests(Block block, IWorldState state, Address contractAddress, ArrayPoolList<byte[]> requests,
+    private void ReadRequests(Block block, IWorldState state, Address contractAddress, ref ArrayPoolListRef<byte[]> requests,
         Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError)
     {
         if (!state.HasCode(contractAddress))

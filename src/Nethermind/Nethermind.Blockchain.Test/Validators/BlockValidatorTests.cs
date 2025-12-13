@@ -14,6 +14,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
+using FluentAssertions;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
@@ -61,6 +62,23 @@ public class BlockValidatorTests
 
         bool result = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithParent(parent).WithUncles(Build.A.BlockHeader.TestObject).TestObject, parent, out _);
         Assert.That(result, Is.False);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_do_not_check_uncle_when_orphaned()
+    {
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ISpecProvider specProvider = new TestSpecProvider(Frontier.Instance);
+
+        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Invalid, specProvider, LimboLogs.Instance);
+
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block
+            .WithParent(parent)
+            .WithUncles(Build.A.BlockHeader.WithNumber(10).TestObject)
+            .TestObject;
+        blockValidator.ValidateSuggestedBlock(block, parent, out _).Should().Be(false);
+        blockValidator.ValidateOrphanedBlock(block, out _).Should().Be(true);
     }
 
     [Test]
@@ -182,6 +200,44 @@ public class BlockValidatorTests
             processedBlock, out string? error);
 
         Assert.That(error, Does.StartWith("InvalidStateRoot"));
+    }
+
+    [Test]
+    public void ValidateProcessedBlock_ReceiptCountMismatch_DoesNotThrow()
+    {
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        Block suggestedBlock = Build.A.Block.TestObject;
+        Block processedBlock = Build.A.Block
+            .WithStateRoot(Keccak.Zero)
+            .WithTransactions(2, specProvider)
+            .TestObject;
+
+        Assert.DoesNotThrow(() => sut.ValidateProcessedBlock(
+            processedBlock,
+            [],
+            suggestedBlock));
+    }
+
+    [Test]
+    public void ValidateProcessedBlock_ReceiptCountMismatch_ReturnsFalse()
+    {
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        Block suggestedBlock = Build.A.Block.TestObject;
+        Block processedBlock = Build.A.Block
+            .WithStateRoot(Keccak.Zero)
+            .WithTransactions(3, specProvider)
+            .TestObject;
+
+        bool result = sut.ValidateProcessedBlock(
+            processedBlock,
+            [Build.A.Receipt.TestObject],
+            suggestedBlock);
+
+        Assert.That(result, Is.False);
     }
 
     private static IEnumerable<TestCaseData> BadSuggestedBlocks()

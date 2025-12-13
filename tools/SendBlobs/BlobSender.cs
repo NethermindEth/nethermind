@@ -92,7 +92,6 @@ internal class BlobSender
             signers.Add(new(new Signer(chainId, privateKey, _logManager), nonce));
         }
 
-        TxDecoder txDecoder = TxDecoder.Instance;
         Random random = new();
 
         int signerIndex = -1;
@@ -205,9 +204,8 @@ internal class BlobSender
         bool waitForInclusion,
         IReleaseSpec spec)
     {
-        int n = 0;
         data = data
-            .Select((s, i) => (i + n) % 32 != 0 ? [s] : (s < 0x73 ? new byte[] { s } : [(byte)(32), s]))
+            .Select((s, i) => i % 32 != 0 ? [s] : (s < 0x73 ? new byte[] { s } : [(byte)(32), s]))
             .SelectMany(b => b).ToArray();
 
         if (waitForInclusion)
@@ -357,7 +355,7 @@ internal class BlobSender
 
         while (true)
         {
-            var blockResult = await rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", lastBlockNumber.ToString() ?? "latest", false);
+            BlockModel<Hash256>? blockResult = await rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", lastBlockNumber, false);
             if (blockResult is not null)
             {
                 lastBlockNumber = blockResult.Number + 1;

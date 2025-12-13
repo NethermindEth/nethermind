@@ -258,7 +258,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         private readonly ulong _maxBytes = maxBytes;
         private ulong _length;
 
-        public ArrayPoolList<Transaction> Transactions { get; } = new ArrayPoolList<Transaction>(transactionsListCapacity);
+        public ArrayPoolList<Transaction> Transactions { get; } = new(transactionsListCapacity);
 
         public bool TryAddTx(Transaction tx)
         {
@@ -344,6 +344,26 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     public ResultWrapper<L1Origin> taikoAuth_updateL1Origin(L1Origin l1Origin)
     {
         l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
+        return ResultWrapper<L1Origin>.Success(l1Origin);
+    }
+
+    public ResultWrapper<UInt256> taikoAuth_setBatchToLastBlock(UInt256 batchId, UInt256 blockId)
+    {
+        l1OriginStore.WriteBatchToLastBlockID(batchId, blockId);
+        return ResultWrapper<UInt256>.Success(batchId);
+    }
+
+    public ResultWrapper<L1Origin> taikoAuth_setL1OriginSignature(UInt256 blockId, int[] signature)
+    {
+        L1Origin? l1Origin = l1OriginStore.ReadL1Origin(blockId);
+        if (l1Origin is null)
+        {
+            return ResultWrapper<L1Origin>.Fail($"L1 origin not found for block ID {blockId}");
+        }
+
+        l1Origin.Signature = signature;
+        l1OriginStore.WriteL1Origin(blockId, l1Origin);
+
         return ResultWrapper<L1Origin>.Success(l1Origin);
     }
 }

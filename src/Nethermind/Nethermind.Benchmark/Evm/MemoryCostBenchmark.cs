@@ -9,8 +9,7 @@ namespace Nethermind.Benchmarks.Evm
 {
     public class MemoryCostBenchmark
     {
-        private IEvmMemory _current = new EvmPooledMemory();
-        private IEvmMemory _improved = new EvmPooledMemory();
+        private readonly IEvmMemory _current = new EvmPooledMemory();
 
         private UInt256 _location;
         private UInt256 _length;
@@ -36,7 +35,7 @@ namespace Nethermind.Benchmarks.Evm
         public long Current()
         {
             UInt256 dest = _location;
-            return _current.CalculateMemoryCost(in dest, _length);
+            return _current.CalculateMemoryCost(in dest, _length, out _);
         }
     }
 }

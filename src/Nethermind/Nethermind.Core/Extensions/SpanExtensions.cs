@@ -132,7 +132,7 @@ namespace Nethermind.Core.Extensions
             if (odd)
             {
                 // Odd number of hex chars, handle the first
-                // seperately so loop can work in pairs
+                // separately so loop can work in pairs
                 uint val = lookup32[bytes[0]];
                 char char2 = (char)(val >> 16);
                 chars[0] = char.IsLetter(char2) && hashHex[1] > '7'
@@ -185,7 +185,14 @@ namespace Nethermind.Core.Extensions
 
         public static ArrayPoolList<T> ToPooledList<T>(this in ReadOnlySpan<T> span)
         {
-            ArrayPoolList<T> newList = new ArrayPoolList<T>(span.Length);
+            ArrayPoolList<T> newList = new(span.Length);
+            newList.AddRange(span);
+            return newList;
+        }
+
+        public static ArrayPoolListRef<T> ToPooledListRef<T>(this in ReadOnlySpan<T> span)
+        {
+            ArrayPoolListRef<T> newList = new(span.Length);
             newList.AddRange(span);
             return newList;
         }

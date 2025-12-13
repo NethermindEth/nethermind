@@ -342,7 +342,7 @@ namespace Nethermind.Core.Crypto
         public static uint[] ComputeBytesToUint(ReadOnlySpan<byte> input, int size)
         {
             uint[] output = new uint[size / sizeof(uint)];
-            ComputeHash(input, MemoryMarshal.Cast<uint, byte>(output));
+            ComputeHash(input, MemoryMarshal.Cast<uint, byte>(output.AsSpan()));
             return output;
         }
 

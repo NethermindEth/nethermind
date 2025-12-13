@@ -138,7 +138,7 @@ namespace Nethermind.Benchmarks.Store
                 Hash256 rootHash = tree.RootHash;
                 tree.Commit();
             }),
-            ("extenson_create_new_extension", tree =>
+            ("extension_create_new_extension", tree =>
             {
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
@@ -433,7 +433,7 @@ namespace Nethermind.Benchmarks.Store
             StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
             tempTree.RootHash = Keccak.EmptyTreeHash;
 
-            using ArrayPoolList<PatriciaTree.BulkSetEntry> bulkSet = new ArrayPoolList<PatriciaTree.BulkSetEntry>(_largerEntryCount);
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(_largerEntryCount);
 
             for (int i = 0; i < _largerEntryCount; i++)
             {
@@ -524,7 +524,7 @@ namespace Nethermind.Benchmarks.Store
             var originalRootHash = Keccak.EmptyTreeHash;
             tempTree.RootHash = Keccak.EmptyTreeHash;
 
-            using ArrayPoolList<PatriciaTree.BulkSetEntry> bulkSet = new ArrayPoolList<PatriciaTree.BulkSetEntry>(_repeatedlyFactor);
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(_repeatedlyFactor);
             for (int i = 0; i < _largerEntryCount; i++)
             {
                 if (i % repeatBatchSize == 0)
@@ -551,7 +551,7 @@ namespace Nethermind.Benchmarks.Store
             var originalRootHash = Keccak.EmptyTreeHash;
             tempTree.RootHash = Keccak.EmptyTreeHash;
 
-            using ArrayPoolList<PatriciaTree.BulkSetEntry> bulkSet = new ArrayPoolList<PatriciaTree.BulkSetEntry>(_repeatedlyFactor);
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(_repeatedlyFactor);
             for (int i = 0; i < _largerEntryCount; i++)
             {
                 if (i % repeatBatchSize == 0)

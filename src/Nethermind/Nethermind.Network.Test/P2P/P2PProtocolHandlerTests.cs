@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
@@ -68,6 +69,7 @@ namespace Nethermind.Network.Test.P2P
                 TestItem.PublicKeyA,
                 _nodeStatsManager,
                 _serializer,
+                Substitute.For<IBackgroundTaskScheduler>(),
                 LimboLogs.Instance);
         }
 

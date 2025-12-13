@@ -92,6 +92,7 @@ namespace Nethermind.Specs
         public bool IsOpGraniteEnabled { get; set; }
         public bool IsOpHoloceneEnabled { get; set; }
         public bool IsOpIsthmusEnabled { get; set; }
+        public bool IsOpJovianEnabled { get; set; }
         public bool IsEip7623Enabled { get; set; }
         public bool IsEip7883Enabled { get; set; }
         public bool IsEip5656Enabled { get; set; }
@@ -166,6 +167,7 @@ namespace Nethermind.Specs
 
         private FrozenSet<AddressAsKey>? _precompiles;
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
+        public long Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
 
         public virtual FrozenSet<AddressAsKey> BuildPrecompilesCache()
         {

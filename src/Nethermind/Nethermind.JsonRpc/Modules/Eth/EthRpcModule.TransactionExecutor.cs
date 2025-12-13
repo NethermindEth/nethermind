@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -43,7 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         return ZeroMaxFeePerGasError;
 
                     if (eip1559Transaction.MaxFeePerGas < eip1559Transaction.MaxPriorityFeePerGas)
-                        return MaxFeePerGasSmallerThenMaxPriorityFeePerGasError(
+                        return MaxFeePerGasSmallerThanMaxPriorityFeePerGasError(
                             eip1559Transaction.MaxFeePerGas,
                             eip1559Transaction.MaxPriorityFeePerGas);
                 }
@@ -65,6 +64,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override Transaction Prepare(TransactionForRpc call)
             {
+                if (_rpcConfig.GasCap is not null)
+                {
+                    call.EnsureDefaults(_rpcConfig.GasCap);
+                }
                 var tx = call.ToTransaction();
                 tx.ChainId = _blockchainBridge.GetChainId();
                 return tx;
@@ -109,12 +112,23 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
 
-            protected ResultWrapper<TResult> CreateResultWrapper(bool inputError, string? errorMessage, TResult? bodyData)
+            protected ResultWrapper<TResult> CreateResultWrapper(bool inputError, string? errorMessage, TResult? bodyData, bool executionReverted, byte[]? executionRevertedReason)
             {
-                if (inputError)
-                    return ResultWrapper<TResult>.Fail(errorMessage, ErrorCodes.InvalidInput);
-                if (errorMessage is not null)
+                if (inputError || errorMessage is not null)
+                {
+                    if (executionReverted)
+                    {
+                        if (executionRevertedReason is not null)
+                        {
+                            return ResultWrapper<TResult, string>.Fail("execution reverted: " + errorMessage, ErrorCodes.ExecutionReverted, executionRevertedReason.ToHexString(true));
+                        }
+
+                        var errorData = errorMessage is not null ? Encoding.UTF8.GetBytes(errorMessage).ToHexString(true) : null;
+                        return ResultWrapper<TResult, string?>.Fail("execution reverted: " + errorMessage, ErrorCodes.ExecutionReverted, errorData);
+                    }
+
                     return ResultWrapper<TResult>.Fail(errorMessage, ErrorCodes.InvalidInput, bodyData);
+                }
 
                 return ResultWrapper<TResult>.Success(bodyData);
             }
@@ -124,7 +138,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             private const string MissingToInBlobTxError = "missing \"to\" in blob transaction";
             private const string ZeroMaxFeePerBlobGasError = "maxFeePerBlobGas, if specified, must be non-zero";
             private const string ZeroMaxFeePerGasError = "maxFeePerGas must be non-zero";
-            private static string MaxFeePerGasSmallerThenMaxPriorityFeePerGasError(
+            private static string MaxFeePerGasSmallerThanMaxPriorityFeePerGasError(
                 UInt256? maxFeePerGas,
                 UInt256? maxPriorityFeePerGas)
                 => $"maxFeePerGas ({maxFeePerGas}) < maxPriorityFeePerGas ({maxPriorityFeePerGas})";
@@ -137,9 +151,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
+                if (_rpcConfig.GasCap is not null)
+                {
+                    tx.GasLimit = long.Min(tx.GasLimit, _rpcConfig.GasCap.Value);
+                }
+
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
 
-                return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true));
+                return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true), result.ExecutionReverted, result.OutputData);
             }
         }
 
@@ -152,7 +171,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, token);
 
-                return CreateResultWrapper(result.InputError, result.Error, result.InputError || result.Error is not null ? null : (UInt256)result.GasSpent);
+                return CreateResultWrapper(result.InputError, result.Error, result.InputError || result.Error is not null ? null : (UInt256)result.GasSpent, result.ExecutionReverted, result.OutputData);
             }
         }
 
@@ -165,9 +184,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 var rpcAccessListResult = new AccessListResultForRpc(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
-                    gasUsed: GetResultGas(tx, result));
+                    gasUsed: GetResultGas(tx, result),
+                    result.Error);
 
-                return CreateResultWrapper(result.InputError, result.Error, rpcAccessListResult);
+                if (result.InputError)
+                {
+                    return ResultWrapper<AccessListResultForRpc?>.Fail(result.Error!, ErrorCodes.InvalidInput);
+                }
+
+                return ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult);
             }
 
             private static UInt256 GetResultGas(Transaction transaction, CallOutput result)

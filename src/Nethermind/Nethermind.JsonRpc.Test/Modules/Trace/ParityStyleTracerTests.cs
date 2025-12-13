@@ -9,6 +9,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -30,6 +31,7 @@ public class ParityStyleTracerTests
     private IPoSSwitcher? _poSSwitcher;
     private ITraceRpcModule _traceRpcModule;
     private IContainer _container;
+    private IBlockProcessingQueue _blockProcessingQueue;
 
     [SetUp]
     public async Task Setup()
@@ -55,6 +57,8 @@ public class ParityStyleTracerTests
 
         await _container.Resolve<PseudoNethermindRunner>().StartBlockProcessing(default);
         _traceRpcModule = _container.Resolve<IRpcModuleFactory<ITraceRpcModule>>().Create();
+        _blockProcessingQueue = _container.Resolve<IBlockProcessingQueue>();
+
     }
 
     [TearDown]
@@ -66,7 +70,7 @@ public class ParityStyleTracerTests
     [Test]
     public void Can_trace_raw_parity_style()
     {
-        ResultWrapper<ParityTxTraceFromReplay> result = _traceRpcModule.trace_rawTransaction(Bytes.FromHexString("f889808609184e72a00082271094000000000000000000000000000000000000000080a47f74657374320000000000000000000000000000000000000000000000000000006000571ca08a8bbf888cfa37bbf0bb965423625641fc956967b81d12e23709cead01446075a01ce999b56a8a88504be365442ea61239198e23d1fce7d00fcfc5cd3b44b7215f"), new[] { "trace" });
+        ResultWrapper<ParityTxTraceFromReplay> result = _traceRpcModule.trace_rawTransaction(Bytes.FromHexString("f8838080829c4094000000000000000000000000000000000000000080a47f74657374320000000000000000000000000000000000000000000000000000006000571ca08a8bbf888cfa37bbf0bb965423625641fc956967b81d12e23709cead01446075a01ce999b56a8a88504be365442ea61239198e23d1fce7d00fcfc5cd3b44b7215f"), new[] { "trace" });
         Assert.That(result.Data, Is.Not.Null);
     }
 
@@ -79,10 +83,10 @@ public class ParityStyleTracerTests
 
     [TestCase(true)]
     [TestCase(false)]
-    public void Should_return_correct_block_reward(bool isPostMerge)
+    public async Task Should_return_correct_block_reward(bool isPostMerge)
     {
         Block block = Build.A.Block.WithParent(_blockTree!.Head!).TestObject;
-        _blockTree!.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+        (await _blockTree!.SuggestBlockAsync(block, BlockTreeSuggestOptions.None)).Should().Be(AddBlockResult.Added);
         _poSSwitcher!.IsPostMerge(Arg.Any<BlockHeader>()).Returns(isPostMerge);
 
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> rpcResult = _traceRpcModule.trace_block(new BlockParameter(block.Number));

@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Xdc.Spec;
 using NUnit.Framework;
+using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Test;
 
-[TestFixture]
+[TestFixture, Parallelizable(ParallelScope.All)]
 public class XdcSpecProviderTests
 {
     [Test]

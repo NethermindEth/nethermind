@@ -3,7 +3,6 @@
 
 using System.Threading.Tasks;
 using System.Collections.Generic;
-using System;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Evm.State;
@@ -36,10 +35,17 @@ public class OptimismPayloadPreparationServiceTests
     {
         foreach (var noTxPool in (bool[])[true, false])
         {
-            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 8, 0, 0, 0, 2], NoTxPool = noTxPool }, new EIP1559Parameters(0, 8, 2));
-            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 2], NoTxPool = noTxPool }, new EIP1559Parameters(0, 2, 2));
-            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 10], NoTxPool = noTxPool }, new EIP1559Parameters(0, 2, 10));
-            yield return (new OptimismPayloadAttributes { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = noTxPool }, new EIP1559Parameters(0, 250, 6));
+            // V0
+            yield return (new() { EIP1559Params = [0, 0, 0, 8, 0, 0, 0, 2], NoTxPool = noTxPool }, new EIP1559Parameters(0, 8, 2));
+            yield return (new() { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 2], NoTxPool = noTxPool }, new EIP1559Parameters(0, 2, 2));
+            yield return (new() { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 10], NoTxPool = noTxPool }, new EIP1559Parameters(0, 2, 10));
+            yield return (new() { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = noTxPool }, new EIP1559Parameters(0, 250, 6));
+
+            // V1
+            yield return (new() { EIP1559Params = [0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = noTxPool }, new EIP1559Parameters(1, 8, 2, 0));
+            yield return (new() { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 255], NoTxPool = noTxPool }, new EIP1559Parameters(1, 2, 2, 255));
+            yield return (new() { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 10, 255, 255, 255, 255, 255, 255, 255, 255], NoTxPool = noTxPool }, new EIP1559Parameters(1, 2, 10, ulong.MaxValue));
+            yield return (new() { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = noTxPool }, new EIP1559Parameters(1, 250, 6, 0));
         }
     }
     [TestCaseSource(nameof(TestCases))]
@@ -73,7 +79,7 @@ public class OptimismPayloadPreparationServiceTests
                 gasLimitCalculator: Substitute.For<IGasLimitCalculator>(),
                 sealEngine: Substitute.For<ISealEngine>(),
                 timestamper: Substitute.For<ITimestamper>(),
-                miningConfig: Substitute.For<IBlocksConfig>(),
+                blocksConfig: Substitute.For<IBlocksConfig>(),
                 logManager: TestLogManager.Instance
             ),
             txPool: Substitute.For<ITxPool>(),

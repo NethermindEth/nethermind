@@ -527,7 +527,7 @@ public partial class EthRpcModule(
 
     public ResultWrapper<IEnumerable<object>> eth_getFilterChanges(UInt256 filterId)
     {
-        int id = (int)filterId;
+        int id = filterId <= int.MaxValue ? (int)filterId : -1;
         FilterType filterType = _blockchainBridge.GetFilterType(id);
         switch (filterType)
         {
@@ -535,19 +535,19 @@ public partial class EthRpcModule(
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter not found", ErrorCodes.InvalidInput);
+                        : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
                 }
             case FilterType.PendingTransactionFilter:
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetPendingTransactionFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter not found", ErrorCodes.InvalidInput);
+                        : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
                 }
             case FilterType.LogFilter:
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetLogFilterChanges(id).ToArray())
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter not found", ErrorCodes.InvalidInput);
+                        : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
                 }
             default:
                 {
@@ -584,47 +584,49 @@ public partial class EthRpcModule(
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
     {
-        BlockParameter fromBlock = filter.FromBlock;
-        BlockParameter toBlock = filter.ToBlock;
+        BlockParameter fromBlock = filter.FromBlock!;
+        BlockParameter toBlock = filter.ToBlock!;
 
         // because of lazy evaluation of enumerable, we need to do the validation here first
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
-        if (!TryFindBlockHeaderOrUseLatest(_blockFinder, ref toBlock, out SearchResult<BlockHeader> toBlockResult, out long? sourceToBlockNumber))
+        long? headNumber = _blockFinder.Head?.Number;
+        if (headNumber < fromBlock.BlockNumber || headNumber < toBlock.BlockNumber)
         {
-            return FailWithNoHeadersSyncedYet(toBlockResult);
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail("requested block range is in the future", ErrorCodes.InvalidParams);
         }
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        SearchResult<BlockHeader> fromBlockResult;
-        long? sourceFromBlockNumber;
-
-        if (fromBlock == toBlock)
-        {
-            fromBlockResult = toBlockResult;
-            sourceFromBlockNumber = sourceToBlockNumber;
-        }
-        else if (!TryFindBlockHeaderOrUseLatest(_blockFinder, ref fromBlock, out fromBlockResult, out sourceFromBlockNumber))
-        {
-            return FailWithNoHeadersSyncedYet(fromBlockResult);
-        }
-
-        if (sourceFromBlockNumber > sourceToBlockNumber)
+        if (fromBlock.BlockNumber > toBlock.BlockNumber)
         {
             return ResultWrapper<IEnumerable<FilterLog>>.Fail("invalid block range params", ErrorCodes.InvalidParams);
         }
 
-        if (_blockFinder.Head?.Number is not null && sourceFromBlockNumber > _blockFinder.Head.Number)
+        SearchResult<BlockHeader> fromResult = blockFinder.SearchForHeader(fromBlock);
+        if (fromResult.IsError)
         {
-            return ResultWrapper<IEnumerable<FilterLog>>.Success([]);
+            return FailWithNoHeadersSyncedYet(fromResult);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        BlockHeader fromBlockHeader = fromBlockResult.Object;
-        BlockHeader toBlockHeader = toBlockResult.Object;
+        SearchResult<BlockHeader> toResult;
+        if (fromBlock == toBlock)
+        {
+            toResult = fromResult;
+        }
+        else
+        {
+            toResult = blockFinder.SearchForHeader(toBlock);
+            if (toResult.IsError)
+            {
+                return FailWithNoHeadersSyncedYet(toResult);
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        BlockHeader fromBlockHeader = fromResult.Object!;
+        BlockHeader toBlockHeader = toResult.Object!;
 
         try
         {
@@ -655,30 +657,6 @@ public partial class EthRpcModule(
 
         ResultWrapper<IEnumerable<FilterLog>> FailWithNoHeadersSyncedYet(SearchResult<BlockHeader> blockResult)
             => GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(blockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
-
-        // If there is an error, we check if we seach by number and it's after the head, then try to use head instead
-        static bool TryFindBlockHeaderOrUseLatest(IBlockFinder blockFinder, ref BlockParameter blockParameter, out SearchResult<BlockHeader> blockResult, out long? sourceBlockNumber)
-        {
-            blockResult = blockFinder.SearchForHeader(blockParameter);
-
-            if (blockResult.IsError)
-            {
-                if (blockParameter.Type is BlockParameterType.BlockNumber &&
-                    blockFinder.Head?.Number < blockParameter.BlockNumber)
-                {
-                    blockResult = new SearchResult<BlockHeader>(blockFinder.Head.Header);
-
-                    sourceBlockNumber = blockParameter.BlockNumber.Value;
-                    return true;
-                }
-
-                sourceBlockNumber = null;
-                return false;
-            }
-
-            sourceBlockNumber = blockResult.Object.Number;
-            return true;
-        }
     }
 
     // https://github.com/ethereum/EIPs/issues/1186

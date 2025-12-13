@@ -59,6 +59,12 @@ public class TaikoPayloadPreparationService(
                 if (!l1Origin.IsPreconfBlock)
                 {
                     l1OriginStore.WriteHeadL1Origin(l1Origin.BlockId);
+
+                    // Write the batch to block mapping if the batch ID is given.
+                    if (attrs.BlockMetadata?.BatchID is not null)
+                    {
+                        l1OriginStore.WriteBatchToLastBlockID(attrs.BlockMetadata.BatchID.Value, l1Origin.BlockId);
+                    }
                 }
 
                 // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
@@ -124,6 +130,7 @@ public class TaikoPayloadPreparationService(
         int transactionsCheck = rlpStream.Position + transactionsSequenceLength;
 
         int txCount = rlpStream.PeekNumberOfItemsRemaining(transactionsCheck);
+        rlpStream.GuardLimit(txCount);
 
         Transaction[] transactions = new Transaction[txCount];
         int txIndex = 0;

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Numerics;
@@ -10,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -20,19 +21,15 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
-using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.SnapSync;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -65,7 +62,6 @@ public class ProtocolsManagerTests
         private readonly ISyncServer _syncServer;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ITxPool _txPool;
-        private readonly IPooledTxsRequestor _pooledTxsRequestor;
         private readonly IChannelHandlerContext _channelHandlerContext;
         private readonly IChannel _channel;
         private readonly IChannelPipeline _pipeline;
@@ -82,14 +78,13 @@ public class ProtocolsManagerTests
             _pipeline = Substitute.For<IChannelPipeline>();
             _channelHandlerContext.Channel.Returns(_channel);
             _channel.Pipeline.Returns(_pipeline);
-            _pipeline.Get<ZeroPacketSplitter>().Returns(new ZeroPacketSplitter(LimboLogs.Instance));
+            _pipeline.Get<ZeroPacketSplitter>().Returns(new ZeroPacketSplitter());
             _packetSender = Substitute.For<IPacketSender>();
             _syncServer = Substitute.For<ISyncServer>();
             _syncServer = Substitute.For<ISyncServer>();
             _syncServer.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
             _syncServer.Head.Returns(Build.A.BlockHeader.TestObject);
             _txPool = Substitute.For<ITxPool>();
-            _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
             _discoveryApp = Substitute.For<IDiscoveryApp>();
 
             _serializer = new MessageSerializationService(
@@ -107,7 +102,7 @@ public class ProtocolsManagerTests
             _blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
             _blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
             _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
-            ForkInfo forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer);
+            ForkInfo forkInfo = new(MainnetSpecProvider.Instance, _syncServer);
             _peerManager = Substitute.For<IPeerManager>();
             _networkConfig = new NetworkConfig();
             _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, _peerManager, _networkConfig, LimboLogs.Instance);
@@ -119,7 +114,6 @@ public class ProtocolsManagerTests
                 _syncServer,
                 RunImmediatelyScheduler.Instance,
                 _txPool,
-                _pooledTxsRequestor,
                 _discoveryApp,
                 _serializer,
                 _rlpxHost,
@@ -129,7 +123,9 @@ public class ProtocolsManagerTests
                 forkInfo,
                 _gossipPolicy,
                 Substitute.For<IWorldStateManager>(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                Substitute.For<ITxPoolConfig>(),
+                Substitute.For<ISpecProvider>());
         }
 
         public Context CreateIncomingSession()

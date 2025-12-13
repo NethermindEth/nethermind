@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/surge-hoodi.json",
-    "GenesisHash": "0xf4ca134e6355f2225d89119e9ddb917910b4fad86cf8c9d8640b8ddab292c0a1",
+    "GenesisHash": "0xf2a617aaf5d55cc0032081d9c67b6a03b785d063ab48f5d69b5f6013930bb200",
     "BaseDbPath": "nethermind_db/surge-hoodi",
     "LogFileName": "surge-hoodi.log"
   },
@@ -14,6 +14,13 @@
     "FastSync": true,
     "SnapSync": true,
     "FastSyncCatchUpHeightDelta": "10000000000"
+  },
+  "Pruning": {
+    "PruningBoundary": 1000
+  },
+  "Surge": {
+    "L1EthApiEndpoint": "https://rpc.hoodi.ethpandaops.io/",
+    "TaikoInboxAddress": "0x624ec8F33DA83707f360D6d25136AA0741713BC4"
   },
   "Metrics": {
     "NodeName": "Surge Hoodi"

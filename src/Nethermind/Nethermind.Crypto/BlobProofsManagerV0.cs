@@ -55,6 +55,11 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
 
     public bool ValidateProofs(ShardBlobNetworkWrapper wrapper)
     {
+        if (wrapper.Version is not ProofVersion.V0)
+        {
+            return false;
+        }
+
         if (wrapper.Blobs.Length is 1 && wrapper.Commitments.Length is 1 && wrapper.Proofs.Length is 1)
         {
             try
