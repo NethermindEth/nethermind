@@ -22,6 +22,8 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.SwitchEpoch = chainSpecEngineParameters.SwitchEpoch;
         releaseSpec.SwitchBlock = chainSpecEngineParameters.SwitchBlock;
         releaseSpec.V2Configs = chainSpecEngineParameters.V2Configs;
+        releaseSpec.FoundationWallet = chainSpecEngineParameters.FoundationWalletAddr;
+        releaseSpec.Reward = chainSpecEngineParameters.Reward;
 
         releaseSpec.ApplyV2Config(0);
 
