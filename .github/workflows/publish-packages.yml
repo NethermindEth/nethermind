@@ -35,6 +35,8 @@ jobs:
         run: curl -sL "https://github.com/NethermindEth/nethermind/releases/download/1.35.7/nethermind-1.35.7-92050c1f-linux-x64.zip" -o neth.zip
 
       - name: Sign ZIPs
+        env:
+          GPG_PASSPHRASE: ${{ secrets.PPA_GPG_PASSPHRASE }}
         run: |
           for f in *.zip; do
             gpg --batch --yes --no-tty --pinentry-mode loopback \
