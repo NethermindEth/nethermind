@@ -27,6 +27,7 @@ jobs:
           echo "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
           echo "${{ secrets.GPG_OWNERTRUST }}" | base64 --decode | gpg --import-ownertrust
           echo "$GPG_PASSPHRASE" > "$GITHUB_WORKSPACE/PASSPHRASE"
+          gpg --fingerprint 24A774616F1E617E
 
       - name: Download ZIP assets
         env:
