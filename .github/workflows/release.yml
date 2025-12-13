@@ -59,6 +59,7 @@ jobs:
         env:
           GPG_PASSPHRASE: ${{ secrets.PPA_GPG_PASSPHRASE }}
           GPG_SECRET_KEY: ${{ secrets.PPA_GPG_SECRET_KEY }}
+        working-directory: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}
         run: |
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
           printf '%s' "${{ secrets.GPG_OWNERTRUST }}" | base64 --decode | gpg --import-ownertrust
