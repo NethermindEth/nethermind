@@ -823,7 +823,7 @@ namespace Nethermind.Core.Crypto
             Vector512<ulong> rho3 = Vector512.Create(41UL, 45, 15, 21, 8, 0, 0, 0);
             Vector512<ulong> rho4 = Vector512.Create(18UL, 2, 61, 56, 14, 0, 0, 0);
 
-            for (int round = 0; round < ROUNDS; round += 2)
+            for (int i = ROUNDS / 2; i != 0; i--)
             {
                 {
                     // Theta - 5-way xor via ternary logic
@@ -842,26 +842,20 @@ namespace Nethermind.Core.Crypto
                     c3 = Avx512F.TernaryLogic(c3, theta0, theta1, 0x96);
                     c4 = Avx512F.TernaryLogic(c4, theta0, theta1, 0x96);
 
-                    // Rho - per-lane bit rotates
                     c0 = Avx512F.RotateLeftVariable(c0, rho0);
                     c1 = Avx512F.RotateLeftVariable(c1, rho1);
-                    c2 = Avx512F.RotateLeftVariable(c2, rho2);
-                    c3 = Avx512F.RotateLeftVariable(c3, rho3);
-                    c4 = Avx512F.RotateLeftVariable(c4, rho4);
-
-                    // Pi - rotate each row by its row-index, then transpose (columns become Pi rows)
-                    Vector512<ulong> r0 = c0;
                     Vector512<ulong> r1 = Avx512F.PermuteVar8x64(c1, rot1);
+                    c2 = Avx512F.RotateLeftVariable(c2, rho2);
                     Vector512<ulong> r2 = Avx512F.PermuteVar8x64(c2, rot2);
+                    c3 = Avx512F.RotateLeftVariable(c3, rho3);
                     Vector512<ulong> r3 = Avx512F.PermuteVar8x64(c3, rot3);
+                    c4 = Avx512F.RotateLeftVariable(c4, rho4);
                     Vector512<ulong> r4 = Avx512F.PermuteVar8x64(c4, rot4);
 
-                    // Treat missing rows as zero (rows 5..7)
-
                     // Stage 1 - unpack (interleave within 128-bit lanes)
-                    Vector512<ulong> t0 = Avx512F.UnpackLow(r0, r1);
-                    Vector512<ulong> t1 = Avx512F.UnpackHigh(r0, r1);
+                    Vector512<ulong> t0 = Avx512F.UnpackLow(c0, r1);
                     Vector512<ulong> t2 = Avx512F.UnpackLow(r2, r3);
+                    Vector512<ulong> t1 = Avx512F.UnpackHigh(c0, r1);
                     Vector512<ulong> t3 = Avx512F.UnpackHigh(r2, r3);
                     // Row4 handling - we only need lanes0-4 correct.
                     // Duplicate within 128-bit lanes instead of injecting zeros.
@@ -870,15 +864,15 @@ namespace Nethermind.Core.Crypto
 
                     // Stage 2 - group (0,4), (2,6), (1,5), (3,7)
                     Vector512<ulong> s0 = Avx512F.Shuffle4x128(t0, t2, 0x44);
-                    Vector512<ulong> s1 = Avx512F.Shuffle4x128(t0, t2, 0xEE);
                     Vector512<ulong> s2 = Avx512F.Shuffle4x128(t1, t3, 0x44);
+                    Vector512<ulong> s1 = Avx512F.Shuffle4x128(t0, t2, 0xEE);
 
                     // Stage 3 - final columns (only need 0..4)
                     Vector512<ulong> col0 = Avx512F.Shuffle4x128(s0, e4, 0x88); // index 0
-                    Vector512<ulong> col1 = Avx512F.Shuffle4x128(s2, o4, 0x88); // index 1
-                    Vector512<ulong> col2 = Avx512F.Shuffle4x128(s0, e4, 0xDD); // index 2
                     Vector512<ulong> col3 = Avx512F.Shuffle4x128(s2, o4, 0xDD); // index 3
+                    Vector512<ulong> col1 = Avx512F.Shuffle4x128(s2, o4, 0x88); // index 1
                     Vector512<ulong> col4 = Avx512F.Shuffle4x128(s1, e4, 0xA8); // index 4
+                    Vector512<ulong> col2 = Avx512F.Shuffle4x128(s0, e4, 0xDD); // index 2
 
                     // Chi - row-wise ternary logic
                     Vector512<ulong> c0a = Avx512F.PermuteVar8x64(col0, rot1);
@@ -918,26 +912,20 @@ namespace Nethermind.Core.Crypto
                     c3 = Avx512F.TernaryLogic(c3, theta0, theta1, 0x96);
                     c4 = Avx512F.TernaryLogic(c4, theta0, theta1, 0x96);
 
-                    // Rho - per-lane bit rotates
                     c0 = Avx512F.RotateLeftVariable(c0, rho0);
                     c1 = Avx512F.RotateLeftVariable(c1, rho1);
-                    c2 = Avx512F.RotateLeftVariable(c2, rho2);
-                    c3 = Avx512F.RotateLeftVariable(c3, rho3);
-                    c4 = Avx512F.RotateLeftVariable(c4, rho4);
-
-                    // Pi - rotate each row by its row-index, then transpose (columns become Pi rows)
-                    Vector512<ulong> r0 = c0;
                     Vector512<ulong> r1 = Avx512F.PermuteVar8x64(c1, rot1);
+                    c2 = Avx512F.RotateLeftVariable(c2, rho2);
                     Vector512<ulong> r2 = Avx512F.PermuteVar8x64(c2, rot2);
+                    c3 = Avx512F.RotateLeftVariable(c3, rho3);
                     Vector512<ulong> r3 = Avx512F.PermuteVar8x64(c3, rot3);
+                    c4 = Avx512F.RotateLeftVariable(c4, rho4);
                     Vector512<ulong> r4 = Avx512F.PermuteVar8x64(c4, rot4);
 
-                    // Treat missing rows as zero (rows 5..7)
-
                     // Stage 1 - unpack (interleave within 128-bit lanes)
-                    Vector512<ulong> t0 = Avx512F.UnpackLow(r0, r1);
-                    Vector512<ulong> t1 = Avx512F.UnpackHigh(r0, r1);
+                    Vector512<ulong> t0 = Avx512F.UnpackLow(c0, r1);
                     Vector512<ulong> t2 = Avx512F.UnpackLow(r2, r3);
+                    Vector512<ulong> t1 = Avx512F.UnpackHigh(c0, r1);
                     Vector512<ulong> t3 = Avx512F.UnpackHigh(r2, r3);
                     // Row4 handling - we only need lanes0-4 correct.
                     // Duplicate within 128-bit lanes instead of injecting zeros.
@@ -946,15 +934,15 @@ namespace Nethermind.Core.Crypto
 
                     // Stage 2 - group (0,4), (2,6), (1,5), (3,7)
                     Vector512<ulong> s0 = Avx512F.Shuffle4x128(t0, t2, 0x44);
-                    Vector512<ulong> s1 = Avx512F.Shuffle4x128(t0, t2, 0xEE);
                     Vector512<ulong> s2 = Avx512F.Shuffle4x128(t1, t3, 0x44);
+                    Vector512<ulong> s1 = Avx512F.Shuffle4x128(t0, t2, 0xEE);
 
                     // Stage 3 - final columns (only need 0..4)
                     Vector512<ulong> col0 = Avx512F.Shuffle4x128(s0, e4, 0x88); // index 0
-                    Vector512<ulong> col1 = Avx512F.Shuffle4x128(s2, o4, 0x88); // index 1
-                    Vector512<ulong> col2 = Avx512F.Shuffle4x128(s0, e4, 0xDD); // index 2
                     Vector512<ulong> col3 = Avx512F.Shuffle4x128(s2, o4, 0xDD); // index 3
+                    Vector512<ulong> col1 = Avx512F.Shuffle4x128(s2, o4, 0x88); // index 1
                     Vector512<ulong> col4 = Avx512F.Shuffle4x128(s1, e4, 0xA8); // index 4
+                    Vector512<ulong> col2 = Avx512F.Shuffle4x128(s0, e4, 0xDD); // index 2
 
                     // Chi - row-wise ternary logic
                     Vector512<ulong> c0a = Avx512F.PermuteVar8x64(col0, rot1);
