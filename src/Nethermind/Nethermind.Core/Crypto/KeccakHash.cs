@@ -798,35 +798,43 @@ namespace Nethermind.Core.Crypto
             ref ulong s = ref MemoryMarshal.GetReference(state);
             ref ulong roundConstants = ref MemoryMarshal.GetArrayDataReference(RoundConstants);
 
-            // Load 5x5 state as 5 rows (5 lanes used in each zmm)
+            // State layout:
+            // - Each zmm holds one Keccak row (y fixed, x varies) in lanes 0-4.
+            // - Lanes 5-7 are treated as "dead" and must never be permuted into lanes 0-4.
             Vector512<ulong> c0 = Unsafe.As<ulong, Vector512<ulong>>(ref s);
             Vector512<ulong> c1 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 5));
             Vector512<ulong> c2 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 10));
             Vector512<ulong> c3 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 15));
 
-            // Safe tail load for row4 (20..24) without over-read
+            // Safe tail load for row4 (20..24) without over-read.
+            // Note: lanes 5-7 remain dead - we keep them explicitly zero here for determinism.
             Vector256<ulong> c4lo = Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref s, 20));
             Vector256<ulong> c4hi = Vector256.Create(Unsafe.Add(ref s, 24), 0UL, 0UL, 0UL);
             Vector512<ulong> c4 = Avx512F.InsertVector256(Vector512<ulong>.Zero, c4lo, 0);
             c4 = Avx512F.InsertVector256(c4, c4hi, 1);
 
-            // Common lane permutes (rotate within the 5 live lanes)
+            // Lane permute indices - rotate only lanes 0-4, keep lanes 5-7 fixed.
+            // This is the contract that allows dead lanes to carry garbage without affecting correctness.
             Vector512<ulong> rot4 = Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL);
             Vector512<ulong> rot1 = Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL);
             Vector512<ulong> rot2 = Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL);
             Vector512<ulong> rot3 = Vector512.Create(3UL, 4UL, 0UL, 1UL, 2UL, 5UL, 6UL, 7UL);
 
-            // Rho bit-rotation counts - PER ROW (y fixed, x varies)
+            // Rho rotate counts per row (y fixed, x varies) - used by vprolvq.
             Vector512<ulong> rho0 = Vector512.Create(0UL, 1, 62, 28, 27, 0, 0, 0);
             Vector512<ulong> rho1 = Vector512.Create(36UL, 44, 6, 55, 20, 0, 0, 0);
             Vector512<ulong> rho2 = Vector512.Create(3UL, 10, 43, 25, 39, 0, 0, 0);
             Vector512<ulong> rho3 = Vector512.Create(41UL, 45, 15, 21, 8, 0, 0, 0);
             Vector512<ulong> rho4 = Vector512.Create(18UL, 2, 61, 56, 14, 0, 0, 0);
 
+            // 2 rounds per iteration - count down to keep loop control tight.
             for (int i = ROUNDS / 2; i != 0; i--)
             {
                 {
-                    // Theta - 5-way xor via ternary logic
+                    // Theta:
+                    // - parity = xor of the 5 rows (vpternlogq is cheap)
+                    // - theta0 = rot4(parity), theta1 = rol1(rot1(parity))
+                    // - apply as xor-of-three (row ^= theta0 ^ theta1) to avoid materialising (theta0 ^ theta1).
                     Vector512<ulong> parity = Avx512F.TernaryLogic(
                         Avx512F.TernaryLogic(c0, c1, c2, 0x96),
                         c3, c4, 0x96);
@@ -842,6 +850,11 @@ namespace Nethermind.Core.Crypto
                     c3 = Avx512F.TernaryLogic(c3, theta0, theta1, 0x96);
                     c4 = Avx512F.TernaryLogic(c4, theta0, theta1, 0x96);
 
+                    // Rho + Pi pipelining:
+                    // - vprolvq (rotate) and vpermq (permute) are both non-trivial ops.
+                    // - Start Pi permutes as soon as each row's Rho rotate is ready, to overlap work and
+                    //   avoid bunching all permutes after all rotates.
+                    // - We keep r0 implicit as "c0 after Rho", feeding it directly into the transpose unpacks.
                     c0 = Avx512F.RotateLeftVariable(c0, rho0);
                     c1 = Avx512F.RotateLeftVariable(c1, rho1);
                     Vector512<ulong> r1 = Avx512F.PermuteVar8x64(c1, rot1);
@@ -852,29 +865,44 @@ namespace Nethermind.Core.Crypto
                     c4 = Avx512F.RotateLeftVariable(c4, rho4);
                     Vector512<ulong> r4 = Avx512F.PermuteVar8x64(c4, rot4);
 
-                    // Stage 1 - unpack (interleave within 128-bit lanes)
+                    // Pi + transpose:
+                    // Transpose the 5x5 (embedded in 8 lanes) so columns become rows for Chi.
+                    //
+                    // Stage 1 (unpack) is cheap - express it as two independent streams:
+                    // - t0/t2 feed the "even" side of the transpose
+                    // - t1/t3 feed the "odd" side
+                    // Ordering here helps the JIT/CPU get shuffles in-flight earlier.
                     Vector512<ulong> t0 = Avx512F.UnpackLow(c0, r1);
                     Vector512<ulong> t2 = Avx512F.UnpackLow(r2, r3);
                     Vector512<ulong> t1 = Avx512F.UnpackHigh(c0, r1);
                     Vector512<ulong> t3 = Avx512F.UnpackHigh(r2, r3);
-                    // Row4 handling - we only need lanes0-4 correct.
-                    // Duplicate within 128-bit lanes instead of injecting zeros.
+                    // Row4 handling:
+                    // We only need lanes 0-4 correct. Instead of injecting zeros (extra shuffles),
+                    // duplicate within 128-bit lanes - dead lanes remain dead by the permute contract.
                     Vector512<ulong> e4 = Avx512F.UnpackLow(r4, r4);   // even columns duplicated
                     Vector512<ulong> o4 = Avx512F.UnpackHigh(r4, r4);  // odd columns duplicated
 
-                    // Stage 2 - group (0,4), (2,6), (1,5), (3,7)
+                    // Stage 2 (cross-128 shuffles):
+                    // Build s0/s2 first because they feed most output columns.
+                    // s1 is only needed for col4, so it's computed last.
                     Vector512<ulong> s0 = Avx512F.Shuffle4x128(t0, t2, 0x44);
                     Vector512<ulong> s2 = Avx512F.Shuffle4x128(t1, t3, 0x44);
                     Vector512<ulong> s1 = Avx512F.Shuffle4x128(t0, t2, 0xEE);
 
-                    // Stage 3 - final columns (only need 0..4)
+                    // Stage 3 (final columns):
+                    // Emit in the remapped order used by Chi (0,3,1,4,2) to shorten live ranges and
+                    // reduce register pressure. Chi mapping is:
+                    //   c0 <- col0, c1 <- col3, c2 <- col1, c3 <- col4, c4 <- col2
                     Vector512<ulong> col0 = Avx512F.Shuffle4x128(s0, e4, 0x88); // index 0
                     Vector512<ulong> col3 = Avx512F.Shuffle4x128(s2, o4, 0xDD); // index 3
                     Vector512<ulong> col1 = Avx512F.Shuffle4x128(s2, o4, 0x88); // index 1
                     Vector512<ulong> col4 = Avx512F.Shuffle4x128(s1, e4, 0xA8); // index 4
                     Vector512<ulong> col2 = Avx512F.Shuffle4x128(s0, e4, 0xDD); // index 2
 
-                    // Chi - row-wise ternary logic
+                    // Chi:
+                    // vpermq is relatively high-latency - we "prefetch" a small batch of permutes,
+                    // then immediately consume them via vpternlogq. This keeps permute latency covered
+                    // without keeping 10 permute results live at once (avoids non-volatile zmm usage).
                     Vector512<ulong> c0a = Avx512F.PermuteVar8x64(col0, rot1);
                     Vector512<ulong> c0b = Avx512F.PermuteVar8x64(col0, rot2);
                     Vector512<ulong> c1a = Avx512F.PermuteVar8x64(col3, rot1);
@@ -891,12 +919,13 @@ namespace Nethermind.Core.Crypto
                     c3 = Avx512F.TernaryLogic(col4, c3a, c3b, 0xD2);
                     c4 = Avx512F.TernaryLogic(col2, c4a, c4b, 0xD2);
 
-                    // Iota - xor round constant into lane 0 only
+                    // Iota - xor round constant into lane 0 only.
+                    // Scalar load + broadcast-to-lane0 pattern, then advance the pointer.
                     c0 = Avx512F.Xor(c0, Vector512.CreateScalar(roundConstants));
                     roundConstants = ref Unsafe.Add(ref roundConstants, 1);
                 }
+                // Second round (unrolled):
                 {
-                    // Theta - 5-way xor via ternary logic
                     Vector512<ulong> parity = Avx512F.TernaryLogic(
                         Avx512F.TernaryLogic(c0, c1, c2, 0x96),
                         c3, c4, 0x96);
@@ -905,7 +934,6 @@ namespace Nethermind.Core.Crypto
                     Vector512<ulong> theta0 = Avx512F.PermuteVar8x64(parity, rot4);
                     Vector512<ulong> theta1 = Avx512F.RotateLeft(theta1a, 1);
 
-                    // Apply theta without materialising (a^b) - xor-of-three
                     c0 = Avx512F.TernaryLogic(c0, theta0, theta1, 0x96);
                     c1 = Avx512F.TernaryLogic(c1, theta0, theta1, 0x96);
                     c2 = Avx512F.TernaryLogic(c2, theta0, theta1, 0x96);
@@ -922,29 +950,24 @@ namespace Nethermind.Core.Crypto
                     c4 = Avx512F.RotateLeftVariable(c4, rho4);
                     Vector512<ulong> r4 = Avx512F.PermuteVar8x64(c4, rot4);
 
-                    // Stage 1 - unpack (interleave within 128-bit lanes)
                     Vector512<ulong> t0 = Avx512F.UnpackLow(c0, r1);
                     Vector512<ulong> t2 = Avx512F.UnpackLow(r2, r3);
                     Vector512<ulong> t1 = Avx512F.UnpackHigh(c0, r1);
                     Vector512<ulong> t3 = Avx512F.UnpackHigh(r2, r3);
-                    // Row4 handling - we only need lanes0-4 correct.
-                    // Duplicate within 128-bit lanes instead of injecting zeros.
-                    Vector512<ulong> e4 = Avx512F.UnpackLow(r4, r4);   // even columns duplicated
-                    Vector512<ulong> o4 = Avx512F.UnpackHigh(r4, r4);  // odd columns duplicated
 
-                    // Stage 2 - group (0,4), (2,6), (1,5), (3,7)
+                    Vector512<ulong> e4 = Avx512F.UnpackLow(r4, r4);
+                    Vector512<ulong> o4 = Avx512F.UnpackHigh(r4, r4);
+
                     Vector512<ulong> s0 = Avx512F.Shuffle4x128(t0, t2, 0x44);
                     Vector512<ulong> s2 = Avx512F.Shuffle4x128(t1, t3, 0x44);
                     Vector512<ulong> s1 = Avx512F.Shuffle4x128(t0, t2, 0xEE);
 
-                    // Stage 3 - final columns (only need 0..4)
-                    Vector512<ulong> col0 = Avx512F.Shuffle4x128(s0, e4, 0x88); // index 0
-                    Vector512<ulong> col3 = Avx512F.Shuffle4x128(s2, o4, 0xDD); // index 3
-                    Vector512<ulong> col1 = Avx512F.Shuffle4x128(s2, o4, 0x88); // index 1
-                    Vector512<ulong> col4 = Avx512F.Shuffle4x128(s1, e4, 0xA8); // index 4
-                    Vector512<ulong> col2 = Avx512F.Shuffle4x128(s0, e4, 0xDD); // index 2
+                    Vector512<ulong> col0 = Avx512F.Shuffle4x128(s0, e4, 0x88);
+                    Vector512<ulong> col3 = Avx512F.Shuffle4x128(s2, o4, 0xDD);
+                    Vector512<ulong> col1 = Avx512F.Shuffle4x128(s2, o4, 0x88);
+                    Vector512<ulong> col4 = Avx512F.Shuffle4x128(s1, e4, 0xA8);
+                    Vector512<ulong> col2 = Avx512F.Shuffle4x128(s0, e4, 0xDD);
 
-                    // Chi - row-wise ternary logic
                     Vector512<ulong> c0a = Avx512F.PermuteVar8x64(col0, rot1);
                     Vector512<ulong> c0b = Avx512F.PermuteVar8x64(col0, rot2);
                     Vector512<ulong> c1a = Avx512F.PermuteVar8x64(col3, rot1);
@@ -961,13 +984,12 @@ namespace Nethermind.Core.Crypto
                     c3 = Avx512F.TernaryLogic(col4, c3a, c3b, 0xD2);
                     c4 = Avx512F.TernaryLogic(col2, c4a, c4b, 0xD2);
 
-                    // Iota - xor round constant into lane 0 only
                     c0 = Avx512F.Xor(c0, Vector512.CreateScalar(roundConstants));
                     roundConstants = ref Unsafe.Add(ref roundConstants, 1);
                 }
             }
 
-            // Store
+            // Store rows 0-3 as full zmm; row4 as 4 lanes + scalar lane4.
             Unsafe.As<ulong, Vector512<ulong>>(ref s) = c0;
             Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 5)) = c1;
             Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 10)) = c2;
