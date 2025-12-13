@@ -32,7 +32,7 @@ fi
 
 cd $GITHUB_WORKSPACE/$PACKAGE_DIR
 
-for file_name in *.zip*; do
+for file_name in *.zip *.zip.asc; do
   echo "Uploading $file_name"
 
   curl https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$release_id/assets?name=$file_name \
