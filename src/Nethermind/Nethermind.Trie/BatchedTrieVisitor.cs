@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -146,9 +145,11 @@ public class BatchedTrieVisitor<TNodeContext>
 
         try
         {
-            using ArrayPoolListRef<Task> tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
-                .Select(_ => Task.Run(BatchedThread))
-                .ToPooledListRef(trieVisitContext.MaxDegreeOfParallelism);
+            using ArrayPoolListRef<Task> tasks = new(trieVisitContext.MaxDegreeOfParallelism);
+            for (int i = 0; i < trieVisitContext.MaxDegreeOfParallelism; i++)
+            {
+                tasks.Add(Task.Run(BatchedThread));
+            }
 
             Task.WaitAll(tasks.AsSpan());
         }
