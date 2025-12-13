@@ -185,7 +185,7 @@ namespace Nethermind.Hive
         {
             if (!await semaphore.WaitAsync(5000))
             {
-                throw new InvalidOperationException();
+                throw new InvalidOperationException("Block processing timeout after 5000ms. The block may not have been processed in time.");
             }
         }
 
