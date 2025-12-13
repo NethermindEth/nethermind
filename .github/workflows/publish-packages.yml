@@ -38,7 +38,7 @@ jobs:
           for f in *.zip; do
             gpg --batch --yes --no-tty --pinentry-mode loopback \
               --passphrase-file "$GITHUB_WORKSPACE/PASSPHRASE" \
-              --output "$f.asc" --detach-sign "$f"
+              --output "$f.asc" --armor --detach-sign "$f"
           done
 
       - name: Upload test outcome
