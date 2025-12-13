@@ -823,8 +823,6 @@ namespace Nethermind.Core.Crypto
             Vector512<ulong> rho3 = Vector512.Create(41UL, 45, 15, 21, 8, 0, 0, 0);
             Vector512<ulong> rho4 = Vector512.Create(18UL, 2, 61, 56, 14, 0, 0, 0);
 
-            Vector512<ulong> zero = Vector512<ulong>.Zero;
-
             for (int round = 0; round < ROUNDS; round += 2)
             {
                 {
@@ -833,8 +831,9 @@ namespace Nethermind.Core.Crypto
                         Avx512F.TernaryLogic(c0, c1, c2, 0x96),
                         c3, c4, 0x96);
 
+                    Vector512<ulong> theta1a = Avx512F.PermuteVar8x64(parity, rot1); 
                     Vector512<ulong> theta0 = Avx512F.PermuteVar8x64(parity, rot4);
-                    Vector512<ulong> theta1 = Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, rot1), 1);
+                    Vector512<ulong> theta1 = Avx512F.RotateLeft(theta1a, 1);
 
                     // Apply theta without materialising (a^b) - xor-of-three
                     c0 = Avx512F.TernaryLogic(c0, theta0, theta1, 0x96);
@@ -868,7 +867,6 @@ namespace Nethermind.Core.Crypto
                     // Duplicate within 128-bit lanes instead of injecting zeros.
                     Vector512<ulong> e4 = Avx512F.UnpackLow(r4, r4);   // even columns duplicated
                     Vector512<ulong> o4 = Avx512F.UnpackHigh(r4, r4);  // odd columns duplicated
- 
 
                     // Stage 2 - group (0,4), (2,6), (1,5), (3,7)
                     Vector512<ulong> s0 = Avx512F.Shuffle4x128(t0, t2, 0x44);
@@ -882,12 +880,24 @@ namespace Nethermind.Core.Crypto
                     Vector512<ulong> col3 = Avx512F.Shuffle4x128(s2, o4, 0xDD); // index 3
                     Vector512<ulong> col4 = Avx512F.Shuffle4x128(s1, e4, 0xA8); // index 4
 
-                    // Chi - row-wise ternary logic (same as your current)
-                    c0 = Avx512F.TernaryLogic(col0, Avx512F.PermuteVar8x64(col0, rot1), Avx512F.PermuteVar8x64(col0, rot2), 0xD2);
-                    c1 = Avx512F.TernaryLogic(col3, Avx512F.PermuteVar8x64(col3, rot1), Avx512F.PermuteVar8x64(col3, rot2), 0xD2);
-                    c2 = Avx512F.TernaryLogic(col1, Avx512F.PermuteVar8x64(col1, rot1), Avx512F.PermuteVar8x64(col1, rot2), 0xD2);
-                    c3 = Avx512F.TernaryLogic(col4, Avx512F.PermuteVar8x64(col4, rot1), Avx512F.PermuteVar8x64(col4, rot2), 0xD2);
-                    c4 = Avx512F.TernaryLogic(col2, Avx512F.PermuteVar8x64(col2, rot1), Avx512F.PermuteVar8x64(col2, rot2), 0xD2);
+                    // Chi - row-wise ternary logic
+                    Vector512<ulong> c0a = Avx512F.PermuteVar8x64(col0, rot1);
+                    Vector512<ulong> c1a = Avx512F.PermuteVar8x64(col3, rot1);
+                    Vector512<ulong> c2a = Avx512F.PermuteVar8x64(col1, rot1);
+                    Vector512<ulong> c3a = Avx512F.PermuteVar8x64(col4, rot1);
+                    Vector512<ulong> c4a = Avx512F.PermuteVar8x64(col2, rot1);
+
+                    Vector512<ulong> c0b = Avx512F.PermuteVar8x64(col0, rot2);
+                    Vector512<ulong> c1b = Avx512F.PermuteVar8x64(col3, rot2);
+                    Vector512<ulong> c2b = Avx512F.PermuteVar8x64(col1, rot2);
+                    Vector512<ulong> c3b = Avx512F.PermuteVar8x64(col4, rot2);
+                    Vector512<ulong> c4b = Avx512F.PermuteVar8x64(col2, rot2);
+
+                    c0 = Avx512F.TernaryLogic(col0, c0a, c0b, 0xD2);
+                    c1 = Avx512F.TernaryLogic(col3, c1a, c1b, 0xD2);
+                    c2 = Avx512F.TernaryLogic(col1, c2a, c2b, 0xD2);
+                    c3 = Avx512F.TernaryLogic(col4, c3a, c3b, 0xD2);
+                    c4 = Avx512F.TernaryLogic(col2, c4a, c4b, 0xD2);
 
                     // Iota - xor round constant into lane 0 only
                     c0 = Avx512F.Xor(c0, Vector512.CreateScalar(roundConstants));
@@ -899,8 +909,9 @@ namespace Nethermind.Core.Crypto
                         Avx512F.TernaryLogic(c0, c1, c2, 0x96),
                         c3, c4, 0x96);
 
+                    Vector512<ulong> theta1a = Avx512F.PermuteVar8x64(parity, rot1); 
                     Vector512<ulong> theta0 = Avx512F.PermuteVar8x64(parity, rot4);
-                    Vector512<ulong> theta1 = Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, rot1), 1);
+                    Vector512<ulong> theta1 = Avx512F.RotateLeft(theta1a, 1);
 
                     // Apply theta without materialising (a^b) - xor-of-three
                     c0 = Avx512F.TernaryLogic(c0, theta0, theta1, 0x96);
@@ -934,7 +945,6 @@ namespace Nethermind.Core.Crypto
                     // Duplicate within 128-bit lanes instead of injecting zeros.
                     Vector512<ulong> e4 = Avx512F.UnpackLow(r4, r4);   // even columns duplicated
                     Vector512<ulong> o4 = Avx512F.UnpackHigh(r4, r4);  // odd columns duplicated
- 
 
                     // Stage 2 - group (0,4), (2,6), (1,5), (3,7)
                     Vector512<ulong> s0 = Avx512F.Shuffle4x128(t0, t2, 0x44);
@@ -948,12 +958,24 @@ namespace Nethermind.Core.Crypto
                     Vector512<ulong> col3 = Avx512F.Shuffle4x128(s2, o4, 0xDD); // index 3
                     Vector512<ulong> col4 = Avx512F.Shuffle4x128(s1, e4, 0xA8); // index 4
 
-                    // Chi - row-wise ternary logic (same as your current)
-                    c0 = Avx512F.TernaryLogic(col0, Avx512F.PermuteVar8x64(col0, rot1), Avx512F.PermuteVar8x64(col0, rot2), 0xD2);
-                    c1 = Avx512F.TernaryLogic(col3, Avx512F.PermuteVar8x64(col3, rot1), Avx512F.PermuteVar8x64(col3, rot2), 0xD2);
-                    c2 = Avx512F.TernaryLogic(col1, Avx512F.PermuteVar8x64(col1, rot1), Avx512F.PermuteVar8x64(col1, rot2), 0xD2);
-                    c3 = Avx512F.TernaryLogic(col4, Avx512F.PermuteVar8x64(col4, rot1), Avx512F.PermuteVar8x64(col4, rot2), 0xD2);
-                    c4 = Avx512F.TernaryLogic(col2, Avx512F.PermuteVar8x64(col2, rot1), Avx512F.PermuteVar8x64(col2, rot2), 0xD2);
+                    // Chi - row-wise ternary logic
+                    Vector512<ulong> c0a = Avx512F.PermuteVar8x64(col0, rot1);
+                    Vector512<ulong> c1a = Avx512F.PermuteVar8x64(col3, rot1);
+                    Vector512<ulong> c2a = Avx512F.PermuteVar8x64(col1, rot1);
+                    Vector512<ulong> c3a = Avx512F.PermuteVar8x64(col4, rot1);
+                    Vector512<ulong> c4a = Avx512F.PermuteVar8x64(col2, rot1);
+
+                    Vector512<ulong> c0b = Avx512F.PermuteVar8x64(col0, rot2);
+                    Vector512<ulong> c1b = Avx512F.PermuteVar8x64(col3, rot2);
+                    Vector512<ulong> c2b = Avx512F.PermuteVar8x64(col1, rot2);
+                    Vector512<ulong> c3b = Avx512F.PermuteVar8x64(col4, rot2);
+                    Vector512<ulong> c4b = Avx512F.PermuteVar8x64(col2, rot2);
+
+                    c0 = Avx512F.TernaryLogic(col0, c0a, c0b, 0xD2);
+                    c1 = Avx512F.TernaryLogic(col3, c1a, c1b, 0xD2);
+                    c2 = Avx512F.TernaryLogic(col1, c2a, c2b, 0xD2);
+                    c3 = Avx512F.TernaryLogic(col4, c3a, c3b, 0xD2);
+                    c4 = Avx512F.TernaryLogic(col2, c4a, c4b, 0xD2);
 
                     // Iota - xor round constant into lane 0 only
                     c0 = Avx512F.Xor(c0, Vector512.CreateScalar(roundConstants));
@@ -961,7 +983,7 @@ namespace Nethermind.Core.Crypto
                 }
             }
 
-            // Store - same strategy as your original
+            // Store
             Unsafe.As<ulong, Vector512<ulong>>(ref s) = c0;
             Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 5)) = c1;
             Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 10)) = c2;
