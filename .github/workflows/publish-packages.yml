@@ -47,4 +47,3 @@ jobs:
           name: asc
           path: |
             "*.zip.asc"
-            "*.zip"
