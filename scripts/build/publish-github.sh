@@ -32,9 +32,7 @@ fi
 
 cd $GITHUB_WORKSPACE/$PACKAGE_DIR
 
-for rid in "linux-arm64" "linux-x64" "macos-arm64" "macos-x64" "windows-x64" "ref-assemblies"; do
-  file_name=$(basename *$rid*)
-
+for file_name in *.zip*; do
   echo "Uploading $file_name"
 
   curl https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$release_id/assets?name=$file_name \
