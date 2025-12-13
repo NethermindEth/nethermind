@@ -69,7 +69,7 @@ jobs:
 
             gpg --no-tty --batch --yes --pinentry-mode loopback \
               --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
-              -a -b "$file_name" -o "$file_name.asc"
+              -o "$file_name.asc" -a -b "$file_name"
           done
 
       - name: Upload Nethermind Linux arm64 package
