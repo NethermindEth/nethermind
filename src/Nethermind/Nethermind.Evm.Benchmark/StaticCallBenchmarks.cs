@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Benchmark
 
             Console.WriteLine(MuirGlacier.Instance);
             EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
+            _virtualMachine = new EthereumVirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
             _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
             _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
             _environment = ExecutionEnvironment.Rent(

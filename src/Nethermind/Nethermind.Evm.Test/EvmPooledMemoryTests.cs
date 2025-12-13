@@ -319,7 +319,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ISpecProvider specProvider = new TestSpecProvider(London.Instance);
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
-        VirtualMachine virtualMachine = new(
+        EthereumVirtualMachine virtualMachine = new(
             new TestBlockhashProvider(specProvider),
             specProvider,
             LimboLogs.Instance);
