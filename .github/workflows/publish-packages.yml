@@ -20,13 +20,13 @@ jobs:
           # echo $GPG_SECRET_KEY > SECRET_KEY
           # echo $GPG_PASSPHRASE > $GITHUB_WORKSPACE/PASSPHRASE
           # echo "Import GPG key"
-          # base64 --decode -i SECRET_KEY | gpg --import
+          # base64 --decode -i SECRET_KEY | gpg --import --no-tty --batch --yes
           # echo "Import GPG owner trust"
           # echo ${{ secrets.GPG_OWNERTRUST }} | base64 --decode | gpg --import-ownertrust
 
-          echo "$GPG_SECRET_KEY" | base64 --decode | gpg --import
-          echo "${{ secrets.GPG_OWNERTRUST }}" | base64 --decode | gpg --import-ownertrust
-          echo "$GPG_PASSPHRASE" > "$GITHUB_WORKSPACE/PASSPHRASE"
+          printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
+          printf '%s' "${{ secrets.GPG_OWNERTRUST }}" | base64 --decode | gpg --import-ownertrust
+          # echo "$GPG_PASSPHRASE" > "$GITHUB_WORKSPACE/PASSPHRASE"
           gpg --fingerprint 24A774616F1E617E
 
       - name: Download ZIP assets
@@ -38,7 +38,7 @@ jobs:
         run: |
           for f in *.zip; do
             gpg --batch --yes --no-tty --pinentry-mode loopback \
-              --passphrase-file "$GITHUB_WORKSPACE/PASSPHRASE" \
+              --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
               --output "$f.asc" --armor --detach-sign "$f"
           done
 
