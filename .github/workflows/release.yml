@@ -55,6 +55,22 @@ jobs:
       - name: Archive packages
         run: $SCRIPTS_PATH/archive.sh
 
+      - name: Sign packages
+        env:
+          GPG_PASSPHRASE: ${{ secrets.PPA_GPG_PASSPHRASE }}
+          GPG_SECRET_KEY: ${{ secrets.PPA_GPG_SECRET_KEY }}
+        working-directory: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}
+        run: |
+          printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
+
+          for rid in "linux-arm64" "linux-x64" "macos-arm64" "macos-x64" "windows-x64"; do
+            file_name=$(basename *$rid*)
+
+            gpg --no-tty --batch --yes --pinentry-mode loopback \
+              --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
+              -o "$file_name.asc" -ab "$file_name"
+          done
+
       - name: Upload Nethermind Linux arm64 package
         uses: actions/upload-artifact@v4
         with:
@@ -135,7 +151,9 @@ jobs:
           PACKAGE_PREFIX: ${{ needs.build.outputs.package-prefix }}
           PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
-          cp $GITHUB_WORKSPACE/$PACKAGE_DIR/**/*.zip $GITHUB_WORKSPACE/$PACKAGE_DIR
+          cp $GITHUB_WORKSPACE/$PACKAGE_DIR/**/*.zip \
+            $GITHUB_WORKSPACE/$PACKAGE_DIR/**/*.zip.asc \
+            $GITHUB_WORKSPACE/$PACKAGE_DIR
           rm -rf $GITHUB_WORKSPACE/$PACKAGE_DIR/*/
           $SCRIPTS_PATH/publish-github.sh
 
