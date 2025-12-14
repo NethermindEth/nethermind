@@ -75,7 +75,7 @@ public static unsafe class KeccakCache
             Sse.PrefetchNonTemporal((byte*)Unsafe.AsPointer(ref e) + 64);
         }
 
-        // Half the hash his encoded in the bucket so we only need half of it and can use other half for length.
+        // Half the hash is encoded in the bucket so we only need half of it and can use other half for length.
         // This allows to create a combined value that represents a part of the hash, the input's length and the lock marker.
         uint combined = (HashMask & (uint)hashCode) | (uint)input.Length;
 

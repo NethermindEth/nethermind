@@ -57,6 +57,34 @@ public sealed class KeccakHash
         20UL, 21, 43, 50,  // 64 - table 5
     ];
 
+    // 24 vectors - each round constant repeated 4 times (so Iota is a single vpxor ymm, ymm, m256)
+    private static readonly ulong[] Iota256 = [
+        0x0000000000000001UL, 0x0000000000000001UL, 0x0000000000000001UL, 0x0000000000000001UL,
+        0x0000000000008082UL, 0x0000000000008082UL, 0x0000000000008082UL, 0x0000000000008082UL,
+        0x800000000000808AUL, 0x800000000000808AUL, 0x800000000000808AUL, 0x800000000000808AUL,
+        0x8000000080008000UL, 0x8000000080008000UL, 0x8000000080008000UL, 0x8000000080008000UL,
+        0x000000000000808BUL, 0x000000000000808BUL, 0x000000000000808BUL, 0x000000000000808BUL,
+        0x0000000080000001UL, 0x0000000080000001UL, 0x0000000080000001UL, 0x0000000080000001UL,
+        0x8000000080008081UL, 0x8000000080008081UL, 0x8000000080008081UL, 0x8000000080008081UL,
+        0x8000000000008009UL, 0x8000000000008009UL, 0x8000000000008009UL, 0x8000000000008009UL,
+        0x000000000000008AUL, 0x000000000000008AUL, 0x000000000000008AUL, 0x000000000000008AUL,
+        0x0000000000000088UL, 0x0000000000000088UL, 0x0000000000000088UL, 0x0000000000000088UL,
+        0x0000000080008009UL, 0x0000000080008009UL, 0x0000000080008009UL, 0x0000000080008009UL,
+        0x000000008000000AUL, 0x000000008000000AUL, 0x000000008000000AUL, 0x000000008000000AUL,
+        0x000000008000808BUL, 0x000000008000808BUL, 0x000000008000808BUL, 0x000000008000808BUL,
+        0x800000000000008BUL, 0x800000000000008BUL, 0x800000000000008BUL, 0x800000000000008BUL,
+        0x8000000000008089UL, 0x8000000000008089UL, 0x8000000000008089UL, 0x8000000000008089UL,
+        0x8000000000008003UL, 0x8000000000008003UL, 0x8000000000008003UL, 0x8000000000008003UL,
+        0x8000000000008002UL, 0x8000000000008002UL, 0x8000000000008002UL, 0x8000000000008002UL,
+        0x8000000000000080UL, 0x8000000000000080UL, 0x8000000000000080UL, 0x8000000000000080UL,
+        0x000000000000800AUL, 0x000000000000800AUL, 0x000000000000800AUL, 0x000000000000800AUL,
+        0x800000008000000AUL, 0x800000008000000AUL, 0x800000008000000AUL, 0x800000008000000AUL,
+        0x8000000080008081UL, 0x8000000080008081UL, 0x8000000080008081UL, 0x8000000080008081UL,
+        0x8000000000008080UL, 0x8000000000008080UL, 0x8000000000008080UL, 0x8000000000008080UL,
+        0x0000000080000001UL, 0x0000000080000001UL, 0x0000000080000001UL, 0x0000000080000001UL,
+        0x8000000080008008UL, 0x8000000080008008UL, 0x8000000080008008UL, 0x8000000080008008UL,
+    ];
+
     private byte[] _remainderBuffer = [];
     private ulong[] _state = [];
     private byte[]? _hash;
@@ -114,14 +142,15 @@ public sealed class KeccakHash
     // update the state with given number of rounds
     private static void KeccakF(Span<ulong> st)
     {
-        if (false && Avx512F.IsSupported)
+        if (Avx512F.IsSupported)
         {
             KeccakF1600Avx512F(st);
         }
-        else if (Avx2.IsSupported)
-        {
-            KeccakF1600Avx2(st);
-        }
+        //else if (Avx2.IsSupported)
+        //{
+        //    // Not good yet
+        //    KeccakF1600Avx2(st);
+        //}
         else
         {
             KeccakF1600(st);
@@ -868,12 +897,18 @@ public sealed class KeccakHash
         Vector512<ulong> c4 = Avx512F.InsertVector256(Vector512<ulong>.Zero, c4lo, 0);
         c4 = Avx512F.InsertVector256(c4, c4hi, 1);
 
-        // Lane permute indices - rotate only lanes 0-4, keep lanes 5-7 fixed.
-        // This is the contract that allows dead lanes to carry garbage without affecting correctness.
+        // Theta lane rotates - rotate only lanes 0-4, keep lanes 5-7 fixed.
         Vector512<ulong> rot4 = Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL);
         Vector512<ulong> rot1 = Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL);
-        Vector512<ulong> rot2 = Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL);
-        Vector512<ulong> rot3 = Vector512.Create(3UL, 4UL, 0UL, 1UL, 2UL, 5UL, 6UL, 7UL);
+
+        // Pi-to-columns indices:
+        // After these permutes, register i holds Pi output COLUMN i (x fixed, y varies) in lanes 0-4.
+        // Lanes 5-7 remain dead.
+        Vector512<ulong> pi0 = Vector512.Create(0UL, 3UL, 1UL, 4UL, 2UL, 5UL, 6UL, 7UL);
+        Vector512<ulong> pi1 = Vector512.Create(1UL, 4UL, 2UL, 0UL, 3UL, 5UL, 6UL, 7UL);
+        Vector512<ulong> pi2 = Vector512.Create(2UL, 0UL, 3UL, 1UL, 4UL, 5UL, 6UL, 7UL);
+        Vector512<ulong> pi3 = Vector512.Create(3UL, 1UL, 4UL, 2UL, 0UL, 5UL, 6UL, 7UL);
+        Vector512<ulong> pi4 = Vector512.Create(4UL, 2UL, 0UL, 3UL, 1UL, 5UL, 6UL, 7UL);
 
         // Rho rotate counts per row (y fixed, x varies) - used by vprolvq.
         Vector512<ulong> rho0 = Vector512.Create(0UL, 1, 62, 28, 27, 0, 0, 0);
@@ -885,11 +920,9 @@ public sealed class KeccakHash
         // 2 rounds per iteration - count down to keep loop control tight.
         for (int i = ROUNDS / 2; i != 0; i--)
         {
+            // Round 0
             {
-                // Theta:
-                // - parity = xor of the 5 rows (vpternlogq is cheap)
-                // - theta0 = rot4(parity), theta1 = rol1(rot1(parity))
-                // - apply as xor-of-three (row ^= theta0 ^ theta1) to avoid materialising (theta0 ^ theta1).
+                // Theta
                 Vector512<ulong> parity = Avx512F.TernaryLogic(
                     Avx512F.TernaryLogic(c0, c1, c2, 0x96),
                     c3, c4, 0x96);
@@ -898,88 +931,67 @@ public sealed class KeccakHash
                 Vector512<ulong> theta0 = Avx512F.PermuteVar8x64(parity, rot4);
                 Vector512<ulong> theta1 = Avx512F.RotateLeft(theta1a, 1);
 
-                // Apply theta without materialising (a^b) - xor-of-three
                 c0 = Avx512F.TernaryLogic(c0, theta0, theta1, 0x96);
                 c1 = Avx512F.TernaryLogic(c1, theta0, theta1, 0x96);
                 c2 = Avx512F.TernaryLogic(c2, theta0, theta1, 0x96);
                 c3 = Avx512F.TernaryLogic(c3, theta0, theta1, 0x96);
                 c4 = Avx512F.TernaryLogic(c4, theta0, theta1, 0x96);
 
-                // Rho + Pi pipelining:
-                // - vprolvq (rotate) and vpermq (permute) are both non-trivial ops.
-                // - Start Pi permutes as soon as each row's Rho rotate is ready, to overlap work and
-                //   avoid bunching all permutes after all rotates.
-                // - We keep r0 implicit as "c0 after Rho", feeding it directly into the transpose unpacks.
+                // Rho + Pi-to-columns pipelining:
+                // - Rho keeps row layout (y fixed, x varies).
+                // - Pi permutes each row i into column i (x fixed, y varies) in the same register.
                 c0 = Avx512F.RotateLeftVariable(c0, rho0);
                 c1 = Avx512F.RotateLeftVariable(c1, rho1);
-                Vector512<ulong> r1 = Avx512F.PermuteVar8x64(c1, rot1);
+                c0 = Avx512F.PermuteVar8x64(c0, pi0);
                 c2 = Avx512F.RotateLeftVariable(c2, rho2);
-                Vector512<ulong> r2 = Avx512F.PermuteVar8x64(c2, rot2);
+                c1 = Avx512F.PermuteVar8x64(c1, pi1);
                 c3 = Avx512F.RotateLeftVariable(c3, rho3);
-                Vector512<ulong> r3 = Avx512F.PermuteVar8x64(c3, rot3);
+                c2 = Avx512F.PermuteVar8x64(c2, pi2);
                 c4 = Avx512F.RotateLeftVariable(c4, rho4);
-                Vector512<ulong> r4 = Avx512F.PermuteVar8x64(c4, rot4);
+                c3 = Avx512F.PermuteVar8x64(c3, pi3);
+                c4 = Avx512F.PermuteVar8x64(c4, pi4);
 
-                // Pi + transpose:
-                // Transpose the 5x5 (embedded in 8 lanes) so columns become rows for Chi.
-                //
-                // Stage 1 (unpack) is cheap - express it as two independent streams:
-                // - t0/t2 feed the "even" side of the transpose
-                // - t1/t3 feed the "odd" side
-                // Ordering here helps the JIT/CPU get shuffles in-flight earlier.
-                Vector512<ulong> t0 = Avx512F.UnpackLow(c0, r1);
-                Vector512<ulong> t2 = Avx512F.UnpackLow(r2, r3);
-                Vector512<ulong> t1 = Avx512F.UnpackHigh(c0, r1);
-                Vector512<ulong> t3 = Avx512F.UnpackHigh(r2, r3);
-                // Row4 handling:
-                // We only need lanes 0-4 correct. Instead of injecting zeros (extra shuffles),
-                // duplicate within 128-bit lanes - dead lanes remain dead by the permute contract.
-                Vector512<ulong> e4 = Avx512F.UnpackLow(r4, r4);   // even columns duplicated
-                Vector512<ulong> o4 = Avx512F.UnpackHigh(r4, r4);  // odd columns duplicated
+                // Chi (cross-register): each register is a column, lanes are y.
+                // chi(a,b,c) = a ^ (~b & c) using imm8=0xD2
+                Vector512<ulong> t0 = c0;
+                Vector512<ulong> t1 = c1;
+                c0 = Avx512F.TernaryLogic(c0, c1, c2, 0xD2);
+                c1 = Avx512F.TernaryLogic(c1, c2, c3, 0xD2);
+                c2 = Avx512F.TernaryLogic(c2, c3, c4, 0xD2);
+                c3 = Avx512F.TernaryLogic(c3, c4, t0, 0xD2);
+                c4 = Avx512F.TernaryLogic(c4, t0, t1, 0xD2);
 
-                // Stage 2 (cross-128 shuffles):
-                // Build s0/s2 first because they feed most output columns.
-                // s1 is only needed for col4, so it's computed last.
-                Vector512<ulong> s0 = Avx512F.Shuffle4x128(t0, t2, 0x44);
-                Vector512<ulong> s2 = Avx512F.Shuffle4x128(t1, t3, 0x44);
-                Vector512<ulong> s1 = Avx512F.Shuffle4x128(t0, t2, 0xEE);
-
-                // Stage 3 (final columns):
-                // Emit in the remapped order used by Chi (0,3,1,4,2) to shorten live ranges and
-                // reduce register pressure. Chi mapping is:
-                //   c0 <- col0, c1 <- col3, c2 <- col1, c3 <- col4, c4 <- col2
-                Vector512<ulong> col0 = Avx512F.Shuffle4x128(s0, e4, 0x88); // index 0
-                Vector512<ulong> col3 = Avx512F.Shuffle4x128(s2, o4, 0xDD); // index 3
-                Vector512<ulong> col1 = Avx512F.Shuffle4x128(s2, o4, 0x88); // index 1
-                Vector512<ulong> col4 = Avx512F.Shuffle4x128(s1, e4, 0xA8); // index 4
-                Vector512<ulong> col2 = Avx512F.Shuffle4x128(s0, e4, 0xDD); // index 2
-
-                // Chi:
-                // vpermq is relatively high-latency - we "prefetch" a small batch of permutes,
-                // then immediately consume them via vpternlogq. This keeps permute latency covered
-                // without keeping 10 permute results live at once (avoids non-volatile zmm usage).
-                Vector512<ulong> c0a = Avx512F.PermuteVar8x64(col0, rot1);
-                Vector512<ulong> c0b = Avx512F.PermuteVar8x64(col0, rot2);
-                Vector512<ulong> c1a = Avx512F.PermuteVar8x64(col3, rot1);
-                Vector512<ulong> c1b = Avx512F.PermuteVar8x64(col3, rot2);
-                c0 = Avx512F.TernaryLogic(col0, c0a, c0b, 0xD2);
-                Vector512<ulong> c2a = Avx512F.PermuteVar8x64(col1, rot1);
-                Vector512<ulong> c2b = Avx512F.PermuteVar8x64(col1, rot2);
-                Vector512<ulong> c3a = Avx512F.PermuteVar8x64(col4, rot1);
-                Vector512<ulong> c3b = Avx512F.PermuteVar8x64(col4, rot2);
-                c1 = Avx512F.TernaryLogic(col3, c1a, c1b, 0xD2);
-                c2 = Avx512F.TernaryLogic(col1, c2a, c2b, 0xD2);
-                Vector512<ulong> c4a = Avx512F.PermuteVar8x64(col2, rot1);
-                Vector512<ulong> c4b = Avx512F.PermuteVar8x64(col2, rot2);
-                c3 = Avx512F.TernaryLogic(col4, c3a, c3b, 0xD2);
-                c4 = Avx512F.TernaryLogic(col2, c4a, c4b, 0xD2);
-
-                // Iota - xor round constant into lane 0 only.
-                // Scalar load + broadcast-to-lane0 pattern, then advance the pointer.
+                // Iota: xor RC into s0. In this column-layout, s0 is still lane0 of c0.
                 c0 = Avx512F.Xor(c0, Vector512.CreateScalar(roundConstants));
                 roundConstants = ref Unsafe.Add(ref roundConstants, 1);
+
+                // Transpose columns -> rows (reuse your existing transpose core).
+                Vector512<ulong> u0 = Avx512F.UnpackLow(c0, c1);
+                Vector512<ulong> u2 = Avx512F.UnpackLow(c2, c3);
+                Vector512<ulong> u1 = Avx512F.UnpackHigh(c0, c1);
+                Vector512<ulong> u3 = Avx512F.UnpackHigh(c2, c3);
+
+                Vector512<ulong> e4 = Avx512F.UnpackLow(c4, c4);
+                Vector512<ulong> o4 = Avx512F.UnpackHigh(c4, c4);
+
+                Vector512<ulong> s0 = Avx512F.Shuffle4x128(u0, u2, 0x44);
+                Vector512<ulong> s2 = Avx512F.Shuffle4x128(u1, u3, 0x44);
+                Vector512<ulong> s1 = Avx512F.Shuffle4x128(u0, u2, 0xEE);
+
+                // Output order (0,3,1,4,2) - remap back to (0,1,2,3,4)
+                Vector512<ulong> row0 = Avx512F.Shuffle4x128(s0, e4, 0x88);
+                Vector512<ulong> row3 = Avx512F.Shuffle4x128(s2, o4, 0xDD);
+                Vector512<ulong> row1 = Avx512F.Shuffle4x128(s2, o4, 0x88);
+                Vector512<ulong> row4 = Avx512F.Shuffle4x128(s1, e4, 0xA8);
+                Vector512<ulong> row2 = Avx512F.Shuffle4x128(s0, e4, 0xDD);
+
+                c0 = row0;
+                c1 = row1;
+                c2 = row2;
+                c3 = row3;
+                c4 = row4;
             }
-            // Second round (unrolled):
+            // Round 1 (unrolled)
             {
                 Vector512<ulong> parity = Avx512F.TernaryLogic(
                     Avx512F.TernaryLogic(c0, c1, c2, 0x96),
@@ -997,50 +1009,49 @@ public sealed class KeccakHash
 
                 c0 = Avx512F.RotateLeftVariable(c0, rho0);
                 c1 = Avx512F.RotateLeftVariable(c1, rho1);
-                Vector512<ulong> r1 = Avx512F.PermuteVar8x64(c1, rot1);
+                c0 = Avx512F.PermuteVar8x64(c0, pi0);
                 c2 = Avx512F.RotateLeftVariable(c2, rho2);
-                Vector512<ulong> r2 = Avx512F.PermuteVar8x64(c2, rot2);
+                c1 = Avx512F.PermuteVar8x64(c1, pi1);
                 c3 = Avx512F.RotateLeftVariable(c3, rho3);
-                Vector512<ulong> r3 = Avx512F.PermuteVar8x64(c3, rot3);
+                c2 = Avx512F.PermuteVar8x64(c2, pi2);
                 c4 = Avx512F.RotateLeftVariable(c4, rho4);
-                Vector512<ulong> r4 = Avx512F.PermuteVar8x64(c4, rot4);
+                c3 = Avx512F.PermuteVar8x64(c3, pi3);
+                c4 = Avx512F.PermuteVar8x64(c4, pi4);
 
-                Vector512<ulong> t0 = Avx512F.UnpackLow(c0, r1);
-                Vector512<ulong> t2 = Avx512F.UnpackLow(r2, r3);
-                Vector512<ulong> t1 = Avx512F.UnpackHigh(c0, r1);
-                Vector512<ulong> t3 = Avx512F.UnpackHigh(r2, r3);
-
-                Vector512<ulong> e4 = Avx512F.UnpackLow(r4, r4);
-                Vector512<ulong> o4 = Avx512F.UnpackHigh(r4, r4);
-
-                Vector512<ulong> s0 = Avx512F.Shuffle4x128(t0, t2, 0x44);
-                Vector512<ulong> s2 = Avx512F.Shuffle4x128(t1, t3, 0x44);
-                Vector512<ulong> s1 = Avx512F.Shuffle4x128(t0, t2, 0xEE);
-
-                Vector512<ulong> col0 = Avx512F.Shuffle4x128(s0, e4, 0x88);
-                Vector512<ulong> col3 = Avx512F.Shuffle4x128(s2, o4, 0xDD);
-                Vector512<ulong> col1 = Avx512F.Shuffle4x128(s2, o4, 0x88);
-                Vector512<ulong> col4 = Avx512F.Shuffle4x128(s1, e4, 0xA8);
-                Vector512<ulong> col2 = Avx512F.Shuffle4x128(s0, e4, 0xDD);
-
-                Vector512<ulong> c0a = Avx512F.PermuteVar8x64(col0, rot1);
-                Vector512<ulong> c0b = Avx512F.PermuteVar8x64(col0, rot2);
-                Vector512<ulong> c1a = Avx512F.PermuteVar8x64(col3, rot1);
-                Vector512<ulong> c1b = Avx512F.PermuteVar8x64(col3, rot2);
-                c0 = Avx512F.TernaryLogic(col0, c0a, c0b, 0xD2);
-                Vector512<ulong> c2a = Avx512F.PermuteVar8x64(col1, rot1);
-                Vector512<ulong> c2b = Avx512F.PermuteVar8x64(col1, rot2);
-                Vector512<ulong> c3a = Avx512F.PermuteVar8x64(col4, rot1);
-                Vector512<ulong> c3b = Avx512F.PermuteVar8x64(col4, rot2);
-                c1 = Avx512F.TernaryLogic(col3, c1a, c1b, 0xD2);
-                c2 = Avx512F.TernaryLogic(col1, c2a, c2b, 0xD2);
-                Vector512<ulong> c4a = Avx512F.PermuteVar8x64(col2, rot1);
-                Vector512<ulong> c4b = Avx512F.PermuteVar8x64(col2, rot2);
-                c3 = Avx512F.TernaryLogic(col4, c3a, c3b, 0xD2);
-                c4 = Avx512F.TernaryLogic(col2, c4a, c4b, 0xD2);
+                Vector512<ulong> t0 = c0;
+                Vector512<ulong> t1 = c1;
+                c0 = Avx512F.TernaryLogic(c0, c1, c2, 0xD2);
+                c1 = Avx512F.TernaryLogic(c1, c2, c3, 0xD2);
+                c2 = Avx512F.TernaryLogic(c2, c3, c4, 0xD2);
+                c3 = Avx512F.TernaryLogic(c3, c4, t0, 0xD2);
+                c4 = Avx512F.TernaryLogic(c4, t0, t1, 0xD2);
 
                 c0 = Avx512F.Xor(c0, Vector512.CreateScalar(roundConstants));
                 roundConstants = ref Unsafe.Add(ref roundConstants, 1);
+
+                Vector512<ulong> u0 = Avx512F.UnpackLow(c0, c1);
+                Vector512<ulong> u2 = Avx512F.UnpackLow(c2, c3);
+                Vector512<ulong> u1 = Avx512F.UnpackHigh(c0, c1);
+                Vector512<ulong> u3 = Avx512F.UnpackHigh(c2, c3);
+
+                Vector512<ulong> e4 = Avx512F.UnpackLow(c4, c4);
+                Vector512<ulong> o4 = Avx512F.UnpackHigh(c4, c4);
+
+                Vector512<ulong> s0 = Avx512F.Shuffle4x128(u0, u2, 0x44);
+                Vector512<ulong> s2 = Avx512F.Shuffle4x128(u1, u3, 0x44);
+                Vector512<ulong> s1 = Avx512F.Shuffle4x128(u0, u2, 0xEE);
+
+                Vector512<ulong> row0 = Avx512F.Shuffle4x128(s0, e4, 0x88);
+                Vector512<ulong> row3 = Avx512F.Shuffle4x128(s2, o4, 0xDD);
+                Vector512<ulong> row1 = Avx512F.Shuffle4x128(s2, o4, 0x88);
+                Vector512<ulong> row4 = Avx512F.Shuffle4x128(s1, e4, 0xA8);
+                Vector512<ulong> row2 = Avx512F.Shuffle4x128(s0, e4, 0xDD);
+
+                c0 = row0;
+                c1 = row1;
+                c2 = row2;
+                c3 = row3;
+                c4 = row4;
             }
         }
 
@@ -1059,17 +1070,6 @@ public sealed class KeccakHash
     {
         ref ulong s = ref MemoryMarshal.GetReference(state);
 
-        // OpenSSL AVX2 "magic" layout.
-        // A00 is broadcast, other registers hold 4 lanes each.
-        //
-        // Mapping (lane0..3):
-        // a00 = [A00 A00 A00 A00]
-        // a01 = [A01 A02 A03 A04]
-        // a20 = [A20 A40 A10 A30]
-        // a31 = [A31 A12 A43 A24]
-        // a21 = [A21 A42 A13 A34]
-        // a41 = [A41 A32 A23 A14]
-        // a11 = [A11 A22 A33 A44]
         Vector256<ulong> a00 = Vector256.Create(s);
         Vector256<ulong> a01 = Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.As<ulong, byte>(ref Unsafe.Add(ref s, 1)));
 
@@ -1103,185 +1103,185 @@ public sealed class KeccakHash
             Unsafe.Add(ref s, 18),
             Unsafe.Add(ref s, 24));
 
-        ref ulong rc = ref MemoryMarshal.GetArrayDataReference(RoundConstants);
-        ref ulong rhoL = ref MemoryMarshal.GetArrayDataReference(RhoLeft);
-        ref ulong rhoR = ref MemoryMarshal.GetArrayDataReference(RhoRight);
+        // Constant bases as byte refs so offsets are in bytes (32 bytes per ymm table entry)
+        ref byte rhoL = ref Unsafe.As<ulong, byte>(ref MemoryMarshal.GetArrayDataReference(RhoLeft));
+        ref byte rhoR = ref Unsafe.As<ulong, byte>(ref MemoryMarshal.GetArrayDataReference(RhoRight));
+        ref byte iota = ref Unsafe.As<ulong, byte>(ref MemoryMarshal.GetArrayDataReference(Iota256));
 
         for (int round = ROUNDS; round != 0; round--)
         {
-            // ------------------------- Theta
+            // Theta (as before)
             Vector256<ulong> c00 = Avx2.Shuffle(a20.AsUInt32(), 0x4E).AsUInt64();
             Vector256<ulong> c14 = Avx2.Xor(a31, a41);
-            Vector256<ulong> t2 = Avx2.Xor(a11, a21);
+            Vector256<ulong> t2  = Avx2.Xor(a11, a21);
             c14 = Avx2.Xor(a01, c14);
-            c14 = Avx2.Xor(t2, c14);                    // C[1..4]
+            c14 = Avx2.Xor(t2, c14);                              // C[1..4]
 
-            Vector256<ulong> t4 = Avx2.Permute4x64(c14, 0x93);
+            Vector256<ulong> t4  = Avx2.Permute4x64(c14, 0x93);
 
             c00 = Avx2.Xor(a20, c00);
-            Vector256<ulong> t0 = Avx2.Permute4x64(c00, 0x4E);
+            Vector256<ulong> t0  = Avx2.Permute4x64(c00, 0x4E);
 
-            Vector256<ulong> t1 = Avx2.ShiftRightLogical(c14, 63);
+            Vector256<ulong> t1  = Avx2.ShiftRightLogical(c14, 63);
             t2 = Avx2.Add(c14, c14);
-            t1 = Avx2.Or(t2, t1);                        // ROL(C[1..4],1)
+            t1 = Avx2.Or(t2, t1);                                 // ROL(C[1..4],1)
 
             Vector256<ulong> d14 = Avx2.Permute4x64(t1, 0x39);
 
             Vector256<ulong> d00 = Avx2.Xor(t4, t1);
-            d00 = Avx2.Permute4x64(d00, 0x00);           // broadcast D0
+            d00 = Avx2.Permute4x64(d00, 0x00);                    // broadcast D0
 
             c00 = Avx2.Xor(a00, c00);
-            c00 = Avx2.Xor(t0, c00);                     // C0 broadcast
+            c00 = Avx2.Xor(t0, c00);                              // C0 broadcast
 
             t0 = Avx2.ShiftRightLogical(c00, 63);
             t1 = Avx2.Add(c00, c00);
-            t1 = Avx2.Or(t0, t1);                        // ROL(C0,1) broadcast
+            t1 = Avx2.Or(t0, t1);                                 // ROL(C0,1) broadcast
 
             a20 = Avx2.Xor(d00, a20);
             a00 = Avx2.Xor(d00, a00);
 
             d14 = Avx2.Blend(d14.AsUInt32(), t1.AsUInt32(), 0xC0).AsUInt64();
-            t4 = Avx2.Blend(t4.AsUInt32(), c00.AsUInt32(), 0x03).AsUInt64();
-            d14 = Avx2.Xor(t4, d14);
+            t4  = Avx2.Blend(t4.AsUInt32(),  c00.AsUInt32(), 0x03).AsUInt64();
+            d14 = Avx2.Xor(t4, d14);                              // D[1..4]
 
+            // Rho + Pi, OpenSSL scheduling
+            // We reuse t0,t1 as shift temps to keep reg pressure down.
+
+            // A20 rotate (rho table0 @ +0x00) and Pi permute to p31
+            t0 = Avx2.ShiftLeftLogicalVariable(a20, Unsafe.ReadUnaligned<Vector256<ulong>>(ref rhoL));
+            t1 = Avx2.ShiftRightLogicalVariable(a20, Unsafe.ReadUnaligned<Vector256<ulong>>(ref rhoR));
+            a20 = Avx2.Or(t0, t1);
+            Vector256<ulong> p31 = Avx2.Permute4x64(a20, 0x8D);
+
+            // A31 ^= D14, rotate (table2 @ +0x40), Pi permute to p21
             a31 = Avx2.Xor(d14, a31);
+            t0  = Avx2.ShiftLeftLogicalVariable(a31, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoL, 0x40)));
+            t1  = Avx2.ShiftRightLogicalVariable(a31, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoR, 0x40)));
+            a31 = Avx2.Or(t0, t1);
+            Vector256<ulong> p21 = Avx2.Permute4x64(a31, 0x8D);
+
+            // A21 ^= D14, rotate (table3 @ +0x60), Pi permute to p41
             a21 = Avx2.Xor(d14, a21);
+            t0  = Avx2.ShiftLeftLogicalVariable(a21, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoL, 0x60)));
+            t1  = Avx2.ShiftRightLogicalVariable(a21, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoR, 0x60)));
+            a21 = Avx2.Or(t0, t1);
+            Vector256<ulong> p41 = Avx2.Permute4x64(a21, 0x1B);
+
+            // A41 ^= D14, rotate (table4 @ +0x80), Pi permute to p11
             a41 = Avx2.Xor(d14, a41);
+            t0  = Avx2.ShiftLeftLogicalVariable(a41, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoL, 0x80)));
+            t1  = Avx2.ShiftRightLogicalVariable(a41, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoR, 0x80)));
+            a41 = Avx2.Or(t0, t1);
+            Vector256<ulong> p11 = Avx2.Permute4x64(a41, 0x72);
+
+            // A11 ^= D14, rotate (table5 @ +0xA0) - becomes p01
             a11 = Avx2.Xor(d14, a11);
+            t0  = Avx2.ShiftLeftLogicalVariable(a11, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoL, 0xA0)));
+            t1  = Avx2.ShiftRightLogicalVariable(a11, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoR, 0xA0)));
+            Vector256<ulong> p01 = Avx2.Or(t0, t1);
+
+            // A01 ^= D14, rotate (table1 @ +0x20) - becomes p20
             a01 = Avx2.Xor(d14, a01);
+            t0  = Avx2.ShiftLeftLogicalVariable(a01, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoL, 0x20)));
+            t1  = Avx2.ShiftRightLogicalVariable(a01, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoR, 0x20)));
+            Vector256<ulong> p20 = Avx2.Or(t0, t1);
 
-            // ------------------------- Rho + Pi + pre-Chi shuffle
-            Vector256<ulong> left = Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.As<ulong, byte>(ref rhoL));
-            Vector256<ulong> right = Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.As<ulong, byte>(ref rhoR));
-            a20 = Avx2.Or(
-                Avx2.ShiftLeftLogicalVariable(a20, left),
-                Avx2.ShiftRightLogicalVariable(a20, right));
-            Vector256<ulong> left1 = Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.As<ulong, byte>(ref Unsafe.Add(ref rhoL, 8)));
-            Vector256<ulong> right1 = Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.As<ulong, byte>(ref Unsafe.Add(ref rhoR, 8)));
-            a31 = Avx2.Or(
-                Avx2.ShiftLeftLogicalVariable(a31, left1),
-                Avx2.ShiftRightLogicalVariable(a31, right1));
-            Vector256<ulong> left2 = Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.As<ulong, byte>(ref Unsafe.Add(ref rhoL, 12)));
-            Vector256<ulong> right2 = Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.As<ulong, byte>(ref Unsafe.Add(ref rhoR, 12)));
-            a21 = Avx2.Or(
-                Avx2.ShiftLeftLogicalVariable(a21, left2),
-                Avx2.ShiftRightLogicalVariable(a21, right2));
-            Vector256<ulong> left3 = Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.As<ulong, byte>(ref Unsafe.Add(ref rhoL, 16)));
-            Vector256<ulong> right3 = Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.As<ulong, byte>(ref Unsafe.Add(ref rhoR, 16)));
-            a41 = Avx2.Or(
-                Avx2.ShiftLeftLogicalVariable(a41, left3),
-                Avx2.ShiftRightLogicalVariable(a41, right3));
-
-            Vector256<ulong> left4 = Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.As<ulong, byte>(ref Unsafe.Add(ref rhoL, 20)));
-            Vector256<ulong> right4 = Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.As<ulong, byte>(ref Unsafe.Add(ref rhoR, 20)));
-            Vector256<ulong> p01 = Avx2.Or(
-                Avx2.ShiftLeftLogicalVariable(a11, left4),
-                Avx2.ShiftRightLogicalVariable(a11, right4)); // future A01
-            Vector256<ulong> left5 = Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.As<ulong, byte>(ref Unsafe.Add(ref rhoL, 4)));
-            Vector256<ulong> right5 = Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.As<ulong, byte>(ref Unsafe.Add(ref rhoR, 4)));
-            Vector256<ulong> p20 = Avx2.Or(
-                Avx2.ShiftLeftLogicalVariable(a01, left5),
-                Avx2.ShiftRightLogicalVariable(a01, right5));  // future A20
-
-            Vector256<ulong> p31 = Avx2.Permute4x64(a20, 0x8D); // future A31
-            Vector256<ulong> p21 = Avx2.Permute4x64(a31, 0x8D); // future A21
-            Vector256<ulong> p41 = Avx2.Permute4x64(a21, 0x1B); // future A41
-            Vector256<ulong> p11 = Avx2.Permute4x64(a41, 0x72); // future A11
-
-            // ------------------------- Chi
+            // Chi
             Vector256<ulong> q7 = Avx2.ShiftRightLogical128BitLane(p01, 8);
-            Vector256<ulong> q0 = Avx2.AndNot(p01, q7); // q0 = (~p01) & q7
+            Vector256<ulong> q0 = Avx2.AndNot(p01, q7); // (~p01) & q7
 
             // A31/A41
             a31 = Avx2.Blend(p20.AsUInt32(), p11.AsUInt32(), 0x0C).AsUInt64();
             Vector256<ulong> q8 = Avx2.Blend(p21.AsUInt32(), p20.AsUInt32(), 0x0C).AsUInt64();
             a41 = Avx2.Blend(p31.AsUInt32(), p21.AsUInt32(), 0x0C).AsUInt64();
-            q7 = Avx2.Blend(p20.AsUInt32(), p31.AsUInt32(), 0x0C).AsUInt64();
+            q7  = Avx2.Blend(p20.AsUInt32(), p31.AsUInt32(), 0x0C).AsUInt64();
 
             a31 = Avx2.Blend(a31.AsUInt32(), p21.AsUInt32(), 0x30).AsUInt64();
-            q8 = Avx2.Blend(q8.AsUInt32(), p41.AsUInt32(), 0x30).AsUInt64();
+            q8  = Avx2.Blend(q8.AsUInt32(),  p41.AsUInt32(), 0x30).AsUInt64();
             a41 = Avx2.Blend(a41.AsUInt32(), p20.AsUInt32(), 0x30).AsUInt64();
-            q7 = Avx2.Blend(q7.AsUInt32(), p11.AsUInt32(), 0x30).AsUInt64();
+            q7  = Avx2.Blend(q7.AsUInt32(),  p11.AsUInt32(), 0x30).AsUInt64();
 
             a31 = Avx2.Blend(a31.AsUInt32(), p41.AsUInt32(), 0xC0).AsUInt64();
-            q8 = Avx2.Blend(q8.AsUInt32(), p11.AsUInt32(), 0xC0).AsUInt64();
+            q8  = Avx2.Blend(q8.AsUInt32(),  p11.AsUInt32(), 0xC0).AsUInt64();
             a41 = Avx2.Blend(a41.AsUInt32(), p11.AsUInt32(), 0xC0).AsUInt64();
-            q7 = Avx2.Blend(q7.AsUInt32(), p21.AsUInt32(), 0xC0).AsUInt64();
+            q7  = Avx2.Blend(q7.AsUInt32(),  p21.AsUInt32(), 0xC0).AsUInt64();
 
-            a31 = Avx2.AndNot(a31, q8); // a31 = (~a31) & q8
-            a41 = Avx2.AndNot(a41, q7); // a41 = (~a41) & q7
+            a31 = Avx2.AndNot(a31, q8);
+            a41 = Avx2.AndNot(a41, q7);
 
             // A11
             a11 = Avx2.Blend(p41.AsUInt32(), p20.AsUInt32(), 0x0C).AsUInt64();
-            q8 = Avx2.Blend(p31.AsUInt32(), p41.AsUInt32(), 0x0C).AsUInt64();
+            q8  = Avx2.Blend(p31.AsUInt32(), p41.AsUInt32(), 0x0C).AsUInt64();
             a31 = Avx2.Xor(p31, a31);
 
             a11 = Avx2.Blend(a11.AsUInt32(), p31.AsUInt32(), 0x30).AsUInt64();
-            q8 = Avx2.Blend(q8.AsUInt32(), p21.AsUInt32(), 0x30).AsUInt64();
+            q8  = Avx2.Blend(q8.AsUInt32(),  p21.AsUInt32(), 0x30).AsUInt64();
             a41 = Avx2.Xor(p41, a41);
 
             a11 = Avx2.Blend(a11.AsUInt32(), p21.AsUInt32(), 0xC0).AsUInt64();
-            q8 = Avx2.Blend(q8.AsUInt32(), p20.AsUInt32(), 0xC0).AsUInt64();
+            q8  = Avx2.Blend(q8.AsUInt32(),  p20.AsUInt32(), 0xC0).AsUInt64();
 
-            a11 = a11 = Avx2.AndNot(a11, q8);
+            a11 = Avx2.AndNot(a11, q8);
             a11 = Avx2.Xor(p11, a11);
 
             // A01 (row0)
             a21 = Avx2.Permute4x64(p01, 0x1E);
-            q8 = Avx2.Blend(a21.AsUInt32(), a00.AsUInt32(), 0x30).AsUInt64();
+            q8  = Avx2.Blend(a21.AsUInt32(), a00.AsUInt32(), 0x30).AsUInt64();
             a01 = Avx2.Permute4x64(p01, 0x39);
             a01 = Avx2.Blend(a01.AsUInt32(), a00.AsUInt32(), 0xC0).AsUInt64();
             a01 = Avx2.AndNot(a01, q8);
 
             // A20
             a20 = Avx2.Blend(p21.AsUInt32(), p41.AsUInt32(), 0x0C).AsUInt64();
-            q7 = Avx2.Blend(p11.AsUInt32(), p21.AsUInt32(), 0x0C).AsUInt64();
+            q7  = Avx2.Blend(p11.AsUInt32(), p21.AsUInt32(), 0x0C).AsUInt64();
 
             a20 = Avx2.Blend(a20.AsUInt32(), p11.AsUInt32(), 0x30).AsUInt64();
-            q7 = Avx2.Blend(q7.AsUInt32(), p31.AsUInt32(), 0x30).AsUInt64();
+            q7  = Avx2.Blend(q7.AsUInt32(),  p31.AsUInt32(), 0x30).AsUInt64();
 
             a20 = Avx2.Blend(a20.AsUInt32(), p31.AsUInt32(), 0xC0).AsUInt64();
-            q7 = Avx2.Blend(q7.AsUInt32(), p41.AsUInt32(), 0xC0).AsUInt64();
+            q7  = Avx2.Blend(q7.AsUInt32(),  p41.AsUInt32(), 0xC0).AsUInt64();
 
             a20 = Avx2.AndNot(a20, q7);
             a20 = Avx2.Xor(p20, a20);
 
-            // post-Chi shuffle (back to magic order)
-            q0 = Avx2.Permute4x64(q0, 0x00);
+            // post-Chi shuffle
+            q0  = Avx2.Permute4x64(q0,  0x00);
             a31 = Avx2.Permute4x64(a31, 0x1B);
             a41 = Avx2.Permute4x64(a41, 0x8D);
             a11 = Avx2.Permute4x64(a11, 0x72);
 
             // A21
             a21 = Avx2.Blend(p11.AsUInt32(), p31.AsUInt32(), 0x0C).AsUInt64();
-            q7 = Avx2.Blend(p41.AsUInt32(), p11.AsUInt32(), 0x0C).AsUInt64();
+            q7  = Avx2.Blend(p41.AsUInt32(), p11.AsUInt32(), 0x0C).AsUInt64();
 
             a21 = Avx2.Blend(a21.AsUInt32(), p41.AsUInt32(), 0x30).AsUInt64();
-            q7 = Avx2.Blend(q7.AsUInt32(), p20.AsUInt32(), 0x30).AsUInt64();
+            q7  = Avx2.Blend(q7.AsUInt32(),  p20.AsUInt32(), 0x30).AsUInt64();
 
             a21 = Avx2.Blend(a21.AsUInt32(), p20.AsUInt32(), 0xC0).AsUInt64();
-            q7 = Avx2.Blend(q7.AsUInt32(), p31.AsUInt32(), 0xC0).AsUInt64();
+            q7  = Avx2.Blend(q7.AsUInt32(),  p31.AsUInt32(), 0xC0).AsUInt64();
 
             a21 = Avx2.AndNot(a21, q7);
 
             // final xors + iota
-            a00 = Avx2.Xor(q0, a00);
+            a00 = Avx2.Xor(q0,  a00);
             a01 = Avx2.Xor(p01, a01);
             a21 = Avx2.Xor(p21, a21);
 
-            a00 = Avx2.Xor(a00, Vector256.Create(rc));
-            rc = ref Unsafe.Add(ref rc, 1);
+            // Iota as single vpxor ymm, ymm, m256 (no broadcast temp)
+            a00 = Avx2.Xor(a00, Unsafe.ReadUnaligned<Vector256<ulong>>(ref iota));
+            iota = ref Unsafe.Add(ref iota, 32);
         }
 
-        // Store back to canonical (x + 5*y) order.
+        // Store back to canonical (x + 5*y)
         s = a00.GetElement(0);
         Unsafe.WriteUnaligned(ref Unsafe.As<ulong, byte>(ref Unsafe.Add(ref s, 1)), a01);
 
-        Unsafe.Add(ref s, 5) = a20.GetElement(2);
-        Unsafe.Add(ref s, 6) = a11.GetElement(0);
-        Unsafe.Add(ref s, 7) = a31.GetElement(1);
-        Unsafe.Add(ref s, 8) = a21.GetElement(2);
-        Unsafe.Add(ref s, 9) = a41.GetElement(3);
+        Unsafe.Add(ref s, 5)  = a20.GetElement(2);
+        Unsafe.Add(ref s, 6)  = a11.GetElement(0);
+        Unsafe.Add(ref s, 7)  = a31.GetElement(1);
+        Unsafe.Add(ref s, 8)  = a21.GetElement(2);
+        Unsafe.Add(ref s, 9)  = a41.GetElement(3);
 
         Unsafe.Add(ref s, 10) = a20.GetElement(0);
         Unsafe.Add(ref s, 11) = a21.GetElement(0);
