@@ -1113,16 +1113,16 @@ public sealed class KeccakHash
             // Theta (as before)
             Vector256<ulong> c00 = Avx2.Shuffle(a20.AsUInt32(), 0x4E).AsUInt64();
             Vector256<ulong> c14 = Avx2.Xor(a31, a41);
-            Vector256<ulong> t2  = Avx2.Xor(a11, a21);
+            Vector256<ulong> t2 = Avx2.Xor(a11, a21);
             c14 = Avx2.Xor(a01, c14);
             c14 = Avx2.Xor(t2, c14);                              // C[1..4]
 
-            Vector256<ulong> t4  = Avx2.Permute4x64(c14, 0x93);
+            Vector256<ulong> t4 = Avx2.Permute4x64(c14, 0x93);
 
             c00 = Avx2.Xor(a20, c00);
-            Vector256<ulong> t0  = Avx2.Permute4x64(c00, 0x4E);
+            Vector256<ulong> t0 = Avx2.Permute4x64(c00, 0x4E);
 
-            Vector256<ulong> t1  = Avx2.ShiftRightLogical(c14, 63);
+            Vector256<ulong> t1 = Avx2.ShiftRightLogical(c14, 63);
             t2 = Avx2.Add(c14, c14);
             t1 = Avx2.Or(t2, t1);                                 // ROL(C[1..4],1)
 
@@ -1142,7 +1142,7 @@ public sealed class KeccakHash
             a00 = Avx2.Xor(d00, a00);
 
             d14 = Avx2.Blend(d14.AsUInt32(), t1.AsUInt32(), 0xC0).AsUInt64();
-            t4  = Avx2.Blend(t4.AsUInt32(),  c00.AsUInt32(), 0x03).AsUInt64();
+            t4 = Avx2.Blend(t4.AsUInt32(), c00.AsUInt32(), 0x03).AsUInt64();
             d14 = Avx2.Xor(t4, d14);                              // D[1..4]
 
             // Rho + Pi, OpenSSL scheduling
@@ -1156,35 +1156,35 @@ public sealed class KeccakHash
 
             // A31 ^= D14, rotate (table2 @ +0x40), Pi permute to p21
             a31 = Avx2.Xor(d14, a31);
-            t0  = Avx2.ShiftLeftLogicalVariable(a31, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoL, 0x40)));
-            t1  = Avx2.ShiftRightLogicalVariable(a31, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoR, 0x40)));
+            t0 = Avx2.ShiftLeftLogicalVariable(a31, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoL, 0x40)));
+            t1 = Avx2.ShiftRightLogicalVariable(a31, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoR, 0x40)));
             a31 = Avx2.Or(t0, t1);
             Vector256<ulong> p21 = Avx2.Permute4x64(a31, 0x8D);
 
             // A21 ^= D14, rotate (table3 @ +0x60), Pi permute to p41
             a21 = Avx2.Xor(d14, a21);
-            t0  = Avx2.ShiftLeftLogicalVariable(a21, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoL, 0x60)));
-            t1  = Avx2.ShiftRightLogicalVariable(a21, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoR, 0x60)));
+            t0 = Avx2.ShiftLeftLogicalVariable(a21, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoL, 0x60)));
+            t1 = Avx2.ShiftRightLogicalVariable(a21, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoR, 0x60)));
             a21 = Avx2.Or(t0, t1);
             Vector256<ulong> p41 = Avx2.Permute4x64(a21, 0x1B);
 
             // A41 ^= D14, rotate (table4 @ +0x80), Pi permute to p11
             a41 = Avx2.Xor(d14, a41);
-            t0  = Avx2.ShiftLeftLogicalVariable(a41, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoL, 0x80)));
-            t1  = Avx2.ShiftRightLogicalVariable(a41, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoR, 0x80)));
+            t0 = Avx2.ShiftLeftLogicalVariable(a41, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoL, 0x80)));
+            t1 = Avx2.ShiftRightLogicalVariable(a41, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoR, 0x80)));
             a41 = Avx2.Or(t0, t1);
             Vector256<ulong> p11 = Avx2.Permute4x64(a41, 0x72);
 
             // A11 ^= D14, rotate (table5 @ +0xA0) - becomes p01
             a11 = Avx2.Xor(d14, a11);
-            t0  = Avx2.ShiftLeftLogicalVariable(a11, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoL, 0xA0)));
-            t1  = Avx2.ShiftRightLogicalVariable(a11, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoR, 0xA0)));
+            t0 = Avx2.ShiftLeftLogicalVariable(a11, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoL, 0xA0)));
+            t1 = Avx2.ShiftRightLogicalVariable(a11, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoR, 0xA0)));
             Vector256<ulong> p01 = Avx2.Or(t0, t1);
 
             // A01 ^= D14, rotate (table1 @ +0x20) - becomes p20
             a01 = Avx2.Xor(d14, a01);
-            t0  = Avx2.ShiftLeftLogicalVariable(a01, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoL, 0x20)));
-            t1  = Avx2.ShiftRightLogicalVariable(a01, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoR, 0x20)));
+            t0 = Avx2.ShiftLeftLogicalVariable(a01, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoL, 0x20)));
+            t1 = Avx2.ShiftRightLogicalVariable(a01, Unsafe.ReadUnaligned<Vector256<ulong>>(ref Unsafe.Add(ref rhoR, 0x20)));
             Vector256<ulong> p20 = Avx2.Or(t0, t1);
 
             // Chi
@@ -1195,76 +1195,76 @@ public sealed class KeccakHash
             a31 = Avx2.Blend(p20.AsUInt32(), p11.AsUInt32(), 0x0C).AsUInt64();
             Vector256<ulong> q8 = Avx2.Blend(p21.AsUInt32(), p20.AsUInt32(), 0x0C).AsUInt64();
             a41 = Avx2.Blend(p31.AsUInt32(), p21.AsUInt32(), 0x0C).AsUInt64();
-            q7  = Avx2.Blend(p20.AsUInt32(), p31.AsUInt32(), 0x0C).AsUInt64();
+            q7 = Avx2.Blend(p20.AsUInt32(), p31.AsUInt32(), 0x0C).AsUInt64();
 
             a31 = Avx2.Blend(a31.AsUInt32(), p21.AsUInt32(), 0x30).AsUInt64();
-            q8  = Avx2.Blend(q8.AsUInt32(),  p41.AsUInt32(), 0x30).AsUInt64();
+            q8 = Avx2.Blend(q8.AsUInt32(), p41.AsUInt32(), 0x30).AsUInt64();
             a41 = Avx2.Blend(a41.AsUInt32(), p20.AsUInt32(), 0x30).AsUInt64();
-            q7  = Avx2.Blend(q7.AsUInt32(),  p11.AsUInt32(), 0x30).AsUInt64();
+            q7 = Avx2.Blend(q7.AsUInt32(), p11.AsUInt32(), 0x30).AsUInt64();
 
             a31 = Avx2.Blend(a31.AsUInt32(), p41.AsUInt32(), 0xC0).AsUInt64();
-            q8  = Avx2.Blend(q8.AsUInt32(),  p11.AsUInt32(), 0xC0).AsUInt64();
+            q8 = Avx2.Blend(q8.AsUInt32(), p11.AsUInt32(), 0xC0).AsUInt64();
             a41 = Avx2.Blend(a41.AsUInt32(), p11.AsUInt32(), 0xC0).AsUInt64();
-            q7  = Avx2.Blend(q7.AsUInt32(),  p21.AsUInt32(), 0xC0).AsUInt64();
+            q7 = Avx2.Blend(q7.AsUInt32(), p21.AsUInt32(), 0xC0).AsUInt64();
 
             a31 = Avx2.AndNot(a31, q8);
             a41 = Avx2.AndNot(a41, q7);
 
             // A11
             a11 = Avx2.Blend(p41.AsUInt32(), p20.AsUInt32(), 0x0C).AsUInt64();
-            q8  = Avx2.Blend(p31.AsUInt32(), p41.AsUInt32(), 0x0C).AsUInt64();
+            q8 = Avx2.Blend(p31.AsUInt32(), p41.AsUInt32(), 0x0C).AsUInt64();
             a31 = Avx2.Xor(p31, a31);
 
             a11 = Avx2.Blend(a11.AsUInt32(), p31.AsUInt32(), 0x30).AsUInt64();
-            q8  = Avx2.Blend(q8.AsUInt32(),  p21.AsUInt32(), 0x30).AsUInt64();
+            q8 = Avx2.Blend(q8.AsUInt32(), p21.AsUInt32(), 0x30).AsUInt64();
             a41 = Avx2.Xor(p41, a41);
 
             a11 = Avx2.Blend(a11.AsUInt32(), p21.AsUInt32(), 0xC0).AsUInt64();
-            q8  = Avx2.Blend(q8.AsUInt32(),  p20.AsUInt32(), 0xC0).AsUInt64();
+            q8 = Avx2.Blend(q8.AsUInt32(), p20.AsUInt32(), 0xC0).AsUInt64();
 
             a11 = Avx2.AndNot(a11, q8);
             a11 = Avx2.Xor(p11, a11);
 
             // A01 (row0)
             a21 = Avx2.Permute4x64(p01, 0x1E);
-            q8  = Avx2.Blend(a21.AsUInt32(), a00.AsUInt32(), 0x30).AsUInt64();
+            q8 = Avx2.Blend(a21.AsUInt32(), a00.AsUInt32(), 0x30).AsUInt64();
             a01 = Avx2.Permute4x64(p01, 0x39);
             a01 = Avx2.Blend(a01.AsUInt32(), a00.AsUInt32(), 0xC0).AsUInt64();
             a01 = Avx2.AndNot(a01, q8);
 
             // A20
             a20 = Avx2.Blend(p21.AsUInt32(), p41.AsUInt32(), 0x0C).AsUInt64();
-            q7  = Avx2.Blend(p11.AsUInt32(), p21.AsUInt32(), 0x0C).AsUInt64();
+            q7 = Avx2.Blend(p11.AsUInt32(), p21.AsUInt32(), 0x0C).AsUInt64();
 
             a20 = Avx2.Blend(a20.AsUInt32(), p11.AsUInt32(), 0x30).AsUInt64();
-            q7  = Avx2.Blend(q7.AsUInt32(),  p31.AsUInt32(), 0x30).AsUInt64();
+            q7 = Avx2.Blend(q7.AsUInt32(), p31.AsUInt32(), 0x30).AsUInt64();
 
             a20 = Avx2.Blend(a20.AsUInt32(), p31.AsUInt32(), 0xC0).AsUInt64();
-            q7  = Avx2.Blend(q7.AsUInt32(),  p41.AsUInt32(), 0xC0).AsUInt64();
+            q7 = Avx2.Blend(q7.AsUInt32(), p41.AsUInt32(), 0xC0).AsUInt64();
 
             a20 = Avx2.AndNot(a20, q7);
             a20 = Avx2.Xor(p20, a20);
 
             // post-Chi shuffle
-            q0  = Avx2.Permute4x64(q0,  0x00);
+            q0 = Avx2.Permute4x64(q0, 0x00);
             a31 = Avx2.Permute4x64(a31, 0x1B);
             a41 = Avx2.Permute4x64(a41, 0x8D);
             a11 = Avx2.Permute4x64(a11, 0x72);
 
             // A21
             a21 = Avx2.Blend(p11.AsUInt32(), p31.AsUInt32(), 0x0C).AsUInt64();
-            q7  = Avx2.Blend(p41.AsUInt32(), p11.AsUInt32(), 0x0C).AsUInt64();
+            q7 = Avx2.Blend(p41.AsUInt32(), p11.AsUInt32(), 0x0C).AsUInt64();
 
             a21 = Avx2.Blend(a21.AsUInt32(), p41.AsUInt32(), 0x30).AsUInt64();
-            q7  = Avx2.Blend(q7.AsUInt32(),  p20.AsUInt32(), 0x30).AsUInt64();
+            q7 = Avx2.Blend(q7.AsUInt32(), p20.AsUInt32(), 0x30).AsUInt64();
 
             a21 = Avx2.Blend(a21.AsUInt32(), p20.AsUInt32(), 0xC0).AsUInt64();
-            q7  = Avx2.Blend(q7.AsUInt32(),  p31.AsUInt32(), 0xC0).AsUInt64();
+            q7 = Avx2.Blend(q7.AsUInt32(), p31.AsUInt32(), 0xC0).AsUInt64();
 
             a21 = Avx2.AndNot(a21, q7);
 
             // final xors + iota
-            a00 = Avx2.Xor(q0,  a00);
+            a00 = Avx2.Xor(q0, a00);
             a01 = Avx2.Xor(p01, a01);
             a21 = Avx2.Xor(p21, a21);
 
@@ -1277,11 +1277,11 @@ public sealed class KeccakHash
         s = a00.GetElement(0);
         Unsafe.WriteUnaligned(ref Unsafe.As<ulong, byte>(ref Unsafe.Add(ref s, 1)), a01);
 
-        Unsafe.Add(ref s, 5)  = a20.GetElement(2);
-        Unsafe.Add(ref s, 6)  = a11.GetElement(0);
-        Unsafe.Add(ref s, 7)  = a31.GetElement(1);
-        Unsafe.Add(ref s, 8)  = a21.GetElement(2);
-        Unsafe.Add(ref s, 9)  = a41.GetElement(3);
+        Unsafe.Add(ref s, 5) = a20.GetElement(2);
+        Unsafe.Add(ref s, 6) = a11.GetElement(0);
+        Unsafe.Add(ref s, 7) = a31.GetElement(1);
+        Unsafe.Add(ref s, 8) = a21.GetElement(2);
+        Unsafe.Add(ref s, 9) = a41.GetElement(3);
 
         Unsafe.Add(ref s, 10) = a20.GetElement(0);
         Unsafe.Add(ref s, 11) = a21.GetElement(0);
