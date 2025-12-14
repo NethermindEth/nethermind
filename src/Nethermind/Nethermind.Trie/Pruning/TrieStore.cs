@@ -590,7 +590,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             {
                 try
                 {
-                    // When `_pruningLock` is help, the begin commit will check for _toBePersistedBlockNumber in order
+                    // When `_pruningLock` is held, the begin commit will check for _toBePersistedBlockNumber in order
                     // to decide which block to be used as the boundary for the commit buffer. This number was re-set
                     // to -1 in `PersistAndPruneDirtyCache`. So we need to re-set it here, otherwrise `BeginScope` will hang
                     // until the prune persisted node loop is completed.
@@ -609,7 +609,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
                     if (_lastPrunedShardIdx - startingShard >= _shardedDirtyNodeCount && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
                     {
-                        // So it cannot prune persisted nodes that was recommitted and is still within pruning boundary.
+                        // A persisted nodes that was recommitted and is still within pruning boundary cannot be pruned.
                         // This should be rare but can happen, notably in mainnet block 4500000 around there, But this
                         // does mean that it will keep retrying to prune persisted nodes. The solution is to either increase
                         // the memory budget or reduce the pruning boundary.
