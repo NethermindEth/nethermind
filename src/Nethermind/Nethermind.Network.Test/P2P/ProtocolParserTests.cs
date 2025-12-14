@@ -165,7 +165,7 @@ public class ProtocolParserTests
     public void TryGetProtocolCode_ValidatesHexConstants_Eth()
     {
         byte[] ethBytes = Encoding.UTF8.GetBytes("eth");
-        uint ethValue = (uint)ethBytes[0] | ((uint)ethBytes[1] << 8) | ((uint)ethBytes[2] << 16);
+        uint ethValue = CalculateThreeByteKey(ethBytes);
 
         Assert.That(ethValue, Is.EqualTo(0x687465u), "Hex constant for 'eth' should match");
     }
@@ -174,7 +174,7 @@ public class ProtocolParserTests
     public void TryGetProtocolCode_ValidatesHexConstants_P2p()
     {
         byte[] p2pBytes = Encoding.UTF8.GetBytes("p2p");
-        uint p2pValue = (uint)p2pBytes[0] | ((uint)p2pBytes[1] << 8) | ((uint)p2pBytes[2] << 16);
+        uint p2pValue = CalculateThreeByteKey(p2pBytes);
 
         Assert.That(p2pValue, Is.EqualTo(0x703270u), "Hex constant for 'p2p' should match");
     }
@@ -183,7 +183,7 @@ public class ProtocolParserTests
     public void TryGetProtocolCode_ValidatesHexConstants_Shh()
     {
         byte[] shhBytes = Encoding.UTF8.GetBytes("shh");
-        uint shhValue = (uint)shhBytes[0] | ((uint)shhBytes[1] << 8) | ((uint)shhBytes[2] << 16);
+        uint shhValue = CalculateThreeByteKey(shhBytes);
 
         Assert.That(shhValue, Is.EqualTo(0x686873u), "Hex constant for 'shh' should match");
     }
@@ -192,7 +192,7 @@ public class ProtocolParserTests
     public void TryGetProtocolCode_ValidatesHexConstants_Bzz()
     {
         byte[] bzzBytes = Encoding.UTF8.GetBytes("bzz");
-        uint bzzValue = (uint)bzzBytes[0] | ((uint)bzzBytes[1] << 8) | ((uint)bzzBytes[2] << 16);
+        uint bzzValue = CalculateThreeByteKey(bzzBytes);
 
         Assert.That(bzzValue, Is.EqualTo(0x7A7A62u), "Hex constant for 'bzz' should match");
     }
@@ -201,7 +201,7 @@ public class ProtocolParserTests
     public void TryGetProtocolCode_ValidatesHexConstants_Par()
     {
         byte[] parBytes = Encoding.UTF8.GetBytes("par");
-        uint parValue = (uint)parBytes[0] | ((uint)parBytes[1] << 8) | ((uint)parBytes[2] << 16);
+        uint parValue = CalculateThreeByteKey(parBytes);
 
         Assert.That(parValue, Is.EqualTo(0x726170u), "Hex constant for 'par' should match");
     }
@@ -210,7 +210,7 @@ public class ProtocolParserTests
     public void TryGetProtocolCode_ValidatesHexConstants_Ndm()
     {
         byte[] ndmBytes = Encoding.UTF8.GetBytes("ndm");
-        uint ndmValue = (uint)ndmBytes[0] | ((uint)ndmBytes[1] << 8) | ((uint)ndmBytes[2] << 16);
+        uint ndmValue = CalculateThreeByteKey(ndmBytes);
 
         Assert.That(ndmValue, Is.EqualTo(0x6D646Eu), "Hex constant for 'ndm' should match");
     }
@@ -237,7 +237,7 @@ public class ProtocolParserTests
     public void TryGetProtocolCode_ValidatesHexConstants_AA()
     {
         byte[] aaBytes = Encoding.UTF8.GetBytes("aa");
-        ushort aaValue = (ushort)(aaBytes[0] | (aaBytes[1] << 8));
+        ushort aaValue = BitConverter.ToUInt16(aaBytes, 0);
 
         Assert.That(aaValue, Is.EqualTo(0x6161), "Hex constant for 'aa' should match");
     }
@@ -320,5 +320,10 @@ public class ProtocolParserTests
 
         Assert.That(result, Is.False);
         Assert.That(protocol, Is.Null);
+    }
+
+    private static uint CalculateThreeByteKey(byte[] bytes)
+    {
+        return (uint)bytes[0] | ((uint)bytes[1] << 8) | ((uint)bytes[2] << 16);
     }
 }
