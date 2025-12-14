@@ -979,17 +979,11 @@ public sealed class KeccakHash
                 Vector512<ulong> s1 = Avx512F.Shuffle4x128(u0, u2, 0xEE);
 
                 // Output order (0,3,1,4,2) - remap back to (0,1,2,3,4)
-                Vector512<ulong> row0 = Avx512F.Shuffle4x128(s0, e4, 0x88);
-                Vector512<ulong> row3 = Avx512F.Shuffle4x128(s2, o4, 0xDD);
-                Vector512<ulong> row1 = Avx512F.Shuffle4x128(s2, o4, 0x88);
-                Vector512<ulong> row4 = Avx512F.Shuffle4x128(s1, e4, 0xA8);
-                Vector512<ulong> row2 = Avx512F.Shuffle4x128(s0, e4, 0xDD);
-
-                c0 = row0;
-                c1 = row1;
-                c2 = row2;
-                c3 = row3;
-                c4 = row4;
+                c0 = Avx512F.Shuffle4x128(s0, e4, 0x88);
+                c3 = Avx512F.Shuffle4x128(s2, o4, 0xDD);
+                c1 = Avx512F.Shuffle4x128(s2, o4, 0x88);
+                c4 = Avx512F.Shuffle4x128(s1, e4, 0xA8);
+                c2 = Avx512F.Shuffle4x128(s0, e4, 0xDD);
             }
             // Round 1 (unrolled)
             {
@@ -1041,17 +1035,11 @@ public sealed class KeccakHash
                 Vector512<ulong> s2 = Avx512F.Shuffle4x128(u1, u3, 0x44);
                 Vector512<ulong> s1 = Avx512F.Shuffle4x128(u0, u2, 0xEE);
 
-                Vector512<ulong> row0 = Avx512F.Shuffle4x128(s0, e4, 0x88);
-                Vector512<ulong> row3 = Avx512F.Shuffle4x128(s2, o4, 0xDD);
-                Vector512<ulong> row1 = Avx512F.Shuffle4x128(s2, o4, 0x88);
-                Vector512<ulong> row4 = Avx512F.Shuffle4x128(s1, e4, 0xA8);
-                Vector512<ulong> row2 = Avx512F.Shuffle4x128(s0, e4, 0xDD);
-
-                c0 = row0;
-                c1 = row1;
-                c2 = row2;
-                c3 = row3;
-                c4 = row4;
+                c0 = Avx512F.Shuffle4x128(s0, e4, 0x88);
+                c3 = Avx512F.Shuffle4x128(s2, o4, 0xDD);
+                c1 = Avx512F.Shuffle4x128(s2, o4, 0x88);
+                c4 = Avx512F.Shuffle4x128(s1, e4, 0xA8);
+                c2 = Avx512F.Shuffle4x128(s0, e4, 0xDD);
             }
         }
 
