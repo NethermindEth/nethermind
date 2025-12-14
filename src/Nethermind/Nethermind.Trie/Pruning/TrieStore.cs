@@ -588,17 +588,37 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             if (_prunePersistedNodePortion > 0)
             {
-                // `PrunePersistedNodes` only work on part of the partition at any one time. With commit buffer,
-                // it is possible that the commit buffer once flushed will immediately trigger another prune, which
-                // mean `PrunePersistedNodes` was not able to re-trigger multiple time, which make the persisted node
-                // cache even bigger which causes longer prune which causes bigger commit buffer, etc.
-                // So we loop it here until `ShouldPrunePersistedNode` return false.
-                int maxTry = _shardedDirtyNodeCount;
-                int i = 0;
-                while (i < maxTry && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
+                try
                 {
-                    PrunePersistedNodes();
-                    i++;
+                    // When `_pruningLock` is help, the begin commit will check for _toBePersistedBlockNumber in order
+                    // to decide which block to be used as the boundary for the commit buffer. This number was re-set
+                    // to -1 in `PersistAndPruneDirtyCache`. So we need to re-set it here, otherwrise `BeginScope` will hang
+                    // until the prune persisted node loop is completed.
+                    _toBePersistedBlockNumber = LastPersistedBlockNumber;
+
+                    // `PrunePersistedNodes` only work on part of the partition at any one time. With commit buffer,
+                    // it is possible that the commit buffer once flushed will immediately trigger another prune, which
+                    // mean `PrunePersistedNodes` was not able to re-trigger multiple time, which make the persisted node
+                    // cache even bigger which causes longer prune which causes bigger commit buffer, etc.
+                    // So we loop it here until `ShouldPrunePersistedNode` return false.
+                    int startingShard = _lastPrunedShardIdx;
+                    while (_lastPrunedShardIdx - startingShard < _shardedDirtyNodeCount && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
+                    {
+                        PrunePersistedNodes();
+                    }
+
+                    if (_lastPrunedShardIdx - startingShard >= _shardedDirtyNodeCount && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
+                    {
+                        // So it cannot prune persisted nodes that was recommitted and is still within pruning boundary.
+                        // This should be rare but can happen, notably in mainnet block 4500000 around there, But this
+                        // does mean that it will keep retrying to prune persisted nodes. The solution is to either increase
+                        // the memory budget or reduce the pruning boundary.
+                        if (_logger.IsWarn) _logger.Warn($"Unable to completely prune persisted nodes. Consider increasing pruning cache limit or reducing pruning boundary");
+                    }
+                }
+                finally
+                {
+                    _toBePersistedBlockNumber = -1;
                 }
             }
         }
@@ -890,19 +910,19 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             int shardCountToPrune = (int)((targetPruneMemory / (double)PersistedMemoryUsedByDirtyCache) * _shardedDirtyNodeCount);
             shardCountToPrune = Math.Max(1, Math.Min(shardCountToPrune, _shardedDirtyNodeCount));
 
-            if (_logger.IsWarn) _logger.Debug($"Pruning persisted nodes {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, Pruning {shardCountToPrune} shards starting from shard {_lastPrunedShardIdx}");
+            if (_logger.IsWarn) _logger.Debug($"Pruning persisted nodes {PersistedMemoryUsedByDirtyCache / 1.MB()} MB, Pruning {shardCountToPrune} shards starting from shard {_lastPrunedShardIdx % _shardedDirtyNodeCount}");
             long start = Stopwatch.GetTimestamp();
 
             using ArrayPoolListRef<Task> pruneTask = new(shardCountToPrune);
 
             for (int i = 0; i < shardCountToPrune; i++)
             {
-                TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[_lastPrunedShardIdx];
+                TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[_lastPrunedShardIdx % _shardedDirtyNodeCount];
                 pruneTask.Add(Task.Run(() =>
                 {
                     dirtyNode.PruneCache(prunePersisted: true);
                 }));
-                _lastPrunedShardIdx = (_lastPrunedShardIdx + 1) % _shardedDirtyNodeCount;
+                _lastPrunedShardIdx++;
             }
 
             Task.WaitAll(pruneTask.AsSpan());
