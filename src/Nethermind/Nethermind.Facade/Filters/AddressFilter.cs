@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Filters
 
         public bool Accepts(ref AddressStructRef address)
         {
-            if (Addresses.Count <= 0)
+            if (Addresses.Count == 0)
             {
                 return true;
             }
