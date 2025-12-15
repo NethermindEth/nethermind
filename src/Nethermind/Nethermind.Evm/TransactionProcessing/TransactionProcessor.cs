@@ -567,15 +567,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (validate && tx.Nonce != nonce)
             {
                 TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {nonce})");
-
-                if (tx.Nonce > nonce)
-                {
-                    return TransactionResult.TransactionNonceTooHigh;
-                }
-                else
-                {
-                    return TransactionResult.TransactionNonceTooLow;
-                }
+                return tx.Nonce > nonce ? TransactionResult.TransactionNonceTooHigh : TransactionResult.TransactionNonceTooLow;
             }
 
             UInt256 newNonce = validate || nonce < ulong.MaxValue ? nonce + 1 : 0;
