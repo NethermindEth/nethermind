@@ -236,6 +236,7 @@ public abstract class BlockchainTestBase
             List<string> differences;
             using (stateProvider.BeginScope(headBlock.Header))
             {
+                (stateProvider as IBlockAccessListBuilder).IsGenesis = true; // directly access underlying state
                 differences = RunAssertions(test, headBlock, stateProvider);
             }
 

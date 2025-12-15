@@ -144,6 +144,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public virtual TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidation);
+        
+        public int BlockAccessIndex => VirtualMachine.TxExecutionContext.BlockAccessIndex;
 
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
@@ -344,7 +346,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             accessTracker.WarmUp(authorizationTuple.Authority);
 
-            if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
+            if (WorldState.HasCode(authorizationTuple.Authority, VirtualMachine.TxExecutionContext.BlockAccessIndex) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
             {
                 error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
                 return AuthorizationTupleResult.InvalidAsCodeDeployed;
@@ -499,7 +501,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
 
-            if (validate && WorldState.IsInvalidContractSender(spec, tx.SenderAddress!))
+            if (validate && WorldState.IsInvalidContractSender(spec, tx.SenderAddress!, null, VirtualMachine.TxExecutionContext.BlockAccessIndex))
             {
                 TraceLogInvalidTx(tx, "SENDER_IS_CONTRACT");
                 return TransactionResult.SenderHasDeployedCode;

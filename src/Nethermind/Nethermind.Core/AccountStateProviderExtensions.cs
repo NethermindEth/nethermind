@@ -8,7 +8,7 @@ namespace Nethermind.Core
     [SkipLocalsInit]
     public static class AccountStateProviderExtensions
     {
-        public static bool HasCode(this IAccountStateProvider stateProvider, Address address) =>
-            stateProvider.TryGetAccount(address, out AccountStruct account) && account.HasCode;
+        public static bool HasCode(this IAccountStateProvider stateProvider, Address address, int? blockAccessIndex) =>
+            stateProvider.TryGetAccount(address, out AccountStruct account, blockAccessIndex) && account.HasCode;
     }
 }

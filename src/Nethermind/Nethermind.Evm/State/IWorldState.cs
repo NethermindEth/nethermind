@@ -122,7 +122,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null);
 
-    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
+    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null);
 
     void IncrementNonce(Address address, UInt256 delta, int? blockAccessIndex = null);
     void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce, int? blockAccessIndex = null);

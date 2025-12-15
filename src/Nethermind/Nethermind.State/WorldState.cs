@@ -212,7 +212,7 @@ namespace Nethermind.State
         }
         public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? _ = null)
             => AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out UInt256 oldBalance);
-        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? _ = null)
         {
             DebugGuardInScope();
             _stateProvider.SubtractFromBalance(address, balanceChange, spec, out oldBalance);

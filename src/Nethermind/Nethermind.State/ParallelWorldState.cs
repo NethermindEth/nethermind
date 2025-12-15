@@ -63,6 +63,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
             accountChanges.AddBalanceChange(new(-1, account.Balance));
             accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
+            accountChanges.AddCodeChange(new(-1, _innerWorldState.GetCode(accountChanges.Address)));
             // accountChanges.CodeHash = account.CodeHash;
 
             foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
@@ -133,10 +134,13 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
     }
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
-        => AddToBalance(address, balanceChange, spec, out _);
+        => AddToBalance(address, balanceChange, spec, out _, blockAccessIndex);
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         if (ParallelExecutionEnabled)
         {
             oldBalance = GetBalanceInternal(address, blockAccessIndex.Value);
@@ -329,6 +333,11 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         if (!blockAccessIndex.HasValue)
             throw new ArgumentNullException(nameof(blockAccessIndex));
 
+        if (address == Address.SystemUser && balanceChange.IsZero)
+        {
+            return;
+        }
+
         if (TracingEnabled)
         {
             UInt256 before = GetBalanceInternal(address, blockAccessIndex.Value);
@@ -395,7 +404,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
         if (TracingEnabled)
         {
-            AddAccountRead(address);
+            AddAccountRead(address, blockAccessIndex);
         }
         
         if (ParallelExecutionEnabled)

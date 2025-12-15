@@ -173,7 +173,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
     private void ReadRequests(Block block, IWorldState state, Address contractAddress, ref ArrayPoolListRef<byte[]> requests,
         Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError, ITxTracer? additionalTracer = null)
     {
-        if (!state.HasCode(contractAddress))
+        if (!state.HasCode(contractAddress, _transactionProcessor.BlockAccessIndex))
         {
             throw new InvalidBlockException(block, contractEmptyError);
         }

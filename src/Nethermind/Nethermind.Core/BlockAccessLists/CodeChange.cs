@@ -9,7 +9,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly struct CodeChange(ushort blockAccessIndex, byte[] newCode) : IEquatable<CodeChange>, IIndexedChange
+public readonly struct CodeChange(int blockAccessIndex, byte[] newCode) : IEquatable<CodeChange>, IIndexedChange
 {
     public int BlockAccessIndex { get; init; } = blockAccessIndex;
     [JsonConverter(typeof(ByteArrayConverter))]
