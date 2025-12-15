@@ -26,7 +26,7 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2
 
         Metrics.GetBlobsRequestsTotal += request.BlobVersionedHashes.Length;
 
-        var count = txPool.GetBlobCounts(request.BlobVersionedHashes);
+        int count = txPool.GetBlobCounts(request.BlobVersionedHashes);
         Metrics.GetBlobsRequestsInBlobpoolTotal += count;
 
         // quick fail if we don't have some blob (unless partial return is allowed)
