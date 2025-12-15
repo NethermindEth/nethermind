@@ -34,9 +34,9 @@ jobs:
         run: |
           version=${{ github.event.release.tag_name }}
           json=$(curl -sL ${{ github.event.release.assets_url }})
-          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("linux-arm64"))')
+          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("linux-arm64.zip"))')
           arm64_hash=$(curl -sL $arm64_url | sha256sum | awk '{print $1}')
-          x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("linux-x64"))')
+          x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("linux-x64.zip"))')
           x64_hash=$(curl -sL $x64_url | sha256sum | awk '{print $1}')
           awk -i inplace -v n=1 '/url/ { if (++count == n) sub(/url.*/, "url='$arm64_url'"); } 1' debian/postinst
           awk -i inplace -v n=2 '/url/ { if (++count == n) sub(/url.*/, "url='$x64_url'"); } 1' debian/postinst
@@ -92,7 +92,7 @@ jobs:
           WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: |
           $releaseInfo = curl -sL ${{ github.event.release.assets_url }} | ConvertFrom-Json
-          $releaseUrl = $releaseInfo | Where-Object -Property name -match 'windows' | Select -ExpandProperty browser_download_url
+          $releaseUrl = $releaseInfo | Where-Object -Property name -like '*windows-x64.zip' | Select-Object -ExpandProperty browser_download_url
           curl -sL https://aka.ms/wingetcreate/latest -o wingetcreate.exe
           ./wingetcreate update Nethermind.Nethermind -s -v ${{ github.event.release.tag_name }} -u $releaseUrl
 
@@ -120,10 +120,10 @@ jobs:
       - name: Update formula file
         run: |
           json=$(curl -sL ${{ github.event.release.assets_url }})
-          x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("macos-x64"))')
-          x64_hash=$(curl -sL $x64_url | shasum -a 256 | awk '{print $1}')
-          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("macos-arm64"))')
+          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("macos-arm64.zip"))')
           arm64_hash=$(curl -sL $arm64_url | shasum -a 256 | awk '{print $1}')
+          x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("macos-x64.zip"))')
+          x64_hash=$(curl -sL $x64_url | shasum -a 256 | awk '{print $1}')
           sed -i "s/version .*/version \"${{ github.event.release.tag_name }}\"/" $FORMULA
           awk -i inplace -v n=1 '/url/ { if (++count == n) sub(/url.*/, "url \"'$x64_url'\""); } 1' $FORMULA
           awk -i inplace -v n=2 '/url/ { if (++count == n) sub(/url.*/, "url \"'$arm64_url'\""); } 1' $FORMULA
