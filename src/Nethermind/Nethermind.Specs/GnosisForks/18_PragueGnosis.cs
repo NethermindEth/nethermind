@@ -11,7 +11,7 @@ public class PragueGnosis : Prague
 {
     private static IReleaseSpec _instance;
 
-    protected PragueGnosis()
+    private PragueGnosis()
         => ToGnosisFork(this);
 
     public static void ToGnosisFork(Prague spec)
