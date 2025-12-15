@@ -198,11 +198,35 @@ namespace Nethermind.Stats.Model
 
         // Dynamically generates regex pattern from NodeClientType enum values (excluding Unknown).
         // Pattern structure: (ClientName|OtherClient|...)
-        // Names are ordered longest-first to prevent substring conflicts.
-        private static readonly Regex s_clientTypeRegex = new(
-            string.Join("|", FastEnum.GetNames<NodeClientType>()
-                .Where(name => name != nameof(NodeClientType.Unknown))
-                .OrderByDescending(name => name.Length)),
+        // Ordered by likelihood first, with longer names before potential substrings to prevent conflicts.
+        private static readonly Regex _clientTypeRegex = new(
+            string.Join("|", new[]
+            {
+                // Most common clients (ordered by likelihood)
+                nameof(NodeClientType.Geth),
+                nameof(NodeClientType.Nethermind),
+                nameof(NodeClientType.Reth),
+                nameof(NodeClientType.Besu),
+                nameof(NodeClientType.Erigon),
+                nameof(NodeClientType.Nimbus),
+                nameof(NodeClientType.Ethrex),
+                nameof(NodeClientType.EthereumJS),
+                nameof(NodeClientType.OpenEthereum),
+                nameof(NodeClientType.Parity),
+                // Less common clients (ordered by length to prevent substring conflicts)
+            }.Concat(FastEnum.GetNames<NodeClientType>()
+                .Where(name => name != nameof(NodeClientType.Unknown) &&
+                              name != nameof(NodeClientType.Geth) &&
+                              name != nameof(NodeClientType.Nethermind) &&
+                              name != nameof(NodeClientType.Reth) &&
+                              name != nameof(NodeClientType.Besu) &&
+                              name != nameof(NodeClientType.Erigon) &&
+                              name != nameof(NodeClientType.Nimbus) &&
+                              name != nameof(NodeClientType.Ethrex) &&
+                              name != nameof(NodeClientType.EthereumJS) &&
+                              name != nameof(NodeClientType.OpenEthereum) &&
+                              name != nameof(NodeClientType.Parity))
+                .OrderByDescending(name => name.Length))),
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public static NodeClientType RecognizeClientType(string clientId)
@@ -213,7 +237,7 @@ namespace Nethermind.Stats.Model
             }
 
             // Use EnumerateMatches to avoid allocations - it returns ValueMatch structs
-            foreach (ValueMatch match in s_clientTypeRegex.EnumerateMatches(clientId))
+            foreach (ValueMatch match in _clientTypeRegex.EnumerateMatches(clientId))
             {
                 // Get the matched text as a span to avoid allocations
                 ReadOnlySpan<char> matchedText = clientId.AsSpan(match.Index, match.Length);
