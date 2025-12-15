@@ -78,7 +78,7 @@ internal static partial class EvmInstructions
         // Pop the jump destination from the stack.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         // Validate the jump destination and update the program counter if valid.
-        if (!Jump(result, ref programCounter, in vm.EvmState.Env)) goto InvalidJumpDestination;
+        if (!Jump(result, ref programCounter, vm.EvmState.Env)) goto InvalidJumpDestination;
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -114,7 +114,7 @@ internal static partial class EvmInstructions
         if (isOverflow) goto StackUnderflow;
         if (shouldJump)
         {
-            if (!Jump(result, ref programCounter, in vm.EvmState.Env)) goto InvalidJumpDestination;
+            if (!Jump(result, ref programCounter, vm.EvmState.Env)) goto InvalidJumpDestination;
         }
 
         return EvmExceptionType.None;
@@ -173,13 +173,13 @@ internal static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
-        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
+        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length) ||
+            !vm.EvmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
         {
             goto OutOfGas;
         }
 
-        // Copy the specified memory region as return data.
-        vm.ReturnData = vm.EvmState.Memory.Load(in position, in length).ToArray();
+        vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.Revert;
     // Jump forward to be unpredicted by the branch predictor.
@@ -303,7 +303,7 @@ internal static partial class EvmInstructions
     /// <c>true</c> if the destination is valid and the program counter is updated; otherwise, <c>false</c>.
     /// </returns>
     [SkipLocalsInit]
-    private static bool Jump(in UInt256 jumpDestination, ref int programCounter, in ExecutionEnvironment env)
+    private static bool Jump(in UInt256 jumpDestination, ref int programCounter, ExecutionEnvironment env)
     {
         // Check if the jump destination exceeds the maximum allowed integer value.
         if (jumpDestination > int.MaxValue)
@@ -312,10 +312,10 @@ internal static partial class EvmInstructions
         }
 
         // Extract the jump destination from the lowest limb of the UInt256.
-        return Jump((int)jumpDestination.u0, ref programCounter, in env);
+        return Jump((int)jumpDestination.u0, ref programCounter, env);
     }
 
-    private static bool Jump(int jumpDestination, ref int programCounter, in ExecutionEnvironment env)
+    private static bool Jump(int jumpDestination, ref int programCounter, ExecutionEnvironment env)
     {
         // Validate that the jump destination corresponds to a valid jump marker in the code.
         if (!env.CodeInfo.ValidateJump(jumpDestination))
