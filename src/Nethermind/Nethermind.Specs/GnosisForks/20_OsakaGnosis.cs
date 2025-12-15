@@ -15,7 +15,7 @@ public class OsakaGnosis : Osaka
         => ToGnosisFork(this);
 
     public static void ToGnosisFork(Osaka spec)
-        => PragueGnosis.ToGnosisFork(spec);
+        => BalancerGnosis.ToGnosisFork(spec);
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new OsakaGnosis());
 }

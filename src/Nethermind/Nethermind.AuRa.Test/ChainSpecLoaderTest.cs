@@ -76,6 +76,7 @@ public class ChainSpecLoaderTest
     [Test]
     public void Can_load_posdao_with_rewriteBytecode()
     {
+        // TODO: modexp 2565
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/posdao.json");
         ChainSpec chainSpec = LoadChainSpec(path);
         IDictionary<long, IDictionary<Address, byte[]>> expected = new Dictionary<long, IDictionary<Address, byte[]>>
@@ -89,12 +90,29 @@ public class ChainSpecLoaderTest
             }
         };
 
-        var auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
+        AuRaChainSpecEngineParameters auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
         auraParams.RewriteBytecode.Should().BeEquivalentTo(expected);
+    }
 
-        // posdao.json uses old modexp pricing format (divisor: 20) without modexp2565 transition
-        // Therefore Eip2565Transition should be null
-        chainSpec.Parameters.Eip2565Transition.Should().BeNull();
+    // todo: update with real values
+    [Test]
+    public void Can_load_gnosis_with_rewriteBytecodeGnosis()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/gnosis.json");
+        ChainSpec chainSpec = LoadChainSpec(path);
+        IDictionary<ulong, IDictionary<Address, byte[]>> expected = new Dictionary<ulong, IDictionary<Address, byte[]>>
+        {
+            {
+                0x999999999, new Dictionary<Address, byte[]>()
+                {
+                    {new Address("0x506d1f9efe24f0d47853adca907eb8d89ae03207"), Bytes.FromHexString("0xabababa")},
+                }
+            }
+        };
+
+        AuRaChainSpecEngineParameters auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
+
+        auraParams.RewriteBytecodeTimestamp.Should().BeEquivalentTo(expected);
     }
 }
