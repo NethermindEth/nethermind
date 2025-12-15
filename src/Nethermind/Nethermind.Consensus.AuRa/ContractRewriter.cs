@@ -10,10 +10,10 @@ namespace Nethermind.Consensus.AuRa;
 
 public class ContractRewriter(
     IDictionary<long, IDictionary<Address, byte[]>> contractOverrides,
-    IDictionary<ulong, IDictionary<Address, byte[]>> contractOverridesTimestamp)
+    (ulong, Address, byte[])[] contractOverridesTimestamp)
 {
     private readonly IDictionary<long, IDictionary<Address, byte[]>> _contractOverrides = contractOverrides;
-    private readonly IDictionary<ulong, IDictionary<Address, byte[]>> _contractOverridesTimestamp = contractOverridesTimestamp;
+    private readonly (ulong, Address, byte[])[] _contractOverridesTimestamp = contractOverridesTimestamp;
 
     public bool RewriteContracts(long blockNumber, IWorldState stateProvider, IReleaseSpec spec)
     {
@@ -28,11 +28,12 @@ public class ContractRewriter(
     public bool RewriteContracts(ulong timestamp, ulong parentTimestamp, IWorldState stateProvider, IReleaseSpec spec)
     {
         bool result = false;
-        foreach (KeyValuePair<ulong, IDictionary<Address, byte[]>> overrides in _contractOverridesTimestamp)
+        foreach ((ulong Timestamp, Address Address, byte[] Code) codeOverride in _contractOverridesTimestamp)
         {
-            if (timestamp >= overrides.Key && parentTimestamp < overrides.Key)
+            if (timestamp >= codeOverride.Timestamp && parentTimestamp < codeOverride.Timestamp)
             {
-                result |= InsertOverwriteCode(overrides.Value, stateProvider, spec);
+                InsertOverwriteCode(codeOverride.Address, codeOverride.Code, stateProvider, spec);
+                result = true;
             }
         }
         return result;
@@ -43,10 +44,15 @@ public class ContractRewriter(
         bool result = false;
         foreach (KeyValuePair<Address, byte[]> contractOverride in overrides)
         {
-            stateProvider.CreateAccountIfNotExists(contractOverride.Key, 0, 0);
-            stateProvider.InsertCode(contractOverride.Key, contractOverride.Value, spec);
+            InsertOverwriteCode(contractOverride.Key, contractOverride.Value, stateProvider, spec);
             result = true;
         }
         return result;
+    }
+
+    private static void InsertOverwriteCode(Address address, byte[] code, IWorldState stateProvider, IReleaseSpec spec)
+    {
+        stateProvider.CreateAccountIfNotExists(address, 0, 0);
+        stateProvider.InsertCode(address, code, spec);
     }
 }

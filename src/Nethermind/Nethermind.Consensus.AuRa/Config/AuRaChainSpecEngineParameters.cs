@@ -77,6 +77,19 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
         timestamps.AddRange(RewriteBytecodeTimestamp.Keys);
     }
 
+    public IEnumerable<(ulong, Address, byte[])> RewriteBytecodeTimestampParsed
+    {
+        get {
+            foreach(KeyValuePair<ulong, IDictionary<Address, byte[]>> timestampOverrides in RewriteBytecodeTimestamp)
+            {
+                foreach(KeyValuePair<Address, byte[]> addressOverride in timestampOverrides.Value)
+                {
+                    yield return (timestampOverrides.Key, addressOverride.Key, addressOverride.Value);
+                }
+            }
+        }
+    }
+
     static AuRaParameters.Validator LoadValidator(AuRaValidatorJson validatorJson, int level = 0)
     {
         AuRaParameters.ValidatorType validatorType = validatorJson.GetValidatorType();

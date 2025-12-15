@@ -131,25 +131,12 @@ namespace Nethermind.AuRa.Test
                 },
             };
 
-            Dictionary<ulong, IDictionary<Address, byte[]>> contractOverridesTimestamp = new()
-            {
-                {
-                    1000024,
-                    new Dictionary<Address, byte[]>()
-                    {
-                        {TestItem.AddressC, Bytes.FromHexString("0x123")},
-                        {TestItem.AddressD, Bytes.FromHexString("0x321")},
-                    }
-                },
-                {
-                    1000036,
-                    new Dictionary<Address, byte[]>()
-                    {
-                        {TestItem.AddressC, Bytes.FromHexString("0x456")},
-                        {TestItem.AddressD, Bytes.FromHexString("0x654")},
-                    }
-                },
-            };
+            (ulong, Address, byte[])[] contractOverridesTimestamp = [
+                (1000024, TestItem.AddressC, Bytes.FromHexString("0x123")),
+                (1000024, TestItem.AddressD, Bytes.FromHexString("0x321")),
+                (1000036, TestItem.AddressC, Bytes.FromHexString("0x456")),
+                (1000036, TestItem.AddressD, Bytes.FromHexString("0x654"))
+            ];
 
             (BranchProcessor processor, IWorldState stateProvider, IBlockTree blockTree) =
                 CreateProcessor(contractRewriter: new ContractRewriter(contractOverrides, contractOverridesTimestamp));
