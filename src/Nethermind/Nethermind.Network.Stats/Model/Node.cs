@@ -213,17 +213,14 @@ namespace Nethermind.Stats.Model
                 return NodeClientType.Unknown;
             }
 
-            Match match = s_clientTypeRegex.Match(clientId);
-            if (!match.Success)
+            // Use EnumerateMatches to avoid allocations - it returns ValueMatch structs
+            foreach (ValueMatch match in s_clientTypeRegex.EnumerateMatches(clientId))
             {
-                return NodeClientType.Unknown;
-            }
+                // Get the matched text as a span to avoid allocations
+                ReadOnlySpan<char> matchedText = clientId.AsSpan(match.Index, match.Length);
 
-            // Skip group 0 (the entire match) and find the first successful named group
-            for (int i = 1; i < match.Groups.Count; i++)
-            {
-                Group group = match.Groups[i];
-                if (group.Success && FastEnum.TryParse(group.Name, out NodeClientType clientType))
+                // Try to parse the matched client name
+                if (FastEnum.TryParse(matchedText, ignoreCase: true, out NodeClientType clientType))
                 {
                     return clientType;
                 }
