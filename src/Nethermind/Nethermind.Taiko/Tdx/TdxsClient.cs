@@ -14,7 +14,7 @@ namespace Nethermind.Taiko.Tdx;
 /// Client for communicating with the tdxs daemon via Unix socket.
 /// Protocol: JSON request/response over Unix socket.
 /// </summary>
-public class TdxsClient(ITdxConfig config, ILogManager logManager) : ITdxsClient
+public class TdxsClient(ISurgeTdxConfig config, ILogManager logManager) : ITdxsClient
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
 

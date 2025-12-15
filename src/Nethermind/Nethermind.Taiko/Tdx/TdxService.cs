@@ -19,7 +19,7 @@ public class TdxService : ITdxService
 {
     private const int ProofSize = 89; // 4 + 20 + 65
 
-    private readonly ITdxConfig _config;
+    private readonly ISurgeTdxConfig _config;
     private readonly ITdxsClient _client;
     private readonly ILogger _logger;
     private readonly Ecdsa _ecdsa;
@@ -29,7 +29,7 @@ public class TdxService : ITdxService
     private PrivateKey? _privateKey;
 
     public TdxService(
-        ITdxConfig config,
+        ISurgeTdxConfig config,
         ITdxsClient client,
         IEthereumEcdsa ecdsa,
         ulong chainId,

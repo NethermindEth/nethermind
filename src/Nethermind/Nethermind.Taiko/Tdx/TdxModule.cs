@@ -7,6 +7,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Taiko.Config;
 
 namespace Nethermind.Taiko.Tdx;
 
@@ -20,18 +21,17 @@ public class TdxModule : Module
     {
         base.Load(builder);
 
-        builder.AddSingleton<ITdxConfig, TdxConfig>();
         builder.AddSingleton<ITdxsClient, TdxsClient>();
 
         // Register TDX service - returns NullTdxService when disabled
         builder.Register<ITdxService>(ctx =>
         {
-            ITdxConfig config = ctx.Resolve<ITdxConfig>();
-            if (!config.Enabled)
+            ISurgeConfig surgeConfig = ctx.Resolve<ISurgeConfig>();
+            if (!surgeConfig.TdxEnabled)
                 return NullTdxService.Instance;
 
             return new TdxService(
-                config,
+                ctx.Resolve<ISurgeTdxConfig>(),
                 ctx.Resolve<ITdxsClient>(),
                 ctx.Resolve<IEthereumEcdsa>(),
                 ctx.Resolve<ISpecProvider>().ChainId,
