@@ -24,9 +24,7 @@ public static class LogIndexStorageRpcExtensions
         (int from, int to) = ((int)fromBlock, (int)toBlock);
 
         IList<LogPosition>? addressPositions = null;
-        if (filter.AddressFilter.Address is { } address)
-            addressPositions = storage.GetLogPositions(address, from, to);
-        else if (filter.AddressFilter.Addresses is { Count: > 0 } addresses)
+        if (filter.AddressFilter.Addresses is { Count: > 0 } addresses)
             addressPositions = AscListHelper.UnionAll(addresses.Select(a => storage.GetLogPositions(a, from, to)));
 
         // TODO: consider passing storage directly to keep abstractions

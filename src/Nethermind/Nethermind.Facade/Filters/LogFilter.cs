@@ -22,8 +22,7 @@ namespace Nethermind.Blockchain.Filters
         public bool UseIndex { get; set; } = true;
 
         public bool AcceptsAnyBlock =>
-            AddressFilter.Address == null &&
-            (AddressFilter.Addresses?.Count ?? 0) == 0 &&
+            AddressFilter.Addresses.Count == 0 &&
             TopicsFilter.AcceptsAnyBlock;
 
         public bool Accepts(LogEntry logEntry) => AddressFilter.Accepts(logEntry.Address) && TopicsFilter.Accepts(logEntry);
