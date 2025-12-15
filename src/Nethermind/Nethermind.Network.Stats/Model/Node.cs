@@ -195,7 +195,7 @@ namespace Nethermind.Stats.Model
         }
 
         private static readonly Regex s_clientTypeRegex = new(
-            @"(?i)(?<OpenEthereum>OpenEthereum)|(?<EthereumJS>EthereumJS)|(?<NodeCrawler>NodeCrawler)|(?<Nethermind>Nethermind)|(?<Besu>Besu)|(?<Geth>Geth)|(?<Erigon>Erigon)|(?<Reth>Reth)|(?<Nimbus>Nimbus)|(?<Ethrex>Ethrex)|(?<Parity>Parity)|(?<Trinity>Trinity)|(?<Bor>Bor)|(?<Ronin>Ronin)|(?<Scraper>Scraper)|(?<Sentinel>Sentinel)|(?<Sonic>Sonic)|(?<Grails>Grails)|(?<Gait>Gait)|(?<Diamond>Diamond)|(?<Energi>Energi)|(?<Opera>Opera)|(?<Gwat>Gwat)|(?<Tempo>Tempo)|(?<Swarm>Swarm)",
+            @"(?i)(?<OpenEthereum>OpenEthereum)|(?<NodeCrawler>NodeCrawler)|(?<Nethermind>Nethermind)|(?<EthereumJS>EthereumJS)|(?<Sentinel>Sentinel)|(?<Trinity>Trinity)|(?<Scraper>Scraper)|(?<Diamond>Diamond)|(?<Parity>Parity)|(?<Erigon>Erigon)|(?<Nimbus>Nimbus)|(?<Ethrex>Ethrex)|(?<Grails>Grails)|(?<Energi>Energi)|(?<Ronin>Ronin)|(?<Sonic>Sonic)|(?<Opera>Opera)|(?<Tempo>Tempo)|(?<Swarm>Swarm)|(?<Besu>Besu)|(?<Geth>Geth)|(?<Reth>Reth)|(?<Gait>Gait)|(?<Gwat>Gwat)|(?<Bor>Bor)",
             RegexOptions.Compiled);
 
         public static NodeClientType RecognizeClientType(string clientId)
@@ -211,9 +211,11 @@ namespace Nethermind.Stats.Model
                 return NodeClientType.Unknown;
             }
 
-            foreach (Group group in match.Groups)
+            // Skip group 0 (the entire match) and find the first successful named group
+            for (int i = 1; i < match.Groups.Count; i++)
             {
-                if (group.Success && group.Name != "0" && Enum.TryParse(group.Name, out NodeClientType clientType))
+                Group group = match.Groups[i];
+                if (group.Success && Enum.TryParse(group.Name, out NodeClientType clientType))
                 {
                     return clientType;
                 }
