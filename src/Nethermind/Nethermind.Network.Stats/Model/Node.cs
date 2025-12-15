@@ -197,13 +197,12 @@ namespace Nethermind.Stats.Model
         }
 
         // Dynamically generates regex pattern from NodeClientType enum values (excluding Unknown).
-        // Pattern structure: (?<ClientName>ClientName)|(?<OtherClient>OtherClient)|...
+        // Pattern structure: (ClientName|OtherClient|...)
         // Names are ordered longest-first to prevent substring conflicts.
         private static readonly Regex s_clientTypeRegex = new(
             string.Join("|", FastEnum.GetNames<NodeClientType>()
                 .Where(name => name != nameof(NodeClientType.Unknown))
-                .OrderByDescending(name => name.Length)
-                .Select(name => $"(?<{name}>{name})")),
+                .OrderByDescending(name => name.Length)),
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public static NodeClientType RecognizeClientType(string clientId)
