@@ -21,7 +21,7 @@ if [[ -z "$release_id" ]]; then
 
 ### [CONTENT PLACEHOLDER]
 
-#### Build Signatures
+#### Build signatures
 
 The packages are signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
 EOF
