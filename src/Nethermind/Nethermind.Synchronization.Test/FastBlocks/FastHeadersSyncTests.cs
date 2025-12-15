@@ -471,9 +471,9 @@ public class FastHeadersSyncTests
     [TestCase(190, 1, 1, true, true)]
     [TestCase(80, 1, 1, true, false)]
     [TestCase(80, 1, 1, true, true)]
-    //All empty reponse
+    // All empty response
     [TestCase(0, 192, 1, false, false)]
-    //All null reponse
+    // All null response
     [TestCase(0, 192, 1, false, true)]
     public async Task Can_insert_all_good_headers_from_dependent_batch_with_missing_or_null_headers(int nullIndex, int count, int increment, bool shouldReport, bool useNulls)
     {
@@ -518,13 +518,13 @@ public class FastHeadersSyncTests
         feed.HandleResponse(dependentBatch);
         feed.HandleResponse(firstBatch);
 
-        using HeadersSyncBatch? thirdbatch = await feed.PrepareRequest();
-        FillBatch(thirdbatch!, thirdbatch!.StartNumber, false);
-        feed.HandleResponse(thirdbatch);
-        using HeadersSyncBatch? fourthbatch = await feed.PrepareRequest();
-        FillBatch(fourthbatch!, fourthbatch!.StartNumber, false);
-        feed.HandleResponse(fourthbatch);
-        using HeadersSyncBatch? fifthbatch = await feed.PrepareRequest();
+        using HeadersSyncBatch? thirdBatch = await feed.PrepareRequest();
+        FillBatch(thirdBatch!, thirdBatch!.StartNumber, false);
+        feed.HandleResponse(thirdBatch);
+        using HeadersSyncBatch? fourthBatch = await feed.PrepareRequest();
+        FillBatch(fourthBatch!, fourthBatch!.StartNumber, false);
+        feed.HandleResponse(fourthBatch);
+        using HeadersSyncBatch? fifthBatch = await feed.PrepareRequest();
 
         Assert.That(localBlockTree.LowestInsertedHeader!.Number, Is.LessThanOrEqualTo(targetHeaderInDependentBatch));
         syncPeerPool.Received(shouldReport ? 1 : 0).ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());

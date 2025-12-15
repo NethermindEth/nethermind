@@ -91,7 +91,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task forkChoiceUpdatedV1_unknown_block_without_newpayload_initiates_syncing()
+    public async Task forkChoiceUpdatedV1_unknown_block_without_newPayload_initiates_syncing()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -137,7 +137,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task forkChoiceUpdatedV1_unknown_block_without_newpayload_and_peer_timeout__it_does_not_initiates_syncing()
+    public async Task forkChoiceUpdatedV1_unknown_block_without_newPayload_and_peer_timeout__it_does_not_initiate_syncing()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;

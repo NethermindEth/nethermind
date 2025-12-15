@@ -159,7 +159,7 @@ internal static partial class EvmInstructions
             }
 
             // Validate the jump destination and update the program counter if valid.
-            if (!Jump((int)destination, ref programCounter, in vm.EvmState.Env))
+            if (!Jump((int)destination, ref programCounter, vm.EvmState.Env))
                 goto InvalidJumpDestination;
 
             goto Success;
@@ -594,7 +594,9 @@ internal static partial class EvmInstructions
                 (long)length * GasCostOf.LogData, ref gasAvailable)) goto OutOfGas;
 
         // Load the log data from memory.
-        ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length);
+        if (!vmState.Memory.TryLoad(in position, length, out ReadOnlyMemory<byte> data))
+            goto OutOfGas;
+
         // Prepare the topics array by popping the corresponding number of words from the stack.
         Hash256[] topics = new Hash256[topicsCount];
         for (int i = 0; i < topics.Length; i++)

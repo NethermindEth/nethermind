@@ -1057,7 +1057,7 @@ namespace Nethermind.Blockchain
 
             if (bestPersisted < newPivotHeader.Number)
             {
-                if (Logger.IsTrace) Logger.Trace("Best persisted is lower than sync pivot. Using best persisted stata as pivot.");
+                if (Logger.IsTrace) Logger.Trace("Best persisted is lower than sync pivot. Using best persisted state as pivot.");
                 newPivotHeader = FindHeader(bestPersisted.Value, BlockTreeLookupOptions.RequireCanonical);
             }
             if (newPivotHeader is null) return;

@@ -97,20 +97,22 @@ internal class VotesManager(
             //Unknown epoch switch info, cannot process vote
             return Task.CompletedTask;
         }
-        if (epochInfo.Masternodes.Length == 0)
+        int masternodeCount = epochInfo.Masternodes.Length;
+        if (masternodeCount == 0)
         {
             throw new InvalidOperationException($"Epoch has empty master node list for {vote.ProposedBlockInfo.Hash}");
         }
 
         double certThreshold = _specProvider.GetXdcSpec(proposedHeader, vote.ProposedBlockInfo.Round).CertThreshold;
-        bool thresholdReached = roundVotes.Count >= epochInfo.Masternodes.Length * certThreshold;
+        double requiredVotes = masternodeCount * certThreshold;
+        bool thresholdReached = roundVotes.Count >= requiredVotes;
         if (thresholdReached)
         {
             if (!vote.ProposedBlockInfo.ValidateBlockInfo(proposedHeader))
                 return Task.CompletedTask;
 
             Signature[] validSignatures = GetValidSignatures(roundVotes, epochInfo.Masternodes);
-            if (validSignatures.Length < epochInfo.Masternodes.Length * certThreshold)
+            if (validSignatures.Length < requiredVotes)
                 return Task.CompletedTask;
 
             // At this point, the QC should be processed for this *round*.

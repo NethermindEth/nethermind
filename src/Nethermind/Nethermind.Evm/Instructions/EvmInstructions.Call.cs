@@ -109,7 +109,7 @@ internal static partial class EvmInstructions
         Address codeSource = stack.PopAddress();
         if (codeSource is null) goto StackUnderflow;
 
-        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
+        ExecutionEnvironment env = vm.EvmState.Env;
         // Determine the call value based on the call type.
         UInt256 callValue;
         if (typeof(TOpCall) == typeof(OpStaticCall))
@@ -252,9 +252,10 @@ internal static partial class EvmInstructions
         }
 
         // Load call data from memory.
-        ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(in dataOffset, dataLength);
+        if (!vm.EvmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
+            goto OutOfGas;
         // Construct the execution environment for the call.
-        ExecutionEnvironment callEnv = new(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
             executingAccount: target,
             caller: caller,
@@ -279,7 +280,7 @@ internal static partial class EvmInstructions
             executionType: TOpCall.ExecutionType,
             isStatic: TOpCall.IsStatic || vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: false,
-            env: in callEnv,
+            env: callEnv,
             stateForAccessLists: in vm.EvmState.AccessTracker,
             snapshot: in snapshot);
 
@@ -347,15 +348,13 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.
-        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length))
+        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in position, in length) ||
+            !vm.EvmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
         {
             goto OutOfGas;
         }
 
-        // Load the return data from memory and copy it to an array,
-        // so the return value isn't referencing live memory,
-        // which is being unwound in return.
-        vm.ReturnData = vm.EvmState.Memory.Load(in position, in length).ToArray();
+        vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

@@ -39,22 +39,22 @@ public unsafe partial class VirtualMachine
 
         state.CreateAccount(addressOne, 1000.Ether());
         state.Commit(spec);
-        BlockHeader _header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, MainnetSpecProvider.PragueActivation.BlockNumber, Int64.MaxValue, 1UL, Bytes.Empty, 0, 0);
+        BlockHeader header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, MainnetSpecProvider.PragueActivation.BlockNumber, Int64.MaxValue, 1UL, Bytes.Empty, 0, 0);
 
-        vm.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
+        vm.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
         vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0));
 
-        ExecutionEnvironment env = new(
-            executingAccount: addressOne,
-            codeSource: addressOne,
-            caller: addressOne,
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(
             codeInfo: new CodeInfo(bytecode),
-            value: 0,
+            executingAccount: addressOne,
+            caller: addressOne,
+            codeSource: addressOne,
+            callDepth: 0,
             transferValue: 0,
-            inputData: default,
-            callDepth: 0);
+            value: 0,
+            inputData: default);
 
-        using (var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, in env, new StackAccessTracker(), state.TakeSnapshot()))
+        using (EvmState evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, env, new StackAccessTracker(), state.TakeSnapshot()))
         {
             vm.EvmState = evmState;
             vm._worldState = state;
@@ -66,7 +66,7 @@ public unsafe partial class VirtualMachine
         }
 
         TransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
-        processor.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
 
         RunTransactions(processor, state, spec);
     }

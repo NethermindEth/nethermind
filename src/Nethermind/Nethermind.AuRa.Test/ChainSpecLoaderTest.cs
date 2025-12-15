@@ -76,7 +76,6 @@ public class ChainSpecLoaderTest
     [Test]
     public void Can_load_posdao_with_rewriteBytecode()
     {
-        // TODO: modexp 2565
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/posdao.json");
         ChainSpec chainSpec = LoadChainSpec(path);
         IDictionary<long, IDictionary<Address, byte[]>> expected = new Dictionary<long, IDictionary<Address, byte[]>>
@@ -93,5 +92,9 @@ public class ChainSpecLoaderTest
         var auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
         auraParams.RewriteBytecode.Should().BeEquivalentTo(expected);
+
+        // posdao.json uses old modexp pricing format (divisor: 20) without modexp2565 transition
+        // Therefore Eip2565Transition should be null
+        chainSpec.Parameters.Eip2565Transition.Should().BeNull();
     }
 }
