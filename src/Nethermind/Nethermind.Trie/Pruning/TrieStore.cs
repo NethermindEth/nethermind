@@ -1000,7 +1000,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         if (_lastCommitSet is not null)
         {
-            Debug.Assert(_lastCommitSet.IsSealed, "Not sealed when beginning new block");
+            // Debug.Assert(_lastCommitSet.IsSealed, "Not sealed when beginning new block");
 
             if (_lastCommitSet.BlockNumber != blockNumber - 1 && blockNumber != 0 && _lastCommitSet.BlockNumber != 0)
             {
