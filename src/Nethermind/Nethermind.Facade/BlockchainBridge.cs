@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -44,8 +44,8 @@ namespace Nethermind.Facade
         IStateReader stateReader,
         ITxPool txPool,
         IReceiptFinder receiptStorage,
-        IFilterStore filterStore,
-        IFilterManager filterManager,
+        FilterStore filterStore,
+        FilterManager filterManager,
         IEthereumEcdsa ecdsa,
         ITimestamper timestamper,
         ILogFinder logFinder,
@@ -227,7 +227,7 @@ namespace Nethermind.Facade
             ITxTracer tracer,
             BlockProcessingComponents components)
         {
-            transaction.SenderAddress ??= Address.SystemUser;
+            transaction.SenderAddress ??= Address.Zero;
 
             //Ignore nonce on all CallAndRestore calls
             transaction.Nonce = components.StateReader.GetNonce(blockHeader, transaction.SenderAddress);
@@ -289,21 +289,21 @@ namespace Nethermind.Facade
         public IEnumerable<FilterLog> GetLogs(
             BlockParameter fromBlock,
             BlockParameter toBlock,
-            object? address = null,
-            IEnumerable<object>? topics = null,
+            AddressAsKey[]? addresses = null,
+            IEnumerable<Hash256[]?>? topics = null,
             CancellationToken cancellationToken = default)
         {
-            LogFilter filter = GetFilter(fromBlock, toBlock, address, topics);
+            LogFilter filter = GetFilter(fromBlock, toBlock, addresses, topics);
             return logFinder.FindLogs(filter, cancellationToken);
         }
 
         public LogFilter GetFilter(
             BlockParameter fromBlock,
             BlockParameter toBlock,
-            object? address = null,
-            IEnumerable<object>? topics = null)
+            AddressAsKey[]? addresses = null,
+            IEnumerable<Hash256[]?>? topics = null)
         {
-            return filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
+            return filterStore.CreateLogFilter(fromBlock, toBlock, addresses, topics, false);
         }
 
         public IEnumerable<FilterLog> GetLogs(
@@ -325,17 +325,17 @@ namespace Nethermind.Facade
             return filter is not null;
         }
 
-        public int NewFilter(BlockParameter? fromBlock, BlockParameter? toBlock,
-            object? address = null, IEnumerable<object>? topics = null)
+        public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock,
+            AddressAsKey[]? address = null, IEnumerable<Hash256[]?>? topics = null)
         {
-            LogFilter filter = filterStore.CreateLogFilter(fromBlock ?? BlockParameter.Latest, toBlock ?? BlockParameter.Latest, address, topics);
+            LogFilter filter = filterStore.CreateLogFilter(fromBlock, toBlock, address, topics);
             filterStore.SaveFilter(filter);
             return filter.Id;
         }
 
         public int NewBlockFilter()
         {
-            BlockFilter filter = filterStore.CreateBlockFilter(blockTree.Head!.Number);
+            BlockFilter filter = filterStore.CreateBlockFilter();
             filterStore.SaveFilter(filter);
             return filter.Id;
         }
@@ -402,7 +402,7 @@ namespace Nethermind.Facade
         {
             var error = txResult switch
             {
-                { TransactionExecuted: true } when txResult.EvmExceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert) => txResult.EvmExceptionType.GetEvmExceptionDescription(),
+                { TransactionExecuted: true } when txResult.EvmExceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert) => txResult.SubstateError ?? txResult.EvmExceptionType.GetEvmExceptionDescription(),
                 { TransactionExecuted: true } when tracerError is not null => tracerError,
                 { TransactionExecuted: false, Error: not TransactionResult.ErrorType.None } => txResult.ErrorDescription,
                 _ => null

@@ -23,7 +23,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
     SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
-    private long _gasCapBudget = rpcConfig.GasCap ?? long.MaxValue;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
     protected override SimulatePayload<TransactionWithSourceDetails> Prepare(SimulatePayload<TransactionForRpc> call)
@@ -35,29 +34,18 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
             ReturnFullTransactionObjects = call.ReturnFullTransactionObjects,
             BlockStateCalls = call.BlockStateCalls?.Select(blockStateCall =>
             {
-                if (blockStateCall.BlockOverrides?.GasLimit is not null)
-                {
-                    blockStateCall.BlockOverrides.GasLimit = (ulong)Math.Min((long)blockStateCall.BlockOverrides.GasLimit!.Value, _gasCapBudget);
-                }
-
                 return new BlockStateCall<TransactionWithSourceDetails>
                 {
                     BlockOverrides = blockStateCall.BlockOverrides,
                     StateOverrides = blockStateCall.StateOverrides,
                     Calls = blockStateCall.Calls?.Select(callTransactionModel =>
                     {
-                        callTransactionModel = UpdateTxType(callTransactionModel);
                         LegacyTransactionForRpc asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
-                        asLegacy!.EnsureDefaults(_gasCapBudget);
-                        _gasCapBudget -= asLegacy.Gas!.Value;
-                        _gasCapBudget = Math.Max(0, _gasCapBudget);
 
                         Transaction tx = callTransactionModel.ToTransaction();
 
-                        // The RPC set SystemUser as default, but we want to set it to zero to follow hive test.
-                        if (tx.SenderAddress == Address.SystemUser) tx.SenderAddress = Address.Zero;
                         tx.ChainId = _blockchainBridge.GetChainId();
 
                         TransactionWithSourceDetails? result = new()
@@ -74,30 +62,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         };
 
         return result;
-    }
-
-    private static TransactionForRpc UpdateTxType(TransactionForRpc rpcTransaction)
-    {
-        // TODO: This is a bit messy since we're changing the transaction type
-        if (rpcTransaction is LegacyTransactionForRpc legacy && rpcTransaction is not EIP1559TransactionForRpc)
-        {
-            rpcTransaction = new EIP1559TransactionForRpc
-            {
-                Nonce = legacy.Nonce,
-                To = legacy.To,
-                From = legacy.From,
-                Gas = legacy.Gas,
-                Value = legacy.Value,
-                Input = legacy.Input,
-                GasPrice = legacy.GasPrice,
-                ChainId = legacy.ChainId,
-                V = legacy.V,
-                R = legacy.R,
-                S = legacy.S,
-            };
-        }
-
-        return rpcTransaction;
     }
 
     public override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(

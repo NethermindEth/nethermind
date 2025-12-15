@@ -30,7 +30,7 @@ public class MultipleUnsignedOperations
     private ExecutionEnvironment _environment;
     private IVirtualMachine _virtualMachine;
     private readonly BlockHeader _header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.MuirGlacierBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
-    private readonly IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
+    private readonly IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
     private EvmState _evmState;
     private IWorldState _stateProvider;
 
@@ -81,8 +81,7 @@ public class MultipleUnsignedOperations
         _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
         _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
 
-        _environment = new ExecutionEnvironment
-        (
+        _environment = ExecutionEnvironment.Rent(
             executingAccount: Address.Zero,
             codeSource: Address.Zero,
             caller: Address.Zero,
@@ -94,6 +93,13 @@ public class MultipleUnsignedOperations
         );
 
         _evmState = EvmState.RentTopLevel(100_000_000L, ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
+    }
+
+    [GlobalCleanup]
+    public void GlobalCleanup()
+    {
+        _evmState.Dispose();
+        _environment.Dispose();
     }
 
     [Benchmark]

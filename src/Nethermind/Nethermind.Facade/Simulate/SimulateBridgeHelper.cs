@@ -107,7 +107,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         IWorldState stateProvider = env.WorldState;
         parent = GetParent(parent, payload, blockTree);
 
-        env.SimulateRequestState.TotalGasLeft = long.Min(parent.GasLimit, gasCapLimit);
+        env.SimulateRequestState.TotalGasLeft = gasCapLimit;
 
         if (payload.BlockStateCalls is not null)
         {
@@ -119,6 +119,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 nonceCache.Clear();
 
                 (BlockHeader callHeader, IReleaseSpec spec) = GetCallHeader(env.SpecProvider, blockCall, parent, payload.Validation);
+                env.SimulateRequestState.BlockGasLeft = callHeader.GasLimit;
                 callHeader.Hash = callHeader.CalculateHash();
 
                 TransactionWithSourceDetails[] calls = blockCall.Calls ?? [];

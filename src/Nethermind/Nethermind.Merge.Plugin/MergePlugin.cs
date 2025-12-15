@@ -22,7 +22,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
@@ -42,6 +41,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin;
@@ -307,6 +307,8 @@ public class BaseMergePluginModule : Module
             .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
 
             .AddDecorator<IHealthHintService, MergeHealthHintService>()
+
+            .AddDecorator<IFinalizedStateProvider, MergeFinalizedStateProvider>()
 
             .AddKeyedSingleton<ITxValidator>(ITxValidator.HeadTxValidatorKey, new HeadTxValidator())
 

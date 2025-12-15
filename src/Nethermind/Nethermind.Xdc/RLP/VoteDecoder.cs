@@ -5,18 +5,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
-public class VoteDecoder : IRlpValueDecoder<Vote>, IRlpStreamDecoder<Vote>
+
+public sealed class VoteDecoder : RlpValueDecoder<Vote>
 {
     private static readonly XdcBlockInfoDecoder _xdcBlockInfoDecoder = new();
 
-    public Vote Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Vote DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
             return null;
@@ -40,7 +36,7 @@ public class VoteDecoder : IRlpValueDecoder<Vote>, IRlpStreamDecoder<Vote>
         return new Vote(proposedBlockInfo, gapNumber, signature);
     }
 
-    public Vote Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Vote DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())
             return null;
@@ -64,7 +60,7 @@ public class VoteDecoder : IRlpValueDecoder<Vote>, IRlpStreamDecoder<Vote>
         return new Vote(proposedBlockInfo, gapNumber, signature);
     }
 
-    public void Encode(RlpStream stream, Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -89,7 +85,7 @@ public class VoteDecoder : IRlpValueDecoder<Vote>, IRlpStreamDecoder<Vote>
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public int GetLength(Vote item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(Vote item, RlpBehaviors rlpBehaviors)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }

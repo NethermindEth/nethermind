@@ -7,14 +7,14 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class BlockDecoder(IHeaderDecoder headerDecoder) : IRlpValueDecoder<Block>, IRlpStreamDecoder<Block>
+    public sealed class BlockDecoder(IHeaderDecoder headerDecoder) : RlpValueDecoder<Block>
     {
         private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? throw new ArgumentNullException(nameof(headerDecoder));
         private readonly BlockBodyDecoder _blockBodyDecoder = new BlockBodyDecoder(headerDecoder);
 
         public BlockDecoder() : this(new HeaderDecoder()) { }
 
-        public Block? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Block? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.Length == 0)
             {
@@ -48,7 +48,7 @@ namespace Nethermind.Serialization.Rlp
             return (contentLength, txs, uncles, withdrawals);
         }
 
-        public int GetLength(Block? item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(Block? item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)
             {
@@ -58,7 +58,7 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
         }
 
-        public Block? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Block? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {
@@ -92,7 +92,7 @@ namespace Nethermind.Serialization.Rlp
             return new(rlpStream.Data.ToArray());
         }
 
-        public void Encode(RlpStream stream, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream stream, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

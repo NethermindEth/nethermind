@@ -39,13 +39,13 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
     public const int ItemSize = 160;
 
     [SkipLocalsInit]
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsG1MSMPrecompile++;
 
         if (inputData.Length % ItemSize > 0 || inputData.Length == 0)
         {
-            return IPrecompile.Failure;
+            return Errors.InvalidInputLength;
         }
 
         // use Mul to optimise single point multiplication
@@ -53,20 +53,20 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
         return nItems == 1 ? Mul(inputData) : MSM(inputData, nItems);
     }
 
-    private (byte[], bool) Mul(ReadOnlyMemory<byte> inputData)
+    private Result<byte[]> Mul(ReadOnlyMemory<byte> inputData)
     {
         G1 x = new(stackalloc long[G1.Sz]);
-        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) || !(BlsConst.DisableSubgroupChecks || x.InGroup()))
-        {
-            return IPrecompile.Failure;
-        }
+        Result result = x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span);
+        if (!result) return result.Error!;
+
+        if (!(BlsConst.DisableSubgroupChecks || x.InGroup())) return Errors.G1PointSubgroup;
 
         // multiplying by zero gives infinity point
         // any scalar multiplied by infinity point is infinity point
         bool scalarIsZero = !inputData.Span[BlsConst.LenG1..].ContainsAnyExcept((byte)0);
         if (scalarIsZero || x.IsInf())
         {
-            return (BlsConst.G1Inf, true);
+            return BlsConst.G1Inf;
         }
 
         Span<byte> scalar = stackalloc byte[32];
@@ -74,10 +74,10 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
         scalar.Reverse();
 
         G1 res = x.Mult(scalar);
-        return (res.EncodeRaw(), true);
+        return res.EncodeRaw();
     }
 
-    private (byte[], bool) MSM(ReadOnlyMemory<byte> inputData, int nItems)
+    private Result<byte[]> MSM(ReadOnlyMemory<byte> inputData, int nItems)
     {
         using ArrayPoolList<long> rawPoints = new(nItems * G1.Sz, nItems * G1.Sz);
         using ArrayPoolList<byte> rawScalars = new(nItems * 32, nItems * 32);
@@ -98,23 +98,19 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
         // only infinity points so return infinity
         if (npoints == 0)
         {
-            return (BlsConst.G1Inf, true);
+            return BlsConst.G1Inf;
         }
 
-        bool fail = false;
+        Result result = Result.Success;
 
         // decode points to rawPoints buffer
         // n.b. subgroup checks carried out as part of decoding
 #pragma warning disable CS0162 // Unreachable code detected
         if (BlsConst.DisableConcurrency)
         {
-            for (int i = 0; i < pointDestinations.Count; i++)
+            for (int i = 0; i < pointDestinations.Count && result; i++)
             {
-                if (!BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), pointDestinations[i], i))
-                {
-                    fail = true;
-                    break;
-                }
+                result = BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), pointDestinations[i], i);
             }
         }
         else
@@ -122,22 +118,20 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
             Parallel.ForEach(pointDestinations, (dest, state, i) =>
             {
                 int index = (int)i;
-                if (!BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), dest, index))
+                Result local = BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), dest, index);
+                if (!local)
                 {
-                    fail = true;
+                    result = local;
                     state.Break();
                 }
             });
         }
 #pragma warning restore CS0162 // Unreachable code detected
 
-        if (fail)
-        {
-            return IPrecompile.Failure;
-        }
+        if (!result) return result.Error!;
 
         // compute res = rawPoints_0 * rawScalars_0 + rawPoints_1 * rawScalars_1 + ...
         G1 res = new G1(stackalloc long[G1.Sz]).MultiMult(rawPoints.AsSpan(), rawScalars.AsSpan(), npoints);
-        return (res.EncodeRaw(), true);
+        return res.EncodeRaw();
     }
 }

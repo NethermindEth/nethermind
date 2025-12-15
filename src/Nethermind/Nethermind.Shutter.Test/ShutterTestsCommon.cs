@@ -20,6 +20,7 @@ using Nethermind.Specs;
 using NSubstitute;
 
 namespace Nethermind.Shutter.Test;
+
 class ShutterTestsCommon
 {
     public const int Seed = 100;

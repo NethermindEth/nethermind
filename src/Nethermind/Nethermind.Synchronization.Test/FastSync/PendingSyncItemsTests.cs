@@ -13,9 +13,9 @@ namespace Nethermind.Synchronization.Test.FastSync
     [TestFixture]
     public class PendingSyncItemsTests
     {
-        private IPendingSyncItems Init()
+        private IPendingSyncItems Init(bool isSnapSync = false)
         {
-            return new PendingSyncItems();
+            return new PendingSyncItems(isSnapSync);
         }
 
         [Test]
@@ -97,6 +97,41 @@ namespace Nethermind.Synchronization.Test.FastSync
             batch[0].Level.Should().Be(64);
             batch[1].Level.Should().Be(32);
             batch[2].Level.Should().Be(0);
+        }
+
+        [Test]
+        public void Limit_batch_at_start()
+        {
+            IPendingSyncItems items = Init();
+
+            PushState(items, 0, 0);
+            PushState(items, 32, 0);
+            PushState(items, 64, 0);
+
+            items.MaxStateLevel = 0;
+
+            List<StateSyncItem> batch = items.TakeBatch(256);
+            batch.Count.Should().Be(1);
+
+            items.MaxStateLevel = 64;
+
+            batch = items.TakeBatch(256);
+            batch.Count.Should().Be(2);
+        }
+
+        [Test]
+        public void DoNot_Limit_batch_at_start_if_snap_sync()
+        {
+            IPendingSyncItems items = Init(isSnapSync: true);
+
+            PushState(items, 0, 0);
+            PushState(items, 32, 0);
+            PushState(items, 64, 0);
+
+            items.MaxStateLevel = 0;
+
+            List<StateSyncItem> batch = items.TakeBatch(256);
+            batch.Count.Should().Be(3);
         }
 
         [Test]

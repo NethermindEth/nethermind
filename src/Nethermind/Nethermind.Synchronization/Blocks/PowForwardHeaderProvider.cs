@@ -116,7 +116,7 @@ public class PowForwardHeaderProvider(
         }
 
         LastResponseBatch = newResponse;
-        return LastResponseBatch;
+        return newResponse.ToPooledList(newResponse.Count);
     }
 
     private void OnNewBestPeer(PeerInfo newBestPeer)
@@ -160,7 +160,7 @@ public class PowForwardHeaderProvider(
                     await RequestHeaders(bestPeer, cancellation, _currentNumber, headersToRequest);
                 if (headers.Count < 2)
                 {
-                    // Peer dont have new header
+                    // Peer doesn't have a new header
                     headers.Dispose();
                     return null;
                 }

@@ -169,9 +169,9 @@ public abstract partial class BaseEngineModuleTests
         {
             if (parentHash == null)
             {
-                return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, b => true);
+                return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(CreateCancellationSource().Token, b => true);
             }
-            return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, b => b.Header.ParentHash == parentHash);
+            return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(CreateCancellationSource().Token, b => b.Header.ParentHash == parentHash);
         }
 
         public IBeaconPivot BeaconPivot => Container.Resolve<IBeaconPivot>();

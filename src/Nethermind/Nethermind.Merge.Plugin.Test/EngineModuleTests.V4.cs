@@ -259,7 +259,7 @@ public partial class EngineModuleTests
         last!.IsGenesis.Should().BeTrue();
 
         Block? head = chain.BlockTree.Head;
-        head!.ExecutionRequests!.ToArray().Length.Should().Be(ExecutionRequestsProcessorMock.Requests.Length);
+        head!.ExecutionRequests!.Length.Should().Be(ExecutionRequestsProcessorMock.Requests.Length);
     }
 
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,

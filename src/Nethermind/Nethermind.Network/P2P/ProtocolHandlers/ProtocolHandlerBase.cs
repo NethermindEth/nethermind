@@ -173,20 +173,20 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected void ReportIn(string messageInfo, int size)
         {
             if (Logger.IsTrace)
-                Logger.Trace($"OUT {Counter:D5} {messageInfo}");
+                Logger.Trace($"IN {Counter:D5} {messageInfo}");
 
             if (NetworkDiagTracer.IsEnabled)
                 NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo, size);
         }
 
         protected void HandleInBackground<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, Task<TRes>> handle) where TReq : P2PMessage where TRes : P2PMessage =>
-            BackgroundTaskScheduler.ScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
+            BackgroundTaskScheduler.TryScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
 
         protected void HandleInBackground<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask<TRes>> handle) where TReq : P2PMessage where TRes : P2PMessage =>
-            BackgroundTaskScheduler.ScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
+            BackgroundTaskScheduler.TryScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
 
         protected void HandleInBackground<TReq>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask> handle) where TReq : P2PMessage =>
-            BackgroundTaskScheduler.ScheduleBackgroundTask(DeserializeAndReport<TReq>(message), handle);
+            BackgroundTaskScheduler.TryScheduleBackgroundTask(DeserializeAndReport<TReq>(message), handle);
 
         private TReq DeserializeAndReport<TReq>(ZeroPacket message) where TReq : P2PMessage
         {

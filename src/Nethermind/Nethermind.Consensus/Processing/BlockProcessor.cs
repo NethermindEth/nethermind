@@ -44,7 +44,7 @@ public partial class BlockProcessor(
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider);
+    protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = ReceiptsRootCalculator.Instance;
 
     /// <summary>
@@ -82,7 +82,7 @@ public partial class BlockProcessor(
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
     }
 
-    private bool ShouldComputeStateRoot(BlockHeader header) =>
+    protected bool ShouldComputeStateRoot(BlockHeader header) =>
         !header.IsGenesis || !specProvider.GenesisStateUnavailable;
 
     protected virtual TxReceipt[] ProcessBlock(
@@ -179,7 +179,7 @@ public partial class BlockProcessor(
         receiptStorage.Insert(block, txReceipts, spec, false);
     }
 
-    private Block PrepareBlockForProcessing(Block suggestedBlock)
+    protected virtual Block PrepareBlockForProcessing(Block suggestedBlock)
     {
         if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
         BlockHeader bh = suggestedBlock.Header;

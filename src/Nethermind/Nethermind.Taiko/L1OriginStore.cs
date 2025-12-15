@@ -16,20 +16,37 @@ public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, IRl
 {
     public const string L1OriginDbName = "L1Origin";
     private const int UInt256BytesLength = 32;
-    private static readonly byte[] L1OriginHeadKey = UInt256.MaxValue.ToBigEndian();
+    private const int KeyBytesLength = UInt256BytesLength + 1;
+    private const byte L1OriginPrefix = 0x00;
+    private const byte BatchToBlockPrefix = 0x01;
+    private const byte L1OriginHeadPrefix = 0xFF;
+    private static readonly byte[] L1OriginHeadKey = [L1OriginHeadPrefix];
+
+    private static void CreateL1OriginKey(UInt256 blockId, Span<byte> keyBytes)
+    {
+        keyBytes[0] = L1OriginPrefix;
+        blockId.ToBigEndian(keyBytes[1..]);
+    }
+
+    private static void CreateBatchToBlockKey(UInt256 batchId, Span<byte> keyBytes)
+    {
+        keyBytes[0] = BatchToBlockPrefix;
+        batchId.ToBigEndian(keyBytes[1..]);
+    }
 
     public L1Origin? ReadL1Origin(UInt256 blockId)
     {
-        Span<byte> keyBytes = stackalloc byte[UInt256BytesLength];
-        blockId.ToBigEndian(keyBytes);
+        Span<byte> keyBytes = stackalloc byte[KeyBytesLength];
+        CreateL1OriginKey(blockId, keyBytes);
 
-        return db.Get(new Hash256(keyBytes), decoder);
+        byte[]? data = db.Get(keyBytes);
+        return data is null ? null : decoder.Decode(new RlpStream(data));
     }
 
     public void WriteL1Origin(UInt256 blockId, L1Origin l1Origin)
     {
-        Span<byte> key = stackalloc byte[UInt256BytesLength];
-        blockId.ToBigEndian(key);
+        Span<byte> key = stackalloc byte[KeyBytesLength];
+        CreateL1OriginKey(blockId, key);
 
         int encodedL1OriginLength = decoder.GetLength(l1Origin, RlpBehaviors.None);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(encodedL1OriginLength);
@@ -38,7 +55,7 @@ public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, IRl
         {
             RlpStream stream = new(buffer);
             decoder.Encode(stream, l1Origin);
-            db.Set(new ValueHash256(key), buffer.AsSpan(0, encodedL1OriginLength));
+            db.PutSpan(key, buffer.AsSpan(0, encodedL1OriginLength));
         }
         finally
         {
@@ -60,6 +77,29 @@ public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, IRl
         Span<byte> blockIdBytes = stackalloc byte[UInt256BytesLength];
         blockId.ToBigEndian(blockIdBytes);
 
-        db.Set(new(L1OriginHeadKey.AsSpan()), blockIdBytes);
+        db.PutSpan(L1OriginHeadKey, blockIdBytes);
+    }
+
+    public UInt256? ReadBatchToLastBlockID(UInt256 batchId)
+    {
+        Span<byte> keyBytes = stackalloc byte[KeyBytesLength];
+        CreateBatchToBlockKey(batchId, keyBytes);
+
+        return db.Get(keyBytes) switch
+        {
+            null => null,
+            byte[] bytes => new UInt256(bytes, isBigEndian: true)
+        };
+    }
+
+    public void WriteBatchToLastBlockID(UInt256 batchId, UInt256 blockId)
+    {
+        Span<byte> key = stackalloc byte[KeyBytesLength];
+        CreateBatchToBlockKey(batchId, key);
+
+        Span<byte> blockIdBytes = stackalloc byte[UInt256BytesLength];
+        blockId.ToBigEndian(blockIdBytes);
+
+        db.PutSpan(key, blockIdBytes);
     }
 }

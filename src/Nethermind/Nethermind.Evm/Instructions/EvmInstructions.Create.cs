@@ -85,14 +85,8 @@ internal static partial class EvmInstructions
 
         // Reset the return data buffer as contract creation does not use previous return data.
         vm.ReturnData = null;
-        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
+        ExecutionEnvironment env = vm.EvmState.Env;
         IWorldState state = vm.WorldState;
-
-        // Ensure the executing account exists in the world state. If not, create it with a zero balance.
-        if (!state.AccountExists(env.ExecutingAccount))
-        {
-            state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
-        }
 
         // Pop parameters off the stack: value to transfer, memory position for the initialization code,
         // and the length of the initialization code.
@@ -142,7 +136,8 @@ internal static partial class EvmInstructions
         }
 
         // Load the initialization code from memory based on the specified position and length.
-        ReadOnlyMemory<byte> initCode = vm.EvmState.Memory.Load(in memoryPositionOfInitCode, in initCodeLength);
+        if (!vm.EvmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
+            goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
@@ -215,12 +210,19 @@ internal static partial class EvmInstructions
             goto None;
         }
 
+        // If the contract address refers to a dead account, clear its storage before creation.
+        if (state.IsDeadAccount(contractAddress))
+        {
+            // Note: Seems to be needed on block 21827914 for some reason
+            state.ClearStorage(contractAddress);
+        }
+
         // Deduct the transfer value from the executing account's balance.
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.
-        ExecutionEnvironment callEnv = new(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
@@ -238,7 +240,7 @@ internal static partial class EvmInstructions
             executionType: TOpCreate.ExecutionType,
             isStatic: vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: accountExists,
-            env: in callEnv,
+            env: callEnv,
             stateForAccessLists: in vm.EvmState.AccessTracker,
             snapshot: in snapshot);
     None:

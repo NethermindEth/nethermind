@@ -10,7 +10,6 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.State.Repositories;
 
 namespace Nethermind.Blockchain
 {
@@ -155,6 +154,8 @@ namespace Nethermind.Blockchain
 
         BlockInfo FindCanonicalBlockInfo(long blockNumber);
 
+        Hash256? FindHash(long blockNumber);
+
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
         void DeleteInvalidBlock(Block invalidBlock);
@@ -201,9 +202,9 @@ namespace Nethermind.Blockchain
 
         public readonly struct ForkChoiceUpdateEventArgs(Block? head, long safe, long finalized)
         {
-            public readonly Block? Head => head;
-            public readonly long Safe => safe;
-            public readonly long Finalized => finalized;
+            public Block? Head => head;
+            public long Safe => safe;
+            public long Finalized => finalized;
         }
         bool IsProcessingBlock { get; set; }
     }
