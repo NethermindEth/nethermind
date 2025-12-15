@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
+using FastEnumUtility;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 
@@ -195,8 +197,11 @@ namespace Nethermind.Stats.Model
         }
 
         private static readonly Regex s_clientTypeRegex = new(
-            @"(?i)(?<OpenEthereum>OpenEthereum)|(?<NodeCrawler>NodeCrawler)|(?<Nethermind>Nethermind)|(?<EthereumJS>EthereumJS)|(?<Sentinel>Sentinel)|(?<Trinity>Trinity)|(?<Scraper>Scraper)|(?<Diamond>Diamond)|(?<Parity>Parity)|(?<Erigon>Erigon)|(?<Nimbus>Nimbus)|(?<Ethrex>Ethrex)|(?<Grails>Grails)|(?<Energi>Energi)|(?<Ronin>Ronin)|(?<Sonic>Sonic)|(?<Opera>Opera)|(?<Tempo>Tempo)|(?<Swarm>Swarm)|(?<Besu>Besu)|(?<Geth>Geth)|(?<Reth>Reth)|(?<Gait>Gait)|(?<Gwat>Gwat)|(?<Bor>Bor)",
-            RegexOptions.Compiled);
+            string.Join("|", FastEnum.GetNames<NodeClientType>()
+                .Where(name => name != nameof(NodeClientType.Unknown))
+                .OrderByDescending(name => name.Length)
+                .Select(name => $"(?<{name}>{name})")),
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public static NodeClientType RecognizeClientType(string clientId)
         {
@@ -215,7 +220,7 @@ namespace Nethermind.Stats.Model
             for (int i = 1; i < match.Groups.Count; i++)
             {
                 Group group = match.Groups[i];
-                if (group.Success && Enum.TryParse(group.Name, out NodeClientType clientType))
+                if (group.Success && FastEnum.TryParse(group.Name, out NodeClientType clientType))
                 {
                     return clientType;
                 }
