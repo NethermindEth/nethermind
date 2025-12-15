@@ -208,7 +208,7 @@ namespace Nethermind.AuRa.Test
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             IBlockTree blockTree = Build.A.BlockTree(GnosisSpecProvider.Instance).TestObject;
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-            AuRaBlockProcessor processor = new AuRaBlockProcessor(
+            AuRaBlockProcessor processor = new(
                 GnosisSpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
@@ -224,7 +224,7 @@ namespace Nethermind.AuRa.Test
                 txFilter,
                 contractRewriter: contractRewriter);
 
-            BranchProcessor branchProcessor = new BranchProcessor(
+            BranchProcessor branchProcessor = new(
                 processor,
                 GnosisSpecProvider.Instance,
                 stateProvider,
