@@ -200,33 +200,39 @@ namespace Nethermind.Stats.Model
         // Pattern structure: (ClientName|OtherClient|...)
         // Ordered by likelihood first, with longer names before potential substrings to prevent conflicts.
         private static readonly Regex _clientTypeRegex = new(
-            string.Join("|", new[]
-            {
+            string.Join("|",
                 // Most common clients (ordered by likelihood)
-                nameof(NodeClientType.Geth),
-                nameof(NodeClientType.Nethermind),
-                nameof(NodeClientType.Reth),
-                nameof(NodeClientType.Besu),
-                nameof(NodeClientType.Erigon),
-                nameof(NodeClientType.Nimbus),
-                nameof(NodeClientType.Ethrex),
-                nameof(NodeClientType.EthereumJS),
-                nameof(NodeClientType.OpenEthereum),
-                nameof(NodeClientType.Parity),
-                // Less common clients (ordered by length to prevent substring conflicts)
-            }.Concat(FastEnum.GetNames<NodeClientType>()
-                .Where(name => name != nameof(NodeClientType.Unknown) &&
-                              name != nameof(NodeClientType.Geth) &&
-                              name != nameof(NodeClientType.Nethermind) &&
-                              name != nameof(NodeClientType.Reth) &&
-                              name != nameof(NodeClientType.Besu) &&
-                              name != nameof(NodeClientType.Erigon) &&
-                              name != nameof(NodeClientType.Nimbus) &&
-                              name != nameof(NodeClientType.Ethrex) &&
-                              name != nameof(NodeClientType.EthereumJS) &&
-                              name != nameof(NodeClientType.OpenEthereum) &&
-                              name != nameof(NodeClientType.Parity))
-                .OrderByDescending(name => name.Length))),
+                new[]
+                {
+                    nameof(NodeClientType.Geth),
+                    nameof(NodeClientType.Nethermind),
+                    nameof(NodeClientType.Reth),
+                    nameof(NodeClientType.Besu),
+                    nameof(NodeClientType.Erigon),
+                    nameof(NodeClientType.Nimbus),
+                    nameof(NodeClientType.Ethrex),
+                    nameof(NodeClientType.EthereumJS),
+                    nameof(NodeClientType.OpenEthereum),
+                    nameof(NodeClientType.Parity),
+                }
+                .Concat(
+                    // Less common clients (ordered by length to prevent substring conflicts)
+                    FastEnum.GetNames<NodeClientType>()
+                        .Except(new[]
+                        {
+                            nameof(NodeClientType.Unknown),
+                            nameof(NodeClientType.Geth),
+                            nameof(NodeClientType.Nethermind),
+                            nameof(NodeClientType.Reth),
+                            nameof(NodeClientType.Besu),
+                            nameof(NodeClientType.Erigon),
+                            nameof(NodeClientType.Nimbus),
+                            nameof(NodeClientType.Ethrex),
+                            nameof(NodeClientType.EthereumJS),
+                            nameof(NodeClientType.OpenEthereum),
+                            nameof(NodeClientType.Parity),
+                        })
+                        .OrderByDescending(name => name.Length))),
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public static NodeClientType RecognizeClientType(string clientId)
