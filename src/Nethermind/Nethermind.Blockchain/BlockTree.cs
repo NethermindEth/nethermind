@@ -155,7 +155,7 @@ namespace Nethermind.Blockchain
                     // just for corrupted test bases
 
                     genesisLevel.BlockInfos = [genesisBlockInfo];
-                    _chainLevelInfoRepository.PersistLevel(0, genesisLevel);
+                    _chainLevelInfoRepository.PersistLevel(_genesisBlockNumber, genesisLevel);
                     //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
                 }
 
