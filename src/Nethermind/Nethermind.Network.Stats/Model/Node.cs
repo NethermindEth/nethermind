@@ -196,6 +196,9 @@ namespace Nethermind.Stats.Model
             return !(a == b);
         }
 
+        // Dynamically generates regex pattern from NodeClientType enum values (excluding Unknown).
+        // Pattern structure: (?<ClientName>ClientName)|(?<OtherClient>OtherClient)|...
+        // Names are ordered longest-first to prevent substring conflicts.
         private static readonly Regex s_clientTypeRegex = new(
             string.Join("|", FastEnum.GetNames<NodeClientType>()
                 .Where(name => name != nameof(NodeClientType.Unknown))
