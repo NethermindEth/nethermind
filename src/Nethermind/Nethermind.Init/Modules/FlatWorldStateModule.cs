@@ -35,7 +35,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddSingleton<ResourcePool>()
             .AddSingleton<Importer>()
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
-            .AddSingleton<TrieWarmer>()
+            .AddSingleton<ITrieWarmer, TrieWarmer>()
 
             // These fake db are workaround for missing metrics with column db. Probably not a good idea though as
             // a failure in writes in one of the DB will break the db.
@@ -103,7 +103,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             {
                 UsePreimage = config.Layout == FlatLayout.PreimageFlat,
                 FlatInTrie = config.Layout == FlatLayout.FlatInTrie,
-                SeparateStorageTop = config.Layout == FlatLayout.FlatSeparateTopStorage,
+                SeparateStorageTop = config.Layout == FlatLayout.FlatSeparateTopStorage || config.Layout == FlatLayout.PreimageFlat
             })
             .AddSingleton<IStateReader, FlatStateReader>()
 

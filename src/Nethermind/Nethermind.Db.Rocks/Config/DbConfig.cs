@@ -359,25 +359,22 @@ public class DbConfig : IDbConfig
 
         "compression=kLZ4Compression;" +
 
-        // "memtable=prefix_hash:1000;" +
         "memtable=skiplist;" +
         "max_write_buffer_number=4;" +
         "min_write_buffer_number_to_merge=2;" +
-        "wal_compression=kZSTD;" + // I think it does not work.
 
         // This used to be on trie, but its here now. Attempt to reduce LSM depth at cost of write amp.
         "max_bytes_for_level_multiplier=20;" +
         "max_bytes_for_level_base=250000000;" +
 
         "block_based_table_factory.metadata_block_size=4096;" +
-        "block_based_table_factory.block_restart_interval=4;" +
+        "block_based_table_factory.block_restart_interval=2;" + // really increase the uncompressed size at for latency
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
-        "block_based_table_factory.data_block_hash_table_util_ratio=0.7;" +
+        "block_based_table_factory.data_block_hash_table_util_ratio=0.75;" +
         "block_based_table_factory.prepopulate_block_cache=kFlushOnly;" +
         "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;" +
         "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +
         "block_based_table_factory.whole_key_filtering=true;" + // should be default. Just in case.
-        "block_based_table_factory.block_cache=64000000;" +
 
         // Important tunables
 
@@ -410,9 +407,7 @@ public class DbConfig : IDbConfig
         get { return FlatDbCommonFlatOptions + field; }
         set { field = value ?? ""; }
     } =
-        // Note: No prefix extractor for state.Dont forget.
-        // "prefix_extractor=capped:3;" + // I forget why.
-
+        "block_based_table_factory.block_size=4096;" +
         "block_based_table_factory.filter_policy=ribbonfilter:12;" +
         "";
 
@@ -430,14 +425,17 @@ public class DbConfig : IDbConfig
         set { field = value ?? ""; }
     } =
         "block_based_table_factory.block_size=16000;" + // Using 4kb size is faster, IO wise, but uses additional 500 MB of memory, which if put on block cache is much betterr.
-        "block_based_table_factory.filter_policy=ribbonfilter:8;" +
+        "block_based_table_factory.filter_policy=ribbonfilter:8;" + // Really increase memory usage.
         "";
 
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
 
     // Largely the same as statedb, but more write focused.
     public string? FlatDbStandardTrieOptions { get; set; } =
-        // "use_direct_reads=true;" +
+
+        // This is actually feasable. Use direct reads to prevent taking up os cache space from flat.
+        "use_direct_reads=true;" +
+
         // For trie which is heavy in compaction. Use direct io to prevent taking up space in os cache.
         "use_direct_io_for_flush_and_compaction=true;" +
 
@@ -462,9 +460,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.filter_policy=ribbonfilter:15;" +
 
         // Make it
-        // "optimize_filters_for_hits=true;" +
         "optimize_filters_for_hits=true;" +
-
         "";
 
     public string? FlatDbFlatInTrieOptions { get; set; } =

@@ -31,7 +31,7 @@ public class FlatWorldStateManager : IWorldStateManager
         IFlatDiffRepository flatDiffRepository,
         FlatDiffRepository.Configuration configuration,
         FlatStateReader flatStateReader,
-        TrieWarmer trieWarmer,
+        ITrieWarmer trieWarmer,
         IProcessExitSource exitSource,
         [KeyFilter(DbNames.Code)] IDb codeDb,
         ResourcePool resourcePool,

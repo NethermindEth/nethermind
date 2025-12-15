@@ -61,10 +61,6 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
         _warmupStorageTree.RootRef = _tree.RootRef;
 
         _config = config;
-
-        // In case its all write.
-        // TODO: Check hint set is working or not.
-        _trieCacheWarmer.PushJob(_scope, null, this, 0, _scope.HintSequenceId);
     }
 
     public Hash256 RootHash => _tree.RootHash;
@@ -112,7 +108,7 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
 
     private void WarmUpSlot(UInt256 index)
     {
-        _trieCacheWarmer.PushJob(_scope, null, this, index, _scope.HintSequenceId);
+        _trieCacheWarmer.PushJob(_scope, _address, this, index, _scope.HintSequenceId);
     }
 
     // Called by trie warmer.
