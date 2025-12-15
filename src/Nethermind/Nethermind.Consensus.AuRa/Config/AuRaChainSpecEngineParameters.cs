@@ -57,6 +57,20 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
     public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode { get; set; } = new Dictionary<long, IDictionary<Address, byte[]>>();
     public IDictionary<ulong, IDictionary<Address, byte[]>> RewriteBytecodeTimestamp { get; set; } = new Dictionary<ulong, IDictionary<Address, byte[]>>();
 
+    public IEnumerable<(ulong, Address, byte[])> RewriteBytecodeTimestampParsed
+    {
+        get
+        {
+            foreach (KeyValuePair<ulong, IDictionary<Address, byte[]>> timestampOverrides in RewriteBytecodeTimestamp)
+            {
+                foreach (KeyValuePair<Address, byte[]> addressOverride in timestampOverrides.Value)
+                {
+                    yield return (timestampOverrides.Key, addressOverride.Key, addressOverride.Value);
+                }
+            }
+        }
+    }
+
     public Address WithdrawalContractAddress { get; set; }
 
     private AuRaParameters.Validator? _validators;
@@ -75,19 +89,6 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {
         timestamps.AddRange(RewriteBytecodeTimestamp.Keys);
-    }
-
-    public IEnumerable<(ulong, Address, byte[])> RewriteBytecodeTimestampParsed
-    {
-        get {
-            foreach(KeyValuePair<ulong, IDictionary<Address, byte[]>> timestampOverrides in RewriteBytecodeTimestamp)
-            {
-                foreach(KeyValuePair<Address, byte[]> addressOverride in timestampOverrides.Value)
-                {
-                    yield return (timestampOverrides.Key, addressOverride.Key, addressOverride.Value);
-                }
-            }
-        }
     }
 
     static AuRaParameters.Validator LoadValidator(AuRaValidatorJson validatorJson, int level = 0)
