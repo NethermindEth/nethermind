@@ -7,7 +7,6 @@ using FluentAssertions;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
@@ -100,7 +99,7 @@ public class ChainSpecLoaderTest
     [Test]
     public void Can_load_gnosis_with_rewriteBytecodeGnosis()
     {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/gnosis.json");
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/gnosis.json");
         ChainSpec chainSpec = LoadChainSpec(path);
         IDictionary<ulong, IDictionary<Address, byte[]>> expected = new Dictionary<ulong, IDictionary<Address, byte[]>>
         {
