@@ -166,7 +166,7 @@ namespace Nethermind.State
         }
 
         public void WarmUp(Address address) => _stateProvider.WarmUp(address);
-        public void ClearStorage(Address address)
+        public void ClearStorage(Address address, int? blockAccessIndex = null)
         {
             DebugGuardInScope();
             _persistentStorageProvider.ClearStorage(address);

@@ -347,7 +347,7 @@ public partial class BlockProcessor
 
             if (_balBuilder.ParallelExecutionEnabled)
             {
-                _balBuilder.SetupGeneratedAccessLists(txCount);
+                _balBuilder.SetupGeneratedAccessLists(_logManager, txCount);
                 _balBuilder.LoadSuggestedBlockAccessList(suggestedBal.Value);
             }
             else

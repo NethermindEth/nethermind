@@ -34,7 +34,7 @@ public class CachedCodeInfoRepository(
             delegationAddress = null;
             return cachedCodeInfo;
         }
-        return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+        return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress, blockAccessIndex);
     }
 
     // public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)

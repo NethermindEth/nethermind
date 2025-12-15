@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
+using Nethermind.Logging;
 
 namespace Nethermind.Evm.State;
 
@@ -15,7 +16,7 @@ public interface IBlockAccessListBuilder
     public BlockAccessList GeneratedBlockAccessList { get; set; }
     public void ApplyStateChanges(IReleaseSpec spec, bool shouldComputeStateRoot);
     public void LoadSuggestedBlockAccessList(BlockAccessList suggested);
-    public void SetupGeneratedAccessLists(int txCount);
+    public void SetupGeneratedAccessLists(ILogManager logManager, int txCount);
     public void GenerateBlockAccessList();
     public void AddAccountRead(Address address, int? blockAccessIndex = null);
 }

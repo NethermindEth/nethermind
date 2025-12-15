@@ -618,7 +618,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else
             {
-                codeInfo = codeInfoRepository.GetCachedCodeInfo(recipient, spec, out Address? delegationAddress);
+                codeInfo = codeInfoRepository.GetCachedCodeInfo(recipient, spec, out Address? delegationAddress, VirtualMachine.TxExecutionContext.BlockAccessIndex);
 
                 //We assume eip-7702 must be active if it is a delegation
                 if (delegationAddress is not null)

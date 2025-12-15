@@ -38,7 +38,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
 
-    public virtual void ClearStorage(Address address)
+    public virtual void ClearStorage(Address address, int? blockAccessIndex = null)
         => _innerWorldState.ClearStorage(address);
 
     public virtual void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)

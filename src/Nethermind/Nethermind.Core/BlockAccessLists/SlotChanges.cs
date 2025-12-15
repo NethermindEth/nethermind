@@ -16,15 +16,11 @@ public class SlotChanges(byte[] slot, SortedList<int, StorageChange> changes) : 
 {
     [JsonConverter(typeof(ByteArrayConverter))]
     public byte[] Slot { get; init; } = slot;
-    public EnumerableWithCount<StorageChange> Changes { get {
-        bool includesPreState = false;
-        IEnumerable<StorageChange> changes = _changes.Values.Where(c => {
-            bool include = c.BlockAccessIndex != -1;
-            includesPreState &= include;
-            return include;
-        });
-        return new(changes, includesPreState ? _changes.Count - 1 : _changes.Count);
-    }}
+
+    public EnumerableWithCount<StorageChange> Changes =>
+        _changes.Keys.FirstOrDefault() == -1 ?
+            new(_changes.Values.Skip(1), _changes.Count - 1) :
+            new(_changes.Values, _changes.Count);
 
     private readonly SortedList<int, StorageChange> _changes = changes;
 

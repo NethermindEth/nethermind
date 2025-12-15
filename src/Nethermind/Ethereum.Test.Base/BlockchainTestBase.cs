@@ -447,9 +447,9 @@ public abstract class BlockchainTestBase
                 break;
             }
 
-            bool accountExists = stateProvider.AccountExists(accountAddress);
-            UInt256? balance = accountExists ? stateProvider.GetBalance(accountAddress) : null;
-            UInt256? nonce = accountExists ? stateProvider.GetNonce(accountAddress) : null;
+            bool accountExists = stateProvider.AccountExists(accountAddress, int.MaxValue);
+            UInt256? balance = accountExists ? stateProvider.GetBalance(accountAddress, int.MaxValue) : null;
+            UInt256? nonce = accountExists ? stateProvider.GetNonce(accountAddress, int.MaxValue) : null;
 
             if (accountState.Balance != balance)
             {
@@ -461,7 +461,7 @@ public abstract class BlockchainTestBase
                 differences.Add($"{accountAddress} nonce exp: {accountState.Nonce}, actual: {nonce}");
             }
 
-            byte[] code = accountExists ? stateProvider.GetCode(accountAddress) : [];
+            byte[] code = accountExists ? stateProvider.GetCode(accountAddress, int.MaxValue) : [];
             if (!Bytes.AreEqual(accountState.Code, code))
             {
                 differences.Add($"{accountAddress} code exp: {accountState.Code?.Length}, actual: {code?.Length}");
@@ -482,7 +482,7 @@ public abstract class BlockchainTestBase
 
             foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
             {
-                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, clearedStorage.Key));
+                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress, int.MaxValue) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, clearedStorage.Key), int.MaxValue);
                 if (!value.IsZero())
                 {
                     differences.Add($"{accountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
@@ -491,7 +491,7 @@ public abstract class BlockchainTestBase
 
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
             {
-                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, storageItem.Key));
+                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress, int.MaxValue) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, storageItem.Key), int.MaxValue);
                 if (!Bytes.AreEqual(storageItem.Value, value))
                 {
                     differences.Add($"{accountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");

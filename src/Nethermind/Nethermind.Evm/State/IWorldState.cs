@@ -89,7 +89,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// Clear all storage at specified address
     /// </summary>
     /// <param name="address">Contract address</param>
-    void ClearStorage(Address address);
+    void ClearStorage(Address address, int? blockAccessIndex = null);
 
     void RecalculateStateRoot();
 
