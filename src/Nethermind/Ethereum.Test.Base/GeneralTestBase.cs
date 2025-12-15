@@ -180,6 +180,7 @@ namespace Ethereum.Test.Base
                 // For legacy tests with failed tx, we need to recalculate root since coinbase was created
                 if (test.IsLegacy)
                 {
+                    stateProvider.CommitTree(0);
                     stateProvider.RecalculateStateRoot();
                 }
                 else
