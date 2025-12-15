@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -69,6 +70,11 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
     {
         spec.MaximumUncleCount = (int)(startBlock >= (MaximumUncleCountTransition ?? long.MaxValue) ? MaximumUncleCount ?? 2 : 2);
+    }
+
+    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
+    {
+        timestamps.AddRange(RewriteBytecodeTimestamp.Keys);
     }
 
     static AuRaParameters.Validator LoadValidator(AuRaValidatorJson validatorJson, int level = 0)
