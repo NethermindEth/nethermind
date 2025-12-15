@@ -90,12 +90,11 @@ public class ChainSpecLoaderTest
         };
 
         AuRaChainSpecEngineParameters auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
+        auraParams.RewriteBytecode.Should().BeEquivalentTo(expected);
 
         // posdao.json uses old modexp pricing format (divisor: 20) without modexp2565 transition
         // Therefore Eip2565Transition should be null
         chainSpec.Parameters.Eip2565Transition.Should().BeNull();
-    
-        auraParams.RewriteBytecode.Should().BeEquivalentTo(expected);
     }
 
     // todo: update with real values
