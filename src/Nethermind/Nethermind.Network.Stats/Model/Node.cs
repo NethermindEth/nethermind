@@ -233,7 +233,7 @@ namespace Nethermind.Stats.Model
                             nameof(NodeClientType.Parity),
                         })
                         .OrderByDescending(name => name.Length))),
-            RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public static NodeClientType RecognizeClientType(string clientId)
         {
