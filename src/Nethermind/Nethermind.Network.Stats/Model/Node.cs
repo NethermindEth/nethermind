@@ -3,6 +3,7 @@
 
 using System;
 using System.Net;
+using System.Text.RegularExpressions;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 
@@ -193,116 +194,32 @@ namespace Nethermind.Stats.Model
             return !(a == b);
         }
 
+        private static readonly Regex s_clientTypeRegex = new(
+            @"(?i)(?<OpenEthereum>OpenEthereum)|(?<EthereumJS>EthereumJS)|(?<NodeCrawler>NodeCrawler)|(?<Nethermind>Nethermind)|(?<Besu>Besu)|(?<Geth>Geth)|(?<Erigon>Erigon)|(?<Reth>Reth)|(?<Nimbus>Nimbus)|(?<Ethrex>Ethrex)|(?<Parity>Parity)|(?<Trinity>Trinity)|(?<Bor>Bor)|(?<Ronin>Ronin)|(?<Scraper>Scraper)|(?<Sentinel>Sentinel)|(?<Sonic>Sonic)|(?<Grails>Grails)|(?<Gait>Gait)|(?<Diamond>Diamond)|(?<Energi>Energi)|(?<Opera>Opera)|(?<Gwat>Gwat)|(?<Tempo>Tempo)|(?<Swarm>Swarm)",
+            RegexOptions.Compiled);
+
         public static NodeClientType RecognizeClientType(string clientId)
         {
             if (clientId is null)
             {
                 return NodeClientType.Unknown;
             }
-            else if (clientId.Contains(nameof(NodeClientType.Besu), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Besu;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Geth), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Geth;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Nethermind), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Nethermind;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Erigon), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Erigon;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Reth), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Reth;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Nimbus), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Nimbus;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.EthereumJS), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.EthereumJS;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Ethrex), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Ethrex;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Parity), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Parity;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.OpenEthereum), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.OpenEthereum;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Trinity), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Trinity;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Bor), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Bor;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Ronin), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Ronin;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Scraper), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Scraper;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Sentinel), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Sentinel;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.NodeCrawler), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.NodeCrawler;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Sonic), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Sonic;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Grails), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Grails;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Gait), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Gait;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Diamond), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Diamond;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Energi), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Energi;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Opera), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Opera;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Gwat), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Gwat;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Tempo), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Tempo;
-            }
-            else if (clientId.Contains(nameof(NodeClientType.Swarm), StringComparison.OrdinalIgnoreCase))
-            {
-                return NodeClientType.Swarm;
-            }
-            else
+
+            Match match = s_clientTypeRegex.Match(clientId);
+            if (!match.Success)
             {
                 return NodeClientType.Unknown;
             }
+
+            foreach (Group group in match.Groups)
+            {
+                if (group.Success && group.Name != "0" && Enum.TryParse(group.Name, out NodeClientType clientType))
+                {
+                    return clientType;
+                }
+            }
+
+            return NodeClientType.Unknown;
         }
 
         public static class Format
