@@ -54,20 +54,184 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(100 * MaxCodeSize, MaxCodeSize)]
     [TestCase(1000 * MaxCodeSize, MaxCodeSize)]
     [TestCase(0, 1024 * 1024)]
-    [TestCase(0, Int32.MaxValue)]
+    // Note: Int32.MaxValue was removed as a test case because after word alignment
+    // it exceeds the maximum allowed memory size and correctly returns out-of-gas.
     public void MemoryCost(int destination, int memoryAllocation)
     {
         EvmPooledMemory memory = new();
         UInt256 dest = (UInt256)destination;
-        long result = memory.CalculateMemoryCost(in dest, (UInt256)memoryAllocation);
+        long result = memory.CalculateMemoryCost(in dest, (UInt256)memoryAllocation, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(false));
         TestContext.Out.WriteLine($"Gas cost of allocating {memoryAllocation} starting from {dest}: {result}");
+    }
+
+    [Test]
+    public void CalculateMemoryCost_LocationExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = new(0, 1, 0, 0); // value larger than ulong max (u1 != 0)
+        long result = memory.CalculateMemoryCost(in location, 32, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_LengthExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 length = new(0, 1, 0, 0); // value larger than ulong max (u1 != 0)
+        long result = memory.CalculateMemoryCost(0, in length, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_LengthExceedsLongMax_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 length = (UInt256)long.MaxValue + 1; // just over long.MaxValue
+        long result = memory.CalculateMemoryCost(0, in length, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_LocationPlusLengthOverflows_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = ulong.MaxValue;
+        long result = memory.CalculateMemoryCost(in location, 1, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_TotalSizeExceedsLongMax_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = (UInt256)long.MaxValue;
+        long result = memory.CalculateMemoryCost(in location, 1, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_TotalSizeExceedsIntMaxAfterWordAlignment_ShouldReturnOutOfGas()
+    {
+        // Test that memory requests that would overflow int.MaxValue after word alignment
+        // are properly rejected. This prevents crashes in .NET array operations.
+        // The limit is int.MaxValue - WordSize + 1 to ensure word-aligned size fits in int.
+        EvmPooledMemory memory = new();
+
+        // Request exactly at the limit should succeed
+        UInt256 maxAllowedSize = (UInt256)(int.MaxValue - EvmPooledMemory.WordSize + 1);
+        long result = memory.CalculateMemoryCost(0, in maxAllowedSize, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(false), "Size at limit should be allowed");
+
+        // Request one byte over the limit should fail
+        UInt256 overLimitSize = maxAllowedSize + 1;
+        result = memory.CalculateMemoryCost(0, in overLimitSize, out outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true), "Size over limit should return out of gas");
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_4GBMemoryRequest_ShouldReturnOutOfGas()
+    {
+        // Regression test: 4GB memory request (0xffffffff) should return out-of-gas
+        // instead of causing integer overflow crash in array operations.
+        EvmPooledMemory memory = new();
+        UInt256 size4GB = 0xffffffffUL;
+        long result = memory.CalculateMemoryCost(0, in size4GB, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true), "4GB memory request should return out of gas");
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_LargeOffsetPlusLength_ShouldReturnOutOfGas()
+    {
+        // Test that location + length exceeding int.MaxValue - WordSize + 1 returns out-of-gas
+        EvmPooledMemory memory = new();
+        UInt256 location = (UInt256)(int.MaxValue / 2);
+        UInt256 length = (UInt256)(int.MaxValue / 2 + 100); // Sum exceeds limit
+        long result = memory.CalculateMemoryCost(in location, in length, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true), "Location + length exceeding limit should return out of gas");
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void Save_LocationExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = new(0, 1, 0, 0);
+        bool outOfGas = !memory.TrySave(in location, new byte[32]);
+        Assert.That(outOfGas, Is.EqualTo(true));
+    }
+
+    [Test]
+    public void SaveWord_LocationExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = new(0, 1, 0, 0);
+        bool outOfGas = !memory.TrySaveWord(in location, new byte[32]);
+        Assert.That(outOfGas, Is.EqualTo(true));
+    }
+
+    [Test]
+    public void SaveByte_LocationExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = new(0, 1, 0, 0);
+        bool outOfGas = !memory.TrySaveByte(in location, 0x42);
+        Assert.That(outOfGas, Is.EqualTo(true));
+    }
+
+    [Test]
+    public void LoadSpan_LocationExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = new(0, 1, 0, 0);
+        bool outOfGas = !memory.TryLoadSpan(in location, out Span<byte> result);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result.IsEmpty, Is.EqualTo(true));
+    }
+
+    [Test]
+    public void LoadSpan_LengthExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 length = new(0, 1, 0, 0);
+        bool outOfGas = !memory.TryLoadSpan(0, in length, out Span<byte> result);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result.IsEmpty, Is.EqualTo(true));
+    }
+
+    [Test]
+    public void Load_LocationExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = new(0, 1, 0, 0);
+        bool outOfGas = !memory.TryLoad(in location, 32, out ReadOnlyMemory<byte> result);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result.IsEmpty, Is.EqualTo(true));
+    }
+
+    [Test]
+    public void Load_LengthExceedsULong_ShouldReturnOutOfGas()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 length = new(0, 1, 0, 0);
+        bool outOfGas = !memory.TryLoad(0, in length, out ReadOnlyMemory<byte> result);
+        Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result.IsEmpty, Is.EqualTo(true));
     }
 
     [Test]
     public void Inspect_should_not_change_evm_memory()
     {
         EvmPooledMemory memory = new();
-        memory.Save(3, TestItem.KeccakA.Bytes);
+        bool outOfGas = !memory.TrySave(3, TestItem.KeccakA.Bytes);
+        Assert.That(outOfGas, Is.EqualTo(false));
         ulong initialSize = memory.Size;
         ReadOnlyMemory<byte> result = memory.Inspect(initialSize + 32, 32);
         Assert.That(memory.Size, Is.EqualTo(initialSize));
@@ -81,7 +245,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         byte[] expectedEmptyRead = new byte[32 - offset];
         byte[] expectedKeccakRead = TestItem.KeccakA.BytesToArray();
         EvmPooledMemory memory = new();
-        memory.Save((UInt256)offset, expectedKeccakRead);
+        bool outOfGas = !memory.TrySave((UInt256)offset, expectedKeccakRead);
+        Assert.That(outOfGas, Is.EqualTo(false));
         ulong initialSize = memory.Size;
         ReadOnlyMemory<byte> actualKeccakMemoryRead = memory.Inspect((UInt256)offset, 32);
         ReadOnlyMemory<byte> actualEmptyRead = memory.Inspect(32 + (UInt256)offset, 32 - (UInt256)offset);
@@ -95,9 +260,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         byte[] expectedResult = new byte[32];
         EvmPooledMemory memory = new();
-        memory.Save(3, TestItem.KeccakA.Bytes);
+        bool outOfGas = !memory.TrySave(3, TestItem.KeccakA.Bytes);
+        Assert.That(outOfGas, Is.EqualTo(false));
         ulong initialSize = memory.Size;
-        ReadOnlyMemory<byte> result = memory.Load(initialSize + 32, 32);
+        outOfGas = !memory.TryLoad(initialSize + 32, 32, out ReadOnlyMemory<byte> result);
+        Assert.That(outOfGas, Is.EqualTo(false));
         Assert.That(memory.Size, Is.Not.EqualTo(initialSize));
         Assert.That(result.ToArray(), Is.EqualTo(expectedResult));
     }
@@ -106,7 +273,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     public void GetTrace_should_not_throw_on_not_initialized_memory()
     {
         EvmPooledMemory memory = new();
-        memory.CalculateMemoryCost(0, 32);
+        memory.CalculateMemoryCost(0, 32, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(false));
         memory.GetTrace().ToHexWordList().Should().BeEquivalentTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" });
     }
 
