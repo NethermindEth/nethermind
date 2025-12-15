@@ -38,7 +38,8 @@ internal class TxFloodController(Eth62ProtocolHandler protocolHandler, ITimestam
             }
 
             if (accepted is
-                { Id:
+                {
+                    Id:
                     TxResultCode.Invalid or
                     TxResultCode.GasLimitExceeded or
                     TxResultCode.MaxTxSizeExceeded or
