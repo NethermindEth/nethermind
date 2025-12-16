@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -40,7 +39,6 @@ public class RocksdbPersistence : IPersistence
     private const int StorageNodesTopKeyLength = StorageHashPrefixLength + StorageNodesTopPathLength + PathLengthLength;
 
     internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
-    private readonly IKeyValueStoreWithBatching _preimageDb;
 
     private readonly Configuration _configuration;
     private readonly Histogram.Child _rocksdBPersistenceTimesSlotHit;
@@ -65,12 +63,10 @@ public class RocksdbPersistence : IPersistence
 
     public RocksdbPersistence(
         IColumnsDb<FlatDbColumns> db,
-        [KeyFilter(DbNames.Preimage)] IDb preimageDb,
         Configuration configuration)
     {
         _configuration = configuration;
         _db = db;
-        _preimageDb = preimageDb;
 
         _rocksdBPersistenceTimesAddressHash = _rocksdBPersistenceTimes.WithLabels("address_hash");
         _rocksdBPersistenceTimesSlotHit = _rocksdBPersistenceTimes.WithLabels("slot_hash_hit");
@@ -190,7 +186,7 @@ public class RocksdbPersistence : IPersistence
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        return new WriteBatch(this, _preimageDb.StartWriteBatch(), _db.StartWriteBatch(), dbSnap, to);
+        return new WriteBatch(this, _db.StartWriteBatch(), dbSnap, to);
     }
 
     private class WriteBatch : IPersistence.IWriteBatch
@@ -210,7 +206,6 @@ public class RocksdbPersistence : IPersistence
 
         WriteFlags _flags = WriteFlags.None;
         private readonly RocksdbPersistence _mainDb;
-        private readonly IWriteBatch _preimageWriteBatch;
         private readonly IColumnsWriteBatch<FlatDbColumns> _batch;
         private readonly IColumnDbSnapshot<FlatDbColumns> _dbSnap;
         private readonly StateId _to;
@@ -218,13 +213,11 @@ public class RocksdbPersistence : IPersistence
         private readonly bool _separateStorageTop;
 
         public WriteBatch(RocksdbPersistence mainDb,
-            IWriteBatch preimageWriteBatch,
             IColumnsWriteBatch<FlatDbColumns> batch,
             IColumnDbSnapshot<FlatDbColumns> dbSnap,
             StateId to)
         {
             _mainDb = mainDb;
-            _preimageWriteBatch = preimageWriteBatch;
             _batch = batch;
             _dbSnap = dbSnap;
             _to = to;
@@ -257,7 +250,6 @@ public class RocksdbPersistence : IPersistence
             SetCurrentState(_batch.GetColumnBatch(FlatDbColumns.Metadata), _to);
             _batch.Dispose();
             _dbSnap.Dispose();
-            _preimageWriteBatch.Dispose();
         }
 
         public int SelfDestruct(Address addr)
@@ -329,10 +321,6 @@ public class RocksdbPersistence : IPersistence
 
         public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
         {
-            ValueHash256 hash256 = ValueKeccak.Zero;
-            StorageTree.ComputeKeyWithLookup(slot, hash256.BytesAsSpan);
-            _preimageWriteBatch.PutSpan(hash256.Bytes, slot.ToBigEndian());
-
             ReadOnlySpan<byte> theKey =  _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot);
             storage.PutSpan(theKey, value, _flags);
         }
