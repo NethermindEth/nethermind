@@ -3,6 +3,11 @@
 
 extern alias BouncyCastle;
 
+using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
@@ -13,11 +18,15 @@ using Nethermind.Facade.Proxy.Models;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Json;
 using BouncyCastle::Org.BouncyCastle.Utilities.Encoders;
 using Nethermind.JsonRpc.Client;
 using CkzgLib;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization;
 
 namespace SendBlobs;
+
 internal class BlobSender
 {
     private static readonly TxDecoder txDecoder = TxDecoder.Instance;
@@ -26,6 +35,9 @@ internal class BlobSender
     private readonly ILogManager _logManager;
     private readonly string _rpcUrl;
     private readonly IJsonRpcClient _rpcClient;
+    private readonly HttpClient _httpClient;
+    private readonly EthereumJsonSerializer _jsonSerializer;
+    private readonly JsonSerializerOptions _benchmarkJsonOptions;
 
     public BlobSender(string rpcUrl, ILogManager logManager)
     {
@@ -36,6 +48,13 @@ internal class BlobSender
         _logger = logManager.GetClassLogger();
         _rpcClient = SetupCli.InitRpcClient(rpcUrl, _logger);
         _rpcUrl = rpcUrl;
+        _httpClient = new HttpClient();
+        _jsonSerializer = new EthereumJsonSerializer();
+        _benchmarkJsonOptions = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter() }
+        };
 
         KzgPolynomialCommitments.InitializeAsync().Wait();
     }
@@ -92,11 +111,13 @@ internal class BlobSender
             signers.Add(new(new Signer(chainId, privateKey, _logManager), nonce));
         }
 
-        Random random = new();
+        Random random = new(42);
 
         int signerIndex = -1;
 
         ulong excessBlobs = (ulong)blobTxCounts.Sum(btxc => btxc.blobCount) / 2;
+
+        List<string> allBlobVersionedHashes = [];
 
         foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
         {
@@ -183,12 +204,130 @@ internal class BlobSender
                 Hash256? result = await SendTransaction(chainId, nonce, maxGasPrice, maxPriorityFeePerGas, maxFeePerBlobGas, receiver, blobHashes, blobsContainer, signer);
 
                 if (result is not null)
+                {
                     signers[signerIndex] = new(signer, nonce + 1);
+                    // Collect blob versioned hashes for later benchmarking
+                    foreach (byte[] blobHash in blobHashes)
+                    {
+                        allBlobVersionedHashes.Add($"0x{Hex.ToHexString(blobHash)}");
+                    }
+                }
 
-                if (waitForInclusion)
-                    await WaitForBlobInclusion(_rpcClient, result, blockResult.Number);
+                //if (false)
+                //    await WaitForBlobInclusion(_rpcClient, result, blockResult.Number);
             }
+
+            Console.WriteLine(hashes);
+
+            await Task.Delay(5000);
         }
+
+        // Benchmark engine_getBlobsV2 with JSON and SSZ responses
+        if (allBlobVersionedHashes.Count > 0)
+        {
+            await BenchmarkGetBlobsV2(allBlobVersionedHashes);
+        }
+    }
+
+    private async Task BenchmarkGetBlobsV2(List<string> blobVersionedHashes)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"=== Benchmarking engine_getBlobsV2 with {blobVersionedHashes.Count} blob hashes ===");
+
+        var stopwatch = new Stopwatch();
+
+        // Benchmark JSON response
+        try
+        {
+            var jsonRpcRequest = new
+            {
+                jsonrpc = "2.0",
+                method = "engine_getBlobsV2",
+                @params = new object[] { blobVersionedHashes.ToArray() },
+                id = 1
+            };
+
+            string requestJson = JsonSerializer.Serialize(jsonRpcRequest);
+
+            using var jsonRequest = new HttpRequestMessage(HttpMethod.Post, _rpcUrl.Replace("8545", "8551"));
+            jsonRequest.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
+            jsonRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            stopwatch.Restart();
+            using var jsonResponse = await _httpClient.SendAsync(jsonRequest);
+            jsonResponse.EnsureSuccessStatusCode();
+            string responseJson = await jsonResponse.Content.ReadAsStringAsync();
+            long jsonNetworkTimeMs = stopwatch.ElapsedMilliseconds;
+
+            stopwatch.Restart();
+            var jsonResult = JsonSerializer.Deserialize<JsonRpcBlobsResponse>(responseJson, _benchmarkJsonOptions);
+            long jsonDeserializationTimeMs = stopwatch.ElapsedMilliseconds;
+
+            int blobCount = jsonResult?.Result?.Length ?? 0;
+            Console.WriteLine($"JSON Response: Network+Read={jsonNetworkTimeMs}ms, Deserialization={jsonDeserializationTimeMs}ms, TotalTime={jsonNetworkTimeMs + jsonDeserializationTimeMs}ms, Blobs returned={blobCount}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"JSON Response benchmark failed: {ex.Message}");
+        }
+
+        // Benchmark SSZ (octet-stream) response
+        try
+        {
+            var sszRpcRequest = new
+            {
+                jsonrpc = "2.0",
+                method = "engine_getBlobsV2",
+                @params = new object[] { blobVersionedHashes.ToArray() },
+                id = 1
+            };
+
+            string requestJson = JsonSerializer.Serialize(sszRpcRequest);
+
+            using var sszRequest = new HttpRequestMessage(HttpMethod.Post, _rpcUrl.Replace("8545", "8551"));
+            sszRequest.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
+            sszRequest.Headers.Accept.Clear();
+            sszRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
+
+            stopwatch.Restart();
+            using var sszResponse = await _httpClient.SendAsync(sszRequest);
+            sszResponse.EnsureSuccessStatusCode();
+            byte[] sszBytes = await sszResponse.Content.ReadAsByteArrayAsync();
+            long sszNetworkTimeMs = stopwatch.ElapsedMilliseconds;
+
+            stopwatch.Restart();
+            SszEncoding.Decode(sszBytes, out BlobAndProofV2?[] sszResult);
+            long sszDeserializationTimeMs = stopwatch.ElapsedMilliseconds;
+
+            int blobCount = sszResult?.Length ?? 0;
+            Console.WriteLine($"SSZ Response:  Network+Read={sszNetworkTimeMs}ms, Deserialization={sszDeserializationTimeMs}ms, TotalTime={sszNetworkTimeMs + sszDeserializationTimeMs}ms, Blobs returned={blobCount}, Size={sszBytes.Length} bytes");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SSZ Response benchmark failed: {ex.Message}");
+        }
+
+        Console.WriteLine("=== Benchmark complete ===");
+        Console.WriteLine();
+    }
+
+    // JSON-RPC response types for engine_getBlobsV2 deserialization
+    private class JsonRpcBlobsResponse
+    {
+        [JsonPropertyName("jsonrpc")]
+        public string? Jsonrpc { get; set; }
+        [JsonPropertyName("result")]
+        public BlobAndProofJson[]? Result { get; set; }
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+    }
+
+    private class BlobAndProofJson
+    {
+        [JsonPropertyName("blob")]
+        public string? Blob { get; set; }
+        [JsonPropertyName("proofs")]
+        public string[]? Proofs { get; set; }
     }
 
     /// <summary>
@@ -314,6 +453,8 @@ internal class BlobSender
         return result;
     }
 
+    private static string hashes = "";
+
     private async Task<Hash256?> SendTransaction(ulong chainId, ulong nonce,
         UInt256 gasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas,
         string receiver, byte[][] blobhashes, ShardBlobNetworkWrapper blobsContainer, ISigner signer)
@@ -342,7 +483,7 @@ internal class BlobSender
 
         Console.WriteLine("Sending tx result:" + result);
         Console.WriteLine("Blob hashes:" + string.Join(",", tx.BlobVersionedHashes.Select(bvh => $"0x{Hex.ToHexString(bvh)}")));
-
+        hashes += string.Join(",", tx.BlobVersionedHashes.Select(bvh => $"\"0x{Hex.ToHexString(bvh)}\"")) + ",";
         return result is not null ? tx.CalculateHash() : null;
     }
 

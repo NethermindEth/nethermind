@@ -57,42 +57,42 @@
     "blobSchedule": [
       {
         "name": "prague",
-        "timestamp": "0x67e41118",
+        "timestamp": "0x0",
         "target": 6,
         "max": 9,
         "baseFeeUpdateFraction": "0x4c6964"
       },
       {
         "name": "bpo1",
-        "timestamp": "0x690b9118",
+        "timestamp": "0x0",
         "target": 10,
         "max": 15,
         "baseFeeUpdateFraction": "0x7f5a51"
       },
       {
         "name": "bpo2",
-        "timestamp": "0x69149118",
+        "timestamp": "0x0",
         "target": 14,
         "max": 21,
         "baseFeeUpdateFraction": "0xb24b3f"
       }
     ],
     "depositContractAddress": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
-    "eip2537TransitionTimestamp": "0x67e41118",
-    "eip2935TransitionTimestamp": "0x67e41118",
-    "eip6110TransitionTimestamp": "0x67e41118",
-    "eip7002TransitionTimestamp": "0x67e41118",
-    "eip7251TransitionTimestamp": "0x67e41118",
-    "eip7702TransitionTimestamp": "0x67e41118",
-    "eip7623TransitionTimestamp": "0x67e41118",
-    "eip7594TransitionTimestamp": "0x69011118",
-    "eip7823TransitionTimestamp": "0x69011118",
-    "eip7825TransitionTimestamp": "0x69011118",
-    "eip7883TransitionTimestamp": "0x69011118",
-    "eip7918TransitionTimestamp": "0x69011118",
-    "eip7934TransitionTimestamp": "0x69011118",
-    "eip7939TransitionTimestamp": "0x69011118",
-    "eip7951TransitionTimestamp": "0x69011118"
+    "eip2537TransitionTimestamp": "0x0",
+    "eip2935TransitionTimestamp": "0x0",
+    "eip6110TransitionTimestamp": "0x0",
+    "eip7002TransitionTimestamp": "0x0",
+    "eip7251TransitionTimestamp": "0x0",
+    "eip7702TransitionTimestamp": "0x0",
+    "eip7623TransitionTimestamp": "0x0",
+    "eip7594TransitionTimestamp": "0x0",
+    "eip7823TransitionTimestamp": "0x0",
+    "eip7825TransitionTimestamp": "0x0",
+    "eip7883TransitionTimestamp": "0x0",
+    "eip7918TransitionTimestamp": "0x0",
+    "eip7934TransitionTimestamp": "0x0",
+    "eip7939TransitionTimestamp": "0x0",
+    "eip7951TransitionTimestamp": "0x0"
   },
   "genesis": {
     "seal": {
@@ -103,7 +103,7 @@
     },
     "difficulty": "0x01",
     "author": "0x0000000000000000000000000000000000000000",
-    "timestamp": "0x67d80ec0",
+    "timestamp": "0x0",
     "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "extraData": "",
     "gasLimit": "0x2255100"
@@ -1160,6 +1160,9 @@
       "balance": "1000000000000000000000000"
     },
     "0x9B491F043189af6d31d3D4b1A7cA1cF72f40C52a": {
+      "balance": "1000000000000000000000000"
+    },
+    "0xd51a7e12997f6f1d04accc2b4053307a62b373cb": {
       "balance": "1000000000000000000000000"
     }
   },

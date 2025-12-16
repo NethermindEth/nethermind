@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -17,9 +17,7 @@ public class FutureNonceFilter : IIncomingTxFilter
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        int relevantMaxPendingTxsPerSender = (tx.SupportsBlobs
-            ? _txPoolConfig.MaxPendingBlobTxsPerSender
-            : _txPoolConfig.MaxPendingTxsPerSender);
+        int relevantMaxPendingTxsPerSender = 2000;
 
         // MaxPendingTxsPerSender/MaxPendingBlobTxsPerSender equal 0 means no limit
         if (relevantMaxPendingTxsPerSender == 0)
