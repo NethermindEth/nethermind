@@ -434,61 +434,85 @@ public class NoLeafValueRocksdbPersistence : IPersistence
 
         public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
         {
-            byte[]? value = DoTryLoadRlp(address, path, hash, flags);
-            if (value is null) return null;
-
-            var rlpStream = new Rlp.ValueDecoderContext(value);
-            rlpStream.ReadSequenceLength();
-            int numberOfItems = rlpStream.PeekNumberOfItemsRemaining(null, 3);
-            if (numberOfItems > 2) return value;
-
-            ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
-            (byte[] key, bool isLeaf) = HexPrefix.FromBytes(valueSpan);
-            if (!isLeaf) return value;
-
-            TreePath fullPath = path.Append(key);
-            byte[] leafValue;
-            if (address is null)
+            ReadOnlySpan<byte> rocksDbSpan = DoTryLoadRlp(address, path, hash, flags);
+            try
             {
-                leafValue = GetAccountRaw(fullPath.Path);
+                if (rocksDbSpan.IsNullOrEmpty()) return null;
+
+                var rlpStream = new Rlp.ValueDecoderContext(rocksDbSpan);
+                rlpStream.ReadSequenceLength();
+                int numberOfItems = rlpStream.PeekNumberOfItemsRemaining(null, 3);
+                if (numberOfItems > 2) return rocksDbSpan.ToArray();
+
+                ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
+                (byte[] key, bool isLeaf) = HexPrefix.FromBytes(valueSpan);
+                if (!isLeaf) return rocksDbSpan.ToArray();
+
+                ValueHash256 fullPath = path.Append(key).Path;
+                if (address is null)
+                {
+                    var leafValue = GetAccountRawSpan(fullPath);
+                    try
+                    {
+                        byte[] resultingValue = new byte[rocksDbSpan.Length + leafValue.Length];
+                        rocksDbSpan.CopyTo(resultingValue);
+                        leafValue.CopyTo(resultingValue.AsSpan(rocksDbSpan.Length));
+                        return resultingValue;
+                    }
+                    finally
+                    {
+                        _storage.DangerousReleaseMemory(leafValue);
+                    }
+                }
+                else
+                {
+                    var leafValue = GetStorageRawSpan(address, fullPath);
+                    try
+                    {
+                        byte[] resultingValue = new byte[rocksDbSpan.Length + leafValue.Length];
+                        rocksDbSpan.CopyTo(resultingValue);
+                        leafValue.CopyTo(resultingValue.AsSpan(rocksDbSpan.Length));
+                        return resultingValue;
+                    }
+                    finally
+                    {
+                        _storage.DangerousReleaseMemory(leafValue);
+                    }
+                }
+
+                /*
+                if (Keccak.Compute(resultingValue) != hash)
+                {
+                    byte[]? correctValue = DoTryLoadRlp(address, path.Append([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]), hash, flags);
+                    Console.Error.WriteLine($"Wrong concatenation {value.ToHexString()} + {leafValue.ToHexString()}.");
+                    Console.Error.WriteLine($"Correct value is {correctValue.ToHexString()}.");
+                    Console.Error.WriteLine($"Hash is {hash}");
+                }
+                */
             }
-            else
+            finally
             {
-                leafValue = GetStorageRaw(address, fullPath.Path);
+                // Can this work with any DB?
+                _storageNodes.DangerousReleaseMemory(rocksDbSpan);
             }
-
-            if (leafValue is null) throw new InvalidOperationException("Storage value is null on leaf");
-            byte[] resultingValue = Bytes.Concat(value, leafValue);
-
-            /*
-            if (Keccak.Compute(resultingValue) != hash)
-            {
-                byte[]? correctValue = DoTryLoadRlp(address, path.Append([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]), hash, flags);
-                Console.Error.WriteLine($"Wrong concatenation {value.ToHexString()} + {leafValue.ToHexString()}.");
-                Console.Error.WriteLine($"Correct value is {correctValue.ToHexString()}.");
-                Console.Error.WriteLine($"Hash is {hash}");
-            }
-            */
-
-            return resultingValue;
         }
 
-        public byte[]? DoTryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
+        private ReadOnlySpan<byte> DoTryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
         {
             if (address is null)
             {
                 if (path.Length <= StateNodesTopThreshold)
                 {
-                    return _stateTopNodes.Get(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopKeyLength], in path));
+                    return _stateTopNodes.GetSpan(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopKeyLength], in path));
                 }
                 else
                 {
-                    return _stateNodes.Get(EncodeStateNodeKey(stackalloc byte[StateNodesKeyLength], in path));
+                    return _stateNodes.GetSpan(EncodeStateNodeKey(stackalloc byte[StateNodesKeyLength], in path));
                 }
             }
             else
             {
-                return _storageNodes.Get(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, in path));
+                return _storageNodes.GetSpan(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, in path));
             }
         }
 
@@ -499,7 +523,12 @@ public class NoLeafValueRocksdbPersistence : IPersistence
 
         private byte[]? GetAccountRaw(in ValueHash256 accountHash)
         {
-            return _state.GetSpan(accountHash.Bytes[..StateKeyPrefixLength]).ToArray();
+            return _state.Get(accountHash.Bytes[..StateKeyPrefixLength]);
+        }
+
+        private ReadOnlySpan<byte> GetAccountRawSpan(in ValueHash256 accountHash)
+        {
+            return _state.GetSpan(accountHash.Bytes[..StateKeyPrefixLength]);
         }
 
         public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash)
@@ -512,6 +541,13 @@ public class NoLeafValueRocksdbPersistence : IPersistence
             Span<byte> keySpan = stackalloc byte[StorageKeyLength];
             ReadOnlySpan<byte> storageKey = _mainDb.EncodeStorageKeyHashed(keySpan, addrHash.ValueHash256, slotHash);
             return _storage.Get(storageKey);
+        }
+
+        private ReadOnlySpan<byte> GetStorageRawSpan(Hash256? addrHash, ValueHash256 slotHash)
+        {
+            Span<byte> keySpan = stackalloc byte[StorageKeyLength];
+            ReadOnlySpan<byte> storageKey = _mainDb.EncodeStorageKeyHashed(keySpan, addrHash.ValueHash256, slotHash);
+            return _storage.GetSpan(storageKey);
         }
     }
 }

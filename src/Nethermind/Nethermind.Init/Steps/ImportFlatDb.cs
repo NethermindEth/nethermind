@@ -11,7 +11,6 @@ using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Importer;
 using Nethermind.State.Flat.Persistence;
-using RocksDbSharp;
 
 namespace Nethermind.Init.Steps;
 

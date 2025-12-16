@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -18,6 +19,8 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.Importer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Init.Modules;
 
@@ -123,6 +126,26 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
         {
             builder.AddStep(typeof(ImportFlatDb));
         }
+
+        if (flatDbConfig.ImportOnStateSyncFinished)
+        {
+            builder
+                .AddDecorator<ISyncConfig>((ctx, syncConfig) =>
+                {
+                    // Prevent long range catchup.
+                    if (syncConfig.FastSyncCatchUpHeightDelta < 100_000_000)
+                    {
+                        syncConfig.FastSyncCatchUpHeightDelta = 100_000_000;
+                    }
+
+                    return syncConfig;
+                })
+                .AddSingleton<ImportStateOnStateSyncFinished>()
+                .OnActivate<ISyncFeed<StateSyncBatch>>((_, ctx) =>
+                {
+                    ctx.Resolve<ImportStateOnStateSyncFinished>();
+                });
+        }
     }
 
     private class FlatBlockCacheAdjuster : IRocksDbConfigFactory, IDisposable
@@ -180,6 +203,28 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             }
 
             return config;
+        }
+    }
+
+    public class ImportStateOnStateSyncFinished
+    {
+        private readonly Importer _importer;
+        private readonly ITreeSync _treeSync;
+
+        public ImportStateOnStateSyncFinished(Importer importer, ITreeSync treeSync)
+        {
+            _importer = importer;
+            _treeSync = treeSync;
+            _treeSync.SyncCompleted += TreeSyncOnOnVerifyPostSyncCleanup;
+        }
+
+        private void TreeSyncOnOnVerifyPostSyncCleanup(object? sender, ITreeSync.SyncCompletedEventArgs evt)
+        {
+            _treeSync.SyncCompleted -= TreeSyncOnOnVerifyPostSyncCleanup;
+
+            // Note: this block
+            StateId stateId = new StateId(evt.Pivot);
+            _importer.Copy(stateId);
         }
     }
 }
