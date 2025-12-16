@@ -53,7 +53,8 @@ public enum FlatLayout
     FlatSeparateTopStorage,
     Flat,
     FlatInTrie,
-    PreimageFlat
+    PreimageFlat,
+    FlatTruncatedLeaf,
 }
 
 public class FlatDbConfig: IFlatDbConfig

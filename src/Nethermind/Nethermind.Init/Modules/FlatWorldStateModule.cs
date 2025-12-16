@@ -88,6 +88,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                     return ctx.Resolve<RocksdbPersistence>();
                 }
 
+                if (flatDbConfig.Layout == FlatLayout.FlatTruncatedLeaf)
+                {
+                    return ctx.Resolve<NoLeafValueRocksdbPersistence>();
+                }
+
                 throw new Exception($"Unsupported layout {flatDbConfig.Layout}");
             })
 
@@ -105,6 +110,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 FlatInTrie = config.Layout == FlatLayout.FlatInTrie,
                 SeparateStorageTop = config.Layout == FlatLayout.FlatSeparateTopStorage || config.Layout == FlatLayout.PreimageFlat
             })
+
+            .AddSingleton<NoLeafValueRocksdbPersistence>()
+            .AddSingleton<NoLeafValueRocksdbPersistence.Configuration>()
             .AddSingleton<IStateReader, FlatStateReader>()
 
             .AddDecorator<IRocksDbConfigFactory, FlatBlockCacheAdjuster>()
