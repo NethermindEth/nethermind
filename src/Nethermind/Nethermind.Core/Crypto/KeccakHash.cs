@@ -880,7 +880,7 @@ public sealed class KeccakHash
     private static void KeccakF1600Avx512F(Span<ulong> state)
     {
         const byte XOR3 = 0x96;   // a ^ b ^ c
-        const byte CHI  = 0xD2;   // a ^ (~b & c) with vpternlog truth-table indexing
+        const byte CHI = 0xD2;   // a ^ (~b & c) with vpternlog truth-table indexing
         const byte BLEND = 0xD8;  // (c ? b : a) where c is a per-bit mask (all-ones in selected lane)
 
         ref ulong s = ref MemoryMarshal.GetReference(state);
@@ -948,8 +948,8 @@ public sealed class KeccakHash
                 c3, c4, XOR3);
 
             Vector512<ulong> theta1a = Avx512F.PermuteVar8x64(parity, rot1);
-            Vector512<ulong> theta0  = Avx512F.PermuteVar8x64(parity, rot4);
-            Vector512<ulong> theta1  = Avx512F.RotateLeft(theta1a, 1);
+            Vector512<ulong> theta0 = Avx512F.PermuteVar8x64(parity, rot4);
+            Vector512<ulong> theta1 = Avx512F.RotateLeft(theta1a, 1);
 
             c0 = Avx512F.TernaryLogic(c0, theta0, theta1, XOR3);
             c1 = Avx512F.TernaryLogic(c1, theta0, theta1, XOR3);
@@ -1045,8 +1045,8 @@ public sealed class KeccakHash
                 d3, d4, XOR3);
 
             theta1a = Avx512F.PermuteVar8x64(parity, rot1);
-            theta0  = Avx512F.PermuteVar8x64(parity, rot4);
-            theta1  = Avx512F.RotateLeft(theta1a, 1);
+            theta0 = Avx512F.PermuteVar8x64(parity, rot4);
+            theta1 = Avx512F.RotateLeft(theta1a, 1);
 
             d0 = Avx512F.TernaryLogic(d0, theta0, theta1, XOR3);
             d1 = Avx512F.TernaryLogic(d1, theta0, theta1, XOR3);
