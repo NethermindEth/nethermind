@@ -14,7 +14,7 @@ namespace Nethermind.Core.BlockAccessLists;
 
 public class SlotChanges(UInt256 slot, List<StorageChange> changes) : IEquatable<SlotChanges>
 {
-    [JsonConverter(typeof(ByteArrayConverter))]
+    [JsonConverter(typeof(UInt256Converter))]
     public UInt256 Slot { get; init; } = slot;
     public List<StorageChange> Changes { get; init; } = changes;
 

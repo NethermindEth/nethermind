@@ -13,7 +13,7 @@ namespace Nethermind.Core.BlockAccessLists;
 public readonly struct StorageChange(ushort blockAccessIndex, UInt256 newValue) : IEquatable<StorageChange>, IIndexedChange
 {
     public ushort BlockAccessIndex { get; init; } = blockAccessIndex;
-    [JsonConverter(typeof(ByteArrayConverter))]
+    [JsonConverter(typeof(UInt256Converter))]
     public UInt256 NewValue { get; init; } = newValue;
 
     public readonly bool Equals(StorageChange other) =>

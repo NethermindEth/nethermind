@@ -10,7 +10,7 @@ namespace Nethermind.Core.BlockAccessLists;
 
 public readonly struct StorageRead(UInt256 key) : IEquatable<StorageRead>, IComparable<StorageRead>
 {
-    [JsonConverter(typeof(ByteArrayConverter))]
+    [JsonConverter(typeof(UInt256Converter))]
     public UInt256 Key { get; init; } = key;
 
     public int CompareTo(StorageRead other)
