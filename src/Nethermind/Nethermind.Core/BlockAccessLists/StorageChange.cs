@@ -5,19 +5,20 @@
 using System;
 using System.Linq;
 using System.Text.Json.Serialization;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly struct StorageChange(ushort blockAccessIndex, byte[] newValue) : IEquatable<StorageChange>, IIndexedChange
+public readonly struct StorageChange(ushort blockAccessIndex, UInt256 newValue) : IEquatable<StorageChange>, IIndexedChange
 {
     public ushort BlockAccessIndex { get; init; } = blockAccessIndex;
     [JsonConverter(typeof(ByteArrayConverter))]
-    public byte[] NewValue { get; init; } = newValue;
+    public UInt256 NewValue { get; init; } = newValue;
 
     public readonly bool Equals(StorageChange other) =>
         BlockAccessIndex == other.BlockAccessIndex &&
-        NewValue.SequenceEqual(other.NewValue);
+        NewValue.Equals(other.NewValue);
 
     public override readonly bool Equals(object? obj) =>
         obj is StorageChange other && Equals(other);

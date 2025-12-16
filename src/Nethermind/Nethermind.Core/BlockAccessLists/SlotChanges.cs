@@ -7,23 +7,24 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text.Json.Serialization;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public class SlotChanges(byte[] slot, List<StorageChange> changes) : IEquatable<SlotChanges>
+public class SlotChanges(UInt256 slot, List<StorageChange> changes) : IEquatable<SlotChanges>
 {
     [JsonConverter(typeof(ByteArrayConverter))]
-    public byte[] Slot { get; init; } = slot;
+    public UInt256 Slot { get; init; } = slot;
     public List<StorageChange> Changes { get; init; } = changes;
 
-    public SlotChanges(byte[] slot) : this(slot, [])
+    public SlotChanges(UInt256 slot) : this(slot, [])
     {
     }
 
     public bool Equals(SlotChanges? other) =>
         other is not null &&
-        CompareByteArrays(Slot, other.Slot) &&
+        Slot.Equals(other.Slot) &&
         Changes.SequenceEqual(other.Changes);
 
     public override bool Equals(object? obj) =>
@@ -31,15 +32,6 @@ public class SlotChanges(byte[] slot, List<StorageChange> changes) : IEquatable<
 
     public override int GetHashCode() =>
         HashCode.Combine(Slot, Changes);
-
-    private static bool CompareByteArrays(byte[]? left, byte[]? right) =>
-        left switch
-        {
-            null when right == null => true,
-            null => false,
-            _ when right == null => false,
-            _ => left.SequenceEqual(right)
-        };
 
     public static bool operator ==(SlotChanges left, SlotChanges right) =>
         left.Equals(right);

@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
@@ -14,21 +15,7 @@ public class StorageReadDecoder : IRlpValueDecoder<StorageRead>, IRlpStreamDecod
     public int GetLength(StorageRead item, RlpBehaviors rlpBehaviors)
         => GetContentLength(item, rlpBehaviors);
 
-    public StorageRead Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
-    {
-        byte[] key = ctx.DecodeByteArray(RlpLimit.L32);
-        if (key.Length != 32)
-        {
-            throw new RlpException("Invalid storage key, should be 32 bytes.");
-        }
-
-        StorageRead storageRead = new()
-        {
-            Key = key,
-        };
-
-        return storageRead;
-    }
+    public StorageRead Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors) => new(ctx.DecodeUInt256());
 
     public StorageRead Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
     {

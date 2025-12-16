@@ -91,13 +91,12 @@ public class BlockAccessListTests()
     [Test]
     public void Can_decode_then_encode_slot_change()
     {
-        byte[] slot0 = ToStorageSlot(0);
-        StorageChange parentHashStorageChange = new(0, Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"));
+        StorageChange parentHashStorageChange = new(0, new(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd")));
         const string rlp = "0xf845a00000000000000000000000000000000000000000000000000000000000000000e3e280a0c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd";
 
         Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
         SlotChanges slotChange = SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
-        SlotChanges expected = new(slot0, [parentHashStorageChange]);
+        SlotChanges expected = new(0, [parentHashStorageChange]);
         Assert.That(slotChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(slotChange).Bytes);
@@ -113,7 +112,7 @@ public class BlockAccessListTests()
 
         Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(rlp));
         StorageChange storageChange = StorageChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
-        StorageChange expected = new(0, Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"));
+        StorageChange expected = new(0, new(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd")));
         Assert.That(storageChange, Is.EqualTo(expected));
 
         string encoded = "0x" + Bytes.ToHexString(Rlp.Encode(storageChange).Bytes);
@@ -158,19 +157,19 @@ public class BlockAccessListTests()
         StorageChange storageChange = new()
         {
             BlockAccessIndex = 10,
-            NewValue = [.. Enumerable.Repeat<byte>(50, 32)]
+            NewValue = 0xcad
         };
         byte[] storageChangeBytes = Rlp.Encode(storageChange, RlpBehaviors.None).Bytes;
         StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None);
         Assert.That(storageChange, Is.EqualTo(storageChangeDecoded));
 
-        SlotChanges slotChanges = new([.. Enumerable.Repeat<byte>(100, 32)], [storageChange, storageChange]);
+        SlotChanges slotChanges = new(0xbad, [storageChange, storageChange]);
         byte[] slotChangesBytes = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
         SlotChanges slotChangesDecoded = Rlp.Decode<SlotChanges>(slotChangesBytes, RlpBehaviors.None);
         Assert.That(slotChanges, Is.EqualTo(slotChangesDecoded));
 
-        StorageRead storageRead = new([.. Enumerable.Repeat<byte>(50, 32)]);
-        StorageRead storageRead2 = new([.. Enumerable.Repeat<byte>(60, 32)]);
+        StorageRead storageRead = new(0xbababa);
+        StorageRead storageRead2 = new(0xcacaca);
         byte[] storageReadBytes = Rlp.Encode(storageRead, RlpBehaviors.None).Bytes;
         StorageRead storageReadDecoded = Rlp.Decode<StorageRead>(storageReadBytes, RlpBehaviors.None);
         Assert.That(storageRead, Is.EqualTo(storageReadDecoded));
@@ -212,7 +211,7 @@ public class BlockAccessListTests()
         CodeChange codeChangeDecoded = Rlp.Decode<CodeChange>(codeChangeBytes, RlpBehaviors.None);
         Assert.That(codeChange, Is.EqualTo(codeChangeDecoded));
 
-        SortedDictionary<byte[], SlotChanges> storageChangesDict = new()
+        SortedDictionary<UInt256, SlotChanges> storageChangesDict = new()
         {
             { slotChanges.Slot, slotChanges }
         };
@@ -369,16 +368,16 @@ public class BlockAccessListTests()
         AccountChanges eip7002Changes = blockAccessList.GetAccountChanges(Eip7002Constants.WithdrawalRequestPredeployAddress)!;
         AccountChanges eip7251Changes = blockAccessList.GetAccountChanges(Eip7251Constants.ConsolidationRequestPredeployAddress)!;
 
-        byte[] slot0 = ToStorageSlot(0);
-        byte[] slot1 = ToStorageSlot(1);
-        byte[] slot2 = ToStorageSlot(2);
-        byte[] slot3 = ToStorageSlot(3);
-        byte[] eip4788Slot1 = ToStorageSlot(timestamp % Eip4788Constants.RingBufferSize);
-        byte[] eip4788Slot2 = ToStorageSlot((timestamp % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize);
-        StorageChange parentHashStorageChange = new(0, parentHash.BytesToArray());
-        StorageChange calldataStorageChange = new(0, Bytes32.Zero.Unwrap());
-        StorageChange timestampStorageChange = new(0, Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000F4240"));
-        StorageChange zeroStorageChangeEnd = new(3, Bytes32.Zero.Unwrap());
+        UInt256 slot0 = 0;
+        UInt256 slot1 = 1;
+        UInt256 slot2 = 2;
+        UInt256 slot3 = 3;
+        UInt256 eip4788Slot1 = timestamp % Eip4788Constants.RingBufferSize;
+        UInt256 eip4788Slot2 = (timestamp % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize;
+        StorageChange parentHashStorageChange = new(0, new(parentHash.BytesToArray()));
+        StorageChange calldataStorageChange = new(0, 0);
+        StorageChange timestampStorageChange = new(0, 0xF4240);
+        StorageChange zeroStorageChangeEnd = new(3, 0);
 
         UInt256 addressABalance = _accountBalance - gasPrice * GasCostOf.Transaction;
         UInt256 addressABalance2 = _accountBalance - gasPrice * gasUsedBeforeFinal;
@@ -434,7 +433,7 @@ public class BlockAccessListTests()
             Assert.That(newContractChanges2, Is.EqualTo(new AccountChanges(
                 newContractAddress2,
                 [],
-                new SortedSet<StorageRead> { ToStorageRead(slot1) },
+                [new(1)],
                 [],
                 [],
                 []
@@ -442,7 +441,7 @@ public class BlockAccessListTests()
 
             Assert.That(eip2935Changes, Is.EqualTo(new AccountChanges(
                 Eip2935Constants.BlockHashHistoryAddress,
-                new SortedDictionary<byte[], SlotChanges>(Bytes.Comparer) { { slot0, new SlotChanges(slot0, [parentHashStorageChange]) } },
+                new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, [parentHashStorageChange]) } },
                 [],
                 [],
                 [],
@@ -452,8 +451,8 @@ public class BlockAccessListTests()
             // second storage read is not a change, so not recorded
             Assert.That(eip4788Changes, Is.EqualTo(new AccountChanges(
                 Eip4788Constants.BeaconRootsAddress,
-                new SortedDictionary<byte[], SlotChanges>(Bytes.Comparer) { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) } },
-                new SortedSet<StorageRead> { ToStorageRead(eip4788Slot1), ToStorageRead(eip4788Slot2) },
+                new SortedDictionary<UInt256, SlotChanges>() { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) } },
+                [new(eip4788Slot1), new(eip4788Slot2)],
                 [],
                 [],
                 []
@@ -463,12 +462,7 @@ public class BlockAccessListTests()
             Assert.That(eip7002Changes, Is.EqualTo(new AccountChanges(
                 Eip7002Constants.WithdrawalRequestPredeployAddress,
                 [],
-                new SortedSet<StorageRead> {
-                    ToStorageRead(slot0),
-                    ToStorageRead(slot1),
-                    ToStorageRead(slot2),
-                    ToStorageRead(slot3),
-                },
+                [new(0), new(1), new(2), new(3)],
                 [],
                 [],
                 []
@@ -478,12 +472,7 @@ public class BlockAccessListTests()
             Assert.That(eip7251Changes, Is.EqualTo(new AccountChanges(
                 Eip7251Constants.ConsolidationRequestPredeployAddress,
                 [],
-                new SortedSet<StorageRead> {
-                    ToStorageRead(slot0),
-                    ToStorageRead(slot1),
-                    ToStorageRead(slot2),
-                    ToStorageRead(slot3),
-                },
+                [new(0), new(1), new(2), new(3)],
                 [],
                 [],
                 []
@@ -516,19 +505,6 @@ public class BlockAccessListTests()
         // Hash256 stateRoot = worldState.StateRoot;
     }
 
-    // should hash?
-    private static byte[] ToStorageSlot(ulong x)
-        => new BigInteger(x).ToBytes32(true);
-        // => ValueKeccak.Compute(new BigInteger(x).ToBytes32(true)).ToByteArray();
-
-    private static StorageRead ToStorageRead(byte[] x)
-    {
-        Span<byte> newValue = new byte[32];
-        newValue.Clear();
-        x.CopyTo(newValue[(32 - x.Length)..]);
-        return new([.. newValue]);
-    }
-
     private static IEnumerable<TestCaseData> AccountChangesTestSource
     {
         get
@@ -538,12 +514,7 @@ public class BlockAccessListTests()
                 new AccountChanges(
                     Eip7002Constants.WithdrawalRequestPredeployAddress,
                     [],
-                    new SortedSet<StorageRead> {
-                            ToStorageRead(ToStorageSlot(0)),
-                            ToStorageRead(ToStorageSlot(1)),
-                            ToStorageRead(ToStorageSlot(2)),
-                            ToStorageRead(ToStorageSlot(3))
-                        },
+                    [new(0), new(1), new(2), new(3)],
                     [],
                     [],
                     []
@@ -554,7 +525,7 @@ public class BlockAccessListTests()
                 "0xf862940000f90827f1c53a10cb7a02335b175320002935f847f845a00000000000000000000000000000000000000000000000000000000000000000e3e280a0c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fdc0c0c0c0",
                 new AccountChanges(
                     Eip2935Constants.BlockHashHistoryAddress,
-                    new SortedDictionary<byte[], SlotChanges>(Bytes.Comparer) { { ToStorageSlot(0), new SlotChanges(ToStorageSlot(0), [new(0, Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"))]) } },
+                    new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, [new(0, new(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd")))]) } },
                     [],
                     [],
                     [],
@@ -568,24 +539,15 @@ public class BlockAccessListTests()
     {
         get
         {
-            byte[] slot0 = ToStorageSlot(0);
-            byte[] slot1 = ToStorageSlot(1);
-            byte[] slot2 = ToStorageSlot(2);
-            byte[] slot3 = ToStorageSlot(3);
-            byte[] eip4788Slot1 = ToStorageSlot(0xc);
-            StorageChange parentHashStorageChange = new(0, Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"));
-            StorageChange timestampStorageChange = new(0, Bytes.FromHexString("0x000000000000000000000000000000000000000000000000000000000000000c"));
+            UInt256 eip4788Slot1 = 0xc;
+            StorageChange parentHashStorageChange = new(0, new(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd")));
+            StorageChange timestampStorageChange = new(0, new(Bytes.FromHexString("0x000000000000000000000000000000000000000000000000000000000000000c")));
             SortedDictionary<Address, AccountChanges> expectedAccountChanges = new()
             {
                 {Eip7002Constants.WithdrawalRequestPredeployAddress, new(
                     Eip7002Constants.WithdrawalRequestPredeployAddress,
                     [],
-                    new SortedSet<StorageRead> {
-                        ToStorageRead(slot0),
-                        ToStorageRead(slot1),
-                        ToStorageRead(slot2),
-                        ToStorageRead(slot3),
-                    },
+                    [new(0), new(1), new(2), new(3)],
                     [],
                     [],
                     []
@@ -593,19 +555,14 @@ public class BlockAccessListTests()
                 {Eip7251Constants.ConsolidationRequestPredeployAddress, new(
                     Eip7251Constants.ConsolidationRequestPredeployAddress,
                     [],
-                    new SortedSet<StorageRead> {
-                        ToStorageRead(slot0),
-                        ToStorageRead(slot1),
-                        ToStorageRead(slot2),
-                        ToStorageRead(slot3),
-                    },
+                    [new(0), new(1), new(2), new(3)],
                     [],
                     [],
                     []
                 )},
                 {Eip2935Constants.BlockHashHistoryAddress, new(
                     Eip2935Constants.BlockHashHistoryAddress,
-                    new SortedDictionary<byte[], SlotChanges>(Bytes.Comparer) { { slot0, new SlotChanges(slot0, [parentHashStorageChange]) } },
+                    new SortedDictionary<UInt256, SlotChanges>() { { 0, new SlotChanges(0, [parentHashStorageChange]) } },
                     [],
                     [],
                     [],
@@ -613,10 +570,8 @@ public class BlockAccessListTests()
                 )},
                 {Eip4788Constants.BeaconRootsAddress, new(
                     Eip4788Constants.BeaconRootsAddress,
-                    new SortedDictionary<byte[], SlotChanges>(Bytes.Comparer) { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) } },
-                    new SortedSet<StorageRead> {
-                        ToStorageRead([0x20, 0x0b])
-                    },
+                    new SortedDictionary<UInt256, SlotChanges>() { { eip4788Slot1, new SlotChanges(eip4788Slot1, [timestampStorageChange]) } },
+                    [new(0x200b)],
                     [],
                     [],
                     []

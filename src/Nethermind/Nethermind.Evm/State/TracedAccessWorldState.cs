@@ -102,7 +102,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
         if (Enabled)
         {
             ReadOnlySpan<byte> oldValue = _innerWorldState.Get(storageCell);
-            BlockAccessList.AddStorageChange(storageCell, [.. oldValue], newValue);
+            BlockAccessList.AddStorageChange(storageCell, new(oldValue), new(newValue));
         }
         _innerWorldState.Set(storageCell, newValue);
     }

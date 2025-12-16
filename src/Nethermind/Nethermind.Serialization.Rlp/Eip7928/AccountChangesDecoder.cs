@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
@@ -26,17 +27,17 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         Address address = ctx.DecodeAddress();
 
         SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, true, default, _slotsLimit);
-        byte[]? lastSlot = null;
-        SortedDictionary<byte[], SlotChanges> slotChangesMap = new(slotChanges.ToDictionary(s =>
+        UInt256? lastSlot = null;
+        SortedDictionary<UInt256, SlotChanges> slotChangesMap = new(slotChanges.ToDictionary(s =>
         {
-            byte[] slot = s.Slot;
-            if (lastSlot is not null && Bytes.BytesComparer.Compare(slot, lastSlot) <= 0)
+            UInt256 slot = s.Slot;
+            if (lastSlot is not null && slot <= lastSlot)
             {
                 throw new RlpException("Storage changes were in incorrect order.");
             }
             lastSlot = slot;
             return slot;
-        }, s => s), Bytes.Comparer);
+        }, s => s));
 
         StorageRead[] storageReads = ctx.DecodeArray(StorageReadDecoder.Instance, true, default, _slotsLimit);
         SortedSet<StorageRead> storageReadsList = [];
