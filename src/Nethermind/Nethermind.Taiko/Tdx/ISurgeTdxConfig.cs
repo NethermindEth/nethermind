@@ -5,11 +5,8 @@ using Nethermind.Config;
 
 namespace Nethermind.Taiko.Tdx;
 
-public interface ITdxConfig : IConfig
+public interface ISurgeTdxConfig : IConfig
 {
-    [ConfigItem(Description = "Enable TDX attestation support.", DefaultValue = "false")]
-    bool Enabled { get; set; }
-
     [ConfigItem(Description = "Path to the tdxs Unix socket.", DefaultValue = "/var/tdxs.sock")]
     string SocketPath { get; set; }
 

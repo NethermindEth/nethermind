@@ -45,4 +45,7 @@ public interface ISurgeConfig : IConfig
 
     [ConfigItem(Description = "Maximum time in seconds to use cached gas price estimates before forcing a refresh.", DefaultValue = "12")]
     int GasPriceRefreshTimeoutSeconds { get; set; }
+
+    [ConfigItem(Description = "Enable TDX attestation support.", DefaultValue = "false")]
+    bool TdxEnabled { get; set; }
 }

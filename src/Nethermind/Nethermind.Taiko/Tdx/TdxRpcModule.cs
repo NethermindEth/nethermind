@@ -8,25 +8,26 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Taiko.Config;
 
 namespace Nethermind.Taiko.Tdx;
 
 public class TdxRpcModule(
-    ITdxConfig config,
+    ISurgeConfig config,
     ITdxService tdxService,
     IBlockFinder blockFinder,
     ILogManager logManager) : ITdxRpcModule
 {
     private static readonly ResultWrapper<TdxAttestation?> TdxDisabled =
-        ResultWrapper<TdxAttestation?>.Fail("TDX is not enabled. Set Tdx.Enabled=true in configuration.");
+        ResultWrapper<TdxAttestation?>.Fail("TDX is not enabled. Set Surge.TdxEnabled=true in configuration.");
     private static readonly ResultWrapper<TdxGuestInfo?> TdxDisabledInfo =
-        ResultWrapper<TdxGuestInfo?>.Fail("TDX is not enabled. Set Tdx.Enabled=true in configuration.");
+        ResultWrapper<TdxGuestInfo?>.Fail("TDX is not enabled. Set Surge.TdxEnabled=true in configuration.");
 
     private readonly ILogger _logger = logManager.GetClassLogger();
 
     public Task<ResultWrapper<TdxAttestation?>> taiko_getTdxAttestation(Hash256 blockHash)
     {
-        if (!config.Enabled)
+        if (!config.TdxEnabled)
             return Task.FromResult(TdxDisabled);
 
         if (!tdxService.IsAvailable)
@@ -50,7 +51,7 @@ public class TdxRpcModule(
 
     public Task<ResultWrapper<TdxGuestInfo?>> taiko_getTdxGuestInfo()
     {
-        if (!config.Enabled)
+        if (!config.TdxEnabled)
             return Task.FromResult(TdxDisabledInfo);
 
         TdxGuestInfo? info = tdxService.GetGuestInfo();
@@ -61,7 +62,7 @@ public class TdxRpcModule(
 
     public Task<ResultWrapper<TdxGuestInfo?>> taiko_tdxBootstrap()
     {
-        if (!config.Enabled)
+        if (!config.TdxEnabled)
             return Task.FromResult(TdxDisabledInfo);
 
         try
@@ -76,4 +77,3 @@ public class TdxRpcModule(
         }
     }
 }
-
