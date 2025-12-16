@@ -39,6 +39,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public long MergeSignRange { get; set; }
     public long TIP2019Block { get; set; }
     public Address[] BlackListedAddresses { get; set; }
+    public long EpochBlockSecret { get; set; }
 
     public void ApplyV2Config(ulong round)
     {
@@ -114,6 +115,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     long TIP2019Block { get; set; }
 
     Address[] BlackListedAddresses { get; set; }
+    long EpochBlockSecret { get; set; }
 
     public void ApplyV2Config(ulong round);
 }

@@ -34,7 +34,7 @@ internal class XdcTransactionProcessor(
             if (IsBlackListed(xdcSpec, sender) || IsBlackListed(xdcSpec, target))
             {
                 // Skip processing special transactions if either sender or recipient is blacklisted
-                return TransactionResult.ContainsBlacklistedAddress;
+                return XdcTransactionResult.ContainsBlacklistedAddress;
             }
         }
 

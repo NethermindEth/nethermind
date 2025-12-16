@@ -71,7 +71,7 @@ internal class SignTransactionManager(IDb stateDb, ISigner signer, ITxPool txPoo
         else
         {
             var randomizeKeyValue = RandStringByte(32);
-            if (checkNumber > 0 && spec.EpochBlockOpening <= checkNumber && spec.EpochBlockRandomize > checkNumber)
+            if (checkNumber > 0 && spec.EpochBlockSecret <= checkNumber && spec.EpochBlockOpening > checkNumber)
             {
                 Transaction tx = BuildTxSecretRandomize(nonce + 1, spec.RandomizeSMCBinary, (ulong)spec.EpochLength, randomizeKeyValue, signer.Address);
                 await signer.Sign(tx);

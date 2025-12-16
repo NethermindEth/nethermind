@@ -264,11 +264,11 @@ internal class SpecialTransactionsTests
 
         if (blackListingActivated)
         {
-            result.Value.Error.Should().Be(TransactionResult.ErrorType.ContainsBlacklistedAddress);
+            result.Value.Should().Be(XdcTransactionResult.ContainsBlacklistedAddress);
         }
         else
         {
-            result.Value.Error.Should().NotBe(TransactionResult.ErrorType.ContainsBlacklistedAddress);
+            result.Value.Should().NotBe(XdcTransactionResult.ContainsBlacklistedAddress);
         }
     }
 
@@ -312,11 +312,11 @@ internal class SpecialTransactionsTests
 
         if (blackListingActivated)
         {
-            result.Value.Error.Should().Be(TransactionResult.ErrorType.ContainsBlacklistedAddress);
+            result.Value.Should().Be(XdcTransactionResult.ContainsBlacklistedAddress);
         }
         else
         {
-            result.Value.Error.Should().NotBe(TransactionResult.ErrorType.ContainsBlacklistedAddress);
+            result.Value.Should().NotBe(XdcTransactionResult.ContainsBlacklistedAddress);
         }
     }
 
