@@ -14,34 +14,28 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Stateless;
 
-public class WitnessGeneratingWorldState(IStateReader stateReader, WorldState inner) : IWorldState
+public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
 {
     private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
 
-    public (byte[][] StateNodes, byte[][] Codes, byte[][] Keys) GetStateWitness(Hash256 parentStateRoot, byte[][] touchedNodes)
+    private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new();
+
+    public (byte[][] Codes, byte[][] Keys) GetWitness()
     {
-        HashSet<byte[]> stateNodes = new(Bytes.EqualityComparer);
-        HashSet<byte[]> codes = new(Bytes.EqualityComparer);
-        HashSet<byte[]> keys = new(Bytes.EqualityComparer);
-        foreach ((Address account, HashSet<UInt256> slots) in _storageSlots)
-        {
-            AccountProofCollector accountProofCollector = new(account, slots.ToArray());
-            stateReader.RunTreeVisitor(accountProofCollector, parentStateRoot);
-            AccountProof accountProof = accountProofCollector.BuildResult();
-            codes.Add(inner.GetCode(accountProof.CodeHash));
-            // stateNodes.AddRange(accountProof.Proof);
-            // stateNodes.AddRange(accountProof.StorageProofs.SelectMany(storageProof => storageProof.Proof));
-            keys.Add(account.Bytes);
-            keys.AddRange(slots.Select(slot => slot.ToBigEndian()));
-        }
-        stateNodes.AddRange(touchedNodes);
-        // Could replace setting keys in for loop by that:
-        // keys.AddRange(_storageSlots.Values.SelectMany(arr => arr.Select(slot => slot.ToBigEndian())));
-        return (stateNodes.ToArray(), codes.ToArray(), keys.ToArray());
+        HashSet<byte[]> keys = new(
+            _storageSlots.Keys.Select(accountAddress => accountAddress.Bytes)
+            .Concat(
+                _storageSlots.Values.SelectMany(v => v.Select(slotIndex => slotIndex.ToBigEndian()))
+            ),
+            Bytes.EqualityComparer
+        );
+
+        HashSet<byte[]> codes = new(_bytecodes.Values, Bytes.EqualityComparer);
+
+        return (codes.ToArray(), keys.ToArray());
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
@@ -64,12 +58,16 @@ public class WitnessGeneratingWorldState(IStateReader stateReader, WorldState in
     public byte[]? GetCode(Address address)
     {
         _storageSlots.TryAdd(address, []);
-        return inner.GetCode(address);
+        byte[] code = inner.GetCode(address);
+        _bytecodes.TryAdd(Keccak.Compute(code), code);
+        return code;
     }
 
-    public byte[]? GetCode(in ValueHash256 codeHash) // TODO: is this an account?
+    public byte[]? GetCode(in ValueHash256 codeHash)
     {
-        return inner.GetCode(in codeHash);
+        byte[] code = inner.GetCode(in codeHash);
+        _bytecodes.TryAdd(codeHash, code);
+        return code;
     }
 
     public bool IsContract(Address address)

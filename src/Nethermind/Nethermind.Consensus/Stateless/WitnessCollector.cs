@@ -14,7 +14,12 @@ public interface IWitnessCollector
     Witness GetWitness(BlockHeader parentHeader, Block block);
 }
 
-public class WitnessCollector(WitnessGeneratingBlockFinder blockFinder, WitnessGeneratingWorldState worldState, WitnessCapturingTrieStore trieStore, IBlockProcessor blockProcessor, ISpecProvider specProvider) : IWitnessCollector
+public class WitnessCollector(
+    WitnessGeneratingBlockFinder blockFinder,
+    WitnessGeneratingWorldState worldState,
+    WitnessCapturingTrieStore trieStore,
+    IBlockProcessor blockProcessor,
+    ISpecProvider specProvider) : IWitnessCollector
 {
     public Witness GetWitness(BlockHeader parentHeader, Block block)
     {
@@ -23,13 +28,13 @@ public class WitnessCollector(WitnessGeneratingBlockFinder blockFinder, WitnessG
             (Block processed, TxReceipt[] receipts) = blockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain,
                 NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
 
-            (byte[][] stateNodes, byte[][] codes, byte[][] keys) = worldState.GetStateWitness(parentHeader.StateRoot, trieStore.TouchedNodesRlp);
+            (byte[][] codes, byte[][] keys) = worldState.GetWitness();
 
             return new Witness()
             {
                 Headers = blockFinder.GetWitnessHeaders(parentHeader.Hash),
                 Codes = codes,
-                State = stateNodes,
+                State = trieStore.TouchedNodesRlp,
                 Keys = keys
             };
         }

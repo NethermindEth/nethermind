@@ -28,7 +28,6 @@ public interface IWitnessGeneratingBlockProcessingEnv
 
 public class WitnessGeneratingBlockProcessingEnv(
     ISpecProvider specProvider,
-    IStateReader stateReader,
     WorldState baseWorldState,
     WitnessCapturingTrieStore witnessCapturingTrieStore,
     IReadOnlyBlockTree blockTree,
@@ -41,12 +40,13 @@ public class WitnessGeneratingBlockProcessingEnv(
     {
         BlockhashProvider blockhashProvider = new(blockFinder, state, logManager);
         VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
-        return new TransactionProcessor(new BlobBaseFeeCalculator(), specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
+        ICodeInfoRepository codeInfoRepository = new NoCacheCodeInfoRepository(state, new EthereumPrecompileProvider());
+        return new TransactionProcessor(new BlobBaseFeeCalculator(), specProvider, state, vm, codeInfoRepository, logManager);
     }
 
     public WitnessCollector CreateWitnessCollector()
     {
-        WitnessGeneratingWorldState state = new(stateReader, baseWorldState);
+        WitnessGeneratingWorldState state = new(baseWorldState);
         WitnessGeneratingBlockFinder blockFinder = new(blockTree, new BlockhashCache(headerStore, logManager));
         TransactionProcessor txProcessor = CreateTransactionProcessor(state, blockFinder);
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =

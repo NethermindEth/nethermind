@@ -40,7 +40,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
             .AddScoped<IWitnessGeneratingBlockProcessingEnv>(builder =>
                 new WitnessGeneratingBlockProcessingEnv(
                     builder.Resolve<ISpecProvider>(),
-                    builder.Resolve<IStateReader>(),
                     builder.Resolve<IWorldState>() as WorldState,
                     builder.Resolve<WitnessCapturingTrieStore>(),
                     builder.Resolve<IReadOnlyBlockTree>(),
