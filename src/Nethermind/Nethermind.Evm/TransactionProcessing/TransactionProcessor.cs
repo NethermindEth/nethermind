@@ -963,7 +963,6 @@ namespace Nethermind.Evm.TransactionProcessing
             ErrorType.SenderNotSpecified => "sender not specified",
             ErrorType.TransactionSizeOverMaxInitCodeSize => "EIP-3860 - transaction size over max init code size",
             ErrorType.WrongTransactionNonce => "wrong transaction nonce",
-            ErrorType.ContainsBlacklistedAddress => "sender or receiver are blacklisted addresses",
             _ => ""
         };
         public static implicit operator TransactionResult(ErrorType error) => new(error);
@@ -994,7 +993,6 @@ namespace Nethermind.Evm.TransactionProcessing
         public static readonly TransactionResult SenderNotSpecified = ErrorType.SenderNotSpecified;
         public static readonly TransactionResult TransactionSizeOverMaxInitCodeSize = ErrorType.TransactionSizeOverMaxInitCodeSize;
         public static readonly TransactionResult WrongTransactionNonce = ErrorType.WrongTransactionNonce;
-        public static readonly TransactionResult ContainsBlacklistedAddress = ErrorType.ContainsBlacklistedAddress;
 
         public enum ErrorType
         {
@@ -1010,7 +1008,6 @@ namespace Nethermind.Evm.TransactionProcessing
             SenderNotSpecified,
             TransactionSizeOverMaxInitCodeSize,
             WrongTransactionNonce,
-            ContainsBlacklistedAddress
         }
     }
 }
