@@ -37,8 +37,6 @@ namespace Nethermind.State
         private readonly ILogger _logger;
         private PreBlockCaches? PreBlockCaches { get; }
         public bool IsWarmWorldState { get; }
-        // TO DO: remove that
-        public ITrieStore TrieStore => _trieStore;
 
         public Hash256 StateRoot
         {

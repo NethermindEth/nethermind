@@ -11,13 +11,13 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -30,16 +30,17 @@ public class WitnessGeneratingBlockProcessingEnv(
     ISpecProvider specProvider,
     IStateReader stateReader,
     WorldState baseWorldState,
+    WitnessCapturingTrieStore witnessCapturingTrieStore,
     IReadOnlyBlockTree blockTree,
     ISealValidator sealValidator,
     IRewardCalculator rewardCalculator,
     IHeaderStore headerStore,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnv
 {
-    private ITransactionProcessor CreateTransactionProcessor(IWorldState state, WitnessGeneratingBlockFinder blockFinder)
+    private TransactionProcessor CreateTransactionProcessor(IWorldState state, WitnessGeneratingBlockFinder blockFinder)
     {
-        var blockhashProvider = new BlockhashProvider(blockFinder, state, logManager);
-        var vm = new VirtualMachine(blockhashProvider, specProvider, logManager);
+        BlockhashProvider blockhashProvider = new(blockFinder, state, logManager);
+        VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
         return new TransactionProcessor(new BlobBaseFeeCalculator(), specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
     }
 
@@ -47,7 +48,7 @@ public class WitnessGeneratingBlockProcessingEnv(
     {
         WitnessGeneratingWorldState state = new(stateReader, baseWorldState);
         WitnessGeneratingBlockFinder blockFinder = new(blockTree, new BlockhashCache(headerStore, logManager));
-        ITransactionProcessor txProcessor = CreateTransactionProcessor(state, blockFinder);
+        TransactionProcessor txProcessor = CreateTransactionProcessor(state, blockFinder);
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =
             new BlockProcessor.BlockValidationTransactionsExecutor(
                 new ExecuteTransactionProcessorAdapter(txProcessor), state);
@@ -69,6 +70,6 @@ public class WitnessGeneratingBlockProcessingEnv(
             new WithdrawalProcessor(state, logManager),
             new ExecutionRequestsProcessor(txProcessor));
 
-        return new WitnessCollector(blockFinder, state, blockProcessor, specProvider);
+        return new WitnessCollector(blockFinder, state, witnessCapturingTrieStore, blockProcessor, specProvider);
     }
 }

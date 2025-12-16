@@ -15,15 +15,12 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
 public class WitnessGeneratingWorldState(IStateReader stateReader, WorldState inner) : IWorldState
 {
     private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
-
-    public ITrieStore TrieStore => inner.TrieStore;
 
     public (byte[][] StateNodes, byte[][] Codes, byte[][] Keys) GetStateWitness(Hash256 parentStateRoot, byte[][] touchedNodes)
     {

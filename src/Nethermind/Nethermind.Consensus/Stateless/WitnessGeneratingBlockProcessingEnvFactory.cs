@@ -7,10 +7,11 @@ using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.State.OverridableEnv;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -20,21 +21,28 @@ public interface IWitnessGeneratingBlockProcessingEnvFactory
 }
 
 public class WitnessGeneratingBlockProcessingEnvFactory(
-    IOverridableEnvFactory overridableEnvFactory,
     ILifetimeScope rootLifetimeScope,
+    IReadOnlyTrieStore readOnlyTrieStore,
+    IDbProvider dbProvider,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnvFactory
 {
     public IWitnessGeneratingBlockProcessingEnv Create()
     {
-        IOverridableEnv overridableEnv = overridableEnvFactory.Create();
+        IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
+        WitnessCapturingTrieStore trieStore = new(readOnlyDbProvider.StateDb, readOnlyTrieStore);
+        IStateReader stateReader = new StateReader(trieStore, readOnlyDbProvider.CodeDb, logManager);
+        IWorldState worldState = new WorldState(trieStore, readOnlyDbProvider.CodeDb, logManager, null, true);
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
-            .AddModule(overridableEnv) // worldstate related override here
+            .AddScoped<IStateReader>(stateReader)
+            .AddScoped<IWorldState>(worldState)
+            .AddScoped<WitnessCapturingTrieStore>(trieStore)
             .AddScoped<IWitnessGeneratingBlockProcessingEnv>(builder =>
                 new WitnessGeneratingBlockProcessingEnv(
                     builder.Resolve<ISpecProvider>(),
                     builder.Resolve<IStateReader>(),
                     builder.Resolve<IWorldState>() as WorldState,
+                    builder.Resolve<WitnessCapturingTrieStore>(),
                     builder.Resolve<IReadOnlyBlockTree>(),
                     builder.Resolve<ISealValidator>(),
                     builder.Resolve<IRewardCalculator>(),

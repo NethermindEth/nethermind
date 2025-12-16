@@ -3,21 +3,23 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
 
 /// <summary>
-/// OverlayTrieStore works by reading and writing to the passed in keyValueStore first as if it is an archive node.
+/// WitnessCapturingTrieStore works by reading and writing to the passed in keyValueStore first as if it is an archive node.
 /// If a node is missing, then it will try to find from the base store.
 /// On reset the base db provider is expected to clear any diff which causes this overlay trie store to no longer
 /// see overlayed keys.
 /// </summary>
-public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnlyTrieStore baseStore) : ITrieStore
+public class WitnessCapturingTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnlyTrieStore baseStore) : ITrieStore
 {
     private readonly INodeStorage _nodeStorage = new NodeStorage(keyValueStore);
-    public ConcurrentDictionary<Hash256, byte[]> RlpCollector { get; set; } = new();
+    private readonly ConcurrentDictionary<Hash256, byte[]> _rlpCollector = new();
+    public byte[][] TouchedNodesRlp => _rlpCollector.Values.ToArray();
 
     public void Dispose()
     {
@@ -26,27 +28,25 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
 
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
     {
-        // We always return Unknown even if baseStore return unknown, like archive node.
         TrieNode node = baseStore.FindCachedOrUnknown(address, in path, hash);
-        if (RlpCollector != null && node.NodeType != NodeType.Unknown)
-        {
-            RlpCollector.TryAdd(node.Keccak, node.FullRlp.Span.ToArray());
-        }
+        if (node.NodeType != NodeType.Unknown)
+            _rlpCollector.TryAdd(node.Keccak, node.FullRlp.Span.ToArray());
         return node;
     }
 
     public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
         byte[]? rlp = TryLoadRlp(address, in path, hash, flags);
-        if (RlpCollector is not null && rlp is not null)
-        {
-            RlpCollector.TryAdd(hash, rlp);
-        }
         if (rlp is null) throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
         return rlp;
     }
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _nodeStorage.Get(address, in path, hash, flags) ?? baseStore.TryLoadRlp(address, in path, hash, flags);
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        byte[]? code = _nodeStorage.Get(address, in path, hash, flags) ?? baseStore.TryLoadRlp(address, in path, hash, flags);
+        if (code is not null) _rlpCollector.TryAdd(hash, code);
+        return code;
+    }
 
     public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) => _nodeStorage.Get(address, in path, in keccak) is not null || baseStore.IsPersisted(address, in path, in keccak);
 
