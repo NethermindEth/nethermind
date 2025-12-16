@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using Autofac;
+using LightningDB;
+using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -86,7 +88,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                     || flatDbConfig.Layout == FlatLayout.FlatSeparateTopStorage
                     || flatDbConfig.Layout == FlatLayout.Flat
                     || flatDbConfig.Layout == FlatLayout.FlatInTrie
-                    )
+                )
                 {
                     return ctx.Resolve<RocksdbPersistence>();
                 }
@@ -94,6 +96,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 if (flatDbConfig.Layout == FlatLayout.FlatTruncatedLeaf)
                 {
                     return ctx.Resolve<NoLeafValueRocksdbPersistence>();
+                }
+
+                if (flatDbConfig.Layout == FlatLayout.LMDBFlat)
+                {
+                    return ctx.Resolve<LMDBPersistence>();
                 }
 
                 throw new Exception($"Unsupported layout {flatDbConfig.Layout}");
@@ -119,6 +126,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddSingleton<IStateReader, FlatStateReader>()
 
             .AddDecorator<IRocksDbConfigFactory, FlatBlockCacheAdjuster>()
+
+            .AddSingleton<LMDBPersistence>()
+            .AddSingleton<LightningEnvironment>(ConfigureLightningEnv)
             ;
 
 
@@ -150,6 +160,33 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                     ctx.Resolve<ImportStateOnStateSyncFinished>();
                 });
         }
+    }
+
+    private LightningEnvironment ConfigureLightningEnv(IComponentContext arg)
+    {
+        IInitConfig initConfig = arg.Resolve<IInitConfig>();
+        LightningEnvironment env = new LightningEnvironment(initConfig.BaseDbPath + "/lmdbFlat/", new EnvironmentConfiguration()
+        {
+            MapSize = 200.GiB(),
+            MaxDatabases = 2,
+        });
+        env.Open(EnvironmentOpenFlags.NoThreadLocalStorage | EnvironmentOpenFlags.NoReadAhead);
+
+        // Create the db
+        using (LightningTransaction? tx = env.BeginTransaction())
+        {
+            using var state = tx.OpenDatabase(FlatDbColumns.Account.ToString(), new DatabaseConfiguration()
+            {
+                Flags   = DatabaseOpenFlags.Create
+            });
+            using var storage = tx.OpenDatabase(FlatDbColumns.Storage.ToString(), new DatabaseConfiguration()
+            {
+                Flags   = DatabaseOpenFlags.Create
+            });
+            tx.Commit();
+        }
+
+        return env;
     }
 
     private class FlatBlockCacheAdjuster : IRocksDbConfigFactory, IDisposable

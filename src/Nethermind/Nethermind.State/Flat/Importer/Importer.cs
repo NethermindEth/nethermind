@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -26,7 +27,7 @@ public class Importer(
     ILogger _logger = logManager.GetClassLogger<Importer>();
     internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
     long totalNodes = 0;
-    int batchSize = 500_000;
+    int batchSize = 100_000;
     int logInterval = 1_000_000;
 
     private record Entry(Hash256? address, TreePath path, TrieNode node);
@@ -44,6 +45,7 @@ public class Importer(
         tree.RootHash = to.stateRoot.ToHash256();
 
         Channel<Entry> channel = Channel.CreateBounded<Entry>(1_000_000);
+        _logger.Warn("Starting import");
 
         Task visitTask = Task.Run(() =>
         {
@@ -66,7 +68,7 @@ public class Importer(
         int concurrentIngestCount = Environment.ProcessorCount;
         if (!persistence.SupportConcurrentWrites)
         {
-            concurrentIngestCount = 0;
+            concurrentIngestCount = 1;
         }
 
         tasks.AddRange(Enumerable.Range(0, concurrentIngestCount).Select((_) => Task.Run(async () =>
@@ -85,12 +87,16 @@ public class Importer(
 
     private async Task IngestLogic(StateId from, ChannelReader<Entry> channelReader)
     {
-            int currentBatchSize = 0;
+        _logger.Info($"Ingest thread started");
 
-            var writeBatch = persistence.CreateWriteBatch(from, from); // It writes form initial state to initial state.
-            await foreach (var entry in channelReader.ReadAllAsync())
+        ArrayPoolList<Entry> entries = new ArrayPoolList<Entry>(batchSize);
+
+        // LMDB cannot write across thread, so need to buffer the whole thing
+        void FlushEntries(ArrayPoolList<Entry> entries)
+        {
+            using var writeBatch = persistence.CreateWriteBatch(from, from); // It writes form initial state to initial state.
+            foreach (Entry entry in entries)
             {
-                // Write it
 
                 TrieNode node = entry.node;
                 writeBatch.SetTrieNodes(entry.address, entry.path, node);
@@ -122,21 +128,30 @@ public class Importer(
                     }
                 }
 
-                currentBatchSize += 1;
                 long theTotalNode = Interlocked.Increment(ref totalNodes);
                 if (theTotalNode % logInterval == 0)
                 {
                     _logger.Info($"Wrote {theTotalNode:N} nodes.");
                 }
-
-                if (currentBatchSize >= batchSize)
-                {
-                    writeBatch.Dispose();
-                    writeBatch = persistence.CreateWriteBatch(from, from);
-                    currentBatchSize = 0;
-                }
             }
-            writeBatch.Dispose();
+
+            entries.Clear();
+        }
+
+        await foreach (var asyncEntry in channelReader.ReadAllAsync())
+        {
+            // Write it
+
+            entries.Add(asyncEntry);
+            if (entries.Count < batchSize)
+            {
+                continue;
+            }
+
+            FlushEntries(entries);
+        }
+
+        FlushEntries(entries);
     }
 
     private class Visitor(ChannelWriter<Entry> channelWriter) : ITreeVisitor<TreePathContextWithStorage>
