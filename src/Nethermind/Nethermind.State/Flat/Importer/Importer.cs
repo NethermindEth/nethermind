@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -22,6 +25,8 @@ public class Importer(
 {
     ILogger _logger = logManager.GetClassLogger<Importer>();
     internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
+    long totalNodes = 0;
+    int batchSize = 500_000;
 
     private record Entry(Hash256? address, TreePath path, TrieNode node);
 
@@ -45,7 +50,7 @@ public class Importer(
             {
                 tree.Accept(new Visitor(channel.Writer), to.stateRoot.ToHash256(), new VisitingOptions()
                 {
-                    MaxDegreeOfParallelism = 1 // The writer is single threaded. Its better to write sorted then.
+                    MaxDegreeOfParallelism = Environment.ProcessorCount
                 });
             }
             finally
@@ -54,15 +59,35 @@ public class Importer(
             }
         });
 
-        Task ingestTask = Task.Run(async () =>
+        List<Task> tasks = new List<Task>();
+        tasks.Add(visitTask);
+
+        int concurrentIngestCount = Environment.ProcessorCount;
+        if (!persistence.SupportConcurrentWrites)
         {
-            long totalNodes = 0;
-            int batchSize = 4_000_000;
+            concurrentIngestCount = 0;
+        }
+
+        tasks.AddRange(Enumerable.Range(0, concurrentIngestCount).Select((_) => Task.Run(async () =>
+        {
+            await IngestLogic(from, channel.Reader);
+        })));
+
+        Task.WaitAll(tasks);
+
+        // Finally we increment the state id
+        var writeBatch = persistence.CreateWriteBatch(from, to);
+        writeBatch.Dispose();
+
+        _logger.Info($"Flat db copy completed. Wrote {totalNodes} nodes.");
+    }
+
+    private async Task IngestLogic(StateId from, ChannelReader<Entry> channelReader)
+    {
             int currentBatchSize = 0;
 
-            StateId lastState = from;
-            var writeBatch = persistence.CreateWriteBatch(lastState, to);
-            await foreach (var entry in channel.Reader.ReadAllAsync())
+            var writeBatch = persistence.CreateWriteBatch(from, from); // It writes form initial state to initial state.
+            await foreach (var entry in channelReader.ReadAllAsync())
             {
                 // Write it
 
@@ -97,22 +122,20 @@ public class Importer(
                 }
 
                 currentBatchSize += 1;
-                totalNodes += 1;
+                long theTotalNode = Interlocked.Increment(ref totalNodes);
+                if (theTotalNode % batchSize == 0)
+                {
+                    _logger.Info($"Wrote {theTotalNode:N} nodes.");
+                }
+
                 if (currentBatchSize >= batchSize)
                 {
-                    _logger.Info($"Wrote {totalNodes:N} nodes.");
                     writeBatch.Dispose();
-                    lastState = to;
-                    writeBatch = persistence.CreateWriteBatch(lastState, to);
+                    writeBatch = persistence.CreateWriteBatch(from, from);
                     currentBatchSize = 0;
                 }
             }
-
             writeBatch.Dispose();
-            _logger.Info($"Flat db copy completed. Wrote {totalNodes} nodes.");
-        });
-
-        Task.WaitAll(ingestTask, visitTask);
     }
 
     private class Visitor(ChannelWriter<Entry> channelWriter) : ITreeVisitor<TreePathContextWithStorage>

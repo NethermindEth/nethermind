@@ -46,6 +46,9 @@ public interface IFlatDbConfig: IConfig
 
     [ConfigItem(Description = "Block cache size budget", DefaultValue = "1000000000")]
     long BlockCacheSizeBudget { get; set; }
+
+    [ConfigItem(Description = "Import to flat on state sync finished", DefaultValue = "false")]
+    bool ImportOnStateSyncFinished { get; set; }
 }
 
 public enum FlatLayout
@@ -74,4 +77,5 @@ public class FlatDbConfig: IFlatDbConfig
     public bool DisableTrieWarmer { get; set; } = false;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public long BlockCacheSizeBudget { get; set; } = 1.GiB();
+    public bool ImportOnStateSyncFinished { get; set; } = false;
 }
