@@ -204,26 +204,21 @@ public class MultiVersionMemory<TLocation, TData, TLogger>(int txCount, Parallel
         return Status.NotFound;
     }
 
-    public delegate void UpdateStats<TStats>(ref TStats stats, TLocation location, TData data) where TStats : allows ref struct;
-
     /// <summary>
     /// Grabs the result write-set of the whole block
     /// </summary>
     /// <returns>Write a set of the block</returns>
-    public Dictionary<TLocation, TData> Snapshot<TStats>(ref TStats? stats, UpdateStats<TStats> itemAdded) where TStats : allows ref struct
+    public Dictionary<TLocation, TData> Snapshot()
     {
         Dictionary<TLocation, TData> result = new();
         // need to iterate backwards, as the later transaction writes are the final written to the same location
-        for (var index = _data.Length - 1; index >= 0; index--)
+        for (int index = _data.Length - 1; index >= 0; index--)
         {
             DataDictionary<TLocation, Value> data = _data[index];
             foreach (KeyValuePair<TLocation, Value> location in data.Dictionary)
             {
                 // only add if previously not added
-                if (result.TryAdd(location.Key, location.Value.Data))
-                {
-                    itemAdded.Invoke(ref stats, location.Key, location.Value.Data);
-                }
+                result.TryAdd(location.Key, location.Value.Data);
             }
         }
 
@@ -345,4 +340,7 @@ public enum Status
 }
 
 public sealed class MultiVersionMemory(int txCount, ParallelTrace<OffFlag> parallelTrace)
-    : MultiVersionMemory<StorageCell, object, OffFlag>(txCount, parallelTrace);
+    : MultiVersionMemory<StorageCell, object, OffFlag>(txCount, parallelTrace)
+{
+    public static readonly object SelfDestructMonit = new();
+}

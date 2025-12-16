@@ -159,8 +159,7 @@ public class ParallelRunnerTests
         long start = Stopwatch.GetTimestamp();
         Task runnerTask = runner.Run();
         Task completedTask = await Task.WhenAny(runnerTask, Task.Delay(TimeSpan.FromSeconds(20)));
-        DummyStats stats = new();
-        Dictionary<int, byte[]> result = multiVersionMemory.Snapshot(ref stats, DummyStats.Count);
+        Dictionary<int, byte[]> result = multiVersionMemory.Snapshot();
         if (typeof(T) == typeof(OnFlag)) await PrintInfo(parallelTrace, result, expected);
         TimeSpan time = Stopwatch.GetElapsedTime(start);
         await TestContext.Out.WriteLineAsync($"Execution time: {time.TotalMilliseconds}ms");
@@ -173,11 +172,6 @@ public class ParallelRunnerTests
         {
             Assert.Fail($"Timeout! {DateTime.Now:hh:mm:ss::fffffff}");
         }
-    }
-
-    private struct DummyStats
-    {
-        public static void Count(ref DummyStats stats, int location, byte[] data) { }
     }
 
     private static async Task PrintInfo<T>(ParallelTrace<T> parallelTrace, Dictionary<int, byte[]> result, Dictionary<int, byte[]> expected) where T : struct, IFlag

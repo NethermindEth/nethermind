@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
@@ -10,6 +11,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
@@ -21,10 +23,10 @@ public class ParallelBlockValidationTransactionsExecutor(
     ParallelEnvFactory parallelEnvFactory,
     PreBlockCaches preBlockCaches,
     IBlockFinder blockFinder,
+    IWorldState stateProvider,
     ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
-
     private readonly ObjectPool<HashSet<int>> _setPool = new DefaultObjectPool<HashSet<int>>(new DefaultPooledObjectPolicy<HashSet<int>>());
     private BlockExecutionContext _blockExecutionContext;
 
@@ -33,17 +35,32 @@ public class ParallelBlockValidationTransactionsExecutor(
         Transaction[] transactions = block.Transactions;
         int txCount = transactions.Length;
         TxReceipt[] receipts = new TxReceipt[txCount];
-        OffParallelTrace trace = new();
+        OffParallelTrace trace = OffParallelTrace.Instance;
         MultiVersionMemory multiVersionMemory = new(txCount, trace);
         ParallelScheduler scheduler = new(txCount, trace, _setPool);
         BlockHeader parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         ParallelTransactionProcessor parallelTransactionProcessor = new(block, parent, parallelEnvFactory, multiVersionMemory, preBlockCaches, receipts, in _blockExecutionContext, transactionProcessedEventHandler);
         using ParallelRunner parallelRunner = new(scheduler, multiVersionMemory, trace, parallelTransactionProcessor, 4);
         parallelRunner.Run().GetAwaiter().GetResult();
-
+        PushChanges(stateProvider, multiVersionMemory);
         BlockReceiptsTracer.AccumulateBlockBloom(block, receipts);
         return receipts;
     }
+
+    private void PushChanges(IWorldState worldState, MultiVersionMemory multiVersionMemory)
+    {
+        Dictionary<StorageCell, object> result = multiVersionMemory.Snapshot();
+        foreach (KeyValuePair<StorageCell, object> changes in result)
+        {
+            switch (changes.Value)
+            {
+                case Account account: worldState.SetAccount(changes.Key.Address, account); break;
+                case byte[] value: worldState.Set(changes.Key, value); break;
+                case { } o when o == MultiVersionMemory.SelfDestructMonit: worldState.ClearStorage(changes.Key.Address); break;
+            }
+        }
+    }
+
 
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
@@ -86,6 +103,7 @@ public class ParallelTransactionProcessor(
                 InvalidTransactionException.ThrowInvalidTransactionException(result, block.Header, transaction, txIndex);
             }
 
+            scope.WorldState.Commit(_blockExecutionContext.Spec, txTracer, commitRoots: true);
             TxReceipt receipt = receipts[txIndex] = tracer.LastReceipt;
             transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(txIndex, transaction, block.Header, receipt));
             return Status.Ok;

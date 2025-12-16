@@ -36,4 +36,8 @@ public class ParallelTrace<TLogger> where TLogger : struct, IFlag
     public string Format<TData>(TData data) => data is byte[] bytes ? bytes.ToHexString() : data?.ToString() ?? "";
 }
 
-public sealed class OffParallelTrace : ParallelTrace<OffFlag>;
+public sealed class OffParallelTrace : ParallelTrace<OffFlag>
+{
+    private OffParallelTrace() { }
+    public static OffParallelTrace Instance { get; } = new();
+}

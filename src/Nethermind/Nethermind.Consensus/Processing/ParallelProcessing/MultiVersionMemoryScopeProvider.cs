@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
@@ -19,7 +18,6 @@ public class MultiVersionMemoryScopeProvider(
     MultiVersionMemory multiVersionMemory)
     : IWorldStateScopeProvider
 {
-    private static readonly object _selfDestructMonit = new();
     public HashSet<Read<StorageCell>> ReadSet { get; private set; } = null!;
     public Dictionary<StorageCell, object> WriteSet { get; private set; } = null!;
 
@@ -89,60 +87,7 @@ public class MultiVersionMemoryScopeProvider(
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
             new MultiVersionMemoryWriteBatch(version, multiVersionMemory, readSet, writeSet);
 
-        public void Commit(long blockNumber)
-        {
-            SnapshotStats stats = new();
-            Dictionary<StorageCell, object> result = multiVersionMemory.Snapshot(ref stats, SnapshotStats.Count);
-            Dictionary<StorageCell, IWorldStateScopeProvider.IStorageWriteBatch> storageWriteBatches = new(stats.StorageCounts.Count);
-            using IWorldStateScopeProvider.IWorldStateWriteBatch batch = baseScope.StartWriteBatch(stats.AccountsCount);
-            foreach (KeyValuePair<StorageCell, object> changes in result)
-            {
-                switch (changes.Value)
-                {
-                    case Account account: batch.Set(changes.Key.Address, account); break;
-                    case byte[] value: GetStorageWriteBatch(changes.Key, batch, storageWriteBatches, stats).Set(changes.Key.Index, value); break;
-                    case { } o when o == _selfDestructMonit: GetStorageWriteBatch(changes.Key, batch, storageWriteBatches, stats).Clear(); break;
-                }
-            }
-
-            baseScope.Commit(blockNumber);
-
-            static IWorldStateScopeProvider.IStorageWriteBatch GetStorageWriteBatch(
-                in StorageCell key,
-                IWorldStateScopeProvider.IWorldStateWriteBatch batch,
-                Dictionary<StorageCell, IWorldStateScopeProvider.IStorageWriteBatch> storageBatches,
-                in SnapshotStats stats)
-            {
-                ref IWorldStateScopeProvider.IStorageWriteBatch? storageBatch =
-                    ref CollectionsMarshal.GetValueRefOrAddDefault(storageBatches, key, out bool exists);
-
-                if (!exists)
-                {
-                    storageBatch = batch.CreateStorageWriteBatch(key.Address, stats.StorageCounts[key]);
-                }
-
-                return storageBatch;
-            }
-        }
-
-        private ref struct SnapshotStats()
-        {
-            public Dictionary<StorageCell, int> StorageCounts { get; } = new(StorageCell.OnlyAddressComparer.Instance);
-            public int AccountsCount { get; private set; } = 0;
-
-            public static void Count(ref SnapshotStats stats, StorageCell location, object value)
-            {
-                switch (value)
-                {
-                    case Account:
-                        stats.AccountsCount++;
-                        break;
-                    default:
-                        CollectionsMarshal.GetValueRefOrAddDefault(stats.StorageCounts, location, out _)++;
-                        break;
-                }
-            }
-        }
+        public void Commit(long blockNumber) => baseScope.Commit(blockNumber);
 
         private class MultiVersionMemoryWriteBatch(
             Version version,
@@ -168,7 +113,7 @@ public class MultiVersionMemoryScopeProvider(
             {
                 public void Dispose() { }
                 public void Set(in UInt256 index, byte[] value) => writeSet[new StorageCell(address, index)] = value;
-                public void Clear() => writeSet[new StorageCell(address, Keccak.EmptyTreeHash.ValueHash256)] = _selfDestructMonit;
+                public void Clear() => writeSet[new StorageCell(address, Keccak.EmptyTreeHash.ValueHash256)] = MultiVersionMemory.SelfDestructMonit;
             }
         }
 

@@ -14,6 +14,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -42,15 +44,35 @@ public class ParallelBlockValidationTransactionsExecutorTests
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Osaka.Instance));
     }
 
-    [Test]
-    public async Task Simple_block()
+    public static IEnumerable<Transaction[]> SimpleBlocksTests
+    {
+        get
+        {
+            yield return [Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0)];
+            yield return
+            [
+                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 0),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressC, 1),
+                Tx(TestItem.PrivateKeyA, TestItem.AddressB, 2)
+            ];
+        }
+    }
+
+    private static Transaction Tx(PrivateKey from, Address to, UInt256 nonce, UInt256? value = null) =>
+        Build.A.Transaction
+            .To(to)
+            .WithNonce(nonce)
+            .WithChainId(BlockchainIds.Mainnet)
+            .SignedAndResolved(from, false)
+            .WithValue(value ?? 1.Ether())
+            .TestObject;
+
+    [TestCaseSource(nameof(SimpleBlocksTests))]
+    public async Task Simple_blocks(Transaction[] transactions)
     {
         using ParallelTestBlockchain blockchain = await ParallelTestBlockchain.Create(BuildConfig(true));
-        Block block = await blockchain.AddBlock(
-            Build.A.Transaction.To(TestItem.AddressB).WithNonce(0).WithChainId(blockchain.SpecProvider.ChainId)
-                .SignedAndResolved(TestItem.PrivateKeyA, false).TestObject);
-            //Build.A.Transaction.To(TestItem.AddressB).WithNonce(1).WithChainId(blockchain.SpecProvider.ChainId).SignedAndResolved(TestItem.PrivateKeyA, false).TestObject);
-        Assert.That(block.Transactions, Has.Length.EqualTo(2));
+        Block block = await blockchain.AddBlock(transactions);
+        Assert.That(block.Transactions, Has.Length.EqualTo(transactions.Length));
     }
 
     private static IBlocksConfig BuildConfig(bool parallel) =>

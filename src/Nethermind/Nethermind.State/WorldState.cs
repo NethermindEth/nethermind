@@ -364,6 +364,12 @@ namespace Nethermind.State
             _stateProvider.SetNonce(address, nonce);
         }
 
+        public void SetAccount(Address address, Account? account)
+        {
+            DebugGuardInScope();
+            _stateProvider.SetAccount(address, account);
+        }
+
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
         {
             DebugGuardInScope();

@@ -438,7 +438,7 @@ namespace Nethermind.State
             {
                 //we only want to persist empty accounts if they were deleted or created as empty
                 //we don't want to do it for account empty due to a change (e.g. changed balance to zero)
-                var lastChange = _changes[value.Peek()];
+                Change lastChange = _changes[value.Peek()];
                 if (lastChange.ChangeType == ChangeType.Delete ||
                     (lastChange.ChangeType is ChangeType.Touch or ChangeType.New && lastChange.Account.IsEmpty))
                 {
@@ -488,8 +488,6 @@ namespace Nethermind.State
             if (stepsBack < 0)
             {
                 if (isTracing) TraceNoChanges();
-
-                codeFlushTask.GetAwaiter().GetResult();
 
                 codeFlushTask.GetAwaiter().GetResult();
                 return;
@@ -878,6 +876,37 @@ namespace Nethermind.State
             [DoesNotReturn, StackTraceHidden]
             static Account ThrowNullAccount(Address address)
                 => throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
+        }
+
+        internal void SetAccount(Address address, Account? account)
+        {
+            _needsStateRootUpdate = true;
+            Account? oldAccount = GetThroughCache(address);
+            if (_logger.IsTrace) Trace(address, oldAccount, account);
+            if (oldAccount is null)
+            {
+                if (account is null) return;
+                PushNew(address, account);
+            }
+            else
+            {
+                if (account is null)
+                {
+                    PushDelete(address);
+                }
+                else if (oldAccount != account)
+                {
+                    PushUpdate(address, account);
+                }
+                else
+                {
+                    PushJustCache(address, account);
+                }
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace(Address address, Account? account, Account? changedAccount)
+                => _logger.Trace($"Update {address} A {account} -> {changedAccount}");
         }
 
         private enum ChangeType
