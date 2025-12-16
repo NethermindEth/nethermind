@@ -566,8 +566,8 @@ namespace Nethermind.Evm.TransactionProcessing
             UInt256 nonce = WorldState.GetNonce(tx.SenderAddress!);
             if (validate && tx.Nonce != nonce)
             {
-                TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {WorldState.GetNonce(tx.SenderAddress)})");
-                return TransactionResult.WrongTransactionNonce;
+                TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {nonce})");
+                return tx.Nonce > nonce ? TransactionResult.TransactionNonceTooHigh : TransactionResult.TransactionNonceTooLow;
             }
 
             UInt256 newNonce = validate || nonce < ulong.MaxValue ? nonce + 1 : 0;
@@ -962,7 +962,8 @@ namespace Nethermind.Evm.TransactionProcessing
             ErrorType.SenderHasDeployedCode => "sender has deployed code",
             ErrorType.SenderNotSpecified => "sender not specified",
             ErrorType.TransactionSizeOverMaxInitCodeSize => "EIP-3860 - transaction size over max init code size",
-            ErrorType.WrongTransactionNonce => "wrong transaction nonce",
+            ErrorType.TransactionNonceTooHigh => "transaction nonce is too high",
+            ErrorType.TransactionNonceTooLow => "transaction nonce is too low",
             _ => ""
         };
         public static implicit operator TransactionResult(ErrorType error) => new(error);
@@ -992,7 +993,8 @@ namespace Nethermind.Evm.TransactionProcessing
         public static readonly TransactionResult SenderHasDeployedCode = ErrorType.SenderHasDeployedCode;
         public static readonly TransactionResult SenderNotSpecified = ErrorType.SenderNotSpecified;
         public static readonly TransactionResult TransactionSizeOverMaxInitCodeSize = ErrorType.TransactionSizeOverMaxInitCodeSize;
-        public static readonly TransactionResult WrongTransactionNonce = ErrorType.WrongTransactionNonce;
+        public static readonly TransactionResult TransactionNonceTooHigh = ErrorType.TransactionNonceTooHigh;
+        public static readonly TransactionResult TransactionNonceTooLow = ErrorType.TransactionNonceTooLow;
 
         public enum ErrorType
         {
@@ -1007,7 +1009,8 @@ namespace Nethermind.Evm.TransactionProcessing
             SenderHasDeployedCode,
             SenderNotSpecified,
             TransactionSizeOverMaxInitCodeSize,
-            WrongTransactionNonce,
+            TransactionNonceTooHigh,
+            TransactionNonceTooLow,
         }
     }
 }

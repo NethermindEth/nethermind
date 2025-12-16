@@ -1,8 +1,7 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
@@ -25,7 +24,6 @@ using Nethermind.Evm;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
-using NSubstitute.Core;
 
 namespace Nethermind.Facade.Test;
 
@@ -350,31 +348,59 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void Call_tx_returns_WrongTransactionNonceError()
+    public void Call_tx_returns_TransactionNonceIsToHighError()
     {
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 456 };
         _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(TransactionResult.WrongTransactionNonce);
+            .Returns(TransactionResult.TransactionNonceTooHigh);
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("wrong transaction nonce"));
+        Assert.That(callOutput.Error, Is.EqualTo("transaction nonce is too high"));
     }
 
     [Test]
-    public void EstimateGas_tx_returns_WrongTransactionNonceError()
+    public void Call_tx_returns_TransactionNonceIsToLowError()
     {
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 456 };
         _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(TransactionResult.WrongTransactionNonce);
+            .Returns(TransactionResult.TransactionNonceTooLow);
+
+        CallOutput callOutput = _blockchainBridge.Call(header, tx);
+
+        Assert.That(callOutput.Error, Is.EqualTo("transaction nonce is too low"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_TransactionNonceIsToHighError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 456 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.TransactionNonceTooHigh);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("wrong transaction nonce"));
+        Assert.That(callOutput.Error, Is.EqualTo("transaction nonce is too high"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_TransactionNonceIsTooLowError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 456 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.TransactionNonceTooLow);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo("transaction nonce is too low"));
     }
 
     [Test]
