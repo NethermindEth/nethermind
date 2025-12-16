@@ -102,9 +102,11 @@ public class WitnessGeneratingBlockFinder(IBlockFinder inner, IBlockhashCache bl
     public Hash256? GetHash(BlockHeader headBlock, int depth)
     {
         Hash256? blockHash = blockhashCache.GetHash(headBlock, depth);
-        if (blockHash is not null && (_lowestRequestedHeader ?? long.MaxValue) > headBlock.Number)
+        if (blockHash is not null)
         {
-            _lowestRequestedHeader = headBlock.Number;
+            // Cannot just do headBlock.Number - depth because block, whose hash we look for, may be not in chain
+            // Will record the corresponding block number in below call if necessary
+            FindHeader(blockHash, BlockTreeLookupOptions.None);
         }
         return blockHash;
     }
