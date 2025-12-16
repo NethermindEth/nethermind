@@ -9,7 +9,7 @@ using static Nethermind.Evm.TransactionProcessing.TransactionResult;
 
 namespace Nethermind.Xdc;
 
-internal struct XdcTransactionResult 
+internal struct XdcTransactionResult
 {
     public const ErrorType ContainsBlacklistedAddressError = (ErrorType)12;
 
