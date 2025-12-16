@@ -103,13 +103,13 @@ jobs:
     env:
       FORMULA: nethermind.rb
     steps:
-      - name: Authenticate App
+      - name: Create GitHub app token
         id: gh-app
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          repositories: "homebrew-nethermind"
+          repositories: homebrew-nethermind
 
       - name: Check out homebrew-nethermind repository
         uses: actions/checkout@v6
@@ -129,6 +129,7 @@ jobs:
           awk -i inplace -v n=2 '/url/ { if (++count == n) sub(/url.*/, "url \"'$arm64_url'\""); } 1' $FORMULA
           awk -i inplace -v n=1 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$x64_hash'\""); } 1' $FORMULA
           awk -i inplace -v n=2 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$arm64_hash'\""); } 1' $FORMULA
+
       - name: Submit package
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
