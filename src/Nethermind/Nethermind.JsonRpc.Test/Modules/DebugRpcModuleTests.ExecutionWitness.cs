@@ -42,12 +42,15 @@ public partial class DebugRpcModuleTests
             .PushData(0)
             .PushData(32)
             .Op(Instruction.SSTORE)
+            // BLOCKHASH opcode forces getting block headers from blockTree later stored in witness
             .PushData(customBlock.Number) // block created above
             .Op(Instruction.BLOCKHASH)
             .PushData(customBlock.Number - 1) // block created from chain setup (see AddBlockOnStart)
             .Op(Instruction.BLOCKHASH)
             .PushData(10) // block does not exist in chain, should return a zero hash and therefore not add any block header in witness
             .Op(Instruction.BLOCKHASH)
+            // TestItem.AddressA contains "0xabcd" from the chain setup, the EXTCODECOPY opcode forces getting bytecode from codeInfoRepository
+            .EXTCODECOPY(TestItem.AddressA, 0, 0, 2)
             .Op(Instruction.STOP)
             .Done;
         byte[] initCode = Prepare.EvmCode.ForInitOf(runtimeCode).Done;
@@ -56,7 +59,7 @@ public partial class DebugRpcModuleTests
         Transaction deployTx = Build.A.Transaction
             .WithNonce(deployNonce)
             .WithCode(initCode)
-            .WithGasLimit(200000)
+            .WithGasLimit(200_000)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
         await blockchain.AddBlock(deployTx);
@@ -65,7 +68,7 @@ public partial class DebugRpcModuleTests
         Transaction callTx = Build.A.Transaction
             .WithNonce(callNonce)
             .To(contractAddress)
-            .WithGasLimit(200000)
+            .WithGasLimit(200_000)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
         await blockchain.AddBlock(callTx);
@@ -116,9 +119,8 @@ public partial class DebugRpcModuleTests
 
     private static IEnumerable<TestCaseData> ExecutionWitnessSource()
     {
-        // 7 blocks in the test where this source is used
+        // 7 blocks in the test where this test case source is used
         for (long blockNumber = 0; blockNumber < 7; blockNumber++)
             yield return new TestCaseData(blockNumber);
     }
-
 }
