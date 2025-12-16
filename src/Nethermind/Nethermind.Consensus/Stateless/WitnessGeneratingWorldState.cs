@@ -108,7 +108,7 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
         }
         else
         {
-            _storageSlots.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
+            _storageSlots.Add(storageCell.Address, new HashSet<UInt256> { storageCell.Index });
         }
 
         return inner.GetOriginal(in storageCell);
@@ -122,7 +122,7 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
         }
         else
         {
-            _storageSlots.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
+            _storageSlots.Add(storageCell.Address, new HashSet<UInt256> { storageCell.Index });
         }
         return inner.Get(in storageCell);
     }
@@ -135,7 +135,7 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
         }
         else
         {
-            _storageSlots.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
+            _storageSlots.Add(storageCell.Address, new HashSet<UInt256> { storageCell.Index });
         }
         inner.Set(in storageCell, newValue);
     }
@@ -148,7 +148,7 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
         }
         else
         {
-            _storageSlots.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
+            _storageSlots.Add(storageCell.Address, new HashSet<UInt256> { storageCell.Index });
         }
         return inner.GetTransientState(in storageCell);
     }
@@ -161,7 +161,7 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
         }
         else
         {
-            _storageSlots.Add(storageCell.Address, new HashSet<UInt256>{storageCell.Index});
+            _storageSlots.Add(storageCell.Address, new HashSet<UInt256> { storageCell.Index });
         }
         inner.SetTransientState(in storageCell, newValue);
     }
