@@ -916,19 +916,23 @@ public sealed class KeccakHash
         Vector512<ulong> pi3 = Vector512.Create(3UL, 1UL, 4UL, 2UL, 0UL, 5UL, 6UL, 7UL);
         Vector512<ulong> pi4 = Vector512.Create(4UL, 2UL, 0UL, 3UL, 1UL, 5UL, 6UL, 7UL);
 
-        // Rho rotate counts per row (y fixed, x varies) - even rounds.
-        Vector512<ulong> rho0 = Vector512.Create(0UL, 1, 62, 28, 27, 0, 0, 0);
-        Vector512<ulong> rho1 = Vector512.Create(36UL, 44, 6, 55, 20, 0, 0, 0);
-        Vector512<ulong> rho2 = Vector512.Create(3UL, 10, 43, 25, 39, 0, 0, 0);
-        Vector512<ulong> rho3 = Vector512.Create(41UL, 45, 15, 21, 8, 0, 0, 0);
-        Vector512<ulong> rho4 = Vector512.Create(18UL, 2, 61, 56, 14, 0, 0, 0);
+        // Rho rotate counts per row (y fixed, x varies) BUT pre-permuted by Pi-to-columns.
+        // So we can do: Pi first, then vprolvq with these counts.
+        // rhoPiY[lane] = rhoY[piY[lane]]
+        Vector512<ulong> rho0Pi = Vector512.Create(0UL, 28UL, 1UL, 27UL, 62UL, 0UL, 0UL, 0UL);
+        Vector512<ulong> rho1Pi = Vector512.Create(44UL, 20UL, 6UL, 36UL, 55UL, 0UL, 0UL, 0UL);
+        Vector512<ulong> rho2Pi = Vector512.Create(43UL, 3UL, 25UL, 10UL, 39UL, 0UL, 0UL, 0UL);
+        Vector512<ulong> rho3Pi = Vector512.Create(21UL, 45UL, 8UL, 15UL, 41UL, 0UL, 0UL, 0UL);
+        Vector512<ulong> rho4Pi = Vector512.Create(14UL, 61UL, 18UL, 56UL, 2UL, 0UL, 0UL, 0UL);
 
-        // Rho rotate counts for diagonal layout (register d holds A[x, y=x-d] in lanes x=0..4) - odd rounds.
+        // Rho rotate counts for diagonal layout - BUT permuted by the diagonal->row Pi lane-rotates
+        // rhodK_Pi = Permute(rhodK, rotK) for the specific mapping used below.
         Vector512<ulong> rhod0 = Vector512.Create(0UL, 44UL, 43UL, 21UL, 14UL, 0UL, 0UL, 0UL);
-        Vector512<ulong> rhod1 = Vector512.Create(18UL, 1UL, 6UL, 25UL, 8UL, 0UL, 0UL, 0UL);
-        Vector512<ulong> rhod2 = Vector512.Create(41UL, 2UL, 62UL, 55UL, 39UL, 0UL, 0UL, 0UL);
-        Vector512<ulong> rhod3 = Vector512.Create(3UL, 45UL, 61UL, 28UL, 20UL, 0UL, 0UL, 0UL);
-        Vector512<ulong> rhod4 = Vector512.Create(36UL, 10UL, 15UL, 56UL, 27UL, 0UL, 0UL, 0UL);
+
+        Vector512<ulong> rhod1Pi = Vector512.Create(1UL, 6UL, 25UL, 8UL, 18UL, 0UL, 0UL, 0UL);     // permuted by rot1
+        Vector512<ulong> rhod2Pi = Vector512.Create(62UL, 55UL, 39UL, 41UL, 2UL, 0UL, 0UL, 0UL);    // permuted by rot2
+        Vector512<ulong> rhod3Pi = Vector512.Create(28UL, 20UL, 3UL, 45UL, 61UL, 0UL, 0UL, 0UL);    // permuted by rot3
+        Vector512<ulong> rhod4Pi = Vector512.Create(27UL, 36UL, 10UL, 15UL, 56UL, 0UL, 0UL, 0UL);   // permuted by rot4
 
         // Lane masks for harmonise blends (select exactly one lane, lanes 5-7 stay 0).
         Vector512<ulong> m1 = Vector512.Create(0UL, ulong.MaxValue, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL);
@@ -957,20 +961,18 @@ public sealed class KeccakHash
                 c3 = Avx512F.TernaryLogic(c3, theta0, theta1, XOR3);
                 c4 = Avx512F.TernaryLogic(c4, theta0, theta1, XOR3);
 
-                // Rho (rows) + Pi-to-columns
-                c0 = Avx512F.RotateLeftVariable(c0, rho0);
-                c1 = Avx512F.RotateLeftVariable(c1, rho1);
+                // Pi-to-columns first, then Rho using counts permuted by the same Pi mapping.
+                // This is equivalent to the original Rho-then-Pi.
                 c0 = Avx512F.PermuteVar8x64(c0, pi0);
-
-                c2 = Avx512F.RotateLeftVariable(c2, rho2);
                 c1 = Avx512F.PermuteVar8x64(c1, pi1);
-
-                c3 = Avx512F.RotateLeftVariable(c3, rho3);
                 c2 = Avx512F.PermuteVar8x64(c2, pi2);
-
-                c4 = Avx512F.RotateLeftVariable(c4, rho4);
+                c0 = Avx512F.RotateLeftVariable(c0, rho0Pi);
                 c3 = Avx512F.PermuteVar8x64(c3, pi3);
+                c1 = Avx512F.RotateLeftVariable(c1, rho1Pi);
                 c4 = Avx512F.PermuteVar8x64(c4, pi4);
+                c2 = Avx512F.RotateLeftVariable(c2, rho2Pi);
+                c3 = Avx512F.RotateLeftVariable(c3, rho3Pi);
+                c4 = Avx512F.RotateLeftVariable(c4, rho4Pi);
 
                 // Chi (columns, cross-register)
                 Vector512<ulong> t0 = c0;
@@ -1043,21 +1045,20 @@ public sealed class KeccakHash
                 d3 = Avx512F.TernaryLogic(d3, theta0, theta1, XOR3);
                 d4 = Avx512F.TernaryLogic(d4, theta0, theta1, XOR3);
 
-                // Rho (diagonals)
-                d0 = Avx512F.RotateLeftVariable(d0, rhod0);
-                d1 = Avx512F.RotateLeftVariable(d1, rhod1);
-                d2 = Avx512F.RotateLeftVariable(d2, rhod2);
-                d3 = Avx512F.RotateLeftVariable(d3, rhod3);
-                d4 = Avx512F.RotateLeftVariable(d4, rhod4);
+                // Pi (diagonals -> rows) first
+                c0 = d0; // d=0 -> rot-left 0 (identity)
+                c2 = Avx512F.PermuteVar8x64(d1, rot1);
+                c4 = Avx512F.PermuteVar8x64(d2, rot2);
+                c1 = Avx512F.PermuteVar8x64(d3, rot3);
+                c3 = Avx512F.PermuteVar8x64(d4, rot4);
 
-                // Pi (diagonals -> rows):
-                // Each diagonal d maps to a single output row y' = -3d mod5,
-                // and x' = y = x-d, so it's just an intra-register rotate-left by d.
-                c0 = d0;                               // d=0 -> y'=0, rot-left 0
-                c2 = Avx512F.PermuteVar8x64(d1, rot1); // d=1 -> y'=2, rot-left 1
-                c4 = Avx512F.PermuteVar8x64(d2, rot2); // d=2 -> y'=4, rot-left 2
-                c1 = Avx512F.PermuteVar8x64(d3, rot3); // d=3 -> y'=1, rot-left 3
-                c3 = Avx512F.PermuteVar8x64(d4, rot4); // d=4 -> y'=3, rot-left 4
+                // Then Rho using counts carried along with the lane permutation
+                c0 = Avx512F.RotateLeftVariable(c0, rhod0);
+                c2 = Avx512F.RotateLeftVariable(c2, rhod1Pi);
+                c4 = Avx512F.RotateLeftVariable(c4, rhod2Pi);
+                c1 = Avx512F.RotateLeftVariable(c1, rhod3Pi);
+                c3 = Avx512F.RotateLeftVariable(c3, rhod4Pi);
+
             }
             {
                 // Chi (rows, intra-register - costs extra permutes vs cross-register chi)
