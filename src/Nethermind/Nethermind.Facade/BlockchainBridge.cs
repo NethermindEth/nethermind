@@ -41,7 +41,7 @@ namespace Nethermind.Facade
     public class BlockchainBridge(
         IOverridableEnv<BlockchainBridge.BlockProcessingComponents> processingEnv,
         Lazy<ISimulateReadOnlyBlocksProcessingEnv> lazySimulateProcessingEnv,
-        IWitnessGeneratingBlockProcessingEnv witnessGeneratingBlockProcessingEnv,
+        IWitnessGeneratingBlockProcessingEnvFactory witnessGeneratingBlockProcessingEnvFactory,
         IBlockTree blockTree,
         IStateReader stateReader,
         ITxPool txPool,
@@ -416,7 +416,8 @@ namespace Nethermind.Facade
         public Witness GenerateExecutionWitness(BlockHeader parent, Block block)
         {
             RecoverTxSenders(block);
-            WitnessCollector witnessCollector = witnessGeneratingBlockProcessingEnv.CreateWitnessCollector();
+            using IWitnessGeneratingBlockProcessingEnvScope scope = witnessGeneratingBlockProcessingEnvFactory.CreateScope();
+            WitnessCollector witnessCollector = scope.Env.CreateWitnessCollector();
             return witnessCollector.GetWitness(parent, block);
         }
 
@@ -434,7 +435,6 @@ namespace Nethermind.Facade
 
     public class BlockchainBridgeFactory(
         ISimulateReadOnlyBlocksProcessingEnvFactory simulateEnvFactory,
-        IWitnessGeneratingBlockProcessingEnvFactory witnessGeneratingEnvFactory,
         IOverridableEnvFactory envFactory,
         ILifetimeScope rootLifetimeScope
     ) : IBlockchainBridgeFactory
@@ -453,7 +453,6 @@ namespace Nethermind.Facade
 
             ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddScoped<BlockchainBridge>()
-                .AddScoped<IWitnessGeneratingBlockProcessingEnv>(_ => witnessGeneratingEnvFactory.Create())
                 .AddScoped<ISimulateReadOnlyBlocksProcessingEnv>((_) => simulateEnvFactory.Create())
                 .AddScoped(blockProcessingEnv));
 

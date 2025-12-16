@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
@@ -15,9 +16,14 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
+public interface IWitnessGeneratingBlockProcessingEnvScope : IDisposable
+{
+    IWitnessGeneratingBlockProcessingEnv Env { get; }
+}
+
 public interface IWitnessGeneratingBlockProcessingEnvFactory
 {
-    IWitnessGeneratingBlockProcessingEnv Create();
+    IWitnessGeneratingBlockProcessingEnvScope CreateScope();
 }
 
 public class WitnessGeneratingBlockProcessingEnvFactory(
@@ -26,7 +32,14 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
     IDbProvider dbProvider,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnvFactory
 {
-    public IWitnessGeneratingBlockProcessingEnv Create()
+    private sealed class Scope(ILifetimeScope envLifetimeScope) : IWitnessGeneratingBlockProcessingEnvScope
+    {
+        public IWitnessGeneratingBlockProcessingEnv Env { get; } = envLifetimeScope.Resolve<IWitnessGeneratingBlockProcessingEnv>();
+
+        public void Dispose() => envLifetimeScope.Dispose();
+    }
+
+    public IWitnessGeneratingBlockProcessingEnvScope CreateScope()
     {
         IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         WitnessCapturingTrieStore trieStore = new(readOnlyDbProvider.StateDb, readOnlyTrieStore);
@@ -48,7 +61,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                     builder.Resolve<IHeaderStore>(),
                     logManager)));
 
-        rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(envLifetimeScope);
-        return envLifetimeScope.Resolve<IWitnessGeneratingBlockProcessingEnv>();
+        return new Scope(envLifetimeScope);
     }
 }
