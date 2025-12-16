@@ -11,6 +11,7 @@
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="LightningDB" />
     <PackageReference Include="prometheus-net" />
     <PackageReference Include="ZstdSharp.Port" />
   </ItemGroup>

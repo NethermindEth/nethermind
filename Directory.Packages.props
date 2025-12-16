@@ -25,6 +25,7 @@
     <PackageVersion Include="Grpc" Version="2.46.6" />
     <PackageVersion Include="Grpc.Tools" Version="2.76.0" />
     <PackageVersion Include="KubernetesClient" Version="18.0.13" />
+    <PackageVersion Include="LightningDB" Version="0.20.0" />
     <PackageVersion Include="MathNet.Numerics.FSharp" Version="5.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.1" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="10.0.1" />

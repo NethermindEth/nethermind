@@ -434,10 +434,10 @@ public class DbConfig : IDbConfig
     public string? FlatDbStandardTrieOptions { get; set; } =
 
         // This is actually feasable. Use direct reads to prevent taking up os cache space from flat.
-        "use_direct_reads=true;" +
+        // "use_direct_reads=true;" +
 
         // For trie which is heavy in compaction. Use direct io to prevent taking up space in os cache.
-        "use_direct_io_for_flush_and_compaction=true;" +
+        // "use_direct_io_for_flush_and_compaction=true;" +
 
         // LZ4 seems to be slightly faster here
         "compression=kLZ4Compression;" +
