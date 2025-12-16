@@ -18,7 +18,9 @@ namespace Nethermind.Trie.Pruning;
 public class WitnessCapturingTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnlyTrieStore baseStore) : ITrieStore
 {
     private readonly INodeStorage _nodeStorage = new NodeStorage(keyValueStore);
+
     private readonly ConcurrentDictionary<Hash256, byte[]> _rlpCollector = new();
+
     public byte[][] TouchedNodesRlp => _rlpCollector.Values.ToArray();
 
     public void Dispose()
