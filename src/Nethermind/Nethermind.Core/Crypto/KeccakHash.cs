@@ -1055,29 +1055,36 @@ public sealed class KeccakHash
             }
             {
                 // Chi (rows, intra-register - costs extra permutes vs cross-register chi)
-                Vector512<ulong> b = Avx512F.PermuteVar8x64(c0, rot1);
-                Vector512<ulong> c = Avx512F.PermuteVar8x64(c0, rot2);
-                c0 = Avx512F.TernaryLogic(c0, b, c, CHI);
+                // Row0 + Row1 permutes launched early
+                Vector512<ulong> b0 = Avx512F.PermuteVar8x64(c0, rot1);
+                Vector512<ulong> c0p = Avx512F.PermuteVar8x64(c0, rot2);
 
-                // Iota can happen as soon as row0 is ready.
+                Vector512<ulong> b1 = Avx512F.PermuteVar8x64(c1, rot1);
+                Vector512<ulong> c1p = Avx512F.PermuteVar8x64(c1, rot2);
+
+                // Consume row0 (Chi)
+                c0 = Avx512F.TernaryLogic(c0, b0, c0p, CHI);
+
+                // Iota can happen as soon as row0 is ready
                 c0 = Avx512F.Xor(c0, Vector512.CreateScalar(roundConstants));
                 roundConstants = ref Unsafe.Add(ref roundConstants, 1);
 
-                b = Avx512F.PermuteVar8x64(c1, rot1);
-                c = Avx512F.PermuteVar8x64(c1, rot2);
-                c1 = Avx512F.TernaryLogic(c1, b, c, CHI);
-
-                b = Avx512F.PermuteVar8x64(c2, rot1);
-                c = Avx512F.PermuteVar8x64(c2, rot2);
-                c2 = Avx512F.TernaryLogic(c2, b, c, CHI);
-
-                b = Avx512F.PermuteVar8x64(c3, rot1);
-                c = Avx512F.PermuteVar8x64(c3, rot2);
-                c3 = Avx512F.TernaryLogic(c3, b, c, CHI);
-
-                b = Avx512F.PermuteVar8x64(c4, rot1);
-                c = Avx512F.PermuteVar8x64(c4, rot2);
-                c4 = Avx512F.TernaryLogic(c4, b, c, CHI);
+                // Launch row2 permutes before consuming row1
+                Vector512<ulong> b2 = Avx512F.PermuteVar8x64(c2, rot1);
+                Vector512<ulong> c2p = Avx512F.PermuteVar8x64(c2, rot2);
+                // Consume row1
+                c1 = Avx512F.TernaryLogic(c1, b1, c1p, CHI);
+                // Launch row3 permutes
+                Vector512<ulong> b3 = Avx512F.PermuteVar8x64(c3, rot1);
+                Vector512<ulong> c3p = Avx512F.PermuteVar8x64(c3, rot2);
+                // Consume row2
+                c2 = Avx512F.TernaryLogic(c2, b2, c2p, CHI);
+                // Launch row4 permutes
+                Vector512<ulong> b4 = Avx512F.PermuteVar8x64(c4, rot1);
+                Vector512<ulong> c4p = Avx512F.PermuteVar8x64(c4, rot2);
+                // Consume row3 + row4
+                c3 = Avx512F.TernaryLogic(c3, b3, c3p, CHI);
+                c4 = Avx512F.TernaryLogic(c4, b4, c4p, CHI);
             }
         }
 
