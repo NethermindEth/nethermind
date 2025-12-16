@@ -85,7 +85,7 @@ public class SnapshotBundle : IDisposable
     private Counter.Child _accountGet;
     private Counter.Child _slotGet;
 
-    private IFlatDiffRepository.SnapshotBundleUsage _usage;
+    internal IFlatDiffRepository.SnapshotBundleUsage _usage;
 
     public SnapshotBundle(ArrayPoolList<Snapshot> snapshots,
         IPersistence.IPersistenceReader persistenceReader,
@@ -614,103 +614,6 @@ public class SnapshotBundle : IDisposable
 
             return (null, null);
         }
-    }
-
-    public Snapshot CompactToKnownState()
-    {
-        // TODO: Get this out of here. It feels weird.
-        if (_snapshots.Count == 0)
-            return new Snapshot(
-                new StateId(-1, ValueKeccak.EmptyTreeHash), new StateId(-1, ValueKeccak.EmptyTreeHash),
-                content: _resourcePool.GetSnapshotContent(_usage),
-                pool: _resourcePool.GetSnapshotPool(IFlatDiffRepository.SnapshotBundleUsage.Compactor));
-
-        SnapshotContent content = _resourcePool.GetSnapshotContent(IFlatDiffRepository.SnapshotBundleUsage.Compactor);
-
-        ConcurrentDictionary<AddressAsKey, Account> accounts = content.Accounts;
-        ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> storages = content.Storages;
-        ConcurrentDictionary<AddressAsKey, bool> selfDestructedStorageAddresses = content.SelfDestructedStorageAddresses;
-        ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = content.StorageNodes;
-        ConcurrentDictionary<TreePath, TrieNode> stateNodes = content.StateNodes;
-
-        if (_snapshots.Count == 1) return _snapshots[0];
-
-        StateId to = _snapshots[^1].To;
-        StateId from = _snapshots[0].From;
-        HashSet<Address> addressToClear = new HashSet<Address>();
-        HashSet<Hash256AsKey> addressHashToClear = new HashSet<Hash256AsKey>();
-
-
-        for (int i = 0; i < _snapshots.Count; i++)
-        {
-            var knownState = _snapshots[i];
-            foreach (var knownStateAccount in knownState.Accounts)
-            {
-                Address address = knownStateAccount.Key;
-                accounts[address] = knownStateAccount.Value;
-            }
-
-            addressToClear.Clear();
-            addressHashToClear.Clear();
-
-            foreach (KeyValuePair<AddressAsKey, bool> addrK in knownState.SelfDestructedStorageAddresses)
-            {
-                var address = addrK.Key;
-                var isNewAccount = addrK.Value;
-                if (!isNewAccount)
-                {
-                    selfDestructedStorageAddresses[address] = false;
-                    addressToClear.Add(address);
-                    addressHashToClear.Add(address.Value.ToAccountPath.ToCommitment());
-                }
-                else
-                {
-                    // Note, if its already false, we should not set it to true
-                    selfDestructedStorageAddresses.TryAdd(address, true);
-                }
-            }
-
-            if (addressToClear.Count > 0)
-            {
-                // Clear
-                foreach (var kv in storages)
-                {
-                    if (addressToClear.Contains(kv.Key.Item1))
-                    {
-                        storages.Remove(kv.Key, out _);
-                    }
-                }
-
-                foreach (var kv in storageNodes)
-                {
-                    if (addressHashToClear.Contains(kv.Key.Item1))
-                    {
-                        storageNodes.Remove(kv.Key, out _);
-                    }
-                }
-            }
-
-            foreach (var knownStateStorage in knownState.Storages)
-            {
-                storages[knownStateStorage.Key] = knownStateStorage.Value;
-            }
-
-            foreach (var kv in knownState.StateNodes)
-            {
-                stateNodes[kv.Key] = kv.Value;
-            }
-
-            foreach (var kv in knownState.StorageNodes)
-            {
-                storageNodes[kv.Key] = kv.Value;
-            }
-        }
-
-        return new Snapshot(
-            from,
-            to,
-            content: content,
-            pool: _resourcePool.GetSnapshotPool(usage: IFlatDiffRepository.SnapshotBundleUsage.Compactor));
     }
 
     public void Dispose()

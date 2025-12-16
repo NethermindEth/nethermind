@@ -20,7 +20,7 @@ public interface ITrieWarmer
 
 public class NoopTrieWarmer : ITrieWarmer
 {
-    public void PushJob(FlatWorldStateScope scope, Address? path, FlatStorageTree? storageTree, in UInt256? index, int sequenceId)
+    public void PushJob(FlatWorldStateScope sctruncated_leafope, Address? path, FlatStorageTree? storageTree, in UInt256? index, int sequenceId)
     {
     }
 

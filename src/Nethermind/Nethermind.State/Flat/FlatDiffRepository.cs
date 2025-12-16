@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -277,7 +278,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
             if (_logger.IsDebug) _logger.Debug($"Compacting {stateId}");
             long sw = Stopwatch.GetTimestamp();
-            Snapshot snapshot = gatheredCache.CompactToKnownState();
+            Snapshot snapshot = CompactSnapshotBundle(gatheredCache);
             _flatdiffimes.WithLabels("compaction", "compact_to_known_state").Observe(Stopwatch.GetTimestamp() - sw);
             sw = Stopwatch.GetTimestamp();
             Dictionary<MemoryType, long> memory = snapshot.EstimateMemory();
@@ -715,6 +716,107 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             existingState.Dispose(); // After memory
         }
     }
+
+    public Snapshot CompactSnapshotBundle(SnapshotBundle bundle)
+    {
+        if (bundle._snapshots.Count == 0)
+            return new Snapshot(
+                new StateId(-1, ValueKeccak.EmptyTreeHash), new StateId(-1, ValueKeccak.EmptyTreeHash),
+                content: _resourcePool.GetSnapshotContent(bundle._usage),
+                pool: _resourcePool.GetSnapshotPool(IFlatDiffRepository.SnapshotBundleUsage.Compactor));
+
+        var snapshots = bundle._snapshots;
+        if (snapshots.Count == 1)
+        {
+            // Lease?
+            return snapshots[0];
+        }
+
+        SnapshotContent content = _resourcePool.GetSnapshotContent(IFlatDiffRepository.SnapshotBundleUsage.Compactor);
+        ConcurrentDictionary<AddressAsKey, Account> accounts = content.Accounts;
+        ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> storages = content.Storages;
+        ConcurrentDictionary<AddressAsKey, bool> selfDestructedStorageAddresses = content.SelfDestructedStorageAddresses;
+        ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = content.StorageNodes;
+        ConcurrentDictionary<TreePath, TrieNode> stateNodes = content.StateNodes;
+
+        StateId to = snapshots[^1].To;
+        StateId from = snapshots[0].From;
+        HashSet<Address> addressToClear = new HashSet<Address>();
+        HashSet<Hash256AsKey> addressHashToClear = new HashSet<Hash256AsKey>();
+
+
+        for (int i = 0; i < snapshots.Count; i++)
+        {
+            var knownState = snapshots[i];
+            foreach (var knownStateAccount in knownState.Accounts)
+            {
+                Address address = knownStateAccount.Key;
+                accounts[address] = knownStateAccount.Value;
+            }
+
+            addressToClear.Clear();
+            addressHashToClear.Clear();
+
+            foreach (KeyValuePair<AddressAsKey, bool> addrK in knownState.SelfDestructedStorageAddresses)
+            {
+                var address = addrK.Key;
+                var isNewAccount = addrK.Value;
+                if (!isNewAccount)
+                {
+                    selfDestructedStorageAddresses[address] = false;
+                    addressToClear.Add(address);
+                    addressHashToClear.Add(address.Value.ToAccountPath.ToCommitment());
+                }
+                else
+                {
+                    // Note, if its already false, we should not set it to true
+                    selfDestructedStorageAddresses.TryAdd(address, true);
+                }
+            }
+
+            if (addressToClear.Count > 0)
+            {
+                // Clear
+                foreach (var kv in storages)
+                {
+                    if (addressToClear.Contains(kv.Key.Item1))
+                    {
+                        storages.Remove(kv.Key, out _);
+                    }
+                }
+
+                foreach (var kv in storageNodes)
+                {
+                    if (addressHashToClear.Contains(kv.Key.Item1))
+                    {
+                        storageNodes.Remove(kv.Key, out _);
+                    }
+                }
+            }
+
+            foreach (var knownStateStorage in knownState.Storages)
+            {
+                storages[knownStateStorage.Key] = knownStateStorage.Value;
+            }
+
+            foreach (var kv in knownState.StateNodes)
+            {
+                stateNodes[kv.Key] = kv.Value;
+            }
+
+            foreach (var kv in knownState.StorageNodes)
+            {
+                storageNodes[kv.Key] = kv.Value;
+            }
+        }
+
+        return new Snapshot(
+            from,
+            to,
+            content: content,
+            pool: _resourcePool.GetSnapshotPool(usage: IFlatDiffRepository.SnapshotBundleUsage.Compactor));
+    }
+
 
     public void Add(Snapshot snapshot)
     {
