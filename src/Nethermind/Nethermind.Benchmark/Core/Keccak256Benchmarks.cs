@@ -45,12 +45,6 @@ public class Keccak256Benchmarks
         _a = _scenarios[(int)ScenarioIndex];
     }
 
-    //[Benchmark]
-    //public void Avx2()
-    //{
-    //    KeccakHash.BenchmarkHash(_a, _output, KeccakHash.Implementation.Avx2);
-    //}
-
     [Benchmark]
     public void Avx512()
     {
