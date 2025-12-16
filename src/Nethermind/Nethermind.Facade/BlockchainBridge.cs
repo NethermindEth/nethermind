@@ -109,7 +109,7 @@ namespace Nethermind.Facade
             return (null, 0, null, 0);
         }
 
-        public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true) =>
+        public (TxReceipt? Receipt, Transaction? Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true) =>
             TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? _)
                 ? (txReceipt, tx, block.BaseFeePerGas)
                 : checkTxnPool && txPool.TryGetPendingTransaction(txHash, out Transaction? transaction)
