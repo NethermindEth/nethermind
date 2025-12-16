@@ -95,13 +95,13 @@ public class TestBlockchainUtil(
             }
 
             await Task.Yield();
-            if (iteration > 0)
-            {
-                await Task.Delay(100);
-            }
-            else if (iteration > 3)
+            if (iteration > 3)
             {
                 Assert.Fail("Did not produce expected block");
+            }
+            else if (iteration > 0)
+            {
+                await Task.Delay(100);
             }
             iteration++;
         }

@@ -648,6 +648,11 @@ public class DebugRpcModule(
         if (block is null)
         {
             return ResultWrapper<Witness>.Fail($"Unable to find block {blockParameter}");
+        } else if (block.Number == 0)
+        {
+            // Cannot generate witness for genesis block as the block itself does not contain any transaction
+            // responsible for the state setup. It is the weak subjectivity starting point to trust.
+            return ResultWrapper<Witness>.Fail($"Cannot generate witness for genesis block");
         }
 
         BlockHeader? parent = blockFinder.FindHeader(block.ParentHash);

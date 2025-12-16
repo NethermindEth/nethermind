@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -36,16 +35,16 @@ public partial class DebugRpcModuleTests
             .WithValue(1)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
-        await blockchain.AddBlock(transferTx);
+        Block customBlock = await blockchain.AddBlock(transferTx);
 
         UInt256 deployNonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         byte[] runtimeCode = Prepare.EvmCode
             .PushData(0)
             .PushData(32)
             .Op(Instruction.SSTORE)
-            .PushData(4) // block created above
+            .PushData(customBlock.Number) // block created above
             .Op(Instruction.BLOCKHASH)
-            .PushData(3) // block created from chain setup (see AddBlockOnStart)
+            .PushData(customBlock.Number - 1) // block created from chain setup (see AddBlockOnStart)
             .Op(Instruction.BLOCKHASH)
             .PushData(10) // block does not exist in chain, should return a zero hash and therefore not add any block header in witness
             .Op(Instruction.BLOCKHASH)
@@ -78,6 +77,15 @@ public partial class DebugRpcModuleTests
         Hash256 parentHash = block.Header.ParentHash!;
 
         JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitness", blockNumber);
+
+        // Cannot generate witness for genesis block as the block itself does not contain any transaction
+        // responsible for the state setup.
+        if (blockNumber == 0)
+        {
+            response.Should().BeOfType<JsonRpcErrorResponse>().Which.Error!.Message.Should().Be("Cannot generate witness for genesis block");
+            return;
+        }
+
         Witness witness = response.Should().BeOfType<JsonRpcSuccessResponse>()
             .Which.Result.Should().BeOfType<Witness>()
             .Subject;
@@ -109,8 +117,8 @@ public partial class DebugRpcModuleTests
     private static IEnumerable<TestCaseData> ExecutionWitnessSource()
     {
         // 7 blocks in the test where this source is used
-        for (long number = 0; number < 7; number++)
-            yield return new TestCaseData(number);
+        for (long blockNumber = 0; blockNumber < 7; blockNumber++)
+            yield return new TestCaseData(blockNumber);
     }
 
 }

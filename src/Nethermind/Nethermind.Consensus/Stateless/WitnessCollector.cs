@@ -20,7 +20,7 @@ public class WitnessCollector(WitnessGeneratingBlockFinder blockFinder, WitnessG
     {
         using (worldState.BeginScope(parentHeader))
         {
-            (Block processed, TxReceipt[] receipts) = blockProcessor.ProcessOne(block, ProcessingOptions.DoNotUpdateHead & ProcessingOptions.ReadOnlyChain,
+            (Block processed, TxReceipt[] receipts) = blockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain,
                 NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
 
             (byte[][] stateNodes, byte[][] codes, byte[][] keys) = worldState.GetStateWitness(parentHeader.StateRoot, trieStore.TouchedNodesRlp);
