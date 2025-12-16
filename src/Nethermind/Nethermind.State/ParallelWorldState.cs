@@ -68,15 +68,15 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
             foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                StorageCell storageCell = new(accountChanges.Address, new(slotChanges.Slot.AsSpan()));
-                slotChanges.AddStorageChange(new(-1, [.. _innerWorldState.Get(storageCell)]));
+                StorageCell storageCell = new(accountChanges.Address, slotChanges.Slot);
+                slotChanges.AddStorageChange(new(-1, new(_innerWorldState.Get(storageCell), true)));
             }
 
             foreach (StorageRead storageRead in accountChanges.StorageReads)
             {
                 SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
-                StorageCell storageCell = new(accountChanges.Address, new(storageRead.Key.AsSpan()));
-                slotChanges.AddStorageChange(new(-1, [.. _innerWorldState.Get(storageCell)]));
+                StorageCell storageCell = new(accountChanges.Address,storageRead.Key);
+                slotChanges.AddStorageChange(new(-1, new(_innerWorldState.Get(storageCell), true)));
             }
         }
     }
@@ -113,11 +113,11 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
             foreach (SlotChanges slotChange in accountChanges.StorageChanges)
             {
-                StorageCell storageCell = new(accountChanges.Address, new(slotChange.Slot));
+                StorageCell storageCell = new(accountChanges.Address, new(slotChange.Slot.ToBigEndian()));
                 // could be empty since prestate loaded
                 if (slotChange.Changes.Count > 0)
                 {
-                    _innerWorldState.Set(storageCell, slotChange.Changes.Last().NewValue);
+                    _innerWorldState.Set(storageCell, slotChange.Changes.Last().NewValue.ToBigEndian());
                 }
             }
         }
@@ -272,7 +272,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         if (TracingEnabled)
         {
             ReadOnlySpan<byte> oldValue = GetInternal(storageCell, blockAccessIndex.Value);
-            GeneratedBlockAccessList.AddStorageChange(storageCell, [.. oldValue], newValue);
+            GeneratedBlockAccessList.AddStorageChange(storageCell, new(oldValue, true), new(newValue, true));
         }
         if (!ParallelExecutionEnabled)
         {
@@ -673,15 +673,15 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         {
             // get from BAL -> suggested block -> inner world state
             AccountChanges? accountChanges = GetGeneratingBlockAccessList(blockAccessIndex).GetAccountChanges(storageCell.Address);
-            accountChanges.TryGetSlotChanges(storageCell.Index.ToBigEndian(), out SlotChanges? slotChanges);
+            accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
 
             if (slotChanges is not null && slotChanges.Changes.Count == 1)
             {
-                return slotChanges.Changes.First().NewValue;
+                return slotChanges.Changes.First().NewValue.ToBigEndian();
             }
 
             accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
-            accountChanges.TryGetSlotChanges(storageCell.Index.ToBigEndian(), out slotChanges);
+            accountChanges.TryGetSlotChanges(storageCell.Index, out slotChanges);
 
             if (slotChanges is not null)
             {
@@ -702,7 +702,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         if (ParallelExecutionEnabled)
         {
             AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
-            accountChanges.TryGetSlotChanges(storageCell.Index.ToBigEndian(), out SlotChanges? slotChanges);
+            accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
 
             if (slotChanges is not null)
             {
@@ -765,10 +765,10 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         if (ParallelExecutionEnabled)
         {
             AccountChanges? accountChanges = GetGeneratingBlockAccessList(blockAccessIndex).GetAccountChanges(address);
-            HashSet<byte[]> zeroedSlots = [];
+            HashSet<UInt256> zeroedSlots = [];
             foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                if (!slotChanges.Changes.Last().NewValue.IsZero())
+                if (slotChanges.Changes.Last().NewValue != 0)
                 {
                     return false;
                 }
@@ -778,7 +778,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
             accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
             if (accountChanges is not null)
             {
-                HashSet<byte[]> allSlots = accountChanges.GetAllSlots(blockAccessIndex);
+                HashSet<UInt256> allSlots = accountChanges.GetAllSlots(blockAccessIndex);
                 return allSlots.SetEquals(zeroedSlots);
             }
 

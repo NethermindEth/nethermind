@@ -50,7 +50,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     [JsonIgnore]
     public bool ExistedBeforeBlock { get; set; }
 
-    private readonly SortedDictionary<byte[], SlotChanges> _storageChanges;
+    private readonly SortedDictionary<UInt256, SlotChanges> _storageChanges;
     private readonly SortedSet<StorageRead> _storageReads;
     private readonly SortedList<int, BalanceChange> _balanceChanges;
     private readonly SortedList<int, NonceChange> _nonceChanges;
@@ -62,7 +62,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     public AccountChanges()
     {
         Address = Address.Zero;
-        _storageChanges = new(Bytes.Comparer);
+        _storageChanges = [];
         _storageReads = [];
         _balanceChanges = [];
         _nonceChanges = [];
@@ -72,14 +72,15 @@ public class AccountChanges : IEquatable<AccountChanges>
     public AccountChanges(Address address)
     {
         Address = address;
-        _storageChanges = new(Bytes.Comparer);
+        _storageChanges = [];
         _storageReads = [];
         _balanceChanges = [];
         _nonceChanges = [];
         _codeChanges = [];
     }
 
-    public AccountChanges(Address address, SortedDictionary<byte[], SlotChanges> storageChanges, SortedSet<StorageRead> storageReads, SortedList<int, BalanceChange> balanceChanges, SortedList<int, NonceChange> nonceChanges, SortedList<int, CodeChange> codeChanges)
+    // public AccountChanges(Address address, SortedDictionary<byte[], SlotChanges> storageChanges, SortedSet<StorageRead> storageReads, SortedList<int, BalanceChange> balanceChanges, SortedList<int, NonceChange> nonceChanges, SortedList<int, CodeChange> codeChanges)
+    public AccountChanges(Address address, SortedDictionary<UInt256, SlotChanges> storageChanges, SortedSet<StorageRead> storageReads, SortedList<int, BalanceChange> balanceChanges, SortedList<int, NonceChange> nonceChanges, SortedList<int, CodeChange> codeChanges)
     {
         Address = address;
         _storageChanges = storageChanges;
@@ -110,13 +111,13 @@ public class AccountChanges : IEquatable<AccountChanges>
         !(left == right);
 
     // n.b. implies that length of changes is zero
-    public bool HasStorageChange(byte[] key)
+    public bool HasStorageChange(UInt256 key)
         => _storageChanges.ContainsKey(key);
 
-    public bool TryGetSlotChanges(byte[] key, [NotNullWhen(true)] out SlotChanges? slotChanges)
+    public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out SlotChanges? slotChanges)
         => _storageChanges.TryGetValue(key, out slotChanges);
     
-    public void ClearEmptySlotChangesAndAddRead(byte[] key)
+    public void ClearEmptySlotChangesAndAddRead(UInt256 key)
     {
         if (TryGetSlotChanges(key, out SlotChanges? slotChanges) && slotChanges.Changes.Count == 0)
         {
@@ -125,7 +126,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         }
     }
 
-    public SlotChanges GetOrAddSlotChanges(byte[] key)
+    public SlotChanges GetOrAddSlotChanges(UInt256 key)
     {
         if (!_storageChanges.TryGetValue(key, out SlotChanges? existing))
         {
@@ -136,15 +137,15 @@ public class AccountChanges : IEquatable<AccountChanges>
         return existing;
     }
 
-    public void AddStorageRead(byte[] key)
+    public void AddStorageRead(UInt256 key)
         => _storageReads.Add(new(key));
 
-    public void RemoveStorageRead(byte[] key)
+    public void RemoveStorageRead(UInt256 key)
         => _storageReads.Remove(new(key));
 
     public void SelfDestruct()
     {
-        foreach (byte[] key in _storageChanges.Keys)
+        foreach (UInt256 key in _storageChanges.Keys)
         {
             AddStorageRead(key);
         }
@@ -263,17 +264,17 @@ public class AccountChanges : IEquatable<AccountChanges>
         return lastCode;
     }
 
-    public HashSet<byte[]> GetAllSlots(int blockAccessIndex)
+    public HashSet<UInt256> GetAllSlots(int blockAccessIndex)
     {
-        HashSet<byte[]> slots = [];
+        HashSet<UInt256> slots = [];
         foreach (SlotChanges slotChange in _storageChanges.Values)
         {
-            byte[] lastValue = [];
+            UInt256 lastValue = 0;
             foreach (StorageChange storageChange in slotChange.Changes)
             {
                 if (storageChange.BlockAccessIndex > blockAccessIndex)
                 {
-                    if (!lastValue.IsZero())
+                    if (lastValue != 0)
                     {
                         slots.Add(slotChange.Slot);
                     }

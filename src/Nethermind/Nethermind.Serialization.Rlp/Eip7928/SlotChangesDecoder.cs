@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
@@ -21,12 +22,7 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamDecod
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
-        byte[] slot = ctx.DecodeByteArray(RlpLimit.L32);
-        if (slot.Length != 32)
-        {
-            throw new RlpException("Invalid storage key, should be 32 bytes.");
-        }
-
+        UInt256 slot = ctx.DecodeUInt256();
         StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _codeLimit);
 
         int? lastIndex = null;

@@ -165,39 +165,31 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         }
     }
 
-    public void AddStorageChange(Address address, UInt256 storageIndex, ReadOnlySpan<byte> before, ReadOnlySpan<byte> after)
+    public void AddStorageChange(Address address, UInt256 key, UInt256 before, UInt256 after)
     {
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
         if (before != after)
         {
-            Span<byte> key = new byte[32];
-            storageIndex.ToBigEndian(key);
             StorageChange(accountChanges, key, before, after);
         }
     }
 
-    public void AddStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+    public void AddStorageChange(in StorageCell storageCell, UInt256 before, UInt256 after)
     {
         Address address = storageCell.Address;
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
-        if (before is null || !Enumerable.SequenceEqual(before, after))
+        if (before != after)
         {
-            Span<byte> key = new byte[32];
-            storageCell.Index.ToBigEndian(key);
-            StorageChange(accountChanges, key, before.AsSpan(), after.AsSpan());
+            StorageChange(accountChanges, storageCell.Index, before, after);
         }
     }
 
-    public readonly void AddStorageRead(in StorageCell storageCell)
-    {
-        byte[] key = new byte[32];
-        storageCell.Index.ToBigEndian(key);
-        AddStorageRead(storageCell.Address, key);
-    }
+    public readonly void AddStorageRead(in StorageCell storageCell) =>
+        AddStorageRead(storageCell.Address, storageCell.Index);
 
-    public readonly void AddStorageRead(Address address, byte[] key)
+    public readonly void AddStorageRead(Address address, UInt256 key)
     {
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
@@ -214,40 +206,39 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         AddBalanceChange(address, oldBalance, 0);
     }
 
-    private void StorageChange(AccountChanges accountChanges, in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> before, in ReadOnlySpan<byte> after)
+    private void StorageChange(AccountChanges accountChanges, in UInt256 key, in UInt256 before, in UInt256 after)
     {
-        byte[] storageKey = [.. key];
-        SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageKey);
+        SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(key);
 
-        bool changedDuringTx = HasStorageChangedDuringTx(accountChanges.Address, storageKey, before, after);
+        bool changedDuringTx = HasStorageChangedDuringTx(accountChanges.Address, key, before, after);
         slotChanges.PopStorageChange(Index, out StorageChange? oldStorageChange);
 
         _changes.Push(new()
         {
             Address = accountChanges.Address,
             BlockAccessIndex = Index,
-            Slot = storageKey,
+            Slot = key,
             Type = ChangeType.StorageChange,
             PreviousValue = oldStorageChange,
-            PreTxStorage = [.. before]
+            PreTxStorage = before
         });
 
         if (changedDuringTx)
         {
-            byte[] newValue = new byte[32];
-            after.CopyTo(newValue.AsSpan()[(32 - after.Length)..]);
+            // byte[] newValue = new byte[32];
+            // after.CopyTo(newValue.AsSpan()[(32 - after.Length)..]);
             StorageChange storageChange = new()
             {
                 BlockAccessIndex = Index,
-                NewValue = newValue
+                NewValue = after
             };
 
             slotChanges.AddStorageChange(storageChange);
-            accountChanges.RemoveStorageRead(storageKey);
+            accountChanges.RemoveStorageRead(key);
         }
         else
         {
-            accountChanges.ClearEmptySlotChangesAndAddRead(storageKey);
+            accountChanges.ClearEmptySlotChangesAndAddRead(key);
         }
     }
 
@@ -294,7 +285,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     break;
                 case ChangeType.StorageChange:
                     StorageChange? previousStorage = change.PreviousValue is null ? null : (StorageChange)change.PreviousValue;
-                    accountChanges.TryGetSlotChanges(change.Slot!, out SlotChanges? slotChanges);
+                    accountChanges.TryGetSlotChanges(change.Slot!.Value, out SlotChanges? slotChanges);
 
                     slotChanges!.PopStorageChange(Index, out _);
                     if (previousStorage is not null)
@@ -302,7 +293,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                         slotChanges.AddStorageChange(previousStorage.Value);
                     }
 
-                    accountChanges.ClearEmptySlotChangesAndAddRead(change.Slot!);
+                    accountChanges.ClearEmptySlotChangesAndAddRead(change.Slot!.Value);
                     break;
             }
         }
@@ -347,7 +338,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         return true;
     }
 
-    private readonly bool HasStorageChangedDuringTx(Address address, byte[] key, in ReadOnlySpan<byte> beforeInstr, in ReadOnlySpan<byte> afterInstr)
+    private readonly bool HasStorageChangedDuringTx(Address address, UInt256 key, in UInt256 beforeInstr, in UInt256 afterInstr)
     {
         AccountChanges accountChanges = _accountChanges[address];
 
@@ -355,7 +346,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         {
             // first storage change of block
             // return storage prior to this instruction
-            return !Enumerable.SequenceEqual(beforeInstr.ToArray(), afterInstr.ToArray());
+            return beforeInstr != afterInstr;
         }
 
         foreach (StorageChange storageChange in slotChanges.Changes.AsEnumerable().Reverse())
@@ -363,17 +354,21 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
             if (storageChange.BlockAccessIndex != Index)
             {
                 // storage changed in previous tx in block
-                return !Enumerable.SequenceEqual(storageChange.NewValue, afterInstr.ToArray());
+                return storageChange.NewValue != afterInstr;
             }
         }
 
         // storage only changed within this transaction
         foreach (Change change in _changes)
         {
-            if (change.Type == ChangeType.StorageChange && change.Address == address && Enumerable.SequenceEqual(change.Slot!, key) && change.PreviousValue is null)
+            if (
+                change.Type == ChangeType.StorageChange &&
+                change.Address == address &&
+                change.Slot == key &&
+                change.PreviousValue is null)
             {
                 // first change of this transaction & block
-                return change.PreTxStorage is null || !Enumerable.SequenceEqual(change.PreTxStorage, afterInstr.ToArray());
+                return change.PreTxStorage is null || change.PreTxStorage != afterInstr;
             }
         }
 
@@ -440,11 +435,11 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     private readonly struct Change
     {
         public Address Address { get; init; }
-        public byte[]? Slot { get; init; }
+        public UInt256? Slot { get; init; }
         public ChangeType Type { get; init; }
         public IIndexedChange? PreviousValue { get; init; }
         public UInt256? PreTxBalance { get; init; }
-        public byte[]? PreTxStorage { get; init; }
+        public UInt256? PreTxStorage { get; init; }
         public byte[]? PreTxCode { get; init; }
         public int BlockAccessIndex { get; init; }
     }
