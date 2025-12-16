@@ -607,7 +607,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                         PrunePersistedNodes();
                     }
 
-                    if (_lastPrunedShardIdx - startingShard >= _shardedDirtyNodeCount && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
+                    if (!IsInCommitBufferMode && _lastPrunedShardIdx - startingShard >= _shardedDirtyNodeCount && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
                     {
                         // A persisted nodes that was recommitted and is still within pruning boundary cannot be pruned.
                         // This should be rare but can happen, notably in mainnet block 4500000 around there, But this
