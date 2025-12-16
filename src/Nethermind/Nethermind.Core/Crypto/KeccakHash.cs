@@ -879,9 +879,9 @@ public sealed class KeccakHash
     [SkipLocalsInit]
     private static void KeccakF1600Avx512F(Span<ulong> state)
     {
-        const byte XOR3 = 0x96;   // a ^ b ^ c
+        const byte XOR3 = 0x96;  // a ^ b ^ c
         const byte CHI = 0xD2;   // a ^ (~b & c) with vpternlog truth-table indexing
-        const byte BLEND = 0xD8;  // (c ? b : a) where c is a per-bit mask (all-ones in selected lane)
+        const byte BLEND = 0xD8; // (c ? b : a) where c is a per-bit mask (all-ones in selected lane)
 
         ref ulong s = ref MemoryMarshal.GetReference(state);
         ref ulong roundConstants = ref MemoryMarshal.GetArrayDataReference(RoundConstants);
@@ -941,159 +941,150 @@ public sealed class KeccakHash
         for (int i = ROUNDS / 2; i != 0; i--)
         {
             // Round 0: input rows (a0..a4, y fixed) -> output columns (a0..a4, x fixed).
+            {
+                // Theta (rows)
+                Vector512<ulong> parity = Avx512F.TernaryLogic(
+                    Avx512F.TernaryLogic(c0, c1, c2, XOR3),
+                    c3, c4, XOR3);
 
-            // Theta (rows)
-            Vector512<ulong> parity = Avx512F.TernaryLogic(
-                Avx512F.TernaryLogic(c0, c1, c2, XOR3),
-                c3, c4, XOR3);
+                Vector512<ulong> theta1a = Avx512F.PermuteVar8x64(parity, rot1);
+                Vector512<ulong> theta0 = Avx512F.PermuteVar8x64(parity, rot4);
+                Vector512<ulong> theta1 = Avx512F.RotateLeft(theta1a, 1);
 
-            Vector512<ulong> theta1a = Avx512F.PermuteVar8x64(parity, rot1);
-            Vector512<ulong> theta0 = Avx512F.PermuteVar8x64(parity, rot4);
-            Vector512<ulong> theta1 = Avx512F.RotateLeft(theta1a, 1);
+                c0 = Avx512F.TernaryLogic(c0, theta0, theta1, XOR3);
+                c1 = Avx512F.TernaryLogic(c1, theta0, theta1, XOR3);
+                c2 = Avx512F.TernaryLogic(c2, theta0, theta1, XOR3);
+                c3 = Avx512F.TernaryLogic(c3, theta0, theta1, XOR3);
+                c4 = Avx512F.TernaryLogic(c4, theta0, theta1, XOR3);
 
-            c0 = Avx512F.TernaryLogic(c0, theta0, theta1, XOR3);
-            c1 = Avx512F.TernaryLogic(c1, theta0, theta1, XOR3);
-            c2 = Avx512F.TernaryLogic(c2, theta0, theta1, XOR3);
-            c3 = Avx512F.TernaryLogic(c3, theta0, theta1, XOR3);
-            c4 = Avx512F.TernaryLogic(c4, theta0, theta1, XOR3);
+                // Rho (rows) + Pi-to-columns
+                c0 = Avx512F.RotateLeftVariable(c0, rho0);
+                c1 = Avx512F.RotateLeftVariable(c1, rho1);
+                c0 = Avx512F.PermuteVar8x64(c0, pi0);
 
-            // Rho (rows) + Pi-to-columns
-            c0 = Avx512F.RotateLeftVariable(c0, rho0);
-            c1 = Avx512F.RotateLeftVariable(c1, rho1);
-            c0 = Avx512F.PermuteVar8x64(c0, pi0);
+                c2 = Avx512F.RotateLeftVariable(c2, rho2);
+                c1 = Avx512F.PermuteVar8x64(c1, pi1);
 
-            c2 = Avx512F.RotateLeftVariable(c2, rho2);
-            c1 = Avx512F.PermuteVar8x64(c1, pi1);
+                c3 = Avx512F.RotateLeftVariable(c3, rho3);
+                c2 = Avx512F.PermuteVar8x64(c2, pi2);
 
-            c3 = Avx512F.RotateLeftVariable(c3, rho3);
-            c2 = Avx512F.PermuteVar8x64(c2, pi2);
+                c4 = Avx512F.RotateLeftVariable(c4, rho4);
+                c3 = Avx512F.PermuteVar8x64(c3, pi3);
+                c4 = Avx512F.PermuteVar8x64(c4, pi4);
 
-            c4 = Avx512F.RotateLeftVariable(c4, rho4);
-            c3 = Avx512F.PermuteVar8x64(c3, pi3);
-            c4 = Avx512F.PermuteVar8x64(c4, pi4);
+                // Chi (columns, cross-register)
+                Vector512<ulong> t0 = c0;
+                Vector512<ulong> t1 = c1;
+                c0 = Avx512F.TernaryLogic(c0, c1, c2, CHI);
+                c1 = Avx512F.TernaryLogic(c1, c2, c3, CHI);
+                c2 = Avx512F.TernaryLogic(c2, c3, c4, CHI);
+                c3 = Avx512F.TernaryLogic(c3, c4, t0, CHI);
+                c4 = Avx512F.TernaryLogic(c4, t0, t1, CHI);
 
-            // Chi (columns, cross-register)
-            Vector512<ulong> t0 = c0;
-            Vector512<ulong> t1 = c1;
-            c0 = Avx512F.TernaryLogic(c0, c1, c2, CHI);
-            c1 = Avx512F.TernaryLogic(c1, c2, c3, CHI);
-            c2 = Avx512F.TernaryLogic(c2, c3, c4, CHI);
-            c3 = Avx512F.TernaryLogic(c3, c4, t0, CHI);
-            c4 = Avx512F.TernaryLogic(c4, t0, t1, CHI);
+                // Iota (A[0,0] is lane0 of column0 in this layout)
+                c0 = Avx512F.Xor(c0, Vector512.CreateScalar(roundConstants));
+                roundConstants = ref Unsafe.Add(ref roundConstants, 1);
+            }
+            {
+                // Harmonise: columns -> diagonals (avoid full transpose).
+                //
+                // Build d0..d4 where register d holds A[x, y=x-d] in lanes x=0..4.
+                // Each diagonal is built by blending lanes from different columns, then a lane-rotate.
 
-            // Iota (A[0,0] is lane0 of column0 in this layout)
-            c0 = Avx512F.Xor(c0, Vector512.CreateScalar(roundConstants));
-            roundConstants = ref Unsafe.Add(ref roundConstants, 1);
+                // Lane1
+                Vector512<ulong> d0 = Avx512F.TernaryLogic(c0, c1, m1, BLEND);
+                Vector512<ulong> d1 = Avx512F.TernaryLogic(c1, c2, m1, BLEND);
+                Vector512<ulong> d2 = Avx512F.TernaryLogic(c2, c3, m1, BLEND);
+                Vector512<ulong> d3 = Avx512F.TernaryLogic(c3, c4, m1, BLEND);
+                Vector512<ulong> d4 = Avx512F.TernaryLogic(c4, c0, m1, BLEND);
 
-            // Harmonise: columns -> diagonals (avoid full transpose).
-            //
-            // Build d0..d4 where register d holds A[x, y=x-d] in lanes x=0..4.
-            // Each diagonal is built by blending lanes from different columns, then a lane-rotate.
+                // Lane2
+                d0 = Avx512F.TernaryLogic(d0, c2, m2, BLEND);
+                d1 = Avx512F.TernaryLogic(d1, c3, m2, BLEND);
+                d2 = Avx512F.TernaryLogic(d2, c4, m2, BLEND);
+                d3 = Avx512F.TernaryLogic(d3, c0, m2, BLEND);
+                d4 = Avx512F.TernaryLogic(d4, c1, m2, BLEND);
 
-            Vector512<ulong> z0 = c0;
-            Vector512<ulong> z1 = c1;
-            Vector512<ulong> z2 = c2;
-            Vector512<ulong> z3 = c3;
-            Vector512<ulong> z4 = c4;
+                // Lane3
+                d0 = Avx512F.TernaryLogic(d0, c3, m3, BLEND);
+                d1 = Avx512F.TernaryLogic(d1, c4, m3, BLEND);
+                d2 = Avx512F.TernaryLogic(d2, c0, m3, BLEND);
+                d3 = Avx512F.TernaryLogic(d3, c1, m3, BLEND);
+                d4 = Avx512F.TernaryLogic(d4, c2, m3, BLEND);
 
-            Vector512<ulong> d0 = z0;
-            Vector512<ulong> d1 = z1;
-            Vector512<ulong> d2 = z2;
-            Vector512<ulong> d3 = z3;
-            Vector512<ulong> d4 = z4;
+                // Lane4
+                d0 = Avx512F.TernaryLogic(d0, c4, m4, BLEND);
+                d1 = Avx512F.TernaryLogic(d1, c0, m4, BLEND);
+                d2 = Avx512F.TernaryLogic(d2, c1, m4, BLEND);
+                d3 = Avx512F.TernaryLogic(d3, c2, m4, BLEND);
+                d4 = Avx512F.TernaryLogic(d4, c3, m4, BLEND);
 
-            // Lane1
-            d0 = Avx512F.TernaryLogic(d0, z1, m1, BLEND);
-            d1 = Avx512F.TernaryLogic(d1, z2, m1, BLEND);
-            d2 = Avx512F.TernaryLogic(d2, z3, m1, BLEND);
-            d3 = Avx512F.TernaryLogic(d3, z4, m1, BLEND);
-            d4 = Avx512F.TernaryLogic(d4, z0, m1, BLEND);
+                // Rotate lanes so lanes become x (0..4) rather than y (0..4).
+                // d0 stays as-is. Others are right-rotates by d (implemented via existing rot vectors).
+                d1 = Avx512F.PermuteVar8x64(d1, rot4); // right by1
+                d2 = Avx512F.PermuteVar8x64(d2, rot3); // right by2
+                d3 = Avx512F.PermuteVar8x64(d3, rot2); // right by3
+                d4 = Avx512F.PermuteVar8x64(d4, rot1); // right by4
 
-            // Lane2
-            d0 = Avx512F.TernaryLogic(d0, z2, m2, BLEND);
-            d1 = Avx512F.TernaryLogic(d1, z3, m2, BLEND);
-            d2 = Avx512F.TernaryLogic(d2, z4, m2, BLEND);
-            d3 = Avx512F.TernaryLogic(d3, z0, m2, BLEND);
-            d4 = Avx512F.TernaryLogic(d4, z1, m2, BLEND);
+                // Round 1: input diagonals (d0..d4) -> output rows (a0..a4).
 
-            // Lane3
-            d0 = Avx512F.TernaryLogic(d0, z3, m3, BLEND);
-            d1 = Avx512F.TernaryLogic(d1, z4, m3, BLEND);
-            d2 = Avx512F.TernaryLogic(d2, z0, m3, BLEND);
-            d3 = Avx512F.TernaryLogic(d3, z1, m3, BLEND);
-            d4 = Avx512F.TernaryLogic(d4, z2, m3, BLEND);
+                // Theta (diagonals - lanes are still x, so same theta code works)
+                Vector512<ulong> parity = Avx512F.TernaryLogic(
+                    Avx512F.TernaryLogic(d0, d1, d2, XOR3),
+                    d3, d4, XOR3);
 
-            // Lane4
-            d0 = Avx512F.TernaryLogic(d0, z4, m4, BLEND);
-            d1 = Avx512F.TernaryLogic(d1, z0, m4, BLEND);
-            d2 = Avx512F.TernaryLogic(d2, z1, m4, BLEND);
-            d3 = Avx512F.TernaryLogic(d3, z2, m4, BLEND);
-            d4 = Avx512F.TernaryLogic(d4, z3, m4, BLEND);
+                Vector512<ulong> theta1a = Avx512F.PermuteVar8x64(parity, rot1);
+                Vector512<ulong> theta0 = Avx512F.PermuteVar8x64(parity, rot4);
+                Vector512<ulong> theta1 = Avx512F.RotateLeft(theta1a, 1);
 
-            // Rotate lanes so lanes become x (0..4) rather than y (0..4).
-            // d0 stays as-is. Others are right-rotates by d (implemented via existing rot vectors).
-            d1 = Avx512F.PermuteVar8x64(d1, rot4); // right by1
-            d2 = Avx512F.PermuteVar8x64(d2, rot3); // right by2
-            d3 = Avx512F.PermuteVar8x64(d3, rot2); // right by3
-            d4 = Avx512F.PermuteVar8x64(d4, rot1); // right by4
+                d0 = Avx512F.TernaryLogic(d0, theta0, theta1, XOR3);
+                d1 = Avx512F.TernaryLogic(d1, theta0, theta1, XOR3);
+                d2 = Avx512F.TernaryLogic(d2, theta0, theta1, XOR3);
+                d3 = Avx512F.TernaryLogic(d3, theta0, theta1, XOR3);
+                d4 = Avx512F.TernaryLogic(d4, theta0, theta1, XOR3);
 
-            // Round 1: input diagonals (d0..d4) -> output rows (a0..a4).
+                // Rho (diagonals)
+                d0 = Avx512F.RotateLeftVariable(d0, rhod0);
+                d1 = Avx512F.RotateLeftVariable(d1, rhod1);
+                d2 = Avx512F.RotateLeftVariable(d2, rhod2);
+                d3 = Avx512F.RotateLeftVariable(d3, rhod3);
+                d4 = Avx512F.RotateLeftVariable(d4, rhod4);
 
-            // Theta (diagonals - lanes are still x, so same theta code works)
-            parity = Avx512F.TernaryLogic(
-                Avx512F.TernaryLogic(d0, d1, d2, XOR3),
-                d3, d4, XOR3);
+                // Pi (diagonals -> rows):
+                // Each diagonal d maps to a single output row y' = -3d mod5,
+                // and x' = y = x-d, so it's just an intra-register rotate-left by d.
+                c0 = d0;                               // d=0 -> y'=0, rot-left 0
+                c2 = Avx512F.PermuteVar8x64(d1, rot1); // d=1 -> y'=2, rot-left 1
+                c4 = Avx512F.PermuteVar8x64(d2, rot2); // d=2 -> y'=4, rot-left 2
+                c1 = Avx512F.PermuteVar8x64(d3, rot3); // d=3 -> y'=1, rot-left 3
+                c3 = Avx512F.PermuteVar8x64(d4, rot4); // d=4 -> y'=3, rot-left 4
+            }
+            {
+                // Chi (rows, intra-register - costs extra permutes vs cross-register chi)
+                Vector512<ulong> b = Avx512F.PermuteVar8x64(c0, rot1);
+                Vector512<ulong> c = Avx512F.PermuteVar8x64(c0, rot2);
+                c0 = Avx512F.TernaryLogic(c0, b, c, CHI);
 
-            theta1a = Avx512F.PermuteVar8x64(parity, rot1);
-            theta0 = Avx512F.PermuteVar8x64(parity, rot4);
-            theta1 = Avx512F.RotateLeft(theta1a, 1);
+                // Iota can happen as soon as row0 is ready.
+                c0 = Avx512F.Xor(c0, Vector512.CreateScalar(roundConstants));
+                roundConstants = ref Unsafe.Add(ref roundConstants, 1);
 
-            d0 = Avx512F.TernaryLogic(d0, theta0, theta1, XOR3);
-            d1 = Avx512F.TernaryLogic(d1, theta0, theta1, XOR3);
-            d2 = Avx512F.TernaryLogic(d2, theta0, theta1, XOR3);
-            d3 = Avx512F.TernaryLogic(d3, theta0, theta1, XOR3);
-            d4 = Avx512F.TernaryLogic(d4, theta0, theta1, XOR3);
+                b = Avx512F.PermuteVar8x64(c1, rot1);
+                c = Avx512F.PermuteVar8x64(c1, rot2);
+                c1 = Avx512F.TernaryLogic(c1, b, c, CHI);
 
-            // Rho (diagonals)
-            d0 = Avx512F.RotateLeftVariable(d0, rhod0);
-            d1 = Avx512F.RotateLeftVariable(d1, rhod1);
-            d2 = Avx512F.RotateLeftVariable(d2, rhod2);
-            d3 = Avx512F.RotateLeftVariable(d3, rhod3);
-            d4 = Avx512F.RotateLeftVariable(d4, rhod4);
+                b = Avx512F.PermuteVar8x64(c2, rot1);
+                c = Avx512F.PermuteVar8x64(c2, rot2);
+                c2 = Avx512F.TernaryLogic(c2, b, c, CHI);
 
-            // Pi (diagonals -> rows):
-            // Each diagonal d maps to a single output row y' = -3d mod5,
-            // and x' = y = x-d, so it's just an intra-register rotate-left by d.
-            c0 = d0;                               // d=0 -> y'=0, rot-left 0
-            c2 = Avx512F.PermuteVar8x64(d1, rot1); // d=1 -> y'=2, rot-left 1
-            c4 = Avx512F.PermuteVar8x64(d2, rot2); // d=2 -> y'=4, rot-left 2
-            c1 = Avx512F.PermuteVar8x64(d3, rot3); // d=3 -> y'=1, rot-left 3
-            c3 = Avx512F.PermuteVar8x64(d4, rot4); // d=4 -> y'=3, rot-left 4
+                b = Avx512F.PermuteVar8x64(c3, rot1);
+                c = Avx512F.PermuteVar8x64(c3, rot2);
+                c3 = Avx512F.TernaryLogic(c3, b, c, CHI);
 
-            // Chi (rows, intra-register - costs extra permutes vs cross-register chi)
-            Vector512<ulong> b = Avx512F.PermuteVar8x64(c0, rot1);
-            Vector512<ulong> c = Avx512F.PermuteVar8x64(c0, rot2);
-            c0 = Avx512F.TernaryLogic(c0, b, c, CHI);
-
-            // Iota can happen as soon as row0 is ready.
-            c0 = Avx512F.Xor(c0, Vector512.CreateScalar(roundConstants));
-            roundConstants = ref Unsafe.Add(ref roundConstants, 1);
-
-            b = Avx512F.PermuteVar8x64(c1, rot1);
-            c = Avx512F.PermuteVar8x64(c1, rot2);
-            c1 = Avx512F.TernaryLogic(c1, b, c, CHI);
-
-            b = Avx512F.PermuteVar8x64(c2, rot1);
-            c = Avx512F.PermuteVar8x64(c2, rot2);
-            c2 = Avx512F.TernaryLogic(c2, b, c, CHI);
-
-            b = Avx512F.PermuteVar8x64(c3, rot1);
-            c = Avx512F.PermuteVar8x64(c3, rot2);
-            c3 = Avx512F.TernaryLogic(c3, b, c, CHI);
-
-            b = Avx512F.PermuteVar8x64(c4, rot1);
-            c = Avx512F.PermuteVar8x64(c4, rot2);
-            c4 = Avx512F.TernaryLogic(c4, b, c, CHI);
+                b = Avx512F.PermuteVar8x64(c4, rot1);
+                c = Avx512F.PermuteVar8x64(c4, rot2);
+                c4 = Avx512F.TernaryLogic(c4, b, c, CHI);
+            }
         }
 
         // Store rows 0-3 as full zmm; row4 as 4 lanes + scalar lane4.
