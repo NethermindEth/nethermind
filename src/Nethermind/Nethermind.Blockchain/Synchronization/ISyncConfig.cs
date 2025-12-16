@@ -179,4 +179,7 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ Estimated max size of blocks in block processing queue before stop downloading.", DefaultValue = "200000000", HiddenFromDocs = true)]
     long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; }
+
+    [ConfigItem(Description = "Max lookup back", DefaultValue = "128", HiddenFromDocs = true)]
+    int MaxLookupBack { get; set; }
 }

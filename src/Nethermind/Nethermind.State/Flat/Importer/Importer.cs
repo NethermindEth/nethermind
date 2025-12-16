@@ -26,7 +26,8 @@ public class Importer(
     ILogger _logger = logManager.GetClassLogger<Importer>();
     internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
     long totalNodes = 0;
-    int batchSize = 500_000;
+    int batchSize = 100_000;
+    int logInterval = 1_000_000;
 
     private record Entry(Hash256? address, TreePath path, TrieNode node);
 
@@ -50,7 +51,8 @@ public class Importer(
             {
                 tree.Accept(new Visitor(channel.Writer), to.stateRoot.ToHash256(), new VisitingOptions()
                 {
-                    MaxDegreeOfParallelism = Environment.ProcessorCount
+                    // MaxDegreeOfParallelism = Environment.ProcessorCount
+                    MaxDegreeOfParallelism = 1 // Faster this way
                 });
             }
             finally
@@ -123,7 +125,7 @@ public class Importer(
 
                 currentBatchSize += 1;
                 long theTotalNode = Interlocked.Increment(ref totalNodes);
-                if (theTotalNode % batchSize == 0)
+                if (theTotalNode % logInterval == 0)
                 {
                     _logger.Info($"Wrote {theTotalNode:N} nodes.");
                 }

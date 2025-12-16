@@ -138,6 +138,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                         syncConfig.FastSyncCatchUpHeightDelta = 100_000_000;
                     }
 
+                    // Prevent state sync again. It need to keep scanning the range at which the import
+                    // will finish.
+                    syncConfig.MaxLookupBack = 1024*16;
+
                     return syncConfig;
                 })
                 .AddSingleton<ImportStateOnStateSyncFinished>()
@@ -222,7 +226,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
         {
             _treeSync.SyncCompleted -= TreeSyncOnOnVerifyPostSyncCleanup;
 
-            // Note: this block
+            // Note: this wont return until it finishes.
             StateId stateId = new StateId(evt.Pivot);
             _importer.Copy(stateId);
         }
