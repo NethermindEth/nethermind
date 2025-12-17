@@ -37,7 +37,7 @@ public class SnapshotCompactor
         _compactEveryBlockNum = config.CompactInterval;
     }
 
-    internal void CompactLevel(StateId stateId, CachedResource cachedResource)
+    internal void CompactLevel(StateId stateId)
     {
         try
         {
@@ -46,14 +46,11 @@ public class SnapshotCompactor
             if (blockNumber == 0) return;
             if (blockNumber % _compactSize != 0)
             {
-                using (_flatDiffRepository.EnterRepolockReadOnly())
+                StateId? last = _flatDiffRepository.GetLastSnapshotId();
+                if (last != null && last.Value.blockNumber - blockNumber > 1)
                 {
-                    StateId? last = _flatDiffRepository.GetLastSnapshotId();
-                    if (last != null && last.Value.blockNumber - blockNumber > 1)
-                    {
-                        // To slow. Just skip this block number.
-                        return;
-                    }
+                    // To slow. Just skip this block number.
+                    return;
                 }
 
                 if (blockNumber % _compactEveryBlockNum != 0) return;
@@ -125,40 +122,37 @@ public class SnapshotCompactor
             sw = Stopwatch.GetTimestamp();
             Dictionary<MemoryType, long> memory = compactedSnapshot.EstimateMemory();
 
-            using (_flatDiffRepository.EnterRepolock())
+            _flatdiffimes.WithLabels("compaction", "add_repolock").Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
+
+            if (_logger.IsDebug) _logger.Debug($"Compacted {snapshots.Count} to {stateId}");
+
+            if (_flatDiffRepository.AddCompactedSnapshot(stateId, compactedSnapshot))
             {
-                _flatdiffimes.WithLabels("compaction", "add_repolock").Observe(Stopwatch.GetTimestamp() - sw);
-                sw = Stopwatch.GetTimestamp();
-
-                if (_logger.IsDebug) _logger.Debug($"Compacted {snapshots.Count} to {stateId}");
-
-                if (_flatDiffRepository.AddCompactedSnapshot(stateId, compactedSnapshot))
+                foreach (var keyValuePair in memory)
                 {
-                    foreach (var keyValuePair in memory)
-                    {
-                        _compactedMemory.WithLabels(keyValuePair.Key.ToString()).Inc(keyValuePair.Value);
-                    }
-                    _compactedMemory.WithLabels("count").Inc(1);
+                    _compactedMemory.WithLabels(keyValuePair.Key.ToString()).Inc(keyValuePair.Value);
                 }
-                else
-                {
-                    compactedSnapshot.Dispose();
-                }
-
-                _flatdiffimes.WithLabels("compaction", "add_and_measure").Observe(Stopwatch.GetTimestamp() - sw);
-                sw = Stopwatch.GetTimestamp();
-
-                if (stateId.blockNumber % _compactSize != 0)
-                {
-                    // Save memory
-                    foreach (var id in _flatDiffRepository.GetStatesAtBlockNumber(stateId.blockNumber - _compactSize))
-                    {
-                        _flatDiffRepository.RemoveAndReleaseCompactedKnownState(id);
-                    }
-                }
-
-                _flatdiffimes.WithLabels("compaction", "cleanup_compacted").Observe(Stopwatch.GetTimestamp() - sw);
+                _compactedMemory.WithLabels("count").Inc(1);
             }
+            else
+            {
+                compactedSnapshot.Dispose();
+            }
+
+            _flatdiffimes.WithLabels("compaction", "add_and_measure").Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
+
+            if (stateId.blockNumber % _compactSize != 0)
+            {
+                // Save memory
+                foreach (var id in _flatDiffRepository.GetStatesAtBlockNumber(stateId.blockNumber - _compactSize))
+                {
+                    _flatDiffRepository.RemoveAndReleaseCompactedKnownState(id);
+                }
+            }
+
+            _flatdiffimes.WithLabels("compaction", "cleanup_compacted").Observe(Stopwatch.GetTimestamp() - sw);
         }
         catch (Exception e)
         {

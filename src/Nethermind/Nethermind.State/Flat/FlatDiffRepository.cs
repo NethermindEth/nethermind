@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie.Pruning;
@@ -22,10 +23,9 @@ namespace Nethermind.State.Flat;
 
 public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 {
-    private ReaderWriterLockSlim _repoLock = new ReaderWriterLockSlim(); // Note: lock is for proteccting in memory and compacted states only
     private readonly ConcurrentDictionary<StateId, Snapshot> _compactedKnownStates = new();
     private readonly ConcurrentDictionary<StateId, Snapshot> _knownStates = new();
-    private SortedSet<StateId> _sortedKnownStates = new();
+    private readonly ReadWriteLockBox<SortedSet<StateId>> _sortedKnownStates = new(new SortedSet<StateId>());
 
     private ResourcePool _resourcePool;
 
@@ -136,7 +136,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
                 {
                     PopulateTrieNodeCache(cachedResource);
 
-                    _snapshotCompactor.CompactLevel(stateId, cachedResource);
+                    _snapshotCompactor.CompactLevel(stateId);
                     if (stateId.blockNumber % _compactSize == 0)
                     {
                         await _persistenceJob.Writer.WriteAsync(stateId, cancellationToken);
@@ -156,7 +156,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     private void RunCompactJob(StateId stateId, CachedResource cachedResource)
     {
-        _snapshotCompactor.CompactLevel(stateId, cachedResource);
+        _snapshotCompactor.CompactLevel(stateId);
         PersistIfNeeded().Wait();
     }
 
@@ -211,38 +211,24 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         await Task.WhenAny(jobTask, waiterTask);
     }
 
-    internal RepolockReadExiter EnterRepolockReadOnly()
-    {
-        _repoLock.EnterReadLock();
-
-        return new RepolockReadExiter(_repoLock, true);
-    }
-
-    internal RepolockReadExiter EnterRepolock()
-    {
-        _repoLock.EnterWriteLock();
-
-        return new RepolockReadExiter(_repoLock, false);
-    }
-
     internal ArrayPoolList<StateId> GetStatesAfterBlock(long blockNumber)
     {
-        _repoLock.EnterReadLock();
+        using var _ = _sortedKnownStates.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
         StateId min = new StateId(blockNumber + 1, ValueKeccak.Zero);
         StateId max = new StateId(long.MaxValue, ValueKeccak.Zero);
 
-        return _sortedKnownStates.GetViewBetween(min, max).ToPooledList(0);
+        return sortedSnapshots.GetViewBetween(min, max).ToPooledList(0);
     }
 
     internal ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber)
     {
-        _repoLock.EnterReadLock();
+        using var _ = _sortedKnownStates.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
         StateId min = new StateId(blockNumber, ValueKeccak.Zero);
         StateId max = new StateId(blockNumber, ValueKeccak.MaxValue);
 
-        return _sortedKnownStates.GetViewBetween(min, max).ToPooledList(0);
+        return sortedSnapshots.GetViewBetween(min, max).ToPooledList(0);
     }
 
     internal ref struct RepolockReadExiter(ReaderWriterLockSlim @lock, bool read) : IDisposable
@@ -262,22 +248,22 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     internal StateId? GetLastSnapshotId()
     {
-        _repoLock.EnterReadLock();
+        using var _ = _sortedKnownStates.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
-        if (_sortedKnownStates.Count == 0)
+        if (sortedSnapshots.Count == 0)
             return null;
-        return _sortedKnownStates.Max;
+        return sortedSnapshots.Max;
     }
 
     private void PopulateTrieNodeCache(CachedResource cachedResource)
     {
+        // TODO: When unable to populate, the cached resource need to have its node unresolved or it will memleak.
+
+        StateId? last = GetLastSnapshotId();
+        if (last == null) return;
+
         Snapshot lastSnapshot;
-        using (EnterRepolockReadOnly())
-        {
-            StateId? last = GetLastSnapshotId();
-            if (last == null) return;
-            if (!TryLeaseState(last.Value, out lastSnapshot)) return;
-        }
+        if (!TryLeaseState(last.Value, out lastSnapshot)) return;
 
         using var _ = lastSnapshot; // Dispose
 
@@ -435,10 +421,8 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
         if (_knownStates.TryAdd(endBlock, snapshot))
         {
-            using (EnterRepolock())
-            {
-                _sortedKnownStates.Add(endBlock);
-            }
+            using var _ = _sortedKnownStates.EnterWriteLock(out SortedSet<StateId> sortedSnapshots);
+            sortedSnapshots.Add(endBlock);
         }
 
         _flatdiffimes.WithLabels("add_snapshot", "add_block").Observe(Stopwatch.GetTimestamp() - sw);
@@ -487,13 +471,13 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     private void RemoveAndReleaseKnownState(StateId stateId)
     {
-        if (!_repoLock.IsWriteLockHeld) throw new InvalidOperationException("Must hold write lock to repolock to change snapshot store");
         if (_knownStates.TryRemove(stateId, out var existingState))
         {
-            using (EnterRepolock())
+            using (var _ = _sortedKnownStates.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
             {
-                _sortedKnownStates.Remove(stateId);
+                sortedSnapshots.Remove(stateId);
             }
+
             var memory = existingState.EstimateMemory();
             foreach (var keyValuePair in memory)
             {
@@ -523,9 +507,9 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     public StateId? FindStateIdForStateRoot(Hash256 stateRoot)
     {
-        using (EnterRepolockReadOnly())
+        using (var _ = _sortedKnownStates.EnterReadLock(out SortedSet<StateId> sortedSnapshots))
         {
-            foreach (var stateId in _sortedKnownStates)
+            foreach (var stateId in sortedSnapshots)
             {
                 if (stateId.stateRoot == stateRoot) return stateId;
             }
@@ -542,13 +526,10 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     public StateId? FindLatestAvailableState()
     {
-        using (EnterRepolockReadOnly())
-        {
-            StateId? lastInMemory = GetLastSnapshotId();
-            if (lastInMemory != null) return lastInMemory;
+        StateId? lastInMemory = GetLastSnapshotId();
+        if (lastInMemory != null) return lastInMemory;
 
-            return GetCurrentPersistedStateId();
-        }
+        return GetCurrentPersistedStateId();
     }
 
     public async ValueTask DisposeAsync()
@@ -563,13 +544,13 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     public void OnStatePersisted(StateId stateId)
     {
         ArrayPoolList<StateId> statesBeforeStateId;
-        using (EnterRepolock())
+        using (var _s = _sortedKnownStates.EnterReadLock(out SortedSet<StateId> sortedSnapashots))
         {
-            statesBeforeStateId = _sortedKnownStates
+            statesBeforeStateId = sortedSnapashots
                 .GetViewBetween(new StateId(0, Hash256.Zero), new StateId(stateId.blockNumber, Keccak.MaxValue))
                 .ToPooledList(0);
         }
-        using var _ = statesBeforeStateId;
+        using var _ = statesBeforeStateId; // auto dispose
 
         foreach (var stateToRemove in statesBeforeStateId)
         {

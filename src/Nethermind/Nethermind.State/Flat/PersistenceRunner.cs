@@ -50,116 +50,114 @@ public class PersistenceRunner
         {
             Snapshot? snapshotToSave = null;
             long sw = Stopwatch.GetTimestamp();
-            using (_flatDiffRepository.EnterRepolock())
+            _flatdiffimes.WithLabels("add_to_persistence", "repolock").Observe(Stopwatch.GetTimestamp() - sw);
+            sw = Stopwatch.GetTimestamp();
+            long lastSnapshotNumber = _flatDiffRepository.GetLastSnapshotId()?.blockNumber ?? 0;
+            StateId currentPersistedState = _flatDiffRepository.GetCurrentPersistedStateId();
+            long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
+
+            bool forcedFinalizedState = false;
+            long inMemoryStateDepth = lastSnapshotNumber - currentPersistedState.blockNumber;
+
+            if (currentPersistedState.blockNumber + _compactSize > finalizedBlockNumber)
             {
-                _flatdiffimes.WithLabels("add_to_persistence", "repolock").Observe(Stopwatch.GetTimestamp() - sw);
-                sw = Stopwatch.GetTimestamp();
-                long lastSnapshotNumber = _flatDiffRepository.GetLastSnapshotId()?.blockNumber ?? 0;
-                StateId currentPersistedState = _flatDiffRepository.GetCurrentPersistedStateId();
-                long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
-
-                bool forcedFinalizedState = false;
-                long inMemoryStateDepth = lastSnapshotNumber - currentPersistedState.blockNumber;
-
-                if (currentPersistedState.blockNumber + _compactSize > finalizedBlockNumber)
+                // Unfinalized
+                if (inMemoryStateDepth > _forcedPruningBoundary)
                 {
-                    // Unfinalized
-                    if (inMemoryStateDepth > _forcedPruningBoundary)
-                    {
-                        _logger.Warn($"Very long unfinalized state. Force persisting to conserve memory. finalized block number is {finalizedBlockNumber}.");
-                        forcedFinalizedState = true;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-                else if (inMemoryStateDepth + _compactSize < _minimumPruningBoundary) // add compact size as that will be removed after persistence
-                {
-                    // Keep some state in memory
-                    break;
-                }
-
-
-                if (!forcedFinalizedState)
-                {
-                    Hash256 finalizedStateRootAtCompacted = _finalizedStateProvider.GetFinalizedStateRootAt(currentPersistedState.blockNumber + _compactSize);
-                    using ArrayPoolList<StateId> compactedStates = _flatDiffRepository.GetStatesAtBlockNumber(currentPersistedState.blockNumber + _compactSize);
-
-                    // Note: Need to verify that this is finalized
-                    foreach (var stateId in compactedStates)
-                    {
-                        if (stateId.stateRoot == finalizedStateRootAtCompacted)
-                        {
-                            if (_flatDiffRepository.TryLeaseCompactedState(stateId, out var compactedState))
-                            {
-                                if (compactedState.From == currentPersistedState)
-                                {
-                                    if (_logger.IsDebug) _logger.Debug($"Persisting compacted state {stateId}");
-
-                                    snapshotToSave = compactedState;
-                                    break;
-                                }
-                                else
-                                {
-                                    compactedState.Dispose();
-                                }
-                            }
-                        }
-                    }
-
-                    // Note: This assume there is always a snapshot right next to current persisted state.
-                    if (snapshotToSave is null)
-                    {
-                        Hash256 finalizedStateRootAtNextBlock = _finalizedStateProvider.GetFinalizedStateRootAt(currentPersistedState.blockNumber + 1);
-                        using ArrayPoolList<StateId> nextBlockStates = _flatDiffRepository.GetStatesAtBlockNumber(currentPersistedState.blockNumber + 1);
-
-                        foreach (var stateId in nextBlockStates)
-                        {
-                            if (stateId.stateRoot == finalizedStateRootAtNextBlock)
-                            {
-                                if (_flatDiffRepository.TryLeaseState(stateId, out var snapshot))
-                                {
-                                    if (snapshot.From == currentPersistedState)
-                                    {
-                                        if (_logger.IsDebug) _logger.Debug($"Persisting uncompacted state {stateId}");
-
-                                        snapshotToSave = snapshot;
-                                        break;
-                                    }
-                                    else
-                                    {
-                                        snapshot.Dispose();
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    _logger.Warn($"Very long unfinalized state. Force persisting to conserve memory. finalized block number is {finalizedBlockNumber}.");
+                    forcedFinalizedState = true;
                 }
                 else
                 {
-                    using ArrayPoolList<StateId> nextBlockStates = _flatDiffRepository.GetStatesAtBlockNumber(currentPersistedState.blockNumber + 1);
+                    break;
+                }
+            }
+            else if (inMemoryStateDepth + _compactSize < _minimumPruningBoundary) // add compact size as that will be removed after persistence
+            {
+                // Keep some state in memory
+                break;
+            }
 
-                    // Just pick the first one
-                    foreach (var stateId in nextBlockStates)
+
+            if (!forcedFinalizedState)
+            {
+                Hash256 finalizedStateRootAtCompacted = _finalizedStateProvider.GetFinalizedStateRootAt(currentPersistedState.blockNumber + _compactSize);
+                using ArrayPoolList<StateId> compactedStates = _flatDiffRepository.GetStatesAtBlockNumber(currentPersistedState.blockNumber + _compactSize);
+
+                // Note: Need to verify that this is finalized
+                foreach (var stateId in compactedStates)
+                {
+                    if (stateId.stateRoot == finalizedStateRootAtCompacted)
                     {
-                        if (_flatDiffRepository.TryLeaseState(stateId, out var snapshot))
+                        if (_flatDiffRepository.TryLeaseCompactedState(stateId, out var compactedState))
                         {
-                            if (snapshot.From == currentPersistedState)
+                            if (compactedState.From == currentPersistedState)
                             {
-                                if (_logger.IsWarn) _logger.Warn($"Force persisting state {stateId}");
+                                if (_logger.IsDebug) _logger.Debug($"Persisting compacted state {stateId}");
 
-                                snapshotToSave = snapshot;
+                                snapshotToSave = compactedState;
                                 break;
                             }
                             else
                             {
-                                snapshot.Dispose();
+                                compactedState.Dispose();
+                            }
+                        }
+                    }
+                }
+
+                // Note: This assume there is always a snapshot right next to current persisted state.
+                if (snapshotToSave is null)
+                {
+                    Hash256 finalizedStateRootAtNextBlock = _finalizedStateProvider.GetFinalizedStateRootAt(currentPersistedState.blockNumber + 1);
+                    using ArrayPoolList<StateId> nextBlockStates = _flatDiffRepository.GetStatesAtBlockNumber(currentPersistedState.blockNumber + 1);
+
+                    foreach (var stateId in nextBlockStates)
+                    {
+                        if (stateId.stateRoot == finalizedStateRootAtNextBlock)
+                        {
+                            if (_flatDiffRepository.TryLeaseState(stateId, out var snapshot))
+                            {
+                                if (snapshot.From == currentPersistedState)
+                                {
+                                    if (_logger.IsDebug) _logger.Debug($"Persisting uncompacted state {stateId}");
+
+                                    snapshotToSave = snapshot;
+                                    break;
+                                }
+                                else
+                                {
+                                    snapshot.Dispose();
+                                }
                             }
                         }
                     }
                 }
             }
+            else
+            {
+                using ArrayPoolList<StateId> nextBlockStates = _flatDiffRepository.GetStatesAtBlockNumber(currentPersistedState.blockNumber + 1);
+
+                // Just pick the first one
+                foreach (var stateId in nextBlockStates)
+                {
+                    if (_flatDiffRepository.TryLeaseState(stateId, out var snapshot))
+                    {
+                        if (snapshot.From == currentPersistedState)
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"Force persisting state {stateId}");
+
+                            snapshotToSave = snapshot;
+                            break;
+                        }
+                        else
+                        {
+                            snapshot.Dispose();
+                        }
+                    }
+                }
+            }
+
             _flatdiffimes.WithLabels("add_to_persistence", "state_picked").Observe(Stopwatch.GetTimestamp() - sw);
 
             if (snapshotToSave is null)
