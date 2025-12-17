@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 
 namespace Nethermind.Taiko.Tdx;
@@ -21,16 +22,11 @@ public class TdxService : ITdxService
     // Proof layout: [instance_id: 4 bytes][address: 20 bytes][signature: 65 bytes]
     private const int ProofSize = 89;
 
-    // ABI encoding constants
-    private const int AbiSlotSize = 32;
-    private const int CheckpointHashSize = 3 * AbiSlotSize; // blockNumber + blockHash + stateRoot
-    private const int InstanceHashSize = 5 * AbiSlotSize;   // tag + chainId + parentHash + checkpointHash + address
-
     private readonly ISurgeTdxConfig _config;
     private readonly ITdxsClient _client;
+    private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
     private readonly Ecdsa _ecdsa = new();
-    private readonly ulong _chainId;
 
     private TdxGuestInfo? _guestInfo;
     private PrivateKey? _privateKey;
@@ -38,7 +34,7 @@ public class TdxService : ITdxService
     public TdxService(
         ISurgeTdxConfig config,
         ITdxsClient client,
-        ulong chainId,
+        ISpecProvider specProvider,
         ILogManager logManager)
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
@@ -48,7 +44,7 @@ public class TdxService : ITdxService
 
         _config = config;
         _client = client;
-        _chainId = chainId;
+        _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
 
         TryLoadBootstrap();
@@ -108,18 +104,18 @@ public class TdxService : ITdxService
         if (_guestInfo is null || _privateKey is null)
             throw new TdxException("TDX service not bootstrapped");
 
-        // Compute instance hash for the block
-        Hash256 instanceHash = ComputeInstanceHash(block);
+        // Get the block header hash
+        Hash256 headerHash = block.Header.Hash ?? throw new TdxException("Block header hash is null");
 
-        // Sign the instance hash
-        Signature signature = _ecdsa.Sign(_privateKey, instanceHash.ValueHash256);
+        // Sign the header hash
+        Signature signature = _ecdsa.Sign(_privateKey, headerHash.ValueHash256);
         byte[] signatureBytes = GetSignatureBytes(signature);
 
-        // Generate TDX quote with instance hash as user data
+        // Generate TDX quote with header hash as user data
         byte[] nonce = new byte[32];
         new CryptoRandom().GenerateRandomBytes(nonce);
-        byte[] instanceHashBytes = instanceHash.Bytes.ToArray();
-        byte[] quote = _client.Issue(instanceHashBytes, nonce);
+        byte[] headerHashBytes = headerHash.Bytes.ToArray();
+        byte[] quote = _client.Issue(headerHashBytes, nonce);
 
         // Build proof: instance_id (4) + address (20) + signature (65)
         byte[] proof = BuildProof(_privateKey.Address, signatureBytes, _config.InstanceId);
@@ -128,7 +124,7 @@ public class TdxService : ITdxService
         {
             Proof = proof,
             Quote = quote,
-            InstanceHash = instanceHash
+            Block = new BlockForRpc(block, includeFullTransactionData: false, _specProvider, skipTxs: true)
         };
     }
 
@@ -163,60 +159,6 @@ public class TdxService : ITdxService
         signature.Bytes.CopyTo(result.AsSpan(0, 64)); // r + s
         result[64] = (byte)(signature.RecoveryId + 27); // v = recovery_id + 27
         return result;
-    }
-
-    /// <summary>
-    /// Compute the instance hash for a preconf block attestation.
-    /// Structure: keccak256(abi.encode("PRECONF_CHECKPOINT", chainId, parentHash, checkpointHash, proverAddress))
-    /// Where checkpointHash = keccak256(abi.encode(blockNumber, blockHash, stateRoot))
-    ///
-    /// ABI layout (160 bytes = 5 slots × 32 bytes):
-    /// ┌─────────┬──────┬───────────────────────────────────────────────────┐
-    /// │ Offset  │ Slot │ Content                                           │
-    /// ├─────────┼──────┼───────────────────────────────────────────────────┤
-    /// │   0-31  │ 0    │ "PRECONF_CHECKPOINT" (18 bytes) + zero padding    │
-    /// │  32-63  │ 1    │ chainId as uint256 (value at bytes 56-63)         │
-    /// │  64-95  │ 2    │ parentBlockHash (32 bytes)                        │
-    /// │  96-127 │ 3    │ checkpointHash (32 bytes)                         │
-    /// │ 128-159 │ 4    │ proverAddress (12 zero bytes + 20 address bytes)  │
-    /// └─────────┴──────┴───────────────────────────────────────────────────┘
-    /// </summary>
-    private Hash256 ComputeInstanceHash(Block block)
-    {
-        Hash256 checkpointHash = ComputeCheckpointHash(block);
-
-        Span<byte> buffer = stackalloc byte[InstanceHashSize];
-
-        "PRECONF_CHECKPOINT"u8.CopyTo(buffer);                               // Slot 0: string tag
-        BinaryPrimitives.WriteUInt64BigEndian(buffer[56..], _chainId);       // Slot 1: chainId (big-endian at end)
-        (block.Header.ParentHash ?? Keccak.Zero).Bytes.CopyTo(buffer[64..]); // Slot 2: parentHash
-        checkpointHash.Bytes.CopyTo(buffer[96..]);                           // Slot 3: checkpointHash
-        (_privateKey?.Address ?? Address.Zero).Bytes.CopyTo(buffer[140..]);  // Slot 4: address (left-padded)
-
-        return Keccak.Compute(buffer);
-    }
-
-    /// <summary>
-    /// Compute checkpoint hash: keccak256(abi.encode(blockNumber, blockHash, stateRoot))
-    ///
-    /// ABI layout (96 bytes = 3 slots × 32 bytes):
-    /// ┌────────┬──────┬─────────────────────────────────────────────────┐
-    /// │ Offset │ Slot │ Content                                         │
-    /// ├────────┼──────┼─────────────────────────────────────────────────┤
-    /// │  0-31  │ 0    │ blockNumber as uint256 (value at bytes 24-31)   │
-    /// │ 32-63  │ 1    │ blockHash (32 bytes)                            │
-    /// │ 64-95  │ 2    │ stateRoot (32 bytes)                            │
-    /// └────────┴──────┴─────────────────────────────────────────────────┘
-    /// </summary>
-    private static Hash256 ComputeCheckpointHash(Block block)
-    {
-        Span<byte> buffer = stackalloc byte[CheckpointHashSize];
-
-        BinaryPrimitives.WriteUInt64BigEndian(buffer[24..], (ulong)block.Number); // Slot 0: blockNumber
-        (block.Header.Hash ?? Keccak.Zero).Bytes.CopyTo(buffer[32..]);            // Slot 1: blockHash
-        (block.Header.StateRoot ?? Keccak.Zero).Bytes.CopyTo(buffer[64..]);       // Slot 2: stateRoot
-
-        return Keccak.Compute(buffer);
     }
 
     private void TryLoadBootstrap()
