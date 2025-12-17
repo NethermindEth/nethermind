@@ -3,8 +3,6 @@
 
 using Autofac;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Taiko.Config;
@@ -33,8 +31,6 @@ public class TdxModule : Module
             return new TdxService(
                 ctx.Resolve<ISurgeTdxConfig>(),
                 ctx.Resolve<ITdxsClient>(),
-                ctx.Resolve<IEthereumEcdsa>(),
-                ctx.Resolve<ISpecProvider>().ChainId,
                 ctx.Resolve<ILogManager>());
         }).SingleInstance();
 
