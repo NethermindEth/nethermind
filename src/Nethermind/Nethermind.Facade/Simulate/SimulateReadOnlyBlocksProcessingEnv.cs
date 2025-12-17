@@ -62,6 +62,6 @@ public class SimulateReadOnlyBlocksProcessingScope(
     public void Dispose()
     {
         overridableWorldStateCloser.Dispose();
-        readOnlyDbProvider.Dispose(); // For blocktree. The read only db has a buffer that need to be cleared.
+        readOnlyDbProvider.ClearTempChanges(); // For blocktree. The read only db has a buffer that need to be cleared.
     }
 }

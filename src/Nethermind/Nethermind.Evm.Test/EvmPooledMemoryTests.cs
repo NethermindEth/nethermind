@@ -54,7 +54,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(100 * MaxCodeSize, MaxCodeSize)]
     [TestCase(1000 * MaxCodeSize, MaxCodeSize)]
     [TestCase(0, 1024 * 1024)]
-    [TestCase(0, Int32.MaxValue)]
+    // Note: Int32.MaxValue was removed as a test case because after word alignment
+    // it exceeds the maximum allowed memory size and correctly returns out-of-gas.
     public void MemoryCost(int destination, int memoryAllocation)
     {
         EvmPooledMemory memory = new();
@@ -111,6 +112,50 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         UInt256 location = (UInt256)long.MaxValue;
         long result = memory.CalculateMemoryCost(in location, 1, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true));
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_TotalSizeExceedsIntMaxAfterWordAlignment_ShouldReturnOutOfGas()
+    {
+        // Test that memory requests that would overflow int.MaxValue after word alignment
+        // are properly rejected. This prevents crashes in .NET array operations.
+        // The limit is int.MaxValue - WordSize + 1 to ensure word-aligned size fits in int.
+        EvmPooledMemory memory = new();
+
+        // Request exactly at the limit should succeed
+        UInt256 maxAllowedSize = (UInt256)(int.MaxValue - EvmPooledMemory.WordSize + 1);
+        long result = memory.CalculateMemoryCost(0, in maxAllowedSize, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(false), "Size at limit should be allowed");
+
+        // Request one byte over the limit should fail
+        UInt256 overLimitSize = maxAllowedSize + 1;
+        result = memory.CalculateMemoryCost(0, in overLimitSize, out outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true), "Size over limit should return out of gas");
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_4GBMemoryRequest_ShouldReturnOutOfGas()
+    {
+        // Regression test: 4GB memory request (0xffffffff) should return out-of-gas
+        // instead of causing integer overflow crash in array operations.
+        EvmPooledMemory memory = new();
+        UInt256 size4GB = 0xffffffffUL;
+        long result = memory.CalculateMemoryCost(0, in size4GB, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true), "4GB memory request should return out of gas");
+        Assert.That(result, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_LargeOffsetPlusLength_ShouldReturnOutOfGas()
+    {
+        // Test that location + length exceeding int.MaxValue - WordSize + 1 returns out-of-gas
+        EvmPooledMemory memory = new();
+        UInt256 location = (UInt256)(int.MaxValue / 2);
+        UInt256 length = (UInt256)(int.MaxValue / 2 + 100); // Sum exceeds limit
+        long result = memory.CalculateMemoryCost(in location, in length, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(true), "Location + length exceeding limit should return out of gas");
         Assert.That(result, Is.EqualTo(0L));
     }
 

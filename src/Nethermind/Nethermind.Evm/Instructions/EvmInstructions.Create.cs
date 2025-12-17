@@ -85,7 +85,7 @@ internal static partial class EvmInstructions
 
         // Reset the return data buffer as contract creation does not use previous return data.
         vm.ReturnData = null;
-        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
+        ExecutionEnvironment env = vm.EvmState.Env;
         IWorldState state = vm.WorldState;
 
         // Pop parameters off the stack: value to transfer, memory position for the initialization code,
@@ -222,7 +222,7 @@ internal static partial class EvmInstructions
 
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.
-        ExecutionEnvironment callEnv = new(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
@@ -240,7 +240,7 @@ internal static partial class EvmInstructions
             executionType: TOpCreate.ExecutionType,
             isStatic: vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: accountExists,
-            env: in callEnv,
+            env: callEnv,
             stateForAccessLists: in vm.EvmState.AccessTracker,
             snapshot: in snapshot);
     None:

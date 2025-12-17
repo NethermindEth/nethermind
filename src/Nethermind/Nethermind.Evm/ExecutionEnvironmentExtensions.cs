@@ -5,5 +5,5 @@ namespace Nethermind.Evm;
 
 public static class ExecutionEnvironmentExtensions
 {
-    public static int GetGethTraceDepth(in this ExecutionEnvironment env) => env.CallDepth + 1;
+    public static int GetGethTraceDepth(this ExecutionEnvironment env) => env.CallDepth + 1;
 }

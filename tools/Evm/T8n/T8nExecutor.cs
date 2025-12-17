@@ -52,7 +52,7 @@ public static class T8nExecutor
             _logManager);
 
         stateProvider.CreateAccount(test.CurrentCoinbase, 0);
-        GeneralStateTestBase.InitializeTestState(test.Alloc, test.CurrentCoinbase, stateProvider, test.SpecProvider);
+        GeneralStateTestBase.InitializeTestState(test.Alloc, stateProvider, test.SpecProvider);
 
         Block block = test.ConstructBlock();
         var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
@@ -136,7 +136,7 @@ public static class T8nExecutor
     }
 
     private static IBlockhashProvider ConstructBlockHashProvider(T8nTest test) =>
-        new T8nBlockHashProvider(test.BlockHashes.ToDictionary<KeyValuePair<string, Hash256>, long, Hash256?>(kvp => long.Parse(kvp.Key), kvp => kvp.Value));
+        new T8nBlockHashProvider(test.BlockHashes.ToDictionary(kvp => long.Parse(kvp.Key), kvp => kvp.Value));
 
     private static void ApplyRewards(Block block, IWorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
     {

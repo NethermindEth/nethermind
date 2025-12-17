@@ -1,7 +1,6 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -214,7 +213,8 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                 TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.InvalidParams,
                 TransactionResult.ErrorType.SenderNotSpecified => ErrorCodes.InternalError,
                 TransactionResult.ErrorType.TransactionSizeOverMaxInitCodeSize => ErrorCodes.MaxInitCodeSizeExceeded,
-                TransactionResult.ErrorType.WrongTransactionNonce => ErrorCodes.InternalError,
+                TransactionResult.ErrorType.TransactionNonceTooHigh => ErrorCodes.InternalError,
+                TransactionResult.ErrorType.TransactionNonceTooLow => ErrorCodes.InternalError,
                 _ => ErrorCodes.InternalError
             };
         }

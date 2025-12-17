@@ -978,7 +978,7 @@ public unsafe partial class VirtualMachine(
     private CallResult RunPrecompile(EvmState state)
     {
         ReadOnlyMemory<byte> callData = state.Env.InputData;
-        UInt256 transferValue = state.Env.TransferValue;
+        ref readonly UInt256 transferValue = ref state.Env.TransferValue;
         long gasAvailable = state.GasAvailable;
 
         IPrecompile precompile = state.Env.CodeInfo.Precompile!;
@@ -1092,7 +1092,7 @@ public unsafe partial class VirtualMachine(
     {
         EvmState vmState = _currentState;
         // Obtain a reference to the execution environment for convenience.
-        ref readonly ExecutionEnvironment env = ref vmState.Env;
+        ExecutionEnvironment env = vmState.Env;
 
         // If this is the first call frame (not a continuation), adjust account balances and nonces.
         if (!vmState.IsContinuation)

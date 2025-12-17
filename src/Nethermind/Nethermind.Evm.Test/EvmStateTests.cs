@@ -224,7 +224,7 @@ namespace Nethermind.Evm.Test
             parentEvmState is null
                 ? EvmState.RentTopLevel(10000,
                     ExecutionType.CALL,
-                    new ExecutionEnvironment(),
+                    RentExecutionEnvironment(),
                     new StackAccessTracker(),
                     Snapshot.Empty)
                 : EvmState.RentFrame(10000,
@@ -233,10 +233,11 @@ namespace Nethermind.Evm.Test
                     ExecutionType.CALL,
                     false,
                     false,
-                    new ExecutionEnvironment(),
+                    RentExecutionEnvironment(),
                     parentEvmState.AccessTracker,
                     Snapshot.Empty);
 
-        public class Context { }
+        private static ExecutionEnvironment RentExecutionEnvironment() =>
+            ExecutionEnvironment.Rent(null, null, null, null, 0, default, default, default);
     }
 }

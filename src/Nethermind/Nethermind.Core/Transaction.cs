@@ -277,6 +277,12 @@ namespace Nethermind.Core
 
             public bool Return(Transaction obj)
             {
+
+                // Only pool pure Transaction objects, not subclasses
+                // This prevents other subclasses from contaminating the pool
+                if (obj.GetType() != typeof(Transaction))
+                    return false;
+
                 obj.ClearPreHash();
                 obj.Hash = default;
                 obj.ChainId = default;

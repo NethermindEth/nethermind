@@ -7,17 +7,11 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network
 {
-    public readonly struct ForkId : IEquatable<ForkId>
+    public readonly struct ForkId(uint forkHash, ulong next) : IEquatable<ForkId>
     {
-        public ForkId(uint forkHash, ulong next)
-        {
-            ForkHash = forkHash;
-            Next = next;
-        }
+        public uint ForkHash { get; } = forkHash;
 
-        public uint ForkHash { get; }
-
-        public ulong Next { get; }
+        public ulong Next { get; } = next;
 
         public byte[] HashBytes
         {

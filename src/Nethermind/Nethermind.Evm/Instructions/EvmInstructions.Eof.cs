@@ -615,7 +615,7 @@ internal static partial class EvmInstructions
         vm.ReturnData = null;
 
         IReleaseSpec spec = vm.Spec;
-        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
+        ExecutionEnvironment env = vm.EvmState.Env;
         if (env.CodeInfo.Version == 0)
             goto BadInstruction;
 
@@ -730,7 +730,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Set up the execution environment for the new contract.
-        ExecutionEnvironment callEnv = new(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
@@ -747,7 +747,7 @@ internal static partial class EvmInstructions
             executionType: currentContext,
             isStatic: vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: accountExists,
-            env: in callEnv,
+            env: callEnv,
             stateForAccessLists: in vm.EvmState.AccessTracker,
             snapshot: in snapshot);
 
@@ -864,7 +864,7 @@ internal static partial class EvmInstructions
 
         IReleaseSpec spec = vm.Spec;
         vm.ReturnData = null;
-        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
+        ExecutionEnvironment env = vm.EvmState.Env;
         IWorldState state = vm.WorldState;
 
         // This instruction is only available for EOF-enabled contracts.
@@ -987,7 +987,7 @@ internal static partial class EvmInstructions
         state.SubtractFromBalance(caller, transferValue, spec);
 
         // Set up the new execution environment for the call.
-        ExecutionEnvironment callEnv = new(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: targetCodeInfo,
             executingAccount: target,
             caller: caller,
@@ -1004,7 +1004,7 @@ internal static partial class EvmInstructions
             executionType: TOpEofCall.ExecutionType,
             isStatic: TOpEofCall.IsStatic || vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: false,
-            env: in callEnv,
+            env: callEnv,
             stateForAccessLists: in vm.EvmState.AccessTracker,
             snapshot: in snapshot);
 

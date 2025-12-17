@@ -404,11 +404,6 @@ namespace Nethermind.TxPool
                     }
                 }
 
-                if (blockTx.Type == TxType.SetCode)
-                {
-                    eip7702Txs++;
-                }
-
                 bool isKnown = IsKnown(txHash);
                 if (!isKnown)
                 {

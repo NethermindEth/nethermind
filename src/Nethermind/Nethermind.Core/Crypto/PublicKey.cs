@@ -10,7 +10,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.Crypto
 {
-    [JsonConverter(typeof(PublicKeyConverter))]
+    [JsonConverter(typeof(PublicKeyHashedConverter))]
     public class PublicKey : IEquatable<PublicKey>
     {
         public const int PrefixedLengthInBytes = 65;

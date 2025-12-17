@@ -22,7 +22,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 
     /*
     Type layout for 'EvmState'
-    Size: 264 bytes. Paddings: 9 bytes (%3 of empty space)
+    Size: 176 bytes. Paddings: 5 bytes (%3 of empty space)
     |=======================================================================|
     | Object Header (8 bytes)                                               |
     |-----------------------------------------------------------------------|
@@ -66,13 +66,13 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     |-----------------------------------------------------------------------|
     | 72-103: EvmPooledMemory _memory (32 bytes)                            |
     |-----------------------------------------------------------------------|
-    | 104-223: ExecutionEnvironment _env (120 bytes)                        |
+    | 104-111: ExecutionEnvironment _env (8 bytes)                          |
     |-----------------------------------------------------------------------|
-    | 224-247: StackAccessTracker _accessTracker (24 bytes)                 |
+    | 112-143: StackAccessTracker _accessTracker (32 bytes)                 |
     |-----------------------------------------------------------------------|
-    | 248-259: Snapshot _snapshot (12 bytes)                                |
+    | 144-155: Snapshot _snapshot (12 bytes)                                |
     |-----------------------------------------------------------------------|
-    | 260-263: padding (4 bytes)                                            |
+    | 156-159: padding (4 bytes)                                            |
     |=======================================================================|
      */
 
@@ -96,13 +96,9 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     private bool _isDisposed = true;
 
     private EvmPooledMemory _memory;
-    private ExecutionEnvironment _env;
+    private ExecutionEnvironment? _env;
     private StackAccessTracker _accessTracker;
     private Snapshot _snapshot;
-
-#if DEBUG
-    private StackTrace? _creationStackTrace;
-#endif
 
     /// <summary>
     /// Rent a top level <see cref="EvmState"/>.
@@ -110,7 +106,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public static EvmState RentTopLevel(
         long gasAvailable,
         ExecutionType executionType,
-        in ExecutionEnvironment env,
+        ExecutionEnvironment env,
         in StackAccessTracker accessedItems,
         in Snapshot snapshot)
     {
@@ -139,7 +135,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         ExecutionType executionType,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
-        in ExecutionEnvironment env,
+        ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot,
         bool isTopLevel = false)
@@ -171,7 +167,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         bool isTopLevel,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
-        in ExecutionEnvironment env,
+        ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot)
     {
@@ -226,7 +222,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public bool IsPrecompile => Env.CodeInfo?.IsPrecompile ?? false;
 
     public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
-    public ref readonly ExecutionEnvironment Env => ref _env;
+    public ExecutionEnvironment Env => _env!;
     public ref EvmPooledMemory Memory => ref _memory; // TODO: move to CallEnv
     public ref readonly Snapshot Snapshot => ref _snapshot; // TODO: move to CallEnv
 
@@ -255,7 +251,8 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         _memory.Dispose();
         _memory = default;
         _accessTracker = default;
-        _env = default;
+        if (!IsTopLevel) _env?.Dispose();
+        _env = null;
         _snapshot = default;
 
         _statePool.Enqueue(this);
@@ -266,6 +263,9 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     }
 
 #if DEBUG
+
+    private StackTrace? _creationStackTrace;
+
     ~EvmState()
     {
         if (!_isDisposed)

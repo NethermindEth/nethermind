@@ -38,9 +38,7 @@ namespace Nethermind.Grpc.Clients
                     nameof(reconnectionInterval));
             }
 
-            _address = string.IsNullOrWhiteSpace(host)
-                ? throw new ArgumentException("Missing gRPC host", nameof(host))
-                : $"{host}:{port}";
+            _address = $"{host}:{port}";
             _reconnectionInterval = reconnectionInterval;
             _logger = logManager.GetClassLogger();
         }

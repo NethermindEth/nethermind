@@ -109,7 +109,7 @@ internal static partial class EvmInstructions
         Address codeSource = stack.PopAddress();
         if (codeSource is null) goto StackUnderflow;
 
-        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
+        ExecutionEnvironment env = vm.EvmState.Env;
         // Determine the call value based on the call type.
         UInt256 callValue;
         if (typeof(TOpCall) == typeof(OpStaticCall))
@@ -255,7 +255,7 @@ internal static partial class EvmInstructions
         if (!vm.EvmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
             goto OutOfGas;
         // Construct the execution environment for the call.
-        ExecutionEnvironment callEnv = new(
+        ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
             executingAccount: target,
             caller: caller,
@@ -280,7 +280,7 @@ internal static partial class EvmInstructions
             executionType: TOpCall.ExecutionType,
             isStatic: TOpCall.IsStatic || vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: false,
-            env: in callEnv,
+            env: callEnv,
             stateForAccessLists: in vm.EvmState.AccessTracker,
             snapshot: in snapshot);
 
