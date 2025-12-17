@@ -34,7 +34,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
 
     private readonly record struct RequestStruct<TReq>(TReq Request, Func<TReq, CancellationToken, ValueTask> BackgroundTask)
     {
-        public override string ToString() => nameof(TReq);
+        public override string ToString() => typeof(TReq).FullName!;
     }
 
     // I just don't want to create a closure... so this happens.
