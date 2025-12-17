@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -17,12 +18,18 @@ namespace Nethermind.Taiko.Tdx;
 /// </summary>
 public class TdxService : ITdxService
 {
-    private const int ProofSize = 89; // 4 + 20 + 65
+    // Proof layout: [instance_id: 4 bytes][address: 20 bytes][signature: 65 bytes]
+    private const int ProofSize = 89;
+
+    // ABI encoding constants
+    private const int AbiSlotSize = 32;
+    private const int CheckpointHashSize = 3 * AbiSlotSize; // blockNumber + blockHash + stateRoot
+    private const int InstanceHashSize = 5 * AbiSlotSize;   // tag + chainId + parentHash + checkpointHash + address
 
     private readonly ISurgeTdxConfig _config;
     private readonly ITdxsClient _client;
     private readonly ILogger _logger;
-    private readonly Ecdsa _ecdsa;
+    private readonly Ecdsa _ecdsa = new();
     private readonly ulong _chainId;
 
     private TdxGuestInfo? _guestInfo;
@@ -31,7 +38,6 @@ public class TdxService : ITdxService
     public TdxService(
         ISurgeTdxConfig config,
         ITdxsClient client,
-        IEthereumEcdsa ecdsa,
         ulong chainId,
         ILogManager logManager)
     {
@@ -42,7 +48,6 @@ public class TdxService : ITdxService
 
         _config = config;
         _client = client;
-        _ecdsa = new Ecdsa();
         _chainId = chainId;
         _logger = logManager.GetClassLogger();
 
@@ -162,65 +167,56 @@ public class TdxService : ITdxService
 
     /// <summary>
     /// Compute the instance hash for a preconf block attestation.
-    /// Uses a two-step hash: first hash the checkpoint, then hash the full structure.
     /// Structure: keccak256(abi.encode("PRECONF_CHECKPOINT", chainId, parentHash, checkpointHash, proverAddress))
     /// Where checkpointHash = keccak256(abi.encode(blockNumber, blockHash, stateRoot))
+    ///
+    /// ABI layout (160 bytes = 5 slots × 32 bytes):
+    /// ┌─────────┬──────┬───────────────────────────────────────────────────┐
+    /// │ Offset  │ Slot │ Content                                           │
+    /// ├─────────┼──────┼───────────────────────────────────────────────────┤
+    /// │   0-31  │ 0    │ "PRECONF_CHECKPOINT" (18 bytes) + zero padding    │
+    /// │  32-63  │ 1    │ chainId as uint256 (value at bytes 56-63)         │
+    /// │  64-95  │ 2    │ parentBlockHash (32 bytes)                        │
+    /// │  96-127 │ 3    │ checkpointHash (32 bytes)                         │
+    /// │ 128-159 │ 4    │ proverAddress (12 zero bytes + 20 address bytes)  │
+    /// └─────────┴──────┴───────────────────────────────────────────────────┘
     /// </summary>
     private Hash256 ComputeInstanceHash(Block block)
     {
-        // Step 1: Compute checkpoint hash
         Hash256 checkpointHash = ComputeCheckpointHash(block);
 
-        // Step 2: Compute full instance hash
-        using var stream = new MemoryStream();
-        WriteAbiString(stream, "PRECONF_CHECKPOINT");
-        WriteAbiUint256(stream, _chainId);
-        WriteAbiBytes32(stream, block.Header.ParentHash ?? Keccak.Zero);
-        WriteAbiBytes32(stream, checkpointHash);
-        WriteAbiAddress(stream, _privateKey?.Address ?? Address.Zero);
+        Span<byte> buffer = stackalloc byte[InstanceHashSize];
 
-        return Keccak.Compute(stream.ToArray());
+        "PRECONF_CHECKPOINT"u8.CopyTo(buffer);                               // Slot 0: string tag
+        BinaryPrimitives.WriteUInt64BigEndian(buffer[56..], _chainId);       // Slot 1: chainId (big-endian at end)
+        (block.Header.ParentHash ?? Keccak.Zero).Bytes.CopyTo(buffer[64..]); // Slot 2: parentHash
+        checkpointHash.Bytes.CopyTo(buffer[96..]);                           // Slot 3: checkpointHash
+        (_privateKey?.Address ?? Address.Zero).Bytes.CopyTo(buffer[140..]);  // Slot 4: address (left-padded)
+
+        return Keccak.Compute(buffer);
     }
 
     /// <summary>
     /// Compute checkpoint hash: keccak256(abi.encode(blockNumber, blockHash, stateRoot))
+    ///
+    /// ABI layout (96 bytes = 3 slots × 32 bytes):
+    /// ┌────────┬──────┬─────────────────────────────────────────────────┐
+    /// │ Offset │ Slot │ Content                                         │
+    /// ├────────┼──────┼─────────────────────────────────────────────────┤
+    /// │  0-31  │ 0    │ blockNumber as uint256 (value at bytes 24-31)   │
+    /// │ 32-63  │ 1    │ blockHash (32 bytes)                            │
+    /// │ 64-95  │ 2    │ stateRoot (32 bytes)                            │
+    /// └────────┴──────┴─────────────────────────────────────────────────┘
     /// </summary>
     private static Hash256 ComputeCheckpointHash(Block block)
     {
-        using var stream = new MemoryStream();
-        WriteAbiUint256(stream, (ulong)block.Number);
-        WriteAbiBytes32(stream, block.Header.Hash ?? Keccak.Zero);
-        WriteAbiBytes32(stream, block.Header.StateRoot ?? Keccak.Zero);
-        return Keccak.Compute(stream.ToArray());
-    }
+        Span<byte> buffer = stackalloc byte[CheckpointHashSize];
 
-    // ABI encoding helpers - simplified for fixed-size types
-    private static void WriteAbiString(MemoryStream stream, string value)
-    {
-        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(value);
-        byte[] padded = new byte[32];
-        Array.Copy(bytes, padded, Math.Min(bytes.Length, 32));
-        stream.Write(padded);
-    }
+        BinaryPrimitives.WriteUInt64BigEndian(buffer[24..], (ulong)block.Number); // Slot 0: blockNumber
+        (block.Header.Hash ?? Keccak.Zero).Bytes.CopyTo(buffer[32..]);            // Slot 1: blockHash
+        (block.Header.StateRoot ?? Keccak.Zero).Bytes.CopyTo(buffer[64..]);       // Slot 2: stateRoot
 
-    private static void WriteAbiUint256(MemoryStream stream, ulong value)
-    {
-        byte[] bytes = new byte[32];
-        for (int i = 0; i < 8; i++)
-            bytes[31 - i] = (byte)(value >> (i * 8));
-        stream.Write(bytes);
-    }
-
-    private static void WriteAbiBytes32(MemoryStream stream, Hash256 hash)
-    {
-        stream.Write(hash.Bytes);
-    }
-
-    private static void WriteAbiAddress(MemoryStream stream, Address address)
-    {
-        byte[] bytes = new byte[32];
-        address.Bytes.CopyTo(bytes.AsSpan(12)); // Left-pad to 32 bytes
-        stream.Write(bytes);
+        return Keccak.Compute(buffer);
     }
 
     private void TryLoadBootstrap()

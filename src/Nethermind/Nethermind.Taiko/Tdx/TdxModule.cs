@@ -33,7 +33,6 @@ public class TdxModule : Module
             return new TdxService(
                 ctx.Resolve<ISurgeTdxConfig>(),
                 ctx.Resolve<ITdxsClient>(),
-                ctx.Resolve<IEthereumEcdsa>(),
                 ctx.Resolve<ISpecProvider>().ChainId,
                 ctx.Resolve<ILogManager>());
         }).SingleInstance();
