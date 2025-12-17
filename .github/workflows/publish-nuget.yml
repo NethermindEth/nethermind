@@ -14,16 +14,35 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.release.tag_name }}
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+
       - name: Download Nethermind reference assemblies
+        id: download
         run: |
           json=$(curl -s ${{ github.event.release.assets_url }})
-          url=$(echo "$json" | jq -r '.[].browser_download_url | select(contains("ref-assemblies"))')
+          asset=$(echo "$json" | jq -r '.[] | select(.name | contains("ref-assemblies"))')
+          name=$(echo "$asset" | jq -r '.name')
+          url=$(echo "$asset" | jq -r '.browser_download_url')
           curl -sL $url -o refasm.zip
           unzip refasm.zip -d src/Nethermind/Nethermind.ReferenceAssemblies/ref
+          echo "asset-name=$name" >> $GITHUB_OUTPUT
+
       - name: Submit package
         working-directory: src/Nethermind/Nethermind.ReferenceAssemblies
         run: |
           dotnet pack -c release
           dotnet nuget push ../artifacts/**/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json
+
+      - name: Create GitHub app token
+        id: gh-app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Delete asset from release
+        env:
+          GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: gh release delete-asset ${{ github.event.release.tag_name }} ${{ steps.download.outputs.asset-name }} -y
