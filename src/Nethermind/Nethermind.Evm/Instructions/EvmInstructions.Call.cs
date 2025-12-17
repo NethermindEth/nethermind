@@ -132,7 +132,9 @@ internal static partial class EvmInstructions
             !stack.PopUInt256(out UInt256 dataLength) ||
             !stack.PopUInt256(out UInt256 outputOffset) ||
             !stack.PopUInt256(out UInt256 outputLength))
+        {
             goto StackUnderflow;
+        }
 
         // For non-delegate calls, the transfer value is the call value.
         UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
@@ -155,6 +157,19 @@ internal static partial class EvmInstructions
         }
 
         IReleaseSpec spec = vm.Spec;
+
+        // Update gas: call cost, memory expansion for input and output, and extra gas.
+        // Charge gas for accessing the account's code (including delegation logic if applicable).
+        if (!EvmCalculations.UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
+            !EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataLength) ||
+            !EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in outputOffset, outputLength) ||
+            !EvmCalculations.UpdateGas(gasExtra, ref gasAvailable) ||
+            !EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource))
+        {
+            goto OutOfGas;
+        }
+
+        gasExtra = 0L;
         IWorldState state = vm.WorldState;
         // Charge additional gas if the target account is new or considered empty.
         if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target))
@@ -166,14 +181,10 @@ internal static partial class EvmInstructions
             gasExtra += GasCostOf.NewAccount;
         }
 
-        // Update gas: call cost, memory expansion for input and output, and extra gas.
-        // Charge gas for accessing the account's code (including delegation logic if applicable).
-        if (!EvmCalculations.UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
-            !EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in dataOffset, dataLength) ||
-            !EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in outputOffset, outputLength) ||
-            !EvmCalculations.UpdateGas(gasExtra, ref gasAvailable) ||
-            !EvmCalculations.ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource))
+        if (!EvmCalculations.UpdateGas(gasExtra, ref gasAvailable))
+        {
             goto OutOfGas;
+        }
 
         // Retrieve code information for the call and schedule background analysis if needed.
         ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
