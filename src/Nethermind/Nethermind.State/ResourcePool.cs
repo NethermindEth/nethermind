@@ -99,4 +99,13 @@ public class ResourcePool
     {
         _cachedResourcePools[usage].Return(cachedResource);
     }
+
+    public Snapshot CreateSnapshot(StateId from, StateId to, IFlatDiffRepository.SnapshotBundleUsage usage)
+    {
+        return new Snapshot(
+            from,
+            to,
+            content: GetSnapshotContent(usage),
+            pool: GetSnapshotPool(usage: usage));
+    }
 }

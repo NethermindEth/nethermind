@@ -270,7 +270,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
             long startingBlockNumber = ((blockNumber - 1) / _compactSize) * _compactSize;
 
-            using SnapshotBundle gatheredCache = GatherCache(stateId, IFlatDiffRepository.SnapshotBundleUsage.Compactor, startingBlockNumber);
+            using SnapshotBundle gatheredCache = GatherSnapshotBundle(stateId, IFlatDiffRepository.SnapshotBundleUsage.Compactor, startingBlockNumber);
             if (gatheredCache.SnapshotCount == 1)
             {
                 return;
@@ -358,7 +358,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     public SnapshotBundle? GatherReaderAtBaseBlock(StateId baseBlock, IFlatDiffRepository.SnapshotBundleUsage usage)
     {
         // TODO: Throw if not enough or return null
-        return GatherCache(baseBlock, usage, null);
+        return GatherSnapshotBundle(baseBlock, usage, null);
     }
 
     private static Histogram _knownStatesSize = DevMetric.Factory.CreateHistogram("flatdiff_known_state_size", "timer",
@@ -369,39 +369,37 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             Buckets = [1]
         });
 
-    private SnapshotBundle GatherCache(StateId baseBlock, IFlatDiffRepository.SnapshotBundleUsage usage, long? earliestExclusive = null) {
-        long sw = Stopwatch.GetTimestamp();
-        using var _ = EnterRepolockReadOnly();
-        _flatdiffimes.WithLabels("gather_cache", "repolock").Observe(Stopwatch.GetTimestamp() - sw);
-        sw =  Stopwatch.GetTimestamp();
+    private SnapshotBundle GatherSnapshotBundle(StateId baseBlock, IFlatDiffRepository.SnapshotBundleUsage usage, long? earliestExclusive = null)
+    {
+        // The current verdict on trying to use a linked list of snapshots is that it is error prone and hard to pull of
 
-        ArrayPoolList<Snapshot> knownStates = new(Math.Max(1, (int)(_inMemorySnapshotStore.KnownStatesCount / _compactSize)));
-
+        long sw =  Stopwatch.GetTimestamp();
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}. Earliest is {earliestExclusive}");
 
-        StateId bigCacheState = _currentPersistedState;
+        StateId persistedState = _currentPersistedState;
 
-        // TODO: Determine if using a linked list of snapshot make more sense. Measure the impact of this loop and the
-        // dispose loop.
-        string exitReason = "";
         StateId current = baseBlock;
-        while(TryLeaseCompactedState(current, out var entry) || TryLeaseState(current, out entry))
+        ArrayPoolList<Snapshot> knownStates = new(Math.Max(1, (int)(_inMemorySnapshotStore.KnownStatesCount / _compactSize)));
+        while(TryLeaseCompactedState(current, out Snapshot? snapshot) || TryLeaseState(current, out snapshot))
         {
-            Snapshot state = entry;
-            if (_logger.IsTrace) _logger.Trace($"Got {state.From} -> {state.To}");
-            knownStates.Add(state);
-            if (state.From == current) {
-                exitReason = "cycle";
+            if (_logger.IsTrace) _logger.Trace($"Got {snapshot.From} -> {snapshot.To}");
+
+            knownStates.Add(snapshot);
+            if (snapshot.From == current) {
                 break; // Some test commit two block with the same id, so we dont know the parent anymore.
             }
-            current = state.From;
 
-            if (state.To.blockNumber <= bigCacheState.blockNumber)
+            if (snapshot.From == persistedState)
             {
-                exitReason = $"First {state.From} to {bigCacheState}";
-                break; // Or equal?
+                break;
             }
-            if (state.From.blockNumber <= earliestExclusive) break;
+
+            if (snapshot.From.blockNumber < persistedState.blockNumber)
+            {
+                break;
+            }
+
+            current = snapshot.From;
         }
 
         _flatdiffimes.WithLabels("gather_cache", "gather").Observe(Stopwatch.GetTimestamp() - sw);
@@ -413,7 +411,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         IPersistence.IPersistenceReader bigCacheReader = LeaseReader();
         if (current != baseBlock && earliestExclusive is null && bigCacheReader.CurrentState.blockNumber != -1 && current.blockNumber > bigCacheReader.CurrentState.blockNumber)
         {
-            throw new Exception($"Non consecutive snappshots. Current {current} vs {bigCacheReader.CurrentState}, {bigCacheState}, {baseBlock}, {_inMemorySnapshotStore.TryGetValue(current, out var snapshot)}, {exitReason}");
+            throw new Exception($"Non consecutive snappshots. Current {current} vs {bigCacheReader.CurrentState}, {persistedState}, {baseBlock}, {_inMemorySnapshotStore.TryGetValue(current, out var snapshot)}, ");
         }
 
         if (bigCacheReader.CurrentState.blockNumber > baseBlock.blockNumber)
@@ -441,16 +439,26 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     public bool TryLeaseCompactedState(StateId stateId, out Snapshot entry)
     {
-        if (!_compactedKnownStates.TryGetValue(stateId, out entry)) return false;
-        if (!entry.TryAcquire()) return false;
-        return true;
+        int attempt = 0;
+        while (_compactedKnownStates.TryGetValue(stateId, out entry))
+        {
+            if (entry.TryAcquire()) return true;
+            attempt++;
+            if (attempt > 10_000) throw new Exception($"Unable to acquire lease on compacted state {stateId}");
+        }
+        return false;
     }
 
     public bool TryLeaseState(StateId stateId, out Snapshot entry)
     {
-        if (!_inMemorySnapshotStore.TryGetValue(stateId, out entry)) return false;
-        if (!entry.TryAcquire()) return false;
-        return true;
+        int attempt = 0;
+        while (_inMemorySnapshotStore.TryGetValue(stateId, out entry))
+        {
+            if (entry.TryAcquire()) return true;
+            attempt++;
+            if (attempt > 10_000) throw new Exception($"Unable to acquire lease on state {stateId}");
+        }
+        return false;
     }
 
     public void AddSnapshot(Snapshot snapshot, CachedResource cachedResource)
@@ -720,10 +728,10 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     public Snapshot CompactSnapshotBundle(SnapshotBundle bundle)
     {
         if (bundle._snapshots.Count == 0)
-            return new Snapshot(
-                new StateId(-1, ValueKeccak.EmptyTreeHash), new StateId(-1, ValueKeccak.EmptyTreeHash),
-                content: _resourcePool.GetSnapshotContent(bundle._usage),
-                pool: _resourcePool.GetSnapshotPool(IFlatDiffRepository.SnapshotBundleUsage.Compactor));
+        {
+            return _resourcePool.CreateSnapshot(new StateId(-1, ValueKeccak.EmptyTreeHash),
+                new StateId(-1, ValueKeccak.EmptyTreeHash), IFlatDiffRepository.SnapshotBundleUsage.Compactor);
+        }
 
         var snapshots = bundle._snapshots;
         if (snapshots.Count == 1)
@@ -732,15 +740,16 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             return snapshots[0];
         }
 
-        SnapshotContent content = _resourcePool.GetSnapshotContent(IFlatDiffRepository.SnapshotBundleUsage.Compactor);
-        ConcurrentDictionary<AddressAsKey, Account> accounts = content.Accounts;
-        ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> storages = content.Storages;
-        ConcurrentDictionary<AddressAsKey, bool> selfDestructedStorageAddresses = content.SelfDestructedStorageAddresses;
-        ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = content.StorageNodes;
-        ConcurrentDictionary<TreePath, TrieNode> stateNodes = content.StateNodes;
-
         StateId to = snapshots[^1].To;
         StateId from = snapshots[0].From;
+
+        Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, IFlatDiffRepository.SnapshotBundleUsage.Compactor);
+        ConcurrentDictionary<AddressAsKey, Account> accounts = snapshot.Content.Accounts;
+        ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> storages = snapshot.Content.Storages;
+        ConcurrentDictionary<AddressAsKey, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;
+        ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = snapshot.Content.StorageNodes;
+        ConcurrentDictionary<TreePath, TrieNode> stateNodes = snapshot.Content.StateNodes;
+
         HashSet<Address> addressToClear = new HashSet<Address>();
         HashSet<Hash256AsKey> addressHashToClear = new HashSet<Hash256AsKey>();
 
@@ -810,13 +819,8 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             }
         }
 
-        return new Snapshot(
-            from,
-            to,
-            content: content,
-            pool: _resourcePool.GetSnapshotPool(usage: IFlatDiffRepository.SnapshotBundleUsage.Compactor));
+        return snapshot;
     }
-
 
     public void Add(Snapshot snapshot)
     {

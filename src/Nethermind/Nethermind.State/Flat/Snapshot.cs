@@ -44,6 +44,7 @@ public class Snapshot(
     public int StoragesCount => content.Storages.Count;
     public int TrieNodesCount => content.StorageNodes.Count;
     public long DebugLease => _leases.Value;
+    public SnapshotContent Content => content;
 
     public bool TryGetAccount(AddressAsKey key, out Account acc)
     {

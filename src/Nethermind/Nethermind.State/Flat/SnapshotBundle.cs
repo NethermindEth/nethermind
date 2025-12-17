@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -584,11 +583,7 @@ public class SnapshotBundle : IDisposable
 
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.
-        var snapshot = new Snapshot(
-            from: from,
-            to: to,
-            content: _currentPooledContent,
-            pool: _resourcePool.GetSnapshotPool(_usage));
+        var snapshot = _resourcePool.CreateSnapshot(from, to, _usage);
 
         snapshot.AcquireLease(); // For this SnapshotBundle.
         _snapshots.Add(snapshot); // Now later reads are correct

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
@@ -10,7 +11,7 @@ namespace Nethermind.State.Flat;
 
 public class InMemorySnapshotStore
 {
-    private Dictionary<StateId, Snapshot> _knownStates = new();
+    private ConcurrentDictionary<StateId, Snapshot> _knownStates = new();
     private SortedSet<StateId> _sortedKnownStates = new();
 
     internal int KnownStatesCount => _knownStates.Count;
@@ -35,7 +36,7 @@ public class InMemorySnapshotStore
 
     public void Remove(StateId firstKey)
     {
-        _knownStates.Remove(firstKey);
+        _knownStates.Remove(firstKey, out Snapshot value);
         _sortedKnownStates.Remove(firstKey);
     }
 
