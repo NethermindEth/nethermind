@@ -25,13 +25,13 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
 
     public (byte[][] Codes, byte[][] Keys) GetWitness()
     {
-        HashSet<byte[]> keys = new(
-            _storageSlots.Keys.Select(accountAddress => accountAddress.Bytes)
-            .Concat(
-                _storageSlots.Values.SelectMany(v => v.Select(slotIndex => slotIndex.ToBigEndian()))
-            ),
-            Bytes.EqualityComparer
-        );
+        // Keys should be ordered like: <address1><address2><slot1-address2><slot2-address2><address3><slot1-address3>
+        List<byte[]> keys = _storageSlots
+            .SelectMany(kvp =>
+                new[] { kvp.Key.Bytes }
+                .Concat(kvp.Value.Select(slot => slot.ToBigEndian()))
+            )
+            .ToList();
 
         HashSet<byte[]> codes = new(_bytecodes.Values, Bytes.EqualityComparer);
 

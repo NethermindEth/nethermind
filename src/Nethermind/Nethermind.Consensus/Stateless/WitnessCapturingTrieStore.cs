@@ -6,8 +6,10 @@ using System.Collections.Concurrent;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Trie.Pruning;
+namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
 /// WitnessCapturingTrieStore works by reading and writing to the passed in keyValueStore first as if it is an archive node.
