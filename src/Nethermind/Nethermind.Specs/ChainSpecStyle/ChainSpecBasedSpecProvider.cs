@@ -301,6 +301,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
 
             SetBlobScheduleParameters();
+            SetCensoringScheduleParameters();
 
             return releaseSpec;
 
@@ -324,6 +325,19 @@ namespace Nethermind.Specs.ChainSpecStyle
                     releaseSpec.TargetBlobCount = Eip4844Constants.DefaultTargetBlobCount;
                     releaseSpec.MaxBlobCount = Eip4844Constants.DefaultMaxBlobCount;
                     releaseSpec.BlobBaseFeeUpdateFraction = Eip4844Constants.DefaultBlobGasPriceUpdateFraction;
+                }
+            }
+
+            void SetCensoringScheduleParameters()
+            {
+                CensoringScheduleSettings? censoringSchedule = chainSpec.Parameters.CensoringSchedule?.OrderByDescending(cs => cs).FirstOrDefault(cs => cs.Timestamp <= releaseStartTimestamp);
+
+                if (censoringSchedule is not null)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Gnosis patch applied, timestamp {censoringSchedule.Timestamp}");
+                    releaseSpec.CensoredSenders = [.. censoringSchedule.Senders.Select(x => new AddressAsKey(x))];
+                    releaseSpec.CensoredTo = [.. censoringSchedule.To.Select(x => new AddressAsKey(x))];
+                    releaseSpec.Is7702PatchEnabled = censoringSchedule.Is7702PatchEnabled;
                 }
             }
         }
