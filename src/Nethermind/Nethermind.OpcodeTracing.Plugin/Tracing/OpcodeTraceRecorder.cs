@@ -34,6 +34,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
     private ISyncModeSelector? _syncModeSelector;
     private bool _syncModeWarningLogged;
     private bool _syncCompleteLogged;
+    private bool _waitingForBlockLogged;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OpcodeTraceRecorder"/> class.
@@ -187,7 +188,27 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                 _syncModeSelector.Changed += OnSyncModeChanged;
             }
 
-            var range = new BlockRange(_traceConfig.EffectiveStartBlock, _traceConfig.EffectiveEndBlock);
+            // For RealTime mode with Blocks parameter, recalculate range based on current chain tip
+            // This ensures we trace the NEXT N blocks from when the tracer attaches, not from init time
+            long effectiveStart = _traceConfig.EffectiveStartBlock;
+            long effectiveEnd = _traceConfig.EffectiveEndBlock;
+
+            if (_config.Blocks.HasValue && !_config.StartBlock.HasValue && !_config.EndBlock.HasValue)
+            {
+                long currentTip = api.BlockTree?.Head?.Number ?? 0;
+                effectiveStart = currentTip + 1;
+                effectiveEnd = currentTip + _config.Blocks.Value;
+
+                // Update progress tracker with new range
+                _progress = new TracingProgress(effectiveStart, effectiveEnd);
+
+                if (_logger.IsInfo)
+                {
+                    _logger.Info($"RealTime mode with Blocks={_config.Blocks.Value}: recalculated range to {effectiveStart}-{effectiveEnd} (current tip: {currentTip})");
+                }
+            }
+
+            var range = new BlockRange(effectiveStart, effectiveEnd);
             _realTimeTracer = new RealTimeTracer(
                 _counter,
                 range,
@@ -251,6 +272,17 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
     /// </summary>
     private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs args)
     {
+        // Log transition to WaitingForBlock once - this is when RealTime tracing becomes effective
+        if ((args.Current & SyncMode.WaitingForBlock) != 0 && !_waitingForBlockLogged && _logger.IsInfo)
+        {
+            // Use the actual range from the tracer (which may have been recalculated at attach time)
+            var range = _realTimeTracer?.Range;
+            _logger.Info(
+                $"Sync state changed to {args.Current}. " +
+                $"RealTime opcode tracing is now waiting for new blocks in range {range?.StartBlock ?? _traceConfig?.EffectiveStartBlock}-{range?.EndBlock ?? _traceConfig?.EffectiveEndBlock}.");
+            _waitingForBlockLogged = true;
+        }
+
         if (args.Current.NotSyncing() && !_syncCompleteLogged && _logger.IsInfo)
         {
             _logger.Info($"Node sync complete (SyncMode={args.Current}). RealTime opcode tracing is now active for new blocks.");
@@ -259,6 +291,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
         else if (!args.Current.NotSyncing() && !_syncModeWarningLogged && _logger.IsWarn)
         {
             _logger.Warn($"Node entered sync mode (SyncMode={args.Current}). RealTime opcode tracing paused - only new blocks at chain tip are traced.");
+            _syncModeWarningLogged = true;
         }
     }
 
