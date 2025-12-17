@@ -304,7 +304,6 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
             _snapServer = new SnapServer(
                 trieStore.AsReadOnly(),
                 codeDb,
-                alwaysAvailableRootTracker,
                 LimboLogs.Instance);
         }
 
