@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -28,9 +29,12 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 {
     private ReaderWriterLockSlim _repoLock = new ReaderWriterLockSlim(); // Note: lock is for proteccting in memory and compacted states only
     private readonly ICanonicalStateRootFinder _stateRootFinder;
-    private Dictionary<StateId, Snapshot> _compactedKnownStates = new();
-    private InMemorySnapshotStore _inMemorySnapshotStore;
+
+    private readonly ConcurrentDictionary<StateId, Snapshot> _compactedKnownStates = new();
+    private readonly InMemorySnapshotStore _inMemorySnapshotStore;
+
     private ResourcePool _resourcePool;
+
     private List<(Hash256AsKey, TreePath)> _trieNodesSortBuffer = new List<(Hash256AsKey, TreePath)>(); // Presort make it faster
     private readonly Task _compactorTask;
 
@@ -269,28 +273,79 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             }
 
             long startingBlockNumber = ((blockNumber - 1) / _compactSize) * _compactSize;
+            long sw = Stopwatch.GetTimestamp();
+            Snapshot compactedSnapshot;
 
-            using SnapshotBundle gatheredCache = GatherSnapshotBundle(stateId, IFlatDiffRepository.SnapshotBundleUsage.Compactor, startingBlockNumber);
-            if (gatheredCache.SnapshotCount == 1)
+            StateId current = stateId;
+            using ArrayPoolList<Snapshot> snapshots = new((int)_compactSize);
+            try
             {
-                return;
+
+                while(TryLeaseCompactedState(current, out Snapshot? snapshot) || TryLeaseState(current, out snapshot))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Got {snapshot.From} -> {snapshot.To}");
+
+                    if (snapshot.From.blockNumber < startingBlockNumber)
+                    {
+                        // The non-compacted one
+                        snapshot.Dispose();
+                        if (!TryLeaseState(current, out snapshot))
+                        {
+                            break;
+                        }
+                    }
+
+                    snapshots.Add(snapshot);
+                    if (snapshot.From == current) {
+                        break; // Some test commit two block with the same id, so we dont know the parent anymore.
+                    }
+
+                    current = snapshot.From;
+                    if (snapshot.From.blockNumber == startingBlockNumber)
+                    {
+                        break;
+                    }
+                }
+                snapshots.Reverse();
+
+                if (snapshots.Count == 0) return;
+                if (snapshots[0].From.blockNumber != startingBlockNumber)
+                {
+                    _logger.Warn($"Unable to compile snapshots to compact. {snapshots[0].From.blockNumber} -> {snapshots[^1].To.blockNumber}");
+                    // unable to compile list of snapshot for the whole thing
+                    return;
+                }
+
+                // Nothing to combine if its  just one
+                if (snapshots.Count == 1)
+                {
+                    return;
+                }
+
+                if (_logger.IsDebug) _logger.Debug($"Compacting {stateId}");
+                sw = Stopwatch.GetTimestamp();
+                compactedSnapshot = CompactSnapshotBundle(snapshots);
+            }
+            finally
+            {
+                foreach (Snapshot snapshot in snapshots)
+                {
+                    snapshot.Dispose();
+                }
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Compacting {stateId}");
-            long sw = Stopwatch.GetTimestamp();
-            Snapshot snapshot = CompactSnapshotBundle(gatheredCache);
             _flatdiffimes.WithLabels("compaction", "compact_to_known_state").Observe(Stopwatch.GetTimestamp() - sw);
             sw = Stopwatch.GetTimestamp();
-            Dictionary<MemoryType, long> memory = snapshot.EstimateMemory();
+            Dictionary<MemoryType, long> memory = compactedSnapshot.EstimateMemory();
 
             using (EnterRepolock())
             {
                 _flatdiffimes.WithLabels("compaction", "add_repolock").Observe(Stopwatch.GetTimestamp() - sw);
                 sw = Stopwatch.GetTimestamp();
 
-                if (_logger.IsDebug) _logger.Debug($"Compacted {gatheredCache.SnapshotCount} to {stateId}");
+                if (_logger.IsDebug) _logger.Debug($"Compacted {snapshots.Count} to {stateId}");
 
-                if (_compactedKnownStates.TryAdd(stateId, snapshot))
+                if (_compactedKnownStates.TryAdd(stateId, compactedSnapshot))
                 {
                     foreach (var keyValuePair in memory)
                     {
@@ -300,7 +355,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
                 }
                 else
                 {
-                    snapshot.Dispose();
+                    compactedSnapshot.Dispose();
                 }
 
                 _flatdiffimes.WithLabels("compaction", "add_and_measure").Observe(Stopwatch.GetTimestamp() - sw);
@@ -358,7 +413,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     public SnapshotBundle? GatherReaderAtBaseBlock(StateId baseBlock, IFlatDiffRepository.SnapshotBundleUsage usage)
     {
         // TODO: Throw if not enough or return null
-        return GatherSnapshotBundle(baseBlock, usage, null);
+        return GatherSnapshotBundle(baseBlock, usage);
     }
 
     private static Histogram _knownStatesSize = DevMetric.Factory.CreateHistogram("flatdiff_known_state_size", "timer",
@@ -369,26 +424,37 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             Buckets = [1]
         });
 
-    private SnapshotBundle GatherSnapshotBundle(StateId baseBlock, IFlatDiffRepository.SnapshotBundleUsage usage, long? earliestExclusive = null)
+    private SnapshotBundle GatherSnapshotBundle(StateId baseBlock, IFlatDiffRepository.SnapshotBundleUsage usage)
     {
         // The current verdict on trying to use a linked list of snapshots is that it is error prone and hard to pull of
-
         long sw =  Stopwatch.GetTimestamp();
-        if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}. Earliest is {earliestExclusive}");
+        if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
+
+        if (baseBlock == StateId.PreGenesis)
+        {
+            // Special case for pregenesis. Note: nethermind always try to generate genesis.
+            return new SnapshotBundle(
+                new ArrayPoolList<Snapshot>(0),
+                new NoopPersistenceReader(),
+                _trieNodeCache,
+                _resourcePool,
+                usage: usage);
+        }
 
         StateId persistedState = _currentPersistedState;
 
         StateId current = baseBlock;
-        ArrayPoolList<Snapshot> knownStates = new(Math.Max(1, (int)(_inMemorySnapshotStore.KnownStatesCount / _compactSize)));
+        ArrayPoolList<Snapshot> snapshots = new(Math.Max(1, (int)(_inMemorySnapshotStore.KnownStatesCount / _compactSize)));
         while(TryLeaseCompactedState(current, out Snapshot? snapshot) || TryLeaseState(current, out snapshot))
         {
             if (_logger.IsTrace) _logger.Trace($"Got {snapshot.From} -> {snapshot.To}");
 
-            knownStates.Add(snapshot);
+            snapshots.Add(snapshot);
             if (snapshot.From == current) {
                 break; // Some test commit two block with the same id, so we dont know the parent anymore.
             }
 
+            current = snapshot.From;
             if (snapshot.From == persistedState)
             {
                 break;
@@ -398,38 +464,35 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             {
                 break;
             }
-
-            current = snapshot.From;
         }
 
         _flatdiffimes.WithLabels("gather_cache", "gather").Observe(Stopwatch.GetTimestamp() - sw);
         sw =  Stopwatch.GetTimestamp();
-        _knownStatesSize.Observe(knownStates.Count);
+        _knownStatesSize.Observe(snapshots.Count);
 
-        // Note: By the time the previous loop finished checking all state, the big cache may have added new state and removed some
-        // entry in `_inMemorySnapshotStore`. Meaning, this need to be here instead oof before the loop.
-        IPersistence.IPersistenceReader bigCacheReader = LeaseReader();
-        if (current != baseBlock && earliestExclusive is null && bigCacheReader.CurrentState.blockNumber != -1 && current.blockNumber > bigCacheReader.CurrentState.blockNumber)
+        // Note: By the time the previous loop finished checking all state, the persistencc may have added new state and removed some
+        // entry in `_inMemorySnapshotStore`. Meaning, this need to be here instead of before the loop.
+        IPersistence.IPersistenceReader persistenceReader = LeaseReader();
+        if (current != baseBlock && persistenceReader.CurrentState.blockNumber != -1 && current.blockNumber > persistenceReader.CurrentState.blockNumber)
         {
-            throw new Exception($"Non consecutive snappshots. Current {current} vs {bigCacheReader.CurrentState}, {persistedState}, {baseBlock}, {_inMemorySnapshotStore.TryGetValue(current, out var snapshot)}, ");
+            throw new Exception($"Non consecutive snapshots. Current {current} vs {persistenceReader.CurrentState}, {persistedState}, {baseBlock}, {_inMemorySnapshotStore.TryGetValue(current, out var snapshot)}, ");
         }
 
-        if (bigCacheReader.CurrentState.blockNumber > baseBlock.blockNumber)
+        if (persistenceReader.CurrentState.blockNumber > baseBlock.blockNumber)
         {
-            _logger.Warn("Big cache too early");
-            bigCacheReader.Dispose();
-            bigCacheReader = new NoopPersistenceReader();
+            persistenceReader.Dispose();
+            throw new InvalidOperationException($"Unable to prepare state before persisted state. Persisted state: {persistenceReader.CurrentState}, requested state: {baseBlock}");
         }
 
         // TODO: Measure this
-        knownStates.Reverse();
+        snapshots.Reverse();
         _flatdiffimes.WithLabels("gather_cache", "reverse").Observe(Stopwatch.GetTimestamp() - sw);
         sw =  Stopwatch.GetTimestamp();
 
-        if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Earliest is {earliestExclusive}, Got {knownStates.Count} known states, {_currentPersistedState}");
+        if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, {_currentPersistedState}");
         var res = new SnapshotBundle(
-            knownStates,
-            bigCacheReader,
+            snapshots,
+            persistenceReader,
             _trieNodeCache,
             _resourcePool,
             usage: usage);
@@ -725,21 +788,8 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         }
     }
 
-    public Snapshot CompactSnapshotBundle(SnapshotBundle bundle)
+    public Snapshot CompactSnapshotBundle(ArrayPoolList<Snapshot> snapshots)
     {
-        if (bundle._snapshots.Count == 0)
-        {
-            return _resourcePool.CreateSnapshot(new StateId(-1, ValueKeccak.EmptyTreeHash),
-                new StateId(-1, ValueKeccak.EmptyTreeHash), IFlatDiffRepository.SnapshotBundleUsage.Compactor);
-        }
-
-        var snapshots = bundle._snapshots;
-        if (snapshots.Count == 1)
-        {
-            // Lease?
-            return snapshots[0];
-        }
-
         StateId to = snapshots[^1].To;
         StateId from = snapshots[0].From;
 

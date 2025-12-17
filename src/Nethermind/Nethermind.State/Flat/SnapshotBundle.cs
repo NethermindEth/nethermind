@@ -583,7 +583,11 @@ public class SnapshotBundle : IDisposable
 
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.
-        var snapshot = _resourcePool.CreateSnapshot(from, to, _usage);
+        var snapshot = new Snapshot(
+            from: from,
+            to: to,
+            content: _currentPooledContent,
+            pool: _resourcePool.GetSnapshotPool(_usage));
 
         snapshot.AcquireLease(); // For this SnapshotBundle.
         _snapshots.Add(snapshot); // Now later reads are correct
