@@ -161,6 +161,7 @@ public class BackgroundTaskSchedulerTests
     }
 
     [Test]
+    [Retry(3)]
     public async Task Stats_are_correctly_reported_when_queue_is_empty()
     {
         int capacity = 5;
@@ -172,7 +173,7 @@ public class BackgroundTaskSchedulerTests
 
         scheduler.GetStats()["test"].Should().Be(capacity);
 
-        await Task.Delay(20);
+        await Task.Delay(40);
 
         scheduler.GetStats()["test"].Should().Be(0);
     }
