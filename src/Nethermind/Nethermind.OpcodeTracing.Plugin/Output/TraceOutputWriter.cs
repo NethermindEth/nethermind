@@ -60,18 +60,17 @@ public sealed class TraceOutputWriter
                 Directory.CreateDirectory(outputDirectory);
             }
 
-            // Generate unique filename
-            string timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
-            string fileName = $"opcode-trace-{traceOutput.Metadata.StartBlock}-{traceOutput.Metadata.EndBlock}-{timestamp}.json";
+            // Generate filename based on block range
+            string fileName = $"opcode-trace-{traceOutput.Metadata.StartBlock}-{traceOutput.Metadata.EndBlock}.json";
             string filePath = Path.Combine(outputDirectory, fileName);
 
             // Serialize and write
             string json = JsonSerializer.Serialize(traceOutput, _serializerOptions);
             await File.WriteAllTextAsync(filePath, json).ConfigureAwait(false);
 
-            if (_logger.IsInfo)
+            if (_logger.IsDebug)
             {
-                _logger.Info($"Opcode trace written to: {filePath}");
+                _logger.Debug($"Opcode trace file created: {filePath}");
             }
 
             return filePath;
