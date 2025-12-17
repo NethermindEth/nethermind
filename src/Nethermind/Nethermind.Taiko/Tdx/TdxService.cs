@@ -13,17 +13,18 @@ using Nethermind.Logging;
 namespace Nethermind.Taiko.Tdx;
 
 /// <summary>
-/// Service for generating TDX attestations.
+/// Service for generating TDX attestations for block headers.
+/// The attestation is directly over the block header hash.
 /// </summary>
 public class TdxService : ITdxService
 {
-    private const int ProofSize = 89; // 4 + 20 + 65
+    // Proof layout: [instance_id: 4 bytes][address: 20 bytes][signature: 65 bytes]
+    private const int ProofSize = 89;
 
     private readonly ISurgeTdxConfig _config;
     private readonly ITdxsClient _client;
     private readonly ILogger _logger;
-    private readonly Ecdsa _ecdsa;
-    private readonly ulong _chainId;
+    private readonly Ecdsa _ecdsa = new();
 
     private TdxGuestInfo? _guestInfo;
     private PrivateKey? _privateKey;
@@ -31,8 +32,6 @@ public class TdxService : ITdxService
     public TdxService(
         ISurgeTdxConfig config,
         ITdxsClient client,
-        IEthereumEcdsa ecdsa,
-        ulong chainId,
         ILogManager logManager)
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
@@ -42,8 +41,6 @@ public class TdxService : ITdxService
 
         _config = config;
         _client = client;
-        _ecdsa = new Ecdsa();
-        _chainId = chainId;
         _logger = logManager.GetClassLogger();
 
         TryLoadBootstrap();
@@ -103,18 +100,18 @@ public class TdxService : ITdxService
         if (_guestInfo is null || _privateKey is null)
             throw new TdxException("TDX service not bootstrapped");
 
-        // Compute instance hash for the block
-        Hash256 instanceHash = ComputeInstanceHash(block);
+        // Get the block header hash - this is what we attest to
+        Hash256 headerHash = block.Header.Hash ?? throw new TdxException("Block header hash is null");
 
-        // Sign the instance hash
-        Signature signature = _ecdsa.Sign(_privateKey, instanceHash.ValueHash256);
+        // Sign the header hash
+        Signature signature = _ecdsa.Sign(_privateKey, headerHash.ValueHash256);
         byte[] signatureBytes = GetSignatureBytes(signature);
 
-        // Generate TDX quote with instance hash as user data
+        // Generate TDX quote with header hash as user data
         byte[] nonce = new byte[32];
         new CryptoRandom().GenerateRandomBytes(nonce);
-        byte[] instanceHashBytes = instanceHash.Bytes.ToArray();
-        byte[] quote = _client.Issue(instanceHashBytes, nonce);
+        byte[] headerHashBytes = headerHash.Bytes.ToArray();
+        byte[] quote = _client.Issue(headerHashBytes, nonce);
 
         // Build proof: instance_id (4) + address (20) + signature (65)
         byte[] proof = BuildProof(_privateKey.Address, signatureBytes, _config.InstanceId);
@@ -123,7 +120,7 @@ public class TdxService : ITdxService
         {
             Proof = proof,
             Quote = quote,
-            InstanceHash = instanceHash
+            Header = block.Header
         };
     }
 
@@ -158,69 +155,6 @@ public class TdxService : ITdxService
         signature.Bytes.CopyTo(result.AsSpan(0, 64)); // r + s
         result[64] = (byte)(signature.RecoveryId + 27); // v = recovery_id + 27
         return result;
-    }
-
-    /// <summary>
-    /// Compute the instance hash for a preconf block attestation.
-    /// Uses a two-step hash: first hash the checkpoint, then hash the full structure.
-    /// Structure: keccak256(abi.encode("PRECONF_CHECKPOINT", chainId, parentHash, checkpointHash, proverAddress))
-    /// Where checkpointHash = keccak256(abi.encode(blockNumber, blockHash, stateRoot))
-    /// </summary>
-    private Hash256 ComputeInstanceHash(Block block)
-    {
-        // Step 1: Compute checkpoint hash
-        Hash256 checkpointHash = ComputeCheckpointHash(block);
-
-        // Step 2: Compute full instance hash
-        using var stream = new MemoryStream();
-        WriteAbiString(stream, "PRECONF_CHECKPOINT");
-        WriteAbiUint256(stream, _chainId);
-        WriteAbiBytes32(stream, block.Header.ParentHash ?? Keccak.Zero);
-        WriteAbiBytes32(stream, checkpointHash);
-        WriteAbiAddress(stream, _privateKey?.Address ?? Address.Zero);
-
-        return Keccak.Compute(stream.ToArray());
-    }
-
-    /// <summary>
-    /// Compute checkpoint hash: keccak256(abi.encode(blockNumber, blockHash, stateRoot))
-    /// </summary>
-    private static Hash256 ComputeCheckpointHash(Block block)
-    {
-        using var stream = new MemoryStream();
-        WriteAbiUint256(stream, (ulong)block.Number);
-        WriteAbiBytes32(stream, block.Header.Hash ?? Keccak.Zero);
-        WriteAbiBytes32(stream, block.Header.StateRoot ?? Keccak.Zero);
-        return Keccak.Compute(stream.ToArray());
-    }
-
-    // ABI encoding helpers - simplified for fixed-size types
-    private static void WriteAbiString(MemoryStream stream, string value)
-    {
-        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(value);
-        byte[] padded = new byte[32];
-        Array.Copy(bytes, padded, Math.Min(bytes.Length, 32));
-        stream.Write(padded);
-    }
-
-    private static void WriteAbiUint256(MemoryStream stream, ulong value)
-    {
-        byte[] bytes = new byte[32];
-        for (int i = 0; i < 8; i++)
-            bytes[31 - i] = (byte)(value >> (i * 8));
-        stream.Write(bytes);
-    }
-
-    private static void WriteAbiBytes32(MemoryStream stream, Hash256 hash)
-    {
-        stream.Write(hash.Bytes);
-    }
-
-    private static void WriteAbiAddress(MemoryStream stream, Address address)
-    {
-        byte[] bytes = new byte[32];
-        address.Bytes.CopyTo(bytes.AsSpan(12)); // Left-pad to 32 bytes
-        stream.Write(bytes);
     }
 
     private void TryLoadBootstrap()

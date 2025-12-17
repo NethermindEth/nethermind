@@ -2,29 +2,33 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Taiko.Tdx;
 
 /// <summary>
-/// TDX attestation result containing proof and quote.
+/// TDX attestation result containing proof, quote, and the attested block header.
+/// The attestation is over the block header hash.
 /// </summary>
 public class TdxAttestation
 {
     /// <summary>
     /// The proof bytes: instance_id (4) + address (20) + signature (65) = 89 bytes.
+    /// The signature is over header.Hash.
     /// </summary>
     public required byte[] Proof { get; init; }
 
     /// <summary>
-    /// The TDX quote bytes.
+    /// The TDX quote containing header.Hash as userData.
     /// </summary>
     public required byte[] Quote { get; init; }
 
     /// <summary>
-    /// The instance hash that was signed and quoted.
+    /// The full block header that was attested.
+    /// Verifiers can compute header.Hash and verify it matches the signature and quote.
     /// </summary>
-    public required Hash256 InstanceHash { get; init; }
+    public required BlockHeader Header { get; init; }
 }
 
 /// <summary>
