@@ -91,6 +91,7 @@ public sealed class RealTimeTracer : IAsyncDisposable
     /// <summary>
     /// Handles a completed block trace.
     /// Writes per-block JSON file asynchronously and updates cumulative totals per FR-005b.
+    /// Continues tracing indefinitely for all blocks >= StartBlock.
     /// </summary>
     /// <param name="trace">The block trace data.</param>
     internal void OnBlockCompleted(OpcodeBlockTrace trace)
@@ -100,9 +101,8 @@ public sealed class RealTimeTracer : IAsyncDisposable
             return;
         }
 
-        // Check if block is in range - only process blocks within configured range
-        bool inRange = _range.Contains(trace.BlockNumber);
-        if (!inRange || _rangeCompleted)
+        // Only skip blocks before the start block - trace all blocks at or after start
+        if (trace.BlockNumber < _range.StartBlock)
         {
             return;
         }
@@ -140,17 +140,17 @@ public sealed class RealTimeTracer : IAsyncDisposable
         // Notify callback
         _onBlockCompleted(trace.BlockNumber);
 
-        // Check for range completion per FR-072
-        if (trace.BlockNumber >= _range.EndBlock)
+        // Check for initial range completion per FR-072 (log once, but continue tracing)
+        if (!_rangeCompleted && trace.BlockNumber >= _range.EndBlock)
         {
             _rangeCompleted = true;
 
             if (_logger.IsInfo)
             {
-                _logger.Info($"RealTime: configured range {_range.StartBlock}-{_range.EndBlock} completed. Tracing stopped.");
+                _logger.Info($"RealTime: configured range {_range.StartBlock}-{_range.EndBlock} completed. Continuing to trace new blocks.");
             }
 
-            // Write final cumulative with completionStatus="complete" per FR-072
+            // Write cumulative with completionStatus="complete" for initial range per FR-072
             _ = _cumulativeWriter.FinalizeAsync(CreateCumulativeOutput("complete"), "complete");
         }
     }
