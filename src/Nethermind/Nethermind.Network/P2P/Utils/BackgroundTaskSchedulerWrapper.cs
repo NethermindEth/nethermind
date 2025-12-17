@@ -21,34 +21,46 @@ namespace Nethermind.Network.P2P.Utils;
 public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgroundTaskScheduler backgroundTaskScheduler)
 {
     internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage =>
-        TryScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSender);
+        TryScheduleBackgroundTask(new RequestStruct2<TReq, TRes>(request, fulfillFunc), BackgroundSyncSender);
 
     internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) where TRes : P2PMessage =>
-        TryScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSenderValueTask);
+        TryScheduleBackgroundTask(new RequestStruct2Value<TReq, TRes>(request, fulfillFunc), BackgroundSyncSenderValueTask);
 
-    internal bool TryScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc)
+    internal bool TryScheduleBackgroundTask<TReq>(in TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc)
     {
         RequestStruct<TReq> requestStruct = new(request, fulfillFunc);
         return backgroundTaskScheduler.TryScheduleTask(in requestStruct, BackgroundTaskFailureHandlerValueTask);
     }
 
-    private readonly record struct RequestStruct<TReq>(TReq Request, Func<TReq, CancellationToken, ValueTask> BackgroundTask)
+    private interface IToString;
+
+    private readonly record struct RequestStruct2<TReq, TRes>(in TReq Request, Func<TReq, CancellationToken, Task<TRes>> FulfillFunc) : IToString
     {
         public override string ToString() => typeof(TReq).FullName!;
     }
 
+    private readonly record struct RequestStruct2Value<TReq, TRes>(in TReq Request, Func<TReq, CancellationToken, ValueTask<TRes>> FulfillFunc) : IToString
+    {
+        public override string ToString() => typeof(TReq).FullName!;
+    }
+
+    private readonly record struct RequestStruct<TReq>(in TReq Request, Func<TReq, CancellationToken, ValueTask> BackgroundTask)
+    {
+        public override string ToString() => Request is IToString ? Request.ToString()! : typeof(TReq).FullName!;
+    }
+
     // I just don't want to create a closure... so this happens.
     private async ValueTask BackgroundSyncSender<TReq, TRes>(
-        (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
+        RequestStruct2<TReq, TRes> input, CancellationToken cancellationToken) where TRes : P2PMessage
     {
-        TRes response = await input.FullfillFunc(input.Request, cancellationToken);
+        TRes response = await input.FulfillFunc(input.Request, cancellationToken);
         handler.Send(response);
     }
 
     private async ValueTask BackgroundSyncSenderValueTask<TReq, TRes>(
-        (TReq Request, Func<TReq, CancellationToken, ValueTask<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
+        RequestStruct2Value<TReq, TRes> input, CancellationToken cancellationToken) where TRes : P2PMessage
     {
-        TRes response = await input.FullfillFunc(input.Request, cancellationToken);
+        TRes response = await input.FulfillFunc(input.Request, cancellationToken);
         handler.Send(response);
     }
 

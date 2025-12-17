@@ -246,14 +246,15 @@ public class Eth68ProtocolHandler(ISession session,
         Send(message);
     }
 
-    protected override ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
+    protected override ValueTask HandleSlow(TransactionsMessageChunk request, CancellationToken cancellationToken)
     {
-        int startIdx = request.startIndex;
-        for (int i = startIdx; i < request.txs.Count; i++)
+        int startIdx = request.StartIndex;
+        IOwnedReadOnlyList<Transaction> ownedReadOnlyList = request.Transactions;
+        for (int i = startIdx; i < ownedReadOnlyList.Count; i++)
         {
-            if (!ValidateSizeAndType(request.txs[i]))
+            if (!ValidateSizeAndType(ownedReadOnlyList[i]))
             {
-                request.txs.Dispose();
+                ownedReadOnlyList.Dispose();
                 throw new SubprotocolException("invalid pooled tx type or size");
             }
         }
