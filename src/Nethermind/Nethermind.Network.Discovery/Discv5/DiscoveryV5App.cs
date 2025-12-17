@@ -25,6 +25,7 @@ using Nethermind.Core.ServiceStopper;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Stats.Model;
 
@@ -34,7 +35,7 @@ public class DiscoveryV5App : IDiscoveryApp
 {
     private readonly IDiscv5Protocol _discv5Protocol;
     private readonly Logging.ILogger _logger;
-    private readonly IDb _discoveryDb;
+    private readonly INetworkStorage _discoveryStorage;
     private readonly CancellationTokenSource _appShutdownSource = new();
     private readonly DiscoveryReport? _discoveryReport;
     private readonly IServiceProvider _serviceProvider;
@@ -45,13 +46,13 @@ public class DiscoveryV5App : IDiscoveryApp
         IIPResolver? ipResolver,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
-        [KeyFilter(DbNames.DiscoveryNodes)] IDb discoveryDb,
+        [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage discoveryStorage,
         ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(ipResolver);
 
         _logger = logManager.GetClassLogger();
-        _discoveryDb = discoveryDb;
+        _discoveryStorage = discoveryStorage;
 
         IdentityVerifierV4 identityVerifier = new();
 
@@ -78,18 +79,8 @@ public class DiscoveryV5App : IDiscoveryApp
                 .Select(GetEnr),
             .. bootstrapNodes.Where(e => e.StartsWith("enr:")).Select(enr => enrFactory.CreateFromString(enr, identityVerifier)),
             // TODO: Move to routing table's UpdateFromEnr
-            .. _discoveryDb.GetAllValues().Select(enr =>
-                {
-                    try
-                    {
-                        return enrFactory.CreateFromBytes(enr, identityVerifier);
-                    }
-                    catch (Exception e)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"unable to decode enr {e}");
-                        return null;
-                    }
-                })
+            .. _discoveryStorage.GetPersistedNodes()
+                .Select(CreateEnr)
                 .Where(enr => enr != null)!
             ];
 
@@ -187,6 +178,19 @@ public class DiscoveryV5App : IDiscoveryApp
         .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Address.Port))
         .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.Address.Port))
         .Build();
+
+    private Lantern.Discv5.Enr.Enr? CreateEnr(NetworkNode node)
+    {
+        try
+        {
+            return GetEnr(node.Enode);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"unable to build enr from persisted node {node}: {e}");
+            return null;
+        }
+    }
 
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
 
@@ -311,21 +315,7 @@ public class DiscoveryV5App : IDiscoveryApp
     public async Task StopAsync()
     {
         IEnumerable<IEnr> activeNodeEnrs = _discv5Protocol.GetAllNodes;
-        _discoveryDb.Clear();
-
-        IWriteBatch? batch = null;
-        try
-        {
-            foreach (IEnr enr in activeNodeEnrs)
-            {
-                batch ??= _discoveryDb.StartWriteBatch();
-                batch[enr.NodeId] = enr.EncodeRecord();
-            }
-        }
-        finally
-        {
-            batch?.Dispose();
-        }
+        PersistNodes(activeNodeEnrs);
 
 
         try
@@ -345,5 +335,34 @@ public class DiscoveryV5App : IDiscoveryApp
     {
         var routingTable = _serviceProvider.GetRequiredService<IRoutingTable>();
         routingTable.UpdateFromEnr(GetEnr(node));
+    }
+
+    private void PersistNodes(IEnumerable<IEnr> nodeEnrs)
+    {
+        List<NetworkNode> nodesToPersist = new();
+
+        foreach (IEnr enr in nodeEnrs)
+        {
+            if (!TryGetNodeFromEnr(enr, out Node? node))
+            {
+                continue;
+            }
+
+            nodesToPersist.Add(new NetworkNode(node.Id, node.Address.Address.ToString(), node.Address.Port));
+        }
+
+        if (nodesToPersist.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            _discoveryStorage.UpdateNodes(nodesToPersist);
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Failed to persist discv5 nodes: {ex}");
+        }
     }
 }
