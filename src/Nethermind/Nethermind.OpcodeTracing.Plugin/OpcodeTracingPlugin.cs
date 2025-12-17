@@ -78,6 +78,14 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig config) : INethermindPlugi
             await _traceRecorder.PrepareAsync(_api).ConfigureAwait(false);
 
             _logger?.Info($"Opcode tracing plugin initialized (session={_sessionId}).");
+
+            // Provide guidance for RealTime mode users
+            if (string.Equals(_config.Mode, "RealTime", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger?.Info(
+                    "RealTime mode: Tracing will begin automatically when the node reaches the chain tip. " +
+                    "Please wait for sync to complete - look for 'RealTime opcode tracing is now active' message.");
+            }
         }
         catch (Exception ex)
         {

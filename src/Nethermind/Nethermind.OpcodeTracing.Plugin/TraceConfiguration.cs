@@ -133,13 +133,24 @@ public sealed record TraceConfiguration
         }
         else if (config.Blocks.HasValue)
         {
-            // Recent N blocks
-            effectiveEnd = currentChainTip;
-            effectiveStart = Math.Max(0, currentChainTip - config.Blocks.Value + 1);
-
-            if (effectiveStart == 0 && config.Blocks.Value > currentChainTip + 1)
+            // For RealTime mode: trace NEXT N blocks from current tip (future blocks)
+            // For Retrospective mode: trace LAST N blocks (historical blocks)
+            if (mode == TracingMode.RealTime)
             {
-                warnings.Add($"Requested {config.Blocks.Value} blocks but only {currentChainTip + 1} available. Tracing all available blocks.");
+                // RealTime: next N blocks starting from current chain tip + 1
+                effectiveStart = currentChainTip + 1;
+                effectiveEnd = currentChainTip + config.Blocks.Value;
+            }
+            else
+            {
+                // Retrospective: recent N blocks from chain tip
+                effectiveEnd = currentChainTip;
+                effectiveStart = Math.Max(0, currentChainTip - config.Blocks.Value + 1);
+
+                if (effectiveStart == 0 && config.Blocks.Value > currentChainTip + 1)
+                {
+                    warnings.Add($"Requested {config.Blocks.Value} blocks but only {currentChainTip + 1} available. Tracing all available blocks.");
+                }
             }
         }
         else if (config.StartBlock.HasValue)
