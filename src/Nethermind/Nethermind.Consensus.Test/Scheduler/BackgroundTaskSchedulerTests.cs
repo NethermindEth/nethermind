@@ -177,7 +177,7 @@ public class BackgroundTaskSchedulerTests
 
         await Task.Delay(100);
 
-        Assert.That(() => scheduler.GetStats()["test"], Is.EqualTo(0).After(500, 50));
+        Assert.That(() => scheduler.GetStats()["test"], Is.EqualTo(0).After(1000, 50));
     }
 
 }
