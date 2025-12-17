@@ -15,9 +15,18 @@ namespace Nethermind.OpcodeTracing.Plugin;
 public class OpcodeTracingPlugin(IOpcodeTracingConfig config) : INethermindPlugin, IAsyncDisposable
 {
     private readonly IOpcodeTracingConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+    private readonly string _sessionId = GenerateSessionId();
     private OpcodeTraceRecorder? _traceRecorder;
     private ILogger? _logger;
     private INethermindApi? _api;
+
+    /// <summary>
+    /// Generates a unique session identifier for RealTime mode cumulative file naming per FR-071.
+    /// </summary>
+    private static string GenerateSessionId()
+    {
+        return DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+    }
 
     /// <summary>
     /// Gets the plugin name.
@@ -64,11 +73,11 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig config) : INethermindPlugi
             // Initialize dependencies from DI container or create them directly
             var counter = new OpcodeCounter();
             var outputWriter = new Output.TraceOutputWriter(_api.LogManager);
-            _traceRecorder = new OpcodeTraceRecorder(_config, counter, outputWriter, _api.LogManager);
+            _traceRecorder = new OpcodeTraceRecorder(_config, counter, outputWriter, _sessionId, _api.LogManager);
 
             await _traceRecorder.PrepareAsync(_api).ConfigureAwait(false);
 
-            _logger?.Info("Opcode tracing plugin initialized.");
+            _logger?.Info($"Opcode tracing plugin initialized (session={_sessionId}).");
         }
         catch (Exception ex)
         {

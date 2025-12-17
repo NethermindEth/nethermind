@@ -1037,7 +1037,8 @@
           "Nethermind.Config": "[1.36.0-unstable, )",
           "Nethermind.Core": "[1.36.0-unstable, )",
           "Nethermind.Evm": "[1.36.0-unstable, )",
-          "Nethermind.Logging": "[1.36.0-unstable, )"
+          "Nethermind.Logging": "[1.36.0-unstable, )",
+          "Nethermind.Synchronization": "[1.36.0-unstable, )"
         }
       },
       "nethermind.optimism": {

@@ -5,14 +5,42 @@ The Opcode Tracing Plugin enables tracing of EVM opcode usage across configurabl
 ## Features
 
 - **Dual Tracing Modes**:
-  - **RealTime**: Traces opcodes as blocks are processed during sync or as new blocks arrive (<5% overhead)
-  - **Retrospective**: Analyzes historical blocks from the database without impacting live sync
+  - **RealTime**: Traces opcodes as blocks are processed at the chain tip AFTER sync completes
+  - **Retrospective**: Analyzes transaction bytecode from historical blocks in the database
 
 - **Flexible Block Range Configuration**:
   - Explicit range: `--OpcodeTracing.StartBlock 100 --OpcodeTracing.EndBlock 200`
   - Recent N blocks: `--OpcodeTracing.Blocks 100`
 
 - **Comprehensive JSON Output**: Single JSON file per trace with metadata and aggregated opcode counts
+
+## Understanding the Tracing Modes
+
+### RealTime Mode
+
+**Important**: RealTime mode traces opcodes from EVM execution of **new blocks at the chain tip**. It requires the node to be **fully synced** before tracing begins.
+
+**Why?** During initial sync, blocks are downloaded and stored without executing the EVM - the state is reconstructed from downloaded trie nodes instead. Only after sync completes do new blocks get processed through the EVM, which is when RealTime opcode tracing captures execution data.
+
+**Best for**:
+- Monitoring opcode usage on production nodes
+- Analyzing newly mined blocks in real-time
+- Low-overhead continuous tracing (<5% impact)
+
+**Not suitable for**:
+- Analyzing historical blocks during sync
+- Testing on a node that hasn't finished syncing
+
+### Retrospective Mode
+
+Retrospective mode analyzes transaction bytecode (input data) from historical blocks stored in the database. It performs **static analysis** of opcodes present in transaction data, not actual EVM execution.
+
+**Best for**:
+- Analyzing contract deployment bytecode
+- Analyzing transaction input data patterns
+- Research on historical blocks during or after sync
+
+**Note**: This mode counts opcodes found in transaction data bytes, which differs from actual executed opcodes. For true execution tracing of historical blocks, you would need to replay transactions (not currently implemented).
 
 ## Architecture
 
@@ -66,7 +94,7 @@ dotnet run --project Nethermind.Runner -- \\
 
 # Retrospective mode with recent N blocks
 dotnet run --project Nethermind.Runner -- \\
-  --config mainnet \\
+  --config volta \\
   --OpcodeTracing.Enabled true \\
   --OpcodeTracing.Blocks 100 \\
   --OpcodeTracing.Mode Retrospective
@@ -217,14 +245,18 @@ If tracing is interrupted (Ctrl+C, crash, etc.):
 ## Performance Characteristics
 
 ### Real-Time Mode
-- Overhead: <5% impact on block processing
-- Best for: Continuous monitoring, new block analysis
-- Processing: ~10 minutes for 1000 blocks (varies by network)
+- **Requirement**: Node must be fully synced (SyncMode = WaitingForBlock)
+- **Overhead**: <5% impact on block processing
+- **Best for**: Continuous monitoring, new block analysis on synced nodes
+- **Processing**: ~10 minutes for 1000 blocks (varies by network)
+- **During sync**: No blocks will be traced (blocks are downloaded, not executed)
 
 ### Retrospective Mode
-- Overhead: No impact on live sync
-- Best for: Historical analysis, research
-- Processing: Faster than real-time (direct database access)
+- **Requirement**: Blocks must exist in the database
+- **Overhead**: No impact on live sync
+- **Best for**: Historical static analysis of transaction bytecode
+- **Processing**: Fast direct database access
+- **Limitation**: Counts opcodes in transaction data, not actual EVM execution
 
 ### Memory Footprint
 - Base: ~5-20 KB
@@ -279,6 +311,25 @@ Progress is logged every 1000 blocks:
 ### Output Directory Not Writable
 - Verify path exists and has write permissions
 - Use absolute paths to avoid ambiguity
+
+### RealTime Mode Shows Zero Blocks Processed
+This is expected if the node is still syncing. You'll see a warning in the logs:
+```
+RealTime opcode tracing is enabled, but the node is currently syncing (SyncMode=...).
+RealTime mode only captures opcodes from NEW blocks processed at the chain tip AFTER sync completes.
+```
+
+**Solutions**:
+1. **Wait for sync to complete** - RealTime mode will automatically start tracing once sync finishes
+2. **Use Retrospective mode** - For immediate testing, switch to Retrospective mode which analyzes blocks already in the database:
+   ```bash
+   --OpcodeTracing.Mode Retrospective --OpcodeTracing.StartBlock 100 --OpcodeTracing.EndBlock 200
+   ```
+
+### RealTime Mode Produces Empty opcodeCounts
+- The node is still syncing (see above)
+- The specified block range (StartBlock/EndBlock) hasn't been reached yet
+- The node is disconnected from the network
 
 ## Additional Resources
 
