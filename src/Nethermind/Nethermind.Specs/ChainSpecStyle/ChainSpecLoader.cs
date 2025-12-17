@@ -189,6 +189,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             TerminalTotalDifficulty = chainSpecJson.Params.TerminalTotalDifficulty,
             TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber,
             BlobSchedule = chainSpecJson.Params.BlobSchedule,
+            CensoringSchedule = chainSpecJson.Params.CensoringSchedule,
 
             Eip7594TransitionTimestamp = chainSpecJson.Params.Eip7594TransitionTimestamp,
             Eip7939TransitionTimestamp = chainSpecJson.Params.Eip7939TransitionTimestamp,

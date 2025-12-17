@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Frozen;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs;
@@ -156,4 +157,8 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public bool IsEip7939Enabled => spec.IsEip7939Enabled;
     public bool IsEip7907Enabled => spec.IsEip7907Enabled;
     public bool IsRip7728Enabled => spec.IsRip7728Enabled;
+
+    public FrozenSet<AddressAsKey>? CensoredSenders => spec.CensoredSenders;
+    public FrozenSet<AddressAsKey>? CensoredTo => spec.CensoredTo;
+    public bool Is7702PatchEnabled => spec.Is7702PatchEnabled;
 }

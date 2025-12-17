@@ -112,6 +112,44 @@
         "max": 2,
         "baseFeeUpdateFraction": "0x10fafa"
       }
+    ],
+    "censoringSchedule": [
+      {
+        "timestamp": "0x69383970",
+        "senders": [
+          "0x506d1f9efe24f0d47853adca907eb8d89ae03207",
+          "0x491837cc85bbeab5f9b3110ad61f39d87f8ec618"
+        ],
+        "to": [
+          "0x5e7fa86cfdd10de6129e53377335b78bb34eabd3",
+          "0x234490fa3cd6c899681c8e93ba88e97183a71fe4",
+          "0x49b5ce67b22b1d596842ca071ac3da93ee593e11",
+          "0x7b23c07a0bbbe652bf7069c9c4143a2c85132166",
+          "0x1bdc1febebf92bffab3a2e49c5cf3b7e35a9e81e"
+        ],
+        "is7702PatchEnabled": false
+      },
+      {
+        "timestamp": "0x690df458",
+        "senders": [
+          "0x506d1f9efe24f0d47853adca907eb8d89ae03207",
+          "0x491837cc85bbeab5f9b3110ad61f39d87f8ec618"
+        ],
+        "to": [
+          "0x5e7fa86cfdd10de6129e53377335b78bb34eabd3",
+          "0x234490fa3cd6c899681c8e93ba88e97183a71fe4",
+          "0x49b5ce67b22b1d596842ca071ac3da93ee593e11",
+          "0x7b23c07a0bbbe652bf7069c9c4143a2c85132166",
+          "0x1bdc1febebf92bffab3a2e49c5cf3b7e35a9e81e"
+        ],
+        "is7702PatchEnabled": true
+      },
+      {
+        "timestamp": "0x69496dbc",
+        "senders": [],
+        "to": [],
+        "is7702PatchEnabled": false
+      }
     ]
   },
   "genesis": {

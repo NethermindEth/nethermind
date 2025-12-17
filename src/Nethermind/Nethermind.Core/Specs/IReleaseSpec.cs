@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Frozen;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -537,5 +539,19 @@ namespace Nethermind.Core.Specs
         /// RIP-7728: L1SLOAD precompile for reading L1 storage from L2
         /// </summary>
         public bool IsRip7728Enabled { get; }
+
+        /// <summary>
+        // Censored addresses on gnosis
+        /// </summary>
+        public FrozenSet<AddressAsKey>? CensoredSenders { get; }
+        public FrozenSet<AddressAsKey>? CensoredTo { get; }
+        public bool Is7702PatchEnabled { get; }
+
+        public bool IsCensoringEnabled => CensoredSenders is not null && CensoredTo is not null;
+
+        public bool IsCensoredTransaction(Transaction tx)
+           => (tx.SenderAddress is not null && CensoredSenders?.Contains(tx.SenderAddress) == true)
+              || (tx.To is not null && CensoredTo?.Contains(tx.To) == true)
+              || (Is7702PatchEnabled && tx.Type == TxType.SetCode && tx.AuthorizationList?.Any(t => t.Authority is not null && CensoredSenders?.Contains(t.Authority) == true) == true);
     }
 }

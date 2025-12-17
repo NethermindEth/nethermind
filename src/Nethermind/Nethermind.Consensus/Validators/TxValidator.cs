@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool;
@@ -10,6 +11,7 @@ using Nethermind.Core.Messages;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Specs;
 
 namespace Nethermind.Consensus.Validators;
 
@@ -19,6 +21,7 @@ public sealed class TxValidator : ITxValidator
 
     public TxValidator(ulong chainId)
     {
+        var censoringTxValidator = new CensoringTxValidator(chainId);
         RegisterValidator(TxType.Legacy, new CompositeTxValidator([
             NonceCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
@@ -26,7 +29,8 @@ public sealed class TxValidator : ITxValidator
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
-            GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance,
+            censoringTxValidator,
         ]));
 
         var expectedChainIdTxValidator = new ExpectedChainIdTxValidator(chainId);
@@ -39,7 +43,8 @@ public sealed class TxValidator : ITxValidator
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
-            GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance,
+            censoringTxValidator,
         ]));
         RegisterValidator(TxType.EIP1559, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip1559Enabled),
@@ -51,7 +56,8 @@ public sealed class TxValidator : ITxValidator
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
-            GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance,
+            censoringTxValidator,
         ]));
         RegisterValidator(TxType.Blob, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled),
@@ -65,7 +71,8 @@ public sealed class TxValidator : ITxValidator
             MempoolBlobTxValidator.Instance,
             MempoolBlobTxProofVersionValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
-            GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance,
+            censoringTxValidator,
         ]));
         RegisterValidator(TxType.SetCode, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip7702Enabled),
@@ -78,7 +85,8 @@ public sealed class TxValidator : ITxValidator
             NonBlobFieldsTxValidator.Instance,
             NoContractCreationTxValidator.Instance,
             AuthorizationListTxValidator.Instance,
-            GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance,
+            censoringTxValidator,
         ]));
     }
 
@@ -281,11 +289,11 @@ public sealed class MempoolBlobTxValidator : ITxValidator
         return transaction switch
         {
             { NetworkWrapper: null } => ValidationResult.Success,
-            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateBlobs(transaction, wrapper),
+            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateBlobs(transaction, wrapper, releaseSpec),
             { Type: TxType.Blob } or { NetworkWrapper: not null } => TxErrorMessages.InvalidTransactionForm,
         };
 
-        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper)
+        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper, IReleaseSpec _)
         {
             IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
 
@@ -313,6 +321,15 @@ public sealed class MempoolBlobTxProofVersionValidator : ITxValidator
         return version is null
             ? transaction.NetworkWrapper is not null ? TxErrorMessages.InvalidTransactionForm : ValidationResult.Success
             : ValidateProofVersion(version.Value, releaseSpec);
+
+        // should be changed?
+        // return transaction switch
+        // {
+        //     LightTransaction lightTx => ValidateProofVersion(lightTx.ProofVersion, releaseSpec),
+        //     { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateProofVersion(wrapper.Version, releaseSpec),
+        //     { Type: TxType.Blob, NetworkWrapper: not null } => TxErrorMessages.InvalidTransactionForm,
+        //     _ => ValidationResult.Success,
+        // };
 
         static ValidationResult ValidateProofVersion(ProofVersion txProofVersion, IReleaseSpec spec) =>
             txProofVersion != spec.BlobProofVersion ? TxErrorMessages.InvalidProofVersion : ValidationResult.Success;
@@ -405,3 +422,29 @@ public sealed class NonceCapTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction.Nonce < ulong.MaxValue ? ValidationResult.Success : TxErrorMessages.NonceTooHigh;
 }
+
+public sealed class CensoringTxValidator(ulong chainId) : ITxValidator
+{
+    private readonly EthereumEcdsa _ethereumEcdsa = new(chainId);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if (!releaseSpec.IsCensoringEnabled)
+            return ValidationResult.Success;
+
+        transaction.SenderAddress ??= _ethereumEcdsa.RecoverAddress(transaction, !releaseSpec.ValidateChainId);
+
+        if (transaction.Type == TxType.SetCode)
+        {
+            foreach (AuthorizationTuple tuple in transaction.AuthorizationList ?? [])
+            {
+                tuple.Authority ??= _ethereumEcdsa.RecoverAddress(tuple);
+            }
+        }
+
+        return releaseSpec.IsCensoredTransaction(transaction)
+            ? TxErrorMessages.Censored
+            : ValidationResult.Success;
+    }
+}
+

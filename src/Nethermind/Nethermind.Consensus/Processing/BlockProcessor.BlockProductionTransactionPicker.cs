@@ -92,6 +92,11 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
                 }
 
+                if (spec.IsCensoringEnabled && spec.IsCensoredTransaction(currentTx))
+                {
+                    return args.Set(TxAction.Skip, $"Censored transaction");
+                }
+
                 UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
                 if (!HasEnoughFunds(currentTx, balance, args, block, spec))
                 {
