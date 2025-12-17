@@ -90,10 +90,10 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Exit when invalid block is triggered. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     bool ExitOnInvalidBlock { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "4", HiddenFromDocs = true)]
+    [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "2", HiddenFromDocs = true)]
     int BackgroundTaskConcurrency { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Specify max number of background task.", DefaultValue = "4096", HiddenFromDocs = true)]
+    [ConfigItem(Description = "[TECHNICAL] Specify max number of background task.", DefaultValue = "2048", HiddenFromDocs = true)]
     int BackgroundTaskMaxNumber { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] True when in runner test. Disable some wait.", DefaultValue = "false", HiddenFromDocs = true)]
