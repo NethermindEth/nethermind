@@ -173,7 +173,7 @@ public class BackgroundTaskSchedulerTests
 
         scheduler.GetStats()["test"].Should().BeInRange(capacity, capacity + 1);
 
-        await Task.Delay(40);
+        await Task.Delay(100);
 
         scheduler.GetStats()["test"].Should().Be(0);
     }

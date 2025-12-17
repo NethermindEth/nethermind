@@ -12,7 +12,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.TxPool;
-using ZstdSharp.Unsafe;
 
 namespace Nethermind.Consensus.Scheduler;
 
@@ -192,17 +191,11 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         return false;
     }
 
-    private void IncrementStats<TReq>(TReq request) where TReq : notnull
-    {
-        Console.WriteLine("IncrementStats");
+    private void IncrementStats<TReq>(TReq request) where TReq : notnull =>
         _stats.AddOrUpdate(request.ToString(), 1, (_, value) => value + 1);
-    }
 
-    private void DecrementStats(IActivity activity)
-    {
-        Console.WriteLine("DecrementStats");
+    private void DecrementStats(IActivity activity) =>
         _stats.AddOrUpdate(activity.ToString(), 0, (_, value) => value - 1);
-    }
 
     private void UpdateQueueCount() => Evm.Metrics.NumberOfBackgroundTasksScheduled = Volatile.Read(ref _queueCount);
 
