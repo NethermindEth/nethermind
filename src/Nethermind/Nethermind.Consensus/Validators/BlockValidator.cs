@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -277,22 +278,21 @@ public class BlockValidator(
 
     protected virtual bool ValidateTransactions(Block block, IReleaseSpec spec, ref string? errorMessage)
     {
-        Transaction[] transactions = block.Transactions;
+        string? error = null;
 
-        for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
+        Parallel.ForEach(block.Transactions, (transaction, state, _) =>
         {
-            Transaction transaction = transactions[txIndex];
-
             ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec);
             if (!isWellFormed)
             {
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {isWellFormed}");
-                errorMessage = isWellFormed.Error;
-                return false;
+                error = isWellFormed.Error;
+                state.Break();
             }
-        }
+        });
 
-        return true;
+        errorMessage = error;
+        return error is null;
     }
 
     protected virtual bool ValidateEip4844Fields(Block block, IReleaseSpec spec, ref string? error)
