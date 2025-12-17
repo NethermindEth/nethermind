@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -265,34 +266,10 @@ public class InitializeNetwork : IStep
 
         await _api.TrustedNodesManager.InitAsync();
 
-        ISyncServer syncServer = _api.SyncServer!;
+        IProtocolValidator protocolValidator = _api.Context.Resolve<IProtocolValidator>();
+        IProtocolsManager protocolsManager  = _api.Context.Resolve<IProtocolsManager>();
 
-        ProtocolValidator protocolValidator = new(
-            _nodeStatsManager!,
-            _api.BlockTree,
-            _forkInfo,
-            _api.PeerManager!,
-            _networkConfig,
-            _api.LogManager);
-
-        _api.ProtocolsManager = new ProtocolsManager(
-            _api.SyncPeerPool!,
-            syncServer,
-            _api.BackgroundTaskScheduler,
-            _api.TxPool,
-            _discoveryApp,
-            _api.MessageSerializationService,
-            _api.RlpxPeer,
-            _nodeStatsManager,
-            protocolValidator,
-            _peerStorage,
-            _forkInfo,
-            _api.GossipPolicy,
-            _api.WorldStateManager!,
-            _api.LogManager,
-            _api.Config<ITxPoolConfig>(),
-            _api.SpecProvider,
-            _api.TxGossipPolicy);
+        _api.ProtocolsManager = protocolsManager;
 
         if (_syncConfig.SnapServingEnabled == true)
         {
