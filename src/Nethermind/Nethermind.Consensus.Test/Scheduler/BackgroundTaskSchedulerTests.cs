@@ -16,6 +16,8 @@ using TaskCompletionSource = DotNetty.Common.Concurrency.TaskCompletionSource;
 
 namespace Nethermind.Consensus.Test.Scheduler;
 
+[Parallelizable(ParallelScope.Self)]
+[TestFixture]
 public class BackgroundTaskSchedulerTests
 {
     private IBranchProcessor _branchProcessor;
