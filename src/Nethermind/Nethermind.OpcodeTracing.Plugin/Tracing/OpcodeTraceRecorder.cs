@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Logging;
 using Nethermind.OpcodeTracing.Plugin.Output;
 using Nethermind.OpcodeTracing.Plugin.Utilities;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 
@@ -19,6 +20,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
     private readonly ILogger _logger;
     private readonly OpcodeCounter _counter;
     private readonly TraceOutputWriter _outputWriter;
+    private readonly string _sessionId;
 
     private TraceConfiguration? _traceConfig;
     private OpcodeBlockTracer? _blockTracer;
@@ -29,6 +31,9 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
     private Task? _tracingTask;
     private long _lastProcessedBlock;
     private bool _isComplete;
+    private ISyncModeSelector? _syncModeSelector;
+    private bool _syncModeWarningLogged;
+    private bool _syncCompleteLogged;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OpcodeTraceRecorder"/> class.
@@ -36,16 +41,19 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
     /// <param name="config">The opcode tracing configuration.</param>
     /// <param name="counter">The opcode counter.</param>
     /// <param name="outputWriter">The trace output writer.</param>
+    /// <param name="sessionId">The unique session identifier for RealTime mode cumulative file naming per FR-005d.</param>
     /// <param name="logManager">The log manager.</param>
     public OpcodeTraceRecorder(
         IOpcodeTracingConfig config,
         OpcodeCounter counter,
         TraceOutputWriter outputWriter,
+        string sessionId,
         ILogManager logManager)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _counter = counter ?? throw new ArgumentNullException(nameof(counter));
         _outputWriter = outputWriter ?? throw new ArgumentNullException(nameof(outputWriter));
+        _sessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
         _logger = logManager?.GetClassLogger<OpcodeTraceRecorder>() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
@@ -67,8 +75,16 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
             // Get current chain tip
             long currentChainTip = api.BlockTree?.Head?.Number ?? 0;
 
-            // Validate configuration
-            var validationResult = BlockRangeValidator.Validate(_config, currentChainTip);
+            // Parse mode for validation
+            TracingMode mode = TracingMode.RealTime;
+            if (!string.IsNullOrEmpty(_config.Mode) &&
+                Enum.TryParse<TracingMode>(_config.Mode, ignoreCase: true, out var parsedMode))
+            {
+                mode = parsedMode;
+            }
+
+            // Validate configuration (mode-aware: Retrospective can wait for blocks during sync)
+            var validationResult = BlockRangeValidator.Validate(_config, currentChainTip, mode);
             if (validationResult.IsError)
             {
                 if (_logger.IsError)
@@ -163,8 +179,22 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
 
         try
         {
+            // Check and log sync state - RealTime mode only captures blocks processed through the EVM
+            _syncModeSelector = api.SyncModeSelector;
+            if (_syncModeSelector is not null)
+            {
+                LogSyncStateWarning(_syncModeSelector.Current);
+                _syncModeSelector.Changed += OnSyncModeChanged;
+            }
+
             var range = new BlockRange(_traceConfig.EffectiveStartBlock, _traceConfig.EffectiveEndBlock);
-            _realTimeTracer = new RealTimeTracer(_counter, range, OnBlockCompletedRealTime, api.LogManager);
+            _realTimeTracer = new RealTimeTracer(
+                _counter,
+                range,
+                _traceConfig.OutputDirectory,
+                _sessionId,
+                OnBlockCompletedRealTime,
+                api.LogManager);
 
             _blockTracer = new OpcodeBlockTracer(_realTimeTracer.OnBlockCompleted);
             processingContext.BlockchainProcessor.Tracers.Add(_blockTracer);
@@ -173,7 +203,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
 
             if (_logger.IsInfo)
             {
-                _logger.Info("Opcode tracing attached to block processor (RealTime mode)");
+                _logger.Info($"Opcode tracing attached to block processor (RealTime mode, session={_sessionId})");
             }
         }
         catch (Exception ex)
@@ -183,6 +213,52 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                 _logger.Error($"Failed to attach tracer: {ex.Message}", ex);
             }
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Logs a warning about sync state if the node is still syncing.
+    /// RealTime mode only captures opcodes from blocks processed through the EVM,
+    /// which doesn't happen during initial sync.
+    /// </summary>
+    private void LogSyncStateWarning(SyncMode syncMode)
+    {
+        if (_syncModeWarningLogged)
+        {
+            return;
+        }
+
+        bool isSyncing = !syncMode.NotSyncing();
+
+        if (isSyncing && _logger.IsWarn)
+        {
+            _logger.Warn(
+                $"RealTime opcode tracing is enabled, but the node is currently syncing (SyncMode={syncMode}). " +
+                "RealTime mode only captures opcodes from NEW blocks processed at the chain tip AFTER sync completes. " +
+                "Blocks downloaded during sync do NOT execute the EVM and will NOT be traced. " +
+                "For tracing historical blocks during sync, use Retrospective mode instead: --OpcodeTracing.Mode Retrospective");
+            _syncModeWarningLogged = true;
+        }
+        else if (!isSyncing && !_syncCompleteLogged && _logger.IsInfo)
+        {
+            _logger.Info($"Node sync complete (SyncMode={syncMode}). RealTime opcode tracing is now active for new blocks.");
+            _syncCompleteLogged = true;
+        }
+    }
+
+    /// <summary>
+    /// Handles sync mode changes to log when RealTime tracing becomes active.
+    /// </summary>
+    private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs args)
+    {
+        if (args.Current.NotSyncing() && !_syncCompleteLogged && _logger.IsInfo)
+        {
+            _logger.Info($"Node sync complete (SyncMode={args.Current}). RealTime opcode tracing is now active for new blocks.");
+            _syncCompleteLogged = true;
+        }
+        else if (!args.Current.NotSyncing() && !_syncModeWarningLogged && _logger.IsWarn)
+        {
+            _logger.Warn($"Node entered sync mode (SyncMode={args.Current}). RealTime opcode tracing paused - only new blocks at chain tip are traced.");
         }
     }
 
@@ -287,10 +363,10 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
         }
 
         // Check if we've reached the end block
+        // Note: RealTimeTracer handles writing the final cumulative file via CumulativeTraceWriter
         if (_traceConfig is not null && blockNumber >= _traceConfig.EffectiveEndBlock)
         {
             _isComplete = true;
-            Task.Run(async () => await WriteOutputAsync().ConfigureAwait(false));
         }
     }
 
@@ -343,6 +419,10 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
     /// </summary>
     public void Dispose()
     {
+        if (_syncModeSelector is not null)
+        {
+            _syncModeSelector.Changed -= OnSyncModeChanged;
+        }
         _cts?.Cancel();
         _cts?.Dispose();
         _tracingTask?.Wait(TimeSpan.FromSeconds(5));
@@ -353,9 +433,16 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
     /// </summary>
     public async ValueTask DisposeAsync()
     {
+        // Unsubscribe from sync mode changes
+        if (_syncModeSelector is not null)
+        {
+            _syncModeSelector.Changed -= OnSyncModeChanged;
+        }
+
+        // Cancel any running tasks
         if (_cts is not null)
         {
-            _cts.Cancel();
+            await _cts.CancelAsync().ConfigureAwait(false);
             if (_tracingTask is not null)
             {
                 try
@@ -366,8 +453,30 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                 {
                     // Task didn't complete in time
                 }
+                catch (OperationCanceledException)
+                {
+                    // Expected
+                }
             }
             _cts.Dispose();
+        }
+
+        // Finalize RealTime tracer if active per FR-078
+        if (_realTimeTracer is not null)
+        {
+            try
+            {
+                await _realTimeTracer.FinalizePartialAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError)
+                {
+                    _logger.Error($"Failed to finalize RealTime tracer: {ex.Message}", ex);
+                }
+            }
+
+            await _realTimeTracer.DisposeAsync().ConfigureAwait(false);
         }
     }
 }

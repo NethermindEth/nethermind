@@ -13,8 +13,9 @@ public static class BlockRangeValidator
     /// </summary>
     /// <param name="config">The opcode tracing configuration.</param>
     /// <param name="currentChainTip">The current chain tip block number.</param>
+    /// <param name="mode">The tracing mode being used.</param>
     /// <returns>A validation result indicating success, warnings, or errors.</returns>
-    public static ValidationResult Validate(IOpcodeTracingConfig config, long currentChainTip)
+    public static ValidationResult Validate(IOpcodeTracingConfig config, long currentChainTip, TracingMode mode = TracingMode.RealTime)
     {
         if (config is null)
         {
@@ -53,9 +54,16 @@ public static class BlockRangeValidator
         }
 
         // VR-004: Blocks beyond chain tip
+        // Both modes can handle EndBlock > chain tip:
+        // - RealTime: Will trace blocks as they arrive until EndBlock is reached
+        // - Retrospective: Will wait for blocks to be synced
         if (config.EndBlock.HasValue && config.EndBlock.Value > currentChainTip)
         {
-            return ValidationResult.Error($"EndBlock ({config.EndBlock}) exceeds current chain tip ({currentChainTip})");
+            // Both modes handle EndBlock > chain tip gracefully
+            // No warning needed - this is normal expected behavior
+            // RealTime: traces new blocks until EndBlock, then stops
+            // Retrospective: waits for blocks during sync
+            return ValidationResult.Success();
         }
 
         // Validate Blocks parameter
