@@ -2,33 +2,32 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.Facade.Eth;
 
 namespace Nethermind.Taiko.Tdx;
 
 /// <summary>
 /// TDX attestation result containing proof, quote, and the attested block header.
-/// The attestation is over the block header hash.
+/// Uses BlockForRpc for proper JSON serialization of header fields.
 /// </summary>
 public class TdxAttestation
 {
     /// <summary>
     /// The proof bytes: instance_id (4) + address (20) + signature (65) = 89 bytes.
-    /// The signature is over header.Hash.
+    /// The signature is over block.Hash.
     /// </summary>
     public required byte[] Proof { get; init; }
 
     /// <summary>
-    /// The TDX quote containing header.Hash as userData.
+    /// The TDX quote containing block.Hash as userData.
     /// </summary>
     public required byte[] Quote { get; init; }
 
     /// <summary>
-    /// The full block header that was attested.
-    /// Verifiers can compute header.Hash and verify it matches the signature and quote.
+    /// The block header data that was attested (using Nethermind's standard RPC format).
+    /// Contains all header fields needed to recompute and verify the block hash.
     /// </summary>
-    public required BlockHeader Header { get; init; }
+    public required BlockForRpc Block { get; init; }
 }
 
 /// <summary>

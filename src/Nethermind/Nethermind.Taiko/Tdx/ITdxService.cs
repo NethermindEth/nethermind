@@ -31,4 +31,3 @@ public interface ITdxService
     /// <param name="block">The block to attest.</param>
     TdxAttestation Attest(Block block);
 }
-

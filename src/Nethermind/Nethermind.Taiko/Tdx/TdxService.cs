@@ -7,7 +7,9 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 
 namespace Nethermind.Taiko.Tdx;
@@ -23,6 +25,7 @@ public class TdxService : ITdxService
 
     private readonly ISurgeTdxConfig _config;
     private readonly ITdxsClient _client;
+    private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
     private readonly Ecdsa _ecdsa = new();
 
@@ -32,6 +35,7 @@ public class TdxService : ITdxService
     public TdxService(
         ISurgeTdxConfig config,
         ITdxsClient client,
+        ISpecProvider specProvider,
         ILogManager logManager)
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
@@ -41,6 +45,7 @@ public class TdxService : ITdxService
 
         _config = config;
         _client = client;
+        _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
 
         TryLoadBootstrap();
@@ -120,7 +125,7 @@ public class TdxService : ITdxService
         {
             Proof = proof,
             Quote = quote,
-            Header = block.Header
+            Block = new BlockForRpc(block, includeFullTransactionData: false, _specProvider, skipTxs: true)
         };
     }
 
