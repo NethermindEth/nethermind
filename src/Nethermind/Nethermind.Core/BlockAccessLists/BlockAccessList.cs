@@ -286,9 +286,9 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     break;
                 case ChangeType.StorageChange:
                     StorageChange? previousStorage = change.PreviousValue is null ? null : (StorageChange)change.PreviousValue;
-                    accountChanges.TryGetSlotChanges(change.Slot!.Value, out SlotChanges? slotChanges);
+                    SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(change.Slot!.Value);
 
-                    slotChanges!.PopStorageChange(Index, out _);
+                    slotChanges.PopStorageChange(Index, out _);
                     if (previousStorage is not null)
                     {
                         slotChanges.Changes.Add(previousStorage.Value);
