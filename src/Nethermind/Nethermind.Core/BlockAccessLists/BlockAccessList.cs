@@ -177,15 +177,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     }
 
     public void AddStorageChange(in StorageCell storageCell, UInt256 before, UInt256 after)
-    {
-        Address address = storageCell.Address;
-        AccountChanges accountChanges = GetOrAddAccountChanges(address);
-
-        if (before != after)
-        {
-            StorageChange(accountChanges, storageCell.Index, before, after);
-        }
-    }
+        => AddStorageChange(storageCell.Address, storageCell.Index, before, after);
 
     public readonly void AddStorageRead(in StorageCell storageCell) =>
         AddStorageRead(storageCell.Address, storageCell.Index);
