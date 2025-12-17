@@ -24,14 +24,15 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 {
     private ReaderWriterLockSlim _repoLock = new ReaderWriterLockSlim(); // Note: lock is for proteccting in memory and compacted states only
     private readonly ConcurrentDictionary<StateId, Snapshot> _compactedKnownStates = new();
-    private readonly InMemorySnapshotStore _inMemorySnapshotStore;
+    private readonly ConcurrentDictionary<StateId, Snapshot> _knownStates = new();
+    private SortedSet<StateId> _sortedKnownStates = new();
 
     private ResourcePool _resourcePool;
 
     private readonly Task _compactorTask;
 
-    private Lock _readerCacheLock = new Lock();
     private RefCountingPersistenceReader? _cachedReader = null;
+    private Lock _readerCacheLock = new Lock();
     private readonly TrieNodeCache _trieNodeCache;
     private readonly Task _persistenceTask;
 
@@ -82,7 +83,6 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         Configuration? config = null)
     {
         if (config is null) config = new Configuration();
-        _inMemorySnapshotStore = new InMemorySnapshotStore();
         _persistence = persistedPersistence;
         _compactSize = config.CompactSize;
         _inlineCompaction = config.InlineCompaction;
@@ -227,12 +227,22 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     internal ArrayPoolList<StateId> GetStatesAfterBlock(long blockNumber)
     {
-        return _inMemorySnapshotStore.GetStatesAfterBlock(blockNumber).ToPooledList(1);
+        _repoLock.EnterReadLock();
+
+        StateId min = new StateId(blockNumber + 1, ValueKeccak.Zero);
+        StateId max = new StateId(long.MaxValue, ValueKeccak.Zero);
+
+        return _sortedKnownStates.GetViewBetween(min, max).ToPooledList(0);
     }
 
     internal ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber)
     {
-        return _inMemorySnapshotStore.GetStatesAtBlockNumber(blockNumber).ToPooledList(1);
+        _repoLock.EnterReadLock();
+
+        StateId min = new StateId(blockNumber, ValueKeccak.Zero);
+        StateId max = new StateId(blockNumber, ValueKeccak.MaxValue);
+
+        return _sortedKnownStates.GetViewBetween(min, max).ToPooledList(0);
     }
 
     internal ref struct RepolockReadExiter(ReaderWriterLockSlim @lock, bool read) : IDisposable
@@ -252,7 +262,11 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     internal StateId? GetLastSnapshotId()
     {
-        return _inMemorySnapshotStore.GetLast();
+        _repoLock.EnterReadLock();
+
+        if (_sortedKnownStates.Count == 0)
+            return null;
+        return _sortedKnownStates.Max;
     }
 
     private void PopulateTrieNodeCache(CachedResource cachedResource)
@@ -322,7 +336,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         StateId persistedState = GetCurrentPersistedStateId();
 
         StateId current = baseBlock;
-        ArrayPoolList<Snapshot> snapshots = new(Math.Max(1, (int)(_inMemorySnapshotStore.KnownStatesCount / _compactSize)));
+        ArrayPoolList<Snapshot> snapshots = new(Math.Max(1, (int)(_knownStates.Count / _compactSize)));
         while(TryLeaseCompactedState(current, out Snapshot? snapshot) || TryLeaseState(current, out snapshot))
         {
             if (_logger.IsTrace) _logger.Trace($"Got {snapshot.From} -> {snapshot.To}");
@@ -353,7 +367,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         IPersistence.IPersistenceReader persistenceReader = LeaseReader();
         if (current != baseBlock && persistenceReader.CurrentState.blockNumber != -1 && current.blockNumber > persistenceReader.CurrentState.blockNumber)
         {
-            throw new Exception($"Non consecutive snapshots. Current {current} vs {persistenceReader.CurrentState}, {persistedState}, {baseBlock}, {_inMemorySnapshotStore.TryGetValue(current, out var snapshot)}, ");
+            throw new Exception($"Non consecutive snapshots. Current {current} vs {persistenceReader.CurrentState}, {persistedState}, {baseBlock}, {_knownStates.TryGetValue(current, out var snapshot)}, ");
         }
 
         if (persistenceReader.CurrentState.blockNumber > baseBlock.blockNumber)
@@ -393,7 +407,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     public bool TryLeaseState(StateId stateId, out Snapshot entry)
     {
         int attempt = 0;
-        while (_inMemorySnapshotStore.TryGetValue(stateId, out entry))
+        while (_knownStates.TryGetValue(stateId, out entry))
         {
             if (entry.TryAcquire()) return true;
             attempt++;
@@ -408,25 +422,27 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
         StateId startingBlock = snapshot.From;
         StateId endBlock = snapshot.To;
-        using (EnterRepolock())
+        _flatdiffimes.WithLabels("add_snapshot", "repolock").Observe(Stopwatch.GetTimestamp() - sw);
+        sw = Stopwatch.GetTimestamp();
+
+        if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.blockNumber} to {endBlock.blockNumber}");
+        if (endBlock.blockNumber <= GetCurrentPersistedStateId().blockNumber)
         {
-            _flatdiffimes.WithLabels("add_snapshot", "repolock").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
-
-            if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.blockNumber} to {endBlock.blockNumber}");
-            if (endBlock.blockNumber <= GetCurrentPersistedStateId().blockNumber)
-            {
-                _logger.Warn(
-                    $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.blockNumber}, bigcache number: {GetCurrentPersistedStateId()}");
-                return;
-            }
-
-            // snapshot should have 2 lease here
-            _inMemorySnapshotStore.AddBlock(endBlock, snapshot);
-
-            _flatdiffimes.WithLabels("add_snapshot", "add_block").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
+            _logger.Warn(
+                $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.blockNumber}, bigcache number: {GetCurrentPersistedStateId()}");
+            return;
         }
+
+        if (_knownStates.TryAdd(endBlock, snapshot))
+        {
+            using (EnterRepolock())
+            {
+                _sortedKnownStates.Add(endBlock);
+            }
+        }
+
+        _flatdiffimes.WithLabels("add_snapshot", "add_block").Observe(Stopwatch.GetTimestamp() - sw);
+        sw = Stopwatch.GetTimestamp();
 
         if (_inlineCompaction)
         {
@@ -472,9 +488,12 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     private void RemoveAndReleaseKnownState(StateId stateId)
     {
         if (!_repoLock.IsWriteLockHeld) throw new InvalidOperationException("Must hold write lock to repolock to change snapshot store");
-        if (_inMemorySnapshotStore.TryGetValue(stateId, out var existingState))
+        if (_knownStates.TryRemove(stateId, out var existingState))
         {
-            _inMemorySnapshotStore.Remove(stateId);
+            using (EnterRepolock())
+            {
+                _sortedKnownStates.Remove(stateId);
+            }
             var memory = existingState.EstimateMemory();
             foreach (var keyValuePair in memory)
             {
@@ -493,7 +512,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     public bool HasStateForBlock(StateId stateId)
     {
-        if (_inMemorySnapshotStore.TryGetValue(stateId, out var snapshot))
+        if (_knownStates.TryGetValue(stateId, out var snapshot))
         {
             return true;
         }
@@ -506,16 +525,16 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     {
         using (EnterRepolockReadOnly())
         {
-            foreach (var stateId in _inMemorySnapshotStore.GetKeysBetween(new StateId(0, Hash256.Zero), new StateId(long.MaxValue, Keccak.MaxValue)))
+            foreach (var stateId in _sortedKnownStates)
             {
                 if (stateId.stateRoot == stateRoot) return stateId;
             }
+        }
 
-            StateId? currentPersistedIdx = GetCurrentPersistedStateId();
-            if (currentPersistedIdx?.stateRoot == stateRoot)
-            {
-                return currentPersistedIdx.Value;
-            }
+        StateId? currentPersistedIdx = GetCurrentPersistedStateId();
+        if (currentPersistedIdx?.stateRoot == stateRoot)
+        {
+            return currentPersistedIdx.Value;
         }
 
         return null;
@@ -543,13 +562,19 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     public void OnStatePersisted(StateId stateId)
     {
+        ArrayPoolList<StateId> statesBeforeStateId;
         using (EnterRepolock())
         {
-            foreach (var stateToRemove in _inMemorySnapshotStore.GetKeysBetween(new StateId(0, Hash256.Zero), new StateId(stateId.blockNumber, Keccak.MaxValue)))
-            {
-                RemoveAndReleaseCompactedKnownState(stateToRemove);
-                RemoveAndReleaseKnownState(stateToRemove);
-            }
+            statesBeforeStateId = _sortedKnownStates
+                .GetViewBetween(new StateId(0, Hash256.Zero), new StateId(stateId.blockNumber, Keccak.MaxValue))
+                .ToPooledList(0);
+        }
+        using var _ = statesBeforeStateId;
+
+        foreach (var stateToRemove in statesBeforeStateId)
+        {
+            RemoveAndReleaseCompactedKnownState(stateToRemove);
+            RemoveAndReleaseKnownState(stateToRemove);
         }
 
         ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(stateId.blockNumber));
