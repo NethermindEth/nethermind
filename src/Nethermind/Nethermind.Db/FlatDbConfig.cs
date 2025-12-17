@@ -65,8 +65,8 @@ public class FlatDbConfig: IFlatDbConfig
 {
     public bool Enabled { get; set; } = false;
     public bool ImportFromPruningTrieState { get; set; } = false;
-    public int PruningBoundary { get; set; } = 256;
-    public int CompactSize { get; set; } = 16;
+    public int PruningBoundary { get; set; } = 128;
+    public int CompactSize { get; set; } = 32;
     public int CompactInterval { get; set; } = 4;
     public int MaxInFlightCompactJob { get; set; } = 32;
     public bool ReadWithTrie { get; set; } = false;

@@ -5,8 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -18,7 +16,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Prometheus;
@@ -28,14 +25,11 @@ namespace Nethermind.State.Flat;
 public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 {
     private ReaderWriterLockSlim _repoLock = new ReaderWriterLockSlim(); // Note: lock is for proteccting in memory and compacted states only
-    private readonly ICanonicalStateRootFinder _stateRootFinder;
-
     private readonly ConcurrentDictionary<StateId, Snapshot> _compactedKnownStates = new();
     private readonly InMemorySnapshotStore _inMemorySnapshotStore;
 
     private ResourcePool _resourcePool;
 
-    private List<(Hash256AsKey, TreePath)> _trieNodesSortBuffer = new List<(Hash256AsKey, TreePath)>(); // Presort make it faster
     private readonly Task _compactorTask;
 
     private Lock _readerCacheLock = new Lock();
@@ -44,7 +38,6 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     private readonly Task _persistenceTask;
 
     private IPersistence _persistence;
-    private int _boundary;
 
     private Channel<(StateId, CachedResource)> _compactorJobs;
     private Channel<StateId> _persistenceJob;
@@ -52,9 +45,9 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     private long _compactEveryBlockNum;
     private readonly bool _inlineCompaction;
     private ILogger _logger;
-    private StateId _currentPersistedState;
+    private readonly PersistenceRunner _persistenceRunner;
 
-    private static Histogram _flatdiffimes = DevMetric.Factory.CreateHistogram("flatdiff_times", "aha", new HistogramConfiguration()
+    internal static Histogram _flatdiffimes = DevMetric.Factory.CreateHistogram("flatdiff_times", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "category", "type" },
         // Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
@@ -72,6 +65,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         int CompactInterval = 4,
         int ConcurrentCompactor = 4,
         int Boundary = 128,
+        int ForcedPruningBoundary = 1024,
         long TrieCacheMemoryTarget = 2_000_000_000,
         bool VerifyWithTrie = false,
         bool ReadWithTrie = false,
@@ -83,7 +77,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     public FlatDiffRepository(
         IProcessExitSource exitSource,
-        ICanonicalStateRootFinder stateRootFinder,
+        IFinalizedStateProvider finalizedStateProvider,
         IPersistence persistedPersistence,
         ResourcePool resourcePool,
         ILogManager logManager,
@@ -95,16 +89,14 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         _compactSize = config.CompactSize;
         _compactEveryBlockNum = config.CompactInterval;
         _inlineCompaction = config.InlineCompaction;
-        _stateRootFinder = stateRootFinder;
         _resourcePool = resourcePool;
         _logger = logManager.GetClassLogger<FlatDiffRepository>();
 
+        _persistenceRunner = new PersistenceRunner(this, config, finalizedStateProvider, persistedPersistence, logManager);
+
         _compactorJobs = Channel.CreateBounded<(StateId, CachedResource)>(config.MaxInFlightCompactJob);
         _persistenceJob = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
-        _boundary = config.Boundary;
 
-        using var reader = LeaseReader();
-        _currentPersistedState = reader.CurrentState;
         _trieNodeCache = new TrieNodeCache(config.TrieCacheMemoryTarget, logManager);
 
         _compactorTask = RunCompactor(exitSource.Token);
@@ -128,7 +120,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         return cachedReader;
     }
 
-    private void ClearReaderCache()
+    internal void ClearReaderCache()
     {
         using var _ = _readerCacheLock.EnterScope();
         RefCountingPersistenceReader? cachedReader = _cachedReader;
@@ -226,14 +218,24 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         return new RepolockReadExiter(_repoLock, true);
     }
 
-    private RepolockReadExiter EnterRepolock()
+    internal RepolockReadExiter EnterRepolock()
     {
         _repoLock.EnterWriteLock();
 
         return new RepolockReadExiter(_repoLock, false);
     }
 
-    private ref struct RepolockReadExiter(ReaderWriterLockSlim @lock, bool read) : IDisposable
+    internal ArrayPoolList<StateId> GetStatesAfterBlock(long blockNumber)
+    {
+        return _inMemorySnapshotStore.GetStatesAfterBlock(blockNumber).ToPooledList(1);
+    }
+
+    internal ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber)
+    {
+        return _inMemorySnapshotStore.GetStatesAtBlockNumber(blockNumber).ToPooledList(1);
+    }
+
+    internal ref struct RepolockReadExiter(ReaderWriterLockSlim @lock, bool read) : IDisposable
     {
         public void Dispose()
         {
@@ -246,6 +248,11 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
                 @lock.ExitWriteLock();
             }
         }
+    }
+
+    internal StateId? GetLastSnapshotId()
+    {
+        return _inMemorySnapshotStore.GetLast();
     }
 
     private void CompactLevel(StateId stateId, CachedResource cachedResource)
@@ -261,7 +268,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             {
                 using (EnterRepolockReadOnly())
                 {
-                    StateId? last = _inMemorySnapshotStore.GetLast();
+                    StateId? last = GetLastSnapshotId();
                     if (last != null && last.Value.blockNumber - blockNumber > 1)
                     {
                         // To slow. Just skip this block number.
@@ -384,7 +391,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         Snapshot lastSnapshot;
         using (EnterRepolockReadOnly())
         {
-            StateId? last = _inMemorySnapshotStore.GetLast();
+            StateId? last = GetLastSnapshotId();
             if (last == null) return true;
             if (!TryLeaseState(last.Value, out lastSnapshot)) return true;
         }
@@ -408,6 +415,12 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         {
             lastSnapshot.Dispose();
         }
+    }
+
+    internal StateId GetCurrentPersistedStateId()
+    {
+        using var reader = LeaseReader();
+        return reader.CurrentState;
     }
 
     public SnapshotBundle? GatherReaderAtBaseBlock(StateId baseBlock, IFlatDiffRepository.SnapshotBundleUsage usage)
@@ -441,7 +454,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
                 usage: usage);
         }
 
-        StateId persistedState = _currentPersistedState;
+        StateId persistedState = GetCurrentPersistedStateId();
 
         StateId current = baseBlock;
         ArrayPoolList<Snapshot> snapshots = new(Math.Max(1, (int)(_inMemorySnapshotStore.KnownStatesCount / _compactSize)));
@@ -489,7 +502,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         _flatdiffimes.WithLabels("gather_cache", "reverse").Observe(Stopwatch.GetTimestamp() - sw);
         sw =  Stopwatch.GetTimestamp();
 
-        if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, {_currentPersistedState}");
+        if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, {GetCurrentPersistedStateId()}");
         var res = new SnapshotBundle(
             snapshots,
             persistenceReader,
@@ -536,10 +549,10 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             sw = Stopwatch.GetTimestamp();
 
             if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.blockNumber} to {endBlock.blockNumber}");
-            if (endBlock.blockNumber <= _currentPersistedState.blockNumber)
+            if (endBlock.blockNumber <= GetCurrentPersistedStateId().blockNumber)
             {
                 _logger.Warn(
-                    $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.blockNumber}, bigcache number: {_currentPersistedState}");
+                    $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.blockNumber}, bigcache number: {GetCurrentPersistedStateId()}");
                 return;
             }
 
@@ -573,187 +586,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     private async Task PersistIfNeeded()
     {
-        await NotifyWhenSlow("add to bigcache", () => AddToPersistence());
-    }
-
-    private void AddToPersistence()
-    {
-        // Attempt to add snapshots into bigcache
-        while (true)
-        {
-            Snapshot pickedState;
-            StateId? pickedSnapshot = null;
-            List<StateId> toRemoveStates = new List<StateId>();
-            long sw = Stopwatch.GetTimestamp();
-            using (EnterRepolock())
-            {
-                _flatdiffimes.WithLabels("add_to_persistence", "repolock").Observe(Stopwatch.GetTimestamp() - sw);
-                sw = Stopwatch.GetTimestamp();
-                long lastSnapshotNumber = _inMemorySnapshotStore.GetLast()?.blockNumber ?? 0;
-                StateId currentState = _currentPersistedState;
-                if (lastSnapshotNumber - currentState.blockNumber <= (_boundary + _compactSize))
-                {
-                    break;
-                }
-
-                List<StateId> candidateToAdd = new List<StateId>();
-
-                long? blockNumber = null;
-                bool persistCompactedStates = false;
-                //  Note: Need to verify that this is finalized
-                foreach (var stateId in _inMemorySnapshotStore.GetStatesAfterBlock(currentState.blockNumber + _compactSize - 1))
-                {
-                    if (stateId.blockNumber > currentState.blockNumber + _compactSize)
-                    {
-                        break;
-                    }
-                    if (_compactedKnownStates.TryGetValue(stateId, out var existingState))
-                    {
-                        if (blockNumber is null)
-                        {
-                            if (existingState.From != currentState)
-                            {
-                                if (_logger.IsDebug) _logger.Debug($"Not using compacted state. Mismatch. {existingState.From}, query {stateId} vs {currentState}");
-                                break;
-                            }
-
-                            if (_logger.IsDebug) _logger.Debug($"Setting compacted state");
-                            persistCompactedStates = true;
-                            blockNumber = stateId.blockNumber;
-                            candidateToAdd.Add(stateId);
-                        }
-                        else if (blockNumber == stateId.blockNumber)
-                        {
-                            candidateToAdd.Add(stateId);
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Cancelling setting compacted state, {stateId}");
-                        persistCompactedStates = false;
-                        candidateToAdd.Clear();
-                        blockNumber = null;
-                        break;
-                    }
-                }
-
-                if (persistCompactedStates)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Using compacted state. {blockNumber}, vs {currentState}");
-                }
-
-                if (blockNumber is null)
-                {
-                    foreach (var stateId in _inMemorySnapshotStore.GetStatesAfterBlock(currentState.blockNumber))
-                    {
-                        if (blockNumber is null)
-                        {
-                            blockNumber = stateId.blockNumber;
-                            candidateToAdd.Add(stateId);
-                        }
-                        else if (blockNumber == stateId.blockNumber)
-                        {
-                            candidateToAdd.Add(stateId);
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-                }
-
-                Debug.Assert(candidateToAdd.Count > 0);
-
-                if (candidateToAdd.Count > 1)
-                {
-                    Hash256? canonicalStateRoot = _stateRootFinder.GetCanonicalStateRootAtBlock(blockNumber.Value);
-                    if (canonicalStateRoot is null)
-                    {
-                        _logger.Warn($"Canonical state root for block {blockNumber} not known");
-                        return;
-                    }
-
-                    foreach (var stateId in candidateToAdd)
-                    {
-                        if (stateId.stateRoot == canonicalStateRoot)
-                        {
-                            pickedSnapshot = stateId;
-                        }
-                    }
-                }
-                else
-                {
-                    pickedSnapshot = candidateToAdd[0];
-                }
-
-                if (!pickedSnapshot.HasValue)
-                {
-                    // Ah, probably filter the compacted state here instead
-                    _logger.Warn($"Unable to determine canonicaal snapshot");
-                    return;
-                }
-
-                // Remove non-canon snapshots
-                foreach (var stateId in candidateToAdd)
-                {
-                    if (stateId != pickedSnapshot)
-                    {
-                        RemoveAndReleaseCompactedKnownState(stateId);
-                        RemoveAndReleaseKnownState(stateId);
-                    }
-                }
-
-                if (persistCompactedStates)
-                {
-                    _compactedKnownStates.TryGetValue(pickedSnapshot.Value, out pickedState);
-                    pickedState.AcquireLease();
-                    if (_logger.IsDebug) _logger.Debug($"Picking compacted state {pickedState.From} to {pickedState.To}");
-
-                    foreach (var stateId in _inMemorySnapshotStore.GetStatesAfterBlock(currentState.blockNumber))
-                    {
-                        if (stateId.blockNumber < pickedSnapshot.Value.blockNumber)
-                        {
-                            toRemoveStates.Add(stateId);
-                        }
-                    }
-                }
-                else
-                {
-                    _inMemorySnapshotStore.TryGetValue(pickedSnapshot.Value, out pickedState);
-                    pickedState.AcquireLease();
-                }
-            }
-            _flatdiffimes.WithLabels("add_to_persistence", "state_picked").Observe(Stopwatch.GetTimestamp() - sw);
-
-            // Add the canon snapshot
-            Add(pickedState);
-            pickedState.Dispose();
-
-            sw = Stopwatch.GetTimestamp();
-            // And we remove it
-            using (EnterRepolock())
-            {
-                RemoveAndReleaseCompactedKnownState(pickedSnapshot.Value);
-                RemoveAndReleaseKnownState(pickedSnapshot.Value);
-
-                foreach (var stateId in toRemoveStates)
-                {
-                    RemoveAndReleaseCompactedKnownState(stateId);
-                    RemoveAndReleaseKnownState(stateId);
-                }
-            }
-            _flatdiffimes.WithLabels("add_to_persistence", "cleanup").Observe(Stopwatch.GetTimestamp() - sw);
-
-            sw = Stopwatch.GetTimestamp();
-
-            ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(pickedSnapshot.Value.blockNumber));
-
-            _flatdiffimes.WithLabels("add_to_persistence", "reorg_boundary").Observe(Stopwatch.GetTimestamp() - sw);
-        }
+        await NotifyWhenSlow("add to bigcache", () => _persistenceRunner.AddToPersistence());
     }
 
     private void RemoveAndReleaseCompactedKnownState(StateId stateId)
@@ -872,140 +705,6 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         return snapshot;
     }
 
-    public void Add(Snapshot snapshot)
-    {
-        if (snapshot.To.blockNumber - snapshot.From.blockNumber != _compactSize) _logger.Warn($"Snapshot size write is {snapshot.To.blockNumber - snapshot.From.blockNumber}");
-        long sw = Stopwatch.GetTimestamp();
-        using (var batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
-        {
-            _flatdiffimes.WithLabels("persistence", "start_batch").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
-            int counter = 0;
-            foreach (var toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
-            {
-                if (toSelfDestructStorage.Value)
-                {
-                    /*
-                    int deleted = batch.SelfDestruct(toSelfDestructStorage.Key.Value);
-                    if (toSelfDestructStorage.Key.Value == FlatWorldStateScope.DebugAddress)
-                    {
-                        Console.Error.WriteLine($"Selfdestruct should skip {toSelfDestructStorage.Key}");
-                    }
-                    if (deleted > 0)
-                    {
-                        _logger.Warn($"Should selfdestruct {toSelfDestructStorage.Key}. Deleted {deleted}. Snapshot range {snapshot.From} {snapshot.To}");
-                        throw new Exception($"Should sefl destruct not called properly {toSelfDestructStorage.Key}");
-                    }
-                    */
-                    continue;
-                }
-
-                int num = batch.SelfDestruct(toSelfDestructStorage.Key.Value);
-                if (toSelfDestructStorage.Key.Value == FlatWorldStateScope.DebugAddress)
-                {
-                    using var r = LeaseReader();
-                    bool _ = r.TryGetSlot(FlatWorldStateScope.DebugAddress, FlatWorldStateScope.DebugSlot, out var value);
-                    Console.Error.WriteLine($"Selfdestructed {toSelfDestructStorage.Key} {num}, {value?.ToHexString()}");
-                }
-                counter++;
-            }
-            _flatdiffimes.WithLabels("persistence", "self_destruct").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
-
-            foreach (var kv in snapshot.Accounts)
-            {
-                (Address addr, Account? account) = kv;
-                if (account is null)
-                    batch.RemoveAccount(addr);
-                else
-                    batch.SetAccount(addr, account);
-            }
-            _flatdiffimes.WithLabels("persistence", "accounts").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
-
-            foreach (var kv in snapshot.Storages)
-            {
-                ((Address addr, UInt256 slot), byte[] value) = kv;
-
-                if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
-                {
-                    batch.RemoveStorage(addr, slot);
-                }
-                else
-                {
-                    batch.SetStorage(addr, slot, value);
-                }
-            }
-            _flatdiffimes.WithLabels("persistence", "storages").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
-
-            _trieNodesSortBuffer.Clear();
-            _trieNodesSortBuffer.AddRange(snapshot.StateNodeKeys.Select<TreePath, (Hash256AsKey, TreePath)>((path) => (null, path)));
-            _trieNodesSortBuffer.Sort();
-            _flatdiffimes.WithLabels("persistence", "trienode_sort_state").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
-
-            // foreach (var tn in snapshot.TrieNodes)
-            foreach (var k in _trieNodesSortBuffer)
-            {
-                (_, TreePath path) = k;
-
-                snapshot.TryGetStateNode(path, out TrieNode node);
-
-                if (node.FullRlp.Length == 0)
-                {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
-                }
-
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetTrieNodes(null, path, node);
-
-                node.IsPersisted = true;
-            }
-            _flatdiffimes.WithLabels("persistence", "trienodes").Observe(Stopwatch.GetTimestamp() - sw);
-
-            _trieNodesSortBuffer.Clear();
-            _trieNodesSortBuffer.AddRange(snapshot.StorageTrieNodeKeys);
-            _trieNodesSortBuffer.Sort();
-            _flatdiffimes.WithLabels("persistence", "trienode_sort").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
-
-            // foreach (var tn in snapshot.TrieNodes)
-            foreach (var k in _trieNodesSortBuffer)
-            {
-                (Hash256AsKey address, TreePath path) = k;
-
-                snapshot.TryGetStorageNode(address, path, out TrieNode node);
-
-                if (node.FullRlp.Length == 0)
-                {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
-                }
-
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetTrieNodes(address, path, node);
-
-                node.IsPersisted = true;
-            }
-            _flatdiffimes.WithLabels("persistence", "trienodes").Observe(Stopwatch.GetTimestamp() - sw);
-
-            sw = Stopwatch.GetTimestamp();
-        }
-        _flatdiffimes.WithLabels("persistence", "dispose").Observe(Stopwatch.GetTimestamp() - sw);
-
-        _currentPersistedState = snapshot.To;
-        ClearReaderCache();
-    }
-
-
     public void FlushCache(CancellationToken cancellationToken)
     {
         Console.Error.WriteLine("Flush cache not implemented");
@@ -1018,7 +717,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             return true;
         }
 
-        if (_currentPersistedState == stateId) return true;
+        if (GetCurrentPersistedStateId() == stateId) return true;
         return false;
     }
 
@@ -1031,9 +730,10 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
                 if (stateId.stateRoot == stateRoot) return stateId;
             }
 
-            if (_currentPersistedState.stateRoot == stateRoot)
+            StateId? currentPersistedIdx = GetCurrentPersistedStateId();
+            if (currentPersistedIdx?.stateRoot == stateRoot)
             {
-                return _currentPersistedState;
+                return currentPersistedIdx.Value;
             }
         }
 
@@ -1044,10 +744,10 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     {
         using (EnterRepolockReadOnly())
         {
-            StateId? lastInMemory = _inMemorySnapshotStore.GetLast();
+            StateId? lastInMemory = GetLastSnapshotId();
             if (lastInMemory != null) return lastInMemory;
 
-            return _currentPersistedState;
+            return GetCurrentPersistedStateId();
         }
     }
 
@@ -1058,5 +758,19 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         ClearReaderCache();
 
         return;
+    }
+
+    public void OnStatePersisted(StateId stateId)
+    {
+        using (EnterRepolock())
+        {
+            foreach (var stateToRemove in _inMemorySnapshotStore.GetKeysBetween(new StateId(0, Hash256.Zero), new StateId(stateId.blockNumber, Keccak.MaxValue)))
+            {
+                RemoveAndReleaseCompactedKnownState(stateToRemove);
+                RemoveAndReleaseKnownState(stateToRemove);
+            }
+        }
+
+        ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(stateId.blockNumber));
     }
 }
