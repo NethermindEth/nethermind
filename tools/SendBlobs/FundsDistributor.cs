@@ -36,7 +36,7 @@ internal class FundsDistributor
     /// <param name="maxPriorityFee"></param>
     /// <returns><see cref="IEnumerable{string}"/> containing all the executed tx hashes.</returns>
     /// <exception cref="AccountException"></exception>
-    public async Task<IEnumerable<string>> DitributeFunds(Signer distributeFrom, uint keysToMake, UInt256 maxFee, UInt256 maxPriorityFee)
+    public async Task<IEnumerable<string>> DistributeFunds(Signer distributeFrom, uint keysToMake, UInt256 maxFee, UInt256 maxPriorityFee)
     {
         if (keysToMake == 0)
             throw new ArgumentException("keysToMake must be greater than zero.", nameof(keysToMake));
