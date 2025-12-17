@@ -13,10 +13,8 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Prometheus;
 
@@ -42,10 +40,10 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
     private Channel<(StateId, CachedResource)> _compactorJobs;
     private Channel<StateId> _persistenceJob;
     private long _compactSize;
-    private long _compactEveryBlockNum;
     private readonly bool _inlineCompaction;
     private ILogger _logger;
     private readonly PersistenceRunner _persistenceRunner;
+    private readonly SnapshotCompactor _snapshotCompactor;
 
     internal static Histogram _flatdiffimes = DevMetric.Factory.CreateHistogram("flatdiff_times", "aha", new HistogramConfiguration()
     {
@@ -87,12 +85,12 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         _inMemorySnapshotStore = new InMemorySnapshotStore();
         _persistence = persistedPersistence;
         _compactSize = config.CompactSize;
-        _compactEveryBlockNum = config.CompactInterval;
         _inlineCompaction = config.InlineCompaction;
         _resourcePool = resourcePool;
         _logger = logManager.GetClassLogger<FlatDiffRepository>();
 
         _persistenceRunner = new PersistenceRunner(this, config, finalizedStateProvider, persistedPersistence, logManager);
+        _snapshotCompactor = new SnapshotCompactor(this, config, resourcePool, logManager);
 
         _compactorJobs = Channel.CreateBounded<(StateId, CachedResource)>(config.MaxInFlightCompactJob);
         _persistenceJob = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
@@ -136,7 +134,9 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             {
                 try
                 {
-                    CompactLevel(stateId, cachedResource);
+                    PopulateTrieNodeCache(cachedResource);
+
+                    _snapshotCompactor.CompactLevel(stateId, cachedResource);
                     if (stateId.blockNumber % _compactSize == 0)
                     {
                         await _persistenceJob.Writer.WriteAsync(stateId, cancellationToken);
@@ -152,6 +152,12 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         catch (OperationCanceledException)
         {
         }
+    }
+
+    private void RunCompactJob(StateId stateId, CachedResource cachedResource)
+    {
+        _snapshotCompactor.CompactLevel(stateId, cachedResource);
+        PersistIfNeeded().Wait();
     }
 
     private async Task RunPersistence(CancellationToken cancellationToken)
@@ -205,13 +211,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         await Task.WhenAny(jobTask, waiterTask);
     }
 
-    private void RunCompactJob(StateId stateId, CachedResource cachedResource)
-    {
-        CompactLevel(stateId, cachedResource);
-        PersistIfNeeded().Wait();
-    }
-
-    private RepolockReadExiter EnterRepolockReadOnly()
+    internal RepolockReadExiter EnterRepolockReadOnly()
     {
         _repoLock.EnterReadLock();
 
@@ -255,166 +255,31 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         return _inMemorySnapshotStore.GetLast();
     }
 
-    private void CompactLevel(StateId stateId, CachedResource cachedResource)
-    {
-        try
-        {
-            if (PopulateTrieNodeCache(cachedResource)) return;
-
-            if (_compactSize <= 1) return; // Disabled
-            long blockNumber = stateId.blockNumber;
-            if (blockNumber == 0) return;
-            if (blockNumber % _compactSize != 0)
-            {
-                using (EnterRepolockReadOnly())
-                {
-                    StateId? last = GetLastSnapshotId();
-                    if (last != null && last.Value.blockNumber - blockNumber > 1)
-                    {
-                        // To slow. Just skip this block number.
-                        return;
-                    }
-                }
-
-                if (blockNumber % _compactEveryBlockNum != 0) return;
-            }
-
-            long startingBlockNumber = ((blockNumber - 1) / _compactSize) * _compactSize;
-            long sw = Stopwatch.GetTimestamp();
-            Snapshot compactedSnapshot;
-
-            StateId current = stateId;
-            using ArrayPoolList<Snapshot> snapshots = new((int)_compactSize);
-            try
-            {
-
-                while(TryLeaseCompactedState(current, out Snapshot? snapshot) || TryLeaseState(current, out snapshot))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Got {snapshot.From} -> {snapshot.To}");
-
-                    if (snapshot.From.blockNumber < startingBlockNumber)
-                    {
-                        // The non-compacted one
-                        snapshot.Dispose();
-                        if (!TryLeaseState(current, out snapshot))
-                        {
-                            break;
-                        }
-                    }
-
-                    snapshots.Add(snapshot);
-                    if (snapshot.From == current) {
-                        break; // Some test commit two block with the same id, so we dont know the parent anymore.
-                    }
-
-                    current = snapshot.From;
-                    if (snapshot.From.blockNumber == startingBlockNumber)
-                    {
-                        break;
-                    }
-                }
-                snapshots.Reverse();
-
-                if (snapshots.Count == 0) return;
-                if (snapshots[0].From.blockNumber != startingBlockNumber)
-                {
-                    _logger.Warn($"Unable to compile snapshots to compact. {snapshots[0].From.blockNumber} -> {snapshots[^1].To.blockNumber}");
-                    // unable to compile list of snapshot for the whole thing
-                    return;
-                }
-
-                // Nothing to combine if its  just one
-                if (snapshots.Count == 1)
-                {
-                    return;
-                }
-
-                if (_logger.IsDebug) _logger.Debug($"Compacting {stateId}");
-                sw = Stopwatch.GetTimestamp();
-                compactedSnapshot = CompactSnapshotBundle(snapshots);
-            }
-            finally
-            {
-                foreach (Snapshot snapshot in snapshots)
-                {
-                    snapshot.Dispose();
-                }
-            }
-
-            _flatdiffimes.WithLabels("compaction", "compact_to_known_state").Observe(Stopwatch.GetTimestamp() - sw);
-            sw = Stopwatch.GetTimestamp();
-            Dictionary<MemoryType, long> memory = compactedSnapshot.EstimateMemory();
-
-            using (EnterRepolock())
-            {
-                _flatdiffimes.WithLabels("compaction", "add_repolock").Observe(Stopwatch.GetTimestamp() - sw);
-                sw = Stopwatch.GetTimestamp();
-
-                if (_logger.IsDebug) _logger.Debug($"Compacted {snapshots.Count} to {stateId}");
-
-                if (_compactedKnownStates.TryAdd(stateId, compactedSnapshot))
-                {
-                    foreach (var keyValuePair in memory)
-                    {
-                        _compactedMemory.WithLabels(keyValuePair.Key.ToString()).Inc(keyValuePair.Value);
-                    }
-                    _compactedMemory.WithLabels("count").Inc(1);
-                }
-                else
-                {
-                    compactedSnapshot.Dispose();
-                }
-
-                _flatdiffimes.WithLabels("compaction", "add_and_measure").Observe(Stopwatch.GetTimestamp() - sw);
-                sw = Stopwatch.GetTimestamp();
-
-                if (stateId.blockNumber % _compactSize != 0)
-                {
-                    // Save memory
-                    foreach (var id in _inMemorySnapshotStore.GetStatesAtBlockNumber(stateId.blockNumber - _compactSize))
-                    {
-                        RemoveAndReleaseCompactedKnownState(id);
-                    }
-                }
-
-                _flatdiffimes.WithLabels("compaction", "cleanup_compacted").Observe(Stopwatch.GetTimestamp() - sw);
-            }
-        }
-        catch (Exception e)
-        {
-            _logger.Error($"Compactor failed {e}");
-        }
-    }
-
-    private bool PopulateTrieNodeCache(CachedResource cachedResource)
+    private void PopulateTrieNodeCache(CachedResource cachedResource)
     {
         Snapshot lastSnapshot;
         using (EnterRepolockReadOnly())
         {
             StateId? last = GetLastSnapshotId();
-            if (last == null) return true;
-            if (!TryLeaseState(last.Value, out lastSnapshot)) return true;
+            if (last == null) return;
+            if (!TryLeaseState(last.Value, out lastSnapshot)) return;
         }
 
-        try
-        {
-            var memory = lastSnapshot.EstimateMemory(); // Note: This is slow, do it outside.
-            foreach (var keyValuePair in memory)
-            {
-                _knownStatesMemory.WithLabels(keyValuePair.Key.ToString()).Inc(keyValuePair.Value);
-            }
-            _knownStatesMemory.WithLabels("count").Inc(1);
+        using var _ = lastSnapshot; // Dispose
 
-            long sw = Stopwatch.GetTimestamp();
-            _trieNodeCache.Add(lastSnapshot, cachedResource);
-            _flatdiffimes.WithLabels("compaction", "add_to_trienode_cache").Observe(Stopwatch.GetTimestamp() - sw);
-            _resourcePool.ReturnCachedResource(IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing, cachedResource);
-            return false;
-        }
-        finally
+        var memory = lastSnapshot.EstimateMemory(); // Note: This is slow, do it outside.
+        foreach (var keyValuePair in memory)
         {
-            lastSnapshot.Dispose();
+            _knownStatesMemory.WithLabels(keyValuePair.Key.ToString()).Inc(keyValuePair.Value);
         }
+        _knownStatesMemory.WithLabels("count").Inc(1);
+
+        long sw = Stopwatch.GetTimestamp();
+        _trieNodeCache.Add(lastSnapshot, cachedResource);
+        _flatdiffimes.WithLabels("compaction", "add_to_trienode_cache").Observe(Stopwatch.GetTimestamp() - sw);
+
+        _resourcePool.ReturnCachedResource(IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing, cachedResource);
+        return;
     }
 
     internal StateId GetCurrentPersistedStateId()
@@ -589,7 +454,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         await NotifyWhenSlow("add to bigcache", () => _persistenceRunner.AddToPersistence());
     }
 
-    private void RemoveAndReleaseCompactedKnownState(StateId stateId)
+    public void RemoveAndReleaseCompactedKnownState(StateId stateId)
     {
         if (_compactedKnownStates.Remove(stateId, out var existingState))
         {
@@ -619,90 +484,6 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
             existingState.Dispose(); // After memory
         }
-    }
-
-    public Snapshot CompactSnapshotBundle(ArrayPoolList<Snapshot> snapshots)
-    {
-        StateId to = snapshots[^1].To;
-        StateId from = snapshots[0].From;
-
-        Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, IFlatDiffRepository.SnapshotBundleUsage.Compactor);
-        ConcurrentDictionary<AddressAsKey, Account> accounts = snapshot.Content.Accounts;
-        ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> storages = snapshot.Content.Storages;
-        ConcurrentDictionary<AddressAsKey, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;
-        ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = snapshot.Content.StorageNodes;
-        ConcurrentDictionary<TreePath, TrieNode> stateNodes = snapshot.Content.StateNodes;
-
-        HashSet<Address> addressToClear = new HashSet<Address>();
-        HashSet<Hash256AsKey> addressHashToClear = new HashSet<Hash256AsKey>();
-
-
-        for (int i = 0; i < snapshots.Count; i++)
-        {
-            var knownState = snapshots[i];
-            foreach (var knownStateAccount in knownState.Accounts)
-            {
-                Address address = knownStateAccount.Key;
-                accounts[address] = knownStateAccount.Value;
-            }
-
-            addressToClear.Clear();
-            addressHashToClear.Clear();
-
-            foreach (KeyValuePair<AddressAsKey, bool> addrK in knownState.SelfDestructedStorageAddresses)
-            {
-                var address = addrK.Key;
-                var isNewAccount = addrK.Value;
-                if (!isNewAccount)
-                {
-                    selfDestructedStorageAddresses[address] = false;
-                    addressToClear.Add(address);
-                    addressHashToClear.Add(address.Value.ToAccountPath.ToCommitment());
-                }
-                else
-                {
-                    // Note, if its already false, we should not set it to true
-                    selfDestructedStorageAddresses.TryAdd(address, true);
-                }
-            }
-
-            if (addressToClear.Count > 0)
-            {
-                // Clear
-                foreach (var kv in storages)
-                {
-                    if (addressToClear.Contains(kv.Key.Item1))
-                    {
-                        storages.Remove(kv.Key, out _);
-                    }
-                }
-
-                foreach (var kv in storageNodes)
-                {
-                    if (addressHashToClear.Contains(kv.Key.Item1))
-                    {
-                        storageNodes.Remove(kv.Key, out _);
-                    }
-                }
-            }
-
-            foreach (var knownStateStorage in knownState.Storages)
-            {
-                storages[knownStateStorage.Key] = knownStateStorage.Value;
-            }
-
-            foreach (var kv in knownState.StateNodes)
-            {
-                stateNodes[kv.Key] = kv.Value;
-            }
-
-            foreach (var kv in knownState.StorageNodes)
-            {
-                storageNodes[kv.Key] = kv.Value;
-            }
-        }
-
-        return snapshot;
     }
 
     public void FlushCache(CancellationToken cancellationToken)
@@ -772,5 +553,10 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         }
 
         ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(stateId.blockNumber));
+    }
+
+    public bool AddCompactedSnapshot(StateId stateId, Snapshot compactedSnapshot)
+    {
+        return _compactedKnownStates.TryAdd(stateId, compactedSnapshot);
     }
 }
