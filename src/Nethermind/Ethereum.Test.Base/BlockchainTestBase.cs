@@ -161,6 +161,7 @@ public abstract class BlockchainTestBase
             // Genesis processing
             using (stateProvider.BeginScope(null))
             {
+                (stateProvider as IBlockAccessListBuilder).IsGenesis = true; // directly access underlying state
                 InitializeTestState(test, stateProvider, specProvider);
 
                 stopwatch?.Start();

@@ -332,6 +332,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         _wasChanged = _balanceChanges.Count > 0 || _nonceChanges.Count > 0 || _codeChanges.Count > 0 || _storageChanges.Count > 0;
     }
 
+    [JsonIgnore]
     public bool AccountChanged => _wasChanged;
     private bool _wasChanged = false;
 }

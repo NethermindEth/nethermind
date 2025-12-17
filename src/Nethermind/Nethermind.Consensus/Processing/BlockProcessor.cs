@@ -134,7 +134,7 @@ public partial class BlockProcessor
 
         SetupBlockAccessLists(spec, block.BlockAccessList, block.Transactions.Length, block.IsGenesis);
         bool shouldComputeStateRoot = ShouldComputeStateRoot(header);
-        Task stateApplication = ApplyBlockAccessListToState(spec, shouldComputeStateRoot);
+        Task stateApplication = _balBuilder.ParallelExecutionEnabled ? ApplyBlockAccessListToState(spec, shouldComputeStateRoot) : Task.CompletedTask;
         _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
         StoreBeaconRoot(block, spec);

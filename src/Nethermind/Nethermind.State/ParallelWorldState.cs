@@ -88,7 +88,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
             if (accountChanges.BalanceChanges.Count > 0)
             {
                 _innerWorldState.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                UInt256 oldBalance = _innerWorldState.GetBalance(accountChanges.Address) ;
+                UInt256 oldBalance = GetBalanceInternal(accountChanges.Address, 0);
                 UInt256 newBalance = accountChanges.BalanceChanges.Last().PostBalance;
                 if (newBalance > oldBalance)
                 {
@@ -113,11 +113,11 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
             foreach (SlotChanges slotChange in accountChanges.StorageChanges)
             {
-                StorageCell storageCell = new(accountChanges.Address, new(slotChange.Slot.ToBigEndian()));
+                StorageCell storageCell = new(accountChanges.Address, slotChange.Slot);
                 // could be empty since prestate loaded
                 if (slotChange.Changes.Count > 0)
                 {
-                    _innerWorldState.Set(storageCell, slotChange.Changes.Last().NewValue.ToBigEndian());
+                    _innerWorldState.Set(storageCell, [.. slotChange.Changes.Last().NewValue.ToBigEndian().WithoutLeadingZeros()]);
                 }
             }
         }
