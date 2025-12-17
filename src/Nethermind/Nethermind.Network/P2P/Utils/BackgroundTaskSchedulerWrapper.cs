@@ -26,8 +26,16 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) where TRes : P2PMessage =>
         TryScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSenderValueTask);
 
-    internal bool TryScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc) =>
-        backgroundTaskScheduler.TryScheduleTask((request, fulfillFunc), BackgroundTaskFailureHandlerValueTask);
+    internal bool TryScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc)
+    {
+        RequestStruct<TReq> requestStruct = new(request, fulfillFunc);
+        return backgroundTaskScheduler.TryScheduleTask(in requestStruct, BackgroundTaskFailureHandlerValueTask);
+    }
+
+    private readonly record struct RequestStruct<TReq>(TReq Request, Func<TReq, CancellationToken, ValueTask> BackgroundTask)
+    {
+        public override string ToString() => nameof(TReq);
+    }
 
     // I just don't want to create a closure... so this happens.
     private async ValueTask BackgroundSyncSender<TReq, TRes>(
@@ -44,7 +52,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         handler.Send(response);
     }
 
-    private async Task BackgroundTaskFailureHandlerValueTask<TReq>((TReq Request, Func<TReq, CancellationToken, ValueTask> BackgroundTask) input, CancellationToken cancellationToken)
+    private async Task BackgroundTaskFailureHandlerValueTask<TReq>(RequestStruct<TReq> input, CancellationToken cancellationToken)
     {
         try
         {
