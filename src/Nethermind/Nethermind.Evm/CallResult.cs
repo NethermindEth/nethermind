@@ -3,7 +3,7 @@
 
 using System;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.Gas;
+using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm;
 

@@ -3,7 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Evm.Gas;
+using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;

@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Gas;
+using Nethermind.Evm.GasPolicy;
 using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
@@ -366,7 +366,7 @@ internal static partial class EvmInstructions
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
         // Charge gas based on whether this is a cold or warm storage access.
-        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, vm, in storageCell, StorageAccessType.SSTORE, spec))
+        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
             goto OutOfGas;
 
         // Retrieve the current value from persistent storage.
@@ -474,7 +474,7 @@ internal static partial class EvmInstructions
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
         // Charge gas based on whether this is a cold or warm storage access.
-        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, vm, in storageCell, StorageAccessType.SSTORE, spec))
+        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
             goto OutOfGas;
 
         // Retrieve the current value from persistent storage.
@@ -628,10 +628,8 @@ internal static partial class EvmInstructions
         StorageCell storageCell = new(executingAccount, in result);
 
         // Charge additional gas based on whether the storage cell is hot or cold.
-        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, vm, in storageCell, StorageAccessType.SLOAD, spec))
-        {
+        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
             goto OutOfGas;
-        }
 
         // Retrieve the persistent storage value and push it onto the stack.
         ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell);

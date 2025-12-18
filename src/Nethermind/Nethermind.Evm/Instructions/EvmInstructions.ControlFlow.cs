@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Specs;
 using Nethermind.Core;
-using Nethermind.Evm.Gas;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
@@ -228,7 +228,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Charge gas for account access; if insufficient, signal out-of-gas.
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm, inheritor, false))
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor, false))
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;

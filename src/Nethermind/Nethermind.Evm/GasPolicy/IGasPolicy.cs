@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm.Gas;
+namespace Nethermind.Evm.GasPolicy;
 
 /// <summary>
 /// Defines a gas policy for EVM execution.
@@ -63,13 +63,19 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// This method ensures that both the requested account and its delegated account (if any) are properly charged.
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
-    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="spec">The release specification governing gas costs.</param>
+    /// <param name="accessTracker">The access tracker for cold/warm state.</param>
+    /// <param name="isTracingAccess">Whether access tracing is enabled.</param>
     /// <param name="address">The target account address.</param>
+    /// <param name="delegated">The delegated account address, if any.</param>
     /// <param name="chargeForWarm">If true, charge even if the account is already warm.</param>
     /// <returns>True if gas was successfully charged; otherwise false.</returns>
     static abstract bool ConsumeAccountAccessGasWithDelegation(ref TSelf gas,
-        VirtualMachine<TSelf> vm,
+        IReleaseSpec spec,
+        ref readonly StackAccessTracker accessTracker,
+        bool isTracingAccess,
         Address address,
+        Address? delegated,
         bool chargeForWarm = true);
 
     /// <summary>
@@ -77,12 +83,16 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// Precompiles are treated as exceptions to the cold/warm gas charge.
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
-    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="spec">The release specification governing gas costs.</param>
+    /// <param name="accessTracker">The access tracker for cold/warm state.</param>
+    /// <param name="isTracingAccess">Whether access tracing is enabled.</param>
     /// <param name="address">The target account address.</param>
     /// <param name="chargeForWarm">If true, applies the warm read gas cost even if the account is warm.</param>
     /// <returns>True if the gas charge was successful; otherwise false.</returns>
     static abstract bool ConsumeAccountAccessGas(ref TSelf gas,
-        VirtualMachine<TSelf> vm,
+        IReleaseSpec spec,
+        ref readonly StackAccessTracker accessTracker,
+        bool isTracingAccess,
         Address address,
         bool chargeForWarm = true);
 
@@ -94,13 +104,15 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </para>
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
-    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="accessTracker">The access tracker for cold/warm state.</param>
+    /// <param name="isTracingAccess">Whether access tracing is enabled.</param>
     /// <param name="storageCell">The target storage cell being accessed.</param>
     /// <param name="storageAccessType">Indicates whether the access is for a load (SLOAD) or store (SSTORE) operation.</param>
     /// <param name="spec">The release specification which governs gas metering and storage access rules.</param>
     /// <returns><c>true</c> if the gas charge was successfully applied; otherwise, <c>false</c> indicating an out-of-gas condition.</returns>
     static abstract bool ConsumeStorageAccessGas(ref TSelf gas,
-        VirtualMachine<TSelf> vm,
+        ref readonly StackAccessTracker accessTracker,
+        bool isTracingAccess,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
         IReleaseSpec spec);

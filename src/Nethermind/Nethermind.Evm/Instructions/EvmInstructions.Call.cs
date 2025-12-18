@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.Gas;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -135,7 +135,10 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
-        if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, vm, codeSource)) goto OutOfGas;
+        bool hasDelegation =
+            vm.TxExecutionContext.CodeInfoRepository.TryGetDelegation(codeSource, vm.Spec, out Address delegated);
+        if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, vm.Spec, in vm.VmState.AccessTracker,
+                vm.TxTracer.IsTracingAccess, codeSource, delegated, hasDelegation)) goto OutOfGas;
 
         // For non-delegate calls, the transfer value is the call value.
         UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;

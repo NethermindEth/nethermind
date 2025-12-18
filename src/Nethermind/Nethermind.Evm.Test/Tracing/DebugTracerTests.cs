@@ -8,9 +8,9 @@ using NUnit.Framework;
 using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Gas;
 using Nethermind.Evm.Tracing.Debugger;
 using Nethermind.Core;
+using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm.Test;
 

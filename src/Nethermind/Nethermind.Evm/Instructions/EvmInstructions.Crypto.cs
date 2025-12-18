@@ -5,7 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Gas;
+using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm;
 

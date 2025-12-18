@@ -15,7 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
-using Nethermind.Evm.Gas;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -1148,7 +1148,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             UInt256 localPreviousDest = previousCallOutputDestination;
 
             // Attempt to update the memory cost; if insufficient gas is available, jump to the out-of-gas handler.
-            if (!UpdateMemoryCost(vmState, ref gas, in localPreviousDest, (ulong)previousCallOutput.Length))
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (ulong)previousCallOutput.Length, vmState))
             {
                 goto OutOfGas;
             }
@@ -1388,13 +1388,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         state.Gas = gas;
         state.DataStackHead = stackHead;
         state.FunctionIndex = SectionIndex;
-    }
-
-    private static bool UpdateMemoryCost(VmState<TGasPolicy> vmState, ref TGasPolicy gas, in UInt256 position, in UInt256 length)
-    {
-        long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
-        if (outOfGas) return false;
-        return memoryCost == 0L || TGasPolicy.UpdateGas(ref gas, memoryCost);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
