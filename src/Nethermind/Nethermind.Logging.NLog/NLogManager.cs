@@ -113,10 +113,10 @@ namespace Nethermind.Logging.NLog
 
         private static void RemoveOverriddenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
         {
-            string reqexPattern = $"^{loggingRule.LoggerNamePattern.Replace(".", "\\.").Replace("*", ".*")}$";
+            string regexPattern = $"^{loggingRule.LoggerNamePattern.Replace(".", "\\.").Replace("*", ".*")}$";
             for (int j = 0; j < configurationLoggingRules.Count;)
             {
-                if (Regex.IsMatch(configurationLoggingRules[j].LoggerNamePattern, reqexPattern))
+                if (Regex.IsMatch(configurationLoggingRules[j].LoggerNamePattern, regexPattern))
                 {
                     configurationLoggingRules.RemoveAt(j);
                 }
