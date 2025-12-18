@@ -43,8 +43,8 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
 {
     public const int TimeoutLength = 20000;
 
-    private static IBlockTree? _blockTree;
-    protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, static () => Build.A.BlockTree().OfChainLength(100).TestObject);
+    // Chain length used for test block trees, use a constant to avoid shared state
+    private const int TestChainLength = 100;
 
     protected ILogger _logger;
     protected ILogManager _logManager = null!;
@@ -93,9 +93,12 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
 
         builder.RegisterBuildCallback((ctx) =>
         {
+            IBlockTree blockTree = ctx.Resolve<IBlockTree>();
             ISyncPeerPool peerPool = ctx.Resolve<ISyncPeerPool>();
-            foreach (ISyncPeer syncPeer in syncPeers)
+            foreach (SyncPeerMock syncPeer in syncPeers)
             {
+                // Set per-test block tree to avoid race conditions during parallel execution
+                syncPeer.SetBlockTree(blockTree);
                 peerPool.AddPeer(syncPeer);
             }
         });
@@ -122,8 +125,8 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
 
             // Use factory function to make it lazy in case test need to replace IBlockTree
             .AddSingleton<IBlockTree>((ctx) => CachedBlockTreeBuilder.BuildCached(
-                $"{nameof(StateSyncFeedTestsBase)}{dbContext.RemoteStateTree.RootHash}{BlockTree.BestSuggestedHeader!.Number}",
-                () => Build.A.BlockTree().WithStateRoot(dbContext.RemoteStateTree.RootHash).OfChainLength((int)BlockTree.BestSuggestedHeader!.Number)))
+                $"{nameof(StateSyncFeedTestsBase)}{dbContext.RemoteStateTree.RootHash}{TestChainLength}",
+                () => Build.A.BlockTree().WithStateRoot(dbContext.RemoteStateTree.RootHash).OfChainLength(TestChainLength)))
 
             .Add<SafeContext>();
 
@@ -280,6 +283,9 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
         private readonly Func<IReadOnlyList<Hash256>, Task<IOwnedReadOnlyList<byte[]>>>? _executorResultFunction;
         private readonly long _maxRandomizedLatencyMs;
 
+        // Per-test block tree to avoid race conditions during parallel test execution
+        private IBlockTree? _blockTree;
+
         public SyncPeerMock(
             IDb stateDb,
             IDb codeDb,
@@ -345,6 +351,11 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
             _filter = availableHashes;
         }
 
+        public void SetBlockTree(IBlockTree blockTree)
+        {
+            _blockTree = blockTree;
+        }
+
         public override bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
         {
             if (protocol == Protocol.Snap)
@@ -358,7 +369,7 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
 
         public override Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
-            return Task.FromResult(BlockTree.Head?.Header);
+            return Task.FromResult(_blockTree?.Head?.Header);
         }
 
         public override Task<IOwnedReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
