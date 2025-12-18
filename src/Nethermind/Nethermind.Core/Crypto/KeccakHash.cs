@@ -929,21 +929,15 @@ public sealed class KeccakHash
 
                 Vector512<ulong> theta1a = Avx512F.PermuteVar8x64(parity, rot1);
                 Vector512<ulong> theta0 = Avx512F.PermuteVar8x64(parity, rot4);
-
-                // Pass 1 - xor theta0 into everything
-                c0 = Avx512F.Xor(c0, theta0);
-                c1 = Avx512F.Xor(c1, theta0);
-                c2 = Avx512F.Xor(c2, theta0);
-                c3 = Avx512F.Xor(c3, theta0);
-                c4 = Avx512F.Xor(c4, theta0);
-
-                // Pass 2 - compute theta1 then xor it in
                 Vector512<ulong> theta1 = Avx512F.RotateLeft(theta1a, 1);
-                c0 = Avx512F.Xor(c0, theta1);
-                c1 = Avx512F.Xor(c1, theta1);
-                c2 = Avx512F.Xor(c2, theta1);
-                c3 = Avx512F.Xor(c3, theta1);
-                c4 = Avx512F.Xor(c4, theta1);
+                Vector512<ulong> theta = Avx512F.Xor(theta0, theta1);
+
+                // Xor theta into everything
+                c0 = Avx512F.Xor(c0, theta);
+                c1 = Avx512F.Xor(c1, theta);
+                c2 = Avx512F.Xor(c2, theta);
+                c3 = Avx512F.Xor(c3, theta);
+                c4 = Avx512F.Xor(c4, theta);
 
                 // Pi-to-columns then Rho
                 c0 = Avx512F.PermuteVar8x64(c0, pi0);
@@ -1009,25 +1003,21 @@ public sealed class KeccakHash
                 Vector512<ulong> theta1a = Avx512F.PermuteVar8x64(parity, rot1);
                 Vector512<ulong> theta0 = Avx512F.PermuteVar8x64(parity, rot4);
                 Vector512<ulong> theta1 = Avx512F.RotateLeft(theta1a, 1);
+                Vector512<ulong> theta = Avx512F.Xor(theta0, theta1);
 
                 // Pi (diagonals -> rows) fusion: apply theta via 2 xors in byte view, then permute
-                c0 = Avx512F.Xor(c0, theta0);
-                c0 = Avx512F.Xor(c0, theta1); // d0 -> row0 (no permute)
+                c0 = Avx512F.Xor(c0, theta); // d0 -> row0 (no permute)
 
-                c2 = Avx512F.Xor(c2, theta0);
-                c2 = Avx512F.Xor(c2, theta1);
+                c2 = Avx512F.Xor(c2, theta);
                 c2 = Avx512F.PermuteVar8x64(c2, rot1);
 
-                c4 = Avx512F.Xor(c4, theta0);
-                c4 = Avx512F.Xor(c4, theta1);
+                c4 = Avx512F.Xor(c4, theta);
                 c4 = Avx512F.PermuteVar8x64(c4, rot2);
 
-                c1 = Avx512F.Xor(c1, theta0);
-                c1 = Avx512F.Xor(c1, theta1);
+                c1 = Avx512F.Xor(c1, theta);
                 c1 = Avx512F.PermuteVar8x64(c1, rot3);
 
-                c3 = Avx512F.Xor(c3, theta0);
-                c3 = Avx512F.Xor(c3, theta1);
+                c3 = Avx512F.Xor(c3, theta);
                 c3 = Avx512F.PermuteVar8x64(c3, rot4);
 
                 // Rho
