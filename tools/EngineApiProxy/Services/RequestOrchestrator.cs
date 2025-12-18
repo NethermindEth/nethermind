@@ -288,7 +288,7 @@ namespace Nethermind.EngineApiProxy.Services
                 
                 // Create getPayload request
                 var getPayloadRequest = new JsonRpcRequest(
-                    "engine_getPayloadV4",
+                    "engine_getPayloadV5",
                     new JArray(payloadId),
                     Guid.NewGuid().ToString());
                 
@@ -439,7 +439,7 @@ namespace Nethermind.EngineApiProxy.Services
                 }
                 else
                 {
-                    _logger.Debug($"Using provided parentBeaconBlockRoot in engine_newPayloadV4: {parentBeaconBlockRoot}");
+                    _logger.Debug($"Using provided parentBeaconBlockRoot in engine_newPayloadV5: {parentBeaconBlockRoot}");
                 }
                 
                 // Create the parameter array for the newPayload request
