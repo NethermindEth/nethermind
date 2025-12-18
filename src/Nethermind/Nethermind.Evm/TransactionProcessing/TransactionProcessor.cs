@@ -199,7 +199,8 @@ namespace Nethermind.Evm.TransactionProcessing
             int delegationRefunds = (!spec.IsEip7702Enabled || !tx.HasAuthorizationList) ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
             if (!(result = CalculateAvailableGas(tx, intrinsicGas, out long gasAvailable))) return result;
-            if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment env))) return result;
+            if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment e))) return result;
+            using ExecutionEnvironment env = e;
 
             int statusCode = !tracer.IsTracingInstructions ?
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
@@ -565,8 +566,8 @@ namespace Nethermind.Evm.TransactionProcessing
             UInt256 nonce = WorldState.GetNonce(tx.SenderAddress!);
             if (validate && tx.Nonce != nonce)
             {
-                TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {WorldState.GetNonce(tx.SenderAddress)})");
-                return TransactionResult.WrongTransactionNonce;
+                TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {nonce})");
+                return tx.Nonce > nonce ? TransactionResult.TransactionNonceTooHigh : TransactionResult.TransactionNonceTooLow;
             }
 
             UInt256 newNonce = validate || nonce < ulong.MaxValue ? nonce + 1 : 0;
@@ -590,7 +591,6 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
-
             ICodeInfo? codeInfo;
             ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data : default;
             if (tx.IsContractCreation)
@@ -621,7 +621,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 accessTracker.WarmUp(tx.SenderAddress!);
             }
 
-            env = new ExecutionEnvironment(
+            env = ExecutionEnvironment.Rent(
                 codeInfo: codeInfo,
                 executingAccount: recipient,
                 caller: tx.SenderAddress!,
@@ -646,7 +646,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IntrinsicGas gas,
             in StackAccessTracker accessedItems,
             long gasAvailable,
-            in ExecutionEnvironment env,
+            ExecutionEnvironment env,
             out TransactionSubstate substate,
             out GasConsumed gasConsumed)
             where TTracingInst : struct, IFlag
@@ -683,56 +683,56 @@ namespace Nethermind.Evm.TransactionProcessing
 
             ExecutionType executionType = tx.IsContractCreation ? ((spec.IsEofEnabled && tx.IsEofContractCreation) ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
 
-            using (EvmState state = EvmState.RentTopLevel(gasAvailable, executionType, in env, in accessedItems, in snapshot))
+            using (EvmState state = EvmState.RentTopLevel(gasAvailable, executionType, env, in accessedItems, in snapshot))
             {
                 substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
                 Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
                 gasAvailable = state.GasAvailable;
-            }
 
-            if (tracer.IsTracingAccess)
-            {
-                tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
-            }
-
-            if (substate.ShouldRevert || substate.IsError)
-            {
-                if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
-                WorldState.Restore(snapshot);
-            }
-            else
-            {
-                if (tx.IsContractCreation)
+                if (tracer.IsTracingAccess)
                 {
-                    if (!spec.IsEofEnabled || tx.IsLegacyContractCreation)
-                    {
-                        if (!DeployLegacyContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
-                        {
-                            goto FailContractCreate;
-                        }
-                    }
-                    else
-                    {
-                        if (!DeployEofContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
-                        {
-                            goto FailContractCreate;
-                        }
-                    }
+                    tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
                 }
 
-                foreach (Address toBeDestroyed in substate.DestroyList)
+                if (substate.ShouldRevert || substate.IsError)
                 {
-                    if (Logger.IsTrace)
-                        Logger.Trace($"Destroying account {toBeDestroyed}");
-
-                    WorldState.ClearStorage(toBeDestroyed);
-                    WorldState.DeleteAccount(toBeDestroyed);
-
-                    if (tracer.IsTracingRefunds)
-                        tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
+                    if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
+                    WorldState.Restore(snapshot);
                 }
+                else
+                {
+                    if (tx.IsContractCreation)
+                    {
+                        if (!spec.IsEofEnabled || tx.IsLegacyContractCreation)
+                        {
+                            if (!DeployLegacyContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
+                            {
+                                goto FailContractCreate;
+                            }
+                        }
+                        else
+                        {
+                            if (!DeployEofContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
+                            {
+                                goto FailContractCreate;
+                            }
+                        }
+                    }
 
-                statusCode = StatusCode.Success;
+                    foreach (Address toBeDestroyed in substate.DestroyList)
+                    {
+                        if (Logger.IsTrace)
+                            Logger.Trace($"Destroying account {toBeDestroyed}");
+
+                        WorldState.ClearStorage(toBeDestroyed);
+                        WorldState.DeleteAccount(toBeDestroyed);
+
+                        if (tracer.IsTracingRefunds)
+                            tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
+                    }
+
+                    statusCode = StatusCode.Success;
+                }
             }
 
             gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable,
@@ -962,7 +962,8 @@ namespace Nethermind.Evm.TransactionProcessing
             ErrorType.SenderHasDeployedCode => "sender has deployed code",
             ErrorType.SenderNotSpecified => "sender not specified",
             ErrorType.TransactionSizeOverMaxInitCodeSize => "EIP-3860 - transaction size over max init code size",
-            ErrorType.WrongTransactionNonce => "wrong transaction nonce",
+            ErrorType.TransactionNonceTooHigh => "transaction nonce is too high",
+            ErrorType.TransactionNonceTooLow => "transaction nonce is too low",
             _ => ""
         };
         public static implicit operator TransactionResult(ErrorType error) => new(error);
@@ -992,7 +993,8 @@ namespace Nethermind.Evm.TransactionProcessing
         public static readonly TransactionResult SenderHasDeployedCode = ErrorType.SenderHasDeployedCode;
         public static readonly TransactionResult SenderNotSpecified = ErrorType.SenderNotSpecified;
         public static readonly TransactionResult TransactionSizeOverMaxInitCodeSize = ErrorType.TransactionSizeOverMaxInitCodeSize;
-        public static readonly TransactionResult WrongTransactionNonce = ErrorType.WrongTransactionNonce;
+        public static readonly TransactionResult TransactionNonceTooHigh = ErrorType.TransactionNonceTooHigh;
+        public static readonly TransactionResult TransactionNonceTooLow = ErrorType.TransactionNonceTooLow;
 
         public enum ErrorType
         {
@@ -1007,7 +1009,8 @@ namespace Nethermind.Evm.TransactionProcessing
             SenderHasDeployedCode,
             SenderNotSpecified,
             TransactionSizeOverMaxInitCodeSize,
-            WrongTransactionNonce,
+            TransactionNonceTooHigh,
+            TransactionNonceTooLow,
         }
     }
 }

@@ -50,9 +50,14 @@ namespace Ethereum.Test.Base
             {
                 FileTestsSource fileTestsSource = new(testFile, wildcard);
                 var tests = fileTestsSource.LoadTests(TestType.State);
-                foreach (EthereumTest blockchainTest in tests)
+                foreach (EthereumTest ethereumTest in tests)
                 {
-                    blockchainTest.Category = testDir;
+                    ethereumTest.Category = testDir;
+                    // Mark legacy tests to use old coinbase behavior for backward compatibility
+                    if (ethereumTest is GeneralStateTest generalStateTest)
+                    {
+                        generalStateTest.IsLegacy = true;
+                    }
                 }
 
                 testsByName.AddRange(tests);
