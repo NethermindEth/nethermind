@@ -945,10 +945,10 @@ internal static partial class EvmInstructions
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, in dataLength, vm.VmState))
             goto OutOfGas;
         // 7. Account access gas: ensure target is warm or charge extra gas for cold access.
-        bool hasDelegation =
-            vm.TxExecutionContext.CodeInfoRepository.TryGetDelegation(codeSource, vm.Spec, out Address delegated);
+        bool _ = vm.TxExecutionContext.CodeInfoRepository
+            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
         if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, vm.Spec, in vm.VmState.AccessTracker,
-                vm.TxTracer.IsTracingAccess, codeSource, delegated, hasDelegation)) goto OutOfGas;
+                vm.TxTracer.IsTracingAccess, codeSource, delegated)) goto OutOfGas;
 
         // 8. If the target does not exist or is considered a "dead" account when value is transferred,
         // charge for account creation.
