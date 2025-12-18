@@ -53,13 +53,6 @@ public readonly record struct BlockRange
     public bool Contains(long blockNumber) => blockNumber >= StartBlock && blockNumber <= EndBlock;
 
     /// <summary>
-    /// Determines whether this range intersects with another range.
-    /// </summary>
-    /// <param name="other">The other block range.</param>
-    /// <returns>True if the ranges overlap; otherwise, false.</returns>
-    public bool Intersects(BlockRange other) => StartBlock <= other.EndBlock && EndBlock >= other.StartBlock;
-
-    /// <summary>
     /// Splits this range into approximately equal sub-ranges.
     /// </summary>
     /// <param name="chunks">The number of chunks to split into.</param>

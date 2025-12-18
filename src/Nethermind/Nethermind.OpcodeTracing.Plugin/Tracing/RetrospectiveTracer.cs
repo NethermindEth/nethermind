@@ -10,28 +10,32 @@ namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 
 /// <summary>
 /// Handles retrospective opcode tracing by reading historical blocks from the database.
+/// Supports parallel processing via MaxDegreeOfParallelism configuration.
 /// </summary>
 public sealed class RetrospectiveTracer
 {
     private readonly IBlockTree _blockTree;
     private readonly OpcodeCounter _counter;
     private readonly ILogger _logger;
+    private readonly int _maxDegreeOfParallelism;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="RetrospectiveTracer"/> class.
     /// </summary>
     /// <param name="blockTree">The block tree for accessing historical blocks.</param>
     /// <param name="counter">The opcode counter to accumulate into.</param>
+    /// <param name="maxDegreeOfParallelism">Maximum degree of parallelism. 0 or negative uses processor count.</param>
     /// <param name="logManager">The log manager.</param>
-    public RetrospectiveTracer(IBlockTree blockTree, OpcodeCounter counter, ILogManager logManager)
+    public RetrospectiveTracer(IBlockTree blockTree, OpcodeCounter counter, int maxDegreeOfParallelism, ILogManager logManager)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _counter = counter ?? throw new ArgumentNullException(nameof(counter));
+        _maxDegreeOfParallelism = maxDegreeOfParallelism <= 0 ? Environment.ProcessorCount : maxDegreeOfParallelism;
         _logger = logManager?.GetClassLogger<RetrospectiveTracer>() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
     /// <summary>
-    /// Traces the specified block range asynchronously.
+    /// Traces the specified block range asynchronously with parallel processing.
     /// </summary>
     /// <param name="range">The block range to trace.</param>
     /// <param name="progress">The progress tracker.</param>
@@ -39,9 +43,24 @@ public sealed class RetrospectiveTracer
     /// <returns>A task representing the asynchronous operation.</returns>
     public async Task TraceBlockRangeAsync(BlockRange range, TracingProgress progress, CancellationToken cancellationToken = default)
     {
-        for (long blockNumber = range.StartBlock; blockNumber <= range.EndBlock; blockNumber++)
+        if (_logger.IsInfo)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            _logger.Info($"Retrospective tracing with MaxDegreeOfParallelism={_maxDegreeOfParallelism}");
+        }
+
+        // Create enumerable of block numbers for parallel processing
+        var blockNumbers = Enumerable.Range(0, (int)range.Count)
+            .Select(i => range.StartBlock + i);
+
+        var parallelOptions = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = _maxDegreeOfParallelism,
+            CancellationToken = cancellationToken
+        };
+
+        await Parallel.ForEachAsync(blockNumbers, parallelOptions, async (blockNumber, ct) =>
+        {
+            ct.ThrowIfCancellationRequested();
 
             Block? block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.None);
             if (block is null)
@@ -51,7 +70,7 @@ public sealed class RetrospectiveTracer
                     _logger.Warn($"Block {blockNumber} not found in database");
                 }
                 progress.UpdateProgress(blockNumber);
-                continue;
+                return;
             }
 
             // Process transactions in the block
@@ -59,7 +78,7 @@ public sealed class RetrospectiveTracer
             {
                 foreach (var transaction in block.Transactions)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
+                    ct.ThrowIfCancellationRequested();
 
                     // Analyze transaction bytecode for opcodes
                     AnalyzeTransactionOpcodes(transaction);
@@ -68,18 +87,14 @@ public sealed class RetrospectiveTracer
 
             progress.UpdateProgress(blockNumber);
 
-            // Log progress if needed
+            // Log progress if needed (thread-safe check)
             if (progress.ShouldLogProgress() && _logger.IsInfo)
             {
                 _logger.Info($"Retrospective tracing progress: block {blockNumber} ({progress.PercentComplete:F2}% complete)");
             }
 
-            // Small delay to avoid overwhelming the system
-            if (blockNumber % 100 == 0)
-            {
-                await Task.Delay(1, cancellationToken).ConfigureAwait(false);
-            }
-        }
+            await Task.CompletedTask.ConfigureAwait(false);
+        }).ConfigureAwait(false);
     }
 
     /// <summary>
