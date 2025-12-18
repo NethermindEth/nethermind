@@ -35,6 +35,8 @@ namespace Nethermind.Network.Rlpx
 
             bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentContextId == contextId && contextId != 0;
             bool isFirst = totalPacketSize.HasValue || !isChunked;
+
+            headerBodyItems.Check(headerDataEnd);
             return new FrameInfo(isChunked, isFirst, frameSize, totalPacketSize ?? frameSize);
         }
 
