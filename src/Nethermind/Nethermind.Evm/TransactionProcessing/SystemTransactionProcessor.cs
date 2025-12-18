@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Gas;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -11,7 +12,8 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
-public sealed class SystemTransactionProcessor : TransactionProcessorBase
+public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcessorBase<TGasPolicy>
+    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     private readonly bool _isAura;
 
@@ -25,7 +27,7 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
         IWorldState? worldState,
-        IVirtualMachine? virtualMachine,
+        IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
         : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
@@ -73,7 +75,7 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
         }
     }
 
-    protected override IntrinsicGas CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) => tx is SystemCall ? default : base.CalculateIntrinsicGas(tx, spec);
+    protected override IntrinsicGas<TGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) => tx is SystemCall ? default : base.CalculateIntrinsicGas(tx, spec);
 
     protected override bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
     {

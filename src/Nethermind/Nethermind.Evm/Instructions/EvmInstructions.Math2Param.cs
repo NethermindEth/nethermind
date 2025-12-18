@@ -5,8 +5,9 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using static Nethermind.Evm.VirtualMachine;
+using Nethermind.Evm.Gas;
 using static System.Runtime.CompilerServices.Unsafe;
+using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
@@ -38,22 +39,24 @@ internal static partial class EvmInstructions
     /// This method pops two UInt256 operands from the stack, applies the operation,
     /// and then pushes the result onto the stack.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpMath">A struct implementing <see cref="IOpMath2Param"/> that defines the specific operation.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gas">The gas state which is updated by the operation's cost.</param>
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the operation completes successfully;
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath2Param<TOpMath, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost for the specific math operation.
-        gasAvailable -= TOpMath.GasCost;
+        TGasPolicy.Consume(ref gas, TOpMath.GasCost);
 
         // Pop two operands from the stack. If either pop fails, jump to the underflow handler.
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
@@ -253,17 +256,18 @@ internal static partial class EvmInstructions
     /// </summary>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack where the program counter is pushed.</param>
-    /// <param name="gasAvailable">Reference to the remaining gas; reduced by the gas cost.</param>
+    /// <param name="gas">Reference to the gas state; updated by the gas cost.</param>
     /// <param name="programCounter">The current program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success; or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExp<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExp<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Charge the fixed gas cost for exponentiation.
-        gasAvailable -= GasCostOf.Exp;
+        TGasPolicy.Consume(ref gas, GasCostOf.Exp);
 
         // Pop the base value from the stack.
         if (!stack.PopUInt256(out UInt256 a))
@@ -283,7 +287,7 @@ internal static partial class EvmInstructions
         {
             int expSize = 32 - leadingZeros;
             // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-            gasAvailable -= vm.Spec.GetExpByteCost() * expSize;
+            TGasPolicy.Consume(ref gas, vm.Spec.GetExpByteCost() * expSize);
 
             if (a.IsZero)
             {

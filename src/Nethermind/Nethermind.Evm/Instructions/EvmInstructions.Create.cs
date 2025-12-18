@@ -7,10 +7,10 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
+using Nethermind.Evm.Gas;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
-
-using static Nethermind.Evm.VirtualMachine;
+using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
@@ -59,19 +59,21 @@ internal static partial class EvmInstructions
     /// This method performs validation, gas and memory cost calculations, state updates,
     /// and delegates execution to a new call frame for the contract's initialization code.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy implementation.</typeparam>
     /// <typeparam name="TOpCreate">The type of create operation (either <see cref="OpCreate"/> or <see cref="OpCreate2"/>).</typeparam>
     /// <typeparam name="TTracingInst">Tracing instructions type used for instrumentation if active.</typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">Reference to the EVM stack.</param>
-    /// <param name="gasAvailable">Reference to the gas counter available for execution.</param>
+    /// <param name="gas">Reference to the gas state.</param>
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or the type of exception encountered.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCreate<TOpCreate, TTracingInst>(
-        VirtualMachine vm,
+    public static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
-        ref long gasAvailable,
+        ref TGasPolicy gas,
         ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCreate : struct, IOpCreate
         where TTracingInst : struct, IFlag
     {
@@ -80,12 +82,12 @@ internal static partial class EvmInstructions
 
         // Obtain the current EVM specification and check if the call is static (static calls cannot create contracts).
         IReleaseSpec spec = vm.Spec;
-        if (vm.EvmState.IsStatic)
+        if (vm.VmState.IsStatic)
             goto StaticCallViolation;
 
         // Reset the return data buffer as contract creation does not use previous return data.
         vm.ReturnData = null;
-        ExecutionEnvironment env = vm.EvmState.Env;
+        ExecutionEnvironment env = vm.VmState.Env;
         IWorldState state = vm.WorldState;
 
         // Pop parameters off the stack: value to transfer, memory position for the initialization code,
@@ -119,11 +121,11 @@ internal static partial class EvmInstructions
                            : 0);
 
         // Check gas sufficiency: if outOfGas flag was set during gas division or if gas update fails.
-        if (outOfGas || !EvmCalculations.UpdateGas(gasCost, ref gasAvailable))
+        if (outOfGas || !TGasPolicy.UpdateGas(ref gas, gasCost))
             goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
-        if (!EvmCalculations.UpdateMemoryCost(vm.EvmState, ref gasAvailable, in memoryPositionOfInitCode, in initCodeLength))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, vm.VmState))
             goto OutOfGas;
 
         // Verify call depth does not exceed the maximum allowed. If exceeded, return early with empty data.
@@ -136,7 +138,7 @@ internal static partial class EvmInstructions
         }
 
         // Load the initialization code from memory based on the specified position and length.
-        if (!vm.EvmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
+        if (!vm.VmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
             goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
@@ -158,6 +160,9 @@ internal static partial class EvmInstructions
             goto None;
         }
 
+        // Get remaining gas for the create operation.
+        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+
         // End tracing if enabled, prior to switching to the new call frame.
         if (TTracingInst.IsActive)
             vm.EndInstructionTrace(gasAvailable);
@@ -165,7 +170,7 @@ internal static partial class EvmInstructions
         // Calculate gas available for the contract creation call.
         // Use the 63/64 gas rule if specified in the current EVM specification.
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-        if (!EvmCalculations.UpdateGas(callGas, ref gasAvailable))
+        if (!TGasPolicy.UpdateGas(ref gas, callGas))
             goto OutOfGas;
 
         // Compute the contract address:
@@ -178,7 +183,7 @@ internal static partial class EvmInstructions
         // For EIP-2929 support, pre-warm the contract address in the access tracker to account for hot/cold storage costs.
         if (spec.UseHotAndColdStorage)
         {
-            vm.EvmState.AccessTracker.WarmUp(contractAddress);
+            vm.VmState.AccessTracker.WarmUp(contractAddress);
         }
 
         // Special case: if EOF code format is enabled and the init code starts with the EOF marker,
@@ -187,7 +192,7 @@ internal static partial class EvmInstructions
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
-            EvmCalculations.UpdateGasUp(callGas, ref gasAvailable);
+            TGasPolicy.UpdateGasUp(ref gas, callGas);
             goto None;
         }
 
@@ -233,15 +238,15 @@ internal static partial class EvmInstructions
             inputData: in _emptyMemory);
 
         // Rent a new frame to run the initialization code in the new execution environment.
-        vm.ReturnData = EvmState.RentFrame(
-            gasAvailable: callGas,
+        vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+            gas: TGasPolicy.FromLong(callGas),
             outputDestination: 0,
             outputLength: 0,
             executionType: TOpCreate.ExecutionType,
-            isStatic: vm.EvmState.IsStatic,
+            isStatic: vm.VmState.IsStatic,
             isCreateOnPreExistingAccount: accountExists,
             env: callEnv,
-            stateForAccessLists: in vm.EvmState.AccessTracker,
+            stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot);
     None:
         return EvmExceptionType.None;

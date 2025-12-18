@@ -20,6 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.Gas;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -81,7 +82,7 @@ public class StatelessBlockProcessingEnv(
     private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockhashCache blockhashCache)
     {
         BlockhashProvider blockhashProvider = new(blockhashCache, state, logManager);
-        VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
-        return new TransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
+        EthereumVirtualMachine vm = new(blockhashProvider, specProvider, logManager);
+        return new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
     }
 }

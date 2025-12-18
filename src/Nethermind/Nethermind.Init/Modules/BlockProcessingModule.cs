@@ -23,6 +23,7 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.Gas;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -46,10 +47,10 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
             // Block processing components common between rpc, validation and production
             .AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeCalculator>()
-            .AddScoped<ITransactionProcessor, TransactionProcessor>()
+            .AddScoped<ITransactionProcessor, EthereumTransactionProcessor>()
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
                 .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
-            .AddScoped<IVirtualMachine, VirtualMachine>()
+            .AddScoped<IVirtualMachine, EthereumVirtualMachine>()
             .AddScoped<IBlockhashProvider, BlockhashProvider>()
             .AddSingleton<IBlockhashCache, BlockhashCache>()
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()

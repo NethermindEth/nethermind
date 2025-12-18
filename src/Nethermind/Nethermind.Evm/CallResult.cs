@@ -3,10 +3,12 @@
 
 using System;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Gas;
 
 namespace Nethermind.Evm;
 
-public partial class VirtualMachine
+public partial class VirtualMachine<TGasPolicy>
+    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     protected readonly ref struct CallResult
     {
@@ -23,7 +25,7 @@ public partial class VirtualMachine
         public static CallResult InvalidAddressRange => new(EvmExceptionType.AddressOutOfRange);
         public static CallResult Empty(int fromVersion) => new(container: null, output: default, precompileSuccess: null, fromVersion);
 
-        public CallResult(EvmState stateToExecute)
+        public CallResult(VmState<TGasPolicy> stateToExecute)
         {
             StateToExecute = stateToExecute;
             Output = (null, Array.Empty<byte>());
@@ -61,7 +63,7 @@ public partial class VirtualMachine
             ExceptionType = exceptionType;
         }
 
-        public EvmState? StateToExecute { get; }
+        public VmState<TGasPolicy>? StateToExecute { get; }
         public (ICodeInfo Container, ReadOnlyMemory<byte> Bytes) Output { get; }
         public EvmExceptionType ExceptionType { get; }
         public bool ShouldRevert { get; }
