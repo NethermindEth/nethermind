@@ -19,7 +19,7 @@ public interface IFlatDiffRepository
     bool HasStateForBlock(StateId stateId);
     StateId? FindStateIdForStateRoot(Hash256 stateRoot); // Ugh...
     StateId? FindLatestAvailableState();
-    IPersistence.IPersistenceReader LeaseReader();
+    IPersistence.IPersistenceReader CreateReader();
 
     enum SnapshotBundleUsage
     {

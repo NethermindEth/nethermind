@@ -94,7 +94,7 @@ public class FlatWorldStateManager : IWorldStateManager
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
     {
-        using IPersistence.IPersistenceReader reader = _flatDiffRepository.LeaseReader();
+        using IPersistence.IPersistenceReader reader = _flatDiffRepository.CreateReader();
         FlatVerifyTrieVisitor trieVisitor = new FlatVerifyTrieVisitor(_codeDb, reader, _logManager, cancellationToken);
 
         // Just a bit hacky due to mistmatch with best persisted state and actually persisted state.

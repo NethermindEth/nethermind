@@ -1,21 +1,45 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
 
 namespace Nethermind.State.Flat;
 
-public class ReadonlyReaderRepository
+public class ReadonlyReaderRepository: IAsyncDisposable
 {
     private ConcurrentDictionary<StateId, RefCountingDisposableBox<SnapshotBundle>> _sharedReader = new();
     private readonly IFlatDiffRepository _flatDiffRepository;
+    private readonly Task _clearReaderTask;
 
-    public ReadonlyReaderRepository(IFlatDiffRepository flatDiffRepository)
+    public ReadonlyReaderRepository(IFlatDiffRepository flatDiffRepository, IProcessExitSource exitSource)
     {
         flatDiffRepository.ReorgBoundaryReached += (sender, reached) => ClearAllReader();
         _flatDiffRepository = flatDiffRepository;
+
+        _clearReaderTask = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+            CancellationToken cancellation = exitSource.Token;
+
+            try
+            {
+                while (true)
+                {
+                    await timer.WaitForNextTickAsync(cancellation);
+
+                    ClearAllReader();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
     }
 
     private void ClearAllReader()
@@ -35,9 +59,16 @@ public class ReadonlyReaderRepository
 
     public RefCountingDisposableBox<SnapshotBundle>? GatherReadOnlyReaderAtBaseBlock(StateId baseBlock)
     {
-        if (_sharedReader.TryGetValue(baseBlock, out var snapshotBundle) && snapshotBundle.TryAcquire())
+        if (_sharedReader.TryGetValue(baseBlock, out var snapshotBundle))
         {
-            return snapshotBundle;
+            if (snapshotBundle.TryAcquire())
+            {
+                return snapshotBundle;
+            }
+            else
+            {
+                _sharedReader.TryRemove(baseBlock, out _);
+            }
         }
 
         SnapshotBundle? bundle = _flatDiffRepository.GatherReaderAtBaseBlock(baseBlock, IFlatDiffRepository.SnapshotBundleUsage.StateReader);
@@ -53,4 +84,8 @@ public class ReadonlyReaderRepository
         return newReader;
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        await _clearReaderTask;
+    }
 }

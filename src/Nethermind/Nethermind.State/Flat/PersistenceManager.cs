@@ -5,6 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -12,14 +15,13 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Prometheus;
 
 namespace Nethermind.State.Flat;
 
-public class PersistenceRunner
+public class PersistenceManager: IAsyncDisposable
 {
     private readonly FlatDiffRepository _flatDiffRepository;
     private readonly ILogger _logger;
@@ -28,10 +30,25 @@ public class PersistenceRunner
     private readonly int _forcedPruningBoundary;
     private readonly int _compactSize;
     private readonly IFinalizedStateProvider _finalizedStateProvider;
-    private List<(Hash256AsKey, TreePath)> _trieNodesSortBuffer = new List<(Hash256AsKey, TreePath)>(); // Presort make it faster
+    private readonly List<(Hash256AsKey, TreePath)> _trieNodesSortBuffer = new List<(Hash256AsKey, TreePath)>(); // Presort make it faster
+
+    // Readers are created a lot. So we put it behind a refcounted wrapper.
+    // However, it must not stay for too long as open reader prevent database compaction.
+    private RefCountingPersistenceReader? _cachedReader = null;
+    private readonly Lock _readerCacheLock = new Lock();
+    private readonly Task _clearReaderTask;
+    private bool _mustNotClearReaderCache = false;
+    private StateId _currentPersistedStateId = StateId.PreGenesis;
+
     private readonly IPersistence _persistence;
 
-    public PersistenceRunner(FlatDiffRepository flatDiffRepository, FlatDiffRepository.Configuration configuration, IFinalizedStateProvider finalizedStateProvider, IPersistence persistence, ILogManager logManager)
+    public PersistenceManager(
+        FlatDiffRepository flatDiffRepository,
+        FlatDiffRepository.Configuration configuration,
+        IFinalizedStateProvider finalizedStateProvider,
+        IPersistence persistence,
+        IProcessExitSource exitSource,
+        ILogManager logManager)
     {
         _flatDiffRepository = flatDiffRepository;
         _finalizedStateProvider = finalizedStateProvider;
@@ -41,6 +58,109 @@ public class PersistenceRunner
         _forcedPruningBoundary = configuration.ForcedPruningBoundary;
         _minimumPruningBoundary = configuration.Boundary;
         _compactSize = configuration.CompactSize;
+
+        _clearReaderTask = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+            var cancellation = exitSource.Token;
+
+            try
+            {
+                while (true)
+                {
+                    await timer.WaitForNextTickAsync(cancellation);
+
+                    ClearReaderCache();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
+
+        using var _ = LeaseReader();
+    }
+
+    public IPersistence.IPersistenceReader LeaseReader()
+    {
+        var cachedReader = _cachedReader;
+        if (cachedReader != null && cachedReader.TryAcquire())
+        {
+            return cachedReader;
+        }
+
+        using var _ = _readerCacheLock.EnterScope();
+        return LeaseReaderNoLock();
+    }
+
+    private IPersistence.IPersistenceReader LeaseReaderNoLock()
+    {
+        var cachedReader = _cachedReader;
+        while (true)
+        {
+            cachedReader = _cachedReader;
+            if (cachedReader is null)
+            {
+                _cachedReader = cachedReader = new RefCountingPersistenceReader(
+                    _persistence.CreateReader(),
+                    _logger
+                );
+                _currentPersistedStateId = cachedReader.CurrentState;
+            }
+
+            if (cachedReader.TryAcquire())
+            {
+                return cachedReader;
+            }
+            else
+            {
+                // Was disposed but not cleared. Not yet at least.
+                Interlocked.CompareExchange(ref _cachedReader, null, cachedReader);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Prevent reader cache from being disposed. So often we use database that is not consistent, as in
+    /// using multiple separate database. But that means that the reader must not be created during persistence as the
+    /// database are not consistent with each other. So we prime the reader here and prevent dispose until the persistence
+    /// is completed.
+    /// </summary>
+    /// <returns></returns>
+    private KeepReaderLock EnterReaderLockScope()
+    {
+        IPersistence.IPersistenceReader reader;
+        using (var _ = _readerCacheLock.EnterScope())
+        {
+            _mustNotClearReaderCache = true;
+            reader = LeaseReaderNoLock();
+        }
+        using var _r = reader;  // Dispose
+
+        return new KeepReaderLock(this);
+    }
+
+    private ref struct KeepReaderLock(PersistenceManager manager): IDisposable
+    {
+        public void Dispose()
+        {
+            manager._mustNotClearReaderCache = false;
+            manager.ClearReaderCache();
+        }
+    }
+
+    private void ClearReaderCache()
+    {
+        using var _ = _readerCacheLock.EnterScope();
+        if (_mustNotClearReaderCache) return;
+        RefCountingPersistenceReader? cachedReader = _cachedReader;
+        _cachedReader = null;
+        cachedReader?.Dispose();
+    }
+
+    internal StateId GetCurrentPersistedStateId()
+    {
+        return _currentPersistedStateId;
     }
 
     internal void AddToPersistence()
@@ -53,7 +173,7 @@ public class PersistenceRunner
             _flatdiffimes.WithLabels("add_to_persistence", "repolock").Observe(Stopwatch.GetTimestamp() - sw);
             sw = Stopwatch.GetTimestamp();
             long lastSnapshotNumber = _flatDiffRepository.GetLastSnapshotId()?.blockNumber ?? 0;
-            StateId currentPersistedState = _flatDiffRepository.GetCurrentPersistedStateId();
+            StateId currentPersistedState = GetCurrentPersistedStateId();
             long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
 
             bool forcedFinalizedState = false;
@@ -168,12 +288,14 @@ public class PersistenceRunner
             }
 
             // Add the canon snapshot
-            Add(snapshotToSave);
+            PersistSnapshot(snapshotToSave);
             snapshotToSave.Dispose();
+            _currentPersistedStateId = snapshotToSave.To;
 
             sw = Stopwatch.GetTimestamp();
 
             // And we remove it
+            // Note: Before this point, new reader must show new consistent view.
             _flatDiffRepository.OnStatePersisted(snapshotToSave.To);
             _flatdiffimes.WithLabels("add_to_persistence", "cleanup").Observe(Stopwatch.GetTimestamp() - sw);
 
@@ -183,8 +305,10 @@ public class PersistenceRunner
         }
     }
 
-    public void Add(Snapshot snapshot)
+    private void PersistSnapshot(Snapshot snapshot)
     {
+        using var _rl = EnterReaderLockScope();
+
         long sw = Stopwatch.GetTimestamp();
         using (var batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
@@ -304,9 +428,11 @@ public class PersistenceRunner
             sw = Stopwatch.GetTimestamp();
         }
         _flatdiffimes.WithLabels("persistence", "dispose").Observe(Stopwatch.GetTimestamp() - sw);
-
-        _flatDiffRepository.ClearReaderCache();
     }
 
-
+    public async ValueTask DisposeAsync()
+    {
+        await _clearReaderTask;
+        _cachedReader?.Dispose();
+    }
 }

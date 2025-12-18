@@ -31,19 +31,15 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     private readonly Task _compactorTask;
 
-    private RefCountingPersistenceReader? _cachedReader = null;
-    private Lock _readerCacheLock = new Lock();
     private readonly TrieNodeCache _trieNodeCache;
     private readonly Task _persistenceTask;
-
-    private IPersistence _persistence;
 
     private Channel<(StateId, CachedResource)> _compactorJobs;
     private Channel<StateId> _persistenceJob;
     private long _compactSize;
     private readonly bool _inlineCompaction;
     private ILogger _logger;
-    private readonly PersistenceRunner _persistenceRunner;
+    private readonly PersistenceManager _persistenceManager;
     private readonly SnapshotCompactor _snapshotCompactor;
 
     internal static Histogram _flatdiffimes = DevMetric.Factory.CreateHistogram("flatdiff_times", "aha", new HistogramConfiguration()
@@ -79,17 +75,23 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         IFinalizedStateProvider finalizedStateProvider,
         IPersistence persistedPersistence,
         ResourcePool resourcePool,
+        IProcessExitSource processExitSource,
         ILogManager logManager,
         Configuration? config = null)
     {
         if (config is null) config = new Configuration();
-        _persistence = persistedPersistence;
         _compactSize = config.CompactSize;
         _inlineCompaction = config.InlineCompaction;
         _resourcePool = resourcePool;
         _logger = logManager.GetClassLogger<FlatDiffRepository>();
 
-        _persistenceRunner = new PersistenceRunner(this, config, finalizedStateProvider, persistedPersistence, logManager);
+        _persistenceManager = new PersistenceManager(
+            this,
+            config,
+            finalizedStateProvider,
+            persistedPersistence,
+            processExitSource,
+            logManager);
         _snapshotCompactor = new SnapshotCompactor(this, config, resourcePool, logManager);
 
         _compactorJobs = Channel.CreateBounded<(StateId, CachedResource)>(config.MaxInFlightCompactJob);
@@ -99,31 +101,6 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
         _compactorTask = RunCompactor(exitSource.Token);
         _persistenceTask = RunPersistence(exitSource.Token);
-    }
-
-
-    public IPersistence.IPersistenceReader LeaseReader()
-    {
-        using var _ = _readerCacheLock.EnterScope();
-        var cachedReader = _cachedReader;
-        if (cachedReader is null)
-        {
-            _cachedReader = cachedReader = new RefCountingPersistenceReader(
-                _persistence.CreateReader(),
-                _logger
-            );
-        }
-
-        cachedReader.AcquireLease();
-        return cachedReader;
-    }
-
-    internal void ClearReaderCache()
-    {
-        using var _ = _readerCacheLock.EnterScope();
-        RefCountingPersistenceReader? cachedReader = _cachedReader;
-        _cachedReader = null;
-        cachedReader?.Dispose();
     }
 
     private async Task RunCompactor(CancellationToken cancellationToken)
@@ -279,13 +256,6 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         _flatdiffimes.WithLabels("compaction", "add_to_trienode_cache").Observe(Stopwatch.GetTimestamp() - sw);
 
         _resourcePool.ReturnCachedResource(IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing, cachedResource);
-        return;
-    }
-
-    internal StateId GetCurrentPersistedStateId()
-    {
-        using var reader = LeaseReader();
-        return reader.CurrentState;
     }
 
     public SnapshotBundle? GatherReaderAtBaseBlock(StateId baseBlock, IFlatDiffRepository.SnapshotBundleUsage usage)
@@ -319,7 +289,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
                 usage: usage);
         }
 
-        StateId persistedState = GetCurrentPersistedStateId();
+        StateId persistedState = _persistenceManager.GetCurrentPersistedStateId();
 
         StateId current = baseBlock;
         ArrayPoolList<Snapshot> snapshots = new(Math.Max(1, (int)(_knownStates.Count / _compactSize)));
@@ -350,7 +320,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
         // Note: By the time the previous loop finished checking all state, the persistencc may have added new state and removed some
         // entry in `_inMemorySnapshotStore`. Meaning, this need to be here instead of before the loop.
-        IPersistence.IPersistenceReader persistenceReader = LeaseReader();
+        IPersistence.IPersistenceReader persistenceReader = _persistenceManager.LeaseReader();
         if (current != baseBlock && persistenceReader.CurrentState.blockNumber != -1 && current.blockNumber > persistenceReader.CurrentState.blockNumber)
         {
             throw new Exception($"Non consecutive snapshots. Current {current} vs {persistenceReader.CurrentState}, {persistedState}, {baseBlock}, {_knownStates.TryGetValue(current, out var snapshot)}, ");
@@ -367,7 +337,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         _flatdiffimes.WithLabels("gather_cache", "reverse").Observe(Stopwatch.GetTimestamp() - sw);
         sw =  Stopwatch.GetTimestamp();
 
-        if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, {GetCurrentPersistedStateId()}");
+        if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, {_persistenceManager.GetCurrentPersistedStateId()}");
         var res = new SnapshotBundle(
             snapshots,
             persistenceReader,
@@ -412,10 +382,11 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         sw = Stopwatch.GetTimestamp();
 
         if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.blockNumber} to {endBlock.blockNumber}");
-        if (endBlock.blockNumber <= GetCurrentPersistedStateId().blockNumber)
+        StateId persistedStateId = _persistenceManager.GetCurrentPersistedStateId();
+        if (endBlock.blockNumber <= persistedStateId.blockNumber)
         {
             _logger.Warn(
-                $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.blockNumber}, bigcache number: {GetCurrentPersistedStateId()}");
+                $"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.blockNumber}, bigcache number: {persistedStateId}");
             return;
         }
 
@@ -451,7 +422,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     private async Task PersistIfNeeded()
     {
-        await NotifyWhenSlow("add to bigcache", () => _persistenceRunner.AddToPersistence());
+        await NotifyWhenSlow("add to bigcache", () => _persistenceManager.AddToPersistence());
     }
 
     public void RemoveAndReleaseCompactedKnownState(StateId stateId)
@@ -501,7 +472,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             return true;
         }
 
-        if (GetCurrentPersistedStateId() == stateId) return true;
+        if (_persistenceManager.GetCurrentPersistedStateId() == stateId) return true;
         return false;
     }
 
@@ -515,7 +486,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
             }
         }
 
-        StateId? currentPersistedIdx = GetCurrentPersistedStateId();
+        StateId? currentPersistedIdx = _persistenceManager.GetCurrentPersistedStateId();
         if (currentPersistedIdx?.stateRoot == stateRoot)
         {
             return currentPersistedIdx.Value;
@@ -529,16 +500,19 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         StateId? lastInMemory = GetLastSnapshotId();
         if (lastInMemory != null) return lastInMemory;
 
-        return GetCurrentPersistedStateId();
+        return _persistenceManager.GetCurrentPersistedStateId();
+    }
+
+    public IPersistence.IPersistenceReader CreateReader()
+    {
+        return _persistenceManager.LeaseReader();
     }
 
     public async ValueTask DisposeAsync()
     {
         await _compactorTask;
         await _persistenceTask;
-        ClearReaderCache();
-
-        return;
+        await _persistenceManager.DisposeAsync();
     }
 
     public void OnStatePersisted(StateId stateId)
