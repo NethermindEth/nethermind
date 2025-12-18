@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -17,7 +18,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -36,9 +36,9 @@ public class WitnessGeneratingBlockProcessingEnv(
     IHeaderStore headerStore,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnv
 {
-    private TransactionProcessor CreateTransactionProcessor(IWorldState state, WitnessGeneratingBlockFinder blockFinder)
+    private TransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockhashCache blockHashCache)
     {
-        BlockhashProvider blockhashProvider = new(blockFinder, state, logManager);
+        BlockhashProvider blockhashProvider = new(blockHashCache, state, logManager);
         VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
         ICodeInfoRepository codeInfoRepository = new NoCacheCodeInfoRepository(state, new EthereumPrecompileProvider());
         return new TransactionProcessor(new BlobBaseFeeCalculator(), specProvider, state, vm, codeInfoRepository, logManager);

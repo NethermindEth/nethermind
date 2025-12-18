@@ -49,12 +49,11 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddScoped<IStateReader>(stateReader)
             .AddScoped<IWorldState>(worldState)
-            .AddScoped<WitnessCapturingTrieStore>(trieStore)
             .AddScoped<IWitnessGeneratingBlockProcessingEnv>(builder =>
                 new WitnessGeneratingBlockProcessingEnv(
                     builder.Resolve<ISpecProvider>(),
                     builder.Resolve<IWorldState>() as WorldState,
-                    builder.Resolve<WitnessCapturingTrieStore>(),
+                    trieStore,
                     builder.Resolve<IReadOnlyBlockTree>(),
                     builder.Resolve<ISealValidator>(),
                     builder.Resolve<IRewardCalculator>(),
