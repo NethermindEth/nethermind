@@ -1736,6 +1736,7 @@
           "Nethermind.Evm": "[1.37.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
           "Nethermind.Trie": "[1.37.0-unstable, )",
+          "System.IO.Hashing": "[10.0.1, )",
           "ZstdSharp.Port": "[0.8.6, )",
           "prometheus-net": "[8.2.1, )"
         }
@@ -2316,6 +2317,12 @@
           "System.Diagnostics.EventLog": "10.0.1",
           "System.Security.Cryptography.ProtectedData": "10.0.1"
         }
+      },
+      "System.IO.Hashing": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.1, )",
+        "resolved": "10.0.1",
+        "contentHash": "Dy6ULPb2S0GmNndjKrEIpfibNsc8+FTOoZnqygtFDuyun8vWboQbfMpQtKUXpgTxokR5E4zFHETpNnGfeWY6NA=="
       },
       "System.Security.Cryptography.ProtectedData": {
         "type": "CentralTransitive",

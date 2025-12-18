@@ -27,7 +27,7 @@ public class Importer(
     ILogger _logger = logManager.GetClassLogger<Importer>();
     internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
     long totalNodes = 0;
-    int batchSize = 100_000;
+    int batchSize = 1_000_000;
     int logInterval = 1_000_000;
 
     private record Entry(Hash256? address, TreePath path, TrieNode node);

@@ -397,7 +397,8 @@ public class DbConfig : IDbConfig
         // "block_based_table_factory.index_type=kHashSearch;" +
 
         // So that last level bloom is kept. Should accelerate miss state check.
-        "optimize_filters_for_hits=false;" +
+        // "optimize_filters_for_hits=false;" +
+        "optimize_filters_for_hits=true;" +
         "";
 
     public string? FlatDbCommonFlatOptions { get; set; } = FlatCommonConfigWithBlockBased;
@@ -417,7 +418,7 @@ public class DbConfig : IDbConfig
     public bool FlatStorageDbEnableFileWarmer { get; set; }
     public ulong FlatStorageDbRowCacheSize { get; set; } = 0;
     public ulong FlatStorageDbWriteBufferSize { get; set; }= (ulong)64.MiB();
-    public ulong FlatStorageDbWriteBufferNumber { get; set; } = 4;
+    public ulong FlatStorageDbWriteBufferNumber { get; set; } = 8;
 
     public string? FlatStorageDbRocksDbOptions
     {

@@ -13,6 +13,7 @@
   <ItemGroup>
     <PackageReference Include="LightningDB" />
     <PackageReference Include="prometheus-net" />
+    <PackageReference Include="System.IO.Hashing" />
     <PackageReference Include="ZstdSharp.Port" />
   </ItemGroup>
   <ItemGroup>

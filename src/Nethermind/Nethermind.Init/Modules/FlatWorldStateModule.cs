@@ -20,6 +20,7 @@ using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Importer;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -103,6 +104,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                     return ctx.Resolve<LMDBPersistence>();
                 }
 
+                if (flatDbConfig.Layout == FlatLayout.FlatSeparateTopStorage || flatDbConfig.Layout == FlatLayout.PreimageFlat)
+                {
+                    return ctx.Resolve<LegacyRocksdbPersistence>();
+                }
+
                 throw new Exception($"Unsupported layout {flatDbConfig.Layout}");
             })
 
@@ -115,6 +121,19 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
 
             .AddSingleton<RocksdbPersistence>()
             .AddSingleton<RocksdbPersistence.Configuration, IFlatDbConfig>((config) => new RocksdbPersistence.Configuration()
+            {
+                UsePreimage = config.Layout == FlatLayout.PreimageFlat,
+                FlatInTrie = config.Layout == FlatLayout.FlatInTrie,
+            })
+            .AddKeyedSingleton<SegmentedBloom>(DbNames.Flat, (ctx) =>
+            {
+                IInitConfig initConfig = ctx.Resolve<IInitConfig>();
+                var bloomPath = initConfig.BaseDbPath + "/flatBloom/";
+                return new SegmentedBloom(bloomPath, 1_000_000_000, 10);
+            })
+
+            .AddSingleton<LegacyRocksdbPersistence>()
+            .AddSingleton<LegacyRocksdbPersistence.Configuration, IFlatDbConfig>((config) => new LegacyRocksdbPersistence.Configuration()
             {
                 UsePreimage = config.Layout == FlatLayout.PreimageFlat,
                 FlatInTrie = config.Layout == FlatLayout.FlatInTrie,
