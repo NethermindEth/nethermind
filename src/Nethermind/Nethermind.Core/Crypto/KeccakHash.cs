@@ -916,12 +916,15 @@ public sealed class KeccakHash
 
         for (int i = ROUNDS / 2; i != 0; i--)
         {
+            ulong rc0 = roundConstants;
+            ulong rc1 = Unsafe.Add(ref roundConstants, 1);
+            roundConstants = ref Unsafe.Add(ref roundConstants, 2);
             // Round 0: rows -> columns
             {
                 // Theta (rows)
                 Vector512<ulong> parity0 = Avx512F.Xor(c0, c1);
                 Vector512<ulong> parity1 = Avx512F.Xor(c2, c3);
-                Vector512<ulong> parity = Avx512F.Xor(Avx512F.Xor(parity0, parity1), c4);
+                Vector512<ulong> parity = Avx512F.Xor(Avx512F.Xor(parity0, c4), parity1);
 
                 Vector512<ulong> theta1a = Avx512F.PermuteVar8x64(parity, rot1);
                 Vector512<ulong> theta0 = Avx512F.PermuteVar8x64(parity, rot4);
@@ -947,19 +950,18 @@ public sealed class KeccakHash
                 c3 = Avx512F.RotateLeftVariable(c3, rho3Pi);
                 c4 = Avx512F.RotateLeftVariable(c4, rho4Pi);
 
-                // Chi (columns, cross-register) - do in byte view to discourage AndNot+Xor -> vpternlogq
-                Vector512<ulong> t0b = c0;
-                Vector512<ulong> t1b = c1;
+                // Chi (columns, cross-register)
+                Vector512<ulong> t0 = Avx512F.AndNot(c4, c0);
+                Vector512<ulong> t1 = Avx512F.AndNot(c0, c1);
 
-                c0 = Avx512F.Xor(c0, Avx512F.AndNot(c1, c2));
-                c1 = Avx512F.Xor(c1, Avx512F.AndNot(c2, c3));
-                c2 = Avx512F.Xor(c2, Avx512F.AndNot(c3, c4));
-                c3 = Avx512F.Xor(c3, Avx512F.AndNot(c4, t0b));
-                c4 = Avx512F.Xor(c4, Avx512F.AndNot(t0b, t1b));
+                c0 = Avx512F.TernaryLogic(c0, c1, c2, 0xD2); // c0 ^ ((~c1) & c2)
+                c1 = Avx512F.TernaryLogic(c1, c2, c3, 0xD2); // c1 ^ ((~c2) & c3)
+                c2 = Avx512F.TernaryLogic(c2, c3, c4, 0xD2); // c2 ^ ((~c3) & c4)
+                c3 = Avx512F.Xor(c3, t0);
+                c4 = Avx512F.Xor(c4, t1);
 
                 // Iota
-                c0 = Avx512F.Xor(c0, Vector512.CreateScalar(roundConstants));
-                roundConstants = ref Unsafe.Add(ref roundConstants, 1);
+                c0 = Avx512F.Xor(c0, Vector512.CreateScalar(rc0));
             }
 
             // Harmonise columns -> diagonals, then Round 1: diagonals -> rows
@@ -972,28 +974,30 @@ public sealed class KeccakHash
                 Vector512<ulong> z = Vector512<ulong>.Zero;
 
                 Vector512<ulong> t01e = Avx512F.UnpackLow(c0, c1);
-                Vector512<ulong> t01o = Avx512F.UnpackHigh(c0, c1);
                 Vector512<ulong> t23e = Avx512F.UnpackLow(c2, c3);
-                Vector512<ulong> t23o = Avx512F.UnpackHigh(c2, c3);
-
-                Vector512<ulong> t4e = Avx512F.UnpackLow(c4, z);
-                Vector512<ulong> t4o = Avx512F.UnpackHigh(c4, z);
 
                 Vector512<ulong> u0 = Avx512F.Shuffle4x128(t01e, t23e, 0x44);
+                Vector512<ulong> t4e = Avx512F.UnpackLow(c4, z);
+
+                Vector512<ulong> t01o = Avx512F.UnpackHigh(c0, c1);
+                Vector512<ulong> t23o = Avx512F.UnpackHigh(c2, c3);
+                Vector512<ulong> u1 = Avx512F.Shuffle4x128(t01o, t23o, 0x44);
+
+                Vector512<ulong> t4o = Avx512F.UnpackHigh(c4, z);
+                Vector512<ulong> u4 = Avx512F.Shuffle4x128(t01e, t23e, 0xAA);
+
                 c0 = Avx512F.Shuffle4x128(u0, t4e, 0x08); // d0
                 c1 = Avx512F.Shuffle4x128(u0, t4e, 0x5D); // d3
 
-                Vector512<ulong> u1 = Avx512F.Shuffle4x128(t01o, t23o, 0x44);
                 c3 = Avx512F.Shuffle4x128(u1, t4o, 0x08); // d4
                 c4 = Avx512F.Shuffle4x128(u1, t4o, 0x5D); // d2
 
-                Vector512<ulong> u4 = Avx512F.Shuffle4x128(t01e, t23e, 0xAA);
                 c2 = Avx512F.Shuffle4x128(u4, t4e, 0xA8); // d1
 
                 // Round 1 Theta (diagonals)
                 Vector512<ulong> parity0 = Avx512F.Xor(c0, c1);
                 Vector512<ulong> parity1 = Avx512F.Xor(c2, c3);
-                Vector512<ulong> parity = Avx512F.Xor(Avx512F.Xor(parity0, parity1), c4);
+                Vector512<ulong> parity = Avx512F.Xor(Avx512F.Xor(parity0, c4), parity1);
 
                 Vector512<ulong> theta1a = Avx512F.PermuteVar8x64(parity, rot1);
                 Vector512<ulong> theta0 = Avx512F.PermuteVar8x64(parity, rot4);
@@ -1036,8 +1040,7 @@ public sealed class KeccakHash
                 c0 = Avx512F.Xor(c0, chiT);
 
                 // Iota
-                c0 = Avx512F.Xor(c0, Vector512.CreateScalar(roundConstants));
-                roundConstants = ref Unsafe.Add(ref roundConstants, 1);
+                c0 = Avx512F.Xor(c0, Vector512.CreateScalar(rc1));
 
                 Vector512<ulong> b2 = Avx512F.PermuteVar8x64(c2, rot1);
                 Vector512<ulong> c2p = Avx512F.PermuteVar8x64(c2, rot2);
@@ -1056,7 +1059,6 @@ public sealed class KeccakHash
 
                 chiT = Avx512F.AndNot(b3, c3p);
                 c3 = Avx512F.Xor(c3, chiT);
-
                 chiT = Avx512F.AndNot(b4, c4p);
                 c4 = Avx512F.Xor(c4, chiT);
             }
