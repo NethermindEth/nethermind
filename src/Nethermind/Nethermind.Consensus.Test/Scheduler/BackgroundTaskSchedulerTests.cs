@@ -158,7 +158,7 @@ public class BackgroundTaskSchedulerTests
             scheduler.TryScheduleTask("test", async (_, _) => { await Task.Delay(10); });
         }
 
-        logger.Received(1)
+        logger.Received()
             .Warn("Background task queue is full (Count: 10, Capacity: 10), dropping task. Stats: (test: 10)");
     }
 
