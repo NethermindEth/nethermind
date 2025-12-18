@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/settlus-sepolia-sepolia.json.zst",
     "GenesisHash": "0xa055eed3718c2ed1f04692c707b7045a804505b5e5184a37143514ba9d14281e",
     "BaseDbPath": "nethermind_db/settlus-sepolia-sepolia",
-    "LogFileName": "settlus-sepolia-sepolia.logs.txt"
+    "LogFileName": "settlus-sepolia-sepolia.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 1

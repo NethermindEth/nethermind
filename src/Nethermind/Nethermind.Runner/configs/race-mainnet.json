@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/race-mainnet.json.zst",
     "GenesisHash": "0xa864791943836c37b40ea688f3853f2198afb683a3e168d48bfa76c9896e3e65",
     "BaseDbPath": "nethermind_db/race-mainnet",
-    "LogFileName": "race-mainnet.logs.txt"
+    "LogFileName": "race-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

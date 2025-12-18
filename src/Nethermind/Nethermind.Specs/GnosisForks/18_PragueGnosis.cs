@@ -12,13 +12,11 @@ public class PragueGnosis : Prague
     private static IReleaseSpec _instance;
 
     private PragueGnosis()
-    {
-        SetGnosis(this);
-    }
+        => ToGnosisFork(this);
 
-    public static void SetGnosis(Forks.Prague spec)
+    public static void ToGnosisFork(Prague spec)
     {
-        CancunGnosis.SetGnosis(spec);
+        CancunGnosis.ToGnosisFork(spec);
         spec.IsEip4844FeeCollectorEnabled = true;
         spec.BlobBaseFeeUpdateFraction = 0x10fafa;
         spec.TargetBlobCount = 1;

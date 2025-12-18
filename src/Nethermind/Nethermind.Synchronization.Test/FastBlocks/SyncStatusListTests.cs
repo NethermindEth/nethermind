@@ -11,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Synchronization.FastBlocks;
 using NSubstitute;
-using NSubstitute.Core;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastBlocks;
@@ -41,7 +40,7 @@ public class SyncStatusListTests
         FastBlockStatusList list = CreateFastBlockStatusList(length, false);
         for (int i = 0; i < length; i++)
         {
-            Assert.That((FastBlockStatus)(i % 3) == list[i], Is.True);
+            Assert.That((FastBlockStatus)(i % 3), Is.EqualTo(list[i]));
         }
     }
 
@@ -50,10 +49,9 @@ public class SyncStatusListTests
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(new BlockInfo(TestItem.KeccakA, 0));
-        SyncStatusList syncStatusList = new SyncStatusList(blockTree, 1000, null, 900);
+        SyncStatusList syncStatusList = new(blockTree, 1000, null, 900);
 
-        BlockInfo?[] infos;
-        syncStatusList.TryGetInfosForBatch(500, static (_) => false, out infos);
+        syncStatusList.TryGetInfosForBatch(500, new AlwaysDownloadStrategy(), out BlockInfo?[] infos);
 
         infos.Count(static (it) => it is not null).Should().Be(101);
     }
@@ -63,24 +61,23 @@ public class SyncStatusListTests
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindCanonicalBlockInfo(Arg.Any<long>())
-            .Returns((Func<CallInfo, BlockInfo>)((ci) =>
+            .Returns(ci =>
             {
                 long blockNumber = (long)ci[0];
                 return new BlockInfo(TestItem.KeccakA, 0)
                 {
                     BlockNumber = blockNumber
                 };
-            }));
+            });
 
-        SyncStatusList syncStatusList = new SyncStatusList(blockTree, 100000, null, 1000);
+        SyncStatusList syncStatusList = new(blockTree, 100000, null, 1000);
 
-        HashSet<long> needToFetchBlocks = [99999, 99995, 99950, 99000, 99001, 99003, 85000];
+        ConstantDownloadStrategy downloadStrategy = new([99999, 99995, 99950, 99000, 99001, 99003, 85000]);
 
         List<long> TryGetInfos()
         {
-            BlockInfo?[] infos;
-            syncStatusList.TryGetInfosForBatch(50, (bi) => !needToFetchBlocks.Contains(bi.BlockNumber), out infos);
-            return infos.Where(bi => bi != null).Select((bi) => bi!.BlockNumber).ToList();
+            syncStatusList.TryGetInfosForBatch(50, downloadStrategy, out BlockInfo?[] infos);
+            return [.. infos.Where(bi => bi != null).Select((bi) => bi!.BlockNumber)];
         }
 
         TryGetInfos().Should().BeEquivalentTo([99999, 99995]); // first two as it will try the first 50 only
@@ -100,7 +97,7 @@ public class SyncStatusListTests
             FastBlockStatusList list = CreateFastBlockStatusList(len);
             Parallel.For(0, len, (i) =>
             {
-                Assert.That((FastBlockStatus)(i % 3) == list[i], Is.True);
+                Assert.That((FastBlockStatus)(i % 3), Is.EqualTo(list[i]));
             });
         }
     }
@@ -182,5 +179,16 @@ public class SyncStatusListTests
     }
 
     private static FastBlockStatusList CreateFastBlockStatusList(int length, bool parallel = true) =>
-        new(Enumerable.Range(0, length).Select(static i => (FastBlockStatus)(i % 3)).ToList(), parallel);
+        new([.. Enumerable.Range(0, length).Select(static i => (FastBlockStatus)(i % 3))], parallel);
+
+    private class AlwaysDownloadStrategy : IBlockDownloadStrategy
+    {
+        public bool ShouldDownloadBlock(BlockInfo info) => true;
+    }
+
+    private class ConstantDownloadStrategy(HashSet<long> needToFetchBlocks) : IBlockDownloadStrategy
+    {
+        public bool ShouldDownloadBlock(BlockInfo info)
+            => needToFetchBlocks.Contains(info.BlockNumber);
+    }
 }

@@ -168,6 +168,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncProgressResolver.FindBestFullState().Returns(0);
                     SyncProgressResolver.IsLoadingBlocksFromDb().Returns(false);
                     SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
+                    SyncProgressResolver.SyncPivot.Returns((Pivot.Number, Keccak.Zero));
 
                     SyncConfig.FastSync = false;
                     SyncConfig.PivotNumber = Pivot.Number.ToString();
@@ -197,7 +198,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
                     syncPeer.HeadHash.Returns(header.Hash);
                     syncPeer.HeadNumber.Returns(header.Number);
-                    syncPeer.TotalDifficulty.Returns(header.TotalDifficulty ?? 0);
+                    syncPeer.TotalDifficulty.Returns(header.TotalDifficulty ?? UInt256.Zero);
                     syncPeer.IsInitialized.Returns(isInitialized);
                     syncPeer.ClientId.Returns(clientType);
                     return syncPeer;
@@ -820,7 +821,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                         TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
                         MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, BeaconSyncStrategy, bestPeerStrategy, LimboLogs.Instance);
-                        selector.Stop();
+                        selector.StopAsync().Wait();
                         selector.Update();
                         selector.Current.Should().Be(syncMode);
                     }

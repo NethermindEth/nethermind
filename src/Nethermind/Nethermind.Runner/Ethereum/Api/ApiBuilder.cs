@@ -3,16 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Api.Steps;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Modules;
@@ -40,7 +36,9 @@ public class ApiBuilder
         _processExitSource = processExitSource;
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _initConfig = configProvider.GetConfig<IInitConfig>();
-        _jsonSerializer = new EthereumJsonSerializer(configProvider.GetConfig<IJsonRpcConfig>().JsonSerializationMaxDepth);
+        IJsonRpcConfig? jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+        EthereumJsonSerializer.StrictHexFormat = jsonRpcConfig.StrictHexFormat;
+        _jsonSerializer = new EthereumJsonSerializer(jsonRpcConfig.JsonSerializationMaxDepth);
         ChainSpec = LoadChainSpec(_jsonSerializer);
     }
 
@@ -52,31 +50,14 @@ public class ApiBuilder
             throw new NotSupportedException("Creation of multiple APIs not supported.");
         }
 
-        IEnumerable<IConsensusPlugin> consensusPlugins = plugins.OfType<IConsensusPlugin>();
-        if (consensusPlugins.Count() != 1)
-        {
-            throw new NotSupportedException($"Thse should be exactly one consensus plugin are enabled. Seal engine type: {ChainSpec.SealEngineType}. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
-        }
-
-        IConsensusPlugin enginePlugin = consensusPlugins.First();
-        INethermindApi nethermindApi =
-            enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, ChainSpec);
-
-        nethermindApi.SpecProvider ??= new ChainSpecBasedSpecProvider(ChainSpec, _logManager);
-        nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
-        nethermindApi.ProcessExit = _processExitSource;
-        ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
-
         ContainerBuilder containerBuilder = new ContainerBuilder()
-            .AddModule(new NethermindModule(nethermindApi));
-
-        foreach (var nethermindPlugin in plugins)
-        {
-            foreach (var stepInfo in nethermindPlugin.GetSteps())
-            {
-                containerBuilder.AddStep(stepInfo);
-            }
-        }
+            .AddModule(new NethermindRunnerModule(
+                _jsonSerializer,
+                ChainSpec,
+                _configProvider,
+                _processExitSource,
+                plugins,
+                _logManager));
 
         IContainer container = containerBuilder.Build();
         SetLoggerVariables(ChainSpec);
@@ -91,6 +72,13 @@ public class ApiBuilder
 
         var loader = new ChainSpecFileLoader(ethereumJsonSerializer, _logger);
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(_initConfig.ChainSpecPath);
+
+        //overwriting NetworkId which is useful for some devnets (like bloatnet)
+        if (_initConfig.NetworkId is not null)
+        {
+            chainSpec.NetworkId = (ulong)_initConfig.NetworkId;
+        }
+
         return chainSpec;
     }
 

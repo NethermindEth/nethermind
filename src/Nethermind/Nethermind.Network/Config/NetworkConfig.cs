@@ -43,5 +43,6 @@ namespace Nethermind.Network.Config
         public bool DisableDiscV4DnsFeeder { get; set; } = false;
         public long RlpxHostShutdownCloseTimeoutMs { get; set; } = 1000;
         public string PublicClientIdFormat { get; set; } = ProductInfo.DefaultPublicClientIdFormat;
+        public bool EnableEnrDiscovery { get; set; } = true;
     }
 }

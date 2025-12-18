@@ -11,14 +11,16 @@ namespace Nethermind.Consensus.Transactions
     {
         private readonly ITxSource _txSource;
 
+        public bool SupportsBlobs => _txSource.SupportsBlobs;
+
         public OneByOneTxSource(ITxSource txSource)
         {
             _txSource = txSource;
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
         {
-            foreach (Transaction transaction in _txSource.GetTransactions(parent, gasLimit, payloadAttributes))
+            foreach (Transaction transaction in _txSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource))
             {
                 yield return transaction;
                 break;

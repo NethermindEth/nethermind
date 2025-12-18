@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/hashkeychain-mainnet.json.zst",
     "GenesisHash": "0xa96aea946b763641b616ce0c69f37e61d9cd0abd709ef13a6b833e67b76de208",
     "BaseDbPath": "nethermind_db/hashkeychain-mainnet",
-    "LogFileName": "hashkeychain-mainnet.logs.txt"
+    "LogFileName": "hashkeychain-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

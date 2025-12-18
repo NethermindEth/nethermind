@@ -1,20 +1,25 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
-using DotNetty.Buffers;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp
 {
     public static class RlpDecoderExtensions
     {
-        private readonly static CappedArray<byte>[] s_intPreEncodes = CreatePreEncodes();
+        private static readonly SpanSource[] s_intPreEncodes = CreatePreEncodes();
 
-        public static T[] DecodeArray<T>(this IRlpStreamDecoder<T> decoder, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static T[] DecodeArray<T>(this IRlpStreamDecoder<T> decoder, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
-            T[] result = new T[rlpStream.PeekNumberOfItemsRemaining(checkPosition)];
+            int length = rlpStream.PeekNumberOfItemsRemaining(checkPosition);
+            rlpStream.GuardLimit(length, limit);
+            T[] result = new T[length];
             for (int i = 0; i < result.Length; i++)
             {
                 result[i] = decoder.Decode(rlpStream, rlpBehaviors);
@@ -28,10 +33,12 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public static T[] DecodeArray<T>(this IRlpValueDecoder<T> decoder, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static T[] DecodeArray<T>(this IRlpValueDecoder<T> decoder, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            T[] result = new T[decoderContext.PeekNumberOfItemsRemaining(checkPosition)];
+            int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition);
+            decoderContext.GuardLimit(length, limit);
+            T[] result = new T[length];
             for (int i = 0; i < result.Length; i++)
             {
                 result[i] = decoder.Decode(ref decoderContext, rlpBehaviors);
@@ -66,12 +73,12 @@ namespace Nethermind.Serialization.Rlp
             NettyRlpStream rlpStream;
             if (item is null)
             {
-                rlpStream = new NettyRlpStream(PooledByteBufferAllocator.Default.Buffer(1));
+                rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(1));
                 rlpStream.WriteByte(Rlp.NullObjectByte);
                 return rlpStream;
             }
 
-            rlpStream = new NettyRlpStream(PooledByteBufferAllocator.Default.Buffer(decoder.GetLength(item, rlpBehaviors)));
+            rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(decoder.GetLength(item, rlpBehaviors)));
             decoder.Encode(rlpStream, item, rlpBehaviors);
             return rlpStream;
         }
@@ -81,7 +88,7 @@ namespace Nethermind.Serialization.Rlp
             NettyRlpStream rlpStream;
             if (items is null)
             {
-                rlpStream = new NettyRlpStream(PooledByteBufferAllocator.Default.Buffer(1));
+                rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(1));
                 rlpStream.WriteByte(Rlp.NullObjectByte);
                 return rlpStream;
             }
@@ -94,7 +101,7 @@ namespace Nethermind.Serialization.Rlp
 
             int bufferLength = Rlp.LengthOfSequence(totalLength);
 
-            rlpStream = new NettyRlpStream(PooledByteBufferAllocator.Default.Buffer(bufferLength));
+            rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(bufferLength));
             rlpStream.StartSequence(totalLength);
 
             for (int i = 0; i < items.Length; i++)
@@ -105,27 +112,102 @@ namespace Nethermind.Serialization.Rlp
             return rlpStream;
         }
 
-        public static CappedArray<byte> EncodeToCappedArray<T>(this IRlpStreamDecoder<T> decoder, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null)
+        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamDecoder<T> decoder, IList<T?>? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            NettyRlpStream rlpStream;
+            if (items is null)
+            {
+                rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(1));
+                rlpStream.WriteByte(Rlp.NullObjectByte);
+                return rlpStream;
+            }
+
+            int totalLength = 0;
+            for (int i = 0; i < items.Count; i++)
+            {
+                totalLength += decoder.GetLength(items[i], behaviors);
+            }
+
+            int bufferLength = Rlp.LengthOfSequence(totalLength);
+
+            rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(bufferLength));
+            rlpStream.StartSequence(totalLength);
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                decoder.Encode(rlpStream, items[i], behaviors);
+            }
+
+            return rlpStream;
+        }
+
+        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamDecoder<T> decoder, in ArrayPoolListRef<T?> items, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            int totalLength = 0;
+            for (int i = 0; i < items.Count; i++)
+            {
+                totalLength += decoder.GetLength(items[i], behaviors);
+            }
+
+            int bufferLength = Rlp.LengthOfSequence(totalLength);
+
+            NettyRlpStream rlpStream = new(NethermindBuffers.Default.Buffer(bufferLength));
+            rlpStream.StartSequence(totalLength);
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                decoder.Encode(rlpStream, items[i], behaviors);
+            }
+
+            return rlpStream;
+        }
+
+        public static SpanSource EncodeToSpanSource<T>(this IRlpStreamDecoder<T> decoder, T? item,
+            RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null)
         {
             int size = decoder.GetLength(item, rlpBehaviors);
-            CappedArray<byte> buffer = bufferPool.SafeRentBuffer(size);
-            decoder.Encode(buffer.AsRlpStream(), item, rlpBehaviors);
+            SpanSource buffer = bufferPool.SafeRentBuffer(size);
+
+            if (buffer.TryGetCappedArray(out CappedArray<byte> capped))
+            {
+                // This should be the usual path as this method is used only for encoding big RLP objects,
+                // that should be pooled.
+                decoder.Encode(capped.AsRlpStream(), item, rlpBehaviors);
+            }
+            else
+            {
+                ThrowSpanSourceNotCappedArray();
+            }
 
             return buffer;
         }
 
-        public static CappedArray<byte> EncodeToCappedArray(this int item, ICappedArrayPool? bufferPool = null)
+        public static SpanSource EncodeToSpanSource(this int item, ICappedArrayPool? bufferPool = null)
         {
-            CappedArray<byte>[] cache = s_intPreEncodes;
+            SpanSource[] cache = s_intPreEncodes;
             if ((uint)item < (uint)cache.Length)
             {
                 return cache[item];
             }
 
-            CappedArray<byte> buffer = bufferPool.SafeRentBuffer(Rlp.LengthOf(item));
-            buffer.AsRlpStream().Encode(item);
+            SpanSource buffer = bufferPool.SafeRentBuffer(Rlp.LengthOf(item));
+
+            if (buffer.TryGetCappedArray(out CappedArray<byte> capped))
+            {
+                // This should be the usual path as this method is used only for encoding big RLP objects,
+                // that should be pooled.
+                capped.AsRlpStream().Encode(item);
+            }
+            else
+            {
+                ThrowSpanSourceNotCappedArray();
+            }
+
             return buffer;
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowSpanSourceNotCappedArray() => throw new InvalidOperationException("Encode to SpanSource failed to get a CappedArray.");
 
         public static Rlp Encode<T>(this IRlpObjectDecoder<T> decoder, IReadOnlyCollection<T?>? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
@@ -193,18 +275,18 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(decoder.GetContentLength(items, behaviors));
         }
 
-        private static CappedArray<byte>[] CreatePreEncodes()
+        private static SpanSource[] CreatePreEncodes()
         {
             const int MaxCache = 1024;
 
-            CappedArray<byte>[] cache = new CappedArray<byte>[MaxCache];
+            SpanSource[] cache = new SpanSource[MaxCache];
 
             for (int i = 0; i < cache.Length; i++)
             {
                 int size = Rlp.LengthOf(i);
-                CappedArray<byte> buffer = new CappedArray<byte>(new byte[size]);
+                var buffer = new byte[size];
                 buffer.AsRlpStream().Encode(i);
-                cache[i] = buffer;
+                cache[i] = new SpanSource(buffer);
             }
 
             return cache;

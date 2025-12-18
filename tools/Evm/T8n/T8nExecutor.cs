@@ -12,21 +12,22 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.State;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Blockchain;
 
 namespace Evm.T8n;
 
 public static class T8nExecutor
 {
-    private static ILogManager _logManager = LimboLogs.Instance;
+    private static readonly ILogManager _logManager = LimboLogs.Instance;
 
     public static T8nExecutionResult Execute(T8nCommandArguments arguments)
     {
@@ -34,20 +35,16 @@ public static class T8nExecutor
 
         KzgPolynomialCommitments.InitializeAsync();
 
-        IDb stateDb = new MemDb();
-        IDb codeDb = new MemDb();
-
-        TrieStore trieStore = new(stateDb, _logManager);
-        WorldState stateProvider = new(trieStore, codeDb, _logManager);
-        CodeInfoRepository codeInfoRepository = new();
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
 
         IVirtualMachine virtualMachine = new VirtualMachine(
             blockhashProvider,
             test.SpecProvider,
-            codeInfoRepository,
             _logManager);
         TransactionProcessor transactionProcessor = new(
+            BlobBaseFeeCalculator.Instance,
             test.SpecProvider,
             stateProvider,
             virtualMachine,
@@ -55,7 +52,7 @@ public static class T8nExecutor
             _logManager);
 
         stateProvider.CreateAccount(test.CurrentCoinbase, 0);
-        GeneralStateTestBase.InitializeTestState(test.Alloc, stateProvider, test.SpecProvider);
+        GeneralStateTestBase.InitializeTestState(test.Alloc, test.CurrentCoinbase, stateProvider, test.SpecProvider);
 
         Block block = test.ConstructBlock();
         var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
@@ -76,6 +73,7 @@ public static class T8nExecutor
         blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
         blockReceiptsTracer.StartNewBlockTrace(block);
 
+        virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(block.Header, test.Spec));
         BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor, stateProvider);
         if (test.ParentBeaconBlockRoot is not null)
         {
@@ -102,12 +100,12 @@ public static class T8nExecutor
 
             blockReceiptsTracer.StartNewTxTrace(transaction);
             TransactionResult transactionResult = transactionProcessor
-                .Execute(transaction, new BlockExecutionContext(block.Header, test.Spec), blockReceiptsTracer);
+                .Execute(transaction, blockReceiptsTracer);
             blockReceiptsTracer.EndTxTrace();
 
             transactionExecutionReport.ValidTransactions.Add(transaction);
 
-            if (transactionResult.Success)
+            if (transactionResult.TransactionExecuted)
             {
                 transactionExecutionReport.SuccessfulTransactions.Add(transaction);
                 blockReceiptsTracer.LastReceipt.PostTransactionState = null;
@@ -115,9 +113,9 @@ public static class T8nExecutor
                 blockReceiptsTracer.LastReceipt.BlockNumber = 0;
                 transactionExecutionReport.SuccessfulTransactionReceipts.Add(blockReceiptsTracer.LastReceipt);
             }
-            else if (transactionResult.Error is not null && transaction.SenderAddress is not null)
+            else if (!transactionResult.TransactionExecuted && transaction.SenderAddress is not null)
             {
-                var error = GethErrorMappings.GetErrorMapping(transactionResult.Error,
+                var error = GethErrorMappings.GetErrorMapping(transactionResult.ErrorDescription,
                     transaction.SenderAddress.ToString(true),
                     transaction.Nonce, stateProvider.GetNonce(transaction.SenderAddress));
 
@@ -137,19 +135,10 @@ public static class T8nExecutor
             blockReceiptsTracer, test.SpecProvider, transactionExecutionReport);
     }
 
-    private static IBlockhashProvider ConstructBlockHashProvider(T8nTest test)
-    {
-        var t8NBlockHashProvider = new T8nBlockHashProvider();
+    private static IBlockhashProvider ConstructBlockHashProvider(T8nTest test) =>
+        new T8nBlockHashProvider(test.BlockHashes.ToDictionary<KeyValuePair<string, Hash256>, long, Hash256?>(kvp => long.Parse(kvp.Key), kvp => kvp.Value));
 
-        foreach (KeyValuePair<string, Hash256> blockHash in test.BlockHashes)
-        {
-            t8NBlockHashProvider.Insert(blockHash.Value, long.Parse(blockHash.Key));
-        }
-
-        return t8NBlockHashProvider;
-    }
-
-    private static void ApplyRewards(Block block, WorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
+    private static void ApplyRewards(Block block, IWorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
     {
         var rewardCalculator = new RewardCalculator(specProvider);
         BlockReward[] rewards = rewardCalculator.CalculateRewards(block);

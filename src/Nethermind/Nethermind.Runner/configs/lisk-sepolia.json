@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/lisk-sepolia.json.zst",
     "GenesisHash": "0xead3e6ddd08ae7e27fd952b74ceb468ba889047ac96b351dd13bd55e5faf3372",
     "BaseDbPath": "nethermind_db/lisk-sepolia",
-    "LogFileName": "lisk-sepolia.logs.txt"
+    "LogFileName": "lisk-sepolia.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

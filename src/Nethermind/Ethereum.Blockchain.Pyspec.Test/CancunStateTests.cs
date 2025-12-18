@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Ethereum.Test.Base;
 using FluentAssertions;
 using NUnit.Framework;
@@ -19,6 +18,6 @@ public class CancunStateTests : GeneralStateTestBase
     private static IEnumerable<GeneralStateTest> LoadTests()
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(), $"fixtures/state_tests/cancun");
-        return loader.LoadTests().Cast<GeneralStateTest>();
+        return loader.LoadTests<GeneralStateTest>();
     }
 }

@@ -4,8 +4,6 @@
 using System;
 using System.Diagnostics;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
@@ -53,7 +51,7 @@ namespace Nethermind.Facade.Eth
             // If we're on FastSync mode and the pivot number is not defined (it's 0), then we might never need to download receipts/bodies
             // so we cannot check for the `LowestInsertedReceiptBlockNumber`.
             // On the other hand, if we do have a PivotNumber then we should download receipts/bodies, so we check if we're still downloading them.
-            bool needsToDownloadReceiptsAndBodies = _syncConfig.PivotNumberParsed != 0;
+            bool needsToDownloadReceiptsAndBodies = _blockTree.SyncPivot.BlockNumber != 0;
             if (_syncConfig.FastSync && needsToDownloadReceiptsAndBodies)
             {
                 if (_syncConfig.DownloadReceiptsInFastSync && !_syncProgressResolver.IsFastBlocksReceiptsFinished())

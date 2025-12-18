@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/worldchain-mainnet.json.zst",
     "GenesisHash": "0x70d316d2e0973b62332ba2e9768dd7854298d7ffe77f0409ffdb8d859f2d3fa3",
     "BaseDbPath": "nethermind_db/worldchain-mainnet",
-    "LogFileName": "worldchain-mainnet.logs.txt"
+    "LogFileName": "worldchain-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -13,8 +13,8 @@
     "FastSync": true,
     "SnapSync": true,
     "FastSyncCatchUpHeightDelta": "10000000000",
-    "PivotNumber": 11360000,
-    "PivotHash": "0x4a6657a7f6d3a6725c28987d8897286faed0b4c1d352a34136ead614465cf7c6"
+    "PivotNumber": 22250000,
+    "PivotHash": "0xcccd653577d55d4fab46c8b196e6d3765bd745ae9068703593367ebdf7afceb4"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -25,7 +25,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

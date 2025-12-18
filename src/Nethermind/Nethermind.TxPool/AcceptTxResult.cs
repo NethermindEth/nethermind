@@ -96,19 +96,14 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult MaxTxSizeExceeded = new(16, nameof(MaxTxSizeExceeded));
 
         /// <summary>
-        /// Only one tx with current state matching nonce is allowed per delegated account. 
+        /// Only one tx with current state matching nonce is allowed per delegated account or pending delegation. 
         /// </summary>
-        public static readonly AcceptTxResult FutureNonceForDelegatedAccount = new(17, nameof(FutureNonceForDelegatedAccount));
-
-        /// <summary>
-        /// There is a pending delegation in the tx pool already
-        /// </summary>
-        public static readonly AcceptTxResult PendingDelegation = new(18, nameof(PendingDelegation));
+        public static readonly AcceptTxResult NotCurrentNonceForDelegation = new(17, nameof(NotCurrentNonceForDelegation));
 
         /// <summary>
         /// There is a pending transaction from a delegation in the tx pool already.
         /// </summary>
-        public static readonly AcceptTxResult DelegatorHasPendingTx = new(19, nameof(DelegatorHasPendingTx));
+        public static readonly AcceptTxResult DelegatorHasPendingTx = new(18, nameof(DelegatorHasPendingTx));
 
         /// <summary>
         /// The node is syncing and cannot accept transactions at this time.
@@ -127,6 +122,7 @@ namespace Nethermind.TxPool
         }
 
         public static implicit operator bool(AcceptTxResult result) => result.Id == Accepted.Id;
+        public static implicit operator AcceptTxResult(bool result) => result ? Accepted : Invalid;
         public AcceptTxResult WithMessage(string message) => new(Id, Code, message);
         public static bool operator ==(AcceptTxResult a, AcceptTxResult b) => a.Equals(b);
         public static bool operator !=(AcceptTxResult a, AcceptTxResult b) => !(a == b);

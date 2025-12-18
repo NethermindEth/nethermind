@@ -6,16 +6,14 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Facade.Simulate;
 
 public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : IBlockStore
 {
-    private readonly Dictionary<Hash256AsKey, Block> _blockDict = new();
-    private readonly Dictionary<long, Block> _blockNumDict = new();
-    private readonly Dictionary<byte[], byte[]> _metadataDict = new(Bytes.EqualityComparer);
+    private readonly Dictionary<Hash256AsKey, Block> _blockDict = [];
+    private readonly Dictionary<long, Block> _blockNumDict = [];
     private readonly BlockDecoder _blockDecoder = new();
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
@@ -61,18 +59,14 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         {
             using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
             using var memoryManager = new CappedArrayMemoryManager(newRlp.Data);
-            return BlockDecoder.DecodeToReceiptRecoveryBlock(memoryManager, memoryManager.Memory, RlpBehaviors.None);
+            return _blockDecoder.DecodeToReceiptRecoveryBlock(memoryManager, memoryManager.Memory, RlpBehaviors.None);
         }
         return readonlyBaseBlockStore.GetReceiptRecoveryBlock(blockNumber, blockHash);
     }
 
     public void Cache(Block block)
-    {
-        Insert(block);
-    }
+        => Insert(block);
 
     public bool HasBlock(long blockNumber, Hash256 blockHash)
-    {
-        return _blockNumDict.ContainsKey(blockNumber);
-    }
+        => _blockNumDict.ContainsKey(blockNumber);
 }

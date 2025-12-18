@@ -12,14 +12,10 @@ public class LondonGnosis : London
     private static IReleaseSpec? _instance;
 
     private LondonGnosis()
-    {
-        SetGnosis(this);
-    }
+        => ToGnosisFork(this);
+
+    public static void ToGnosisFork(London spec)
+        => spec.FeeCollector = GnosisSpecProvider.FeeCollector;
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new LondonGnosis());
-
-    public static void SetGnosis(London spec)
-    {
-        spec.FeeCollector = GnosisSpecProvider.FeeCollector;
-    }
 }

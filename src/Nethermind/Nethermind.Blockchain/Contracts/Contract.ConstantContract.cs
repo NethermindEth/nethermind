@@ -81,11 +81,9 @@ namespace Nethermind.Blockchain.Contracts
 
             public override object[] Call(CallInfo callInfo)
             {
-                static Hash256 GetState(BlockHeader parentHeader) => parentHeader?.StateRoot ?? Keccak.EmptyTreeHash;
-
                 lock (_readOnlyTxProcessorSource)
                 {
-                    using var scope = _readOnlyTxProcessorSource.Build(GetState(callInfo.ParentHeader));
+                    using var scope = _readOnlyTxProcessorSource.Build(callInfo.ParentHeader);
                     return CallRaw(callInfo, scope);
                 }
             }

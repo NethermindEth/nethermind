@@ -144,7 +144,7 @@ public class WalletTests
             Transaction tx = new Transaction();
             tx.SenderAddress = signerAddress;
 
-            WalletExtensions.Sign(ctx.Wallet, tx, chainId);
+            ctx.Wallet.Sign(tx, chainId);
             Address recovered = ecdsa.RecoverAddress(tx);
             Assert.That(recovered, Is.EqualTo(signerAddress), $"{i}");
             Console.WriteLine(tx.Signature);

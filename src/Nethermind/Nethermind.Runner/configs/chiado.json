@@ -3,8 +3,9 @@
   "Init": {
     "MemoryHint": 768000000,
     "ChainSpecPath": "chainspec/chiado.json",
+    "GenesisHash": "0xada44fd8d2ecab8b08f256af07ad3e777f17fb434f8f8e678b312f576212ba9a",
     "BaseDbPath": "nethermind_db/chiado",
-    "LogFileName": "chiado.logs.txt"
+    "LogFileName": "chiado.log"
   },
   "TxPool": {
     "Size": 1024
@@ -17,8 +18,8 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 14220000,
-    "PivotHash": "0x5bac28fee3b470030c6ca3e0ae444fc66c5837fbc35169f643673771a59c272f",
+    "PivotNumber": 18890000,
+    "PivotHash": "0xa2bdaed82c6a81efc4f29b716ac6bd6d39308c52d68690e8be848091daafabb0",
     "PivotTotalDifficulty": "231708131825107706987652208063906496124457284",
     "FastSyncCatchUpHeightDelta": 10000000000,
     "UseGethLimitsInFastBlocks": false

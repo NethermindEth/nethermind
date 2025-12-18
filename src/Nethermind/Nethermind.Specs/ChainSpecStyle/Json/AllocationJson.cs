@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
-    internal class AllocationJson
+    public class AllocationJson
     {
         public BuiltInJson BuiltIn { get; set; }
 

@@ -24,7 +24,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -143,6 +143,33 @@ public partial class BlockProducerBaseTests
             LimboLogs.Instance);
 
         await AssertIsProducingBlocks(runner);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task DevBlockProducer_OnGlobalWorldState_IsProducingAndSuggestingBlocks()
+    {
+        TestRpcBlockchain testRpc = await CreateTestRpc();
+        DevBlockProducer blockProducer = new(
+            Substitute.For<ITxSource>(),
+            testRpc.BlockchainProcessor,
+            testRpc.WorldStateManager.GlobalWorldState,
+            testRpc.BlockTree,
+            testRpc.Timestamper,
+            testRpc.SpecProvider,
+            new BlocksConfig(),
+            LimboLogs.Instance);
+
+        BuildBlocksWhenRequested trigger = new();
+        StandardBlockProducerRunner runner = new(trigger, testRpc.BlockTree, blockProducer);
+        long currentHead = testRpc.BlockTree.Head?.Number ?? 0;
+
+        _ = new NonProcessingProducedBlockSuggester(testRpc.BlockTree, runner);
+
+        runner.Start();
+
+        await trigger.BuildBlock(testRpc.BlockTree.Head?.Header);
+
+        Assert.That(testRpc.BlockTree.BestSuggestedHeader?.Number, Is.EqualTo(currentHead + 1));
     }
 
     private async Task<TestRpcBlockchain> CreateTestRpc()

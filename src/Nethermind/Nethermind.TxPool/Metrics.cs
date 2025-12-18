@@ -104,7 +104,7 @@ namespace Nethermind.TxPool
 
         [CounterMetric]
         [Description("Number of pending transactions added to transaction pool.")]
-        public static long PendingTransactionsAdded { get; set; }
+        public static long PendingTransactionsAdded;
 
         [CounterMetric]
         [Description("Number of pending 1559-type transactions added to transaction pool.")]
@@ -149,5 +149,20 @@ namespace Nethermind.TxPool
         [GaugeMetric]
         [Description("Number of blob transactions in pool.")]
         public static long BlobTransactionCount { get; set; }
+
+        [Description("Number of pending transactions rejected due to excessive size.")]
+        public static long PendingTransactionsSizeTooLarge { get; set; }
+
+        [Description("Number of pending transactions rejected with a null hash.")]
+        public static long PendingTransactionsNullHash { get; set; }
+
+        [Description("Number of transactions sourced from private order flow.")]
+        public static long TransactionsSourcedPrivateOrderFlow { get; internal set; }
+
+        [Description("Number of transactions sourced from the mempool.")]
+        public static long TransactionsSourcedMemPool { get; internal set; }
+
+        [Description("Number of transactions reorganized during chain reorg.")]
+        public static long TransactionsReorged { get; internal set; }
     }
 }

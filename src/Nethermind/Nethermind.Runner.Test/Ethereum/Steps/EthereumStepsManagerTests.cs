@@ -9,14 +9,18 @@ using Autofac;
 using FluentAssertions;
 using FluentAssertions.Execution;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps
@@ -80,6 +84,20 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
+        public async Task Should_Unwrap_InvalidConfigurationException()
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                new StepInfo(typeof(FailedConstructorWithInvalidConfigurationStep))
+            );
+
+            EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+
+            Func<Task> act = () => stepsManager.InitializeAll(source.Token);
+            await act.Should().ThrowAsync<InvalidConfigurationException>();
+        }
+
+        [Test]
         public async Task With_constructor_without_nethermind_api()
         {
             await using IContainer container = CreateNethermindEnvironment(
@@ -107,16 +125,47 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             await act.Should().ThrowAsync<StepDependencyException>();
         }
 
-        private static IContainer CreateNethermindEnvironment(params IEnumerable<StepInfo> stepInfos) =>
-            CreateCommonBuilder(stepInfos)
-                .AddSingleton<NethermindApi>(new NethermindApi(new ConfigProvider(), new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec()))
+        [Test]
+        [CancelAfter(1000)]
+        public async Task With_dependent_step(CancellationToken cancellationToken)
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                new StepInfo(typeof(StepB)),
+                new StepInfo(typeof(StepCStandard)),
+                new StepInfo(typeof(StepE))
+            );
+
+            EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
+            Task initTask = stepsManager.InitializeAll(cancellationToken);
+            await Task.Delay(100, cancellationToken);
+            initTask.IsCompleted.Should().BeFalse();
+
+            container.Resolve<StepB>().WasExecuted.Should().BeFalse();
+            container.Resolve<StepE>().Waiter.SetResult();
+            await initTask;
+
+            container.Resolve<StepB>().WasExecuted.Should().BeTrue();
+        }
+
+        private static IContainer CreateNethermindEnvironment(params IEnumerable<StepInfo> stepInfos)
+        {
+            IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
+            consensusPlugin.ApiType.ReturnsForAnyArgs(typeof(NethermindApi));
+
+            return CreateCommonBuilder(stepInfos)
+                .AddSingleton<IConsensusPlugin>(consensusPlugin)
                 .Bind<INethermindApi, NethermindApi>()
                 .Build();
+        }
 
         private static IContainer CreateAuraApi(params IEnumerable<StepInfo> stepInfos)
         {
+            IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
+            consensusPlugin.ApiType.ReturnsForAnyArgs(typeof(AuRaNethermindApi));
+
             return CreateCommonBuilder(stepInfos)
-                .AddSingleton<AuRaNethermindApi>(new AuRaNethermindApi(new ConfigProvider(), new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec()))
+                .AddSingleton<AuRaNethermindApi>()
+                .AddSingleton<IConsensusPlugin>(consensusPlugin)
                 .Bind<INethermindApi, AuRaNethermindApi>()
                 .Build();
         }
@@ -124,6 +173,15 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         private static ContainerBuilder CreateCommonBuilder(params IEnumerable<StepInfo> stepInfos)
         {
             ContainerBuilder builder = new ContainerBuilder()
+                .AddSingleton<INethermindApi, NethermindApi>()
+                .AddSingleton<NethermindApi.Dependencies>()
+                .AddSingleton<IConfigProvider>(new ConfigProvider())
+                .AddSingleton<IJsonSerializer>(new EthereumJsonSerializer())
+                .AddSingleton<ILogManager>(LimboLogs.Instance)
+                .AddSingleton<ChainSpec>(new ChainSpec())
+                .AddSingleton<ISpecProvider>(Substitute.For<ISpecProvider>())
+                .AddSingleton<IProcessExitSource>(Substitute.For<IProcessExitSource>())
+                .AddSingleton<IDisposableStack, AutofacDisposableStack>()
                 .AddSingleton<IEthereumStepsLoader, EthereumStepsLoader>()
                 .AddSingleton<EthereumStepsManager>()
                 .AddSingleton<ILogManager>(LimboLogs.Instance);
@@ -203,8 +261,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     [RunnerStepDependencies(typeof(StepC))]
     public class StepB : IStep
     {
+        public bool WasExecuted = false;
+
         public Task Execute(CancellationToken cancellationToken)
         {
+            WasExecuted = true;
             return Task.CompletedTask;
         }
 
@@ -229,6 +290,17 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
     }
 
+    [RunnerStepDependencies(dependencies: [], dependents: [typeof(StepB)])]
+    public class StepE : IStep
+    {
+        public TaskCompletionSource Waiter = new TaskCompletionSource();
+
+        public virtual Task Execute(CancellationToken cancellationToken)
+        {
+            return Waiter.Task;
+        }
+    }
+
     /// <summary>
     /// Designed to fail
     /// </summary>
@@ -248,6 +320,14 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     {
         public StepCStandard(NethermindApi runnerContext)
         {
+        }
+    }
+
+    public class FailedConstructorWithInvalidConfigurationStep : StepC
+    {
+        public FailedConstructorWithInvalidConfigurationStep()
+        {
+            throw new InvalidConfigurationException("Invalid config", -1);
         }
     }
 

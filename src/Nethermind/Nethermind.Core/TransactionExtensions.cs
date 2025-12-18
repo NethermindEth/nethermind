@@ -9,62 +9,56 @@ namespace Nethermind.Core
 {
     public static class TransactionExtensions
     {
-        public static bool IsSystem(this Transaction tx) =>
-            tx is SystemTransaction || tx.SenderAddress == Address.SystemUser || tx.IsOPSystemTransaction;
-
-        public static bool IsFree(this Transaction tx) => tx.IsSystem() || tx.IsServiceTransaction;
-
-        public static bool TryCalculatePremiumPerGas(this Transaction tx, in UInt256 baseFeePerGas, out UInt256 premiumPerGas)
+        extension(Transaction tx)
         {
-            bool freeTransaction = tx.IsFree();
-            UInt256 feeCap = tx.Supports1559 ? tx.MaxFeePerGas : tx.GasPrice;
-            if (baseFeePerGas > feeCap)
-            {
-                premiumPerGas = UInt256.Zero;
-                return freeTransaction;
-            }
+            public bool IsSystem() => tx is SystemTransaction || tx.SenderAddress == Address.SystemUser || tx.IsOPSystemTransaction;
 
-            premiumPerGas = UInt256.Min(tx.MaxPriorityFeePerGas, feeCap - baseFeePerGas);
-            return true;
-        }
+            public bool IsFree() => tx.IsSystem() || tx.IsServiceTransaction;
 
-        public static UInt256 CalculateTransactionPotentialCost(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
-        {
-            if (eip1559Enabled)
+            public bool TryCalculatePremiumPerGas(in UInt256 baseFeePerGas, out UInt256 premiumPerGas)
             {
-                UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee);
-                if (tx.IsServiceTransaction)
+                bool freeTransaction = tx.IsFree();
+                UInt256 feeCap = tx.Supports1559 ? tx.MaxFeePerGas : tx.MaxPriorityFeePerGas;
+                if (baseFeePerGas > feeCap)
                 {
-                    effectiveGasPrice = UInt256.Zero;
+                    premiumPerGas = UInt256.Zero;
+                    return freeTransaction;
                 }
 
-                return effectiveGasPrice * (ulong)tx.GasLimit + tx.Value;
+                premiumPerGas = UInt256.Min(tx.MaxPriorityFeePerGas, feeCap - baseFeePerGas);
+                return true;
             }
 
-            return tx.GasPrice * (ulong)tx.GasLimit + tx.Value;
-        }
-
-        public static UInt256 CalculateEffectiveGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
-        {
-            UInt256 effectiveGasPrice = tx.GasPrice;
-            if (eip1559Enabled)
+            public UInt256 CalculateTransactionPotentialCost(bool eip1559Enabled, in UInt256 baseFee)
             {
-                if (UInt256.AddOverflow(tx.MaxPriorityFeePerGas, baseFee, out UInt256 effectiveFee))
+                if (eip1559Enabled)
                 {
-                    return tx.MaxFeePerGas;
+                    UInt256 effectiveGasPrice = tx.IsServiceTransaction switch
+                    {
+                        true => UInt256.Zero,
+                        _ => tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee)
+                    };
+
+                    return effectiveGasPrice * (ulong)tx.GasLimit + tx.ValueRef;
                 }
 
-                effectiveGasPrice = UInt256.Min(tx.MaxFeePerGas, effectiveFee);
+                return tx.MaxPriorityFeePerGas * (ulong)tx.GasLimit + tx.ValueRef;
             }
 
-            return effectiveGasPrice;
+            public UInt256 CalculateEffectiveGasPrice(bool eip1559Enabled, in UInt256 baseFee) =>
+                !eip1559Enabled ? tx.MaxPriorityFeePerGas
+                : UInt256.AddOverflow(tx.MaxPriorityFeePerGas, baseFee, out UInt256 effectiveFee) ? tx.MaxFeePerGas
+                : UInt256.Min(tx.MaxFeePerGas, effectiveFee);
+
+            public UInt256 CalculateMaxPriorityFeePerGas(bool eip1559Enabled, in UInt256 baseFee) =>
+                eip1559Enabled ? UInt256.Min(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas > baseFee ? tx.MaxFeePerGas - baseFee : 0) : tx.MaxPriorityFeePerGas;
+
+            public bool IsAboveInitCode(IReleaseSpec spec) =>
+                tx.IsContractCreation && spec.IsEip3860Enabled && tx.DataLength > spec.MaxInitCodeSize;
+
+            public ulong GetBlobGas() => (uint)tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
+            public int GetBlobCount() => tx.BlobVersionedHashes?.Length ?? 0;
         }
-
-        public static UInt256 CalculateMaxPriorityFeePerGas(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee) =>
-            eip1559Enabled ? UInt256.Min(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas > baseFee ? tx.MaxFeePerGas - baseFee : 0) : tx.MaxPriorityFeePerGas;
-
-        public static bool IsAboveInitCode(this Transaction tx, IReleaseSpec spec) =>
-            tx.IsContractCreation && spec.IsEip3860Enabled && tx.DataLength > spec.MaxInitCodeSize;
 
         public static bool TryGetByTxType<T>(this T?[] array, TxType txType, [NotNullWhen(true)] out T? item)
         {
@@ -77,11 +71,6 @@ namespace Nethermind.Core
 
             item = array[type];
             return item != null;
-        }
-
-        public static ulong GetBlobGas(this Transaction tx)
-        {
-            return (ulong)(tx.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
         }
     }
 }

@@ -20,6 +20,8 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong? CanyonTimestamp { get; set; }
 
+    public ulong? DeltaTimestamp { get; set; }
+
     public ulong? EcotoneTimestamp { get; set; }
 
     public ulong? FjordTimestamp { get; set; }
@@ -27,6 +29,10 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong? GraniteTimestamp { get; set; }
 
     public ulong? HoloceneTimestamp { get; set; }
+
+    public ulong? IsthmusTimestamp { get; set; }
+
+    public ulong? JovianTimestamp { get; set; }
 
     public Address? L1FeeRecipient { get; set; }
 
@@ -46,9 +52,6 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
             spec.BaseFeeMaxChangeDenominator = CanyonBaseFeeChangeDenominator.Value;
         }
 
-        if (HoloceneTimestamp is not null)
-        {
-            spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp.Value, new DefaultBaseFeeCalculator());
-        }
+        spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp, JovianTimestamp, new DefaultBaseFeeCalculator());
     }
 }

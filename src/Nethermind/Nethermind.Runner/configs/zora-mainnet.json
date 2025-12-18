@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/zora-mainnet.json.zst",
     "GenesisHash": "0x47555a45a1af8d4728ca337a1e48375a83919b1ea16591e070a07388b7364e29",
     "BaseDbPath": "nethermind_db/zora-mainnet",
-    "LogFileName": "zora-mainnet.logs.txt"
+    "LogFileName": "zora-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

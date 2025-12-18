@@ -25,33 +25,34 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
         {
             IReleaseSpec spec = _specProvider.GetFinalSpec();
 
-            #region The Merge
+            // The Merge
             _capabilities[nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = (true, false);
             _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1)] = (true, false);
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV1)] = (true, false);
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV1)] = (true, false);
             _capabilities[nameof(IEngineRpcModule.engine_getClientVersionV1)] = (true, false);
-            #endregion
 
-            #region Shanghai
+            // Shanghai
             _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)] = (spec.WithdrawalsEnabled, false);
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1)] = (spec.WithdrawalsEnabled, false);
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)] = (spec.WithdrawalsEnabled, false);
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV2)] = (spec.WithdrawalsEnabled, false);
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV2)] = (spec.WithdrawalsEnabled, false);
-            #endregion
 
-            #region Cancun
+            // Cancun
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV3)] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
             _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3)] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV3)] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
             _capabilities[nameof(IEngineRpcModule.engine_getBlobsV1)] = (spec.IsEip4844Enabled, false);
-            #endregion
 
-            #region Prague
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (spec.RequestsEnabled, spec.RequestsEnabled);
-            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (spec.RequestsEnabled, spec.RequestsEnabled);
-            #endregion
+            // Prague
+            var v4 = spec.RequestsEnabled | spec.IsOpIsthmusEnabled;
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (v4, v4);
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (v4, v4);
+
+            // Osaka
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV5)] = (spec.IsEip7594Enabled, spec.IsEip7594Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_getBlobsV2)] = (spec.IsEip7594Enabled, false);
         }
 
         return _capabilities;

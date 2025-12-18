@@ -3,6 +3,10 @@
 
 using System;
 using System.Buffers;
+using System.Collections;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -13,7 +17,7 @@ namespace Nethermind.Core;
 /// BlockBody may contain `Memory<byte>` that is explicitly managed. Reusing `BlockBody` from this object after Dispose
 /// is likely to cause corrupted `BlockBody`.
 /// </summary>
-public class OwnedBlockBodies : IDisposable
+public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
 {
     private readonly BlockBody?[]? _rawBodies = null;
 
@@ -40,10 +44,8 @@ public class OwnedBlockBodies : IDisposable
             foreach (Transaction tx in blockBody.Transactions)
             {
                 Hash256? _ = tx.Hash; // Just need to trigger hash calculation
-                if (tx.Data is not null)
-                {
-                    tx.Data = tx.Data.Value.ToArray();
-                }
+                // Disconnect from any backing
+                tx.Data = tx.Data.ToArray();
             }
         }
 
@@ -67,4 +69,21 @@ public class OwnedBlockBodies : IDisposable
         _memoryOwner?.Dispose();
         _memoryOwner = null;
     }
+
+    public IEnumerator<BlockBody?> GetEnumerator()
+    {
+        foreach (var blockBody in _rawBodies)
+        {
+            yield return blockBody;
+        }
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return _rawBodies.GetEnumerator();
+    }
+
+    public int Count => _rawBodies.Length;
+
+    public BlockBody? this[int index] => _rawBodies[index];
 }

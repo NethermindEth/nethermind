@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.Intrinsics;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -372,7 +373,7 @@ namespace Nethermind.Core.Test
             }
         }
 
-        public static IEnumerable OrTests
+        public static IEnumerable<TestCaseData> BitwiseTests
         {
             get
             {
@@ -383,21 +384,67 @@ namespace Nethermind.Core.Test
                     return bytes;
                 }
 
-                TestCaseData GenerateTest(int length)
-                {
-                    var thisArray = GenerateRandom(length);
-                    var valueArray = GenerateRandom(length);
-                    var resultArray = thisArray.Zip(valueArray, static (b1, b2) => b1 | b2).Select(static b => (byte)b).ToArray();
-                    return new TestCaseData(thisArray, valueArray, resultArray);
-                }
+                TestCaseData GenerateTest(int length) => new(GenerateRandom(length), GenerateRandom(length));
 
+                yield return GenerateTest(0);
                 yield return GenerateTest(1);
-                yield return GenerateTest(10);
-                yield return GenerateTest(32);
-                yield return GenerateTest(33);
-                yield return GenerateTest(48);
-                yield return GenerateTest(128);
-                yield return GenerateTest(200);
+                yield return GenerateTest(8 - 1);
+                yield return GenerateTest(8);
+                yield return GenerateTest(8 + 1);
+                yield return GenerateTest(Vector128<byte>.Count - 1);
+                yield return GenerateTest(Vector128<byte>.Count);
+                yield return GenerateTest(Vector128<byte>.Count + 1);
+                yield return GenerateTest(Vector256<byte>.Count - 1);
+                yield return GenerateTest(Vector256<byte>.Count);
+                yield return GenerateTest(Vector256<byte>.Count + 1);
+                yield return GenerateTest(Vector256<byte>.Count + Vector128<byte>.Count - 1);
+                yield return GenerateTest(Vector256<byte>.Count + Vector128<byte>.Count);
+                yield return GenerateTest(Vector256<byte>.Count + Vector128<byte>.Count + 1);
+                yield return GenerateTest(Vector512<byte>.Count - 1);
+                yield return GenerateTest(Vector512<byte>.Count);
+                yield return GenerateTest(Vector512<byte>.Count + 1);
+                yield return GenerateTest(Vector512<byte>.Count + Vector256<byte>.Count - 1);
+                yield return GenerateTest(Vector512<byte>.Count + Vector256<byte>.Count);
+                yield return GenerateTest(Vector512<byte>.Count + Vector256<byte>.Count + 1);
+                yield return GenerateTest(Vector512<byte>.Count + Vector256<byte>.Count + Vector128<byte>.Count - 1);
+                yield return GenerateTest(Vector512<byte>.Count + Vector256<byte>.Count + Vector128<byte>.Count);
+                yield return GenerateTest(Vector512<byte>.Count + Vector256<byte>.Count + Vector128<byte>.Count + 1);
+                yield return GenerateTest(Vector512<byte>.Count * 2 - 1);
+                yield return GenerateTest(Vector512<byte>.Count * 2);
+                yield return GenerateTest(Vector512<byte>.Count * 2 + 1);
+                yield return GenerateTest(Vector512<byte>.Count * 3 - 1);
+                yield return GenerateTest(Vector512<byte>.Count * 3);
+                yield return GenerateTest(Vector512<byte>.Count * 3 + 1);
+            }
+        }
+
+        private static TestCaseData GenerateTestResult(TestCaseData test, Func<byte, byte, byte> calc)
+        {
+            byte[]? thisArray = test.Arguments[0] as byte[];
+            byte[]? valueArray = test.Arguments[1] as byte[];
+            byte[]? resultArray = [.. thisArray!.Zip(valueArray!, calc)];
+            return new TestCaseData(thisArray, valueArray, resultArray);
+        }
+
+        public static IEnumerable OrTests
+        {
+            get
+            {
+                foreach (TestCaseData test in BitwiseTests)
+                {
+                    yield return GenerateTestResult(test, static (b1, b2) => (byte)(b1 | b2));
+                }
+            }
+        }
+
+        public static IEnumerable XorTests
+        {
+            get
+            {
+                foreach (TestCaseData test in BitwiseTests)
+                {
+                    yield return GenerateTestResult(test, static (b1, b2) => (byte)(b1 ^ b2));
+                }
             }
         }
 
@@ -405,6 +452,13 @@ namespace Nethermind.Core.Test
         public void Or(byte[] first, byte[] second, byte[] expected)
         {
             first.AsSpan().Or(second);
+            first.Should().Equal(expected);
+        }
+
+        [TestCaseSource(nameof(XorTests))]
+        public void Xor(byte[] first, byte[] second, byte[] expected)
+        {
+            first.AsSpan().Xor(second);
             first.Should().Equal(expected);
         }
 

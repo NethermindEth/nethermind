@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -22,6 +24,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private ILogger Logger { get; }
         private ISyncFeed<T> Feed { get; }
         private ISyncDownloader<T> Downloader { get; }
+        private string _feedName;
         private ISyncPeerPool SyncPeerPool { get; }
 
         private readonly CountdownEvent _activeTasks = new CountdownEvent(1);
@@ -45,6 +48,8 @@ namespace Nethermind.Synchronization.ParallelSync
             Downloader = downloader ?? throw new ArgumentNullException(nameof(downloader));
             SyncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             PeerAllocationStrategyFactory = peerAllocationStrategy ?? throw new ArgumentNullException(nameof(peerAllocationStrategy));
+
+            _feedName = Feed.FeedName;
 
             int maxNumberOfProcessingThread = syncConfig.MaxProcessingThreads;
             if (maxNumberOfProcessingThread == 0)
@@ -83,7 +88,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private async Task DispatchLoop(CancellationToken cancellationToken)
         {
             bool wasCancelTriggered = false;
-            while (true)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 try
                 {
@@ -109,7 +114,9 @@ namespace Nethermind.Synchronization.ParallelSync
                     else if (currentStateLocal == SyncFeedState.Active)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
+                        long prepareRequestTime = Stopwatch.GetTimestamp();
                         T request = await (Feed.PrepareRequest(cancellationToken) ?? Task.FromResult<T>(default!)); // just to avoid null refs
+                        Metrics.SyncDispatcherPrepareRequestTimeMicros.Observe(Stopwatch.GetElapsedTime(prepareRequestTime).TotalMicroseconds, new StringLabel(_feedName));
                         if (request is null)
                         {
                             if (!Feed.IsMultiFeed)
@@ -176,6 +183,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private async Task DoDispatch(CancellationToken cancellationToken, PeerInfo? allocatedPeer, T request,
             SyncPeerAllocation allocation)
         {
+            long dispatchTimeStart = Stopwatch.GetTimestamp();
             try
             {
                 await Downloader.Dispatch(allocatedPeer, request, cancellationToken);
@@ -183,6 +191,10 @@ namespace Nethermind.Synchronization.ParallelSync
             catch (ConcurrencyLimitReachedException)
             {
                 if (Logger.IsDebug) Logger.Debug($"{request} - concurrency limit reached. Peer: {allocatedPeer}");
+            }
+            catch (TimeoutException)
+            {
+                if (Logger.IsDebug) Logger.Debug($"{request} - timed out. Peer: {allocatedPeer}");
             }
             catch (OperationCanceledException)
             {
@@ -192,6 +204,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 if (Logger.IsWarn) Logger.Warn($"Failure when executing request {e}");
             }
+            Metrics.SyncDispatcherDispatchTimeMicros.Observe(Stopwatch.GetElapsedTime(dispatchTimeStart).TotalMicroseconds, new StringLabel(_feedName));
 
             if (Feed.IsMultiFeed)
             {
@@ -202,6 +215,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             Free(allocation);
 
+            dispatchTimeStart = Stopwatch.GetTimestamp();
             try
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -214,6 +228,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
             finally
             {
+                Metrics.SyncDispatcherHandleTimeMicros.Observe(Stopwatch.GetElapsedTime(dispatchTimeStart).TotalMicroseconds, new StringLabel(_feedName));
                 if (Feed.IsMultiFeed)
                 {
                     _concurrentProcessingSemaphore.Release();
@@ -242,15 +257,12 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void Free(SyncPeerAllocation allocation)
         {
-            Downloader.BeforeFree(allocation);
             SyncPeerPool.Free(allocation);
         }
 
         protected async Task<SyncPeerAllocation> Allocate(T request, CancellationToken cancellationToken)
         {
-            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, _allocateTimeoutMs, cancellationToken);
-            Downloader.OnAllocate(allocation);
-            return allocation;
+            return await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, _allocateTimeoutMs, cancellationToken);
         }
 
         private void ReactToHandlingResult(T request, SyncResponseHandlingResult result, PeerInfo? peer)

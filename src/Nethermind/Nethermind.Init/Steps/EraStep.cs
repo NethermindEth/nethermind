@@ -3,25 +3,19 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Era1;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeBlockchain), typeof(LoadGenesisBlock))]
-public class EraStep : IStep
+[RunnerStepDependencies(
+    dependencies: [typeof(ReviewBlockTree)],
+    dependents: [typeof(InitializeNetwork)]
+)]
+public class EraStep(EraCliRunner eraCliRunner) : IStep
 {
-    private readonly EraCliRunner _eraCliRunner;
-
-    public EraStep(EraCliRunner eraCliRunner, INethermindApi nethermindApi, IAdminEraService adminEraService)
-    {
-        _eraCliRunner = eraCliRunner;
-        nethermindApi.AdminEraService = adminEraService;
-    }
-
     public async Task Execute(CancellationToken cancellationToken)
     {
-        await _eraCliRunner.Run(cancellationToken);
+        await eraCliRunner.Run(cancellationToken);
     }
 }

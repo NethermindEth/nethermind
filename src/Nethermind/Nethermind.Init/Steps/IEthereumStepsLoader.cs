@@ -9,6 +9,6 @@ namespace Nethermind.Init.Steps
 {
     public interface IEthereumStepsLoader
     {
-        public IEnumerable<StepInfo> ResolveStepsImplementations(Type apiType);
+        public IEnumerable<StepInfo> ResolveStepsImplementations();
     }
 }

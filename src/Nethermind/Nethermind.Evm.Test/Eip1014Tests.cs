@@ -7,7 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -109,8 +109,7 @@ namespace Nethermind.Evm.Test
             TestState.Commit(Spec);
             TestState.CommitTree(0);
 
-            ValueHash256 storageRoot = TestState.GetStorageRoot(expectedAddress);
-            storageRoot.Should().NotBe(PatriciaTree.EmptyTreeHash);
+            TestState.IsStorageEmpty(expectedAddress).Should().BeFalse();
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
 
@@ -124,7 +123,6 @@ namespace Nethermind.Evm.Test
 
             TestState.TryGetAccount(expectedAddress, out AccountStruct account).Should().BeTrue();
             account.Balance.Should().Be(1.Ether());
-            account.StorageRoot.Should().Be(storageRoot);
             AssertEip1014(expectedAddress, []);
         }
 

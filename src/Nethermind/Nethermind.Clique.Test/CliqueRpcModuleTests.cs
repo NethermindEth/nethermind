@@ -14,7 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
@@ -40,7 +40,7 @@ namespace Nethermind.Clique.Test
                 Substitute.For<ICryptoRandom>(),
                 Substitute.For<ISnapshotManager>(),
                 new CliqueSealer(signer, cliqueConfig, Substitute.For<ISnapshotManager>(), LimboLogs.Instance),
-                new TargetAdjustedGasLimitCalculator(HoleskySpecProvider.Instance, new BlocksConfig()),
+                new TargetAdjustedGasLimitCalculator(HoodiSpecProvider.Instance, new BlocksConfig()),
                 MainnetSpecProvider.Instance,
                 cliqueConfig,
                 LimboLogs.Instance);

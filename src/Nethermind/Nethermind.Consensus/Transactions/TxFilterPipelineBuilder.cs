@@ -1,44 +1,40 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Config;
-using Nethermind.Core.Specs;
+using Nethermind.Consensus.Validators;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Transactions
 {
-    public class TxFilterPipelineBuilder
+    public class TxFilterPipelineBuilder(ILogManager logManager)
     {
-        private readonly ITxFilterPipeline _filterPipeline;
+        private readonly TxFilterPipeline _filterPipeline = new(logManager);
 
-        public static ITxFilterPipeline CreateStandardFilteringPipeline(
-            ILogManager logManager,
-            ISpecProvider? specProvider,
-            IBlocksConfig blocksConfig)
+        public static ITxFilterPipeline CreateStandardFilteringPipeline(ILogManager logManager, IBlocksConfig blocksConfig)
         {
-            ArgumentNullException.ThrowIfNull(specProvider);
-
             return new TxFilterPipelineBuilder(logManager)
-                .WithMinGasPriceFilter(blocksConfig, specProvider)
-                .WithBaseFeeFilter(specProvider)
+                .WithMinGasPriceFilter(blocksConfig)
+                .WithBaseFeeFilter()
+                .WithHeadTxFilter()
                 .Build;
         }
 
-        public TxFilterPipelineBuilder(ILogManager logManager)
+        public TxFilterPipelineBuilder WithHeadTxFilter()
         {
-            _filterPipeline = new TxFilterPipeline(logManager);
-        }
-
-        public TxFilterPipelineBuilder WithMinGasPriceFilter(IBlocksConfig blocksConfig, ISpecProvider specProvider)
-        {
-            _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(blocksConfig, specProvider));
+            _filterPipeline.AddTxFilter(new HeadTxValidator().AsTxFilter());
             return this;
         }
 
-        public TxFilterPipelineBuilder WithBaseFeeFilter(ISpecProvider specProvider)
+        public TxFilterPipelineBuilder WithMinGasPriceFilter(IBlocksConfig blocksConfig)
         {
-            _filterPipeline.AddTxFilter(new BaseFeeTxFilter(specProvider));
+            _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(blocksConfig));
+            return this;
+        }
+
+        public TxFilterPipelineBuilder WithBaseFeeFilter()
+        {
+            _filterPipeline.AddTxFilter(new BaseFeeTxFilter());
             return this;
         }
 

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.Find;
@@ -18,6 +18,8 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm;
 using System.Collections;
 using System.Linq;
+using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Consensus.Processing;
@@ -43,34 +45,37 @@ public class TxPoolContentListsTests
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithGasLimit((long)blockGasLimit).TestObject).TestObject;
         blockFinder.Head.Returns(block);
 
+        BlockExecutionContext? currentContext = null;
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        transactionProcessor.When(static (x) => x.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>()))
-            .Do(static info => ((BlockExecutionContext)info[1]).Header.GasUsed += Transaction.BaseTxGasCost);
-
-        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
-            .Returns(static info =>
+        transactionProcessor.When(static (x) => x.SetBlockExecutionContext(Arg.Any<BlockExecutionContext>()))
+            .Do(info =>
             {
-                if (((BlockExecutionContext)info[1]).Header.GasUsed <= ((BlockExecutionContext)info[1]).Header.GasLimit)
+                currentContext = ((BlockExecutionContext)info[0]);
+                currentContext.Value.Header.GasUsed += Transaction.BaseTxGasCost;
+            });
+
+        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(info =>
+            {
+                if (currentContext!.Value.Header.GasUsed <= currentContext.Value.Header.GasLimit)
                     return TransactionResult.Ok;
 
-                ((BlockExecutionContext)info[1]).Header.GasUsed -= Transaction.BaseTxGasCost;
+                currentContext.Value.Header.GasUsed -= Transaction.BaseTxGasCost;
                 return TransactionResult.BlockGasLimitExceeded;
             });
 
         IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
         scope.TransactionProcessor.Returns(transactionProcessor);
 
-        IReadOnlyTxProcessorSource txProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        txProcessorSource.Build(Arg.Any<Hash256>()).Returns(scope);
+        IShareableTxProcessorSource shareableTxProcessor = Substitute.For<IShareableTxProcessorSource>();
+        shareableTxProcessor.Build(Arg.Any<BlockHeader?>()).Returns(scope);
 
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
-        readOnlyTxProcessingEnvFactory.Create().Returns(txProcessorSource);
-
-        TaikoEngineRpcModule taikoRpcModule = new(
+        TaikoEngineRpcModule taikoAuthRpcModule = new(
             Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
             Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
             Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
             Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
+            Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
             Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(),
             Substitute.For<IForkchoiceUpdatedHandler>(),
             Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
@@ -78,16 +83,19 @@ public class TxPoolContentListsTests
             Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
             Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
             Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
+            Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?>>(),
+            Substitute.For<IEngineRequestsTracker>(),
             Substitute.For<ISpecProvider>(),
             null!,
             Substitute.For<ILogManager>(),
             txPool,
             blockFinder,
-            readOnlyTxProcessingEnvFactory,
-            TxDecoder.Instance
+            shareableTxProcessor,
+            TxDecoder.Instance,
+            Substitute.For<IL1OriginStore>()
         );
 
-        ResultWrapper<PreBuiltTxList[]?> result = taikoRpcModule.taikoAuth_txPoolContent(
+        ResultWrapper<PreBuiltTxList[]?> result = taikoAuthRpcModule.taikoAuth_txPoolContent(
             Address.Zero,
             7,
             blockGasLimit,

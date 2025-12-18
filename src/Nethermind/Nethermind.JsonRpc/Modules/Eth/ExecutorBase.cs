@@ -26,19 +26,30 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
     public virtual ResultWrapper<TResult> Execute(
         TRequest call,
         BlockParameter? blockParameter,
-        Dictionary<Address, AccountOverride>? stateOverride = null)
+        Dictionary<Address, AccountOverride>? stateOverride = null,
+        SearchResult<BlockHeader>? searchResult = null)
     {
-        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-        if (searchResult.IsError) return ResultWrapper<TResult>.Fail(searchResult);
+        searchResult ??= _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.Value.IsError) return ResultWrapper<TResult>.Fail(searchResult.Value);
 
-        BlockHeader header = searchResult.Object;
+        BlockHeader header = searchResult.Value.Object;
         if (!_blockchainBridge.HasStateForBlock(header!))
-            return ResultWrapper<TResult>.Fail($"No state available for block {header.Hash}",
+            return ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
                 ErrorCodes.ResourceUnavailable);
 
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
-        TProcessing? toProcess = Prepare(call);
+        string? error = Validate(call);
+        if (error is not null)
+        {
+            return ResultWrapper<TResult>.Fail(error, ErrorCodes.InvalidInput);
+        }
+        TProcessing toProcess = Prepare(call);
         return Execute(header.Clone(), toProcess, stateOverride, timeout.Token);
+    }
+
+    protected virtual string? Validate(TRequest call)
+    {
+        return null;
     }
 
     protected abstract TProcessing Prepare(TRequest call);

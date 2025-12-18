@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
-using Nethermind.Core.Attributes;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Block.Test
@@ -13,7 +12,6 @@ namespace Ethereum.Blockchain.Block.Test
     [Parallelizable(ParallelScope.All)]
     public class StateTests : BlockchainTestBase
     {
-        [Todo(Improve.TestCoverage, "SuicideStorage tests")]
         [TestCaseSource(nameof(LoadTests)), Retry(3)]
         public async Task Test(BlockchainTest test)
         {
@@ -23,7 +21,7 @@ namespace Ethereum.Blockchain.Block.Test
         public static IEnumerable<BlockchainTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcStateTests");
-            return (IEnumerable<BlockchainTest>)loader.LoadTests();
+            return loader.LoadTests<BlockchainTest>();
         }
     }
 }

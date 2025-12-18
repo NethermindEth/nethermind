@@ -56,18 +56,23 @@ namespace Nethermind.Core.Extensions
             return slice;
         }
 
-        public static byte[] SliceWithZeroPaddingEmptyOnError(this ReadOnlySpan<byte> bytes, int startIndex, int length)
+        public static ReadOnlySpan<byte> SliceWithZeroPaddingEmptyOnError(this ReadOnlySpan<byte> bytes, int startIndex, int length)
         {
             int copiedFragmentLength = Math.Min(bytes.Length - startIndex, length);
             if (copiedFragmentLength <= 0)
             {
-                return [];
+                return default;
             }
 
-            byte[] slice = new byte[length];
+            ReadOnlySpan<byte> sliced = bytes.Slice(startIndex, copiedFragmentLength);
+            if (copiedFragmentLength < length)
+            {
+                byte[] extended = new byte[length];
+                sliced.CopyTo(extended);
+                sliced = extended;
+            }
 
-            bytes.Slice(startIndex, copiedFragmentLength).CopyTo(slice.AsSpan(0, copiedFragmentLength));
-            return slice;
+            return sliced;
         }
 
     }

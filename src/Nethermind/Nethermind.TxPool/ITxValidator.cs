@@ -9,5 +9,7 @@ namespace Nethermind.TxPool
     public interface ITxValidator
     {
         public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec);
+
+        public const string HeadTxValidatorKey = "HeadTxValidator";
     }
 }

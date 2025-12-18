@@ -3,26 +3,29 @@
 
 using System;
 using System.Numerics;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Core.Test.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class VirtualMachineTestsBase
+public abstract class VirtualMachineTestsBase
 {
     protected const string SampleHexData1 = "a01234";
     protected const string SampleHexData2 = "b15678";
@@ -32,6 +35,7 @@ public class VirtualMachineTestsBase
     private IEthereumEcdsa _ethereumEcdsa;
     protected ITransactionProcessor _processor;
     private IDb _stateDb;
+    private IDisposable _worldStateCloser;
 
     protected VirtualMachine Machine { get; private set; }
     protected CodeInfoRepository CodeInfoRepository { get; private set; }
@@ -46,8 +50,8 @@ public class VirtualMachineTestsBase
     protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
     protected virtual ForkActivation Activation => (BlockNumber, Timestamp);
-    protected virtual long BlockNumber { get; } = MainnetSpecProvider.ByzantiumBlockNumber;
-    protected virtual ulong Timestamp => 0UL;
+    protected virtual long BlockNumber { get; private set; } = MainnetSpecProvider.ByzantiumBlockNumber;
+    protected virtual ulong Timestamp { get; private set; } = 0UL;
     protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
     protected IReleaseSpec Spec => SpecProvider.GetSpec(Activation);
 
@@ -61,25 +65,29 @@ public class VirtualMachineTestsBase
     {
         ILogManager logManager = GetLogManager();
 
-        IDb codeDb = new MemDb();
         _stateDb = new MemDb();
-        ITrieStore trieStore = new TrieStore(_stateDb, logManager);
-        TestState = new WorldState(trieStore, codeDb, logManager);
+        IDbProvider dbProvider = TestMemDbProvider.Init();
+        TestState = TestWorldStateFactory.CreateForTest(dbProvider, logManager);
+        _worldStateCloser = TestState.BeginScope(IWorldState.PreGenesis);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        CodeInfoRepository = new CodeInfoRepository();
-        Machine = new VirtualMachine(blockhashProvider, SpecProvider, CodeInfoRepository, logManager);
-        _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
+        CodeInfoRepository = new EthereumCodeInfoRepository(TestState);
+        Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
+        _processor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }
 
     [TearDown]
-    public virtual void TearDown() => _stateDb?.Dispose();
+    public virtual void TearDown()
+    {
+        _stateDb?.Dispose();
+        _worldStateCloser?.Dispose();
+    }
 
     protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default with { EnableMemory = true });
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
@@ -87,7 +95,7 @@ public class VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
@@ -95,7 +103,7 @@ public class VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
@@ -103,23 +111,22 @@ public class VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
         GethLikeTxFileTracer tracer = new(dumpCallback, options);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
     /// <summary>
     /// deprecated. Please use activation instead of blockNumber.
     /// </summary>
-    protected TestAllTracerWithOutput Execute(long blockNumber, params byte[] code)
-    {
-        return Execute((blockNumber, Timestamp), code);
-    }
+    protected TestAllTracerWithOutput Execute(long blockNumber, params byte[] code) => Execute((blockNumber, Timestamp), code);
 
-    protected TestAllTracerWithOutput Execute(ForkActivation activation, params byte[] code)
+    protected TestAllTracerWithOutput Execute(ForkActivation activation, params byte[] code) => Execute(activation, 100000, code);
+
+    protected TestAllTracerWithOutput Execute(ForkActivation activation, long gasLimit, params byte[] code)
     {
-        (Block block, Transaction transaction) = PrepareTx(activation, 100000, code);
+        (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -127,18 +134,13 @@ public class VirtualMachineTestsBase
     {
         (Block block, _) = PrepareTx(activation, 100000, null);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
-    protected TestAllTracerWithOutput Execute(params byte[] code)
-    {
-        return Execute(Activation, code);
-    }
-    protected TestAllTracerWithOutput Execute(Transaction tx)
-    {
-        return Execute(Activation, tx);
-    }
+    protected TestAllTracerWithOutput Execute(params byte[] code) => Execute(Activation, code);
+
+    protected TestAllTracerWithOutput Execute(Transaction tx) => Execute(Activation, tx);
 
     protected virtual TestAllTracerWithOutput CreateTracer() => new();
 
@@ -148,7 +150,7 @@ public class VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
         tracer.StartNewBlockTrace(block);
         ITxTracer txTracer = tracer.StartNewTxTrace(transaction);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), txTracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), txTracer);
         tracer.EndTxTrace();
         tracer.EndBlockTrace();
         return tracer;
@@ -157,7 +159,7 @@ public class VirtualMachineTestsBase
     protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
     {
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -170,7 +172,7 @@ public class VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code,
             blockGasLimit: blockGasLimit, blobVersionedHashes: blobVersionedHashes);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -180,7 +182,7 @@ public class VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code,
             blockGasLimit: blockGasLimit, blobVersionedHashes: blobVersionedHashes);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -250,6 +252,8 @@ public class VirtualMachineTestsBase
             .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit, excessBlobGas);
+        BlockNumber = block.Header.Number;
+        Timestamp = block.Header.Timestamp;
         return (block, transaction);
     }
 

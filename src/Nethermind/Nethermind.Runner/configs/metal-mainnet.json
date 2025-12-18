@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/metal-mainnet.json.zst",
     "GenesisHash": "0xd31c12ffff2d563897ad9a041c0d26790d635911bdbbfa589347fa955f75281e",
     "BaseDbPath": "nethermind_db/metal-mainnet",
-    "LogFileName": "metal-mainnet.logs.txt"
+    "LogFileName": "metal-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

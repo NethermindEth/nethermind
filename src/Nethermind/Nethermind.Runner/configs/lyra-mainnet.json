@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/lyra-mainnet.json.zst",
     "GenesisHash": "0x047f535b3da7ad4f96d353b5a439740b7591413daee0e2f27dd3aabb24581af2",
     "BaseDbPath": "nethermind_db/lyra-mainnet",
-    "LogFileName": "lyra-mainnet.logs.txt"
+    "LogFileName": "lyra-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

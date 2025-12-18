@@ -8,6 +8,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Trie.Pruning;
@@ -49,7 +50,7 @@ namespace Nethermind.Core.Test.Builders
 
             public static StateTree GetStateTree(ITrieStore? store = null)
             {
-                store ??= new TrieStore(new MemDb(), LimboLogs.Instance);
+                store ??= new TestRawTrieStore(new MemDb());
 
                 var stateTree = new StateTree(store.GetTrieStore(null), LimboLogs.Instance);
 
@@ -81,7 +82,7 @@ namespace Nethermind.Core.Test.Builders
 
             public static (StateTree stateTree, StorageTree storageTree, Hash256 accountAddr) GetTrees(ITrieStore? store)
             {
-                store ??= new TrieStore(new MemDb(), LimboLogs.Instance);
+                store ??= TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
 
                 var storageTree = new StorageTree(store.GetTrieStore(AccountAddress0), LimboLogs.Instance);
 
@@ -105,7 +106,7 @@ namespace Nethermind.Core.Test.Builders
 
             public static (StateTree stateTree, StorageTree storageTree, Hash256 accountAddr) GetTrees(ITrieStore? store, int slotNumber)
             {
-                store ??= new TrieStore(new MemDb(), LimboLogs.Instance);
+                store ??= TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
 
                 var storageTree = new StorageTree(store.GetTrieStore(AccountAddress0), LimboLogs.Instance);
 

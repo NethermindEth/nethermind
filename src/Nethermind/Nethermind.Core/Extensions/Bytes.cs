@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
@@ -18,7 +19,6 @@ using System.Text;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using System.Buffers;
 
 namespace Nethermind.Core.Extensions
 {
@@ -30,6 +30,7 @@ namespace Nethermind.Core.Extensions
         // The ReadOnlyMemory<byte> needs to be initialized = or it will be created each time.
         public static ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
         public static ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
+        public static ReadOnlyMemory<byte> TwoByte = new byte[] { 2 };
         // The Jit converts a ReadOnlySpan<byte> => new byte[] to a data section load, no allocation.
         public static ReadOnlySpan<byte> ZeroByteSpan => new byte[] { 0 };
         public static ReadOnlySpan<byte> OneByteSpan => new byte[] { 1 };
@@ -181,7 +182,7 @@ namespace Nethermind.Core.Extensions
             return bytes.IndexOfAnyExcept((byte)0) < 0;
         }
 
-        public static int LeadingZerosCount(this Span<byte> bytes, int startIndex = 0)
+        public static int LeadingZerosCount(this ReadOnlySpan<byte> bytes, int startIndex = 0)
         {
             int nonZeroIndex = bytes[startIndex..].IndexOfAnyExcept((byte)0);
             return nonZeroIndex < 0 ? bytes.Length - startIndex : nonZeroIndex;
@@ -261,7 +262,7 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        public static byte[] PadRight(this byte[] bytes, int length)
+        public static byte[] PadRight(this byte[] bytes, int length, byte padding = 0)
         {
             if (bytes.Length == length)
             {
@@ -275,6 +276,12 @@ namespace Nethermind.Core.Extensions
 
             byte[] result = new byte[length];
             Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
+
+            if (padding != 0)
+            {
+                result.AsSpan(bytes.Length, length - bytes.Length).Fill(padding);
+            }
+
             return result;
         }
 
@@ -388,6 +395,51 @@ namespace Nethermind.Core.Extensions
             return new(bytes, true, true);
         }
 
+        public static ReadOnlySpan<byte> Trim(this ReadOnlySpan<byte> bytes, int length)
+            => bytes.Length > length ? bytes.Slice(bytes.Length - length, length) : bytes;
+
+        public static short ReadEthInt16(this ReadOnlySpan<byte> bytes)
+        {
+            bytes = bytes.Trim(2);
+
+            return bytes.Length switch
+            {
+                2 => BinaryPrimitives.ReadInt16BigEndian(bytes),
+                1 => bytes[0],
+                _ => 0
+            };
+        }
+
+        public static ushort ReadEthUInt16(this ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length > 2)
+            {
+                bytes = bytes.Slice(bytes.Length - 2, 2);
+            }
+
+            return bytes.Length switch
+            {
+                2 => BinaryPrimitives.ReadUInt16BigEndian(bytes),
+                1 => bytes[0],
+                _ => 0
+            };
+        }
+
+        public static ushort ReadEthUInt16LittleEndian(this Span<byte> bytes)
+        {
+            if (bytes.Length > 2)
+            {
+                bytes = bytes.Slice(bytes.Length - 2, 2);
+            }
+
+            return bytes.Length switch
+            {
+                2 => BinaryPrimitives.ReadUInt16LittleEndian(bytes),
+                1 => bytes[0],
+                _ => 0
+            };
+        }
+
         public static uint ReadEthUInt32(this Span<byte> bytes)
         {
             return ReadEthUInt32((ReadOnlySpan<byte>)bytes);
@@ -408,23 +460,6 @@ namespace Nethermind.Core.Extensions
             Span<byte> fourBytes = stackalloc byte[4];
             bytes.CopyTo(fourBytes[(4 - bytes.Length)..]);
             return BinaryPrimitives.ReadUInt32BigEndian(fourBytes);
-        }
-
-        public static uint ReadEthUInt32LittleEndian(this Span<byte> bytes)
-        {
-            if (bytes.Length > 4)
-            {
-                bytes = bytes.Slice(bytes.Length - 4, 4);
-            }
-
-            if (bytes.Length == 4)
-            {
-                return BinaryPrimitives.ReadUInt32LittleEndian(bytes);
-            }
-
-            Span<byte> fourBytes = stackalloc byte[4];
-            bytes.CopyTo(fourBytes[(4 - bytes.Length)..]);
-            return BinaryPrimitives.ReadUInt32LittleEndian(fourBytes);
         }
 
         public static int ReadEthInt32(this Span<byte> bytes)
@@ -585,34 +620,6 @@ namespace Nethermind.Core.Extensions
 
             public readonly byte[] Bytes;
             public readonly bool WithZeroX;
-        }
-
-        private readonly struct StateSmallMemory
-        {
-            public StateSmallMemory(Memory<byte> bytes, bool withZeroX)
-            {
-                Bytes = bytes;
-                WithZeroX = withZeroX;
-            }
-
-            public readonly Memory<byte> Bytes;
-            public readonly bool WithZeroX;
-        }
-
-        private struct StateOld
-        {
-            public StateOld(byte[] bytes, int leadingZeros, bool withZeroX, bool withEip55Checksum)
-            {
-                Bytes = bytes;
-                LeadingZeros = leadingZeros;
-                WithZeroX = withZeroX;
-                WithEip55Checksum = withEip55Checksum;
-            }
-
-            public int LeadingZeros;
-            public byte[] Bytes;
-            public bool WithZeroX;
-            public bool WithEip55Checksum;
         }
 
         private readonly struct State
@@ -1035,13 +1042,16 @@ namespace Nethermind.Core.Extensions
         [DebuggerStepThrough]
         public static byte[] FromUtf8HexString(scoped ReadOnlySpan<byte> hexString)
         {
-            if (hexString.Length == 0)
+            uint length = (uint)hexString.Length;
+            if (length == 0)
             {
                 return [];
             }
 
-            int oddMod = hexString.Length % 2;
-            byte[] result = GC.AllocateUninitializedArray<byte>((hexString.Length >> 1) + oddMod);
+            // length is the number of hex characters, so we divide by 2 to get the byte length.
+            // If the length is odd, we add 1 to round up; as one hex character represents half a byte.
+            length = (length >> 1) + (length & 1);
+            byte[] result = GC.AllocateUninitializedArray<byte>((int)length);
             FromUtf8HexString(hexString, result);
             return result;
         }
@@ -1062,15 +1072,13 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidOperationException()
         {
             throw new InvalidOperationException();
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowFormatException_IncorrectHexString()
         {
             throw new FormatException("Incorrect hex string");
@@ -1083,8 +1091,7 @@ namespace Nethermind.Core.Extensions
         [DebuggerStepThrough]
         public static byte[] FromHexString(ReadOnlySpan<char> hexString, int length)
         {
-            int start = hexString is ['0', 'x', ..] ? 2 : 0;
-            ReadOnlySpan<char> chars = hexString[start..];
+            ReadOnlySpan<char> chars = Trim0X(hexString);
 
             if (chars.Length == 0)
             {
@@ -1095,20 +1102,23 @@ namespace Nethermind.Core.Extensions
             int actualLength = (chars.Length >> 1) + oddMod;
             byte[] result = GC.AllocateArray<byte>(length);
             Span<byte> writeToSpan = result.AsSpan(length - actualLength);
+            FromHexString(chars, writeToSpan, oddMod);
+            return result;
+        }
 
-            bool isSuccess;
-            if (oddMod == 0 &&
-                BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
-                chars.Length >= Vector128<ushort>.Count * 2)
-            {
-                isSuccess = HexConverter.TryDecodeFromUtf16_Vector128(chars, writeToSpan);
-            }
-            else
-            {
-                isSuccess = HexConverter.TryDecodeFromUtf16(chars, writeToSpan, oddMod == 1);
-            }
+        private static void FromHexString(ReadOnlySpan<char> chars, Span<byte> writeToSpan, int oddMod)
+        {
+            bool isSuccess = oddMod == 0 && BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) && chars.Length >= Vector128<ushort>.Count * 2
+                ? HexConverter.TryDecodeFromUtf16_Vector128(chars, writeToSpan)
+                : HexConverter.TryDecodeFromUtf16(chars, writeToSpan, oddMod == 1);
 
-            return isSuccess ? result : throw new FormatException("Incorrect hex string");
+            if (!isSuccess) throw new FormatException("Incorrect hex string");
+        }
+
+        private static ReadOnlySpan<char> Trim0X(ReadOnlySpan<char> hexString)
+        {
+            int start = hexString is ['0', 'x', ..] ? 2 : 0;
+            return hexString[start..];
         }
 
         [DebuggerStepThrough]
@@ -1116,10 +1126,25 @@ namespace Nethermind.Core.Extensions
             hexString is null ? throw new ArgumentNullException(nameof(hexString)) : FromHexString(hexString.AsSpan());
 
         [DebuggerStepThrough]
+        public static void FromHexString(ReadOnlySpan<char> hexString, Span<byte> result)
+        {
+            ReadOnlySpan<char> chars = Trim0X(hexString);
+            if (chars.Length == 0) return;
+            int oddMod = hexString.Length % 2;
+            int actualLength = (chars.Length >> 1) + oddMod;
+
+            if (actualLength != result.Length)
+            {
+                throw new ArgumentException($"Incorrect result lenght, expected {actualLength}", nameof(result));
+            }
+
+            FromHexString(chars, result, oddMod);
+        }
+
+        [DebuggerStepThrough]
         private static byte[] FromHexString(ReadOnlySpan<char> hexString)
         {
-            int start = hexString is ['0', 'x', ..] ? 2 : 0;
-            ReadOnlySpan<char> chars = hexString[start..];
+            ReadOnlySpan<char> chars = Trim0X(hexString);
 
             if (chars.Length == 0)
             {
@@ -1130,19 +1155,8 @@ namespace Nethermind.Core.Extensions
             int actualLength = (chars.Length >> 1) + oddMod;
             byte[] result = GC.AllocateUninitializedArray<byte>(actualLength);
 
-            bool isSuccess;
-            if (oddMod == 0 &&
-                BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
-                chars.Length >= Vector128<ushort>.Count * 2)
-            {
-                isSuccess = HexConverter.TryDecodeFromUtf16_Vector128(chars, result);
-            }
-            else
-            {
-                isSuccess = HexConverter.TryDecodeFromUtf16(chars, result, oddMod == 1);
-            }
-
-            return isSuccess ? result : throw new FormatException("Incorrect hex string");
+            FromHexString(chars, result, oddMod);
+            return result;
         }
 
         public static void ChangeEndianness8(Span<byte> bytes)

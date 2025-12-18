@@ -8,7 +8,6 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-[Explicit("These tests are not ready yet")]
 public class PragueStateTests : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
@@ -17,6 +16,6 @@ public class PragueStateTests : GeneralStateTestBase
     private static IEnumerable<GeneralStateTest> LoadTests()
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(), $"fixtures/state_tests/prague");
-        return loader.LoadTests().Cast<GeneralStateTest>();
+        return loader.LoadTests<GeneralStateTest>();
     }
 }

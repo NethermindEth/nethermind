@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Config;
@@ -17,11 +16,6 @@ namespace Nethermind.Consensus.Processing
 {
     public static class BlockExtensions
     {
-        public static IEnumerable<Transaction> GetTransactions(this Block block) =>
-            block is BlockToProduce blockToProduce
-                ? blockToProduce.Transactions
-                : block.Transactions;
-
         public static bool TrySetTransactions(this Block block, Transaction[] transactions)
         {
             block.Header.TxRoot = TxTrie.CalculateRoot(transactions);

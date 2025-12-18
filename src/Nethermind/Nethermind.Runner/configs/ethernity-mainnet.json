@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/ethernity-mainnet.json.zst",
     "GenesisHash": "0xa5e974a6ace39285b42f92316a9e040e58f8ffc24e3aac124ff6243c28323607",
     "BaseDbPath": "nethermind_db/ethernity-mainnet",
-    "LogFileName": "ethernity-mainnet.logs.txt"
+    "LogFileName": "ethernity-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

@@ -3,96 +3,67 @@
 
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain
 {
-    public class BlockhashProvider : IBlockhashProvider
+    public class BlockhashProvider(
+        IBlockhashCache blockhashCache,
+        IWorldState worldState,
+        ILogManager? logManager)
+        : IBlockhashProvider
     {
-        private static readonly int _maxDepth = 256;
-        private readonly IBlockFinder _blockTree;
-        private readonly ISpecProvider _specProvider;
-        private readonly IBlockhashStore _blockhashStore;
-        private readonly ILogger _logger;
+        public const int MaxDepth = 256;
+        private readonly IBlockhashStore _blockhashStore = new BlockhashStore(worldState);
+        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        private Hash256[]? _hashes;
 
-        public BlockhashProvider(IBlockFinder blockTree, ISpecProvider specProvider, IWorldState worldState, ILogManager? logManager)
+        public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
         {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _specProvider = specProvider;
-            _blockhashStore = new BlockhashStore(specProvider, worldState);
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-
-        public Hash256? GetBlockhash(BlockHeader currentBlock, in long number)
-        {
-            IReleaseSpec? spec = _specProvider.GetSpec(currentBlock);
-
             if (spec.IsBlockHashInStateAvailable)
             {
-                return _blockhashStore.GetBlockHashFromState(currentBlock, number);
+                return _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
             }
 
             long current = currentBlock.Number;
-            if (number >= current || number < current - Math.Min(current, _maxDepth))
+            long depth = current - number;
+            if (number >= current || number < 0 || depth > MaxDepth)
             {
+                if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning null for {currentBlock.Number} -> {number}");
                 return null;
             }
 
-            bool isFastSyncSearch = false;
+            Hash256[]? hashes = _hashes;
+            return hashes is not null
+                ? hashes[depth]
+                : blockhashCache.GetHash(currentBlock, (int)depth)
+                  ?? throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation");
+        }
 
-            BlockHeader header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded) ??
-                throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
+        public async Task Prefetch(BlockHeader currentBlock, CancellationToken token)
+        {
+            _hashes = null;
+            Hash256[]? hashes = await blockhashCache.Prefetch(currentBlock, token);
 
-            for (var i = 0; i < _maxDepth; i++)
+            // This leverages that branch processing is single threaded
+            // If the cancellation was requested it means block processing finished before prefetching is done
+            // This means we don't want to set hashes, as next block might already be prefetching
+            // This allows us to avoid await on Prefetch in BranchProcessor
+            lock (_blockhashStore)
             {
-                if (number == header.Number)
+                if (!token.IsCancellationRequested)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning {header.Number},{header.Hash} for {currentBlock.Number} -> {number}");
-                    return header.Hash;
-                }
-
-                header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (header is null)
-                {
-                    throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
-                }
-
-                if (_blockTree.IsMainChain(header.Hash) && !isFastSyncSearch)
-                {
-                    try
-                    {
-                        BlockHeader currentHeader = header;
-                        header = _blockTree.FindHeader(number, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                        if (header is null)
-                        {
-                            isFastSyncSearch = true;
-                            header = currentHeader;
-                        }
-                        else
-                        {
-                            if (!_blockTree.IsMainChain(header))
-                            {
-                                header = currentHeader;
-                                throw new InvalidOperationException("Invoke fast blocks chain search");
-                            }
-                        }
-                    }
-                    catch (InvalidOperationException) // fast sync during the first 256 blocks after the transition
-                    {
-                        isFastSyncSearch = true;
-                    }
+                    _hashes = hashes;
                 }
             }
-
-            if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning null for {currentBlock.Number} -> {number}");
-            return null;
         }
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -22,7 +23,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private static readonly ValidatorInfo EmptyValidatorInfo = new ValidatorInfo(-1, -1, []);
         private static Hash256 GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
 
-        public ValidatorStore(IDb db)
+        public ValidatorStore([KeyFilter(DbNames.BlockInfos)] IDb db)
         {
             _db = db;
             _latestFinalizedValidatorsBlockNumber = _db.Get(LatestFinalizedValidatorsBlockNumberKey)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? EmptyBlockNumber;

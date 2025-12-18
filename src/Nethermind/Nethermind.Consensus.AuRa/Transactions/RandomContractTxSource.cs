@@ -32,6 +32,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ICryptoRandom _random;
         private readonly ILogger _logger;
 
+        public bool SupportsBlobs => false;
+
         public RandomContractTxSource(
             IList<IRandomContract> contracts,
             IEciesCipher eciesCipher,
@@ -48,7 +50,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<RandomContractTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttribute, bool filterSources)
         {
             if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
             {

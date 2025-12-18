@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/ethernity-sepolia.json.zst",
     "GenesisHash": "0x4715665848c513c54d71a3e60700743f2b37ec21df9b9d0b8eefee4c30cd557a",
     "BaseDbPath": "nethermind_db/ethernity-sepolia",
-    "LogFileName": "ethernity-sepolia.logs.txt"
+    "LogFileName": "ethernity-sepolia.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

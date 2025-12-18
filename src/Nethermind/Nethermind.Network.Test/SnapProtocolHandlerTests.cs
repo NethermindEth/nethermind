@@ -20,6 +20,7 @@ using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.State.Snap;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -31,15 +32,16 @@ public class SnapProtocolHandlerTests
     {
         public ISession Session { get; set; } = Substitute.For<ISession>();
 
-        private IMessageSerializationService _messageSerializationService;
+        private IMessageSerializationService? _messageSerializationService;
         public IMessageSerializationService MessageSerializationService
         {
             get
             {
                 if (_messageSerializationService is null)
                 {
-                    _messageSerializationService = new MessageSerializationService();
-                    _messageSerializationService.Register(new AccountRangeMessageSerializer());
+                    _messageSerializationService = new MessageSerializationService(
+                        SerializerInfo.Create(new AccountRangeMessageSerializer())
+                    );
                 }
 
                 return _messageSerializationService;
@@ -47,7 +49,20 @@ public class SnapProtocolHandlerTests
             set => _messageSerializationService = value;
         }
 
-        public INodeStatsManager NodeStatsManager { get; set; } = Substitute.For<INodeStatsManager>();
+        private INodeStatsManager? _nodeStatsManager;
+        public INodeStatsManager NodeStatsManager
+        {
+            get
+            {
+                if (_nodeStatsManager is null)
+                {
+                    _nodeStatsManager = Substitute.For<INodeStatsManager>();
+                    _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns((c) => new NodeStatsLight((Node)c[0]));
+                }
+                return _nodeStatsManager;
+            }
+            set => _nodeStatsManager = value;
+        }
 
 
         private SnapProtocolHandler? _snapProtocolHandler;
@@ -68,6 +83,7 @@ public class SnapProtocolHandlerTests
         public TimeSpan SimulatedLatency { get; set; } = TimeSpan.Zero;
 
         private readonly List<long> _recordedResponseBytesLength = new();
+
         public Context WithResponseBytesRecorder
         {
             get
@@ -130,12 +146,12 @@ public class SnapProtocolHandlerTests
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         ctx.RecordedMessageSizesShouldIncrease();
 
-        ctx.SimulatedLatency = SnapProtocolHandler.LowerLatencyThreshold + TimeSpan.FromMilliseconds(1);
+        ctx.SimulatedLatency = TimeSpan.FromMilliseconds(2001);
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         ctx.RecordedMessageSizesShouldNotChange();
 
-        ctx.SimulatedLatency = SnapProtocolHandler.UpperLatencyThreshold + TimeSpan.FromMilliseconds(1);
+        ctx.SimulatedLatency = TimeSpan.FromMilliseconds(3501);
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         ctx.RecordedMessageSizesShouldDecrease();

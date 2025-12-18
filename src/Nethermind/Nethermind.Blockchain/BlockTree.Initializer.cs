@@ -5,7 +5,9 @@ using System;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain;
@@ -23,6 +25,53 @@ public partial class BlockTree
         LoadForkChoiceInfo();
     }
 
+    public static long? BinarySearchBlockNumber(long left, long right, Func<long, bool, bool> isBlockFound,
+        BinarySearchDirection direction = BinarySearchDirection.Up, bool findBeacon = false)
+    {
+        if (left > right)
+        {
+            return null;
+        }
+
+        long? result = null;
+        while (left != right)
+        {
+            long index = direction == BinarySearchDirection.Up
+                ? left + (right - left) / 2
+                : right - (right - left) / 2;
+            if (isBlockFound(index, findBeacon))
+            {
+                result = index;
+                if (direction == BinarySearchDirection.Up)
+                {
+                    left = index + 1;
+                }
+                else
+                {
+                    right = index - 1;
+                }
+            }
+            else
+            {
+                if (direction == BinarySearchDirection.Up)
+                {
+                    right = index;
+                }
+                else
+                {
+                    left = index;
+                }
+            }
+        }
+
+        if (isBlockFound(left, findBeacon))
+        {
+            result = direction == BinarySearchDirection.Up ? left : right;
+        }
+
+        return result;
+    }
+
     private void AttemptToFixCorruptionByMovingHeadBackwards()
     {
         if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader is not null)
@@ -36,7 +85,7 @@ public partial class BlockTree
             }
             else
             {
-                _logger.Error("Failed attempt to fix 'header < body' corruption caused by an unexpected shutdown.");
+                Logger.Error("Failed attempt to fix 'header < body' corruption caused by an unexpected shutdown.");
             }
         }
     }
@@ -109,7 +158,7 @@ public partial class BlockTree
     }
     private void LoadForkChoiceInfo()
     {
-        _logger.Info("Loading fork choice info");
+        Logger.Info("Loading fork choice info");
         FinalizedHash ??= _metadataDb.Get(MetadataDbKeys.FinalizedBlockHash)?.AsRlpStream().DecodeKeccak();
         SafeHash ??= _metadataDb.Get(MetadataDbKeys.SafeBlockHash)?.AsRlpStream().DecodeKeccak();
     }
@@ -136,18 +185,18 @@ public partial class BlockTree
         {
             // Old style binary search.
             long left = 1L;
-            long right = _syncConfig.PivotNumberParsed;
+            long right = SyncPivot.BlockNumber;
 
             LowestInsertedHeader = BinarySearchBlockHeader(left, right, LevelExists, BinarySearchDirection.Down);
         }
 
-        if (_logger.IsDebug) _logger.Debug($"Lowest inserted header set to {LowestInsertedHeader?.Number.ToString() ?? "null"}");
+        if (Logger.IsDebug) Logger.Debug($"Lowest inserted header set to {LowestInsertedHeader?.Number.ToString() ?? "null"}");
     }
 
     private void LoadBestKnown()
     {
         long left = (Head?.Number ?? 0) == 0
-            ? Math.Max(_syncConfig.PivotNumberParsed, LowestInsertedHeader?.Number ?? 0) - 1
+            ? Math.Max(SyncPivot.BlockNumber, LowestInsertedHeader?.Number ?? 0) - 1
             : Head.Number;
 
         long right = Math.Max(0, left) + BestKnownSearchLimit;
@@ -156,8 +205,8 @@ public partial class BlockTree
         long bestSuggestedHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists) ?? 0;
         long bestSuggestedBodyNumber = BinarySearchBlockNumber(left, right, BodyExists) ?? 0;
 
-        if (_logger.IsInfo)
-            _logger.Info("Numbers resolved, " +
+        if (Logger.IsInfo)
+            Logger.Info("Numbers resolved, " +
                          $"level = {bestKnownNumberFound}, " +
                          $"header = {bestSuggestedHeaderNumber}, " +
                          $"body = {bestSuggestedBodyNumber}");
@@ -167,8 +216,8 @@ public partial class BlockTree
             bestSuggestedBodyNumber < 0 ||
             bestSuggestedHeaderNumber < bestSuggestedBodyNumber)
         {
-            if (_logger.IsWarn)
-                _logger.Warn(
+            if (Logger.IsWarn)
+                Logger.Warn(
                     $"Detected corrupted block tree data ({bestSuggestedHeaderNumber} < {bestSuggestedBodyNumber}) (possibly due to an unexpected shutdown). Attempting to fix by moving head backwards. This may fail and you may need to resync the node.");
             if (bestSuggestedHeaderNumber < bestSuggestedBodyNumber)
             {
@@ -214,8 +263,8 @@ public partial class BlockTree
         right = Math.Max(0, left) + BestKnownSearchLimit;
         long bestBeaconBodyNumber = BinarySearchBlockNumber(left, right, BodyExists, findBeacon: true) ?? 0;
 
-        if (_logger.IsInfo)
-            _logger.Info("Beacon Numbers resolved, " +
+        if (Logger.IsInfo)
+            Logger.Info("Beacon Numbers resolved, " +
                          $"level = {bestKnownNumberFound}, " +
                          $"header = {bestBeaconHeaderNumber}, " +
                          $"body = {bestBeaconBodyNumber}");
@@ -225,8 +274,8 @@ public partial class BlockTree
             bestBeaconBodyNumber < 0 ||
             bestBeaconHeaderNumber < bestBeaconBodyNumber)
         {
-            if (_logger.IsWarn)
-                _logger.Warn(
+            if (Logger.IsWarn)
+                Logger.Warn(
                     $"Detected corrupted block tree data ({bestBeaconHeaderNumber} < {bestBeaconBodyNumber}) (possibly due to an unexpected shutdown). Attempting to fix by moving head backwards. This may fail and you may need to resync the node.");
             if (bestBeaconHeaderNumber < bestBeaconBodyNumber)
             {
@@ -250,7 +299,7 @@ public partial class BlockTree
             : FindBlock(bestBeaconBodyHeader.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
     }
 
-    private enum BinarySearchDirection
+    public enum BinarySearchDirection
     {
         Up,
         Down
@@ -271,53 +320,6 @@ public partial class BlockTree
         return null;
     }
 
-    private static long? BinarySearchBlockNumber(long left, long right, Func<long, bool, bool> isBlockFound,
-        BinarySearchDirection direction = BinarySearchDirection.Up, bool findBeacon = false)
-    {
-        if (left > right)
-        {
-            return null;
-        }
-
-        long? result = null;
-        while (left != right)
-        {
-            long index = direction == BinarySearchDirection.Up
-                ? left + (right - left) / 2
-                : right - (right - left) / 2;
-            if (isBlockFound(index, findBeacon))
-            {
-                result = index;
-                if (direction == BinarySearchDirection.Up)
-                {
-                    left = index + 1;
-                }
-                else
-                {
-                    right = index - 1;
-                }
-            }
-            else
-            {
-                if (direction == BinarySearchDirection.Up)
-                {
-                    right = index;
-                }
-                else
-                {
-                    left = index;
-                }
-            }
-        }
-
-        if (isBlockFound(left, findBeacon))
-        {
-            result = direction == BinarySearchDirection.Up ? left : right;
-        }
-
-        return result;
-    }
-
     private void LoadStartBlock()
     {
         Block? startBlock = null;
@@ -327,7 +329,7 @@ public partial class BlockTree
         if (persistedNumber is not null)
         {
             startBlock = FindBlock(persistedNumber.Value, BlockTreeLookupOptions.None);
-            if (_logger.IsInfo) _logger.Info(
+            if (Logger.IsInfo) Logger.Info(
                 $"Start block loaded from reorg boundary - {persistedNumber} - {startBlock?.ToString(Block.Format.Short)}");
         }
         else
@@ -336,7 +338,7 @@ public partial class BlockTree
             if (data is not null)
             {
                 startBlock = FindBlock(new Hash256(data), BlockTreeLookupOptions.None);
-                if (_logger.IsInfo) _logger.Info($"Start block loaded from HEAD - {startBlock?.ToString(Block.Format.Short)}");
+                if (Logger.IsInfo) Logger.Info($"Start block loaded from HEAD - {startBlock?.ToString(Block.Format.Short)}");
             }
         }
 
@@ -364,5 +366,30 @@ public partial class BlockTree
 
         headBlock.Header.TotalDifficulty = level.BlockInfos[index.Value].TotalDifficulty;
         Head = headBlock;
+    }
+
+    private void LoadSyncPivot()
+    {
+        byte[]? pivotFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotData);
+        if (pivotFromDb is null)
+        {
+            _syncPivot = (LongConverter.FromString(_syncConfig.PivotNumber), _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
+            return;
+        }
+
+        RlpStream pivotStream = new(pivotFromDb!);
+        long updatedPivotBlockNumber = pivotStream.DecodeLong();
+        Hash256 updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
+
+        if (updatedPivotBlockHash.IsZero)
+        {
+            _syncPivot = (LongConverter.FromString(_syncConfig.PivotNumber), _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
+            return;
+        }
+
+        SyncPivot = (updatedPivotBlockNumber, updatedPivotBlockHash);
+        _syncConfig.MaxAttemptsToUpdatePivot = 0; // Disable pivot updator
+
+        if (Logger.IsInfo) Logger.Info($"Pivot block has been set based on data from db. Pivot block number: {updatedPivotBlockNumber}, hash: {updatedPivotBlockHash}");
     }
 }

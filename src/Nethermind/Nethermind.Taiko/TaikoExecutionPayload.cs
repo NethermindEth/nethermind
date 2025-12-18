@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -17,7 +16,7 @@ public class TaikoExecutionPayload : ExecutionPayload
 
     public new byte[][]? Transactions
     {
-        get { return _encodedTransactions is [] ? null : _encodedTransactions; }
+        get => _encodedTransactions is [] ? null : _encodedTransactions;
         set
         {
             _encodedTransactions = value ?? [];
@@ -32,11 +31,11 @@ public class TaikoExecutionPayload : ExecutionPayload
         _ => 1
     };
 
-    public override bool TryGetBlock([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null)
+    public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
     {
         if (Withdrawals is null && Transactions is null)
         {
-            var header = new BlockHeader(
+            BlockHeader header = new BlockHeader(
                 ParentHash,
                 Keccak.OfAnEmptySequenceRlp,
                 FeeRecipient,
@@ -61,9 +60,8 @@ public class TaikoExecutionPayload : ExecutionPayload
                 WithdrawalsRoot = WithdrawalsHash,
             };
 
-            block = new(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), null);
-            return true;
+            return new BlockDecodingResult(new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>()));
         }
-        return base.TryGetBlock(out block, totalDifficulty);
+        return base.TryGetBlock(totalDifficulty);
     }
 }

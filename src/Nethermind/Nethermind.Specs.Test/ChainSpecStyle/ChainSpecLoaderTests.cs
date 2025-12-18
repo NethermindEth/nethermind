@@ -95,14 +95,14 @@ public class ChainSpecLoaderTests
     }
 
     [Test]
-    public void Can_load_holesky()
+    public void Can_load_hoodi()
     {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/holesky.json");
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/hoodi.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(17000), $"{nameof(chainSpec.NetworkId)}");
-        Assert.That(chainSpec.Name, Is.EqualTo("Holesky Testnet"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.DataDir, Is.EqualTo("holesky"), $"{nameof(chainSpec.DataDir)}");
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(560048), $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.Name, Is.EqualTo("Hoodi Testnet"), $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.DataDir, Is.EqualTo("hoodi"), $"{nameof(chainSpec.DataDir)}");
         Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
         chainSpec.DaoForkBlockNumber.Should().Be(null);
@@ -114,9 +114,9 @@ public class ChainSpecLoaderTests
         chainSpec.IstanbulBlockNumber.Should().Be(0);
         chainSpec.BerlinBlockNumber.Should().Be(0);
         chainSpec.LondonBlockNumber.Should().Be(0);
-        chainSpec.ShanghaiTimestamp.Should().Be(HoleskySpecProvider.ShanghaiTimestamp);
-        chainSpec.ShanghaiTimestamp.Should().Be(HoleskySpecProvider.Instance.TimestampFork);
-        // chainSpec.CancunTimestamp.Should().Be(HoleskySpecProvider.CancunTimestamp);
+        chainSpec.ShanghaiTimestamp.Should().Be(0);
+        chainSpec.CancunTimestamp.Should().Be(0);
+        chainSpec.PragueTimestamp.Should().Be(HoodiSpecProvider.PragueTimestamp);
     }
 
     [Test]

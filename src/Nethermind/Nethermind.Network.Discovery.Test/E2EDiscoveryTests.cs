@@ -44,6 +44,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
         INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
         int port = AssignDiscoveryPort();
+        networkConfig.LocalIp = networkConfig.ExternalIp = $"192.168.2.{AssignDiscoveryIp()}";
         networkConfig.DiscoveryPort = port;
         networkConfig.P2PPort = port;
 
@@ -61,8 +62,15 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     {
         return Interlocked.Increment(ref _discoveryPort);
     }
+    int _discoveryIp = 1;
+    private int AssignDiscoveryIp()
+    {
+        return Interlocked.Increment(ref _discoveryIp);
+    }
 
     [Test]
+    [Retry(3)]
+    [Parallelizable(ParallelScope.None)]
     public async Task TestDiscovery()
     {
         if (discoveryVersion == DiscoveryVersion.V5) Assert.Ignore("DiscV5 does not seems to work.");
@@ -90,7 +98,8 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
             HashSet<PublicKey> expectedKeys = new HashSet<PublicKey>(nodeKeys);
             expectedKeys.Remove(node.Resolve<IEnode>().PublicKey);
 
-            Assert.That(() => pool.Peers.Values.Select((p) => p.Node.Id).ToHashSet(), Is.EquivalentTo(expectedKeys).After((int)TestTimeout.TotalMilliseconds, 100));
+            Assert.That(() => pool.Peers.Values.Select((p) => p.Node.Id).ToHashSet(),
+                Is.EquivalentTo(expectedKeys).After(5000, 100));
         }
     }
 }

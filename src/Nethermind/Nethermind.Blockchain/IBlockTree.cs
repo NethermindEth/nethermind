@@ -68,6 +68,14 @@ namespace Nethermind.Blockchain
         AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None);
 
         /// <summary>
+        /// Inserts a disconnected batched block header (without body)
+        /// </summary>
+        /// <param name="headers">Header batch to add</param>
+        /// <param name="headerOptions"></param>
+        /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
+        void BulkInsertHeader(IReadOnlyList<BlockHeader> headers, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None);
+
+        /// <summary>
         /// Inserts a disconnected block body (not for processing).
         /// </summary>
         /// <param name="block">Block to add</param>
@@ -76,6 +84,8 @@ namespace Nethermind.Blockchain
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None);
 
         void UpdateHeadBlock(Hash256 blockHash);
+
+        void NewOldestBlock(long oldestBlock);
 
         /// <summary>
         /// Suggests block for inclusion in the block tree.
@@ -144,11 +154,12 @@ namespace Nethermind.Blockchain
 
         BlockInfo FindCanonicalBlockInfo(long blockNumber);
 
-        Hash256 FindHash(long blockNumber);
+        Hash256? FindHash(long blockNumber);
 
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
         void DeleteInvalidBlock(Block invalidBlock);
+        void DeleteOldBlock(long blockNumber, Hash256 blockHash);
 
         void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);
 
@@ -170,6 +181,7 @@ namespace Nethermind.Blockchain
         /// the whole branch.
         /// </summary>
         event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain;
+        event EventHandler<ForkChoiceUpdateEventArgs> OnForkChoiceUpdated;
 
         int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false);
 
@@ -178,5 +190,22 @@ namespace Nethermind.Blockchain
         void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
 
         void RecalculateTreeLevels();
+
+        /// <summary>
+        /// Sync pivot is mainly concerned with old blocks and receipts.
+        /// After sync pivot, blocks and headers should be continuous.
+        /// Sync pivot should be guaranteed to be a finalized block, code should not need to be concerned of consensus
+        /// for blocks before sync pivot.
+        /// Before sync pivot, there is no guarantee that blocks and receipts are available or continuous.
+        /// </summary>
+        (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
+
+        public readonly struct ForkChoiceUpdateEventArgs(Block? head, long safe, long finalized)
+        {
+            public Block? Head => head;
+            public long Safe => safe;
+            public long Finalized => finalized;
+        }
+        bool IsProcessingBlock { get; set; }
     }
 }

@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/funki-mainnet.json.zst",
     "GenesisHash": "0x7d2831dd811c616d073342a3074f2ce737c6b200b8192f9528e8bf32b1fac83e",
     "BaseDbPath": "nethermind_db/funki-mainnet",
-    "LogFileName": "funki-mainnet.logs.txt"
+    "LogFileName": "funki-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

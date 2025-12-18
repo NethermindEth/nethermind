@@ -59,11 +59,8 @@ public class ReceiptsMessageSerializerTests
                             Assert.That(deserialized.TxReceipts[i][j].ContractAddress, Is.Null, $"receipts[{i}][{j}].ContractAddress");
                             Assert.That(deserialized.TxReceipts[i][j].GasUsed, Is.EqualTo(0L), $"receipts[{i}][{j}].GasUsed");
                             Assert.That(deserialized.TxReceipts[i][j].GasUsedTotal, Is.EqualTo(txReceipts[i][j].GasUsedTotal), $"receipts[{i}][{j}].GasUsedTotal");
-                            if (!txReceipts[i][j].SkipStateAndStatusInRlp)
-                            {
-                                Assert.That(deserialized.TxReceipts[i][j].StatusCode, Is.EqualTo(txReceipts[i][j].BlockNumber < MainnetSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode), $"receipts[{i}][{j}].StatusCode");
-                                Assert.That(deserialized.TxReceipts[i][j].PostTransactionState, Is.EqualTo(txReceipts[i][j].BlockNumber < MainnetSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null), $"receipts[{i}][{j}].PostTransactionState");
-                            }
+                            Assert.That(deserialized.TxReceipts[i][j].StatusCode, Is.EqualTo(txReceipts[i][j].BlockNumber < MainnetSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode), $"receipts[{i}][{j}].StatusCode");
+                            Assert.That(deserialized.TxReceipts[i][j].PostTransactionState, Is.EqualTo(txReceipts[i][j].BlockNumber < MainnetSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null), $"receipts[{i}][{j}].PostTransactionState");
                         }
                     }
                 }
@@ -81,12 +78,22 @@ public class ReceiptsMessageSerializerTests
     [Test]
     public void Roundtrip_with_IgnoreOutputs()
     {
-        TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject], [Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject]];
-        foreach (TxReceipt[] receipts in data)
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
+
+        var decoder = new ReceiptMessageDecoder(skipStateAndStatus: true);
+        byte[] encoded = decoder.EncodeNew(receipt);
+
+        var decoded = decoder.Decode(new RlpStream(encoded));
+
+        var expectedDecoded = new TxReceipt
         {
-            receipts.SetSkipStateAndStatusInRlp(true);
-        }
-        Test(data);
+            TxType = receipt.TxType,
+            GasUsedTotal = receipt.GasUsedTotal,
+            Bloom = receipt.Bloom,
+            Logs = receipt.Logs
+        };
+
+        decoded.Should().BeEquivalentTo(expectedDecoded);
     }
 
     [Test]

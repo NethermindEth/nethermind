@@ -22,6 +22,6 @@ namespace Nethermind.State
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
         protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : _zeroValue;
+            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : StorageTree.ZeroBytes;
     }
 }

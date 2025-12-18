@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/cyber-sepolia.json.zst",
     "GenesisHash": "0xd61aa9a43cba806375bec108aba488f00cf784a53a6e5164bc3ef9eb8b169eaf",
     "BaseDbPath": "nethermind_db/cyber-sepolia",
-    "LogFileName": "cyber-sepolia.logs.txt"
+    "LogFileName": "cyber-sepolia.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 10

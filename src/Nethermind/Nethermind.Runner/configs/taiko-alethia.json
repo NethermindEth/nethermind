@@ -4,18 +4,17 @@
     "ChainSpecPath": "chainspec/taiko-alethia.json",
     "GenesisHash": "0x90bc60466882de9637e269e87abab53c9108cf9113188bc4f80bcfcb10e489b9",
     "BaseDbPath": "nethermind_db/taiko-alethia",
-    "LogFileName": "taiko-alethia.log",
-    "DisableGcOnNewPayload": false
+    "LogFileName": "taiko-alethia.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
   "Sync": {
-    "FastSync": true,
-    "SnapSync": true,
-    "PivotNumber": 460269,
-    "PivotHash": "0xc22ad6f4c1fecab96fa084dad303b4482c552d1d07f0c63b87a1b318b022378f",
-    "PivotTotalDifficulty": 0
+    "FastSync": false,
+    "SnapSync": false
+  },
+  "Pruning": {
+    "PruningBoundary": 1000
   },
   "JsonRpc": {
     "Enabled": true,

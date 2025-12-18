@@ -1,13 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Security;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules;
@@ -57,10 +61,14 @@ public partial class BlockProducerBaseTests
                         FeeCollector = _feeCollector,
                         IsEip155Enabled = true
                     });
-                BlockBuilder blockBuilder = Build.A.Block.Genesis.WithGasLimit(gasLimit);
                 _testRpcBlockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-                    .WithGenesisBlockBuilder(blockBuilder)
-                    .Build(spec);
+                    .Build((builder) => builder
+                        .AddSingleton<ISpecProvider>(spec)
+                        .WithGenesisPostProcessor((block, state) =>
+                        {
+                            block.Header.GasLimit = gasLimit;
+                        })
+                    );
                 _testRpcBlockchain.TestWallet.UnlockAccount(_address, new SecureString());
                 await _testRpcBlockchain.AddFunds(_address, 1.Ether());
                 return this;
@@ -162,7 +170,7 @@ public partial class BlockProducerBaseTests
                 Assert.That(startingBlock.Header.BaseFeePerGas, Is.EqualTo(UInt256.Zero));
                 for (long i = startingBlock.Number; i < _eip1559TransitionBlock - 1; ++i)
                 {
-                    await _testRpcBlockchain.AddBlock();
+                    await _testRpcBlockchain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx);
                     Block currentBlock = blockTree.Head!;
                     Assert.That(currentBlock.Header.BaseFeePerGas, Is.EqualTo(UInt256.Zero));
                 }
@@ -174,7 +182,7 @@ public partial class BlockProducerBaseTests
                 params Transaction[] transactions)
             {
                 await ExecuteAntecedentIfNeeded();
-                await _testRpcBlockchain.AddBlock(transactions);
+                await _testRpcBlockchain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx, transactions);
                 IBlockTree blockTree = _testRpcBlockchain.BlockTree;
                 Block headBlock = blockTree.Head!;
                 Assert.That(headBlock.Header.BaseFeePerGas, Is.EqualTo(expectedBaseFee));

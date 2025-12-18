@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/pivotal-sepolia.json.zst",
     "GenesisHash": "0xac7379723e9ff584c00e1cbeb20e76c36dbc98dc8bf2146d1df317b7b6636b91",
     "BaseDbPath": "nethermind_db/pivotal-sepolia",
-    "LogFileName": "pivotal-sepolia.logs.txt"
+    "LogFileName": "pivotal-sepolia.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

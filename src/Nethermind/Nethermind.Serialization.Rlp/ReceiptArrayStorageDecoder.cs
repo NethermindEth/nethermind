@@ -8,7 +8,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Serialization.Rlp;
 
 [Rlp.SkipGlobalRegistration]
-public class ReceiptArrayStorageDecoder(bool compactEncoding = true) : IRlpStreamDecoder<TxReceipt[]>
+public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : RlpStreamDecoder<TxReceipt[]>
 {
     public static readonly ReceiptArrayStorageDecoder Instance = new();
 
@@ -20,7 +20,7 @@ public class ReceiptArrayStorageDecoder(bool compactEncoding = true) : IRlpStrea
 
     public const int CompactEncoding = 127;
 
-    public int GetLength(TxReceipt[] items, RlpBehaviors rlpBehaviors)
+    public override int GetLength(TxReceipt[] items, RlpBehaviors rlpBehaviors)
     {
         if (items is null || items.Length == 0)
         {
@@ -59,7 +59,7 @@ public class ReceiptArrayStorageDecoder(bool compactEncoding = true) : IRlpStrea
         }
     }
 
-    public TxReceipt[] Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TxReceipt[] DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.PeekByte() == CompactEncoding)
         {
@@ -72,7 +72,7 @@ public class ReceiptArrayStorageDecoder(bool compactEncoding = true) : IRlpStrea
         }
     }
 
-    public void Encode(RlpStream stream, TxReceipt[] items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, TxReceipt[] items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (items is null || items.Length == 0)
         {

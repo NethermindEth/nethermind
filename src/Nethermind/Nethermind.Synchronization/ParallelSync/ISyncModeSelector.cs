@@ -5,10 +5,11 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Events;
+using Nethermind.Core.ServiceStopper;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public interface ISyncModeSelector : IDisposable
+    public interface ISyncModeSelector : IDisposable, IStoppableService
     {
         SyncMode Current { get; }
 
@@ -18,7 +19,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         event EventHandler<SyncModeChangedEventArgs> Changed;
 
-        void Stop();
         void Update();
 
         async Task WaitUntilMode(Func<SyncMode, bool> predicate, CancellationToken cancellationToken)

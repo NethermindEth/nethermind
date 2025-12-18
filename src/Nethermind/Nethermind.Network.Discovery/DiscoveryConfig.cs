@@ -11,8 +11,6 @@ public class DiscoveryConfig : IDiscoveryConfig
 
     public int Concurrency { get; set; } = 3;
 
-    public int BitsPerHop { get; set; } = 8;
-
     public int MaxDiscoveryRounds { get; set; } = 8;
 
     public int EvictionCheckInterval { get; set; } = 75;

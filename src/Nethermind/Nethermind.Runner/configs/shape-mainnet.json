@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/shape-mainnet.json.zst",
     "GenesisHash": "0xf17c665ffdebe214ec214bcd798c725141e7b5c29799500abd6a8738d15bdebe",
     "BaseDbPath": "nethermind_db/shape-mainnet",
-    "LogFileName": "shape-mainnet.logs.txt"
+    "LogFileName": "shape-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

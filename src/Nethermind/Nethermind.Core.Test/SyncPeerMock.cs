@@ -65,7 +65,7 @@ namespace Nethermind.Core.Test
         public string ClientId => Node.ClientId;
         public Hash256 HeadHash { get; set; }
         public long HeadNumber { get; set; }
-        public UInt256 TotalDifficulty { get; set; }
+        public UInt256? TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 

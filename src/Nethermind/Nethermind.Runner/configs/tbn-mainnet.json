@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/tbn-mainnet.json.zst",
     "GenesisHash": "0xe222b4b07ee9c885d13ee341823c92aa449f9769ac68fb5f1e1d4e602a990a4a",
     "BaseDbPath": "nethermind_db/tbn-mainnet",
-    "LogFileName": "tbn-mainnet.logs.txt"
+    "LogFileName": "tbn-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

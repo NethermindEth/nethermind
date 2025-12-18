@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/redstone-mainnet.json.zst",
     "GenesisHash": "0xa4f55631013577464810893a05b18f07fe483885a6ef93e0060e7128bdf4ca3b",
     "BaseDbPath": "nethermind_db/redstone-mainnet",
-    "LogFileName": "redstone-mainnet.logs.txt"
+    "LogFileName": "redstone-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

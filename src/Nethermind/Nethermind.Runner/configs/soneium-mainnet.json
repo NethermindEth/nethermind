@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/soneium-mainnet.json.zst",
     "GenesisHash": "0x295d22d269634c7d0055b33b887519362d0b31899e97109d1789a8a168de1b21",
     "BaseDbPath": "nethermind_db/soneium-mainnet",
-    "LogFileName": "soneium-mainnet.logs.txt"
+    "LogFileName": "soneium-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

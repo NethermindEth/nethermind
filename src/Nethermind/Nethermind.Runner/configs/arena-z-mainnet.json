@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/arena-z-mainnet.json.zst",
     "GenesisHash": "0xbe7112a730b1fae8d94115271adc600559ebe87c75df1d2df9414bd7298eb7fb",
     "BaseDbPath": "nethermind_db/arena-z-mainnet",
-    "LogFileName": "arena-z-mainnet.logs.txt"
+    "LogFileName": "arena-z-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -23,7 +23,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2
