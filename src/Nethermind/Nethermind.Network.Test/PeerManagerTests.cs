@@ -123,7 +123,7 @@ namespace Nethermind.Network.Test
         {
             Assert.Throws<ArgumentException>(static delegate
             {
-                Enode unused = new(enode3String);
+                _ = new Enode(enode3String);
             });
         }
 
@@ -132,7 +132,7 @@ namespace Nethermind.Network.Test
         {
             Assert.Throws<ArgumentException>(static delegate
             {
-                Enode unused = new(enode4String);
+                _ = new Enode(enode4String);
             });
         }
 
@@ -141,7 +141,7 @@ namespace Nethermind.Network.Test
         {
             Assert.Throws<ArgumentException>(static delegate
             {
-                Enode unused = new(enode5String);
+                _ = new Enode(enode5String);
             });
         }
 
@@ -166,7 +166,7 @@ namespace Nethermind.Network.Test
         {
             Assert.Throws<ArgumentException>(static delegate
             {
-                Enode unused = new(enode8String);
+                _ = new Enode(enode8String);
             });
         }
 
@@ -175,7 +175,7 @@ namespace Nethermind.Network.Test
         {
             Assert.Throws<ArgumentException>(static delegate
             {
-                Enode unused = new(enode9String);
+                _ = new Enode(enode9String);
             });
         }
 
@@ -184,7 +184,7 @@ namespace Nethermind.Network.Test
         {
             Assert.Throws<ArgumentException>(static delegate
             {
-                Enode unused = new(enode10String);
+                _ = new Enode(enode10String);
             });
         }
 
