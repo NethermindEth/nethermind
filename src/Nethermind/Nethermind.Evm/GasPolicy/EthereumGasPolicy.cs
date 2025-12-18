@@ -109,7 +109,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             // If the storage cell is still cold, apply the higher cold access cost and mark it as warm.
             if (accessTracker.WarmUp(in storageCell))
             {
-                result = UpdateGas(ref gas, GasCostOf.ColdSLoad);;
+                result = UpdateGas(ref gas, GasCostOf.ColdSLoad);
             }
             // For SLOAD operations on already warmed-up storage, apply a lower warm-read cost.
             else if (storageAccessType == StorageAccessType.SLOAD)
