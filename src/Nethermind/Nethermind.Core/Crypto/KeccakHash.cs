@@ -142,9 +142,11 @@ public sealed class KeccakHash
     // update the state with given number of rounds
     private static void KeccakF(Span<ulong> st)
     {
+        ref ulong roundConstants = ref MemoryMarshal.GetArrayDataReference(RoundConstants);
+        ref ulong state = ref MemoryMarshal.GetReference(st);
         if (Avx512F.IsSupported)
         {
-            KeccakF1600Avx512F(st);
+            KeccakF1600Avx512F(ref roundConstants, ref state);
         }
         //else if (Avx2.IsSupported)
         //{
@@ -153,14 +155,12 @@ public sealed class KeccakHash
         //}
         else
         {
-            KeccakF1600(st);
+            KeccakF1600(ref roundConstants, ref state);
         }
     }
 
-    private static void KeccakF1600(Span<ulong> st)
+    private static void KeccakF1600(ref ulong roundConstants, ref ulong state)
     {
-        Debug.Assert(st.Length == 25);
-
         ulong aba, abe, abi, abo, abu;
         ulong aga, age, agi, ago, agu;
         ulong aka, ake, aki, ako, aku;
@@ -174,32 +174,31 @@ public sealed class KeccakHash
         ulong ema, eme, emi, emo, emu;
         ulong esa, ese, esi, eso, esu;
 
-        asu = st[24];
-        aso = st[23];
-        asi = st[22];
-        ase = st[21];
-        asa = st[20];
-        amu = st[19];
-        amo = st[18];
-        ami = st[17];
-        ame = st[16];
-        ama = st[15];
-        aku = st[14];
-        ako = st[13];
-        aki = st[12];
-        ake = st[11];
-        aka = st[10];
-        agu = st[9];
-        ago = st[8];
-        agi = st[7];
-        age = st[6];
-        aga = st[5];
-        abu = st[4];
-        abo = st[3];
-        abi = st[2];
-        abe = st[1];
-        aba = st[0];
-
+        aba = Unsafe.Add(ref state, 0);
+        abe = Unsafe.Add(ref state, 1);
+        abi = Unsafe.Add(ref state, 2);
+        abo = Unsafe.Add(ref state, 3);
+        abu = Unsafe.Add(ref state, 4);
+        aga = Unsafe.Add(ref state, 5);
+        age = Unsafe.Add(ref state, 6);
+        agi = Unsafe.Add(ref state, 7);
+        ago = Unsafe.Add(ref state, 8);
+        agu = Unsafe.Add(ref state, 9);
+        aka = Unsafe.Add(ref state, 10);
+        ake = Unsafe.Add(ref state, 11);
+        aki = Unsafe.Add(ref state, 12);
+        ako = Unsafe.Add(ref state, 13);
+        aku = Unsafe.Add(ref state, 14);
+        ama = Unsafe.Add(ref state, 15);
+        ame = Unsafe.Add(ref state, 16);
+        ami = Unsafe.Add(ref state, 17);
+        amo = Unsafe.Add(ref state, 18);
+        amu = Unsafe.Add(ref state, 19);
+        asa = Unsafe.Add(ref state, 20);
+        ase = Unsafe.Add(ref state, 21);
+        asi = Unsafe.Add(ref state, 22);
+        aso = Unsafe.Add(ref state, 23);
+        asu = Unsafe.Add(ref state, 24);
         for (int round = 0; round < ROUNDS; round += 2)
         {
             //    prepareTheta
@@ -219,7 +218,7 @@ public sealed class KeccakHash
             bCa = aba ^ da;
             bCe = RotateLeft(age ^ de, 44);
             bCi = RotateLeft(aki ^ di, 43);
-            eba = bCa ^ ((~bCe) & bCi) ^ RoundConstants[round];
+            eba = bCa ^ ((~bCe) & bCi) ^ Unsafe.Add(ref roundConstants, round);
             bCo = RotateLeft(amo ^ @do, 21);
             ebe = bCe ^ ((~bCi) & bCo);
             bCu = RotateLeft(asu ^ du, 14);
@@ -289,7 +288,7 @@ public sealed class KeccakHash
             bCi = RotateLeft(eki ^ di, 43);
             bCe = RotateLeft(ege ^ de, 44);
             bCa = eba ^ da;
-            aba = bCa ^ ((~bCe) & bCi) ^ RoundConstants[round + 1];
+            aba = bCa ^ ((~bCe) & bCi) ^ Unsafe.Add(ref roundConstants, round + 1);
             bCo = RotateLeft(emo ^ @do, 21);
             abe = bCe ^ ((~bCi) & bCo);
             bCu = RotateLeft(esu ^ du, 14);
@@ -343,31 +342,31 @@ public sealed class KeccakHash
         }
 
         //copyToState(state, A)
-        st[24] = asu;
-        st[23] = aso;
-        st[22] = asi;
-        st[21] = ase;
-        st[20] = asa;
-        st[19] = amu;
-        st[18] = amo;
-        st[17] = ami;
-        st[16] = ame;
-        st[15] = ama;
-        st[14] = aku;
-        st[13] = ako;
-        st[12] = aki;
-        st[11] = ake;
-        st[10] = aka;
-        st[9] = agu;
-        st[8] = ago;
-        st[7] = agi;
-        st[6] = age;
-        st[5] = aga;
-        st[4] = abu;
-        st[3] = abo;
-        st[2] = abi;
-        st[1] = abe;
-        st[0] = aba;
+        Unsafe.Add(ref state, 0) = aba;
+        Unsafe.Add(ref state, 1) = abe;
+        Unsafe.Add(ref state, 2) = abi;
+        Unsafe.Add(ref state, 3) = abo;
+        Unsafe.Add(ref state, 4) = abu;
+        Unsafe.Add(ref state, 5) = aga;
+        Unsafe.Add(ref state, 6) = age;
+        Unsafe.Add(ref state, 7) = agi;
+        Unsafe.Add(ref state, 8) = ago;
+        Unsafe.Add(ref state, 9) = agu;
+        Unsafe.Add(ref state, 10) = aka;
+        Unsafe.Add(ref state, 11) = ake;
+        Unsafe.Add(ref state, 12) = aki;
+        Unsafe.Add(ref state, 13) = ako;
+        Unsafe.Add(ref state, 14) = aku;
+        Unsafe.Add(ref state, 15) = ama;
+        Unsafe.Add(ref state, 16) = ame;
+        Unsafe.Add(ref state, 17) = ami;
+        Unsafe.Add(ref state, 18) = amo;
+        Unsafe.Add(ref state, 19) = amu;
+        Unsafe.Add(ref state, 20) = asa;
+        Unsafe.Add(ref state, 21) = ase;
+        Unsafe.Add(ref state, 22) = asi;
+        Unsafe.Add(ref state, 23) = aso;
+        Unsafe.Add(ref state, 24) = asu;
     }
 
     public static byte[] ComputeHashBytes(ReadOnlySpan<byte> input, int size = HASH_SIZE)
@@ -487,8 +486,10 @@ public sealed class KeccakHash
             ThrowBadKeccak();
         }
 
-        Span<ulong> state = stackalloc ulong[STATE_SIZE / sizeof(ulong)];
-        Span<byte> stateBytes = MemoryMarshal.AsBytes(state);
+        Span<ulong> stateSpan = stackalloc ulong[STATE_SIZE / sizeof(ulong)];
+        Span<byte> stateBytes = MemoryMarshal.AsBytes(stateSpan);
+        ref ulong state = ref MemoryMarshal.GetReference(stateSpan);
+        ref ulong roundConstants = ref MemoryMarshal.GetArrayDataReference(RoundConstants);
 
         if (input.Length == Address.Size)
         {
@@ -513,10 +514,10 @@ public sealed class KeccakHash
                 switch (implementation)
                 {
                     case Implementation.Avx512:
-                        KeccakF1600Avx512F(state);
+                        KeccakF1600Avx512F(ref roundConstants, ref state);
                         break;
                     default:
-                        KeccakF1600(state);
+                        KeccakF1600(ref roundConstants, ref state);
                         break;
                 }
                 input = input[roundSize..];
@@ -541,10 +542,10 @@ public sealed class KeccakHash
         switch (implementation)
         {
             case Implementation.Avx512:
-                KeccakF1600Avx512F(state);
+                KeccakF1600Avx512F(ref roundConstants, ref state);
                 break;
             default:
-                KeccakF1600(state);
+                KeccakF1600(ref roundConstants, ref state);
                 break;
         }
 
@@ -870,22 +871,19 @@ public sealed class KeccakHash
     }
 
     [SkipLocalsInit]
-    private static void KeccakF1600Avx512F(Span<ulong> state)
+    private static void KeccakF1600Avx512F(ref ulong roundConstants, ref ulong state)
     {
-        ref ulong s = ref MemoryMarshal.GetReference(state);
-        ref ulong roundConstants = ref MemoryMarshal.GetArrayDataReference(RoundConstants);
-
         // State layout:
         // - Each zmm holds one Keccak row (y fixed, x varies) in lanes 0-4.
         // - Lanes 5-7 are treated as "dead" and must never be permuted into lanes 0-4.
-        Vector512<ulong> c0 = Unsafe.As<ulong, Vector512<ulong>>(ref s);
-        Vector512<ulong> c1 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 5));
-        Vector512<ulong> c2 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 10));
-        Vector512<ulong> c3 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 15));
+        Vector512<ulong> c0 = Unsafe.As<ulong, Vector512<ulong>>(ref state);
+        Vector512<ulong> c1 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref state, 5));
+        Vector512<ulong> c2 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref state, 10));
+        Vector512<ulong> c3 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref state, 15));
 
         // Safe tail load for row4 (20..24) without over-read.
-        Vector256<ulong> c4lo = Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref s, 20));
-        Vector256<ulong> c4hi = Vector256.Create(Unsafe.Add(ref s, 24), 0UL, 0UL, 0UL);
+        Vector256<ulong> c4lo = Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref state, 20));
+        Vector256<ulong> c4hi = Vector256.Create(Unsafe.Add(ref state, 24), 0UL, 0UL, 0UL);
         Vector512<ulong> c4 = Avx512F.InsertVector256(Vector512<ulong>.Zero, c4lo, 0);
         c4 = Avx512F.InsertVector256(c4, c4hi, 1);
 
@@ -920,12 +918,10 @@ public sealed class KeccakHash
         {
             // Round 0: rows -> columns
             {
-                // Theta (rows) - parity in byte view to discourage XOR3 -> vpternlogq
-                Vector512<ulong> parityB = Avx512F.Xor(c0, c1);
-                parityB = Avx512F.Xor(parityB, c2);
-                parityB = Avx512F.Xor(parityB, c3);
-                parityB = Avx512F.Xor(parityB, c4);
-                Vector512<ulong> parity = parityB;
+                // Theta (rows)
+                Vector512<ulong> parity0 = Avx512F.Xor(c0, c1);
+                Vector512<ulong> parity1 = Avx512F.Xor(c2, c3);
+                Vector512<ulong> parity = Avx512F.Xor(Avx512F.Xor(parity0, parity1), c4);
 
                 Vector512<ulong> theta1a = Avx512F.PermuteVar8x64(parity, rot1);
                 Vector512<ulong> theta0 = Avx512F.PermuteVar8x64(parity, rot4);
@@ -989,43 +985,43 @@ public sealed class KeccakHash
 
                 Vector512<ulong> u1 = Avx512F.Shuffle4x128(t01o, t23o, 0x44);
                 c3 = Avx512F.Shuffle4x128(u1, t4o, 0x08); // d4
-                c4 = Avx512F.Shuffle4x128(u1, t4o, 0x5D);                 // d2
+                c4 = Avx512F.Shuffle4x128(u1, t4o, 0x5D); // d2
 
                 Vector512<ulong> u4 = Avx512F.Shuffle4x128(t01e, t23e, 0xAA);
                 c2 = Avx512F.Shuffle4x128(u4, t4e, 0xA8); // d1
 
-                // Round 1 Theta (diagonals) - parity in byte view
-                Vector512<ulong> parity = Avx512F.Xor(c0, c2);
-                parity = Avx512F.Xor(parity, c4);
-                parity = Avx512F.Xor(parity, c1);
-                parity = Avx512F.Xor(parity, c3);
+                // Round 1 Theta (diagonals)
+                Vector512<ulong> parity0 = Avx512F.Xor(c0, c1);
+                Vector512<ulong> parity1 = Avx512F.Xor(c2, c3);
+                Vector512<ulong> parity = Avx512F.Xor(Avx512F.Xor(parity0, parity1), c4);
 
                 Vector512<ulong> theta1a = Avx512F.PermuteVar8x64(parity, rot1);
                 Vector512<ulong> theta0 = Avx512F.PermuteVar8x64(parity, rot4);
                 Vector512<ulong> theta1 = Avx512F.RotateLeft(theta1a, 1);
                 Vector512<ulong> theta = Avx512F.Xor(theta0, theta1);
 
-                // Pi (diagonals -> rows) fusion: apply theta via 2 xors in byte view, then permute
-                c0 = Avx512F.Xor(c0, theta); // d0 -> row0 (no permute)
-
-                c2 = Avx512F.Xor(c2, theta);
-                c2 = Avx512F.PermuteVar8x64(c2, rot1);
-
-                c4 = Avx512F.Xor(c4, theta);
-                c4 = Avx512F.PermuteVar8x64(c4, rot2);
+                // Pi (diagonals -> rows) fusion: apply theta via xors, then permute
 
                 c1 = Avx512F.Xor(c1, theta);
                 c1 = Avx512F.PermuteVar8x64(c1, rot3);
 
+                c2 = Avx512F.Xor(c2, theta);
+                c2 = Avx512F.PermuteVar8x64(c2, rot1);
+
                 c3 = Avx512F.Xor(c3, theta);
                 c3 = Avx512F.PermuteVar8x64(c3, rot4);
 
+                c4 = Avx512F.Xor(c4, theta);
+                c4 = Avx512F.PermuteVar8x64(c4, rot2);
+
+                c0 = Avx512F.Xor(c0, theta); // d0 -> row0 (no permute)
+
                 // Rho
                 c0 = Avx512F.RotateLeftVariable(c0, rhod0);
-                c2 = Avx512F.RotateLeftVariable(c2, rhod1Pi);
-                c4 = Avx512F.RotateLeftVariable(c4, rhod2Pi);
                 c1 = Avx512F.RotateLeftVariable(c1, rhod3Pi);
+                c2 = Avx512F.RotateLeftVariable(c2, rhod1Pi);
                 c3 = Avx512F.RotateLeftVariable(c3, rhod4Pi);
+                c4 = Avx512F.RotateLeftVariable(c4, rhod2Pi);
             }
 
             // Chi (rows, intra-register) + Iota - replace ternlog chi with AndNot+Xor in byte view
@@ -1067,12 +1063,12 @@ public sealed class KeccakHash
         }
 
         // Store rows 0-3 as full zmm; row4 as 4 lanes + scalar lane4.
-        Unsafe.As<ulong, Vector512<ulong>>(ref s) = c0;
-        Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 5)) = c1;
-        Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 10)) = c2;
-        Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 15)) = c3;
+        Unsafe.As<ulong, Vector512<ulong>>(ref state) = c0;
+        Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref state, 5)) = c1;
+        Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref state, 10)) = c2;
+        Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref state, 15)) = c3;
 
-        Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref s, 20)) = c4.GetLower();
-        Unsafe.Add(ref s, 24) = c4.GetElement(4);
+        Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref state, 20)) = c4.GetLower();
+        Unsafe.Add(ref state, 24) = c4.GetElement(4);
     }
 }
