@@ -343,7 +343,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                 }
 
                 var range = new BlockRange(_traceConfig.EffectiveStartBlock, _traceConfig.EffectiveEndBlock);
-                var tracer = new RetrospectiveTracer(blockTree, _counter, api.LogManager);
+                var tracer = new RetrospectiveTracer(blockTree, _counter, _traceConfig.MaxDegreeOfParallelism, api.LogManager);
 
                 if (_logger.IsInfo)
                 {

@@ -84,14 +84,4 @@ public sealed class OpcodeCounter
         return result;
     }
 
-    /// <summary>
-    /// Resets all opcode counts to zero.
-    /// </summary>
-    public void Reset()
-    {
-        lock (_lock)
-        {
-            Array.Clear(_counters, 0, OpcodeSpace);
-        }
-    }
 }

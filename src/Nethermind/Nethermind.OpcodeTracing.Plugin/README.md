@@ -12,7 +12,9 @@ The Opcode Tracing Plugin enables tracing of EVM opcode usage across configurabl
   - Explicit range: `--OpcodeTracing.StartBlock 100 --OpcodeTracing.EndBlock 200`
   - Recent N blocks: `--OpcodeTracing.Blocks 100`
 
-- **Comprehensive JSON Output**: Single JSON file per trace with metadata and aggregated opcode counts
+- **Comprehensive JSON Output**:
+  - **Retrospective mode**: Single JSON file per trace with metadata and aggregated opcode counts
+  - **RealTime mode**: Dual output - per-block JSON files + cumulative JSON file with running totals
 
 ## Understanding the Tracing Modes
 
@@ -21,6 +23,15 @@ The Opcode Tracing Plugin enables tracing of EVM opcode usage across configurabl
 **Important**: RealTime mode traces opcodes from EVM execution of **new blocks at the chain tip**. It requires the node to be **fully synced** before tracing begins.
 
 **Why?** During initial sync, blocks are downloaded and stored without executing the EVM - the state is reconstructed from downloaded trie nodes instead. Only after sync completes do new blocks get processed through the EVM, which is when RealTime opcode tracing captures execution data.
+
+**Output**: RealTime mode produces **dual JSON output**:
+1. **Per-block files** (`opcode-trace-block-{blockNumber}.json`): Written immediately after each block is processed, containing opcodes for that single block
+2. **Cumulative file** (`opcode-trace-all-{sessionId}.json`): Updated after each block with aggregated counts from all blocks processed in the session
+
+**Block Range Behavior**: When `StartBlock` and `EndBlock` are configured:
+- Only blocks within the configured range are traced
+- After `EndBlock` is reached, tracing **stops** and the cumulative file is finalized with `completionStatus="complete"`
+- Blocks after `EndBlock` are **not** traced
 
 **Best for**:
 - Monitoring opcode usage on production nodes
@@ -131,14 +142,26 @@ dotnet run --project Nethermind.Runner -- \\
 
 ### File Naming
 
-Output files follow the pattern:
+**Retrospective Mode**:
 ```
 opcode-trace-{startBlock}-{endBlock}-{timestamp}.json
 ```
-
 Example: `opcode-trace-18000000-18001000-20251204143045.json`
 
+**RealTime Mode** (dual output):
+- Per-block files: `opcode-trace-block-{blockNumber}.json`
+- Cumulative file: `opcode-trace-all-{sessionId}.json` (sessionId format: `yyyyMMddHHmmss`)
+
+Example:
+```
+opcode-trace-block-18000000.json
+opcode-trace-block-18000001.json
+opcode-trace-all-20251204143045.json
+```
+
 ### JSON Structure
+
+**Retrospective Mode / Cumulative File**:
 
 ```json
 {
@@ -158,6 +181,26 @@ Example: `opcode-trace-18000000-18001000-20251204143045.json`
     "CALL": 89234,
     "PUSH1": 2345678,
     "0xfe": 12
+  }
+}
+```
+
+**Per-Block File** (RealTime mode):
+
+```json
+{
+  "metadata": {
+    "blockNumber": 18000000,
+    "parentHash": "0x1234...",
+    "timestamp": 1701698445,
+    "transactionCount": 150,
+    "tracedAt": "2025-12-04T14:30:45.123Z"
+  },
+  "opcodeCounts": {
+    "ADD": 1523,
+    "MUL": 892,
+    "SLOAD": 456,
+    "SSTORE": 321
   }
 }
 ```

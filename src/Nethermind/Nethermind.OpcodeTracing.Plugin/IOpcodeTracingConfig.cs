@@ -26,7 +26,7 @@ public interface IOpcodeTracingConfig : IConfig
     /// <summary>
     /// Gets or sets the maximum number of tracing workers. 0 uses the number of logical processors.
     /// </summary>
-    [ConfigItem(Description = "Maximum number of tracing workers. 0 switches to the number of logical processors.", DefaultValue = "0")]
+    [ConfigItem(Description = "Maximum number of tracing workers. 0 switches to the number of logical processors. For Retrospective mode only.", DefaultValue = "0")]
     int MaxDegreeOfParallelism { get; set; }
 
     /// <summary>
