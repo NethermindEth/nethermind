@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -26,6 +30,11 @@ public class ForkConfig
     public required byte[] ForkId { get; init; }
     public required OrderedDictionary<string, Address> Precompiles { get; init; }
     public required OrderedDictionary<string, Address> SystemContracts { get; init; }
+    public FrozenSet<AddressAsKey> CensoredSenders { get; internal set; }
+    public FrozenSet<AddressAsKey> CensoredTo { get; internal set; }
+    public bool Is7702PatchEnabled { get; internal set; }
+    public bool IsCensoringEnabled { get; internal set; }
+    public bool? Now { get; internal set; }
 }
 
 public class BlobScheduleSettingsForRpc

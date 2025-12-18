@@ -5,11 +5,13 @@
     "GenesisHash": "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756",
     "BaseDbPath": "nethermind_db/gnosis",
     "LogFileName": "gnosis.log",
-    "MemoryHint": 768000000
+    "MemoryHint": 768000000,
+    "DiagnosticMode": "MemDb"
   },
   "JsonRpc": {
     "Enabled": true,
-    "EnginePort": 8551
+    "EnginePort": 8551,
+    "UnsecureDevNoRpcAuthentication": true
   },
   "Sync": {
     "FastSync": true,

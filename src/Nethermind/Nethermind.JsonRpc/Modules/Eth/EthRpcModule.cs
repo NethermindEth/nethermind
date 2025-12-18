@@ -1,16 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Frozen;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -42,6 +32,16 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using System;
+using System.Collections.Frozen;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
 using Block = Nethermind.Core.Block;
 using BlockHeader = Nethermind.Core.BlockHeader;
 using ResultType = Nethermind.Core.ResultType;
@@ -821,9 +821,11 @@ public partial class EthRpcModule(
             ReadOnlySpan<Fork> forkSchedule = forkInfo.GetAllForks();
             Dictionary<ForkId, ForkConfig> allForks = new(forkSchedule.Length);
 
+            bool now = false;
             foreach (Fork scheduledFork in forkSchedule)
             {
-                allForks.Add(scheduledFork.Id, BuildForkConfig(scheduledFork, _specProvider));
+                now = !now && scheduledFork.Activation.Timestamp is not null && scheduledFork.Activation.Timestamp < (ulong)DateTime.Now.ToFileTime();
+                allForks.Add(scheduledFork.Id, BuildForkConfig(scheduledFork, _specProvider, now));
             }
 
             forkConfigCache = allForks.ToFrozenDictionary();
@@ -850,9 +852,9 @@ public partial class EthRpcModule(
             All = allForkConfigs
         }, UnchangedDictionaryKeyOptions)));
 
-        static ForkConfig BuildForkConfig(Fork fork, ISpecProvider specProvider)
+        static ForkConfig BuildForkConfig(Fork fork, ISpecProvider specProvider, bool now = false)
         {
-            IReleaseSpec spec = specProvider.GetSpec(fork.Activation.BlockNumber, fork.Activation.Timestamp);
+            IReleaseSpec spec = specProvider.GetSpec(fork.Activation.BlockNumber, now ? (ulong)(new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds()) : fork.Activation.Timestamp);
 
             return new ForkConfig
             {
@@ -868,6 +870,11 @@ public partial class EthRpcModule(
                 ForkId = fork.Id.HashBytes,
                 Precompiles = spec.ListPrecompiles(),
                 SystemContracts = spec.ListSystemContracts(),
+                CensoredSenders = spec.CensoredSenders,
+                CensoredTo = spec.CensoredTo,
+                Is7702PatchEnabled = spec.Is7702PatchEnabled,
+                IsCensoringEnabled = spec.IsCensoringEnabled,
+                Now = now ? true : null,
             };
         }
     }

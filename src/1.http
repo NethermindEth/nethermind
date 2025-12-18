@@ -1,0 +1,55 @@
+
+#@server = http://209.127.228.66/rpc/6ekWpL9BXR0aLXrd
+//@server = https://eth-sepolia.g.alchemy.com/<api-key>
+
+#@server = http://74.207.234.111:8545
+
+@auth = http://127.0.0.1:8551/
+
+@server = http://127.0.0.1:8545/
+
+###
+POST {{auth}}
+Content-Type: application/json
+
+{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "engine_newPayloadV4",
+    "params": [
+        {
+            "parentHash": "0x278fe094bd1c56cddbf1486f1c1bc1e979e835cfc3c452ec64331ca39ec333e9",
+            "feeRecipient": "0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba",
+            "stateRoot": "0x517f4690b29db79f827d012a0ba8c700ab27bef052639d3224c99e31dc5263bb",
+            "receiptsRoot": "0x3cb706b7bc4bf4a2adaf7cff983c076223b628cee0671234dd76251c51925e8b",
+            "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "blockNumber": "0x1",
+            "gasLimit": "0x2255100",
+            "gasUsed": "0x5334",
+            "timestamp": "0x67d80ec1",
+            "extraData": "0x00",
+            "prevRandao": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "baseFeePerGas": "0x7",
+            "blobGasUsed": "0x0",
+            "excessBlobGas": "0x0",
+            "blockHash": "0xc590b73a9b7cb8b4ecf8917b57a28b2f4c8e9aa736f8e44e048ec429539ac886",
+            "transactions": [
+            ],
+            "withdrawals": []
+        },
+        [],
+        "0x0000000000000000000000000000000000000000000000000000000000000000",
+        []
+    ]
+}
+
+###
+POST {{server}}
+Content-Type: application/json
+
+{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "eth_config",
+    "params": [true]
+}
