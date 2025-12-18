@@ -18,6 +18,7 @@ namespace Nethermind.JsonRpc.Client
         private readonly HttpClient _client;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly ILogger _logger;
+        private readonly bool _shouldDisposeClient;
 
         public BasicJsonRpcClient(Uri uri, IJsonSerializer jsonSerializer, ILogManager logManager) :
             this(uri, jsonSerializer, logManager, /*support long block traces better, default 100s might be too small*/ TimeSpan.FromMinutes(5))
@@ -31,6 +32,24 @@ namespace Nethermind.JsonRpc.Client
             _client.Timeout = timeout;
             _client.DefaultRequestHeaders.Accept.Clear();
             _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            _shouldDisposeClient = true;
+            AddAuthorizationHeader();
+        }
+
+        public BasicJsonRpcClient(HttpClient client, IJsonSerializer jsonSerializer, ILogManager logManager)
+        {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
+            _client = client ?? throw new ArgumentNullException(nameof(client));
+
+            if (_client.BaseAddress is null)
+            {
+                throw new ArgumentException("HttpClient must have BaseAddress set.", nameof(client));
+            }
+
+            _client.DefaultRequestHeaders.Accept.Clear();
+            _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            _shouldDisposeClient = false;
             AddAuthorizationHeader();
         }
 
@@ -104,7 +123,10 @@ namespace Nethermind.JsonRpc.Client
 
         public virtual void Dispose()
         {
-            _client.Dispose();
+            if (_shouldDisposeClient)
+            {
+                _client.Dispose();
+            }
         }
     }
 }
