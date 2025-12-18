@@ -36,9 +36,9 @@ public class WitnessGeneratingBlockProcessingEnv(
     IHeaderStore headerStore,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnv
 {
-    private TransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockhashCache blockHashCache)
+    private TransactionProcessor CreateTransactionProcessor(IWorldState state, IHeaderFinder witnessGeneratingHeaderFinder)
     {
-        BlockhashProvider blockhashProvider = new(blockHashCache, state, logManager);
+        BlockhashProvider blockhashProvider = new(new BlockhashCache(witnessGeneratingHeaderFinder, logManager), state, logManager);
         VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
         ICodeInfoRepository codeInfoRepository = new NoCacheCodeInfoRepository(state, new EthereumPrecompileProvider());
         return new TransactionProcessor(new BlobBaseFeeCalculator(), specProvider, state, vm, codeInfoRepository, logManager);
@@ -47,8 +47,8 @@ public class WitnessGeneratingBlockProcessingEnv(
     public WitnessCollector CreateWitnessCollector()
     {
         WitnessGeneratingWorldState state = new(baseWorldState);
-        WitnessGeneratingBlockFinder blockFinder = new(blockTree, new BlockhashCache(headerStore, logManager));
-        TransactionProcessor txProcessor = CreateTransactionProcessor(state, blockFinder);
+        WitnessGeneratingHeaderFinder witnessGenHeaderFinder = new(headerStore);
+        TransactionProcessor txProcessor = CreateTransactionProcessor(state, witnessGenHeaderFinder);
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =
             new BlockProcessor.BlockValidationTransactionsExecutor(
                 new ExecuteTransactionProcessorAdapter(txProcessor), state);
@@ -70,6 +70,6 @@ public class WitnessGeneratingBlockProcessingEnv(
             new WithdrawalProcessor(state, logManager),
             new ExecutionRequestsProcessor(txProcessor));
 
-        return new WitnessCollector(blockFinder, state, witnessCapturingTrieStore, blockProcessor, specProvider);
+        return new WitnessCollector(witnessGenHeaderFinder, state, witnessCapturingTrieStore, blockProcessor, specProvider);
     }
 }

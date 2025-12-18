@@ -5,7 +5,6 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -15,7 +14,7 @@ public interface IWitnessCollector
 }
 
 public class WitnessCollector(
-    WitnessGeneratingBlockFinder blockFinder,
+    WitnessGeneratingHeaderFinder headerFinder,
     WitnessGeneratingWorldState worldState,
     WitnessCapturingTrieStore trieStore,
     IBlockProcessor blockProcessor,
@@ -32,7 +31,7 @@ public class WitnessCollector(
 
             return new Witness()
             {
-                Headers = blockFinder.GetWitnessHeaders(parentHeader.Hash),
+                Headers = headerFinder.GetWitnessHeaders(parentHeader.Hash),
                 Codes = codes,
                 State = trieStore.TouchedNodesRlp,
                 Keys = keys
