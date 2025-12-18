@@ -11,6 +11,8 @@
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="DotNext.IO" />
+    <PackageReference Include="DotNext.Unsafe" />
     <PackageReference Include="LightningDB" />
     <PackageReference Include="prometheus-net" />
     <PackageReference Include="System.IO.Hashing" />

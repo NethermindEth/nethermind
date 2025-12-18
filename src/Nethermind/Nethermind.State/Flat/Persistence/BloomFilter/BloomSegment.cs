@@ -3,11 +3,10 @@
 
 using System;
 using System.IO;
-using System.IO.Hashing;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
+using DotNext.IO.MemoryMappedFiles;
 
 namespace Nethermind.State.Flat.Persistence.BloomFilter;
 
@@ -34,9 +33,7 @@ public sealed class BloomSegment : IDisposable
 
     // ---- mmap ----
     private readonly MemoryMappedFile _mmf;
-    private readonly MemoryMappedViewAccessor _view;
-
-    // ---------------------------------------------------------------------
+    private MemoryMappedDirectAccessor _directAccessor;
 
     public BloomSegment(
         string path,
@@ -67,22 +64,12 @@ public sealed class BloomSegment : IDisposable
             null,
             fileSize,
             MemoryMappedFileAccess.ReadWrite);
-        _view = _mmf.CreateViewAccessor(0, fileSize);
 
-        unsafe
-        {
-            byte* ptr = null;
-            _view.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
+        // DotNext: direct pointer + Span-based view (unsafe, no bounds checks)
+        _directAccessor = _mmf.CreateDirectAccessor(0, fileSize, MemoryMappedFileAccess.ReadWrite);
 
-            try
-            {
-                ApplyMadvise((IntPtr)ptr, _view.Capacity);
-            }
-            finally
-            {
-                _view.SafeMemoryMappedViewHandle.ReleasePointer();
-            }
-        }
+        // madvise without AcquirePointer/ReleasePointer (DotNext already owns the view)
+        ApplyMadvise((IntPtr)_directAccessor.Pointer.Address, _directAccessor.Size);
 
         if (createNew)
             WriteHeader();
@@ -92,10 +79,9 @@ public sealed class BloomSegment : IDisposable
         Console.Error.WriteLine($"The pram {BitsPerKey}, {Count}, {K}");
     }
 
-
     private static void WarmupFileSequential(string path)
     {
-        const int BufferSize = 4 * 1024 * 1024; // 4 MB
+        const int BufferSize = 4 * 1024 * 1024;      // 4 MB
         const long LogEveryBytes = 10 * 1024 * 1024; // 10 MB
 
         using FileStream fs = new FileStream(
@@ -112,8 +98,7 @@ public sealed class BloomSegment : IDisposable
         long fileSize = fs.Length;
         long nextLog = LogEveryBytes;
 
-        Console.Error.WriteLine(
-            $"Bloom warmup start: {fileSize / (1024 * 1024)} MB");
+        Console.Error.WriteLine($"Bloom warmup start: {fileSize / (1024 * 1024)} MB");
 
         while (true)
         {
@@ -138,11 +123,9 @@ public sealed class BloomSegment : IDisposable
     private const int MADV_HUGEPAGE = 14;
 
     [DllImport("libc", SetLastError = true)]
-    private static extern int madvise(
-        IntPtr addr,
-        UIntPtr length,
-        int advice);
-    private void ApplyMadvise(IntPtr address, long length)
+    private static extern int madvise(IntPtr addr, UIntPtr length, int advice);
+
+    private static void ApplyMadvise(IntPtr address, long length)
     {
         if (!OperatingSystem.IsLinux())
             return;
@@ -162,11 +145,12 @@ public sealed class BloomSegment : IDisposable
     {
         GetBlockAndHashes(h1, out ulong h2, out long baseOffset);
 
+        var p = _directAccessor.Pointer;
+
         for (int i = 0; i < K; i++)
         {
             GetBitInBlock(h2, i, out int byteIndex, out byte mask);
-
-            if ((_view.ReadByte(baseOffset + byteIndex) & mask) == 0)
+            if ((p[(nuint)(baseOffset + byteIndex)] & mask) == 0)
                 return false;
         }
 
@@ -180,12 +164,12 @@ public sealed class BloomSegment : IDisposable
 
         GetBlockAndHashes(h1, out ulong h2, out long baseOffset);
 
+        var p = _directAccessor.Pointer;
+
         for (int i = 0; i < K; i++)
         {
             GetBitInBlock(h2, i, out int byteIndex, out byte mask);
-
-            byte b = _view.ReadByte(baseOffset + byteIndex);
-            _view.Write(baseOffset + byteIndex, (byte)(b | mask));
+            p[(nuint)(baseOffset + byteIndex)] |= mask;
         }
 
         Count++;
@@ -197,47 +181,90 @@ public sealed class BloomSegment : IDisposable
     {
         IsSealed = true;
         WriteHeader();
-        _view.Flush();
+        _directAccessor.Flush();
     }
 
-    public void Flush()
+    public void Flush() => _directAccessor.Flush();
+
+    // ---------------------------------------------------------------------
+    // header persistence (unaligned reads/writes via DotNext pointer)
+    // ---------------------------------------------------------------------
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ulong ReadUInt64(long offset)
     {
-        _view.Flush();
+        var p = _directAccessor.Pointer;
+        ref byte b = ref p[(nuint)offset];
+        return Unsafe.ReadUnaligned<ulong>(ref b);
     }
 
-    // ---------------------------------------------------------------------
-    // header persistence
-    // ---------------------------------------------------------------------
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private long ReadInt64(long offset)
+    {
+        var p = _directAccessor.Pointer;
+        ref byte b = ref p[(nuint)offset];
+        return Unsafe.ReadUnaligned<long>(ref b);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int ReadInt32(long offset)
+    {
+        var p = _directAccessor.Pointer;
+        ref byte b = ref p[(nuint)offset];
+        return Unsafe.ReadUnaligned<int>(ref b);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void WriteUInt64(long offset, ulong value)
+    {
+        var p = _directAccessor.Pointer;
+        ref byte b = ref p[(nuint)offset];
+        Unsafe.WriteUnaligned(ref b, value);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void WriteInt64(long offset, long value)
+    {
+        var p = _directAccessor.Pointer;
+        ref byte b = ref p[(nuint)offset];
+        Unsafe.WriteUnaligned(ref b, value);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void WriteInt32(long offset, int value)
+    {
+        var p = _directAccessor.Pointer;
+        ref byte b = ref p[(nuint)offset];
+        Unsafe.WriteUnaligned(ref b, value);
+    }
 
     private void WriteHeader()
     {
-        _view.Write(0,  0x424C4F4F4DUL); // "BLOOM"
-        _view.Write(8,  Capacity);
-        _view.Write(16, BitsPerKey);
-        _view.Write(20, K);
-        _view.Write(24, Count);
-        _view.Write(32, IsSealed ? 1 : 0);
+        WriteUInt64(0,  0x424C4F4F4DUL); // "BLOOM"
+        WriteInt64 (8,  Capacity);
+        WriteInt32 (16, BitsPerKey);
+        WriteInt32 (20, K);
+        WriteInt64 (24, Count);
+        WriteInt32 (32, IsSealed ? 1 : 0);
     }
 
     private void ReadHeaderAndRebuildLayout()
     {
-        ulong magic = _view.ReadUInt64(0);
+        ulong magic = ReadUInt64(0);
         if (magic != 0x424C4F4F4DUL) // "BLOOM"
             throw new InvalidDataException("Invalid bloom segment header");
 
-        Capacity   = _view.ReadInt64(8);
-        BitsPerKey = _view.ReadInt32(16);
-        K          = _view.ReadInt32(20);
-        Count      = _view.ReadInt64(24);
-        IsSealed   = _view.ReadInt32(32) != 0;
+        Capacity   = ReadInt64(8);
+        BitsPerKey = ReadInt32(16);
+        K          = ReadInt32(20);
+        Count      = ReadInt64(24);
+        IsSealed   = ReadInt32(32) != 0;
 
         if (Capacity <= 0 || BitsPerKey <= 0 || K <= 0)
             throw new InvalidDataException("Corrupted bloom header");
 
-        // Recompute layout from persisted values
         long totalBits  = Capacity * BitsPerKey;
         long totalBytes = AlignUp((totalBits + 7) / 8, CacheLineBytes);
-
         _numBlocks = totalBytes / CacheLineBytes;
     }
 
@@ -246,27 +273,18 @@ public sealed class BloomSegment : IDisposable
     // ---------------------------------------------------------------------
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void GetBlockAndHashes(
-        ulong h1,
-        out ulong h2,
-        out long baseOffset)
+    private void GetBlockAndHashes(ulong h1, out ulong h2, out long baseOffset)
     {
         h2 = Mix(h1);
-
         long block = (long)(h1 % (ulong)_numBlocks);
         baseOffset = _dataOffset + block * CacheLineBytes;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong Mix(ulong h)
-        => (h >> 17) | (h << 47);
+    private static ulong Mix(ulong h) => (h >> 17) | (h << 47);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void GetBitInBlock(
-        ulong h2,
-        int probeIndex,
-        out int byteIndex,
-        out byte mask)
+    private static void GetBitInBlock(ulong h2, int probeIndex, out int byteIndex, out byte mask)
     {
         int bit = (int)((h2 + (ulong)probeIndex * ProbeDelta) & (CacheLineBits - 1));
         byteIndex = bit >> 3;
@@ -276,11 +294,9 @@ public sealed class BloomSegment : IDisposable
     private static long AlignUp(long value, int alignment)
         => (value + alignment - 1) & ~(alignment - 1);
 
-    // ---------------------------------------------------------------------
-
     public void Dispose()
     {
-        _view.Dispose();
+        _directAccessor.Dispose();
         _mmf.Dispose();
     }
 }
