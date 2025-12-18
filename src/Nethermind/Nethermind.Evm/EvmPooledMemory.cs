@@ -45,7 +45,8 @@ public struct EvmPooledMemory : IEvmMemory
 
     public bool TrySaveByte(in UInt256 location, byte value)
     {
-        CheckMemoryAccessViolation(in location, WordSize, out _, out bool outOfGas);
+        // MSTORE8 only touches a single byte; validate against the actual byte length.
+        CheckMemoryAccessViolation(in location, 1, out _, out bool outOfGas);
         if (outOfGas) return false;
 
         UpdateSize(location.u0 + 1);
