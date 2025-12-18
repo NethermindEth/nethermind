@@ -152,7 +152,7 @@ public class LMDBPersistence : IPersistence
         Interlocked.CompareExchange(ref _hasWriteBatch, 0, 1);
     }
 
-    public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to)
+    public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags writeFlags)
     {
         var dbSnap = _db.CreateSnapshot();
         var currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
@@ -169,7 +169,7 @@ public class LMDBPersistence : IPersistence
         }
 
         var tx = _lmdbEnv.BeginTransaction();
-        return new WriteBatch(this, _db.StartWriteBatch(), dbSnap, to, tx);
+        return new WriteBatch(this, _db.StartWriteBatch(), dbSnap, to, tx, writeFlags);
     }
 
     private class WriteBatch : IPersistence.IWriteBatch
@@ -197,9 +197,11 @@ public class LMDBPersistence : IPersistence
             IColumnsWriteBatch<FlatDbColumns> batch,
             IColumnDbSnapshot<FlatDbColumns> dbSnap,
             StateId to,
-            LightningTransaction lmdbTx
+            LightningTransaction lmdbTx,
+            WriteFlags writeFlags
             )
         {
+            _flags = writeFlags;
             _mainDb = mainDb;
             _batch = batch;
             _dbSnap = dbSnap;

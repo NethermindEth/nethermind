@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.IO.Hashing;
 using System.Runtime.CompilerServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
@@ -15,6 +16,7 @@ using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Prometheus;
+using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State.Flat.Persistence;
 
@@ -186,7 +188,7 @@ public class RocksdbPersistence : IPersistence
         return new PersistenceReader(_db.CreateSnapshot(), _bloomFilter, this);
     }
 
-    public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to)
+    public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags flags)
     {
         var dbSnap = _db.CreateSnapshot();
         var currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
@@ -197,7 +199,7 @@ public class RocksdbPersistence : IPersistence
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        return new WriteBatch(this, _db.StartWriteBatch(), _bloomFilter, dbSnap, to);
+        return new WriteBatch(this, _db.StartWriteBatch(), _bloomFilter, dbSnap, to, flags);
     }
 
     private class WriteBatch : IPersistence.IWriteBatch
@@ -214,7 +216,7 @@ public class RocksdbPersistence : IPersistence
 
         private AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
-        WriteFlags _flags = WriteFlags.None;
+        WriteFlags _flags = WriteFlags.DisableWAL;
         private readonly RocksdbPersistence _mainDb;
         private readonly IColumnsWriteBatch<FlatDbColumns> _batch;
         private readonly IColumnDbSnapshot<FlatDbColumns> _dbSnap;
@@ -225,8 +227,10 @@ public class RocksdbPersistence : IPersistence
             IColumnsWriteBatch<FlatDbColumns> batch,
             SegmentedBloom bloomFilter,
             IColumnDbSnapshot<FlatDbColumns> dbSnap,
-            StateId to)
+            StateId to,
+            WriteFlags flags)
         {
+            _flags = flags;
             _mainDb = mainDb;
             _batch = batch;
             _bloomFilter = bloomFilter;
@@ -258,7 +262,10 @@ public class RocksdbPersistence : IPersistence
             SetCurrentState(_batch.GetColumnBatch(FlatDbColumns.Metadata), _to);
             _batch.Dispose();
             _dbSnap.Dispose();
-            _bloomFilter.Flush();
+            if (!_flags.HasFlag(WriteFlags.DisableWAL))
+            {
+                _bloomFilter.Flush();
+            }
         }
 
         public int SelfDestruct(Address addr)
@@ -446,6 +453,11 @@ public class RocksdbPersistence : IPersistence
             }
         }
 
+        private static Counter _slotBloomHit = Metrics.CreateCounter("rocksdb_slot_bloom", "slot_blom", "hitmiss");
+        private static Counter.Child _slotBloomHitHit = _slotBloomHit.WithLabels("true_positive");
+        private static Counter.Child _slotBloomHitMiss = _slotBloomHit.WithLabels("false_positive");
+
+
         public bool TryGetSlot(Address address, in UInt256 index, out byte[] valueBytes)
         {
             ReadOnlySpan<byte> theKey = _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], address, index, out ulong h1);
@@ -460,10 +472,12 @@ public class RocksdbPersistence : IPersistence
             {
                 if (value.IsNullOrEmpty())
                 {
+                    _slotBloomHitMiss.Inc();
                     valueBytes = null;
                     return true;
                 }
 
+                _slotBloomHitHit.Inc();
                 valueBytes = value.ToArray();
                 return true;
             }

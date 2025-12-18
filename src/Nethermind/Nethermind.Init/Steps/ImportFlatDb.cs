@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Logging;
+using Nethermind.Monitoring;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Importer;
 using Nethermind.State.Flat.Persistence;
@@ -43,6 +44,7 @@ public class ImportFlatDb(
             }
         }
 
+        new NethermindKestrelMetricServer("+", 9999).Start(); // Just give me the metrics!
         _logger.Info($"Copying state {head.ToString(BlockHeader.Format.Short)} with state root {head.StateRoot}");
         importer.Copy(new StateId(head));
 

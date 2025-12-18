@@ -131,7 +131,7 @@ public class NoLeafValueRocksdbPersistence : IPersistence
         return new PersistenceReader(_db.CreateSnapshot(), this);
     }
 
-    public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to)
+    public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags writeFlags)
     {
         var dbSnap = _db.CreateSnapshot();
         var currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
@@ -142,7 +142,7 @@ public class NoLeafValueRocksdbPersistence : IPersistence
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        return new WriteBatch(this, _db.StartWriteBatch(), dbSnap, to);
+        return new WriteBatch(this, _db.StartWriteBatch(), dbSnap, to, writeFlags);
     }
 
     private class WriteBatch : IPersistence.IWriteBatch
@@ -167,8 +167,11 @@ public class NoLeafValueRocksdbPersistence : IPersistence
         public WriteBatch(NoLeafValueRocksdbPersistence mainDb,
             IColumnsWriteBatch<FlatDbColumns> batch,
             IColumnDbSnapshot<FlatDbColumns> dbSnap,
-            StateId to)
+            StateId to,
+            WriteFlags writeFlags
+            )
         {
+            _flags =  writeFlags;
             _mainDb = mainDb;
             _batch = batch;
             _dbSnap = dbSnap;

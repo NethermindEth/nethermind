@@ -2,11 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.MemoryMappedFiles;
+using System.Linq;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using DotNext.IO.MemoryMappedFiles;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.State.Flat.Persistence.BloomFilter;
 
@@ -24,8 +30,13 @@ public sealed class BloomSegment : IDisposable
     public long Capacity { get; set; }
     public int BitsPerKey { get; set; }
     public int K { get; set; }
-    public long Count { get; private set; }
-    public bool IsSealed { get; private set; }
+
+    // Count/IsSealed must be thread-safe
+    private long _count;
+    public long Count => Volatile.Read(ref _count);
+
+    private int _sealed; // 0/1
+    public bool IsSealed => Volatile.Read(ref _sealed) != 0;
 
     // ---- layout ----
     private readonly long _dataOffset;
@@ -35,12 +46,19 @@ public sealed class BloomSegment : IDisposable
     private readonly MemoryMappedFile _mmf;
     private MemoryMappedDirectAccessor _directAccessor;
 
+    // ---- concurrency barrier for flush/seal ----
+    private int _writersInFlight;
+    private int _stopWriters; // 0 = normal, 1 = block new writers
+    private readonly Lock _maintenance = new();
+    private readonly string _path;
+
     public BloomSegment(
         string path,
         long capacity,
         int bitsPerKey,
         bool createNew)
     {
+        _path = path;
         Capacity   = capacity;
         BitsPerKey = bitsPerKey;
         K = Math.Max(1, (int)Math.Round(bitsPerKey * Math.Log(2)));
@@ -68,15 +86,19 @@ public sealed class BloomSegment : IDisposable
         // DotNext: direct pointer + Span-based view (unsafe, no bounds checks)
         _directAccessor = _mmf.CreateDirectAccessor(0, fileSize, MemoryMappedFileAccess.ReadWrite);
 
-        // madvise without AcquirePointer/ReleasePointer (DotNext already owns the view)
         ApplyMadvise((IntPtr)_directAccessor.Pointer.Address, _directAccessor.Size);
 
         if (createNew)
+        {
+            // start unsealed with count 0
+            Volatile.Write(ref _sealed, 0);
+            Volatile.Write(ref _count, 0);
             WriteHeader();
+        }
         else
+        {
             ReadHeaderAndRebuildLayout();
-
-        Console.Error.WriteLine($"The pram {BitsPerKey}, {Count}, {K}");
+        }
     }
 
     private static void WarmupFileSequential(string path)
@@ -130,10 +152,7 @@ public sealed class BloomSegment : IDisposable
         if (!OperatingSystem.IsLinux())
             return;
 
-        // Dont try readahead
         madvise(address, (UIntPtr)length, MADV_RANDOM);
-
-        // Use THP if possible
         madvise(address, (UIntPtr)length, MADV_HUGEPAGE);
     }
 
@@ -141,50 +160,134 @@ public sealed class BloomSegment : IDisposable
     // public API
     // ---------------------------------------------------------------------
 
-    public bool MightContain(ulong h1)
+    public unsafe bool MightContain(ulong h1)
     {
         GetBlockAndHashes(h1, out ulong h2, out long baseOffset);
 
-        var p = _directAccessor.Pointer;
+        byte* blockPtr = (byte*)_directAccessor.Pointer.Address + baseOffset;
+
+        // Load the whole 64-byte block once (8 lanes)
+        // If you want stricter visibility with concurrent writers, use Volatile.Read on each lane.
+        ulong l0 = *(ulong*)(blockPtr + 0);
+        ulong l1 = *(ulong*)(blockPtr + 8);
+        ulong l2 = *(ulong*)(blockPtr + 16);
+        ulong l3 = *(ulong*)(blockPtr + 24);
+        ulong l4 = *(ulong*)(blockPtr + 32);
+        ulong l5 = *(ulong*)(blockPtr + 40);
+        ulong l6 = *(ulong*)(blockPtr + 48);
+        ulong l7 = *(ulong*)(blockPtr + 56);
 
         for (int i = 0; i < K; i++)
         {
-            GetBitInBlock(h2, i, out int byteIndex, out byte mask);
-            if ((p[(nuint)(baseOffset + byteIndex)] & mask) == 0)
+            GetLaneInBlock(h2, i, out int laneIndex, out ulong mask);
+
+            ulong laneVal = laneIndex switch
+            {
+                0 => l0, 1 => l1, 2 => l2, 3 => l3,
+                4 => l4, 5 => l5, 6 => l6, _ => l7
+            };
+
+            if ((laneVal & mask) == 0)
                 return false;
         }
 
         return true;
     }
 
-    public void Add(ulong h1)
+    // Concurrent-safe: atomic OR on 64-bit lanes + atomic count.
+    public unsafe void Add(ulong h1)
     {
-        if (IsSealed)
+        // Fast fail
+        if (Volatile.Read(ref _sealed) != 0)
             throw new InvalidOperationException("Segment is sealed");
 
-        GetBlockAndHashes(h1, out ulong h2, out long baseOffset);
+        // If a flush/seal barrier is active, wait it out (rare path).
+        if (Volatile.Read(ref _stopWriters) != 0)
+            WaitForBarrierToClearOrSealed();
 
-        var p = _directAccessor.Pointer;
-
-        for (int i = 0; i < K; i++)
+        // Register as writer
+        Interlocked.Increment(ref _writersInFlight);
+        try
         {
-            GetBitInBlock(h2, i, out int byteIndex, out byte mask);
-            p[(nuint)(baseOffset + byteIndex)] |= mask;
-        }
+            // Re-check after registering (seal may have started)
+            if (Volatile.Read(ref _sealed) != 0)
+                throw new InvalidOperationException("Segment is sealed");
 
-        Count++;
+            GetBlockAndHashes(h1, out ulong h2, out long baseOffset);
+
+            byte* blockPtr = (byte*)_directAccessor.Pointer.Address + baseOffset;
+
+            for (int i = 0; i < K; i++)
+            {
+                GetLaneInBlock(h2, i, out int laneIndex, out ulong mask);
+
+                // baseOffset is 64-byte aligned; laneIndex*8 is 8-byte aligned
+                ref long lane = ref *(long*)(blockPtr + (laneIndex * 8));
+
+                // atomic set of bits (prevents lost updates)
+                Interlocked.Or(ref lane, (long)mask);
+            }
+
+            Interlocked.Increment(ref _count);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _writersInFlight);
+        }
     }
 
     public bool IsFull => Count >= Capacity;
 
     public void Seal()
     {
-        IsSealed = true;
+        // Serialize seal/flush/header with a short critical section.
+        using var _ = _maintenance.EnterScope();
+
+        // Block new writers, stop future Adds
+        Volatile.Write(ref _stopWriters, 1);
+        Volatile.Write(ref _sealed, 1);
+
+        WaitForWritersToDrain_NoLock();
+
         WriteHeader();
         _directAccessor.Flush();
+
+        // Keep _stopWriters=1; sealed segment should not accept new writers anyway.
     }
 
-    public void Flush() => _directAccessor.Flush();
+    public void Flush()
+    {
+        using var _ = _maintenance.EnterScope();
+
+        // Block new writers temporarily
+        Volatile.Write(ref _stopWriters, 1);
+
+        WaitForWritersToDrain_NoLock();
+
+        _directAccessor.Flush();
+
+        // Re-open for writers (if not sealed)
+        if (Volatile.Read(ref _sealed) == 0)
+            Volatile.Write(ref _stopWriters, 0);
+    }
+
+    private void WaitForBarrierToClearOrSealed()
+    {
+        var sw = new SpinWait();
+        while (Volatile.Read(ref _stopWriters) != 0)
+        {
+            if (Volatile.Read(ref _sealed) != 0)
+                throw new InvalidOperationException("Segment is sealed");
+            sw.SpinOnce();
+        }
+    }
+
+    private void WaitForWritersToDrain_NoLock()
+    {
+        var sw = new SpinWait();
+        while (Volatile.Read(ref _writersInFlight) != 0)
+            sw.SpinOnce();
+    }
 
     // ---------------------------------------------------------------------
     // header persistence (unaligned reads/writes via DotNext pointer)
@@ -257,8 +360,15 @@ public sealed class BloomSegment : IDisposable
         Capacity   = ReadInt64(8);
         BitsPerKey = ReadInt32(16);
         K          = ReadInt32(20);
-        Count      = ReadInt64(24);
-        IsSealed   = ReadInt32(32) != 0;
+
+        long count = ReadInt64(24);
+        int sealedFlag = ReadInt32(32);
+
+        Volatile.Write(ref _count, count);
+        Volatile.Write(ref _sealed, sealedFlag != 0 ? 1 : 0);
+
+        // If sealed, keep writers blocked; otherwise allow.
+        Volatile.Write(ref _stopWriters, Volatile.Read(ref _sealed) != 0 ? 1 : 0);
 
         if (Capacity <= 0 || BitsPerKey <= 0 || K <= 0)
             throw new InvalidDataException("Corrupted bloom header");
@@ -275,20 +385,36 @@ public sealed class BloomSegment : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void GetBlockAndHashes(ulong h1, out ulong h2, out long baseOffset)
     {
-        h2 = Mix(h1);
-        long block = (long)(h1 % (ulong)_numBlocks);
+        h2 = Mix64(h1);
+        ulong hb = Mix64(h1 ^ ProbeDelta);
+        long block = (long)(hb % (ulong)_numBlocks);
         baseOffset = _dataOffset + block * CacheLineBytes;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong Mix(ulong h) => (h >> 17) | (h << 47);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void GetBitInBlock(ulong h2, int probeIndex, out int byteIndex, out byte mask)
+    private static ulong Mix64(ulong x)
     {
-        int bit = (int)((h2 + (ulong)probeIndex * ProbeDelta) & (CacheLineBits - 1));
-        byteIndex = bit >> 3;
-        mask = (byte)(1 << (bit & 7));
+        x ^= x >> 33;
+        x *= 0xff51afd7ed558ccdUL;
+        x ^= x >> 33;
+        x *= 0xc4ceb9fe1a85ec53UL;
+        x ^= x >> 33;
+        return x;
+    }
+
+    // 64-bit lane addressing within a 64-byte block (8 lanes)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void GetLaneInBlock(ulong h2, int probeIndex, out int laneIndex, out ulong mask)
+    {
+        // 9-bit start (0..511)
+        int start = (int)(h2 & (CacheLineBits - 1));
+
+        // per-key odd step in 1..511 (odd => cycles through all 512 positions)
+        int step = (int)(((h2 >> 9) & (CacheLineBits - 1)) | 1);
+
+        int bit = (start + probeIndex * step) & (CacheLineBits - 1);
+        laneIndex = bit >> 6;
+        mask = 1UL << (bit & 63);
     }
 
     private static long AlignUp(long value, int alignment)
@@ -296,6 +422,17 @@ public sealed class BloomSegment : IDisposable
 
     public void Dispose()
     {
+        // Ensure no one is writing while we finalize/flush/dispose
+        using var _ = _maintenance.EnterScope();
+        Volatile.Write(ref _stopWriters, 1);
+        WaitForWritersToDrain_NoLock();
+
+        _directAccessor.Flush();
+
+        // Preserve header on dispose if not sealed (as you did)
+        if (Volatile.Read(ref _sealed) == 0)
+            WriteHeader();
+
         _directAccessor.Dispose();
         _mmf.Dispose();
     }

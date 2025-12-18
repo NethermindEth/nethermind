@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
@@ -15,6 +16,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Prometheus;
 
 namespace Nethermind.State.Flat.Importer;
 
@@ -27,8 +29,16 @@ public class Importer(
     ILogger _logger = logManager.GetClassLogger<Importer>();
     internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
     long totalNodes = 0;
-    int batchSize = 1_000_000;
+    int batchSize = 16_000;
     int logInterval = 1_000_000;
+
+    private Histogram _importerTime = DevMetric.Factory.CreateHistogram("importer_time", "importer time", new HistogramConfiguration()
+    {
+        LabelNames = ["part"],
+        Buckets = Histogram.PowersOfTenDividedBuckets(3, 9, 5)
+    });
+
+    private Counter _entriesCount = DevMetric.Factory.CreateCounter("importer_entries", "importer time");
 
     private record Entry(Hash256? address, TreePath path, TrieNode node);
 
@@ -89,12 +99,76 @@ public class Importer(
     {
         _logger.Info($"Ingest thread started");
 
+        int currentItemSize = 0;
+        var writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes form initial state to initial state.
+        await foreach (var entry in channelReader.ReadAllAsync())
+        {
+            // Write it
+            _entriesCount.Inc();
+
+            long sw = Stopwatch.GetTimestamp();
+            TrieNode node = entry.node;
+            writeBatch.SetTrieNodes(entry.address, entry.path, node);
+            if (node.IsLeaf)
+            {
+                ValueHash256 fullPath = entry.path.Append(node.Key).Path;
+                if (entry.address is null)
+                {
+                    Account acc = _accountDecoder.Decode(node.Value.Span);
+                    writeBatch.SetAccountRaw(fullPath.ToHash256(), acc);
+                }
+                else
+                {
+
+                    ReadOnlySpan<byte> value = node.Value.Span;
+                    byte[] toWrite;
+
+                    if (value.IsEmpty)
+                    {
+                        toWrite = StorageTree.ZeroBytes;
+                    }
+                    else
+                    {
+                        Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
+                        toWrite = rlp.DecodeByteArray();
+                    }
+
+                    writeBatch.SetStorageRaw(entry.address, fullPath.ToHash256(), toWrite);
+                }
+            }
+
+            long theTotalNode = Interlocked.Increment(ref totalNodes);
+            if (theTotalNode % logInterval == 0)
+            {
+                _logger.Info($"Wrote {theTotalNode:N} nodes.");
+            }
+            _importerTime.WithLabels("flush_set").Observe(Stopwatch.GetTimestamp() - sw);
+
+            currentItemSize++;
+            if (currentItemSize > this.batchSize)
+            {
+                sw = Stopwatch.GetTimestamp();
+                writeBatch.Dispose();
+                _importerTime.WithLabels("flush").Observe(Stopwatch.GetTimestamp() - sw);
+                writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes form initial state to initial state.
+                currentItemSize = 0;
+            }
+        }
+
+        writeBatch.Dispose();
+    }
+
+    private async Task IngestLogicSingle(StateId from, ChannelReader<Entry> channelReader)
+    {
+        _logger.Info($"Ingest thread started");
+
         ArrayPoolList<Entry> entries = new ArrayPoolList<Entry>(batchSize);
 
         // LMDB cannot write across thread, so need to buffer the whole thing
         void FlushEntries(ArrayPoolList<Entry> entries)
         {
-            using var writeBatch = persistence.CreateWriteBatch(from, from); // It writes form initial state to initial state.
+            long sw = Stopwatch.GetTimestamp();
+            using var writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes form initial state to initial state.
             foreach (Entry entry in entries)
             {
 
@@ -134,6 +208,7 @@ public class Importer(
                     _logger.Info($"Wrote {theTotalNode:N} nodes.");
                 }
             }
+            _importerTime.WithLabels("flush_set").Observe(Stopwatch.GetTimestamp() - sw);
 
             entries.Clear();
         }
@@ -141,6 +216,7 @@ public class Importer(
         await foreach (var asyncEntry in channelReader.ReadAllAsync())
         {
             // Write it
+            _entriesCount.Inc();
 
             entries.Add(asyncEntry);
             if (entries.Count < batchSize)
@@ -148,7 +224,9 @@ public class Importer(
                 continue;
             }
 
+            long sw = Stopwatch.GetTimestamp();
             FlushEntries(entries);
+            _importerTime.WithLabels("flush").Observe(Stopwatch.GetTimestamp() - sw);
         }
 
         FlushEntries(entries);

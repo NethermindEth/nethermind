@@ -110,14 +110,6 @@
           "System.IO.Hashing": "8.0.0"
         }
       },
-      "DotNext.Unsafe": {
-        "type": "Transitive",
-        "resolved": "5.26.1",
-        "contentHash": "GZ+elZC9Xty37OLWB/nlbyUFRRZqh9nWvre4zoNiwZDNANx1WkeMPVxHUGgePibEBtnswgDsZytKy5LUqkHwFA==",
-        "dependencies": {
-          "DotNext": "5.26.1"
-        }
-      },
       "FastEnum.Core": {
         "type": "Transitive",
         "resolved": "2.0.6",
@@ -1926,6 +1918,15 @@
         "dependencies": {
           "DotNext": "5.26.1",
           "System.IO.Pipelines": "8.0.0"
+        }
+      },
+      "DotNext.Unsafe": {
+        "type": "CentralTransitive",
+        "requested": "[5.26.1, )",
+        "resolved": "5.26.1",
+        "contentHash": "GZ+elZC9Xty37OLWB/nlbyUFRRZqh9nWvre4zoNiwZDNANx1WkeMPVxHUGgePibEBtnswgDsZytKy5LUqkHwFA==",
+        "dependencies": {
+          "DotNext": "5.26.1"
         }
       },
       "FastEnum": {

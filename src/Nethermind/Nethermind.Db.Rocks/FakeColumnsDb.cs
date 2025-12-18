@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Prometheus;
 
 namespace Nethermind.Db.Rocks;
 
@@ -57,12 +61,28 @@ public class FakeColumnsDb<T>(
             return _innerWriteBatch[key];
         }
 
+        private static Histogram _rocksdBPersistenceTimes = DevMetric.Factory.CreateHistogram("fake_column_dispose_time", "aha", new HistogramConfiguration()
+        {
+            LabelNames = new[] { "type" },
+            // Buckets = Histogram.PowersOfTenDividedBuckets(2, 12, 5)
+            Buckets = [1]
+        });
+
         public void Dispose()
         {
-            foreach (var keyValuePair in _innerWriteBatch)
+            using ArrayPoolList<Task> disposeTasks = new ArrayPoolList<Task>(_innerWriteBatch.Count);
+            foreach (var keyValuePair2 in _innerWriteBatch)
             {
-                keyValuePair.Value.Dispose();
+                var keyValuePair = keyValuePair2;
+                disposeTasks.Add(Task.Run(() =>
+                {
+                    long sw = Stopwatch.GetTimestamp();
+                    keyValuePair.Value.Dispose();
+                    _rocksdBPersistenceTimes.WithLabels(keyValuePair.Key.ToString()!).Observe(Stopwatch.GetTimestamp() - sw);
+                }));
             }
+
+            Task.WaitAll(disposeTasks);
         }
     }
 

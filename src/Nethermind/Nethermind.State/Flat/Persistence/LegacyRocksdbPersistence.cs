@@ -175,7 +175,7 @@ public class LegacyRocksdbPersistence : IPersistence
         return new PersistenceReader(_db.CreateSnapshot(), this);
     }
 
-    public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to)
+    public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags flags)
     {
         var dbSnap = _db.CreateSnapshot();
         var currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
@@ -186,7 +186,7 @@ public class LegacyRocksdbPersistence : IPersistence
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        return new WriteBatch(this, _db.StartWriteBatch(), dbSnap, to);
+        return new WriteBatch(this, _db.StartWriteBatch(), dbSnap, to, flags);
     }
 
     private class WriteBatch : IPersistence.IWriteBatch
@@ -215,8 +215,11 @@ public class LegacyRocksdbPersistence : IPersistence
         public WriteBatch(LegacyRocksdbPersistence mainDb,
             IColumnsWriteBatch<FlatDbColumns> batch,
             IColumnDbSnapshot<FlatDbColumns> dbSnap,
-            StateId to)
+            StateId to,
+            WriteFlags flags
+            )
         {
+            _flags = flags;
             _mainDb = mainDb;
             _batch = batch;
             _dbSnap = dbSnap;

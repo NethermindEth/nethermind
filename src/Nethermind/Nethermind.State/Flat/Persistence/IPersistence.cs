@@ -12,7 +12,7 @@ namespace Nethermind.State.Flat.Persistence;
 public interface IPersistence
 {
     IPersistenceReader CreateReader();
-    IWriteBatch CreateWriteBatch(StateId from, StateId to);
+    IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags flags = WriteFlags.None);
 
     public interface IPersistenceReader: IDisposable
     {

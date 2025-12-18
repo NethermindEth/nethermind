@@ -12,10 +12,7 @@ namespace Nethermind.State.Flat.Persistence.BloomFilter;
 
 public sealed class SegmentedBloom : IDisposable
 {
-    // Serializes actual writes into BloomSegment (required if BloomSegment is unchanged)
-    private readonly Lock _writeLock = new();
-
-    // Serializes segment list mutation + snapshot publishing + lifecycle ops
+    // Serializes rotation + segment list mutation + snapshot publishing
     private readonly Lock _segmentsLock = new();
 
     readonly string _directory;
@@ -24,7 +21,7 @@ public sealed class SegmentedBloom : IDisposable
 
     readonly List<BloomSegment> _segments = new();
     private volatile BloomSegment[] _snapshot = Array.Empty<BloomSegment>();
-    private BloomSegment _current;
+    private volatile BloomSegment _current;
 
     private static Gauge _bloomKeySize = Metrics.CreateGauge("segmented_bloom_counts", "", "type");
     private readonly Gauge.Child _total = _bloomKeySize.WithLabels("total");
@@ -48,20 +45,29 @@ public sealed class SegmentedBloom : IDisposable
         Directory.CreateDirectory(directory);
 
         using var _ = _segmentsLock.EnterScope();
-        LoadExistingSegments_NoLock();
+        foreach (var file in Directory.GetFiles(_directory, "*.bloom"))
+        {
+            var seg = new BloomSegment(file, capacity: 0, bitsPerKey: 0, createNew: false);
+            _total.Inc(seg.Count);
 
-        if (_current == null)
+            _segments.Add(seg);
+            if (!seg.IsSealed)
+                _current = seg;
+        }
+
+        _segments.Sort((a, b) => b.Count.CompareTo(a.Count));
+
+        if (_current is null)
             _current = CreateNewSegment_NoLock();
 
-        PublishSnapshot_NoLock();
+        _snapshot = _segments.ToArray();
     }
 
     public bool MightContain(ulong h1)
     {
         long sw = Stopwatch.GetTimestamp();
 
-        // lock-free, safe: snapshot never changes during enumeration
-        var segs = _snapshot;
+        var segs = _snapshot; // lock-free snapshot
         foreach (var seg in segs)
         {
             if (seg.MightContain(h1))
@@ -77,18 +83,6 @@ public sealed class SegmentedBloom : IDisposable
 
     public void Add(ulong h1)
     {
-        // Keep your pre-check. (Note: two threads can still both miss and then both add.)
-        if (MightContain(h1))
-        {
-            _skipped.Inc();
-            return;
-        }
-
-        // Required: BloomSegment.Add() is not safe for concurrent writers.
-        using var _w = _writeLock.EnterScope();
-
-        // Optional but recommended: re-check under the write lock to reduce duplicates under concurrency.
-        // This preserves your “Count only on first insert” intent much better.
         if (MightContain(h1))
         {
             _skipped.Inc();
@@ -96,54 +90,69 @@ public sealed class SegmentedBloom : IDisposable
         }
 
         _total.Inc();
-        _current.Add(h1);
 
-        if (_current.IsFull)
-            Rotate_NoLockOrderViolation();
+        const int maxAttemptCount = 3;
+        for (int attempt = 0; attempt < maxAttemptCount; attempt++)
+        {
+            BloomSegment seg;
+            if (attempt == maxAttemptCount - 1)
+            {
+                using var _r = _segmentsLock.EnterScope();
+                seg = _current;
+            }
+            else
+            {
+                seg = _current;
+            }
+
+            try
+            {
+                seg.Add(h1);
+            }
+            catch (InvalidOperationException) when (seg.IsSealed)
+            {
+                // Rotation raced us. Try again with the new current.
+                Thread.Sleep(1);
+                continue;
+            }
+
+            if (seg.IsFull)
+                RotateIfNeeded(seg);
+
+            return;
+        }
+
+        // If we keep losing the race, surface it.
+        throw new InvalidOperationException("Failed to add after repeated concurrent rotations.");
     }
 
-    private void Rotate_NoLockOrderViolation()
+    private void RotateIfNeeded(BloomSegment observedCurrent)
     {
-        // Always acquire locks in the same order everywhere: writeLock -> segmentsLock
-        using var _s = _segmentsLock.EnterScope();
+        using var _r = _segmentsLock.EnterScope();
 
-        _current.Seal();
+        // Another thread may already have rotated.
+        if (!ReferenceEquals(_current, observedCurrent))
+            return;
+
+        // Re-check under the rotation lock.
+        if (observedCurrent.IsSealed)
+            return;
+
+        observedCurrent.Seal();
         _current = CreateNewSegment_NoLock();
-        PublishSnapshot_NoLock();
+        _snapshot = _segments.ToArray();
     }
 
     private BloomSegment CreateNewSegment_NoLock()
     {
         string path = Path.Combine(_directory, $"segment_{DateTime.UtcNow.Ticks}.bloom");
-
         var seg = new BloomSegment(path, _segmentCapacity, _bitsPerKey, createNew: true);
-
         _segments.Insert(0, seg);
         return seg;
     }
 
-    private void LoadExistingSegments_NoLock()
-    {
-        foreach (var file in Directory.GetFiles(_directory, "*.bloom"))
-        {
-            var seg = new BloomSegment(file, capacity: 0, bitsPerKey: 0, createNew: false);
-
-            _total.Inc(seg.Count);
-
-            _segments.Add(seg);
-            if (!seg.IsSealed)
-                _current = seg;
-        }
-
-        _segments.Sort((a, b) => b.Count.CompareTo(a.Count));
-    }
-
-    private void PublishSnapshot_NoLock() => _snapshot = _segments.ToArray();
-
     public void Flush()
     {
-        // Exclusive with writers: ensures no thread is in BloomSegment.Add while we flush.
-        using var _w = _writeLock.EnterScope();
         using var _s = _segmentsLock.EnterScope();
 
         foreach (var seg in _snapshot)
@@ -152,7 +161,6 @@ public sealed class SegmentedBloom : IDisposable
 
     public void Dispose()
     {
-        using var _w = _writeLock.EnterScope();
         using var _s = _segmentsLock.EnterScope();
 
         foreach (var seg in _snapshot)

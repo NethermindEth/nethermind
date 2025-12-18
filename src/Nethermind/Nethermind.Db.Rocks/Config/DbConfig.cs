@@ -23,6 +23,7 @@ public class DbConfig : IDbConfig
 
 
     private const string MinimumBasicOption =
+        "max_write_batch_group_size_bytes=4000000;" +
         "target_file_size_base=64000000;" +
         "max_bytes_for_level_base=256000000;" +
         "write_buffer_size=250000000;" +
@@ -364,7 +365,7 @@ public class DbConfig : IDbConfig
         "min_write_buffer_number_to_merge=2;" +
 
         // This used to be on trie, but its here now. Attempt to reduce LSM depth at cost of write amp.
-        "max_bytes_for_level_multiplier=20;" +
+        "max_bytes_for_level_multiplier=10;" +
         "max_bytes_for_level_base=250000000;" +
 
         "block_based_table_factory.metadata_block_size=4096;" +
@@ -409,7 +410,7 @@ public class DbConfig : IDbConfig
         set { field = value ?? ""; }
     } =
         "block_based_table_factory.block_size=4096;" +
-        "block_based_table_factory.filter_policy=ribbonfilter:12;" +
+        "block_based_table_factory.filter_policy=bloomfilter:12;" +
         "";
 
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
@@ -426,7 +427,7 @@ public class DbConfig : IDbConfig
         set { field = value ?? ""; }
     } =
         "block_based_table_factory.block_size=16000;" + // Using 4kb size is faster, IO wise, but uses additional 500 MB of memory, which if put on block cache is much betterr.
-        "block_based_table_factory.filter_policy=ribbonfilter:8;" + // Really increase memory usage.
+        "block_based_table_factory.filter_policy=bloomfilter:12;" + // Really increase memory usage.
         "";
 
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
@@ -458,7 +459,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.data_block_hash_table_util_ratio=0.75;" +
 
         "block_based_table_factory.block_size=32000;" +
-        "block_based_table_factory.filter_policy=ribbonfilter:15;" +
+        "block_based_table_factory.filter_policy=bloomfilter:15;" +
 
         // Make it
         "optimize_filters_for_hits=true;" +
@@ -483,7 +484,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.data_block_hash_table_util_ratio=0.75;" +
 
         "block_based_table_factory.block_size=32000;" +
-        "block_based_table_factory.filter_policy=ribbonfilter:8;" +
+        "block_based_table_factory.filter_policy=bloomfilter:8;" +
 
         // very important for null check
         "optimize_filters_for_hits=false;" +
