@@ -24,44 +24,43 @@ namespace Ethereum.Test.Base
                 testDirs = new[] { testsDirectoryName };
             }
 
-            List<GeneralStateTest> testJsons = new();
+            List<EthereumTest> tests = new();
             foreach (string testDir in testDirs)
             {
-                testJsons.AddRange(LoadTestsFromDirectory(testDir, wildcard));
+                tests.AddRange(LoadTestsFromDirectory(testDir, wildcard));
             }
 
-            return testJsons;
+            return tests;
         }
 
-        private string GetLegacyGeneralStateTestsDirectory()
+        private static string GetLegacyGeneralStateTestsDirectory()
         {
             string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            string rootDirectory = currentDirectory.Remove(currentDirectory.LastIndexOf("src"));
 
-            return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src")), "src", "tests", "LegacyTests", "Constantinople", "GeneralStateTests");
+            return Path.Combine(rootDirectory, "src", "tests", "LegacyTests", "Cancun", "GeneralStateTests");
         }
 
-        private IEnumerable<GeneralStateTest> LoadTestsFromDirectory(string testDir, string wildcard)
+        private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard)
         {
-            List<GeneralStateTest> testsByName = new();
+            List<EthereumTest> testsByName = new();
             IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir);
 
             foreach (string testFile in testFiles)
             {
                 FileTestsSource fileTestsSource = new(testFile, wildcard);
-                try
+                var tests = fileTestsSource.LoadTests(TestType.State);
+                foreach (EthereumTest ethereumTest in tests)
                 {
-                    var tests = fileTestsSource.LoadGeneralStateTests();
-                    foreach (GeneralStateTest blockchainTest in tests)
+                    ethereumTest.Category = testDir;
+                    // Mark legacy tests to use old coinbase behavior for backward compatibility
+                    if (ethereumTest is GeneralStateTest generalStateTest)
                     {
-                        blockchainTest.Category = testDir;
+                        generalStateTest.IsLegacy = true;
                     }
+                }
 
-                    testsByName.AddRange(tests);
-                }
-                catch (Exception e)
-                {
-                    testsByName.Add(new GeneralStateTest { Name = testFile, LoadFailure = $"Failed to load: {e}" });
-                }
+                testsByName.AddRange(tests);
             }
 
             return testsByName;

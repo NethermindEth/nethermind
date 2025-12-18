@@ -65,6 +65,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int ExitOnSyncedWaitTimeSec { get; set; } = 60;
         public int MallocTrimIntervalSec { get; set; } = 300;
         public bool? SnapServingEnabled { get; set; } = null;
+        public int SnapServingMaxDepth { get; set; } = 128;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
         public int SyncDispatcherEmptyRequestDelayMs { get; set; } = 10;
         public int SyncDispatcherAllocateTimeoutMs { get; set; } = 1000;
@@ -83,6 +84,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         public ulong FastHeadersMemoryBudget { get; set; } = (ulong)128.MB();
         public bool EnableSnapSyncStorageRangeSplit { get; set; } = false;
+        public long ForwardSyncDownloadBufferMemoryBudget { get; set; } = 200.MiB();
+        public long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; } = 200.MiB();
 
         public override string ToString()
         {

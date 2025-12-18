@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -16,13 +17,13 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 {
     public class GasPriceOracle : IGasPriceOracle
     {
-        private readonly IBlockFinder _blockFinder;
-        private readonly ILogger _logger;
-        private readonly UInt256 _minGasPrice;
-        internal PriceCache _gasPriceEstimation;
-        internal PriceCache _maxPriorityFeePerGasEstimation;
+        protected readonly IBlockFinder _blockFinder;
+        protected readonly ILogger _logger;
+        protected readonly UInt256 _minGasPrice;
+        protected internal PriceCache _gasPriceEstimation;
+        protected internal PriceCache _maxPriorityFeePerGasEstimation;
         private UInt256 FallbackGasPrice(in UInt256? baseFeePerGas = null) => _gasPriceEstimation.LastPrice ?? GetMinimumGasPrice(baseFeePerGas ?? UInt256.Zero);
-        private ISpecProvider SpecProvider { get; }
+        protected ISpecProvider SpecProvider { get; }
         internal UInt256 IgnoreUnder { get; init; } = EthGasPriceConstants.DefaultIgnoreUnder;
         internal int BlockLimit { get; init; } = EthGasPriceConstants.DefaultBlocksLimit;
         private int SoftTxThreshold => BlockLimit * 2;
@@ -40,32 +41,32 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             SpecProvider = specProvider;
         }
 
-        public UInt256 GetGasPriceEstimate()
+        public virtual ValueTask<UInt256> GetGasPriceEstimate()
         {
             Block? headBlock = _blockFinder.Head;
             if (headBlock is null)
             {
-                return FallbackGasPrice();
+                return ValueTask.FromResult(FallbackGasPrice());
             }
 
             Hash256 headBlockHash = headBlock.Hash!;
             if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price))
             {
-                return price!.Value;
+                return ValueTask.FromResult(price!.Value);
             }
 
             IEnumerable<UInt256> txGasPrices = GetSortedGasPricesFromRecentBlocks(headBlock.Number);
             UInt256 gasPriceEstimate = GetGasPriceAtPercentile(txGasPrices.ToList()) ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
             _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
-            return gasPriceEstimate!;
+            return ValueTask.FromResult(gasPriceEstimate!);
         }
 
         internal IEnumerable<UInt256> GetSortedGasPricesFromRecentBlocks(long blockNumber) =>
             GetGasPricesFromRecentBlocks(blockNumber, BlockLimit,
             static (transaction, eip1559Enabled, baseFee) => transaction.CalculateEffectiveGasPrice(eip1559Enabled, baseFee));
 
-        public UInt256 GetMaxPriorityGasFeeEstimate()
+        public virtual UInt256 GetMaxPriorityGasFeeEstimate()
         {
             Block? headBlock = _blockFinder.Head;
             if (headBlock is null)
@@ -169,38 +170,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             float percentileOfLastIndex = lastIndex * ((float)EthGasPriceConstants.PercentileOfSortedTxs / 100);
             int roundedIndex = (int)Math.Round(percentileOfLastIndex);
             return roundedIndex;
-        }
-
-        internal struct PriceCache
-        {
-            public PriceCache(Hash256? headHash, UInt256? price)
-            {
-                LastHeadHash = headHash;
-                LastPrice = price;
-            }
-
-            public UInt256? LastPrice { get; private set; }
-            private Hash256? LastHeadHash { get; set; }
-
-            public void Set(Hash256 headHash, UInt256 price)
-            {
-                LastHeadHash = headHash;
-                LastPrice = price;
-            }
-
-            public readonly bool TryGetPrice(Hash256 headHash, out UInt256? price)
-            {
-                if (headHash == LastHeadHash)
-                {
-                    price = LastPrice;
-                    return true;
-                }
-                else
-                {
-                    price = null;
-                    return false;
-                }
-            }
         }
     }
 }

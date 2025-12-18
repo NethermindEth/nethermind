@@ -10,9 +10,9 @@ namespace Nethermind.Evm
 {
     public static class TransactionExtensions
     {
-        public static Address? GetRecipient(this Transaction tx, in UInt256 nonce) =>
+        public static Address GetRecipient(this Transaction tx, in UInt256 nonce) =>
             tx.To ?? (tx.IsSystem()
-                ? tx.SenderAddress
+                ? tx.SenderAddress!
                 : ContractAddress.From(tx.SenderAddress, nonce > 0 ? nonce - 1 : nonce));
 
         public static TxGasInfo GetGasInfo(this Transaction tx, IReleaseSpec spec, BlockHeader header)
@@ -39,7 +39,7 @@ namespace Nethermind.Evm
         }
     }
 
-    public struct TxGasInfo
+    public readonly struct TxGasInfo
     {
         public TxGasInfo() { }
 
@@ -55,8 +55,8 @@ namespace Nethermind.Evm
             EffectiveGasPrice = effectiveGasPrice;
         }
 
-        public UInt256? EffectiveGasPrice { get; private set; }
-        public UInt256? BlobGasPrice { get; private set; }
-        public ulong? BlobGasUsed { get; private set; }
+        public UInt256? EffectiveGasPrice { get; }
+        public UInt256? BlobGasPrice { get; }
+        public ulong? BlobGasUsed { get; }
     }
 }

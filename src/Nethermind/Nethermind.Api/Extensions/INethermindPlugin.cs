@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac.Core;
-using Nethermind.Api.Steps;
 
 namespace Nethermind.Api.Extensions;
 
-public interface INethermindPlugin : IAsyncDisposable
+public interface INethermindPlugin
 {
     string Name { get; }
 
@@ -24,7 +22,6 @@ public interface INethermindPlugin : IAsyncDisposable
     Task InitNetworkProtocol() => Task.CompletedTask;
 
     Task InitRpcModules() => Task.CompletedTask;
-    IEnumerable<StepInfo> GetSteps() => [];
     bool MustInitialize => false;
     bool Enabled { get; }
     IModule? Module => null;

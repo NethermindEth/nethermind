@@ -2,124 +2,29 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Services;
-using Nethermind.Config;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Evm;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init.Steps;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Optimism.Rpc;
-using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class InitializeBlockchainOptimism(
-    OptimismNethermindApi api,
-    IPoSSwitcher poSSwitcher,
-    IInvalidChainTracker invalidChainTracker) : InitializeBlockchain(api)
+public class InitializeBlockchainOptimism(OptimismNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider) : InitializeBlockchain(api, chainHeadInfoProvider)
 {
-    private readonly IBlocksConfig _blocksConfig = api.Config<IBlocksConfig>();
-
-    private readonly OptimismChainSpecEngineParameters _chainSpecParameters = api.ChainSpec
-        .EngineChainSpecParametersProvider.GetChainSpecParameters<OptimismChainSpecEngineParameters>();
-
     protected override async Task InitBlockchain()
     {
-        api.SpecHelper = new(_chainSpecParameters);
-        api.L1CostHelper = new(api.SpecHelper, _chainSpecParameters.L1BlockAddress!);
-
         await base.InitBlockchain();
 
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
         api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
     }
 
-    protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
-    {
-        if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
-        if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
-        if (api.L1CostHelper is null) throw new StepDependencyException(nameof(api.L1CostHelper));
-
-        return new OptimismTransactionProcessor(
-            api.SpecProvider,
-            worldState,
-            virtualMachine,
-            api.LogManager,
-            api.L1CostHelper,
-            api.SpecHelper,
-            codeInfoRepository
-        );
-    }
-
-    protected override IHeaderValidator CreateHeaderValidator()
-    {
-        if (api.BlockTree is null) throw new StepDependencyException(nameof(api.BlockTree));
-        if (api.SealValidator is null) throw new StepDependencyException(nameof(api.SealValidator));
-        if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
-        if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
-        if (api.LogManager is null) throw new StepDependencyException(nameof(api.LogManager));
-
-        OptimismHeaderValidator opHeaderValidator = new(
-            poSSwitcher,
-            api.BlockTree,
-            api.SealValidator,
-            api.SpecProvider,
-            api.LogManager);
-
-        return new InvalidHeaderInterceptor(opHeaderValidator, invalidChainTracker, api.LogManager);
-    }
-
-    protected override IBlockValidator CreateBlockValidator()
-    {
-        return new InvalidBlockInterceptor(base.CreateBlockValidator(), invalidChainTracker, api.LogManager);
-    }
-
-    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
-    {
-        if (api.DbProvider is null) throw new StepDependencyException(nameof(api.DbProvider));
-        if (api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(api.RewardCalculatorSource));
-        if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
-        if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
-        if (api.BlockTree is null) throw new StepDependencyException(nameof(api.BlockTree));
-
-        Create2DeployerContractRewriter contractRewriter = new(api.SpecHelper, api.SpecProvider, api.BlockTree);
-
-        return new OptimismBlockProcessor(
-            api.SpecProvider,
-            api.BlockValidator,
-            api.RewardCalculatorSource.Get(transactionProcessor),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
-            worldState,
-            api.ReceiptStorage,
-            transactionProcessor,
-            new BlockhashStore(api.SpecProvider, worldState),
-            new BeaconBlockRootHandler(transactionProcessor, worldState),
-            api.LogManager,
-            api.SpecHelper,
-            contractRewriter,
-            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
-            preWarmer: preWarmer);
-    }
-
-    protected override IUnclesValidator CreateUnclesValidator() => Always.Valid;
-
-    protected override IHealthHintService CreateHealthHintService() =>
-        new ManualHealthHintService(_blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint);
-
     protected override IBlockProductionPolicy CreateBlockProductionPolicy() => AlwaysStartBlockProductionPolicy.Instance;
 
-    protected override ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
-        api.Config<IOptimismConfig>().SequencerUrl is not null ? NullTxPool.Instance : base.CreateTxPool(codeInfoRepository);
+    protected override ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider) =>
+        api.Config<IOptimismConfig>().SequencerUrl is not null ? NullTxPool.Instance : base.CreateTxPool(chainHeadInfoProvider);
 }

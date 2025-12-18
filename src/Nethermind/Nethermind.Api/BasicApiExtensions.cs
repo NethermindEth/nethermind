@@ -12,10 +12,5 @@ namespace Nethermind.Api
         {
             return api.ConfigProvider.GetConfig<T>();
         }
-
-        public static T Db<T>(this IBasicApi api, string dbName) where T : class, IDb
-        {
-            return api.DbProvider!.GetDb<T>(dbName);
-        }
     }
 }

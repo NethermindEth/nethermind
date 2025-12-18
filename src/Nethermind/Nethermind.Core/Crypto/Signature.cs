@@ -14,6 +14,7 @@ namespace Nethermind.Core.Crypto
     public class Signature : MemoryManager<byte>, IEquatable<Signature>
     {
         public const int VOffset = 27;
+        public const int Size = 65;
         private Vector512<byte> _signature;
 
         public Signature(ReadOnlySpan<byte> bytes, int recoveryId)
@@ -64,7 +65,9 @@ namespace Nethermind.Core.Crypto
 
         public ulong? ChainId => V < 35 ? null : (ulong?)(V + (V % 2) - 36) / 2;
 
-        public byte RecoveryId => V <= VOffset + 1 ? (byte)(V - VOffset) : (byte)(1 - V % 2);
+        public byte RecoveryId => GetRecoveryId(V);
+
+        public static byte GetRecoveryId(ulong v) => v <= VOffset + 1 ? (byte)(v - VOffset) : (byte)(1 - v % 2);
 
         public Memory<byte> R => Memory.Slice(0, 32);
         public ReadOnlySpan<byte> RAsSpan => Bytes.Slice(0, 32);

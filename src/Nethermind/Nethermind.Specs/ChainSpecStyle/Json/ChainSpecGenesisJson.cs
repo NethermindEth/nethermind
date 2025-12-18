@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
-    internal class ChainSpecGenesisJson
+    public class ChainSpecGenesisJson
     {
         public string Name { get; set; }
         public string DataDir { get; set; }

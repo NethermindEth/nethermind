@@ -31,6 +31,7 @@ namespace Nethermind.Logging.NLog
             // Required since 'NLog.config' could change during runtime, we need to re-apply the configuration
             _logManagerOnConfigurationChanged = (sender, args) => Setup(logFileName, logDirectory, logRules);
             LogManager.ConfigurationChanged += _logManagerOnConfigurationChanged;
+            Static.LogManager = this;
         }
 
         private static void Setup(string logFileName, string logDirectory = null, string logRules = null)
@@ -63,9 +64,7 @@ namespace Nethermind.Logging.NLog
             return logDirectory;
         }
 
-        private static readonly ConcurrentDictionary<Type, ILogger> s_loggers = new();
         private static readonly ConcurrentDictionary<string, ILogger> s_namedLoggers = new();
-        private static readonly Func<Type, ILogger> s_loggerBuilder = BuildLogger;
         private static readonly Func<string, ILogger> s_namedLoggerBuilder = BuildNamedLogger;
         private static readonly Func<string, ILogger> s_classLoggerBuilder = BuildClassLogger;
         private readonly EventHandler<LoggingConfigurationChangedEventArgs> _logManagerOnConfigurationChanged;
@@ -77,9 +76,7 @@ namespace Nethermind.Logging.NLog
         private static ILogger BuildClassLogger(string filePath)
             => new(new NLogLogger());
 
-        public ILogger GetClassLogger(Type type) => s_loggers.GetOrAdd(type, s_loggerBuilder);
-
-        public ILogger GetClassLogger<T>() => GetClassLogger(typeof(T));
+        public ILogger GetClassLogger<T>() => TypedLogger<T>.Logger;
 
         public ILogger GetClassLogger([CallerFilePath] string filePath = "") => !string.IsNullOrEmpty(filePath) ?
             s_namedLoggers.GetOrAdd(filePath, s_classLoggerBuilder) :
@@ -104,7 +101,7 @@ namespace Nethermind.Logging.NLog
                     IEnumerable<LoggingRule> loggingRules = ParseRules(logRules, targets);
                     foreach (LoggingRule loggingRule in loggingRules)
                     {
-                        RemoveOverridenRules(configurationLoggingRules, loggingRule);
+                        RemoveOverriddenRules(configurationLoggingRules, loggingRule);
                         configurationLoggingRules.Add(loggingRule);
                     }
                 }
@@ -114,7 +111,7 @@ namespace Nethermind.Logging.NLog
         private static Target[] GetTargets(IList<LoggingRule> configurationLoggingRules) =>
             configurationLoggingRules.SelectMany(static r => r.Targets).Distinct().ToArray();
 
-        private static void RemoveOverridenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
+        private static void RemoveOverriddenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
         {
             string reqexPattern = $"^{loggingRule.LoggerNamePattern.Replace(".", "\\.").Replace("*", ".*")}$";
             for (int j = 0; j < configurationLoggingRules.Count;)
@@ -178,6 +175,11 @@ namespace Nethermind.Logging.NLog
         public void Dispose()
         {
             LogManager.ConfigurationChanged -= _logManagerOnConfigurationChanged;
+        }
+
+        private static class TypedLogger<T>
+        {
+            public static ILogger Logger { get; } = BuildLogger(typeof(T));
         }
     }
 }

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,8 +7,9 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
-using Nethermind.State.Tracing;
 
 namespace Nethermind.State
 {
@@ -148,27 +149,6 @@ namespace Nethermind.State
             Commit(NullStateTracer.Instance, commitRoots);
         }
 
-        protected struct ChangeTrace
-        {
-            public static readonly ChangeTrace _zeroBytes = new(StorageTree.ZeroBytes, StorageTree.ZeroBytes);
-            public static ref readonly ChangeTrace ZeroBytes => ref _zeroBytes;
-
-            public ChangeTrace(byte[]? before, byte[]? after)
-            {
-                After = after ?? StorageTree.ZeroBytes;
-                Before = before ?? StorageTree.ZeroBytes;
-            }
-
-            public ChangeTrace(byte[]? after)
-            {
-                After = after ?? StorageTree.ZeroBytes;
-                Before = StorageTree.ZeroBytes;
-            }
-
-            public byte[] Before;
-            public byte[] After;
-        }
-
         /// <summary>
         /// Commit persistent storage
         /// </summary>
@@ -200,22 +180,19 @@ namespace Nethermind.State
         /// Used for storage-specific logic
         /// </summary>
         /// <param name="tracer">Storage tracer</param>
-        protected virtual void CommitCore(IStorageTracer tracer)
-        {
-            _changes.Clear();
-            _intraBlockCache.Clear();
-            _transactionChangesSnapshots.Clear();
-        }
+        protected virtual void CommitCore(IStorageTracer tracer) => Reset();
 
         /// <summary>
         /// Reset the storage state
         /// </summary>
-        public virtual void Reset(bool resetBlockChanges = true)
+        public virtual void Reset(bool resetBlockChanges = true) => Reset();
+
+        private void Reset()
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
             _changes.Clear();
-            _intraBlockCache.Clear();
+            _intraBlockCache.ResetAndClear();
             _transactionChangesSnapshots.Clear();
         }
 
@@ -256,7 +233,7 @@ namespace Nethermind.State
         {
             StackList<int> stack = SetupRegistry(cell);
             stack.Push(_changes.Count);
-            _changes.Add(new Change(ChangeType.Update, cell, value));
+            _changes.Add(new Change(in cell, value, ChangeType.Update));
         }
 
         /// <summary>
@@ -268,7 +245,7 @@ namespace Nethermind.State
             ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
             if (!exists)
             {
-                value = new StackList<int>();
+                value = StackList<int>.Rent();
             }
 
             return value;
@@ -294,18 +271,11 @@ namespace Nethermind.State
         /// <summary>
         /// Used for tracking each change to storage
         /// </summary>
-        protected readonly struct Change
+        protected readonly struct Change(in StorageCell storageCell, byte[] value, ChangeType changeType)
         {
-            public Change(ChangeType changeType, StorageCell storageCell, byte[] value)
-            {
-                StorageCell = storageCell;
-                Value = value;
-                ChangeType = changeType;
-            }
-
-            public readonly ChangeType ChangeType;
-            public readonly StorageCell StorageCell;
-            public readonly byte[] Value;
+            public readonly StorageCell StorageCell = storageCell;
+            public readonly byte[] Value = value;
+            public readonly ChangeType ChangeType = changeType;
 
             public bool IsNull => ChangeType == ChangeType.Null;
         }

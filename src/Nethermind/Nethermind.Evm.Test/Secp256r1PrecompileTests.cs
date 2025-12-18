@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
@@ -13,6 +14,8 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Secp256r1PrecompileTests : PrecompileTests<Secp256r1PrecompileTests>, IPrecompileTests
     {
+        private static readonly byte[] ValidResult = new byte[] { 1 }.PadLeft(32);
+
         public static IEnumerable<string> TestFiles()
         {
             yield return "p256Verify.json";
@@ -33,12 +36,41 @@ namespace Nethermind.Evm.Test
         public void Produces_Empty_Output_On_Invalid_Input(string input)
         {
             var bytes = Bytes.FromHexString(input);
-            (ReadOnlyMemory<byte> output, var success) = Secp256r1Precompile.Instance.Run(bytes, Prague.Instance);
+            (ReadOnlyMemory<byte> output, var success) = Precompile().Run(bytes, Prague.Instance);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(success, Is.True);
                 Assert.That(output.ToArray(), Is.EquivalentTo(Array.Empty<byte>()));
+            }
+        }
+
+        [TestCaseSource(nameof(RandomECDsaInputs))]
+        public void Verifies_random_valid_signature(byte[] input)
+        {
+            (ReadOnlyMemory<byte> output, var success) = Secp256r1Precompile.Instance.Run(input, Prague.Instance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(success, Is.True);
+                Assert.That(output.ToArray(), Is.EquivalentTo(ValidResult));
+            }
+        }
+
+        public static IEnumerable<TestCaseData> RandomECDsaInputs()
+        {
+            var rng = RandomNumberGenerator.Create();
+            var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+
+            for (var i = 0; i < 100; i++)
+            {
+                var hash = new byte[32];
+                rng.GetBytes(hash);
+
+                ECParameters pub = ecdsa.ExportParameters(false);
+                byte[] sig = ecdsa.SignHash(hash, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+                byte[] input = [.. hash, .. sig, .. pub.Q.X, .. pub.Q.Y];
+
+                yield return new TestCaseData(input).SetName(Convert.ToHexString(input));
             }
         }
     }

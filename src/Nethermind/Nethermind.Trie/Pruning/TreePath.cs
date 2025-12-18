@@ -214,8 +214,7 @@ public struct TreePath : IEquatable<TreePath>
 
         Length = pathLength;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowPathMustBeLess()
         {
             throw new IndexOutOfRangeException("path length must be less than current length");

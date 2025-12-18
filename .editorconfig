@@ -11,9 +11,9 @@ trim_trailing_whitespace = true
 
 file_header_template = SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited\nSPDX-License-Identifier: LGPL-3.0-only
 
-[*.cs]
-indent_size = 4
 [*.py]
+indent_size = 4
+[*.cs]
 indent_size = 4
 
 #### Naming styles ####

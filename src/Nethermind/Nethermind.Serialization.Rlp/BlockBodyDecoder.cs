@@ -2,26 +2,26 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp;
 
-public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<BlockBody>
+public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
 {
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
-    private readonly HeaderDecoder _headerDecoder = new();
+    private readonly IHeaderDecoder _headerDecoder;
     private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
 
     private static BlockBodyDecoder? _instance = null;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
 
     // Cant set to private because of `Rlp.RegisterDecoder`.
-    public BlockBodyDecoder()
+    public BlockBodyDecoder(IHeaderDecoder headerDecoder = null)
     {
+        _headerDecoder = headerDecoder ?? new HeaderDecoder();
     }
 
-    public int GetLength(BlockBody item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(BlockBody item, RlpBehaviors rlpBehaviors)
     {
         return Rlp.LengthOfSequence(GetBodyLength(item));
     }
@@ -41,13 +41,46 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
         b.Withdrawals is not null ? GetWithdrawalsLength(b.Withdrawals) : null
     );
 
-    private int GetTxLength(Transaction[] transactions) => transactions.Sum(t => _txDecoder.GetLength(t, RlpBehaviors.None));
+    private int GetTxLength(Transaction[] transactions)
+    {
+        if (transactions.Length == 0) return 0;
 
-    private int GetUnclesLength(BlockHeader[] headers) => headers.Sum(t => _headerDecoder.GetLength(t, RlpBehaviors.None));
+        int sum = 0;
+        foreach (Transaction tx in transactions)
+        {
+            sum += _txDecoder.GetLength(tx, RlpBehaviors.None);
+        }
 
-    private int GetWithdrawalsLength(Withdrawal[] withdrawals) => withdrawals.Sum(t => _withdrawalDecoderDecoder.GetLength(t, RlpBehaviors.None));
+        return sum;
+    }
 
-    public BlockBody? Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    private int GetUnclesLength(BlockHeader[] headers)
+    {
+        if (headers.Length == 0) return 0;
+
+        int sum = 0;
+        foreach (BlockHeader header in headers)
+        {
+            sum += _headerDecoder.GetLength(header, RlpBehaviors.None);
+        }
+
+        return sum;
+    }
+
+    private int GetWithdrawalsLength(Withdrawal[] withdrawals)
+    {
+        if (withdrawals.Length == 0) return 0;
+
+        int sum = 0;
+        foreach (Withdrawal withdrawal in withdrawals)
+        {
+            sum += _withdrawalDecoderDecoder.GetLength(withdrawal, RlpBehaviors.None);
+        }
+
+        return sum;
+    }
+
+    protected override BlockBody? DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int sequenceLength = ctx.ReadSequenceLength();
         int startingPosition = ctx.Position;
@@ -61,9 +94,6 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
 
     public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
     {
-
-        // quite significant allocations (>0.5%) here based on a sample 3M blocks sync
-        // (just on these delegates)
         Transaction[] transactions = ctx.DecodeArray(_txDecoder);
         BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
         Withdrawal[]? withdrawals = null;
@@ -76,7 +106,7 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
         return new BlockBody(transactions, uncles, withdrawals);
     }
 
-    public BlockBody Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override BlockBody DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         Span<byte> span = rlpStream.PeekNextItem();
         Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(span);
@@ -86,7 +116,7 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>, IRlpStreamDecoder<B
         return response;
     }
 
-    public void Encode(RlpStream stream, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetBodyLength(body));
         stream.StartSequence(GetTxLength(body.Transactions));

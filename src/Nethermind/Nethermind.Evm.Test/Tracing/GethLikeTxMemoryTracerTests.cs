@@ -5,8 +5,8 @@ using System.Linq;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.State;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Evm.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -213,7 +213,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         Assert.That(trace.Entries[9].Stack.Count, Is.EqualTo(0), "BEGIN 2");
         Assert.That(trace.Entries[19].Stack.Count, Is.EqualTo(4), "CREATE FROM 2");
         Assert.That(trace.Entries[20].Stack.Count, Is.EqualTo(0), "BEGIN 3");
-        Assert.That(trace.Entries[2].Stack.Count, Is.EqualTo(2), "END 3");
+        Assert.That(trace.Entries[25].Stack.Count, Is.EqualTo(2), "END 3");
         Assert.That(trace.Entries[26].Stack.Count, Is.EqualTo(2), "END 2");
         Assert.That(trace.Entries[27].Stack.Count, Is.EqualTo(2), "END 1");
     }

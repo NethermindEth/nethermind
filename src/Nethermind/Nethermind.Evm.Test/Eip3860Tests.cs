@@ -3,7 +3,7 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using Nethermind.Core;
@@ -49,13 +49,13 @@ namespace Nethermind.Evm.Test
         [TestCase("60006000F5")]
         public void Test_EIP_3860_InitCode_Create_Exceeds_Limit(string createCode)
         {
-            string dataLenghtHex = (Spec.MaxInitCodeSize + 1).ToString("X");
-            Instruction dataPush = Instruction.PUSH1 + (byte)(dataLenghtHex.Length / 2 - 1);
+            string dataLengthHex = (Spec.MaxInitCodeSize + 1).ToString("X");
+            Instruction dataPush = Instruction.PUSH1 + (byte)(dataLengthHex.Length / 2 - 1);
 
             bool isCreate2 = createCode[^2..] == Instruction.CREATE2.ToString("X");
             byte[] evmCode = isCreate2
-                ? Prepare.EvmCode.PushSingle(0).FromCode(dataPush.ToString("X") + dataLenghtHex + createCode).Done
-                : Prepare.EvmCode.FromCode(dataPush.ToString("X") + dataLenghtHex + createCode).Done;
+                ? Prepare.EvmCode.PushSingle(0).FromCode(dataPush.ToString("X") + dataLengthHex + createCode).Done
+                : Prepare.EvmCode.FromCode(dataPush.ToString("X") + dataLengthHex + createCode).Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             TestState.InsertCode(TestItem.AddressC, evmCode, Spec);

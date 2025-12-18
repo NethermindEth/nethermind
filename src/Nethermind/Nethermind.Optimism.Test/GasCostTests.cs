@@ -11,7 +11,7 @@ public class GasCostTests
 {
     [TestCaseSource(nameof(FjordL1CostCalculationTestCases))]
     public UInt256 Fjord_l1cost_should_match(UInt256 fastLzSize, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar) =>
-        OPL1CostHelper.ComputeL1CostFjord(fastLzSize, l1BaseFee, blobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar, out _);
+        OptimismCostHelper.ComputeL1CostFjord(fastLzSize, l1BaseFee, blobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar, out _);
 
     public static IEnumerable FjordL1CostCalculationTestCases
     {

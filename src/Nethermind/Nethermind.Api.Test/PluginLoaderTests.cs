@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Api.Extensions;
@@ -45,8 +46,8 @@ public class PluginLoaderTests
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
             typeof(EthashPlugin),
-            typeof(NethDevPlugin),
             typeof(HivePlugin),
+            typeof(NethDevPlugin),
             typeof(TestPlugin)
         };
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
@@ -65,17 +66,17 @@ public class PluginLoaderTests
             typeof(TestPlugin));
         loader.Load();
         IPluginConfig pluginConfig =
-            new PluginConfig { PluginOrder = ["Hive", "TestPlugin", "NethDev", "Ethash", "Clique", "Aura"] };
+            new PluginConfig { PluginOrder = ["Hive", "Test", "NethDev", "Ethash", "Clique", "Aura"] };
         loader.OrderPlugins(pluginConfig);
 
         var expected = new List<Type>
         {
+            typeof(HivePlugin),
+            typeof(TestPlugin),
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
             typeof(CliquePlugin),
             typeof(AuRaPlugin),
-            typeof(HivePlugin),
-            typeof(TestPlugin)
         };
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
@@ -118,11 +119,11 @@ public class PluginLoaderTests
 
         var expected = new List<Type>
         {
+            typeof(HivePlugin),
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
-            typeof(HivePlugin),
             typeof(TestPlugin)
         };
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
@@ -141,11 +142,11 @@ public class PluginLoaderTests
 
         var expected = new List<Type>
         {
-            typeof(EthashPlugin),
-            typeof(NethDevPlugin),
-            typeof(MergePlugin),
             typeof(HealthChecksPlugin),
-            typeof(HivePlugin)
+            typeof(EthashPlugin),
+            typeof(MergePlugin),
+            typeof(HivePlugin),
+            typeof(NethDevPlugin)
         };
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
@@ -176,11 +177,6 @@ public class PluginLoaderTests
 
         // Just some arbitrary combination
         public bool Enabled => chainSpec.ChainId == 999 && initConfig.DiscoveryEnabled && !initConfig.PeerManagerEnabled;
-
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
     }
 
     private class TestPlugin2() : INethermindPlugin
@@ -189,11 +185,6 @@ public class PluginLoaderTests
         public string Description => "TestPlugin2";
         public string Author => "TestPlugin2";
         public bool Enabled => false;
-
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
     }
 
 
@@ -204,12 +195,7 @@ public class PluginLoaderTests
         public string Author => "TestPlugin2";
         public bool Enabled => true;
 
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
-
-        public IBlockProducer InitBlockProducer(ITxSource additionalTxSource = null)
+        public IBlockProducer InitBlockProducer()
         {
             throw new NotImplementedException();
         }

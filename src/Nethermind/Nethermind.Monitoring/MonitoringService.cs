@@ -8,11 +8,12 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
 using System.Net.Sockets;
+using Nethermind.Core.ServiceStopper;
 using Prometheus;
 
 namespace Nethermind.Monitoring;
 
-public class MonitoringService : IMonitoringService
+public class MonitoringService : IMonitoringService, IStoppableService
 {
     private readonly IMetricsController _metricsController;
     private readonly ILogger _logger;
@@ -53,7 +54,7 @@ public class MonitoringService : IMonitoringService
         _options = GetOptions(metricsConfig);
     }
 
-    public async Task StartAsync()
+    public Task StartAsync()
     {
         if (_pushGatewayUrl is not null)
         {
@@ -84,9 +85,10 @@ public class MonitoringService : IMonitoringService
             new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value).Start();
         }
 
-        await Task.Factory.StartNew(_metricsController.StartUpdating, TaskCreationOptions.LongRunning);
+        _metricsController.StartUpdating();
 
         if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
+        return Task.CompletedTask;
     }
 
     public void AddMetricsUpdateAction(Action callback)
@@ -100,6 +102,8 @@ public class MonitoringService : IMonitoringService
 
         return Task.CompletedTask;
     }
+
+    public string Description => "Monitoring service";
 
     private Options GetOptions(IMetricsConfig config)
     {

@@ -5,7 +5,6 @@
     "KeepDevWalletInMemory": true,
     "DiscoveryEnabled": false,
     "PeerManagerEnabled": false,
-    "IsMining": true,
     "ChainSpecPath": "chainspec/spaceneth.json",
     "BaseDbPath": "spaceneth_db",
     "LogFileName": "spaceneth.log",
@@ -53,5 +52,12 @@
   },
   "Metrics": {
     "NodeName": "Spaceneth"
+  },
+  "Merge": {
+    "Enabled": false
+  },
+  "Mining":
+  {
+    "Enabled": true
   }
 }

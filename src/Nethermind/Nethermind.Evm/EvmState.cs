@@ -5,8 +5,9 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
@@ -19,19 +20,73 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     private static readonly ConcurrentQueue<EvmState> _statePool = new();
     private static readonly StackPool _stackPool = new();
 
-    public byte[]? DataStack;
-    public int[]? ReturnStack;
+    /*
+    Type layout for 'EvmState'
+    Size: 176 bytes. Paddings: 5 bytes (%3 of empty space)
+    |=======================================================================|
+    | Object Header (8 bytes)                                               |
+    |-----------------------------------------------------------------------|
+    | Method Table Ptr (8 bytes)                                            |
+    |=======================================================================|
+    |   0-7: Byte[] DataStack (8 bytes)                                     |
+    |-----------------------------------------------------------------------|
+    |  8-15: ReturnState[] ReturnStack (8 bytes)                            |
+    |-----------------------------------------------------------------------|
+    | 16-23: Int64 <GasAvailable>k__BackingField (8 bytes)                  |
+    |-----------------------------------------------------------------------|
+    | 24-31: Int64 <OutputDestination>k__BackingField (8 bytes)             |
+    |-----------------------------------------------------------------------|
+    | 32-39: Int64 <OutputLength>k__BackingField (8 bytes)                  |
+    |-----------------------------------------------------------------------|
+    | 40-47: Int64 <Refund>k__BackingField (8 bytes)                        |
+    |-----------------------------------------------------------------------|
+    | 48-51: Int32 DataStackHead (4 bytes)                                  |
+    |-----------------------------------------------------------------------|
+    | 52-55: Int32 ReturnStackHead (4 bytes)                                |
+    |-----------------------------------------------------------------------|
+    | 56-59: Int32 <ProgramCounter>k__BackingField (4 bytes)                |
+    |-----------------------------------------------------------------------|
+    | 60-63: Int32 <FunctionIndex>k__BackingField (4 bytes)                 |
+    |-----------------------------------------------------------------------|
+    |    64: ExecutionType <ExecutionType>k__BackingField (1 byte)          |
+    |-----------------------------------------------------------------------|
+    |    65: Boolean <IsTopLevel>k__BackingField (1 byte)                   |
+    |-----------------------------------------------------------------------|
+    |    66: Boolean _canRestore (1 byte)                                   |
+    |-----------------------------------------------------------------------|
+    |    67: Boolean <IsStatic>k__BackingField (1 byte)                     |
+    |-----------------------------------------------------------------------|
+    |    68: Boolean <IsContinuation>k__BackingField (1 byte)               |
+    |-----------------------------------------------------------------------|
+    |    69: Boolean <IsCreateOnPreExistingAccount>k__BackingField (1 byte) |
+    |-----------------------------------------------------------------------|
+    |    70: Boolean _isDisposed (1 byte)                                   |
+    |-----------------------------------------------------------------------|
+    |    71: padding (1 byte)                                               |
+    |-----------------------------------------------------------------------|
+    | 72-103: EvmPooledMemory _memory (32 bytes)                            |
+    |-----------------------------------------------------------------------|
+    | 104-111: ExecutionEnvironment _env (8 bytes)                          |
+    |-----------------------------------------------------------------------|
+    | 112-143: StackAccessTracker _accessTracker (32 bytes)                 |
+    |-----------------------------------------------------------------------|
+    | 144-155: Snapshot _snapshot (12 bytes)                                |
+    |-----------------------------------------------------------------------|
+    | 156-159: padding (4 bytes)                                            |
+    |=======================================================================|
+     */
 
+    public byte[]? DataStack;
+    public ReturnState[]? ReturnStack;
     public long GasAvailable { get; set; }
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
-
     public int DataStackHead;
-
     public int ReturnStackHead;
-    internal ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv
+    public ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv
     public int ProgramCounter { get; set; }
+    public int FunctionIndex { get; set; }
     public bool IsTopLevel { get; private set; } // TODO: move to CallEnv
     private bool _canRestore;
     public bool IsStatic { get; private set; } // TODO: move to CallEnv
@@ -41,22 +96,19 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     private bool _isDisposed = true;
 
     private EvmPooledMemory _memory;
-    private Snapshot _snapshot;
-    private ExecutionEnvironment _env;
+    private ExecutionEnvironment? _env;
     private StackAccessTracker _accessTracker;
+    private Snapshot _snapshot;
 
-#if DEBUG
-    private StackTrace? _creationStackTrace;
-#endif
     /// <summary>
     /// Rent a top level <see cref="EvmState"/>.
     /// </summary>
     public static EvmState RentTopLevel(
         long gasAvailable,
         ExecutionType executionType,
-        in Snapshot snapshot,
-        in ExecutionEnvironment env,
-        in StackAccessTracker accessedItems)
+        ExecutionEnvironment env,
+        in StackAccessTracker accessedItems,
+        in Snapshot snapshot)
     {
         EvmState state = Rent();
         state.Initialize(
@@ -67,9 +119,9 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             isTopLevel: true,
             isStatic: false,
             isCreateOnPreExistingAccount: false,
-            snapshot: snapshot,
             env: env,
-            stateForAccessLists: accessedItems);
+            stateForAccessLists: accessedItems,
+            snapshot: snapshot);
         return state;
     }
 
@@ -83,29 +135,30 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         ExecutionType executionType,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
+        ExecutionEnvironment env,
+        in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot,
-        in ExecutionEnvironment env,
-        in StackAccessTracker stateForAccessLists)
+        bool isTopLevel = false)
     {
         EvmState state = Rent();
-
         state.Initialize(
             gasAvailable,
             outputDestination,
             outputLength,
             executionType,
-            isTopLevel: false,
+            isTopLevel: isTopLevel,
             isStatic: isStatic,
             isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
-            snapshot: snapshot,
             env: env,
-            stateForAccessLists: stateForAccessLists);
-
+            stateForAccessLists: stateForAccessLists,
+            snapshot: snapshot);
         return state;
     }
 
-    private static EvmState Rent() => _statePool.TryDequeue(out EvmState state) ? state : new EvmState();
+    private static EvmState Rent()
+        => _statePool.TryDequeue(out EvmState state) ? state : new EvmState();
 
+    [SkipLocalsInit]
     private void Initialize(
         long gasAvailable,
         long outputDestination,
@@ -114,47 +167,44 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         bool isTopLevel,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
-        in Snapshot snapshot,
-        in ExecutionEnvironment env,
-        in StackAccessTracker stateForAccessLists)
+        ExecutionEnvironment env,
+        in StackAccessTracker stateForAccessLists,
+        in Snapshot snapshot)
     {
+        _env = env;
+        _snapshot = snapshot;
+        _accessTracker = stateForAccessLists;
+        if (executionType.IsAnyCreate())
+        {
+            _accessTracker.WasCreated(env.ExecutingAccount);
+        }
+        _accessTracker.TakeSnapshot();
         GasAvailable = gasAvailable;
         OutputDestination = outputDestination;
         OutputLength = outputLength;
         Refund = 0;
         DataStackHead = 0;
         ReturnStackHead = 0;
-        ExecutionType = executionType;
         ProgramCounter = 0;
+        FunctionIndex = 0;
+        ExecutionType = executionType;
         IsTopLevel = isTopLevel;
         _canRestore = !isTopLevel;
         IsStatic = isStatic;
         IsContinuation = false;
         IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
-        _snapshot = snapshot;
-        _env = env;
-        _accessTracker = new(stateForAccessLists);
-        if (executionType.IsAnyCreate())
-        {
-            _accessTracker.WasCreated(env.ExecutingAccount);
-        }
-        _accessTracker.TakeSnapshot();
 
-        // Should be disposed when being initialized
         if (!_isDisposed)
         {
-            ThrowIfNotUninitialized();
+            ThrowIsInUse();
         }
-        // Mark revived
         _isDisposed = false;
 
 #if DEBUG
-        _creationStackTrace = new();
+        _creationStackTrace = new StackTrace();
 #endif
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowIfNotUninitialized()
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowIsInUse()
         {
             throw new InvalidOperationException("Already in use");
         }
@@ -169,20 +219,22 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     };
 
     public Address To => Env.CodeSource ?? Env.ExecutingAccount;
-    internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
+    public bool IsPrecompile => Env.CodeInfo?.IsPrecompile ?? false;
+
     public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
-    public ref readonly ExecutionEnvironment Env => ref _env;
+    public ExecutionEnvironment Env => _env!;
     public ref EvmPooledMemory Memory => ref _memory; // TODO: move to CallEnv
     public ref readonly Snapshot Snapshot => ref _snapshot; // TODO: move to CallEnv
 
     public void Dispose()
     {
-        // Shouldn't be called multiple times
         Debug.Assert(!_isDisposed);
-
-        if (_isDisposed) return;
-
+        if (_isDisposed)
+        {
+            return;
+        }
         _isDisposed = true;
+
         if (DataStack is not null)
         {
             // Only return if initialized
@@ -190,16 +242,17 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             DataStack = null;
             ReturnStack = null;
         }
+
         if (_canRestore)
         {
             // if we didn't commit and we are not top level, then we need to restore and drop the changes done in this call
             _accessTracker.Restore();
         }
         _memory.Dispose();
-        // Blank refs to not hold against GC
         _memory = default;
         _accessTracker = default;
-        _env = default;
+        if (!IsTopLevel) _env?.Dispose();
+        _env = null;
         _snapshot = default;
 
         _statePool.Enqueue(this);
@@ -210,11 +263,14 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     }
 
 #if DEBUG
+
+    private StackTrace? _creationStackTrace;
+
     ~EvmState()
     {
         if (!_isDisposed)
         {
-            throw new InvalidOperationException($"{nameof(EvmState)} hasn't been disposed. Created {_creationStackTrace}");
+            Console.Error.WriteLine($"Warning: {nameof(EvmState)} was not disposed. Created at: {_creationStackTrace}");
         }
     }
 #endif
@@ -222,7 +278,6 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public void InitializeStacks()
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-
         if (DataStack is null)
         {
             (DataStack, ReturnStack) = _stackPool.RentStacks();
@@ -232,8 +287,14 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public void CommitToParent(EvmState parentState)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-
         parentState.Refund += Refund;
         _canRestore = false; // we can't restore if we committed
+    }
+
+    public struct ReturnState
+    {
+        public int Index;
+        public int Offset;
+        public int Height;
     }
 }

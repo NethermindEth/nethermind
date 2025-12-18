@@ -41,6 +41,8 @@ namespace Nethermind.Synchronization.Test;
 
 public partial class ForwardHeaderProviderTests
 {
+    private const int SyncBatchSizeMax = 128;
+
     [TestCase(1L, 0, 64, 0, 1)]
     [TestCase(1L, 32, 64, 0, 0)]
     [TestCase(2L, 0, 64, 0, 2)]
@@ -51,10 +53,10 @@ public partial class ForwardHeaderProviderTests
     [TestCase(32L, 0, 16, 0, 15)]
     [TestCase(3L, 0, 64, 0, 3)]
     [TestCase(3L, 32, 64, 0, 0)]
-    [TestCase(SyncBatchSize.Max * 8, 0, 64, 0, 63)]
-    [TestCase(SyncBatchSize.Max * 8, 0, 64, 0, 63)]
-    [TestCase(SyncBatchSize.Max * 8, 32, 64, 0, 63)]
-    [TestCase(SyncBatchSize.Max * 8, 32, 64, 0, 63)]
+    [TestCase(SyncBatchSizeMax * 8, 0, 64, 0, 63)]
+    [TestCase(SyncBatchSizeMax * 8, 0, 64, 0, 63)]
+    [TestCase(SyncBatchSizeMax * 8, 32, 64, 0, 63)]
+    [TestCase(SyncBatchSizeMax * 8, 32, 64, 0, 63)]
     public async Task Happy_path(long headNumber, int skipLastN, int maxHeader, int expectedStartNumber, int expectedEndNumber)
     {
         long chainLength = headNumber + 1;
@@ -246,6 +248,31 @@ public partial class ForwardHeaderProviderTests
         await newSyncPeer.Received(1).GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
+    [Test]
+    public async Task Cache_block_headers_with_disposal()
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(1000);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
+
+        using IOwnedReadOnlyList<BlockHeader?>? headers1 = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
+        headers1.Should().NotBeNull();
+        using IOwnedReadOnlyList<BlockHeader?>? headers2 = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
+        headers2.Should().NotBeNull();
+
+        await syncPeer.Received(1).GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
     private class SlowSealValidator : ISealValidator
     {
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
@@ -325,7 +352,7 @@ public partial class ForwardHeaderProviderTests
         public byte ProtocolVersion { get; } = default;
         public Hash256 HeadHash { get; set; } = headHash ?? Keccak.Zero;
         public long HeadNumber { get; set; } = number;
-        public UInt256 TotalDifficulty { get; set; } = totalDiff ?? UInt256.MaxValue;
+        public UInt256? TotalDifficulty { get; set; } = totalDiff ?? UInt256.MaxValue;
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
@@ -458,13 +485,7 @@ public partial class ForwardHeaderProviderTests
 
         public void ConfigureBestPeer(PeerInfo peerInfo)
         {
-            IPeerAllocationStrategy peerAllocationStrategy = Substitute.For<IPeerAllocationStrategy>();
-
-            peerAllocationStrategy
-                .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
-                .Returns(peerInfo);
-            SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.Blocks, null);
-            peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), BlockTree);
+            SyncPeerAllocation peerAllocation = new(peerInfo, AllocationContexts.Blocks, null);
 
             PeerPool
                 .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -531,7 +552,7 @@ public partial class ForwardHeaderProviderTests
         public Hash256 HeadHash { get; set; } = null!;
         public PublicKey Id => Node.Id;
         public long HeadNumber { get; set; }
-        public UInt256 TotalDifficulty { get; set; }
+        public UInt256? TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
@@ -554,7 +575,7 @@ public partial class ForwardHeaderProviderTests
             bool justFirst = _flags.HasFlag(Response.JustFirst);
             bool timeoutOnFullBatch = _flags.HasFlag(Response.TimeoutOnFullBatch);
 
-            if (timeoutOnFullBatch && number == SyncBatchSize.Max)
+            if (timeoutOnFullBatch && number == SyncBatchSizeMax)
             {
                 throw new TimeoutException();
             }
@@ -646,7 +667,7 @@ public partial class ForwardHeaderProviderTests
             bool timeoutOnFullBatch = flags.HasFlag(Response.TimeoutOnFullBatch);
             bool withTransaction = flags.HasFlag(Response.WithTransactions);
 
-            if (timeoutOnFullBatch && number == SyncBatchSize.Max)
+            if (timeoutOnFullBatch && number == SyncBatchSizeMax)
             {
                 throw new TimeoutException();
             }
@@ -705,7 +726,7 @@ public partial class ForwardHeaderProviderTests
             bool timeoutOnFullBatch = flags.HasFlag(Response.TimeoutOnFullBatch);
             bool withTransactions = flags.HasFlag(Response.WithTransactions);
 
-            if (timeoutOnFullBatch && blockHashes.Count == SyncBatchSize.Max)
+            if (timeoutOnFullBatch && blockHashes.Count == SyncBatchSizeMax)
             {
                 throw new TimeoutException();
             }

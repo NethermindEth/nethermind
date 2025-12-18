@@ -42,7 +42,7 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GenesisSpec => _releaseSpec;
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _releaseSpec;
+        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => _releaseSpec;
 
         public long? DaoBlockNumber { get; }
         public ulong? BeaconChainGenesisTimestamp { get; }

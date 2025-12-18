@@ -35,20 +35,6 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Hive": {
-      "commandName": "Project",
-      "commandLineArgs": "-c hive --data-dir .data --init-diagnosticmode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Holesky": {
-      "commandName": "Project",
-      "commandLineArgs": "-c holesky --data-dir .data",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Hoodi": {
       "commandName": "Project",
       "commandLineArgs": "-c hoodi --data-dir .data",
@@ -58,7 +44,7 @@
     },
     "JOC Mainnet": {
       "commandName": "Project",
-      "commandLineArgs": "-c joc-mainnet -dd .data",
+      "commandLineArgs": "-c joc-mainnet --data-dir .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -98,6 +84,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Spaceneth": {
+      "commandName": "Project",
+      "commandLineArgs": "-c spaceneth --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Taiko Alethia": {
       "commandName": "Project",
       "commandLineArgs": "-c taiko-alethia --data-dir .data",
@@ -105,9 +98,9 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Taiko Hekla": {
+    "Taiko Hoodi": {
       "commandName": "Project",
-      "commandLineArgs": "-c taiko-hekla --data-dir .data",
+      "commandLineArgs": "-c taiko-hoodi --data-dir .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -121,11 +114,11 @@
     },
     "Docker": {
       "commandName": "Docker",
-      "commandLineArgs": "-c holesky --data-dir /data --jsonrpc-enginehost 0.0.0.0 --jsonrpc-engineport 8551 --jsonrpc-host 0.0.0.0"
+      "commandLineArgs": "-c hoodi --data-dir /data --jsonrpc-enginehost 0.0.0.0 --jsonrpc-engineport 8551 --jsonrpc-host 0.0.0.0"
     },
     "WSL": {
       "commandName": "WSL2",
-      "commandLineArgs": "\"{OutDir}/nethermind.dll\" -c holesky --data-dir .data",
+      "commandLineArgs": "\"{OutDir}/nethermind.dll\" -c hoodi --data-dir .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },

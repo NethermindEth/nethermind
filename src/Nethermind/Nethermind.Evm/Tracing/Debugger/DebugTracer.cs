@@ -79,7 +79,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         }
     }
 
-    public void SetCondtion(Func<EvmState, bool>? condition = null)
+    public void SetCondition(Func<EvmState, bool>? condition = null)
     {
         if (CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting) _globalBreakCondition = condition;
     }
@@ -194,8 +194,8 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string error, Hash256? stateRoot = null)
         => InnerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
-        => InnerTracer.StartOperation(pc, opcode, gas, env);
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+        => InnerTracer.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
 
     public void ReportOperationError(EvmExceptionType error)
         => InnerTracer.ReportOperationError(error);
@@ -260,7 +260,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportExtraGasPressure(long extraGasPressure)
         => InnerTracer.ReportExtraGasPressure(extraGasPressure);
 
-    public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+    public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
         => InnerTracer.ReportAccess(accessedAddresses, accessedStorageCells);
 
     public void ReportFees(UInt256 fees, UInt256 burntFees)

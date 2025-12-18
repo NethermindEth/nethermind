@@ -12,7 +12,6 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
     public abstract class FilterPeerAllocationStrategy : IPeerAllocationStrategy
     {
         private readonly IPeerAllocationStrategy _nextStrategy;
-        public bool CanBeReplaced => false;
 
         public FilterPeerAllocationStrategy(IPeerAllocationStrategy strategy)
         {

@@ -8,6 +8,7 @@ using System.Net;
 using System.Net.Sockets;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 
 namespace Nethermind.Config
 {
@@ -31,12 +32,18 @@ namespace Nethermind.Config
             ArgumentException GetPortException(string hostName) =>
                 new($"Can't get Port for host {hostName}.");
 
+            if (!(Uri.TryCreate(enodeString, new UriCreationOptions() { }, out Uri? parsed)
+                && parsed.Scheme.Equals("enode", StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new ArgumentException($"Invalid enode value '{enodeString}'");
+            }
+
             string[] enodeParts = enodeString.Split(':');
             string[] enodeParts2 = enodeParts[1].Split('@');
-            _nodeKey = new PublicKey(enodeParts2[0].TrimStart('/'));
-            string host = enodeParts2[1];
+            _nodeKey = new PublicKey(parsed.UserInfo);
+            string host = parsed.Host;
 
-            if (enodeParts.Length != 3)
+            if (parsed.Port == -1)
             {
                 throw GetPortException(host);
             }

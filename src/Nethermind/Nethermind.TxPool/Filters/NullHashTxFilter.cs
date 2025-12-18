@@ -16,6 +16,7 @@ namespace Nethermind.TxPool.Filters
         {
             if (tx.Hash is null)
             {
+                Metrics.PendingTransactionsNullHash++;
                 return AcceptTxResult.Invalid;
             }
 

@@ -140,8 +140,7 @@ namespace Nethermind.KeyStore
                     break;
                 case "pbkdf2":
                     int c = kdfParams.C.Value;
-                    var deriveBytes = new Rfc2898DeriveBytes(passBytes, salt, c, HashAlgorithmName.SHA256);
-                    derivedKey = deriveBytes.GetBytes(256);
+                    derivedKey = Rfc2898DeriveBytes.Pbkdf2(passBytes, salt, c, HashAlgorithmName.SHA256, 256);
                     break;
                 default:
                     return (null, Result.Fail($"Unsupported algorithm: {kdf}"));

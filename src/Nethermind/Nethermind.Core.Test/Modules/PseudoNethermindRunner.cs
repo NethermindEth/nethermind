@@ -5,10 +5,12 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Events;
+using Nethermind.Evm.State;
 using Nethermind.Network;
 using Nethermind.Network.Rlpx;
 using Nethermind.Synchronization;
@@ -35,7 +37,7 @@ public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
         _blockProducerRunner ??= ctx.Resolve<IBlockProducerRunner>();
         _blockProducerRunner.Start();
 
-        MainBlockProcessingContext mainBlockProcessingContext = ctx.Resolve<MainBlockProcessingContext>();
+        IMainProcessingContext mainBlockProcessingContext = ctx.Resolve<IMainProcessingContext>();
         _blockchainProcessor = mainBlockProcessingContext.BlockchainProcessor;
         _blockchainProcessor.Start();
 
@@ -48,18 +50,7 @@ public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
 
         IBlockTree blockTree = ctx.Resolve<IBlockTree>();
         if (blockTree.Genesis is not null) return;
-
-        MainBlockProcessingContext mainBlockProcessingContext = ctx.Resolve<MainBlockProcessingContext>();
-
-        Task newHeadTask = Wait.ForEventCondition<BlockEventArgs>(
-            cancellation,
-            (h) => blockTree.NewHeadBlock += h,
-            (h) => blockTree.NewHeadBlock -= h,
-            (e) => true);
-
-        Block genesis = mainBlockProcessingContext.GenesisLoader.Load();
-        blockTree.SuggestBlock(genesis);
-        await newHeadTask;
+        ctx.Resolve<IMainProcessingContext>().GenesisLoader.Load();
     }
 
     public async Task StartNetwork(CancellationToken cancellationToken)

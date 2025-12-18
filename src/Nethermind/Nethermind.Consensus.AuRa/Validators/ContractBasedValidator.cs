@@ -87,7 +87,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
             // this condition is probably redundant because whenever Validators is null, isConsecutiveBlock will be false
             // but let's leave it here just in case, it does not harm
-            if (Validators is null || !isConsecutiveBlock)
+            if (Validators is null || (!isConsecutiveBlock && !isInitBlock))
             {
                 var parentHeader = BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
                 Validators = isInitBlock || !isInProcessedRange ? LoadValidatorsFromContract(parentHeader) : ValidatorStore.GetValidators(block.Number);

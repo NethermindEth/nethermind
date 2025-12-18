@@ -1,12 +1,13 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Network.Contract.Messages;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.TxPool
 {
@@ -25,11 +26,12 @@ namespace Nethermind.TxPool
 
         public int GetPendingTransactionsCount() => 0;
         public int GetPendingBlobTransactionsCount() => 0;
+        public long PendingTransactionsAdded => 0;
         public Transaction[] GetPendingTransactions() => [];
 
         public Transaction[] GetPendingTransactionsBySender(Address address) => [];
 
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender()
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default)
             => new Dictionary<AddressAsKey, Transaction[]>();
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()
@@ -63,7 +65,7 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool TryGetBlobAndProof(byte[] blobVersionedHash,
+        public bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof)
         {
@@ -72,8 +74,20 @@ namespace Nethermind.TxPool
             return false;
         }
 
+        public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
+            [NotNullWhen(true)] out byte[]? blob,
+            [NotNullWhen(true)] out byte[][]? cellProofs)
+        {
+            blob = null;
+            cellProofs = null;
+            return false;
+        }
+
+        public int GetBlobCounts(byte[][] blobVersionedHashes) => 0;
+
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
+        public AnnounceResult AnnounceTx(ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.New;
 
         public event EventHandler<TxEventArgs> NewDiscovered
         {

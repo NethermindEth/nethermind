@@ -13,8 +13,8 @@
     "FastSync": true,
     "SnapSync": true,
     "FastSyncCatchUpHeightDelta": "10000000000",
-    "PivotNumber": 11660000,
-    "PivotHash": "0x939a594043c31d2d94cf0e2d21265e21cac74d0a246273df70793740e4439024"
+    "PivotNumber": 23350000,
+    "PivotHash": "0x2a465940100d53df2bfd56ed499ffdf166fa8ef48d7917c04bc87cdb14deea7e"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -25,7 +25,7 @@
     "EnginePort": 8551
   },
   "Pruning": {
-    "PruningBoundary": 192
+    "PruningBoundary": 256
   },
   "Blocks": {
     "SecondsPerSlot": 2

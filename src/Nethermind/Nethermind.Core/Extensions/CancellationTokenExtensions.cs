@@ -10,6 +10,14 @@ namespace Nethermind.Core.Extensions
 {
     public static class CancellationTokenExtensions
     {
+        public static CancellationToken AlreadyCancelledToken { get; } = CreateAlreadyCancelledToken();
+        private static CancellationToken CreateAlreadyCancelledToken()
+        {
+            CancellationTokenSource cts = new();
+            cts.Cancel();
+            return cts.Token;
+        }
+
         /// <summary>
         /// Converts <see cref="CancellationToken"/> to a awaitable <see cref="Task"/> when token is cancelled.
         /// </summary>

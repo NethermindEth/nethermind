@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using Autofac.Features.AttributeFilters;
+using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -11,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Optimism.Rpc;
+using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
@@ -21,28 +26,26 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
 
     public OptimismPayloadPreparationService(
         ISpecProvider specProvider,
-        PostMergeBlockProducer blockProducer,
+        IBlockProducer blockProducer,
+        ITxPool txPool,
         IBlockImprovementContextFactory blockImprovementContextFactory,
         ITimerFactory timerFactory,
         ILogManager logManager,
-        TimeSpan timePerSlot,
-        int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
-        TimeSpan? improvementDelay = null)
+        IBlocksConfig blocksConfig)
         : base(
             blockProducer,
+            txPool,
             blockImprovementContextFactory,
             timerFactory,
             logManager,
-            timePerSlot,
-            slotsPerOldPayloadCleanup,
-            improvementDelay)
+            blocksConfig)
     {
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
     }
 
     protected override void ImproveBlock(string payloadId, BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees)
+        PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts)
     {
         if (payloadAttributes is OptimismPayloadAttributes optimismPayload)
         {
@@ -60,7 +63,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
                     eip1559Parameters = new EIP1559Parameters(eip1559Parameters.Version, (UInt32)spec.BaseFeeMaxChangeDenominator, (UInt32)spec.ElasticityMultiplier);
                 }
 
-                currentBestBlock.Header.ExtraData = new byte[EIP1559Parameters.ByteLength];
+                currentBestBlock.Header.ExtraData = new byte[eip1559Parameters.ByteLength];
                 eip1559Parameters.WriteTo(currentBestBlock.Header.ExtraData);
 
                 // NOTE: Since we updated the `Header` we need to recalculate the hash.
@@ -79,7 +82,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
         }
         else
         {
-            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees);
+            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
         }
     }
 }

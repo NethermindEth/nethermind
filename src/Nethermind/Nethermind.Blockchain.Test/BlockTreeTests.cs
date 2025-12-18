@@ -252,7 +252,7 @@ public class BlockTreeTests
             .TestObject;
 
         Assert.That(tree2.BestKnownNumber, Is.EqualTo(0L), "best known");
-        Assert.That(tree2.Head, Is.EqualTo(null), "head");
+        Assert.That(tree2.Head?.Number, Is.EqualTo(0), "head");
         Assert.That(tree2.BestSuggestedHeader!.Number, Is.EqualTo(0L), "suggested");
         Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 1");
         Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
@@ -297,7 +297,7 @@ public class BlockTreeTests
             .TestObject;
 
         Assert.That(tree2.BestKnownNumber, Is.EqualTo(3L), "best known");
-        Assert.That(tree2.Head, Is.EqualTo(null), "head");
+        Assert.That(tree2.Head?.Number, Is.EqualTo(0), "head");
         Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block3B.Hash), "suggested");
 
         blockStore.Get(block1.Number, block1.Hash!).Should().BeNull("block 1");
@@ -1881,7 +1881,7 @@ public class BlockTreeTests
         // First run
         {
             Hash256 uncleHash = new("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347");
-            BlockTree tree = Build.A.BlockTree(HoleskySpecProvider.Instance)
+            BlockTree tree = Build.A.BlockTree(HoodiSpecProvider.Instance)
                 .WithBlockStore(new BlockStore(blocksDb))
                 .WithBlocksNumberDb(blockNumberDb)
                 .WithHeadersDb(headersDb)
@@ -1947,7 +1947,7 @@ public class BlockTreeTests
 
         // Assume Nethermind got restarted
         {
-            BlockTree tree = Build.A.BlockTree(HoleskySpecProvider.Instance)
+            BlockTree tree = Build.A.BlockTree(HoodiSpecProvider.Instance)
                 .WithBlockStore(new BlockStore(blocksDb))
                 .WithBlocksNumberDb(blockNumberDb)
                 .WithHeadersDb(headersDb)
@@ -2059,5 +2059,148 @@ public class BlockTreeTests
 
         blockTree = Build.A.BlockTree().WithMetadataDb(metadataDb).WithSyncConfig(syncConfig).TestObject;
         blockTree.SyncPivot.Should().Be((1000, TestItem.KeccakA));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void On_UpdateMainBranch_UpdateSyncPivot_ToLowestPersistedHeader()
+    {
+        long pivotNumber = 3L;
+
+        SyncConfig syncConfig = new()
+        {
+            FastSync = true,
+            PivotNumber = pivotNumber.ToString(),
+            PivotHash = TestItem.KeccakA.ToString(),
+        };
+
+        BlockTree tree = Build.A.BlockTree()
+            .WithSyncConfig(syncConfig)
+            .TestObject;
+
+        tree.SyncPivot.Should().Be((pivotNumber, TestItem.KeccakA));
+
+        Block block = Build.A.Block.Genesis.TestObject;
+        tree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+
+        for (long i = 1; i <= 5; i++)
+        {
+            block = Build.A.Block.WithTotalDifficulty(1L).WithParent(block).TestObject;
+            tree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+            tree.UpdateMainChain(block);
+            tree.ForkChoiceUpdated(block.Hash, block.Hash);
+            tree.SyncPivot.Should().Be((pivotNumber, TestItem.KeccakA));
+        }
+
+        tree.BestPersistedState = 5;
+        BlockHeader persistedStateHeader = tree.FindHeader(tree.BestPersistedState.Value, BlockTreeLookupOptions.RequireCanonical)!;
+
+        for (long i = 6; i < 10; i++)
+        {
+            block = Build.A.Block.WithTotalDifficulty(1L).WithParent(block).TestObject;
+            tree.SuggestBlock(block);
+            tree.UpdateMainChain(block);
+            tree.ForkChoiceUpdated(block.Hash, block.Hash);
+            tree.SyncPivot.Should().Be((persistedStateHeader.Number, persistedStateHeader.Hash!));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void On_ForkChoiceUpdated_UpdateSyncPivot_ToFinalizedHeader_BeforePersistedState()
+    {
+        long pivotNumber = 3L;
+
+        SyncConfig syncConfig = new()
+        {
+            FastSync = true,
+            PivotNumber = pivotNumber.ToString(),
+            PivotHash = TestItem.KeccakA.ToString(),
+        };
+
+        BlockTree tree = Build.A.BlockTree()
+            .WithSyncConfig(syncConfig)
+            .TestObject;
+
+        tree.SyncPivot.Should().Be((pivotNumber, TestItem.KeccakA));
+
+        Block block = Build.A.Block.Genesis.TestObject;
+        tree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+
+        for (long i = 1; i <= 10; i++)
+        {
+            block = Build.A.Block.WithTotalDifficulty(1L).WithParent(block).TestObject;
+            tree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+            tree.UpdateMainChain(block);
+            tree.SyncPivot.Should().Be((pivotNumber, TestItem.KeccakA));
+        }
+
+        tree.BestPersistedState = 7;
+        BlockHeader persistedStateHeader = tree.FindHeader(tree.BestPersistedState.Value, BlockTreeLookupOptions.RequireCanonical)!;
+
+        for (long i = 4; i < 10; i++)
+        {
+            BlockHeader header = tree.FindHeader(i, BlockTreeLookupOptions.RequireCanonical)!;
+            tree.ForkChoiceUpdated(header.Hash, header.Hash);
+            if (header.Number < persistedStateHeader.Number)
+            {
+                tree.SyncPivot.Should().Be((header.Number, header.Hash!));
+            }
+            else
+            {
+                tree.SyncPivot.Should().Be((persistedStateHeader.Number, persistedStateHeader.Hash!));
+            }
+        }
+    }
+
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void On_UpdateMainBranch_UpdateSyncPivot_ToHeaderUnderReorgDepth()
+    {
+        long pivotNumber = 3L;
+
+        SyncConfig syncConfig = new()
+        {
+            FastSync = true,
+            PivotNumber = pivotNumber.ToString(),
+            PivotHash = TestItem.KeccakA.ToString(),
+        };
+
+        BlockTree tree = Build.A.BlockTree()
+            .WithSyncConfig(syncConfig)
+            .TestObject;
+
+        tree.SyncPivot.Should().Be((pivotNumber, TestItem.KeccakA));
+
+        Block block = Build.A.Block.Genesis.TestObject;
+        tree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+
+        for (long i = 1; i <= 5; i++)
+        {
+            block = Build.A.Block
+                .WithParent(block)
+                .WithDifficulty(1L)
+                .WithTotalDifficulty(block.TotalDifficulty + 1)
+                .TestObject;
+            tree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+            tree.UpdateMainChain(block);
+            tree.SyncPivot.Should().Be((pivotNumber, TestItem.KeccakA));
+        }
+
+        for (long i = 6; i < 100; i++)
+        {
+            block = Build.A.Block
+                .WithParent(block)
+                .WithDifficulty(1L)
+                .WithTotalDifficulty(block.TotalDifficulty + 1)
+                .TestObject;
+            tree.SuggestBlock(block);
+            tree.UpdateMainChain(block);
+            tree.BestPersistedState = block.Number;
+
+            if (block.Number > pivotNumber + Reorganization.MaxDepth)
+            {
+                BlockHeader reorgDepthHeader = tree.FindHeader(block.Number - Reorganization.MaxDepth, BlockTreeLookupOptions.RequireCanonical)!;
+                tree.SyncPivot.Should().Be((reorgDepthHeader.Number, reorgDepthHeader.Hash!));
+            }
+        }
     }
 }

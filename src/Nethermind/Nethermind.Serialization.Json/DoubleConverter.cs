@@ -27,7 +27,7 @@ namespace Nethermind.Serialization.Json
             double value,
             JsonSerializerOptions options)
         {
-            writer.WriteRawValue(value.ToString("0.0#########", CultureInfo.InvariantCulture), skipInputValidation: true);
+            writer.WriteRawValue(value.ToString("0.##########", CultureInfo.InvariantCulture), skipInputValidation: true);
         }
     }
 
@@ -48,7 +48,7 @@ namespace Nethermind.Serialization.Json
             {
                 throw new JsonException();
             }
-            using ArrayPoolList<double> values = new ArrayPoolList<double>(16);
+            using ArrayPoolListRef<double> values = new(16);
             while (reader.Read() && reader.TokenType == JsonTokenType.Number)
             {
                 values.Add(reader.GetDouble());

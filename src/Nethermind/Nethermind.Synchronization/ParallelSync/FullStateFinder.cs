@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.State;
@@ -17,6 +18,7 @@ public class FullStateFinder : IFullStateFinder
     private const int MaxLookupBack = 128;
     private readonly IStateReader _stateReader;
     private readonly IBlockTree _blockTree;
+    private long _lastKnownState = 0;
 
     public FullStateFinder(
         IBlockTree blockTree,
@@ -26,14 +28,14 @@ public class FullStateFinder : IFullStateFinder
         _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
     }
 
-    private bool IsFullySynced(Hash256 stateRoot)
+    private bool IsFullySynced(BlockHeader block)
     {
-        if (stateRoot == Keccak.EmptyTreeHash)
+        if (block.StateRoot == Keccak.EmptyTreeHash)
         {
             return true;
         }
 
-        return _stateReader.HasStateForRoot(stateRoot);
+        return _stateReader.HasStateForBlock(block);
     }
 
     public long FindBestFullState()
@@ -65,26 +67,37 @@ public class FullStateFinder : IFullStateFinder
             }
         }
 
+        if (bestFullState != 0)
+        {
+            _lastKnownState = bestFullState;
+        }
+
         return bestFullState;
     }
 
     private long SearchForFullState(BlockHeader startHeader)
     {
         long bestFullState = 0;
-        for (int i = 0; i < MaxLookupBack; i++)
+        long maxLookupBack = MaxLookupBack;
+        if (_lastKnownState != 0)
+        {
+            maxLookupBack = long.Max(maxLookupBack, startHeader.Number - _lastKnownState + 1);
+        }
+
+        for (int i = 0; i < maxLookupBack; i++)
         {
             if (startHeader is null)
             {
                 break;
             }
 
-            if (IsFullySynced(startHeader.StateRoot!))
+            if (IsFullySynced(startHeader))
             {
                 bestFullState = startHeader.Number;
                 break;
             }
 
-            startHeader = _blockTree.FindHeader(startHeader.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            startHeader = _blockTree.FindParentHeader(startHeader!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
 
         return bestFullState;

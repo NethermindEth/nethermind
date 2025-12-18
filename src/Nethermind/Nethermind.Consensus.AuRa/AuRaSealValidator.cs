@@ -8,6 +8,7 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -24,19 +25,29 @@ namespace Nethermind.Consensus.AuRa
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
         private readonly ReceivedSteps _receivedSteps = new ReceivedSteps();
+        private readonly Lazy<IReportingValidator> _reportingValidator;
 
-        public AuRaSealValidator(AuRaChainSpecEngineParameters parameters, IAuRaStepCalculator stepCalculator, IBlockTree blockTree, IValidatorStore validatorStore, IValidSealerStrategy validSealerStrategy, IEthereumEcdsa ecdsa, ILogManager logManager)
+        public AuRaSealValidator(
+            AuRaChainSpecEngineParameters parameters,
+            IAuRaStepCalculator stepCalculator,
+            IBlockTree blockTree,
+            IValidatorStore validatorStore,
+            IValidSealerStrategy validSealerStrategy,
+            IEthereumEcdsa ecdsa,
+            Lazy<IReportingValidator> reportingValidator,
+            ILogManager logManager)
         {
-            _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
-            _stepCalculator = stepCalculator ?? throw new ArgumentNullException(nameof(stepCalculator));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
-            _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
-            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+            _parameters = parameters;
+            _stepCalculator = stepCalculator;
+            _blockTree = blockTree;
+            _validatorStore = validatorStore;
+            _validSealerStrategy = validSealerStrategy;
+            _ecdsa = ecdsa;
+            _reportingValidator = reportingValidator;
             _logger = logManager?.GetClassLogger<AuRaSealValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public IReportingValidator ReportingValidator { get; set; } = NullReportingValidator.Instance;
+        private IReportingValidator ReportingValidator => _reportingValidator.Value;
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
@@ -154,12 +165,14 @@ namespace Nethermind.Consensus.AuRa
         {
             Signature signature = new Signature(header.AuRaSignature);
             signature.V += Signature.VOffset;
-            Hash256 message = header.CalculateHash(RlpBehaviors.ForSealing);
-            return _ecdsa.RecoverAddress(signature, message);
+            ValueHash256 message = header.CalculateValueHash(RlpBehaviors.ForSealing);
+            return _ecdsa.RecoverAddress(signature, in message);
         }
 
         private class ReceivedSteps
         {
+            private McsLock _lock = new McsLock();
+
             private readonly struct AuthorBlock : IEquatable<AuthorBlock>
             {
                 public AuthorBlock(Address author, Hash256 block)
@@ -208,6 +221,8 @@ namespace Nethermind.Consensus.AuRa
 
             public bool ContainsSiblingOrInsert(BlockHeader header, int validatorCount)
             {
+                using McsLock.Disposable _ = _lock.Acquire();
+
                 long step = header.AuRaStep.Value;
                 Address author = header.Beneficiary;
                 var hash = header.Hash;

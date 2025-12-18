@@ -15,16 +15,15 @@ namespace Nethermind.State.Proofs;
 /// <summary>
 /// Represents a Patricia trie built of a collection of <see cref="TxReceipt"/>.
 /// </summary>
-public class ReceiptTrie<TReceipt> : PatriciaTrie<TReceipt>
+public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
 {
-    private readonly IRlpStreamDecoder<TReceipt> _decoder;
+    private readonly IRlpStreamDecoder<TxReceipt> _decoder;
     /// <inheritdoc/>
     /// <param name="receipts">The transaction receipts to build the trie of.</param>
-    public ReceiptTrie(IReceiptSpec spec, TReceipt[] receipts, IRlpStreamDecoder<TReceipt> trieDecoder, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
+    public ReceiptTrie(IReceiptSpec spec, ReadOnlySpan<TxReceipt> receipts, IRlpStreamDecoder<TxReceipt> trieDecoder, ICappedArrayPool bufferPool, bool canBuildProof = false)
         : base(null, canBuildProof, bufferPool: bufferPool)
     {
         ArgumentNullException.ThrowIfNull(spec);
-        ArgumentNullException.ThrowIfNull(receipts);
         ArgumentNullException.ThrowIfNull(trieDecoder);
         _decoder = trieDecoder;
 
@@ -35,32 +34,33 @@ public class ReceiptTrie<TReceipt> : PatriciaTrie<TReceipt>
         }
     }
 
-    private void Initialize(TReceipt[] receipts, IReceiptSpec spec)
+    private void Initialize(ReadOnlySpan<TxReceipt> receipts, IReceiptSpec spec)
     {
         RlpBehaviors behavior = (spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
         int key = 0;
 
-        foreach (TReceipt? receipt in receipts)
+        foreach (TxReceipt? receipt in receipts)
         {
-            CappedArray<byte> buffer = _decoder.EncodeToCappedArray(receipt, behavior, _bufferPool);
-            CappedArray<byte> keyBuffer = (key++).EncodeToCappedArray(_bufferPool);
+            SpanSource buffer = _decoder.EncodeToSpanSource(receipt, rlpBehaviors: behavior, bufferPool: _bufferPool);
+            SpanSource keyBuffer = key.EncodeToSpanSource(_bufferPool);
+            key++;
 
-            Set(keyBuffer.AsSpan(), buffer);
+            Set(keyBuffer.Span, buffer);
         }
     }
 
-    protected override void Initialize(TReceipt[] list) => throw new NotSupportedException();
+    protected override void Initialize(ReadOnlySpan<TxReceipt> list) => throw new NotSupportedException();
 
-    public static byte[][] CalculateReceiptProofs(IReleaseSpec spec, TReceipt[] receipts, int index, IRlpStreamDecoder<TReceipt> decoder)
+    public static byte[][] CalculateReceiptProofs(IReleaseSpec spec, ReadOnlySpan<TxReceipt> receipts, int index, IRlpStreamDecoder<TxReceipt> decoder)
     {
         using TrackingCappedArrayPool cappedArrayPool = new(receipts.Length * 4);
-        return new ReceiptTrie<TReceipt>(spec, receipts, decoder, canBuildProof: true, cappedArrayPool).BuildProof(index);
+        return new ReceiptTrie(spec, receipts, decoder, cappedArrayPool, canBuildProof: true).BuildProof(index);
     }
 
-    public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, TReceipt[] txReceipts, IRlpStreamDecoder<TReceipt> decoder)
+    public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, ReadOnlySpan<TxReceipt> txReceipts, IRlpStreamDecoder<TxReceipt> decoder)
     {
         using TrackingCappedArrayPool cappedArrayPool = new(txReceipts.Length * 4);
-        Hash256 receiptsRoot = new ReceiptTrie<TReceipt>(receiptSpec, txReceipts, decoder, bufferPool: cappedArrayPool).RootHash;
+        Hash256 receiptsRoot = new ReceiptTrie(receiptSpec, txReceipts, decoder, bufferPool: cappedArrayPool).RootHash;
         return receiptsRoot;
     }
 }

@@ -20,7 +20,9 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private readonly IBoostRelay _boostRelay;
     private readonly IStateReader _stateReader;
     private readonly FeesTracer _feesTracer = new();
-    private CancellationTokenSource? _cancellationTokenSource;
+    private readonly CancellationTokenSource _improvementCancellation;
+    private CancellationTokenSource? _timeOutCancellation;
+    private CancellationTokenSource? _linkedCancellation;
 
     public BoostBlockImprovementContext(Block currentBestBlock,
         IBlockProducer blockProducer,
@@ -29,14 +31,17 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         PayloadAttributes payloadAttributes,
         IBoostRelay boostRelay,
         IStateReader stateReader,
-        DateTimeOffset startDateTime)
+        DateTimeOffset startDateTime,
+        CancellationTokenSource cts)
     {
         _boostRelay = boostRelay;
         _stateReader = stateReader;
-        _cancellationTokenSource = new CancellationTokenSource(timeout);
+        _improvementCancellation = cts;
+        _timeOutCancellation = new CancellationTokenSource(timeout);
+        _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
-        ImprovementTask = StartImprovingBlock(blockProducer, parentHeader, payloadAttributes, _cancellationTokenSource.Token);
+        ImprovementTask = StartImprovingBlock(blockProducer, parentHeader, payloadAttributes, _linkedCancellation.Token);
     }
 
     private async Task<Block?> StartImprovingBlock(
@@ -47,14 +52,14 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     {
 
         payloadAttributes = await _boostRelay.GetPayloadAttributes(payloadAttributes, cancellationToken);
-        _stateReader.TryGetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out AccountStruct account);
+        _stateReader.TryGetAccount(parentHeader, payloadAttributes.SuggestedFeeRecipient, out AccountStruct account);
         UInt256 balanceBefore = account.Balance;
-        Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, cancellationToken);
+        Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, IBlockProducer.Flags.None, cancellationToken);
         if (block is not null)
         {
             CurrentBestBlock = block;
             BlockFees = _feesTracer.Fees;
-            _stateReader.TryGetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out account);
+            _stateReader.TryGetAccount(parentHeader, payloadAttributes.SuggestedFeeRecipient, out account);
             await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = ExecutionPayload.Create(block), Profit = account.Balance - balanceBefore }, cancellationToken);
         }
 
@@ -70,6 +75,9 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     public void Dispose()
     {
         Disposed = true;
-        CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
     }
+
+    public void CancelOngoingImprovements() => _improvementCancellation.Cancel();
 }

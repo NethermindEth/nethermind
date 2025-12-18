@@ -37,7 +37,5 @@ public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore
         @base.BeginCommit(root, writeFlags);
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => @base.IsPersisted(in path, in keccak);
-
-    public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp) => @base.Set(in path, in keccak, rlp);
 }
 

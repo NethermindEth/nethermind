@@ -19,14 +19,14 @@ namespace Nethermind.Core
     {
         byte[]? this[ReadOnlySpan<byte> key] => Get(key);
 
-        byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
+        byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
 
         /// <summary>
         /// Return span. Must call `DangerousReleaseMemory` or there can be some leak.
         /// </summary>
         /// <param name="key"></param>
         /// <returns>Can return null or empty Span on missing key</returns>
-        Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
+        Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
 
         bool KeyExists(ReadOnlySpan<byte> key)
         {
@@ -37,6 +37,18 @@ namespace Nethermind.Core
         }
 
         void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
+    }
+
+    public interface IReadOnlyNativeKeyValueStore
+    {
+        /// <summary>
+        /// Return span. Must call `DangerousReleaseSlice` or there can be some leak.
+        /// </summary>
+        /// <param name="key"></param>
+        /// <returns>Can return null or empty Span on missing key</returns>
+        ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out IntPtr handle, ReadFlags flags = ReadFlags.None);
+
+        void DangerousReleaseHandle(IntPtr handle);
     }
 
     public interface IWriteOnlyKeyValueStore
@@ -55,6 +67,30 @@ namespace Nethermind.Core
         public bool PreferWriteByArray => false;
         void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => Set(key, value.IsNull() ? null : value.ToArray(), flags);
         void Remove(ReadOnlySpan<byte> key) => Set(key, null);
+    }
+
+    public interface IMergeableKeyValueStore : IWriteOnlyKeyValueStore
+    {
+        void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None);
+    }
+
+    public interface ISortedKeyValueStore : IKeyValueStore
+    {
+        byte[]? FirstKey { get; }
+        byte[]? LastKey { get; }
+
+        ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey);
+    }
+
+    /// <summary>
+    /// Represent a sorted view of a `ISortedKeyValueStore`.
+    /// </summary>
+    public interface ISortedView : IDisposable
+    {
+        public bool StartBefore(ReadOnlySpan<byte> value);
+        public bool MoveNext();
+        public ReadOnlySpan<byte> CurrentKey { get; }
+        public ReadOnlySpan<byte> CurrentValue { get; }
     }
 
     [Flags]

@@ -2,32 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Evm.T8n.Errors;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 
 namespace Evm.T8n;
 
-public class T8nBlockHashProvider : IBlockhashProvider
+public class T8nBlockHashProvider(Dictionary<long, Hash256> blockHashes) : IBlockhashProvider
 {
-    private readonly Dictionary<long, Hash256?> _blockHashes = new();
-    private static readonly int _maxDepth = 256;
-
-    public Hash256? GetBlockhash(BlockHeader currentBlock, in long number)
+    public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec)
     {
         long current = currentBlock.Number;
-        if (number >= current || number < current - Math.Min(current, _maxDepth))
-        {
+        if (number >= current || number < current - Math.Min(current, BlockhashProvider.MaxDepth))
             return null;
-        }
 
-        return _blockHashes.GetValueOrDefault(number, null) ??
-               throw new T8nException($"BlockHash for block {number} not provided",
-                   T8nErrorCodes.ErrorMissingBlockhash);
+        return blockHashes.TryGetValue(number, out Hash256? hash)
+            ? hash
+            : throw new T8nException($"BlockHash for block {number} not provided",
+                  T8nErrorCodes.ErrorMissingBlockhash);
     }
 
-    public void Insert(Hash256 blockHash, long number)
-    {
-        _blockHashes[number] = blockHash;
-    }
+    public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => Task.CompletedTask;
 }

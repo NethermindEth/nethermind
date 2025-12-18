@@ -12,13 +12,11 @@ public class CancunGnosis : Cancun
     private static IReleaseSpec? _instance;
 
     private CancunGnosis()
-    {
-        SetGnosis(this);
-    }
+        => ToGnosisFork(this);
 
-    public static void SetGnosis(Cancun spec)
+    public static void ToGnosisFork(Cancun spec)
     {
-        LondonGnosis.SetGnosis(spec);
+        LondonGnosis.ToGnosisFork(spec);
         spec.MaxBlobCount = 2;
         spec.TargetBlobCount = 1;
         spec.BlobBaseFeeUpdateFraction = 1112826;

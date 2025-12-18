@@ -51,7 +51,7 @@ public class ShutterTxLoader(
 
         long offset = time.GetCurrentOffsetMs(keys.Slot);
         Metrics.ShutterKeysReceivedTimeOffset = offset;
-        string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms fter";
+        string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms after";
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {keys.Slot} at time {offsetText} slot start...");
 
         using ArrayPoolList<(Transaction Tx, UInt256 GasLimit)>? decrypted = DecryptSequencedTransactions(sequencedTransactions, keys.Keys);
@@ -119,7 +119,7 @@ public class ShutterTxLoader(
 
         using ArrayPoolList<int> sortedKeyIndexes = new(txCount, txCount);
         int keyIndex = 0;
-        foreach (SequencedTransaction index in sortedIndexes)
+        foreach (SequencedTransaction index in sortedIndexes.AsSpan())
         {
             sortedKeyIndexes[index.Index] = keyIndex++;
         }

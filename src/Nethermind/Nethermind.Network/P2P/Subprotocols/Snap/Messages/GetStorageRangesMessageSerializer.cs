@@ -10,7 +10,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public class GetStorageRangesMessageSerializer : SnapSerializerBase<GetStorageRangeMessage>
     {
-
         public override void Serialize(IByteBuffer byteBuffer, GetStorageRangeMessage message)
         {
             NettyRlpStream rlpStream = GetRlpStreamAndStartSequence(byteBuffer, message);

@@ -16,7 +16,6 @@ namespace Nethermind.Core.Crypto
 {
     [DebuggerStepThrough]
     [DebuggerDisplay("{ToString()}")]
-    [JsonConverter(typeof(ValueHash256Converter))]
     public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>
     {
         // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
@@ -57,10 +56,6 @@ namespace Nethermind.Core.Crypto
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
         }
 
-        public ValueHash256(UInt256 uint256, bool isBigEndian = true) : this(isBigEndian ? uint256.ToBigEndian() : uint256.ToLittleEndian())
-        {
-        }
-
         public override bool Equals(object? obj) => obj is ValueHash256 keccak && Equals(keccak);
 
         public bool Equals(ValueHash256 other) => _bytes.Equals(other._bytes);
@@ -97,11 +92,17 @@ namespace Nethermind.Core.Crypto
         public static bool operator >=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) >= 0;
         public static bool operator <=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) <= 0;
         public static explicit operator Hash256(in ValueHash256 keccak) => new(keccak);
+        public static bool operator ==(Hash256? a, in ValueHash256 b) => a is null ? b.IsZero : a.ValueHash256._bytes == b._bytes;
+        public static bool operator ==(in ValueHash256 a, Hash256? b) => b == a;
+        public static bool operator !=(Hash256? a, in ValueHash256 b) => !(a == b);
+        public static bool operator !=(in ValueHash256 a, Hash256? b) => !(a == b);
 
         public UInt256 ToUInt256(bool isBigEndian = true) => new UInt256(Bytes, isBigEndian: isBigEndian);
+        public Hash256 ToHash256() => new Hash256(this);
+        private bool IsZero => _bytes == default;
     }
 
-    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>
+    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>
     {
         private readonly Hash256 _key = key;
         public Hash256 Value => _key;
@@ -111,9 +112,10 @@ namespace Nethermind.Core.Crypto
 
         public bool Equals(Hash256AsKey other) => Equals(_key, other._key);
         public override int GetHashCode() => _key?.GetHashCode() ?? 0;
+
+        public int CompareTo(Hash256AsKey other) => _key.CompareTo(other._key);
     }
 
-    [JsonConverter(typeof(Hash256Converter))]
     [DebuggerStepThrough]
     public sealed class Hash256 : IEquatable<Hash256>, IComparable<Hash256>
     {

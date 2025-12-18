@@ -9,7 +9,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Enr;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -92,11 +91,14 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     public void ProcessEnrResponseMsg(EnrResponseMsg enrResponseMsg)
     {
-        if (!IsBonded)
-        {
-            return;
-        }
+        if (!IsBonded) return;
+
+        // Only accept ENRs with higher sequence numbers (consistent with Geth implementation)
+        // https://github.com/ethereum/go-ethereum/blob/0978604196e5949cf83b45d1a08d175f0cbe4f73/p2p/discover/v4_udp.go#L388
+        if (enrResponseMsg.NodeRecord.EnrSequence <= _lastEnrSequence) return;
+
         _lastEnrSequence = enrResponseMsg.NodeRecord.EnrSequence;
+        ManagedNode.Enr = enrResponseMsg.NodeRecord.EnrString;
 
         // TODO: 6) use the fork ID knowledge to mark each node with info on the forkhash
 
@@ -114,8 +116,12 @@ public class NodeLifecycleManager : INodeLifecycleManager
     {
         if (IsBonded)
         {
-            Rlp requestRlp = Rlp.Encode(Rlp.Encode(enrRequestMessage.ExpirationTime));
-            EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord, Keccak.Compute(requestRlp.Bytes));
+            if (enrRequestMessage.Hash is null)
+            {
+                throw new ArgumentNullException(nameof(enrRequestMessage.Hash));
+            }
+
+            EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord, new Hash256(enrRequestMessage.Hash.Value.Span));
             _discoveryManager.SendMessage(msg);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestIn);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseOut);
@@ -170,7 +176,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
             return;
         }
 
-        if (_lastNeighbourSize + msg.Nodes.Length == 16)
+        if (_lastNeighbourSize + msg.Nodes.Count == 16)
         {
             // Turns out, other client will split the neighbour msg to two msg, whose size sum up to 16.
             // Happens about 70% of the time.
@@ -181,7 +187,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
             ProcessNodes(msg);
         }
 
-        _lastNeighbourSize = msg.Nodes.Length;
+        _lastNeighbourSize = msg.Nodes.Count;
         _isNeighborsExpected = false;
     }
 
@@ -190,6 +196,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
         RefreshNodeContactTime();
 
+        IPAddress? externalIp = _discoveryManager.SelfNodeRecord?.GetObj<IPAddress>(EnrContentKey.Ip);
         foreach (Node node in msg.Nodes)
         {
             if (node.Address.Address == _localhost)
@@ -198,7 +205,18 @@ public class NodeLifecycleManager : INodeLifecycleManager
                     _logger.Trace($"Received localhost as node address from: {msg.FarPublicKey}, node: {node}");
                 continue;
             }
-
+            if (node.Address.Address == externalIp)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Received self as node address from: {msg.FarPublicKey}, node: {node}");
+                // Ignore self
+                continue;
+            }
+            else if (!_discoveryManager.NodesFilter.Set(node.Address.Address))
+            {
+                // Already seen this node ip recently
+                continue;
+            }
             //If node is new it will create a new nodeLifecycleManager and will update state to New, which will trigger Ping
             _discoveryManager.GetNodeLifecycleManager(node);
         }
@@ -251,11 +269,11 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     private DateTime _lastPingSent = DateTime.MinValue;
 
-    public async Task SendPingAsync()
+    public Task SendPingAsync()
     {
         _lastPingSent = DateTime.UtcNow;
         _sentPing = true;
-        await CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
+        return CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
     }
 
     private long CalculateExpirationTime()
@@ -314,9 +332,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         if (newState == NodeLifecycleState.New)
         {
             //if node is just discovered we send ping to confirm it is active
-#pragma warning disable 4014
-            SendPingAsync();
-#pragma warning restore 4014
+            _ = SendPingAsync();
         }
         else if (newState == NodeLifecycleState.Active)
         {
@@ -344,9 +360,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
             if (DateTime.UtcNow - _lastPingSent > TimeSpan.FromSeconds(5))
             {
-#pragma warning disable 4014
-                SendPingAsync();
-#pragma warning restore 4014
+                _ = SendPingAsync();
             }
             else
             {
@@ -358,6 +372,10 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
         State = newState;
         OnStateChanged?.Invoke(this, State);
+        if (newState == NodeLifecycleState.Active && string.IsNullOrEmpty(ManagedNode.Enr))
+        {
+            SendEnrRequest();
+        }
     }
 
     private void RefreshNodeContactTime()

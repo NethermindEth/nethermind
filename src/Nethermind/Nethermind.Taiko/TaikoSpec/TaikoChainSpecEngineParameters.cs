@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Taiko.TaikoSpec;
@@ -11,4 +13,26 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
     public string SealEngineType => Core.SealEngineType.Taiko;
     public long? OntakeTransition { get; set; }
     public long? PacayaTransition { get; set; }
+    public ulong? ShastaTimestamp { get; set; }
+    public bool? UseSurgeGasPriceOracle { get; set; }
+
+    public Address TaikoL2Address { get; set; } = new("0x1670000000000000000000000000000000010001");
+
+    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
+    {
+        if (OntakeTransition is not null)
+        {
+            blockNumbers.Add(OntakeTransition.Value);
+        }
+
+        if (PacayaTransition is not null)
+        {
+            blockNumbers.Add(PacayaTransition.Value);
+        }
+
+        if (ShastaTimestamp is not null)
+        {
+            timestamps.Add(ShastaTimestamp.Value);
+        }
+    }
 }

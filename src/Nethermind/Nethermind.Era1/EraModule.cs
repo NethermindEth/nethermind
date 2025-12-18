@@ -4,6 +4,8 @@
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Era1.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.Era1;
 
@@ -25,15 +27,19 @@ public class EraModule : Module
 
             // Calls IEraImporter or IEraExporter
             .AddSingleton<EraCliRunner>()
-            .AddSingleton<IAdminEraService, AdminEraService>();
+            .AddSingleton<IAdminEraService, AdminEraService>()
 
-        builder.RegisterBuildCallback((ctx) =>
-        {
-            IEraConfig eraConfig = ctx.Resolve<IEraConfig>();
-            if (string.IsNullOrWhiteSpace(eraConfig.NetworkName))
+            // The admin export/import history method is here
+            .RegisterSingletonJsonRpcModule<IEraAdminRpcModule, EraAdminRpcModule>()
+
+            .AddDecorator<IEraConfig>((ctx, eraConfig) =>
             {
-                eraConfig.NetworkName = BlockchainIds.GetBlockchainName(ctx.Resolve<ISpecProvider>().NetworkId);
-            }
-        });
+                if (string.IsNullOrWhiteSpace(eraConfig.NetworkName))
+                {
+                    eraConfig.NetworkName = BlockchainIds.GetBlockchainName(ctx.Resolve<ISpecProvider>().NetworkId);
+                }
+                return eraConfig;
+            })
+            ;
     }
 }

@@ -24,26 +24,26 @@ namespace Ethereum.Test.Base
                 testDirs = new[] { testsDirectoryName };
             }
 
-            List<BlockchainTest> testJsons = new();
+            List<EthereumTest> tests = new();
             foreach (string testDir in testDirs)
             {
-                testJsons.AddRange(LoadTestsFromDirectory(testDir, wildcard));
+                tests.AddRange(LoadTestsFromDirectory(testDir, wildcard));
             }
 
-            return testJsons;
+            return tests;
         }
 
-        private string GetLegacyBlockchainTestsDirectory()
+        private static string GetLegacyBlockchainTestsDirectory()
         {
-            char pathSeparator = Path.AltDirectorySeparatorChar;
             string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            string rootDirectory = currentDirectory.Remove(currentDirectory.LastIndexOf("src"));
 
-            return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src")), "src", "tests", "LegacyTests", "Constantinople", "BlockchainTests");
+            return Path.Combine(rootDirectory, "src", "tests", "LegacyTests", "Cancun", "BlockchainTests");
         }
 
-        private IEnumerable<BlockchainTest> LoadTestsFromDirectory(string testDir, string wildcard)
+        private static IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard)
         {
-            List<BlockchainTest> testsByName = new();
+            List<EthereumTest> testsByName = new();
             IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir);
 
             foreach (string testFile in testFiles)
@@ -51,8 +51,8 @@ namespace Ethereum.Test.Base
                 FileTestsSource fileTestsSource = new(testFile, wildcard);
                 try
                 {
-                    var tests = fileTestsSource.LoadBlockchainTests();
-                    foreach (BlockchainTest blockchainTest in tests)
+                    var tests = fileTestsSource.LoadTests(TestType.Blockchain);
+                    foreach (EthereumTest blockchainTest in tests)
                     {
                         blockchainTest.Category = testDir;
                     }

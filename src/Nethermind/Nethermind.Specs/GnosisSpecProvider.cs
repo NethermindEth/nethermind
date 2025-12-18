@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -11,33 +11,33 @@ namespace Nethermind.Specs;
 
 public class GnosisSpecProvider : ISpecProvider
 {
-    public const long ConstantinopoleBlockNumber = 1_604_400;
-    public const long ConstantinopoleFixBlockNumber = 2_508_800;
+    public const long ConstantinopleBlockNumber = 1_604_400;
+    public const long ConstantinopleFixBlockNumber = 2_508_800;
     public const long IstanbulBlockNumber = 7_298_030;
     public const long BerlinBlockNumber = 16_101_500;
     public const long LondonBlockNumber = 19_040_000;
     public const ulong BeaconChainGenesisTimestampConst = 0x61b10dbc;
     public const ulong ShanghaiTimestamp = 0x64c8edbc;
     public const ulong CancunTimestamp = 0x65ef4dbc;
-    //TODO correct this timestamp!
-    public const ulong PragueTimestamp = ulong.MaxValue - 2;
+    public const ulong PragueTimestamp = 0x68122dbc;
+    public const ulong BalancerTimestamp = 0x69496dbc; // does not alter specs
     public static readonly Address FeeCollector = new("0x6BBe78ee9e474842Dbd4AB4987b3CeFE88426A92");
 
     private GnosisSpecProvider() { }
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation)
+    IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation)
     {
         return forkActivation.BlockNumber switch
         {
-            < ConstantinopoleBlockNumber => GenesisSpec,
-            < ConstantinopoleFixBlockNumber => Constantinople.Instance,
+            < ConstantinopleBlockNumber => GenesisSpec,
+            < ConstantinopleFixBlockNumber => Constantinople.Instance,
             < IstanbulBlockNumber => ConstantinopleFix.Instance,
             < BerlinBlockNumber => Istanbul.Instance,
             < LondonBlockNumber => Berlin.Instance,
             _ => forkActivation.Timestamp switch
             {
-                null or < ShanghaiTimestamp => London.Instance,
-                < CancunTimestamp => Shanghai.Instance,
+                null or < ShanghaiTimestamp => LondonGnosis.Instance,
+                < CancunTimestamp => ShanghaiGnosis.Instance,
                 < PragueTimestamp => CancunGnosis.Instance,
                 _ => PragueGnosis.Instance
             }

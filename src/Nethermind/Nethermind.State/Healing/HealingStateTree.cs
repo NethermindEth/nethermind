@@ -2,30 +2,25 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
-public class HealingStateTree : StateTree
+public sealed class HealingStateTree : StateTree
 {
-    private IPathRecovery? _recovery;
+    private Lazy<IPathRecovery> _recovery;
+    private readonly INodeStorage _nodeStorage;
 
     [DebuggerStepThrough]
-    public HealingStateTree(ITrieStore? store, ILogManager? logManager)
+    public HealingStateTree(ITrieStore? store, INodeStorage nodeStorage, Lazy<IPathRecovery> recovery, ILogManager? logManager)
         : base(store.GetTrieStore(null), logManager)
     {
-    }
-
-    public void InitializeNetwork(IPathRecovery recovery)
-    {
+        _nodeStorage = nodeStorage;
         _recovery = recovery;
     }
 
@@ -71,13 +66,13 @@ public class HealingStateTree : StateTree
     {
         if (_recovery is not null)
         {
-            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Recover(RootHash, null, missingNodePath, hash, fullPath).GetAwaiter().GetResult();
+            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Value.Recover(RootHash, null, missingNodePath, hash, fullPath).GetAwaiter().GetResult();
             if (rlps is not null)
             {
                 foreach ((TreePath, byte[]) kv in rlps)
                 {
                     ValueHash256 nodeHash = ValueKeccak.Compute(kv.Item2);
-                    TrieStore.Set(kv.Item1, nodeHash, kv.Item2);
+                    _nodeStorage.Set(null, kv.Item1, nodeHash, kv.Item2);
                 }
                 return true;
             }

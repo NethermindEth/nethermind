@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip2930
 {
-    public class AccessListDecoder : IRlpStreamDecoder<AccessList?>, IRlpValueDecoder<AccessList?>
+    public sealed class AccessListDecoder : RlpValueDecoder<AccessList?>
     {
         private const int IndexLength = 32;
 
@@ -21,7 +20,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         /// RLP serializable item and keep it as a compiled call available at runtime.
         /// It would be slightly slower but still much faster than what we would get from using dynamic serializers.
         /// </summary>
-        public AccessList? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override AccessList? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -79,7 +78,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         /// Question to Lukasz here -> would it be fine to always use ValueDecoderContext only?
         /// I believe it cannot be done for the network items decoding and is only relevant for the DB loads.
         /// </summary>
-        public AccessList? Decode(
+        protected override AccessList? DecodeInternal(
             ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -133,7 +132,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             return accessListBuilder.Build();
         }
 
-        public void Encode(RlpStream stream, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream stream, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -151,7 +150,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 //   Index2
                 //   ...
                 //   IndexN
-                AccessItemLengths lengths = new(storageKeys.Count());
+                AccessItemLengths lengths = new(storageKeys.Count);
                 stream.StartSequence(lengths.ContentLength);
                 {
                     stream.Encode(address);
@@ -167,7 +166,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             }
         }
 
-        public int GetLength(AccessList? accessList, RlpBehaviors rlpBehaviors)
+        public override int GetLength(AccessList? accessList, RlpBehaviors rlpBehaviors)
         {
             if (accessList is null)
             {
@@ -199,9 +198,15 @@ namespace Nethermind.Serialization.Rlp.Eip2930
 
         private static int GetContentLength(AccessList accessList)
         {
-            return accessList
-                .Select(static entry => new AccessItemLengths(entry.StorageKeys.Count()))
-                .Sum(static lengths => lengths.SequenceLength);
+            int sum = 0;
+            foreach ((Address Address, AccessList.StorageKeysEnumerable StorageKeys) entry in accessList)
+            {
+                int indexesContentLength = entry.StorageKeys.Count * Rlp.LengthOfKeccakRlp;
+                int contentLength = Rlp.LengthOfSequence(indexesContentLength) + Rlp.LengthOfAddressRlp;
+                sum += Rlp.LengthOfSequence(contentLength);
+            }
+
+            return sum;
         }
     }
 }

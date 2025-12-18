@@ -222,5 +222,6 @@ namespace Nethermind.Synchronization.SnapSync
         }
 
         public override bool IsFinished => _snapProvider.IsSnapGetRangesFinished();
+        public override string FeedName => nameof(SnapSyncFeed);
     }
 }

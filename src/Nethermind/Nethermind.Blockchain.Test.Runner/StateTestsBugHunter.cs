@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Test.Runner
         {
             List<EthereumTestResult> testResults = new List<EthereumTestResult>();
             string directoryName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "FailingTests");
-            IEnumerable<GeneralStateTest> tests = (IEnumerable<GeneralStateTest>)_testsSource.LoadTests();
+            IEnumerable<GeneralStateTest> tests = _testsSource.LoadTests<GeneralStateTest>();
             foreach (GeneralStateTest test in tests)
             {
                 Setup(LimboLogs.Instance);

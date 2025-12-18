@@ -21,15 +21,12 @@ internal static class RocksDbExtensions
         RocksDbNative.Instance.rocksdb_free(intPtr);
     }
 
-    internal static unsafe Span<byte> GetSpan(this RocksDb db, ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null, ReadOptions? readOptionObj = null)
+    internal static unsafe Span<byte> GetSpan(this RocksDb db, scoped ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null, ReadOptions? readOptionObj = null)
     {
         var readOptions = _defaultReadOptions.Handle;
         if (readOptionObj is not null) readOptions = readOptionObj.Handle;
 
         var keyLength = (long)key.Length;
-
-        if (keyLength == 0)
-            keyLength = key.Length;
 
         nint result;
         nint error;

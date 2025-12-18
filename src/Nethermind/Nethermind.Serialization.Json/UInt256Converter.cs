@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Text;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -11,7 +12,6 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -25,22 +25,55 @@ public class UInt256Converter : JsonConverter<UInt256>
         JsonSerializerOptions options) =>
         ReadInternal(ref reader, JsonTokenType.String);
 
+    // length of UIn256.MaxValue decimal string "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+    const int maxLength = 78;
+
+    [SkipLocalsInit]
     private static UInt256 ReadInternal(ref Utf8JsonReader reader, JsonTokenType allowedTokenType)
+    {
+        int length = reader.HasValueSequence ? (int)reader.ValueSequence.Length : reader.ValueSpan.Length;
+
+        if (length is 0 or > maxLength)
+        {
+            ThrowJsonException();
+        }
+
+        if (reader.HasValueSequence)
+        {
+            Span<byte> span = stackalloc byte[length];
+            reader.ValueSequence.CopyTo(span);
+            return ReadNumber(reader, allowedTokenType, span);
+        }
+
+        return ReadNumber(reader, allowedTokenType, reader.ValueSpan);
+    }
+
+    [SkipLocalsInit]
+    private static UInt256 ReadNumber(Utf8JsonReader reader, JsonTokenType allowedTokenType, ReadOnlySpan<byte> span)
     {
         if (reader.TokenType == JsonTokenType.Number)
         {
-            return reader.GetUInt64();
+            if (Utf8Parser.TryParse(span, out ulong shortValue, out int bytesConsumed) && span.Length == bytesConsumed)
+            {
+                return new UInt256(shortValue);
+            }
+
+            Span<char> chars = stackalloc char[span.Length + 1];
+            chars[span.Length] = '\0';
+            Encoding.UTF8.GetChars(span, chars);
+
+            return UInt256.Parse(chars, NumberStyles.None);
         }
+
         if (reader.TokenType != allowedTokenType)
         {
             ThrowJsonException();
         }
 
-        ReadOnlySpan<byte> hex = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
-        return Read(hex);
+        return ReadHex(span);
     }
 
-    public static UInt256 Read(ReadOnlySpan<byte> hex)
+    public static UInt256 ReadHex(ReadOnlySpan<byte> hex)
     {
         if (hex.SequenceEqual("0x0"u8))
         {
@@ -152,8 +185,7 @@ public class UInt256Converter : JsonConverter<UInt256>
             addQuotations: false);
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowJsonException()
     {
         throw new JsonException();

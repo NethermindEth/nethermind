@@ -88,14 +88,14 @@ public class PersistentReceiptStorageTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void ReceiptsIterator_doesnt_throw_on_empty_span()
+    public void ReceiptsIterator_does_not_throw_on_empty_span()
     {
         _storage.TryGetReceiptsIterator(1, Keccak.Zero, out ReceiptsIterator iterator);
         iterator.TryGetNext(out _).Should().BeFalse();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void ReceiptsIterator_doesnt_throw_on_null()
+    public void ReceiptsIterator_does_not_throw_on_null()
     {
         _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, null!);
         _storage.TryGetReceiptsIterator(1, Keccak.Zero, out ReceiptsIterator iterator);
@@ -326,26 +326,21 @@ public class PersistentReceiptStorageTests
         CreateStorage();
         (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true);
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
-        Thread.Sleep(100);
-        _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeNull();
+        Assert.That(() => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes], Is.Null.After(100, 10));
     }
 
     [TestCase(1L, false)]
     [TestCase(10L, false)]
     [TestCase(11L, true)]
-    public void Should_only_prune_index_tx_hashes_if_blockNumber_is_bigger_than_lookupLimit(long blockNumber, bool WillPruneOldIndicies)
+    public void Should_only_prune_index_tx_hashes_if_blockNumber_is_bigger_than_lookupLimit(long blockNumber, bool willPruneOldIndices)
     {
         _receiptConfig.TxLookupLimit = 10;
         CreateStorage();
         _blockTree.BlockAddedToMain +=
             Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(blockNumber).TestObject));
-        Thread.Sleep(100);
-        IEnumerable<ICall> calls = _blockTree.ReceivedCalls()
-            .Where(static call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlock)));
-        if (WillPruneOldIndicies)
-            calls.Should().NotBeEmpty();
-        else
-            calls.Should().BeEmpty();
+        Assert.That(() => _blockTree.ReceivedCalls()
+            .Where(static call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlock))),
+            willPruneOldIndices ? Is.Not.Empty.After(100, 10) : Is.Empty.After(100, 10));
     }
 
     [Test]
@@ -355,8 +350,7 @@ public class PersistentReceiptStorageTests
         CreateStorage();
         (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true, headNumber: 1001);
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
-        Thread.Sleep(100);
-        _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeNull();
+        Assert.That(() => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes], Is.Null.After(100, 10));
     }
 
     [Test]
@@ -442,7 +436,7 @@ public class PersistentReceiptStorageTests
     }
 
     [Test]
-    public void When_NewHeadBlock_ClearOldTxIndex()
+    public void When_NewHeadBlock_ClearOldTxIndex_And_KeepsReceipts()
     {
         _receiptConfig.TxLookupLimit = 1000;
         CreateStorage();
@@ -466,6 +460,7 @@ public class PersistentReceiptStorageTests
             () => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes],
             Is.Null.After(1000, 100)
             );
+        Assert.That(_storage.HasBlock(receipts[0].BlockNumber, receipts[0].BlockHash!));
     }
 
     private (Block block, TxReceipt[] receipts) PrepareBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)

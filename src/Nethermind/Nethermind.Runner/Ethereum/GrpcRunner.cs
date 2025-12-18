@@ -4,13 +4,14 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Grpc;
 using Nethermind.Logging;
 using Nethermind.Network;
 
 namespace Nethermind.Runner.Ethereum
 {
-    public class GrpcRunner
+    public class GrpcRunner : IStoppableService
     {
         private readonly NethermindService.NethermindServiceBase _service;
         private readonly IGrpcConfig _config;
@@ -41,10 +42,11 @@ namespace Nethermind.Runner.Ethereum
 
         public async Task StopAsync()
         {
-            if (_logger.IsInfo) _logger.Info("Stopping GRPC server...");
             await (_server?.ShutdownAsync() ?? Task.CompletedTask);
             await GrpcEnvironment.ShutdownChannelsAsync();
             if (_logger.IsInfo) _logger.Info("GRPC shutdown complete.");
         }
+
+        public string Description => "GRPC server";
     }
 }

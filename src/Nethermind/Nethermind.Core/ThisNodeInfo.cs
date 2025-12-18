@@ -19,16 +19,31 @@ namespace Nethermind.Core
         public static string BuildNodeInfoScreen()
         {
             StringBuilder builder = new();
+            builder.AppendLine(NethermindLogo);
+            builder.AppendLine("-----------------------------  Initialization Completed  -----------------------------");
             builder.AppendLine();
-            builder.AppendLine("======================== Nethermind initialization completed ========================");
 
             foreach ((string key, string value) in _nodeInfoItems.OrderByDescending(static ni => ni.Key))
             {
                 builder.AppendLine($"{key} {value}");
             }
 
-            builder.Append("=====================================================================================");
+            builder.Append("--------------------------------------------------------------------------------------");
             return builder.ToString();
         }
+
+        private static string NethermindLogo = "\n\n" +
+       "\u001b[36m        ------             \u001b[38;5;208m   ~~~~~~~~        \u001b[37m\n" +
+       "\u001b[36m     --------- ----        \u001b[38;5;208m~~~~~~~~~~~~~~     \u001b[37m\n" +
+       "\u001b[36m   -  -------  ------      \u001b[38;5;208m  ~~~~~~~~~~~~~~   \u001b[37m\n" +
+       "\u001b[36m -----  -      ----        \u001b[38;5;208m   ~~~    ~~~~~~~~ \u001b[37m       ++   ++   +++++  ++++++  ++   ++   +++++  ++++++    ++    ++    ++   ++   ++   +++++ \n" +
+       "\u001b[36m ------         -          \u001b[38;5;208m            ~~~    \u001b[37m       +++  ++  ++        ++    ++   ++  ++      ++   ++  ++++   +++   ++   +++  ++   ++  ++ \n" +
+       "\u001b[36m-------                                   ----\u001b[37m       ++ + ++  ++++++    ++    +++++++  ++++++  ++++++   ++ +  + ++   ++   ++ + ++   ++  ++\n" +
+       "\u001b[36m----                                   -------\u001b[37m       ++  +++  ++        ++    ++   ++  ++      ++  ++   ++ ++++ ++   ++   ++  +++   ++  ++\n" +
+ "\u001b[38;5;208m    ~~~                  \u001b[36m    -         ------ \u001b[37m       ++   ++   +++++    ++    ++   ++   +++++  ++   ++  ++  ++  ++   ++   ++   ++   +++++ \n" +
+ "\u001b[38;5;208m ~~~~~~~~      ~         \u001b[36m  ----      -  ----- \u001b[37m\n" +
+ "\u001b[38;5;208m   ~~~~~~~~~~~~~~        \u001b[36m------  -------  -   \u001b[37m\n" +
+ "\u001b[38;5;208m     ~~~~~~~~~~~~~~      \u001b[36m  ---- ---------     \u001b[37m\n" +
+ "\u001b[38;5;208m        ~~~~~~~~         \u001b[36m       ------        \u001b[37m                                                                  https://www.nethermind.io\n";
     }
 }

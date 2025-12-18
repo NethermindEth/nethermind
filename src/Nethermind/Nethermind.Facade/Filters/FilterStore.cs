@@ -12,17 +12,28 @@ using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Timers;
+using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.Blockchain.Filters
 {
-    public class FilterStore : IFilterStore
+    public sealed class FilterStore : IDisposable
     {
+        private readonly TimeSpan _timeout;
         private int _currentFilterId = -1;
-        private readonly Lock _locker = new Lock();
-
+        private readonly Lock _locker = new();
         private readonly ConcurrentDictionary<int, FilterBase> _filters = new();
+        private readonly ITimer _timer;
 
         public bool FilterExists(int filterId) => _filters.ContainsKey(filterId);
+
+        public void RefreshFilter(int filterId)
+        {
+            if (_filters.TryGetValue(filterId, out FilterBase filter))
+            {
+                filter.LastUsed = DateTimeOffset.UtcNow;
+            }
+        }
 
         public FilterType GetFilterType(int filterId)
         {
@@ -45,7 +56,44 @@ namespace Nethermind.Blockchain.Filters
         // https://github.com/dotnet/runtime/pull/38296
         private IEnumerator<KeyValuePair<int, FilterBase>>? _enumerator;
 
+        public FilterStore(ITimerFactory timerFactory, int timeout = 15 * 60 * 1000, int cleanupInterval = 5 * 60 * 1000)
+        {
+            _timeout = TimeSpan.FromMilliseconds(timeout);
+            _timer = timerFactory.CreateTimer(TimeSpan.FromMilliseconds(cleanupInterval));
+            _timer.AutoReset = false;
+            _timer.Enabled = true;
+            _timer.Elapsed += OnElapsed;
+        }
+
+        private void OnElapsed(object? sender, EventArgs e)
+        {
+            CleanupStaleFilters();
+            _timer.Enabled = true;
+        }
+
+        private void CleanupStaleFilters()
+        {
+            foreach (KeyValuePair<int, FilterBase> filter in _filters)
+            {
+                DateTimeOffset filterTimeout = filter.Value.LastUsed + _timeout;
+                if (filterTimeout < DateTimeOffset.UtcNow)
+                {
+                    RemoveFilter(filter.Key);
+                }
+            }
+        }
+
         public IEnumerable<T> GetFilters<T>() where T : FilterBase
+        {
+            // Return Array.Empty<T>() to avoid allocating enumerator
+            // and which has a non-allocating fast-path for
+            // foreach via IEnumerable<T>
+            if (_filters.IsEmpty) return Array.Empty<T>();
+
+            return GetFiltersEnumerate<T>();
+        }
+
+        private IEnumerable<T> GetFiltersEnumerate<T>() where T : FilterBase
         {
             // Reuse the enumerator
             var enumerator = Interlocked.Exchange(ref _enumerator, null) ?? _filters.GetEnumerator();
@@ -69,18 +117,18 @@ namespace Nethermind.Blockchain.Filters
                 ? filter as T
                 : null;
 
-        public BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true) =>
-            new(GetFilterId(setId), startBlockNumber);
+        public BlockFilter CreateBlockFilter(bool setId = true) =>
+            new(GetFilterId(setId));
 
         public PendingTransactionFilter CreatePendingTransactionFilter(bool setId = true) =>
             new(GetFilterId(setId));
 
         public LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock,
-            object? address = null, IEnumerable<object?>? topics = null, bool setId = true) =>
+            AddressAsKey[]? addresses = null, IEnumerable<Hash256[]?>? topics = null, bool setId = true) =>
             new(GetFilterId(setId),
                 fromBlock,
                 toBlock,
-                GetAddress(address),
+                GetAddress(addresses),
                 GetTopicsFilter(topics));
 
         public void RemoveFilter(int filterId)
@@ -93,7 +141,7 @@ namespace Nethermind.Blockchain.Filters
 
         public void SaveFilter(FilterBase filter)
         {
-            if (_filters.ContainsKey(filter.Id))
+            if (!_filters.TryAdd(filter.Id, filter))
             {
                 throw new InvalidOperationException($"Filter with ID {filter.Id} already exists");
             }
@@ -102,8 +150,6 @@ namespace Nethermind.Blockchain.Filters
             {
                 _currentFilterId = Math.Max(filter.Id, _currentFilterId);
             }
-
-            _filters[filter.Id] = filter;
         }
 
         private int GetFilterId(bool generateId)
@@ -119,7 +165,7 @@ namespace Nethermind.Blockchain.Filters
             return 0;
         }
 
-        private static TopicsFilter GetTopicsFilter(IEnumerable<object?>? topics = null)
+        private static TopicsFilter GetTopicsFilter(IEnumerable<Hash256[]?>? topics = null)
         {
             if (topics is null)
             {
@@ -139,85 +185,54 @@ namespace Nethermind.Blockchain.Filters
 
         private static TopicExpression GetTopicExpression(FilterTopic? filterTopic)
         {
-            if (filterTopic is null)
+            if (filterTopic is not null)
             {
-                return AnyTopic.Instance;
+                if (filterTopic.Topic is not null)
+                {
+                    return new SpecificTopic(filterTopic.Topic);
+                }
+
+                if (filterTopic.Topics?.Length > 0)
+                {
+                    return new OrExpression(filterTopic.Topics.Select(
+                        static t => new SpecificTopic(t)).ToArray<TopicExpression>());
+                }
             }
-            else if (filterTopic.Topic is not null)
-            {
-                return new SpecificTopic(filterTopic.Topic);
-            }
-            else if (filterTopic.Topics?.Length > 0)
-            {
-                return new OrExpression(filterTopic.Topics.Select(static t => new SpecificTopic(t)).ToArray<TopicExpression>());
-            }
-            else
-            {
-                return AnyTopic.Instance;
-            }
+
+            return AnyTopic.Instance;
         }
 
-        private static AddressFilter GetAddress(object? address)
+        private static AddressFilter GetAddress(AddressAsKey[]? addresses) => addresses is null ? AddressFilter.AnyAddress : new AddressFilter(addresses);
+
+        private static FilterTopic?[]? GetFilterTopics(IEnumerable<Hash256[]?>? topics) => topics?.Select(GetTopic).ToArray();
+
+        private static FilterTopic? GetTopic(Hash256[]? topics)
         {
-            if (address is null)
-            {
-                return AddressFilter.AnyAddress;
-            }
-
-            if (address is string s)
-            {
-                return new AddressFilter(new Address(s));
-            }
-
-            if (address is IEnumerable<string> e)
-            {
-                return new AddressFilter(e.Select(static a => new AddressAsKey(new Address(a))).ToHashSet());
-            }
-
-            throw new InvalidDataException("Invalid address filter format");
-        }
-
-        private static FilterTopic?[]? GetFilterTopics(IEnumerable<object>? topics)
-        {
-            return topics?.Select(GetTopic).ToArray();
-        }
-
-        private static FilterTopic GetTopic(object obj)
-        {
-            switch (obj)
-            {
-                case null:
-                    return null;
-                case string topic:
-                    return new FilterTopic
-                    {
-                        Topic = new Hash256(topic)
-                    };
-                case Hash256 keccak:
-                    return new FilterTopic
-                    {
-                        Topic = keccak
-                    };
-            }
-
-            if (obj is not IEnumerable<string> topics)
-            {
-                return null;
-            }
-            else
+            if (topics?.Length == 1)
             {
                 return new FilterTopic
                 {
-                    Topics = topics.Select(static t => new Hash256(t)).ToArray()
+                    Topic = topics[0]
+                };
+            }
+            else
+            {
+                return new FilterTopic()
+                {
+                    Topics = topics
                 };
             }
         }
 
         private class FilterTopic
         {
-            public Hash256? Topic { get; set; }
-            public Hash256[]? Topics { get; set; }
+            public Hash256? Topic { get; init; }
+            public Hash256[]? Topics { get; init; }
+        }
 
+        public void Dispose()
+        {
+            _timer.Dispose();
         }
     }
 }

@@ -10,11 +10,11 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.TxPool;
 using Nethermind.Config;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.AuRa
 {

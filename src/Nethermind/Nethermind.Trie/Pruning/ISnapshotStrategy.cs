@@ -5,13 +5,8 @@ namespace Nethermind.Trie.Pruning
 {
     public interface IPruningStrategy
     {
-        bool PruningEnabled { get; }
-        int MaxDepth { get; }
-        bool ShouldPruneDirtyNode(in long dirtyNodeMemory);
-        bool ShouldPrunePersistedNode(in long persistedNodeMemory);
-        double PrunePersistedNodePortion { get; }
-        long PrunePersistedNodeMinimumTarget { get; }
-        int TrackedPastKeyCount { get; }
-        int ShardBit { get; }
+        bool DeleteObsoleteKeys { get; }
+        bool ShouldPruneDirtyNode(TrieStoreState state);
+        bool ShouldPrunePersistedNode(TrieStoreState state);
     }
 }
