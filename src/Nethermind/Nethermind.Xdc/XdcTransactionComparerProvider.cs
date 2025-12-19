@@ -14,17 +14,21 @@ using System.Text;
 
 namespace Nethermind.Xdc;
 
-internal class CompareTxBySender(ISigner signer) : IComparer<Transaction>
+internal class CompareTxBySender(ISigner signer, ISpecProvider specProvider) : IComparer<Transaction>
 {
+    private IXdcReleaseSpec finalSpec = (XdcReleaseSpec)specProvider.GetFinalSpec();
     public int Compare(Transaction? newTx, Transaction? oldTx)
     {
         if (ReferenceEquals(newTx, oldTx)) return TxComparisonResult.NotDecided;
         if (oldTx is null) return TxComparisonResult.KeepOld;
         if (newTx is null) return TxComparisonResult.TakeNew;
 
-        if (!newTx.IsSpecialTransaction() && !oldTx.IsSpecialTransaction()) return TxComparisonResult.NotDecided;
-        if (newTx.IsSpecialTransaction() && !oldTx.IsSpecialTransaction()) return TxComparisonResult.TakeNew;
-        if (!newTx.IsSpecialTransaction() && oldTx.IsSpecialTransaction()) return TxComparisonResult.KeepOld;
+        bool isNewTxSpecial = newTx.IsSpecialTransaction(finalSpec);
+        bool isOldTxSpecial = oldTx.IsSpecialTransaction(finalSpec);
+
+        if (!isNewTxSpecial && !isOldTxSpecial) return TxComparisonResult.NotDecided;
+        if (isNewTxSpecial && !isOldTxSpecial) return TxComparisonResult.TakeNew;
+        if (!isNewTxSpecial && isOldTxSpecial) return TxComparisonResult.KeepOld;
 
         if(oldTx.SenderAddress == signer.Address) return TxComparisonResult.KeepOld;
         if(newTx.SenderAddress == signer.Address) return TxComparisonResult.TakeNew;
@@ -42,7 +46,7 @@ internal class XdcTransactionComparerProvider(ISpecProvider specProvider, IBlock
     {
         var defaultComparer = defaultComparerProvider.GetDefaultComparer();
 
-        var signerFilter = new CompareTxBySender(signer);
+        var signerFilter = new CompareTxBySender(signer, specProvider); 
 
         return signerFilter.ThenBy(defaultComparer);
     }
@@ -51,7 +55,7 @@ internal class XdcTransactionComparerProvider(ISpecProvider specProvider, IBlock
     {
         var defaultComparer = defaultComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
-        var signerFilter = new CompareTxBySender(signer);
+        var signerFilter = new CompareTxBySender(signer, specProvider);
 
         return signerFilter.ThenBy(defaultComparer);
     }

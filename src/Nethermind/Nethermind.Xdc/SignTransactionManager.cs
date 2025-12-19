@@ -33,7 +33,7 @@ internal class SignTransactionManager(IDb stateDb, ISigner signer, ITxPool txPoo
     public async Task CreateTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         UInt256 nonce = txPool.GetLatestPendingNonce(signer.Address);
-        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash, nonce, XdcConstants.BlockSignersAddress, signer.Address);
+        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash, nonce, spec.BlockSignersAddress, signer.Address);
 
         await signer.Sign(transaction);
 
@@ -59,7 +59,7 @@ internal class SignTransactionManager(IDb stateDb, ISigner signer, ITxPool txPoo
             if (checkNumber > 0 && spec.EpochBlockOpening <= checkNumber && spec.EpochBlockRandomize >= checkNumber)
             {
                 var randomizeKeyValue = stateDb.Get(randomKey);
-                Transaction tx = CreateTxOpeningRandomize(nonce + 1, XdcConstants.RandomizeSMCBinary, randomizeKeyValue, signer.Address);
+                Transaction tx = CreateTxOpeningRandomize(nonce + 1, spec.RandomizeSMCBinary, randomizeKeyValue, signer.Address);
                 await signer.Sign(tx);
 
                 // add local somehow to tx pool
@@ -73,7 +73,7 @@ internal class SignTransactionManager(IDb stateDb, ISigner signer, ITxPool txPoo
             var randomizeKeyValue = RandStringByte(32);
             if (checkNumber > 0 && spec.EpochBlockSecret <= checkNumber && spec.EpochBlockOpening > checkNumber)
             {
-                Transaction tx = BuildTxSecretRandomize(nonce + 1, XdcConstants.RandomizeSMCBinary, (ulong)spec.EpochLength, randomizeKeyValue, signer.Address);
+                Transaction tx = BuildTxSecretRandomize(nonce + 1, spec.RandomizeSMCBinary, (ulong)spec.EpochLength, randomizeKeyValue, signer.Address);
                 await signer.Sign(tx);
                 // add local somehow to tx pool
                 bool addedOpening = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);

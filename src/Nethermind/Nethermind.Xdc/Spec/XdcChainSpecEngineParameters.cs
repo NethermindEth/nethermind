@@ -21,6 +21,13 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
 
+    public Address BlockSignersAddress { get; set; }
+    public Address RandomizeSMCBinary { get; set; }
+    public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
+    public Address XDCXLendingAddressBinary { get; set; }
+    public Address XDCXAddressBinary { get; set; }
+    public Address TradingStateAddressBinary { get; set; }
+
 
     private List<V2ConfigParams> _v2Configs = new();
     public List<V2ConfigParams> V2Configs

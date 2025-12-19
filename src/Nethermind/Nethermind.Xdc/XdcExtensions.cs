@@ -23,46 +23,46 @@ public static class XdcExtensions
         ValueHash256 hash = ValueKeccak.Compute(_headerDecoder.Encode(header, RlpBehaviors.ForSealing).Bytes);
         return ecdsa.Sign(privateKey, in hash);
     }
-    public static bool IsSpecialTransaction(this Transaction currentTx)
+    public static bool IsSpecialTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
     {
-        return currentTx.To is not null && ((currentTx.To == XdcConstants.BlockSignersAddress) || (currentTx.To == XdcConstants.RandomizeSMCBinary));
+        return currentTx.To is not null && ((currentTx.To == spec.BlockSignersAddress) || (currentTx.To == spec.RandomizeSMCBinary));
     }
-    public static bool RequiresSpecialHandling(this Transaction currentTx)
+    public static bool RequiresSpecialHandling(this Transaction currentTx, IXdcReleaseSpec spec)
     {
-        return IsSignTransaction(currentTx)
-            || IsLendingTransaction(currentTx)
-            || IsTradingTransaction(currentTx)
-            || IsLendingFinalizedTradeTransaction(currentTx)
-            || IsTradingStateTransaction(currentTx);
+        return IsSignTransaction(currentTx, spec)
+            || IsLendingTransaction(currentTx, spec)
+            || IsTradingTransaction(currentTx, spec)
+            || IsLendingFinalizedTradeTransaction(currentTx, spec)
+            || IsTradingStateTransaction(currentTx, spec);
     }
-    public static bool IsSignTransaction(this Transaction currentTx)
+    public static bool IsSignTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
     {
-        return currentTx.To is not null && currentTx.To == XdcConstants.BlockSignersAddress;
+        return currentTx.To is not null && currentTx.To == spec.BlockSignersAddress;
     }
-    public static bool IsTradingTransaction(this Transaction currentTx)
+    public static bool IsTradingTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
     {
-        return currentTx.To is not null && currentTx.To == XdcConstants.XDCXAddressBinary;
+        return currentTx.To is not null && currentTx.To == spec.XDCXAddressBinary;
     }
-    public static bool IsLendingTransaction(this Transaction currentTx)
+    public static bool IsLendingTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
     {
-        return currentTx.To is not null && currentTx.To == XdcConstants.XDCXLendingAddressBinary;
+        return currentTx.To is not null && currentTx.To == spec.XDCXLendingAddressBinary;
     }
-    public static bool IsLendingFinalizedTradeTransaction(this Transaction currentTx)
+    public static bool IsLendingFinalizedTradeTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
     {
-        return currentTx.To is not null && currentTx.To == XdcConstants.XDCXLendingFinalizedTradeAddressBinary;
+        return currentTx.To is not null && currentTx.To == spec.XDCXLendingFinalizedTradeAddressBinary;
     }
-    public static bool IsTradingStateTransaction(this Transaction currentTx)
+    public static bool IsTradingStateTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
     {
-        return currentTx.To is not null && currentTx.To == XdcConstants.TradingStateAddressBinary;
+        return currentTx.To is not null && currentTx.To == spec.TradingStateAddressBinary;
     }
 
-    public static bool IsSkipNonceTransaction(this Transaction currentTx)
+    public static bool IsSkipNonceTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
     {
         return currentTx.To is not null
-            &&(IsTradingStateTransaction(currentTx)
-            || IsTradingTransaction(currentTx)
-            || IsLendingTransaction(currentTx)
-            || IsLendingFinalizedTradeTransaction(currentTx));
+            && (IsTradingStateTransaction(currentTx, spec)
+            || IsTradingTransaction(currentTx, spec)
+            || IsLendingTransaction(currentTx, spec)
+            || IsLendingFinalizedTradeTransaction(currentTx, spec));
 
     }
 

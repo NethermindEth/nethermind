@@ -235,6 +235,9 @@ public class XdcTestBlockchain : TestBlockchain
 
         xdcSpec.TIP2019Block = 0;
 
+        xdcSpec.BlockSignersAddress = new Address("0x00000000000000000000000000000000b000089");
+        xdcSpec.RandomizeSMCBinary = new Address("0x00000000000000000000000000000000b000090");
+
         V2ConfigParams[] v2ConfigParams = [
             new V2ConfigParams {
                 SwitchRound = 0,
@@ -326,24 +329,22 @@ public class XdcTestBlockchain : TestBlockchain
             state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
             state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
             state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
-            state.CreateAccount(TestItem.AddressD, testConfiguration.AccountInitialValue);
-            state.CreateAccount(TestItem.AddressF, testConfiguration.AccountInitialValue);
 
+            IXdcReleaseSpec? finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
 
             var genesisSpec = specProvider.GenesisSpec as IXdcReleaseSpec;
 
-            state.CreateAccount(XdcConstants.BlockSignersAddress, 100_000);
-            state.CreateAccount(XdcConstants.RandomizeSMCBinary, 100_000);
+            state.CreateAccount(finalSpec.BlockSignersAddress, 100_000);
+            state.CreateAccount(finalSpec.RandomizeSMCBinary, 100_000);
 
             var dummyCode = Prepare.EvmCode
                 .STOP()
                 .Done;
             var dummyCodeHashcode = Keccak.Compute(dummyCode);
 
-            state.InsertCode(XdcConstants.BlockSignersAddress, dummyCodeHashcode, dummyCode, genesisSpec!, true);
-            state.InsertCode(XdcConstants.RandomizeSMCBinary, dummyCodeHashcode, dummyCode, genesisSpec!, true);
+            state.InsertCode(finalSpec.BlockSignersAddress, dummyCodeHashcode, dummyCode, genesisSpec!, true);
+            state.InsertCode(finalSpec.RandomizeSMCBinary, dummyCodeHashcode, dummyCode, genesisSpec!, true);
 
-            IXdcReleaseSpec? finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
 
             foreach (var nodeAddress in finalSpec.GenesisMasterNodes)
             {

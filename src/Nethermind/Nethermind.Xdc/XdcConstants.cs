@@ -48,13 +48,4 @@ internal static class XdcConstants
     public static byte[] ProposeMethod = Bytes.FromHexString("0x01267951");
     public static byte[] ResignMethod = Bytes.FromHexString("0xae6e43f5");
     public static byte[] SignMethod = Bytes.FromHexString("0xe341eaa4");
-
-    public static Address BlockSignersAddress = new Address("0x0000000000000000000000000000000000000089");
-    public static Address RandomizeSMCBinary = new Address("0x0000000000000000000000000000000000000090");
-
-    public static Address XDCXLendingFinalizedTradeAddressBinary { get; internal set; }
-    public static Address XDCXLendingAddressBinary { get; internal set; }
-    public static Address XDCXAddressBinary { get; internal set; }
-    public static Address TradingStateAddressBinary { get; internal set; }
-    
 }

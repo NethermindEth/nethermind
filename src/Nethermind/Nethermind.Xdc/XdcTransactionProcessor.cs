@@ -54,7 +54,7 @@ internal class XdcTransactionProcessor(
         var xdcSpec = spec as XdcReleaseSpec;
         Address target = tx.To;
 
-        if (tx.IsSignTransaction())
+        if (tx.IsSignTransaction(xdcSpec))
         {
             if (tx.Data.Length < 68)
             {
@@ -81,7 +81,10 @@ internal class XdcTransactionProcessor(
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
-        if (tx.RequiresSpecialHandling())
+        BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
+        IXdcReleaseSpec spec = GetSpec(header) as IXdcReleaseSpec;
+
+        if (tx.RequiresSpecialHandling(spec))
         {
             return ExecuteSpecialTransaction(tx, tracer, opts);
         }
@@ -121,33 +124,33 @@ internal class XdcTransactionProcessor(
         bool _ = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
         if (!(result = ValidateSender(tx, header, spec, tracer, opts))
-            || !(result = ValidateNonce(tx, tx.IsSkipNonceTransaction()))
+            || !(result = ValidateNonce(tx, tx.IsSkipNonceTransaction(spec)))
             || !(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas)))
         {
             return result;
         }
 
-        if (tx.IsSignTransaction())
+        if (tx.IsSignTransaction(spec))
         {
             return ProcessSignTranscation(tx, tracer, spec, opts);
         }
 
-        if (tx.IsTradingStateTransaction())
+        if (tx.IsTradingStateTransaction(spec))
         {
             return ProcessEmptyTransaction(tx, tracer, spec);
         }
 
-        if (tx.IsLendingTransaction())
+        if (tx.IsLendingTransaction(spec))
         {
             return ProcessEmptyTransaction(tx, tracer, spec);
         }
 
-        if (tx.IsTradingTransaction())
+        if (tx.IsTradingTransaction(spec))
         {
             return ProcessEmptyTransaction(tx, tracer, spec);
         }
 
-        if (tx.IsLendingFinalizedTradeTransaction())
+        if (tx.IsLendingFinalizedTradeTransaction(spec))
         {
             return ProcessEmptyTransaction(tx, tracer, spec);
         }
