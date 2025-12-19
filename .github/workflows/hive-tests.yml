@@ -56,8 +56,8 @@ jobs:
       fail-fast: false
       matrix:
         test-suite: ${{ fromJson(
-            github.event_name == 'push' || 
-            (github.event_name == 'workflow_dispatch' && github.event.inputs.test-suite == 'all') &&
+            (github.event_name == 'push' || 
+            (github.event_name == 'workflow_dispatch' && github.event.inputs.test-suite == 'all')) &&
           '["ethereum/engine","ethereum/graphql","ethereum/rpc-compat","ethereum/sync"]' ||
           format('["{0}"]', github.event.inputs.test-suite)
           ) }}
