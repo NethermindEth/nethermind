@@ -42,7 +42,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
     /// <param name="config">The opcode tracing configuration.</param>
     /// <param name="counter">The opcode counter.</param>
     /// <param name="outputWriter">The trace output writer.</param>
-    /// <param name="sessionId">The unique session identifier for RealTime mode cumulative file naming per FR-005d.</param>
+    /// <param name="sessionId">The unique session identifier for RealTime mode cumulative file naming.</param>
     /// <param name="logManager">The log manager.</param>
     public OpcodeTraceRecorder(
         IOpcodeTracingConfig config,
@@ -494,7 +494,7 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
             _cts.Dispose();
         }
 
-        // Finalize RealTime tracer if active per FR-078
+        // Finalize RealTime tracer if active
         if (_realTimeTracer is not null)
         {
             try

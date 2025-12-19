@@ -28,7 +28,7 @@ public static class BlockRangeValidator
             return ValidationResult.Error("No block range specified. Provide StartBlock/EndBlock or Blocks parameter.");
         }
 
-        // VR-001: Explicit range validation
+        // Explicit range validation
         if (config.StartBlock.HasValue && config.EndBlock.HasValue)
         {
             if (config.StartBlock.Value > config.EndBlock.Value)
@@ -42,7 +42,7 @@ public static class BlockRangeValidator
             }
         }
 
-        // VR-002: Conflicting configuration warning
+        // Conflicting configuration warning
         if (config.StartBlock.HasValue && config.Blocks.HasValue)
         {
             return ValidationResult.Warning("Both StartBlock and Blocks specified. Using explicit range, ignoring Blocks parameter.");
@@ -53,7 +53,7 @@ public static class BlockRangeValidator
             return ValidationResult.Warning("Both EndBlock and Blocks specified. This configuration is ambiguous.");
         }
 
-        // VR-004: Blocks beyond chain tip
+        // Blocks beyond chain tip
         // Both modes can handle EndBlock > chain tip:
         // - RealTime: Will trace blocks as they arrive until EndBlock is reached
         // - Retrospective: Will wait for blocks to be synced
