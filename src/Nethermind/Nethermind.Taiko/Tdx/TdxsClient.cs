@@ -78,11 +78,12 @@ public class TdxsClient(ISurgeTdxConfig config, ILogManager logManager) : ITdxsC
         using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         socket.Connect(new UnixDomainSocketEndPoint(socketPath));
 
+        using var stream = new NetworkStream(socket, ownsSocket: false);
+
         string requestJson = JsonSerializer.Serialize(request);
         socket.Send(Encoding.UTF8.GetBytes(requestJson));
         socket.Shutdown(SocketShutdown.Send);
 
-        using var stream = new NetworkStream(socket, ownsSocket: false);
         return JsonSerializer.Deserialize<JsonElement>(stream);
     }
 }
