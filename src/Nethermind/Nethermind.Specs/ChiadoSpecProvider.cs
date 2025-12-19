@@ -42,7 +42,9 @@ public class ChiadoSpecProvider : ISpecProvider
 
     public ForkActivation? MergeBlockNumber { get; private set; }
     public ulong TimestampFork => ShanghaiTimestamp;
-    public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("231707791542740786049188744689299064356246512");
+
+    // 231707791542740786049188744689299064356246512
+    public UInt256? TerminalTotalDifficulty { get; private set; } = new UInt256(18446744073375486960ul, 18446744073709551615ul, 680927ul);
     public IReleaseSpec GenesisSpec => London.Instance;
     public long? DaoBlockNumber => null;
     public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;

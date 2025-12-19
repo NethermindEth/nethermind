@@ -14,7 +14,7 @@ namespace Nethermind.Specs.Forks
         protected Byzantium()
         {
             Name = "Byzantium";
-            BlockReward = UInt256.Parse("3000000000000000000");
+            BlockReward = new UInt256(3000000000000000000ul);
             DifficultyBombDelay = 3000000L;
             IsEip100Enabled = true;
             IsEip140Enabled = true;
