@@ -100,7 +100,6 @@ public class TdxService : ITdxService
         if (!IsBootstrapped)
             throw new TdxException("TDX service not bootstrapped");
 
-        // Get the block header hash
         if (blockHash is null)
             throw new TdxException("Block hash is null");
 
@@ -123,9 +122,12 @@ public class TdxService : ITdxService
         if (!IsBootstrapped)
             throw new TdxException("TDX service not bootstrapped");
 
-        // Get the RLP encoded block header and compute the hash
+        // Get the RLP encoded block header and re-compute the hash
         byte[] headerRlp = Rlp.Encode(blockHeader).Bytes;
         Hash256 rlpHash = Keccak.Compute(headerRlp);
+
+        if (rlpHash != blockHeader.Hash)
+            throw new TdxException($"RLP hash does not match block hash {rlpHash} != {blockHeader.Hash}");
 
         // Sign the RLP hash
         Signature signature = _ecdsa.Sign(_privateKey!, rlpHash.ValueHash256);
@@ -137,6 +139,7 @@ public class TdxService : ITdxService
         return new BlockHeaderTdxAttestation
         {
             Proof = proof,
+            BlockHash = rlpHash,
             HeaderRlp = headerRlp
         };
     }

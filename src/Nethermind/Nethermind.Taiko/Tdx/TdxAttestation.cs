@@ -16,11 +16,12 @@ public class BlockHashTdxAttestation
 }
 
 /// <summary>
-/// TDX attestation result containing proof and the attested block header as RLP.
+/// TDX attestation result containing proof, the attested block hash and RLP header.
 /// </summary>
 public class BlockHeaderTdxAttestation
 {
     public required byte[] Proof { get; init; }
+    public required Hash256 BlockHash { get; init; }
     public required byte[] HeaderRlp { get; init; }
 }
 

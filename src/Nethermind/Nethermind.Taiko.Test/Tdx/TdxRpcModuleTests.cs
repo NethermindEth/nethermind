@@ -140,6 +140,7 @@ public class TdxRpcModuleTests
         var attestation = new BlockHeaderTdxAttestation
         {
             Proof = new byte[85],
+            BlockHash = header.Hash!,
             HeaderRlp = new byte[200]
         };
         _tdxService.AttestBlockHeader(header).Returns(attestation);
