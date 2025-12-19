@@ -8,7 +8,7 @@ namespace Nethermind.OpcodeTracing.Plugin.Output;
 
 /// <summary>
 /// Writes per-block opcode trace output to individual JSON files.
-/// Files are named with pattern opcode-trace-block-{blockNumber}.json per FR-005c.
+/// Files are named with pattern opcode-trace-block-{blockNumber}.json.
 /// </summary>
 public sealed class PerBlockTraceWriter
 {
@@ -29,7 +29,7 @@ public sealed class PerBlockTraceWriter
 
     /// <summary>
     /// Writes a per-block trace output to a JSON file asynchronously.
-    /// Target latency is under 100ms per FR-005g.
+    /// Target latency is under 100ms.
     /// </summary>
     /// <param name="outputDirectory">The output directory path.</param>
     /// <param name="traceOutput">The per-block trace output to write.</param>
@@ -62,7 +62,7 @@ public sealed class PerBlockTraceWriter
                 Directory.CreateDirectory(outputDirectory);
             }
 
-            // Generate filename per FR-005c pattern: opcode-trace-block-{blockNumber}.json
+            // Generate filename: opcode-trace-block-{blockNumber}.json
             string fileName = $"opcode-trace-block-{traceOutput.Metadata.BlockNumber}.json";
             string filePath = Path.Combine(outputDirectory, fileName);
 
@@ -79,7 +79,7 @@ public sealed class PerBlockTraceWriter
         }
         catch (Exception ex)
         {
-            // Per FR-077: Log error but continue processing
+            // Log error but continue processing
             if (_logger.IsError)
             {
                 _logger.Error($"Failed to write per-block opcode trace for block {traceOutput.Metadata.BlockNumber}: {ex.Message}", ex);
@@ -122,7 +122,7 @@ public sealed class PerBlockTraceWriter
                 Directory.CreateDirectory(outputDirectory);
             }
 
-            // Generate filename per FR-005c pattern
+            // Generate filename: opcode-trace-block-{blockNumber}.json
             string fileName = $"opcode-trace-block-{traceOutput.Metadata.BlockNumber}.json";
             string filePath = Path.Combine(outputDirectory, fileName);
 
@@ -139,7 +139,7 @@ public sealed class PerBlockTraceWriter
         }
         catch (Exception ex)
         {
-            // Per FR-077: Log error but continue processing
+            // Log error but continue processing
             if (_logger.IsError)
             {
                 _logger.Error($"Failed to write per-block opcode trace for block {traceOutput.Metadata.BlockNumber}: {ex.Message}", ex);

@@ -30,34 +30,34 @@ public sealed class PerBlockTraceOutput
 public sealed class PerBlockMetadata
 {
     /// <summary>
-    /// Gets or sets the block number (required per FR-023).
+    /// Gets or sets the block number.
     /// </summary>
     [JsonPropertyName("blockNumber")]
     public required long BlockNumber { get; init; }
 
     /// <summary>
-    /// Gets or sets the parent block hash (optional per FR-023).
+    /// Gets or sets the parent block hash.
     /// </summary>
     [JsonPropertyName("parentHash")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ParentHash { get; init; }
 
     /// <summary>
-    /// Gets or sets the block timestamp in Unix seconds (optional per FR-023).
+    /// Gets or sets the block timestamp in Unix seconds.
     /// </summary>
     [JsonPropertyName("timestamp")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public long? Timestamp { get; init; }
 
     /// <summary>
-    /// Gets or sets the number of transactions in the block (optional per FR-023).
+    /// Gets or sets the number of transactions in the block.
     /// </summary>
     [JsonPropertyName("transactionCount")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? TransactionCount { get; init; }
 
     /// <summary>
-    /// Gets or sets the total gas used in the block (optional per FR-023).
+    /// Gets or sets the total gas used in the block.
     /// </summary>
     [JsonPropertyName("gasUsed")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

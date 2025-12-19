@@ -10,7 +10,7 @@ namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 
 /// <summary>
 /// Handles real-time opcode tracing by attaching to live block processing.
-/// Produces dual JSON output: cumulative totals + per-block files per FR-005b.
+/// Produces dual JSON output: cumulative totals + per-block files.
 /// </summary>
 public sealed class RealTimeTracer : IAsyncDisposable
 {
@@ -90,7 +90,7 @@ public sealed class RealTimeTracer : IAsyncDisposable
 
     /// <summary>
     /// Handles a completed block trace.
-    /// Writes per-block JSON file asynchronously and updates cumulative totals per FR-005b.
+    /// Writes per-block JSON file asynchronously and updates cumulative totals.
     /// Continues tracing indefinitely for all blocks >= StartBlock.
     /// </summary>
     /// <param name="trace">The block trace data.</param>
@@ -125,7 +125,7 @@ public sealed class RealTimeTracer : IAsyncDisposable
         }
         _lastBlock = trace.BlockNumber;
 
-        // Create and enqueue per-block output per FR-005c
+        // Create and enqueue per-block output
         PerBlockTraceOutput perBlockOutput = CreatePerBlockOutput(trace);
         _writeQueue.Enqueue(perBlockOutput);
 
@@ -134,13 +134,13 @@ public sealed class RealTimeTracer : IAsyncDisposable
             _logger.Debug($"RealTime: block {trace.BlockNumber} processed, {trace.Opcodes.Count} unique opcodes");
         }
 
-        // Update cumulative file per FR-005d
+        // Update cumulative file
         _ = UpdateCumulativeFileAsync();
 
         // Notify callback
         _onBlockCompleted(trace.BlockNumber);
 
-        // Check for initial range completion per FR-072 (log once, but continue tracing)
+        // Check for initial range completion (log once, but continue tracing)
         if (!_rangeCompleted && trace.BlockNumber >= _range.EndBlock)
         {
             _rangeCompleted = true;
@@ -150,7 +150,7 @@ public sealed class RealTimeTracer : IAsyncDisposable
                 _logger.Info($"RealTime: configured range {_range.StartBlock}-{_range.EndBlock} completed. Continuing to trace new blocks.");
             }
 
-            // Write cumulative with completionStatus="complete" for initial range per FR-072
+            // Write cumulative with completionStatus="complete" for initial range
             _ = _cumulativeWriter.FinalizeAsync(CreateCumulativeOutput("complete"), "complete");
         }
     }
@@ -201,7 +201,7 @@ public sealed class RealTimeTracer : IAsyncDisposable
     }
 
     /// <summary>
-    /// Updates the cumulative file asynchronously per FR-070.
+    /// Updates the cumulative file asynchronously.
     /// </summary>
     private async Task UpdateCumulativeFileAsync()
     {
@@ -221,7 +221,7 @@ public sealed class RealTimeTracer : IAsyncDisposable
     }
 
     /// <summary>
-    /// Finalizes the tracer with partial completion status per FR-078.
+    /// Finalizes the tracer with partial completion status.
     /// Called during graceful shutdown.
     /// </summary>
     public async Task FinalizePartialAsync()
@@ -236,7 +236,7 @@ public sealed class RealTimeTracer : IAsyncDisposable
         // Flush pending per-block writes
         await _writeQueue.FlushAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
 
-        // Write final cumulative with partial status per SC-015
+        // Write final cumulative with partial status
         await _cumulativeWriter.FinalizeAsync(CreateCumulativeOutput("partial"), "partial").ConfigureAwait(false);
     }
 

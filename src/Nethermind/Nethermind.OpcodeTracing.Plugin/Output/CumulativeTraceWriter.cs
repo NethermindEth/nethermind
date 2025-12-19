@@ -8,7 +8,7 @@ namespace Nethermind.OpcodeTracing.Plugin.Output;
 
 /// <summary>
 /// Writes cumulative opcode trace output to JSON files.
-/// The cumulative file is updated in-place after each block per FR-005d.
+/// The cumulative file is updated in-place after each block.
 /// </summary>
 public sealed class CumulativeTraceWriter
 {
@@ -31,7 +31,7 @@ public sealed class CumulativeTraceWriter
     /// Initializes a new instance of the <see cref="CumulativeTraceWriter"/> class.
     /// </summary>
     /// <param name="outputDirectory">The output directory path.</param>
-    /// <param name="sessionId">The unique session identifier for filename per FR-005d.</param>
+    /// <param name="sessionId">The unique session identifier for filename.</param>
     /// <param name="logManager">The log manager.</param>
     public CumulativeTraceWriter(string outputDirectory, string sessionId, ILogManager logManager)
     {
