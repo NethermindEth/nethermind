@@ -124,11 +124,11 @@ namespace Nethermind.Blockchain.Filters
             new(GetFilterId(setId));
 
         public LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock,
-            object? address = null, IEnumerable<object?>? topics = null, bool setId = true) =>
+            AddressAsKey[]? addresses = null, IEnumerable<Hash256[]?>? topics = null, bool setId = true) =>
             new(GetFilterId(setId),
                 fromBlock,
                 toBlock,
-                GetAddress(address),
+                GetAddress(addresses),
                 GetTopicsFilter(topics));
 
         public void RemoveFilter(int filterId)
@@ -165,7 +165,7 @@ namespace Nethermind.Blockchain.Filters
             return 0;
         }
 
-        private static TopicsFilter GetTopicsFilter(IEnumerable<object?>? topics = null)
+        private static TopicsFilter GetTopicsFilter(IEnumerable<Hash256[]?>? topics = null)
         {
             if (topics is null)
             {
@@ -202,48 +202,32 @@ namespace Nethermind.Blockchain.Filters
             return AnyTopic.Instance;
         }
 
-        private static AddressFilter GetAddress(object? address) =>
-            address switch
-            {
-                null => AddressFilter.AnyAddress,
-                string s => new AddressFilter(new Address(s)),
-                IEnumerable<string> e => new AddressFilter(e.Select(static a => new AddressAsKey(new Address(a))).ToHashSet()),
-                _ => throw new InvalidDataException("Invalid address filter format")
-            };
+        private static AddressFilter GetAddress(AddressAsKey[]? addresses) => addresses is null ? AddressFilter.AnyAddress : new AddressFilter(addresses);
 
-        private static FilterTopic?[]? GetFilterTopics(IEnumerable<object>? topics) => topics?.Select(GetTopic).ToArray();
+        private static FilterTopic?[]? GetFilterTopics(IEnumerable<Hash256[]?>? topics) => topics?.Select(GetTopic).ToArray();
 
-        private static FilterTopic? GetTopic(object? obj)
+        private static FilterTopic? GetTopic(Hash256[]? topics)
         {
-            switch (obj)
+            if (topics?.Length == 1)
             {
-                case null:
-                    return null;
-                case string topic:
-                    return new FilterTopic
-                    {
-                        Topic = new Hash256(topic)
-                    };
-                case Hash256 keccak:
-                    return new FilterTopic
-                    {
-                        Topic = keccak
-                    };
-            }
-
-            return obj is not IEnumerable<string> topics
-                ? null
-                : new FilterTopic
+                return new FilterTopic
                 {
-                    Topics = topics.Select(static t => new Hash256(t)).ToArray()
+                    Topic = topics[0]
                 };
+            }
+            else
+            {
+                return new FilterTopic()
+                {
+                    Topics = topics
+                };
+            }
         }
 
         private class FilterTopic
         {
             public Hash256? Topic { get; init; }
             public Hash256[]? Topics { get; init; }
-
         }
 
         public void Dispose()
