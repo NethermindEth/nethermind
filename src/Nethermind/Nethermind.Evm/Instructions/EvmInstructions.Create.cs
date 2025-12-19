@@ -7,7 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
-using Nethermind.Evm.Gas;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;

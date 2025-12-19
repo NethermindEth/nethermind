@@ -23,7 +23,6 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.Gas;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;

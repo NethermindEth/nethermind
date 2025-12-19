@@ -5,7 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Gas;
+using Nethermind.Evm.GasPolicy;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Precompiles")]
 namespace Nethermind.Evm;

@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.Gas;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;

@@ -7,12 +7,11 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm.Gas;
+namespace Nethermind.Evm.GasPolicy;
 
 /// <summary>
 /// Standard Ethereum single-dimensional gas.Value policy.
@@ -41,39 +40,42 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void SetOutOfGas(ref EthereumGasPolicy gas) => gas.Value = 0;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeAccountAccessGasWithDelegation(ref EthereumGasPolicy gas,
-        VirtualMachine<EthereumGasPolicy> vm,
+        IReleaseSpec spec,
+        ref readonly StackAccessTracker accessTracker,
+        bool isTracingAccess,
         Address address,
+        Address? delegated,
         bool chargeForWarm = true)
     {
-        IReleaseSpec spec = vm.Spec;
         if (!spec.UseHotAndColdStorage)
             return true;
 
-        bool notOutOfGas = ConsumeAccountAccessGas(ref gas, vm, address, chargeForWarm);
+        bool notOutOfGas = ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address, chargeForWarm);
         return notOutOfGas
-               && (!vm.TxExecutionContext.CodeInfoRepository.TryGetDelegation(address, spec, out Address delegated)
-                   || ConsumeAccountAccessGas(ref gas, vm, delegated, chargeForWarm));
+               && (delegated is null
+                   || ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated, chargeForWarm));
     }
 
     public static bool ConsumeAccountAccessGas(ref EthereumGasPolicy gas,
-        VirtualMachine<EthereumGasPolicy> vm,
+        IReleaseSpec spec,
+        ref readonly StackAccessTracker accessTracker,
+        bool isTracingAccess,
         Address address,
         bool chargeForWarm = true)
     {
         bool result = true;
-        IReleaseSpec spec = vm.Spec;
         if (spec.UseHotAndColdStorage)
         {
-            VmState<EthereumGasPolicy> vmState = vm.VmState;
-            if (vm.TxTracer.IsTracingAccess)
+            if (isTracingAccess)
             {
                 // Ensure that tracing simulates access-list behavior.
-                vmState.AccessTracker.WarmUp(address);
+                accessTracker.WarmUp(address);
             }
 
             // If the account is cold (and not a precompile), charge the cold access cost.
-            if (!spec.IsPrecompile(address) && vmState.AccessTracker.WarmUp(address))
+            if (!spec.IsPrecompile(address) && accessTracker.WarmUp(address))
             {
                 result = UpdateGas(ref gas, GasCostOf.ColdAccountAccess);
             }
@@ -88,37 +90,28 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,
-        VirtualMachine<EthereumGasPolicy> vm,
+        ref readonly StackAccessTracker accessTracker,
+        bool isTracingAccess,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
         IReleaseSpec spec)
     {
-        VmState<EthereumGasPolicy> vmState = vm.VmState;
-        bool result = true;
-
         // If the spec requires hot/cold storage tracking, determine if extra gas should be charged.
-        if (spec.UseHotAndColdStorage)
+        if (!spec.UseHotAndColdStorage)
+            return true;
+        // When tracing access, ensure the storage cell is marked as warm to simulate inclusion in the access list.
+        if (isTracingAccess)
         {
-            // When tracing access, ensure the storage cell is marked as warm to simulate inclusion in the access list.
-            ref readonly StackAccessTracker accessTracker = ref vmState.AccessTracker;
-            if (vm.TxTracer.IsTracingAccess)
-            {
-                accessTracker.WarmUp(in storageCell);
-            }
-
-            // If the storage cell is still cold, apply the higher cold access cost and mark it as warm.
-            if (accessTracker.WarmUp(in storageCell))
-            {
-                result = UpdateGas(ref gas, GasCostOf.ColdSLoad);
-            }
-            // For SLOAD operations on already warmed-up storage, apply a lower warm-read cost.
-            else if (storageAccessType == StorageAccessType.SLOAD)
-            {
-                result = UpdateGas(ref gas, GasCostOf.WarmStateRead);
-            }
+            accessTracker.WarmUp(in storageCell);
         }
 
-        return result;
+        // If the storage cell is still cold, apply the higher cold access cost and mark it as warm.
+        if (accessTracker.WarmUp(in storageCell))
+            return UpdateGas(ref gas, GasCostOf.ColdSLoad);
+        // For SLOAD operations on already warmed-up storage, apply a lower warm-read cost.
+        if (storageAccessType == StorageAccessType.SLOAD)
+            return UpdateGas(ref gas, GasCostOf.WarmStateRead);
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -127,13 +120,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         in UInt256 length, VmState<EthereumGasPolicy> vmState)
     {
         long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
-        if (memoryCost != 0L)
-        {
-            if (!UpdateGas(ref gas, memoryCost))
-                return false;
-        }
-
-        return !outOfGas;
+        if (memoryCost == 0L)
+            return !outOfGas;
+        return UpdateGas(ref gas, memoryCost);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

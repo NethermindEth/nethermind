@@ -13,7 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
-using Nethermind.Evm.Gas;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;

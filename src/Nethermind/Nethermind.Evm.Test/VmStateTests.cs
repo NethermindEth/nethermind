@@ -5,7 +5,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Gas;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using NUnit.Framework;
 

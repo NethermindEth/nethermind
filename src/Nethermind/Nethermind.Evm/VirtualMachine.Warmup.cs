@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.Gas;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;

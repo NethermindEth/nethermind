@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Gas;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 

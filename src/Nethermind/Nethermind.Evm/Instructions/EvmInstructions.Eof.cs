@@ -9,7 +9,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
-using Nethermind.Evm.Gas;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -945,8 +945,10 @@ internal static partial class EvmInstructions
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, in dataLength, vm.VmState))
             goto OutOfGas;
         // 7. Account access gas: ensure target is warm or charge extra gas for cold access.
-        if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, vm, codeSource))
-            goto OutOfGas;
+        bool _ = vm.TxExecutionContext.CodeInfoRepository
+            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
+        if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, vm.Spec, in vm.VmState.AccessTracker,
+                vm.TxTracer.IsTracingAccess, codeSource, delegated)) goto OutOfGas;
 
         // 8. If the target does not exist or is considered a "dead" account when value is transferred,
         // charge for account creation.
