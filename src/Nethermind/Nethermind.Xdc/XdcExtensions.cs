@@ -23,10 +23,49 @@ public static class XdcExtensions
         ValueHash256 hash = ValueKeccak.Compute(_headerDecoder.Encode(header, RlpBehaviors.ForSealing).Bytes);
         return ecdsa.Sign(privateKey, in hash);
     }
-    public static bool IsSpecialTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
+    public static bool IsSpecialTransaction(this Transaction currentTx)
     {
-        return currentTx.To is not null && ((currentTx.To == spec.BlockSignersAddress) || (currentTx.To == spec.RandomizeSMCBinary));
+        return currentTx.To is not null && ((currentTx.To == XdcConstants.BlockSignersAddress) || (currentTx.To == XdcConstants.RandomizeSMCBinary));
     }
+    public static bool RequiresSpecialHandling(this Transaction currentTx)
+    {
+        return IsSignTransaction(currentTx)
+            || IsLendingTransaction(currentTx)
+            || IsTradingTransaction(currentTx)
+            || IsLendingFinalizedTradeTransaction(currentTx)
+            || IsTradingStateTransaction(currentTx);
+    }
+    public static bool IsSignTransaction(this Transaction currentTx)
+    {
+        return currentTx.To is not null && currentTx.To == XdcConstants.BlockSignersAddress;
+    }
+    public static bool IsTradingTransaction(this Transaction currentTx)
+    {
+        return currentTx.To is not null && currentTx.To == XdcConstants.XDCXAddressBinary;
+    }
+    public static bool IsLendingTransaction(this Transaction currentTx)
+    {
+        return currentTx.To is not null && currentTx.To == XdcConstants.XDCXLendingAddressBinary;
+    }
+    public static bool IsLendingFinalizedTradeTransaction(this Transaction currentTx)
+    {
+        return currentTx.To is not null && currentTx.To == XdcConstants.XDCXLendingFinalizedTradeAddressBinary;
+    }
+    public static bool IsTradingStateTransaction(this Transaction currentTx)
+    {
+        return currentTx.To is not null && currentTx.To == XdcConstants.TradingStateAddressBinary;
+    }
+
+    public static bool IsSkipNonceTransaction(this Transaction currentTx)
+    {
+        return currentTx.To is not null
+            &&(IsTradingStateTransaction(currentTx)
+            || IsTradingTransaction(currentTx)
+            || IsLendingTransaction(currentTx)
+            || IsLendingFinalizedTradeTransaction(currentTx));
+
+    }
+
     public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
     {
         KeccakRlpStream stream = new();

@@ -115,8 +115,8 @@ internal class SpecialTransactionsTests
 
         Transaction[] pendingTxs = blockChain.TxPool.GetPendingTransactions();
 
-        var specialTxs = pendingTxs.Where(r => r.To == blockChain.SpecProvider.GetXdcSpec(head).BlockSignersAddress
-                                            || r.To == blockChain.SpecProvider.GetXdcSpec(head).RandomizeSMCBinary);
+        var specialTxs = pendingTxs.Where(r => r.To == XdcConstants.BlockSignersAddress
+                                            || r.To == XdcConstants.RandomizeSMCBinary);
 
         Assert.That(specialTxs, Is.Not.Empty);
 
@@ -157,8 +157,8 @@ internal class SpecialTransactionsTests
 
         var receipts = blockChain.TxPool.GetPendingTransactions();
 
-        receipts.Any(r => r.To == blockChain.SpecProvider.GetXdcSpec(head).BlockSignersAddress
-                       || r.To == blockChain.SpecProvider.GetXdcSpec(head).RandomizeSMCBinary).Should().BeFalse();
+        receipts.Any(r => r.To == XdcConstants.BlockSignersAddress
+                       || r.To == XdcConstants.RandomizeSMCBinary).Should().BeFalse();
     }
 
     [Test]
@@ -208,7 +208,7 @@ internal class SpecialTransactionsTests
         bool onlyEncounteredSpecialTx = true;
         foreach (var transaction in receipts)
         {
-            if (transaction.Recipient == spec.BlockSignersAddress || transaction.Recipient == spec.RandomizeSMCBinary)
+            if (transaction.Recipient == XdcConstants.BlockSignersAddress || transaction.Recipient == XdcConstants.RandomizeSMCBinary)
             {
                 if (!onlyEncounteredSpecialTx)
                 {
@@ -245,10 +245,11 @@ internal class SpecialTransactionsTests
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
+        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
-        var txSign = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignersAddress, blockChain.Signer.Address);
+        var txSign = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), XdcConstants.BlockSignersAddress, blockChain.Signer.Address);
         await blockChain.Signer.Sign(txSign);
 
         TransactionResult? result = null;
@@ -264,11 +265,11 @@ internal class SpecialTransactionsTests
 
         if (blackListingActivated)
         {
-            result.Value.Should().Be(XdcTransactionResult.ContainsBlacklistedAddress);
+            result.Value.Error.Should().Be(XdcTransactionResult.ContainsBlacklistedAddressError);
         }
         else
         {
-            result.Value.Should().NotBe(XdcTransactionResult.ContainsBlacklistedAddress);
+            result.Value.Error.Should().NotBe(XdcTransactionResult.ContainsBlacklistedAddressError);
         }
     }
 
@@ -293,6 +294,7 @@ internal class SpecialTransactionsTests
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
+        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
@@ -312,11 +314,11 @@ internal class SpecialTransactionsTests
 
         if (blackListingActivated)
         {
-            result.Value.Should().Be(XdcTransactionResult.ContainsBlacklistedAddress);
+            result.Value.Error.Should().Be(XdcTransactionResult.ContainsBlacklistedAddressError);
         }
         else
         {
-            result.Value.Should().NotBe(XdcTransactionResult.ContainsBlacklistedAddress);
+            result.Value.Error.Should().NotBe(XdcTransactionResult.ContainsBlacklistedAddressError);
         }
     }
 
@@ -334,10 +336,10 @@ internal class SpecialTransactionsTests
 
         var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
 
-
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
+        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
@@ -345,7 +347,7 @@ internal class SpecialTransactionsTests
 
         if (isSpecialTx)
         {
-            tx = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignersAddress, blockChain.Signer.Address);
+            tx = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(blockChain.Signer.Address), XdcConstants.BlockSignersAddress, blockChain.Signer.Address);
         }
         else
         {
@@ -378,6 +380,146 @@ internal class SpecialTransactionsTests
         }
     }
 
+    public async Task Malformed_SenderNonceLesserThanTxNonce_SignTx_Fails_Validation()
+    {
+        var blockChain = await XdcTestBlockchain.Create(5, false);
+        blockChain.ChangeReleaseSpec((spec) =>
+        {
+            spec.IsEip1559Enabled = false;
+        });
+
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+
+
+        XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
+        XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
+
+        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+
+        moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
+
+
+        blockChain.WorldStateManager.GlobalWorldState.IncrementNonce(blockChain.Signer.Address);
+        var nonce = blockChain.WorldStateManager.GlobalWorldState.GetNonce(blockChain.Signer.Address);
+
+
+        Transaction txWithSmallerNonce = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, nonce - 1, XdcConstants.BlockSignersAddress, blockChain.Signer.Address);
+
+        // damage the data field in the tx
+        txWithSmallerNonce.Data = Enumerable.Range(0, 48).Select(i => (byte)i).ToArray();
+
+        await blockChain.Signer.Sign(txWithSmallerNonce);
+
+        TransactionResult? result = null;
+
+        try
+        {
+            result = transactionProcessor.Execute(txWithSmallerNonce, NullTxTracer.Instance);
+        }
+        catch
+        {
+            result = TransactionResult.Ok;
+        }
+
+        result.Value.Error.Should().Be(XdcTransactionResult.NonceTooLowError);
+    }
+
+    public async Task Malformed_SenderBiggerLesserThanTxNonce_SignTx_Fails_Validation()
+    {
+        var blockChain = await XdcTestBlockchain.Create(5, false);
+        blockChain.ChangeReleaseSpec((spec) =>
+        {
+            spec.IsEip1559Enabled = false;
+        });
+
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+
+
+        XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
+        XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
+
+        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+
+        moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
+
+
+        blockChain.WorldStateManager.GlobalWorldState.IncrementNonce(blockChain.Signer.Address);
+        var nonce = blockChain.WorldStateManager.GlobalWorldState.GetNonce(blockChain.Signer.Address);
+
+
+        Transaction txWithBiggerNonce = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, nonce + 1, XdcConstants.BlockSignersAddress, blockChain.Signer.Address);
+
+        // damage the data field in the tx
+        txWithBiggerNonce.Data = Enumerable.Range(0, 48).Select(i => (byte)i).ToArray();
+
+        await blockChain.Signer.Sign(txWithBiggerNonce);
+
+        TransactionResult? result = null;
+
+        try
+        {
+            result = transactionProcessor.Execute(txWithBiggerNonce, NullTxTracer.Instance);
+        }
+        catch
+        {
+            result = TransactionResult.Ok;
+        }
+
+        result.Value.Error.Should().Be(XdcTransactionResult.NonceTooHighError);
+    }
+
+
+    public async Task Malformed_SenderEqualLesserThanTxNonce_SignTx_Fails_Validation()
+    {
+        var blockChain = await XdcTestBlockchain.Create(5, false);
+        blockChain.ChangeReleaseSpec((spec) =>
+        {
+            spec.IsEip1559Enabled = false;
+        });
+
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+
+
+        XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
+        XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
+
+        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+
+        moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
+
+
+        blockChain.WorldStateManager.GlobalWorldState.IncrementNonce(blockChain.Signer.Address);
+        var nonce = blockChain.WorldStateManager.GlobalWorldState.GetNonce(blockChain.Signer.Address);
+
+
+        Transaction validNonceTx = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, nonce, XdcConstants.BlockSignersAddress, blockChain.Signer.Address);
+
+        // damage the data field in the tx
+        validNonceTx.Data = Enumerable.Range(0, 48).Select(i => (byte)i).ToArray();
+
+        await blockChain.Signer.Sign(validNonceTx);
+
+        TransactionResult? result = null;
+
+        try
+        {
+            result = transactionProcessor.Execute(validNonceTx, NullTxTracer.Instance);
+        }
+        catch
+        {
+            result = TransactionResult.Ok;
+        }
+
+        result.Value.Error.Should().NotBe(XdcTransactionResult.NonceTooHighError);
+        result.Value.Error.Should().NotBe(XdcTransactionResult.NonceTooLowError);
+    }
+
     public async Task Malformed_WrongBlockNumber_BlockLessThanCurrent_SpecialTx_Fails_Validation()
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
@@ -394,12 +536,14 @@ internal class SpecialTransactionsTests
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
+        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
 
+
         var blockNumber = head.Number - 1;
-        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)blockNumber, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignersAddress, blockChain.Signer.Address);
+        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)blockNumber, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), XdcConstants.BlockSignersAddress, blockChain.Signer.Address);
 
         await blockChain.Signer.Sign(tx);
 
@@ -424,12 +568,13 @@ internal class SpecialTransactionsTests
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
+        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
 
         var blockNumber = head.Number;
-        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)blockNumber, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignersAddress, blockChain.Signer.Address);
+        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)blockNumber, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), XdcConstants.BlockSignersAddress, blockChain.Signer.Address);
 
         await blockChain.Signer.Sign(tx);
 
@@ -454,12 +599,13 @@ internal class SpecialTransactionsTests
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
+        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
 
         var blockNumber = head.Number + 1;
-        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)blockNumber, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignersAddress, blockChain.Signer.Address);
+        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)blockNumber, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), XdcConstants.BlockSignersAddress, blockChain.Signer.Address);
 
         await blockChain.Signer.Sign(tx);
 

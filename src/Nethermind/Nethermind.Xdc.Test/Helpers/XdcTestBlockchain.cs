@@ -233,8 +233,6 @@ public class XdcTestBlockchain : TestBlockchain
             ];
         xdcSpec.MergeSignRange = 15;
 
-        xdcSpec.RandomizeSMCBinary = new Address("0x0000000000000000000000000000000000000089");
-        xdcSpec.BlockSignersAddress = new Address("0x0000000000000000000000000000000000000090");
         xdcSpec.TIP2019Block = 0;
 
         V2ConfigParams[] v2ConfigParams = [
@@ -334,16 +332,16 @@ public class XdcTestBlockchain : TestBlockchain
 
             var genesisSpec = specProvider.GenesisSpec as IXdcReleaseSpec;
 
-            state.CreateAccount(genesisSpec!.BlockSignersAddress, 100_000);
-            state.CreateAccount(genesisSpec!.RandomizeSMCBinary, 100_000);
+            state.CreateAccount(XdcConstants.BlockSignersAddress, 100_000);
+            state.CreateAccount(XdcConstants.RandomizeSMCBinary, 100_000);
 
             var dummyCode = Prepare.EvmCode
                 .STOP()
                 .Done;
             var dummyCodeHashcode = Keccak.Compute(dummyCode);
 
-            state.InsertCode(genesisSpec.BlockSignersAddress, dummyCodeHashcode, dummyCode, genesisSpec, true);
-            state.InsertCode(genesisSpec.RandomizeSMCBinary, dummyCodeHashcode, dummyCode, genesisSpec, true);
+            state.InsertCode(XdcConstants.BlockSignersAddress, dummyCodeHashcode, dummyCode, genesisSpec!, true);
+            state.InsertCode(XdcConstants.RandomizeSMCBinary, dummyCodeHashcode, dummyCode, genesisSpec!, true);
 
             IXdcReleaseSpec? finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
 

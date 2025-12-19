@@ -12,6 +12,10 @@ namespace Nethermind.Xdc;
 internal struct XdcTransactionResult
 {
     public const ErrorType ContainsBlacklistedAddressError = (ErrorType)12;
+    public const ErrorType NonceTooHighError = (ErrorType)13;
+    public const ErrorType NonceTooLowError = (ErrorType)14;
 
     public static TransactionResult ContainsBlacklistedAddress => (TransactionResult)ContainsBlacklistedAddressError;
+    public static TransactionResult NonceTooHigh => (TransactionResult)NonceTooHighError;
+    public static TransactionResult NonceTooLow => (TransactionResult)NonceTooLowError;
 }

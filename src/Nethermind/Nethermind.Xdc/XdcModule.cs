@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
@@ -74,9 +75,10 @@ public class XdcModule : Module
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
 
+            .AddSingleton<ITransactionComparerProvider, XdcTransactionComparerProvider>()
+            .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
+
             // block processing
-            .AddSingleton<IBlockProducerEnvFactory, XdcBlockProductionEnvFactory>()
-            .AddScoped<IBlockValidationModule, XdcBlockValidationModule>()
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
             ;
     }

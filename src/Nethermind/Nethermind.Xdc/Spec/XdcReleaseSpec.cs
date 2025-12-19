@@ -31,8 +31,6 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public List<V2ConfigParams> V2Configs { get; set; } = new List<V2ConfigParams>();
 
     public Address[] GenesisMasterNodes { get; set; }
-    public Address BlockSignersAddress { get; set; }
-    public Address RandomizeSMCBinary { get; set; }
     public long BlackListHFNumber { get; set; }
     public long EpochBlockOpening { get; set; }
     public long EpochBlockRandomize { get; set; }
@@ -106,8 +104,6 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; }
     Address[] GenesisMasterNodes { get; set; }
-    Address BlockSignersAddress { get; set; }
-    Address RandomizeSMCBinary { get; set; }
     long BlackListHFNumber { get; set; }
     long EpochBlockOpening { get; set; }
     long EpochBlockRandomize { get; set; }
