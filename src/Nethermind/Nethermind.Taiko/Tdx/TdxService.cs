@@ -7,10 +7,9 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Facade.Eth;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Taiko.Tdx;
 
@@ -19,12 +18,11 @@ namespace Nethermind.Taiko.Tdx;
 /// </summary>
 public class TdxService : ITdxService
 {
-    // Proof layout: [instance_id: 4 bytes][address: 20 bytes][signature: 65 bytes]
-    private const int ProofSize = 89;
+    // Proof layout: [address: 20 bytes][signature: 65 bytes]
+    private const int ProofSize = 85;
 
     private readonly ISurgeTdxConfig _config;
     private readonly ITdxsClient _client;
-    private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
     private readonly Ecdsa _ecdsa = new();
 
@@ -34,7 +32,6 @@ public class TdxService : ITdxService
     public TdxService(
         ISurgeTdxConfig config,
         ITdxsClient client,
-        ISpecProvider specProvider,
         ILogManager logManager)
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
@@ -44,20 +41,19 @@ public class TdxService : ITdxService
 
         _config = config;
         _client = client;
-        _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
 
         TryLoadBootstrap();
     }
 
-    public bool IsAvailable => _guestInfo is not null && _privateKey is not null;
+    public bool IsBootstrapped => _guestInfo is not null && _privateKey is not null;
 
     public TdxGuestInfo Bootstrap()
     {
-        if (_guestInfo is not null && _privateKey is not null)
+        if (IsBootstrapped)
         {
             _logger.Info("Already bootstrapped, returning existing data");
-            return _guestInfo;
+            return _guestInfo!;
         }
 
         _logger.Info("Bootstrapping TDX service");
@@ -71,7 +67,7 @@ public class TdxService : ITdxService
 
         // Get TDX quote with address as user data (padded to 32 bytes)
         byte[] userData = new byte[32];
-        address.Bytes.CopyTo(userData.AsSpan(12)); // Right-pad address in 32 bytes
+        address.Bytes.CopyTo(userData.AsSpan(12));
 
         byte[] nonce = new byte[32];
         new CryptoRandom().GenerateRandomBytes(nonce);
@@ -99,53 +95,64 @@ public class TdxService : ITdxService
         return _guestInfo;
     }
 
-    public TdxAttestation Attest(Block block)
+    public BlockHashTdxAttestation AttestBlockHash(Hash256 blockHash)
     {
-        if (_guestInfo is null || _privateKey is null)
+        if (!IsBootstrapped)
             throw new TdxException("TDX service not bootstrapped");
 
         // Get the block header hash
-        Hash256 headerHash = block.Header.Hash ?? throw new TdxException("Block header hash is null");
+        if (blockHash is null)
+            throw new TdxException("Block hash is null");
 
         // Sign the header hash
-        Signature signature = _ecdsa.Sign(_privateKey, headerHash.ValueHash256);
+        Signature signature = _ecdsa.Sign(_privateKey!, blockHash.ValueHash256);
         byte[] signatureBytes = GetSignatureBytes(signature);
 
-        // Generate TDX quote with header hash as user data
-        byte[] nonce = new byte[32];
-        new CryptoRandom().GenerateRandomBytes(nonce);
-        byte[] headerHashBytes = headerHash.Bytes.ToArray();
-        byte[] quote = _client.Issue(headerHashBytes, nonce);
+        // Build proof: address (20) + signature (65)
+        byte[] proof = BuildProof(_privateKey!.Address, signatureBytes);
 
-        // Build proof: instance_id (4) + address (20) + signature (65)
-        byte[] proof = BuildProof(_privateKey.Address, signatureBytes, _config.InstanceId);
-
-        return new TdxAttestation
+        return new BlockHashTdxAttestation
         {
             Proof = proof,
-            Quote = quote,
-            Block = new BlockForRpc(block, includeFullTransactionData: false, _specProvider, skipTxs: true)
+            BlockHash = blockHash
+        };
+    }
+
+    public BlockHeaderTdxAttestation AttestBlockHeader(BlockHeader blockHeader)
+    {
+        if (!IsBootstrapped)
+            throw new TdxException("TDX service not bootstrapped");
+
+        // Get the RLP encoded block header and compute the hash
+        byte[] headerRlp = Rlp.Encode(blockHeader).Bytes;
+        Hash256 rlpHash = Keccak.Compute(headerRlp);
+
+        // Sign the RLP hash
+        Signature signature = _ecdsa.Sign(_privateKey!, rlpHash.ValueHash256);
+        byte[] signatureBytes = GetSignatureBytes(signature);
+
+        // Build proof: address (20) + signature (65)
+        byte[] proof = BuildProof(_privateKey!.Address, signatureBytes);
+
+        return new BlockHeaderTdxAttestation
+        {
+            Proof = proof,
+            HeaderRlp = headerRlp
         };
     }
 
     /// <summary>
-    /// Build the 89-byte proof: [instance_id:4][address:20][signature:65]
+    /// Build the 85-byte proof: [address:20][signature:65]
     /// </summary>
-    private static byte[] BuildProof(Address address, byte[] signature, uint instanceId)
+    private static byte[] BuildProof(Address address, byte[] signature)
     {
         byte[] proof = new byte[ProofSize];
 
-        // Instance ID (4 bytes, big endian)
-        proof[0] = (byte)(instanceId >> 24);
-        proof[1] = (byte)(instanceId >> 16);
-        proof[2] = (byte)(instanceId >> 8);
-        proof[3] = (byte)instanceId;
-
         // Address (20 bytes)
-        address.Bytes.CopyTo(proof.AsSpan(4, 20));
+        address.Bytes.CopyTo(proof.AsSpan(0, 20));
 
         // Signature (65 bytes)
-        signature.AsSpan(0, 65).CopyTo(proof.AsSpan(24));
+        signature.AsSpan(0, 65).CopyTo(proof.AsSpan(20));
 
         return proof;
     }
@@ -161,13 +168,13 @@ public class TdxService : ITdxService
         return result;
     }
 
-    private void TryLoadBootstrap()
+    private bool TryLoadBootstrap()
     {
         string path = GetBootstrapPath();
         string keyPath = GetKeyPath();
 
         if (!File.Exists(path) || !File.Exists(keyPath))
-            return;
+            return false;
 
         try
         {
@@ -176,7 +183,15 @@ public class TdxService : ITdxService
 
             byte[] keyBytes = File.ReadAllBytes(keyPath);
             _privateKey = new PrivateKey(keyBytes);
-            _logger.Info($"Loaded TDX bootstrap data. Address: {_privateKey.Address}");
+
+            if (IsBootstrapped)
+            {
+                _logger.Info($"Loaded TDX bootstrap data. Address: {_privateKey.Address}");
+                return true;
+            }
+
+            _logger.Warn("Failed to load TDX bootstrap data, invalid data");
+            return false;
         }
         catch (Exception ex)
         {
@@ -184,6 +199,8 @@ public class TdxService : ITdxService
             _guestInfo = null;
             _privateKey = null;
         }
+
+        return false;
     }
 
     private void SaveBootstrap(TdxGuestInfo data)
@@ -196,7 +213,7 @@ public class TdxService : ITdxService
         string path = GetBootstrapPath();
         File.WriteAllText(path, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
 
-        // Save key with atomic 0600 permissions
+        // Save key with 0600 file permissions
         string keyPath = GetKeyPath();
         if (OperatingSystem.IsLinux())
         {

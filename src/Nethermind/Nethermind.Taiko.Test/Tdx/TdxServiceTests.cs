@@ -5,8 +5,6 @@ using System;
 using System.IO;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Taiko.Tdx;
@@ -19,7 +17,6 @@ public class TdxServiceTests
 {
     private ISurgeTdxConfig _config = null!;
     private ITdxsClient _client = null!;
-    private ISpecProvider _specProvider = null!;
     private TdxService _service = null!;
     private string _tempDir = null!;
 
@@ -37,8 +34,7 @@ public class TdxServiceTests
         _client.GetMetadata().Returns(new TdxMetadata { IssuerType = "test", Metadata = null });
         _client.Issue(Arg.Any<byte[]>(), Arg.Any<byte[]>()).Returns(new byte[100]);
 
-        _specProvider = Substitute.For<ISpecProvider>();
-        _service = new TdxService(_config, _client, _specProvider, LimboLogs.Instance);
+        _service = new TdxService(_config, _client, LimboLogs.Instance);
     }
 
     [TearDown]
@@ -49,9 +45,9 @@ public class TdxServiceTests
     }
 
     [Test]
-    public void IsAvailable_returns_false_before_bootstrap()
+    public void IsBootstrapped_returns_false_before_bootstrap()
     {
-        _service.IsAvailable.Should().BeFalse();
+        _service.IsBootstrapped.Should().BeFalse();
     }
 
     [Test]
@@ -63,7 +59,7 @@ public class TdxServiceTests
         info.IssuerType.Should().Be("test");
         info.PublicKey.Should().NotBeNullOrEmpty();
         info.Quote.Should().NotBeNullOrEmpty();
-        _service.IsAvailable.Should().BeTrue();
+        _service.IsBootstrapped.Should().BeTrue();
     }
 
     [Test]
@@ -93,17 +89,17 @@ public class TdxServiceTests
     }
 
     [Test]
-    public void Attest_throws_when_not_bootstrapped()
+    public void AttestBlockHash_throws_when_not_bootstrapped()
     {
         Block block = Build.A.Block.TestObject;
 
-        Action act = () => _service.Attest(block);
+        Action act = () => _service.AttestBlockHash(block.Header.Hash!);
 
         act.Should().Throw<TdxException>().WithMessage("*not bootstrapped*");
     }
 
     [Test]
-    public void Attest_generates_valid_attestation()
+    public void AttestBlockHash_generates_valid_attestation()
     {
         _service.Bootstrap();
         Block block = Build.A.Block
@@ -112,55 +108,68 @@ public class TdxServiceTests
             .WithParent(Build.A.BlockHeader.TestObject)
             .TestObject;
 
-        TdxAttestation attestation = _service.Attest(block);
+        BlockHashTdxAttestation attestation = _service.AttestBlockHash(block.Header.Hash!);
 
         attestation.Should().NotBeNull();
-        attestation.Proof.Should().HaveCount(89); // 4 + 20 + 65
-        attestation.Quote.Should().NotBeEmpty();
-        attestation.Block.Should().NotBeNull();
-        attestation.Block.Hash.Should().Be(block.Hash!);
+        attestation.Proof.Should().HaveCount(85); // 20 + 65
+        attestation.BlockHash.Should().Be(block.Hash!);
     }
 
     [Test]
-    public void Attest_proof_contains_address_and_signature()
+    public void AttestBlockHeader_generates_valid_attestation()
+    {
+        _service.Bootstrap();
+        Block block = Build.A.Block
+            .WithNumber(100)
+            .WithStateRoot(TestItem.KeccakA)
+            .WithParent(Build.A.BlockHeader.TestObject)
+            .TestObject;
+
+        BlockHeaderTdxAttestation attestation = _service.AttestBlockHeader(block.Header);
+
+        attestation.Should().NotBeNull();
+        attestation.Proof.Should().HaveCount(85); // 20 + 65
+        attestation.HeaderRlp.Should().NotBeEmpty();
+    }
+
+    [Test]
+    public void AttestBlockHash_proof_contains_address_and_signature()
     {
         TdxGuestInfo info = _service.Bootstrap();
         Block block = Build.A.Block.WithNumber(1).TestObject;
 
-        TdxAttestation attestation = _service.Attest(block);
+        BlockHashTdxAttestation attestation = _service.AttestBlockHash(block.Header.Hash!);
 
-        // Extract address from proof (bytes 4-24)
-        byte[] addressBytes = attestation.Proof[4..24];
+        byte[] addressBytes = attestation.Proof[0..20];
         Address proofAddress = new(addressBytes);
 
-        // Address in proof should match bootstrap public key
         proofAddress.ToString().ToLowerInvariant().Should().Be(info.PublicKey.ToLowerInvariant());
     }
 
     [Test]
-    public void Attest_different_blocks_produce_different_hashes()
+    public void AttestBlockHash_different_blocks_produce_different_hashes()
     {
         _service.Bootstrap();
 
         Block block1 = Build.A.Block.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
         Block block2 = Build.A.Block.WithNumber(2).WithStateRoot(TestItem.KeccakB).TestObject;
 
-        TdxAttestation attestation1 = _service.Attest(block1);
-        TdxAttestation attestation2 = _service.Attest(block2);
+        BlockHashTdxAttestation attestation1 = _service.AttestBlockHash(block1.Header.Hash!);
+        BlockHashTdxAttestation attestation2 = _service.AttestBlockHash(block2.Header.Hash!);
 
-        attestation1.Block.Hash.Should().NotBe(attestation2.Block.Hash!);
+        attestation1.BlockHash.Should().NotBe(attestation2.BlockHash);
     }
 
     [Test]
-    public void Attest_same_block_produces_same_hash()
+    public void AttestBlockHash_same_block_produces_same_hash()
     {
         _service.Bootstrap();
         Block block = Build.A.Block.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
 
-        TdxAttestation attestation1 = _service.Attest(block);
-        TdxAttestation attestation2 = _service.Attest(block);
+        BlockHashTdxAttestation attestation1 = _service.AttestBlockHash(block.Header.Hash!);
+        BlockHashTdxAttestation attestation2 = _service.AttestBlockHash(block.Header.Hash!);
 
-        attestation1.Block.Hash.Should().Be(attestation2.Block.Hash!);
+        attestation1.BlockHash.Should().Be(attestation2.BlockHash);
     }
 
     [Test]
@@ -168,10 +177,9 @@ public class TdxServiceTests
     {
         TdxGuestInfo info1 = _service.Bootstrap();
 
-        // Create new service instance with same config path
-        var newService = new TdxService(_config, _client, _specProvider, LimboLogs.Instance);
+        var newService = new TdxService(_config, _client, LimboLogs.Instance);
 
-        newService.IsAvailable.Should().BeTrue();
+        newService.IsBootstrapped.Should().BeTrue();
         TdxGuestInfo? info2 = newService.GetGuestInfo();
         info2.Should().NotBeNull();
         info2!.PublicKey.Should().Be(info1.PublicKey);
@@ -183,10 +191,37 @@ public class TdxServiceTests
         _service.Bootstrap();
         Block block = Build.A.Block.WithNumber(1).TestObject;
 
-        TdxAttestation attestation = _service.Attest(block);
+        BlockHashTdxAttestation attestation = _service.AttestBlockHash(block.Header.Hash!);
 
-        // v is at position 88 (4 + 20 + 64)
-        byte v = attestation.Proof[88];
+        // v is at position 84 (20 + 64)
+        byte v = attestation.Proof[84];
         v.Should().BeOneOf((byte)27, (byte)28);
+    }
+
+    [Test]
+    public void New_service_bootstrap_loads_existing_data()
+    {
+        TdxGuestInfo info1 = _service.Bootstrap();
+
+        var newService = new TdxService(_config, _client, LimboLogs.Instance);
+        TdxGuestInfo info2 = newService.Bootstrap();
+
+        info2.PublicKey.Should().Be(info1.PublicKey);
+        info2.Quote.Should().Be(info1.Quote);
+    }
+
+    [Test]
+    public void New_service_attest_uses_persisted_keys()
+    {
+        TdxGuestInfo info = _service.Bootstrap();
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+
+        var newService = new TdxService(_config, _client, LimboLogs.Instance);
+        newService.Bootstrap();
+        BlockHashTdxAttestation attestation = newService.AttestBlockHash(block.Header.Hash!);
+
+        byte[] addressBytes = attestation.Proof[0..20];
+        Address proofAddress = new(addressBytes);
+        proofAddress.ToString().ToLowerInvariant().Should().Be(info.PublicKey.ToLowerInvariant());
     }
 }

@@ -3,12 +3,10 @@
 
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Taiko.Config;
@@ -23,7 +21,6 @@ public class TdxRpcModuleTests
     private ISurgeConfig _config = null!;
     private ITdxService _tdxService = null!;
     private IBlockFinder _blockFinder = null!;
-    private ISpecProvider _specProvider = null!;
     private TdxRpcModule _rpcModule = null!;
 
     [SetUp]
@@ -32,69 +29,142 @@ public class TdxRpcModuleTests
         _config = Substitute.For<ISurgeConfig>();
         _tdxService = Substitute.For<ITdxService>();
         _blockFinder = Substitute.For<IBlockFinder>();
-        _specProvider = Substitute.For<ISpecProvider>();
 
         _rpcModule = new TdxRpcModule(_config, _tdxService, _blockFinder, LimboLogs.Instance);
     }
 
     [Test]
-    public async Task GetTdxAttestation_returns_error_when_disabled()
+    public async Task GetBlockHashAttestation_returns_error_when_disabled()
     {
         _config.TdxEnabled.Returns(false);
 
-        ResultWrapper<TdxAttestation?> result = await _rpcModule.taiko_getTdxAttestation(TestItem.KeccakA);
+        ResultWrapper<BlockHashTdxAttestation> result = await _rpcModule.taiko_getBlockHashTdxAttestation(new BlockParameter(1));
 
         result.Result.ResultType.Should().Be(ResultType.Failure);
         result.Result.Error.Should().Contain("not enabled");
     }
 
     [Test]
-    public async Task GetTdxAttestation_returns_error_when_not_bootstrapped()
+    public async Task GetBlockHashAttestation_returns_error_when_not_bootstrapped()
     {
         _config.TdxEnabled.Returns(true);
-        _tdxService.IsAvailable.Returns(false);
+        _tdxService.IsBootstrapped.Returns(false);
 
-        ResultWrapper<TdxAttestation?> result = await _rpcModule.taiko_getTdxAttestation(TestItem.KeccakA);
+        ResultWrapper<BlockHashTdxAttestation> result = await _rpcModule.taiko_getBlockHashTdxAttestation(new BlockParameter(1));
 
         result.Result.ResultType.Should().Be(ResultType.Failure);
         result.Result.Error.Should().Contain("not bootstrapped");
     }
 
     [Test]
-    public async Task GetTdxAttestation_returns_error_when_block_not_found()
+    public async Task GetBlockHashAttestation_returns_error_when_block_not_found()
     {
         _config.TdxEnabled.Returns(true);
-        _tdxService.IsAvailable.Returns(true);
-        _blockFinder.FindBlock(Arg.Any<Hash256>()).Returns((Block?)null);
+        _tdxService.IsBootstrapped.Returns(true);
+        _blockFinder.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns((BlockHeader?)null);
 
-        ResultWrapper<TdxAttestation?> result = await _rpcModule.taiko_getTdxAttestation(TestItem.KeccakA);
+        ResultWrapper<BlockHashTdxAttestation> result = await _rpcModule.taiko_getBlockHashTdxAttestation(new BlockParameter(1));
 
         result.Result.ResultType.Should().Be(ResultType.Failure);
         result.Result.Error.Should().Contain("not found");
     }
 
     [Test]
-    public async Task GetTdxAttestation_returns_attestation_when_successful()
+    public async Task GetBlockHashAttestation_returns_attestation_when_successful()
     {
         _config.TdxEnabled.Returns(true);
-        _tdxService.IsAvailable.Returns(true);
+        _tdxService.IsBootstrapped.Returns(true);
 
-        Block block = Build.A.Block.TestObject;
-        _blockFinder.FindBlock(block.Hash!).Returns(block);
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        _blockFinder.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
 
-        var attestation = new TdxAttestation
+        var attestation = new BlockHashTdxAttestation
         {
-            Proof = new byte[89],
-            Quote = new byte[100],
-            Block = new BlockForRpc(block, includeFullTransactionData: false, _specProvider, skipTxs: true)
+            Proof = new byte[85],
+            BlockHash = header.Hash!
         };
-        _tdxService.Attest(block).Returns(attestation);
+        _tdxService.AttestBlockHash(header.Hash!).Returns(attestation);
 
-        ResultWrapper<TdxAttestation?> result = await _rpcModule.taiko_getTdxAttestation(block.Hash!);
+        ResultWrapper<BlockHashTdxAttestation> result = await _rpcModule.taiko_getBlockHashTdxAttestation(new BlockParameter(1));
 
         result.Result.ResultType.Should().Be(ResultType.Success);
         result.Data.Should().NotBeNull();
-        result.Data!.Block.Hash.Should().Be(block.Hash!);
+        result.Data!.BlockHash.Should().Be(header.Hash!);
+    }
+
+    [Test]
+    public async Task GetBlockHeaderAttestation_returns_error_when_disabled()
+    {
+        _config.TdxEnabled.Returns(false);
+
+        ResultWrapper<BlockHeaderTdxAttestation> result = await _rpcModule.taiko_getBlockHeaderTdxAttestation(new BlockParameter(1));
+
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.Result.Error.Should().Contain("not enabled");
+    }
+
+    [Test]
+    public async Task GetBlockHeaderAttestation_returns_error_when_not_bootstrapped()
+    {
+        _config.TdxEnabled.Returns(true);
+        _tdxService.IsBootstrapped.Returns(false);
+
+        ResultWrapper<BlockHeaderTdxAttestation> result = await _rpcModule.taiko_getBlockHeaderTdxAttestation(new BlockParameter(1));
+
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.Result.Error.Should().Contain("not bootstrapped");
+    }
+
+    [Test]
+    public async Task GetBlockHeaderAttestation_returns_error_when_block_not_found()
+    {
+        _config.TdxEnabled.Returns(true);
+        _tdxService.IsBootstrapped.Returns(true);
+        _blockFinder.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns((BlockHeader?)null);
+
+        ResultWrapper<BlockHeaderTdxAttestation> result = await _rpcModule.taiko_getBlockHeaderTdxAttestation(new BlockParameter(1));
+
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.Result.Error.Should().Contain("not found");
+    }
+
+    [Test]
+    public async Task GetBlockHeaderAttestation_returns_attestation_when_successful()
+    {
+        _config.TdxEnabled.Returns(true);
+        _tdxService.IsBootstrapped.Returns(true);
+
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        _blockFinder.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+
+        var attestation = new BlockHeaderTdxAttestation
+        {
+            Proof = new byte[85],
+            HeaderRlp = new byte[200]
+        };
+        _tdxService.AttestBlockHeader(header).Returns(attestation);
+
+        ResultWrapper<BlockHeaderTdxAttestation> result = await _rpcModule.taiko_getBlockHeaderTdxAttestation(new BlockParameter(1));
+
+        result.Result.ResultType.Should().Be(ResultType.Success);
+        result.Data.Should().NotBeNull();
+        result.Data!.HeaderRlp.Should().NotBeEmpty();
+    }
+
+    [Test]
+    public async Task GetBlockHeaderAttestation_returns_error_on_attestation_failure()
+    {
+        _config.TdxEnabled.Returns(true);
+        _tdxService.IsBootstrapped.Returns(true);
+
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        _blockFinder.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+        _tdxService.AttestBlockHeader(header).Returns(_ => throw new TdxException("Quote generation failed"));
+
+        ResultWrapper<BlockHeaderTdxAttestation> result = await _rpcModule.taiko_getBlockHeaderTdxAttestation(new BlockParameter(1));
+
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.Result.Error.Should().Contain("Quote generation failed");
     }
 
     [Test]
@@ -102,7 +172,7 @@ public class TdxRpcModuleTests
     {
         _config.TdxEnabled.Returns(false);
 
-        ResultWrapper<TdxGuestInfo?> result = await _rpcModule.taiko_getTdxGuestInfo();
+        ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_getTdxGuestInfo();
 
         result.Result.ResultType.Should().Be(ResultType.Failure);
         result.Result.Error.Should().Contain("not enabled");
@@ -114,7 +184,7 @@ public class TdxRpcModuleTests
         _config.TdxEnabled.Returns(true);
         _tdxService.GetGuestInfo().Returns((TdxGuestInfo?)null);
 
-        ResultWrapper<TdxGuestInfo?> result = await _rpcModule.taiko_getTdxGuestInfo();
+        ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_getTdxGuestInfo();
 
         result.Result.ResultType.Should().Be(ResultType.Failure);
         result.Result.Error.Should().Contain("not bootstrapped");
@@ -133,7 +203,7 @@ public class TdxRpcModuleTests
         };
         _tdxService.GetGuestInfo().Returns(info);
 
-        ResultWrapper<TdxGuestInfo?> result = await _rpcModule.taiko_getTdxGuestInfo();
+        ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_getTdxGuestInfo();
 
         result.Result.ResultType.Should().Be(ResultType.Success);
         result.Data.Should().NotBeNull();
@@ -145,7 +215,7 @@ public class TdxRpcModuleTests
     {
         _config.TdxEnabled.Returns(false);
 
-        ResultWrapper<TdxGuestInfo?> result = await _rpcModule.taiko_tdxBootstrap();
+        ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_tdxBootstrap();
 
         result.Result.ResultType.Should().Be(ResultType.Failure);
         result.Result.Error.Should().Contain("not enabled");
@@ -164,7 +234,7 @@ public class TdxRpcModuleTests
         };
         _tdxService.Bootstrap().Returns(info);
 
-        ResultWrapper<TdxGuestInfo?> result = await _rpcModule.taiko_tdxBootstrap();
+        ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_tdxBootstrap();
 
         result.Result.ResultType.Should().Be(ResultType.Success);
         result.Data.Should().NotBeNull();
@@ -177,26 +247,42 @@ public class TdxRpcModuleTests
         _config.TdxEnabled.Returns(true);
         _tdxService.Bootstrap().Returns(_ => throw new TdxException("Connection failed"));
 
-        ResultWrapper<TdxGuestInfo?> result = await _rpcModule.taiko_tdxBootstrap();
+        ResultWrapper<TdxGuestInfo> result = await _rpcModule.taiko_tdxBootstrap();
 
         result.Result.ResultType.Should().Be(ResultType.Failure);
         result.Result.Error.Should().Contain("Connection failed");
     }
 
     [Test]
-    public async Task GetTdxAttestation_returns_error_on_attestation_failure()
+    public async Task GetBlockHashAttestation_returns_error_on_attestation_failure()
     {
         _config.TdxEnabled.Returns(true);
-        _tdxService.IsAvailable.Returns(true);
+        _tdxService.IsBootstrapped.Returns(true);
 
-        Block block = Build.A.Block.TestObject;
-        _blockFinder.FindBlock(block.Hash!).Returns(block);
-        _tdxService.Attest(block).Returns(_ => throw new TdxException("Quote generation failed"));
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        _blockFinder.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+        _tdxService.AttestBlockHash(header.Hash!).Returns(_ => throw new TdxException("Quote generation failed"));
 
-        ResultWrapper<TdxAttestation?> result = await _rpcModule.taiko_getTdxAttestation(block.Hash!);
+        ResultWrapper<BlockHashTdxAttestation> result = await _rpcModule.taiko_getBlockHashTdxAttestation(new BlockParameter(1));
 
         result.Result.ResultType.Should().Be(ResultType.Failure);
         result.Result.Error.Should().Contain("Quote generation failed");
+    }
+
+    [Test]
+    public async Task GetBlockHashAttestation_requires_canonical_block()
+    {
+        _config.TdxEnabled.Returns(true);
+        _tdxService.IsBootstrapped.Returns(true);
+        _blockFinder.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns((BlockHeader?)null);
+
+        ResultWrapper<BlockHashTdxAttestation> result = await _rpcModule.taiko_getBlockHashTdxAttestation(new BlockParameter(1));
+
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        BlockTreeLookupOptions expectedOptions = BlockTreeLookupOptions.RequireCanonical
+                                                | BlockTreeLookupOptions.TotalDifficultyNotNeeded
+                                                | BlockTreeLookupOptions.ExcludeTxHashes;
+        _blockFinder.Received().FindHeader(Arg.Any<long>(), expectedOptions);
     }
 }
 

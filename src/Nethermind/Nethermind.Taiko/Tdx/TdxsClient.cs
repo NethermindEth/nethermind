@@ -32,7 +32,7 @@ public class TdxsClient(ISurgeTdxConfig config, ILogManager logManager) : ITdxsC
 
         JsonElement response = SendRequest(request);
 
-        if (response.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
+        if (response.TryGetProperty("error", out JsonElement error) && error.ValueKind != JsonValueKind.Null)
         {
             throw new TdxException($"Attestation service error: {error.GetString()}");
         }
@@ -73,29 +73,17 @@ public class TdxsClient(ISurgeTdxConfig config, ILogManager logManager) : ITdxsC
         string socketPath = config.SocketPath;
 
         if (!File.Exists(socketPath))
-        {
             throw new TdxException($"TDX socket not found at {socketPath}");
-        }
 
         using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-        var endpoint = new UnixDomainSocketEndPoint(socketPath);
-
-        socket.Connect(endpoint);
+        socket.Connect(new UnixDomainSocketEndPoint(socketPath));
 
         string requestJson = JsonSerializer.Serialize(request);
-        byte[] requestBytes = Encoding.UTF8.GetBytes(requestJson);
-        socket.Send(requestBytes);
+        socket.Send(Encoding.UTF8.GetBytes(requestJson));
         socket.Shutdown(SocketShutdown.Send);
 
-        using var ms = new MemoryStream();
-        byte[] buffer = new byte[4096];
-        int bytesRead;
-        while ((bytesRead = socket.Receive(buffer)) > 0)
-        {
-            ms.Write(buffer, 0, bytesRead);
-        }
-
-        return JsonSerializer.Deserialize<JsonElement>(ms.ToArray());
+        using var stream = new NetworkStream(socket, ownsSocket: false);
+        return JsonSerializer.Deserialize<JsonElement>(stream);
     }
 }
 

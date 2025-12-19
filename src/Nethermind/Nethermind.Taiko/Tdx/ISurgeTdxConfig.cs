@@ -12,8 +12,5 @@ public interface ISurgeTdxConfig : IConfig
 
     [ConfigItem(Description = "Path to store TDX bootstrap data and keys.", DefaultValue = "~/.config/nethermind/tdx")]
     string ConfigPath { get; set; }
-
-    [ConfigItem(Description = "On-chain registered instance ID. Set this after registering your TDX instance.", DefaultValue = "0")]
-    uint InstanceId { get; set; }
 }
 

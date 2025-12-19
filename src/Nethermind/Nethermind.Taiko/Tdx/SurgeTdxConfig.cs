@@ -7,6 +7,5 @@ public class SurgeTdxConfig : ISurgeTdxConfig
 {
     public string SocketPath { get; set; } = "/var/tdxs.sock";
     public string ConfigPath { get; set; } = "~/.config/nethermind/tdx";
-    public uint InstanceId { get; set; } = 0;
 }
 
