@@ -3,9 +3,9 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Taiko.Config;
@@ -18,49 +18,100 @@ public class TdxRpcModule(
     IBlockFinder blockFinder,
     ILogManager logManager) : ITdxRpcModule
 {
-    private static readonly ResultWrapper<TdxAttestation?> TdxDisabled =
-        ResultWrapper<TdxAttestation?>.Fail("TDX is not enabled. Set Surge.TdxEnabled=true in configuration.");
-    private static readonly ResultWrapper<TdxGuestInfo?> TdxDisabledInfo =
-        ResultWrapper<TdxGuestInfo?>.Fail("TDX is not enabled. Set Surge.TdxEnabled=true in configuration.");
+    private static readonly ResultWrapper<TdxGuestInfo> TdxDisabledInfo =
+        ResultWrapper<TdxGuestInfo>.Fail("TDX is not enabled. Set Surge.TdxEnabled=true in configuration.");
 
     private readonly ILogger _logger = logManager.GetClassLogger();
 
-    public Task<ResultWrapper<TdxAttestation?>> taiko_getTdxAttestation(Hash256 blockHash)
+    public Task<ResultWrapper<BlockHashTdxAttestation>> taiko_getBlockHashTdxAttestation(BlockParameter blockParameter)
     {
-        if (!config.TdxEnabled)
-            return Task.FromResult(TdxDisabled);
+        string? availabilityError = VerifyTdxAvailability();
+        if (availabilityError is not null)
+            return Task.FromResult(ResultWrapper<BlockHashTdxAttestation>.Fail(availabilityError));
 
-        if (!tdxService.IsAvailable)
-            return Task.FromResult(ResultWrapper<TdxAttestation?>.Fail("TDX service not bootstrapped. Call taiko_tdxBootstrap first."));
-
-        Block? block = blockFinder.FindBlock(blockHash);
-        if (block is null)
-            return Task.FromResult(ResultWrapper<TdxAttestation?>.Fail("Block not found"));
+        BlockHeader? blockHeader = FindBlockHeader(blockParameter);
+        if (blockHeader is null)
+            return Task.FromResult(ResultWrapper<BlockHashTdxAttestation>.Fail("Block not found"));
 
         try
         {
-            TdxAttestation attestation = tdxService.Attest(block);
-            return Task.FromResult(ResultWrapper<TdxAttestation?>.Success(attestation));
+            BlockHashTdxAttestation attestation = tdxService.AttestBlockHash(blockHeader.Hash!);
+            return Task.FromResult(ResultWrapper<BlockHashTdxAttestation>.Success(attestation));
         }
         catch (Exception ex)
         {
             _logger.Error($"Failed to generate TDX attestation: {ex.Message}", ex);
-            return Task.FromResult(ResultWrapper<TdxAttestation?>.Fail($"Attestation failed: {ex.Message}"));
+            return Task.FromResult(ResultWrapper<BlockHashTdxAttestation>.Fail($"Attestation failed: {ex.Message}"));
         }
     }
 
-    public Task<ResultWrapper<TdxGuestInfo?>> taiko_getTdxGuestInfo()
+    public Task<ResultWrapper<BlockHeaderTdxAttestation>> taiko_getBlockHeaderTdxAttestation(BlockParameter blockParameter)
+    {
+        string? availabilityError = VerifyTdxAvailability();
+        if (availabilityError is not null)
+            return Task.FromResult(ResultWrapper<BlockHeaderTdxAttestation>.Fail(availabilityError));
+
+        BlockHeader? blockHeader = FindBlockHeader(blockParameter);
+        if (blockHeader is null)
+            return Task.FromResult(ResultWrapper<BlockHeaderTdxAttestation>.Fail("Block not found"));
+
+        try
+        {
+            BlockHeaderTdxAttestation attestation = tdxService.AttestBlockHeader(blockHeader);
+            return Task.FromResult(ResultWrapper<BlockHeaderTdxAttestation>.Success(attestation));
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Failed to generate TDX attestation: {ex.Message}", ex);
+            return Task.FromResult(ResultWrapper<BlockHeaderTdxAttestation>.Fail($"Attestation failed: {ex.Message}"));
+        }
+    }
+
+    private string? VerifyTdxAvailability()
+    {
+        if (!config.TdxEnabled)
+            return "TDX is not enabled. Set Surge.TdxEnabled=true in configuration.";
+
+        return !tdxService.IsBootstrapped ? "TDX service not bootstrapped. Call taiko_tdxBootstrap first." : null;
+    }
+
+    private BlockHeader? FindBlockHeader(BlockParameter blockParameter)
+    {
+        // Only allow valid canonical blocks for TDX attestation
+        BlockHeader? blockHeader;
+        BlockTreeLookupOptions options = BlockTreeLookupOptions.RequireCanonical
+                                        | BlockTreeLookupOptions.TotalDifficultyNotNeeded
+                                        | BlockTreeLookupOptions.ExcludeTxHashes;
+
+        if (blockParameter.BlockHash is { } blockHash)
+        {
+            blockHeader = blockFinder.FindHeader(blockHash, options);
+        }
+        else if (blockParameter.BlockNumber is { } blockNumber)
+        {
+            blockHeader = blockFinder.FindHeader(blockNumber, options);
+        }
+        else
+        {
+            BlockHeader? header = blockFinder.FindHeader(blockParameter);
+            blockHeader = header is null ? null : blockFinder.FindHeader(header.Hash!, options);
+        }
+
+        return blockHeader;
+    }
+
+    public Task<ResultWrapper<TdxGuestInfo>> taiko_getTdxGuestInfo()
     {
         if (!config.TdxEnabled)
             return Task.FromResult(TdxDisabledInfo);
 
         TdxGuestInfo? info = tdxService.GetGuestInfo();
         return info is null
-            ? Task.FromResult(ResultWrapper<TdxGuestInfo?>.Fail("TDX service not bootstrapped. Call taiko_tdxBootstrap first."))
-            : Task.FromResult(ResultWrapper<TdxGuestInfo?>.Success(info));
+            ? Task.FromResult(ResultWrapper<TdxGuestInfo>.Fail("TDX service not bootstrapped. Call taiko_tdxBootstrap first."))
+            : Task.FromResult(ResultWrapper<TdxGuestInfo>.Success(info));
     }
 
-    public Task<ResultWrapper<TdxGuestInfo?>> taiko_tdxBootstrap()
+    public Task<ResultWrapper<TdxGuestInfo>> taiko_tdxBootstrap()
     {
         if (!config.TdxEnabled)
             return Task.FromResult(TdxDisabledInfo);
@@ -68,12 +119,12 @@ public class TdxRpcModule(
         try
         {
             TdxGuestInfo info = tdxService.Bootstrap();
-            return Task.FromResult(ResultWrapper<TdxGuestInfo?>.Success(info));
+            return Task.FromResult(ResultWrapper<TdxGuestInfo>.Success(info));
         }
         catch (Exception ex)
         {
             _logger.Error($"Failed to bootstrap TDX: {ex.Message}", ex);
-            return Task.FromResult(ResultWrapper<TdxGuestInfo?>.Fail($"Bootstrap failed: {ex.Message}"));
+            return Task.FromResult(ResultWrapper<TdxGuestInfo>.Fail($"Bootstrap failed: {ex.Message}"));
         }
     }
 }

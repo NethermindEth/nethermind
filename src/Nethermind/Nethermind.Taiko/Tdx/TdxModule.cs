@@ -3,10 +3,10 @@
 
 using Autofac;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Taiko.Config;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Taiko.Tdx;
 
@@ -32,7 +32,6 @@ public class TdxModule : Module
             return new TdxService(
                 ctx.Resolve<ISurgeTdxConfig>(),
                 ctx.Resolve<ITdxsClient>(),
-                ctx.Resolve<ISpecProvider>(),
                 ctx.Resolve<ILogManager>());
         }).SingleInstance();
 
@@ -48,8 +47,9 @@ internal sealed class NullTdxService : ITdxService
     public static readonly NullTdxService Instance = new();
     private NullTdxService() { }
 
-    public bool IsAvailable => false;
+    public bool IsBootstrapped => false;
     public TdxGuestInfo? GetGuestInfo() => null;
     public TdxGuestInfo Bootstrap() => throw new TdxException("TDX is not enabled");
-    public TdxAttestation Attest(Block block) => throw new TdxException("TDX is not enabled");
+    public BlockHashTdxAttestation AttestBlockHash(Hash256 blockHash) => throw new TdxException("TDX is not enabled");
+    public BlockHeaderTdxAttestation AttestBlockHeader(BlockHeader blockHeader) => throw new TdxException("TDX is not enabled");
 }
