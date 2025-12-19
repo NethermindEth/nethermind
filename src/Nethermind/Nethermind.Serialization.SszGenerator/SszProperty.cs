@@ -81,6 +81,7 @@ class SszProperty
             {
                 return 4;
             }
+
             return Kind switch
             {
                 Kind.Vector => Length!.Value * Type.StaticLength,
