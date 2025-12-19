@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
 
@@ -17,44 +16,60 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public class TrieNodeCache
 {
-    // Not the nonblocking variant as it use slightly less memory
-    private ConcurrentDictionary<Key, TrieNode>[] _cacheShards;
+    private const int EstimatedSizePerNode = 700; // More or less the average size.
+    private const double UtilRatio = 0.5;
+
+    // You *could* use a single large bucket and just let them replace each other. However, clearing by treepath
+    // is more efficent block cache wise.
+    private TrieNode[][] _cacheShards;
+
     private long[] _shardMemoryUsages;
-    private int _shardCount = 256;
     private long _estimatedMemoryUsage = 0;
+
     private int _nextShardToClear = 0;
-    private long _maxCacheMemoryThreshold;
+    private readonly long _maxCacheMemoryThreshold;
+    private readonly int _bucketSize;
+    private readonly int _shardCount = 256;
+
     private readonly ILogger _logger;
 
     public TrieNodeCache(long maxCacheMemoryThreshold, ILogManager logManager)
     {
-        _cacheShards = new ConcurrentDictionary<Key, TrieNode>[_shardCount];
+        long totalNodeCount = (maxCacheMemoryThreshold / EstimatedSizePerNode);
+        _bucketSize = (int)(totalNodeCount / _shardCount / UtilRatio);
+        _cacheShards = new TrieNode[_shardCount][];
         for (int i = 0; i < _shardCount; i++)
         {
-            _cacheShards[i] = new ConcurrentDictionary<Key, TrieNode>();
+            _cacheShards[i] = new TrieNode[_bucketSize];
         }
         _shardMemoryUsages = new long[_shardCount];
         _maxCacheMemoryThreshold = maxCacheMemoryThreshold;
         _logger = logManager.GetClassLogger<TrieNodeCache>();
     }
 
-    public bool TryGet(Hash256? address, TreePath path, Hash256 hash, out TrieNode node)
+    private (int, int) GetShardAndBucketIdx(Hash256? address, in TreePath path)
     {
-        Key key = new Key(address, path);
-        int shardIdx = GetShardIdx(key);
+        int shardIdx;
+        // Separate by tree partition so that when pruned, whole partition is removed. This is because it is
+        // more efficient to load nodes from the same partition.
+        if (address is null) shardIdx = path.Path.Bytes[0];
+        else shardIdx = address.Bytes[0];
 
-        if (_cacheShards[shardIdx].TryGetValue(key, out var maybeNode))
+        var addressHash = address != default ? address.GetHashCode() : 1;
+        int hashCode = HashCode.Combine(addressHash, path.GetHashCode());
+        int bucketIdx =  (hashCode & int.MaxValue) % _bucketSize;
+        return (shardIdx, bucketIdx);
+    }
+
+    public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, out TrieNode node)
+    {
+        (int shardIdx, int bucketIdx) = GetShardAndBucketIdx(address, path);
+        TrieNode? maybeNode = _cacheShards[shardIdx][bucketIdx];
+        if (maybeNode != null && maybeNode.Keccak == hash)
         {
-            if (maybeNode.Keccak != hash)
-            {
-                // TODO: Double check if this is ever expected?
-            }
-            else
-            {
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                node = maybeNode;
-                return true;
-            }
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            node = maybeNode;
+            return true;
         }
 
         node = null;
@@ -91,33 +106,31 @@ public class TrieNodeCache
             return;
         }
 
-        void AddtoCache(Key key, TrieNode newNode)
+        void AddToCache(Hash256? address, in TreePath path, TrieNode newNode)
         {
-            int shardIdx = GetShardIdx(key);
-            if (_cacheShards[shardIdx].TryRemove(key, out var node))
-            {
-                node.PrunePersistedRecursively(1);
-                long memory = node.GetMemorySize(false);
-                _shardMemoryUsages[shardIdx] -= memory;
-                _estimatedMemoryUsage -= memory;
-            }
+            (int shardIdx, int bucketIdx) = GetShardAndBucketIdx(address, path);
 
-            node = newNode;
-            if (_cacheShards[shardIdx].TryAdd(key, node))
+            long memory = newNode.GetMemorySize(false);
+            _shardMemoryUsages[shardIdx] += memory;
+            Interlocked.Add(ref _estimatedMemoryUsage, memory);
+            _estimatedMemoryUsage += memory;
+
+            TrieNode? oldNode = Interlocked.Exchange(ref _cacheShards[shardIdx][bucketIdx], newNode);
+            if (oldNode is not null)
             {
-                long memory = node.GetMemorySize(false);
-                _shardMemoryUsages[shardIdx] += memory;
-                _estimatedMemoryUsage += memory;
+                memory = oldNode.GetMemorySize(false);
+                oldNode.PrunePersistedRecursively(1);
+                _shardMemoryUsages[shardIdx] -= memory;
+                Interlocked.Add(ref _estimatedMemoryUsage, -memory);
             }
         }
 
         foreach (var kv in cachedResource.TrieWarmerLoadedNodes)
         {
             kv.Value.PrunePersistedRecursively(1);
-            Key key = new Key(null, kv.Key);
             if (!snapshot.TryGetStateNode(kv.Key, out _))
             {
-                AddtoCache(key, kv.Value);
+                AddToCache(null, kv.Key, kv.Value);
             }
         }
 
@@ -125,25 +138,22 @@ public class TrieNodeCache
         {
             if (kv.Value is null) continue;
             kv.Value.PrunePersistedRecursively(1);
-            Key key = new Key(kv.Key.Item1.Value, kv.Key.Item2);
             if (!snapshot.TryGetStorageNode(kv.Key.Item1, kv.Key.Item2, out _))
             {
-                AddtoCache(key, kv.Value);
+                AddToCache(kv.Key.Item1, kv.Key.Item2, kv.Value);
             }
         }
 
         foreach (var kv in snapshot.StateNodes)
         {
             kv.Value.PrunePersistedRecursively(1);
-            Key key = new Key(null, kv.Key);
-            AddtoCache(key, kv.Value);
+            AddToCache(null, kv.Key, kv.Value);
         }
 
         foreach (var kv in snapshot.StorageNodes)
         {
             kv.Value.PrunePersistedRecursively(1);
-            Key key = new Key(kv.Key.Item1.Value, kv.Key.Item2);
-            AddtoCache(key, kv.Value);
+            AddToCache(kv.Key.Item1, kv.Key.Item2, kv.Value);
         }
 
         long prevMemory = _estimatedMemoryUsage;
@@ -154,13 +164,16 @@ public class TrieNodeCache
             wasPruned = true;
             int shardToClear = _nextShardToClear;
 
-            foreach (var kv in _cacheShards[shardToClear])
+            for (int i = 0; i < _bucketSize; i++)
             {
-                var node = kv.Value;
-                node.PrunePersistedRecursively(1);
+                TrieNode? node = _cacheShards[shardToClear][i];
+                if (node is not null)
+                {
+                    node.PrunePersistedRecursively(1);
+                    _cacheShards[shardToClear][i] = null;
+                }
             }
 
-            _cacheShards[shardToClear].Clear();
             _shardMemoryUsages[shardToClear] = 0;
             long recalculatedTotalMemory = 0;
             foreach (var shardMemoryUsage in _shardMemoryUsages)
@@ -180,53 +193,5 @@ public class TrieNodeCache
         }
 
         Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = _estimatedMemoryUsage;
-    }
-
-    private int GetShardIdx(Key key)
-    {
-        // Separate by tree partition so that when pruned, whole partition is removed. This is because it is
-        // more efficient to load nodes from the same partition.
-        if (key.Address is null)
-        {
-            return key.Path.Path.Bytes[0];
-        }
-
-        return key.Address.Bytes[0];
-    }
-
-    public readonly struct Key : IEquatable<Key>
-    {
-        internal const long MemoryUsage = 8 + 36 + 8; // (address (probably shared), path, keccak pointer (shared with TrieNode))
-        public readonly Hash256? Address;
-        // Direct member rather than property for large struct, so members are called directly,
-        // rather than struct copy through the property. Could also return a ref through property.
-        public readonly TreePath Path;
-        public Key(Hash256? address, in TreePath path)
-        {
-            Address = address;
-            Path = path;
-        }
-
-        [SkipLocalsInit]
-        public override int GetHashCode()
-        {
-            var addressHash = Address != default ? Address.GetHashCode() : 1;
-            return HashCode.Combine(addressHash, Path.GetHashCode());
-        }
-
-        public bool Equals(Key other)
-        {
-            return other.Path == Path && other.Address == Address;
-        }
-
-        public override bool Equals(object? obj)
-        {
-            return obj is Key other && Equals(other);
-        }
-
-        public override string ToString()
-        {
-            return $"A:{Address} P:{Path}";
-        }
     }
 }
