@@ -19,6 +19,9 @@ internal static class ProcCpuInfoProvider
 
     private static CpuInfo? Load()
     {
+#if true
+        return new CpuInfo("zkVM", 1, 1, 1, Frequency.Zero, Frequency.Zero, Frequency.Zero);
+#else
         if (RuntimeInformation.IsLinux())
         {
             string? content = ProcessHelper.RunAndReadOutput("cat", "/proc/cpuinfo");
@@ -27,16 +30,21 @@ internal static class ProcCpuInfoProvider
             return ProcCpuInfoParser.ParseOutput(content);
         }
         return null;
+#endif
     }
 
     private static string GetCpuSpeed()
     {
+#if true
+        return "1000.0000";
+#else
         var output = ProcessHelper.RunAndReadOutput("/bin/bash", "-c \"lscpu | grep MHz\"")?
                                   .Split('\n')
                                   .SelectMany(static x => x.Split(':'))
                                   .ToArray() ?? [];
 
         return ParseCpuFrequencies(output) ?? "";
+#endif
     }
 
     private static string? ParseCpuFrequencies(string[] input)

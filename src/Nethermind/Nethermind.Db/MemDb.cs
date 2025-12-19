@@ -18,7 +18,7 @@ namespace Nethermind.Db
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
 
-#if ZK
+#if true
         private readonly Dictionary<byte[], byte[]?> _db;
         private readonly Dictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
 #else
@@ -52,7 +52,7 @@ namespace Nethermind.Db
         {
             _writeDelay = writeDelay;
             _readDelay = readDelay;
-#if ZK
+#if true
             _db = new Dictionary<byte[], byte[]>(Bytes.EqualityComparer);
 #else
             _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
@@ -90,7 +90,7 @@ namespace Nethermind.Db
 
         public virtual void Remove(ReadOnlySpan<byte> key)
         {
-#if ZK
+#if true
             _spanDb.Remove(key);
 #else
             _spanDb.TryRemove(key, out _);

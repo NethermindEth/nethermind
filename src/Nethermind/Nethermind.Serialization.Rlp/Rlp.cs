@@ -135,78 +135,22 @@ namespace Nethermind.Serialization.Rlp
                     ? new RlpDecoderKey(keyType)
                     : new RlpDecoderKey(keyType, attrKey);
 
-                if (!_decoderBuilder.TryGetValue(key, out var existing) || canOverrideExistingDecoders)
+                if (!_decoderBuilder.TryGetValue(key, out var existing))
+                {
+                    _decoderBuilder[key] = decoder;
+                }
+                else if (canOverrideExistingDecoders)
                 {
                     _decoderBuilder[key] = decoder;
                 }
                 else
                 {
-                    throw new InvalidOperationException(
-                        $"Unable to override decoder for {key}, because the following decoder is already set: {existing}.");
+                    // Idempotent behavior: if a decoder is already registered and overrides are not allowed,
+                    // keep the existing one instead of throwing (important for repeated initialization paths).
+                    continue;
                 }
             }
 
-#if false
-            foreach (Type? type in assembly.GetExportedTypes())
-            {
-                if (!type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
-                {
-                    continue;
-                }
-
-                if (type.GetCustomAttribute<SkipGlobalRegistration>() is not null)
-                {
-                    continue;
-                }
-
-                Type[]? implementedInterfaces = type.GetInterfaces();
-                foreach (Type? implementedInterface in implementedInterfaces)
-                {
-                    if (!implementedInterface.IsGenericType)
-                    {
-                        continue;
-                    }
-
-                    Type? interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
-                    if (interfaceGenericDefinition == typeof(IRlpDecoder<>).GetGenericTypeDefinition())
-                    {
-                        bool isSetForAnyAttribute = false;
-                        IRlpDecoder? instance = null;
-
-                        foreach (DecoderAttribute rlpDecoderAttr in type.GetCustomAttributes<DecoderAttribute>())
-                        {
-                            RlpDecoderKey key = new(implementedInterface.GenericTypeArguments[0], rlpDecoderAttr.Key);
-                            AddEncoder(key);
-
-                            isSetForAnyAttribute = true;
-                        }
-
-                        if (!isSetForAnyAttribute)
-                        {
-                            AddEncoder(new(implementedInterface.GenericTypeArguments[0]));
-                        }
-
-                        void AddEncoder(RlpDecoderKey key)
-                        {
-                            //using Lock.Scope _ = _decoderLock.EnterScope();
-                            if (!_decoderBuilder.TryGetValue(key, out IRlpDecoder? value) || canOverrideExistingDecoders)
-                            {
-
-                                    _decoderBuilder[key] = instance ??= (IRlpDecoder)(type.GetConstructor(Type.EmptyTypes) is not null ?
-                                        Activator.CreateInstance(type) :
-                                        Activator.CreateInstance(type, BindingFlags.CreateInstance | BindingFlags.OptionalParamBinding, null, [Type.Missing], null));
-
-                            }
-                            else
-                            {
-                                throw new InvalidOperationException($"Unable to override decoder for {key}, because the following decoder is already set: {value}.");
-                            }
-                        }
-                    }
-                }
-            }
-
-#endif
             // Mark FrozenDictionary as null to force re-creation
             _decoders = null;
         }

@@ -66,7 +66,9 @@ namespace Nethermind.State
         {
             _preBlockCache = preBlockCache;
             _populatePreBlockCache = populatePreBlockCache;
-            _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+            // Avoid generic logger retrieval on runtimes where Generic Virtual Method (GVM) resolution can FailFast.
+            // Use the non-generic overload instead.
+            _logger = logManager?.GetClassLogger(nameof(StateProvider)) ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _tree = stateTree ?? new StateTree(trieStore, logManager);
             _getStateFromTrie = address =>

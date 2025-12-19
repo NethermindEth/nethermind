@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -17,13 +16,18 @@ namespace Nethermind.Core.Caching;
 public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition = null) : ClockCacheBase<TKey>(maxCapacity)
     where TKey : struct, IEquatable<TKey>
 {
-    private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(lockPartition ?? CollectionExtensions.LockPartitions, maxCapacity);
+    // Compatibility: some custom runtimes crash in ConcurrentDictionary generic instantiation paths.
+    // Use a single Dictionary protected by a lock instead.
+    //
+    // NOTE: lockPartition is kept for API compatibility but unused in this implementation.
+    private readonly Dictionary<TKey, LruCacheItem> _cacheMap = new(maxCapacity);
     private readonly McsLock _lock = new();
 
     public TValue Get(TKey key)
     {
         if (MaxCapacity == 0) return default!;
 
+        using var lockRelease = _lock.Acquire();
         if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
         {
             MarkAccessed(ov.Offset);
@@ -37,6 +41,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
         value = default!;
         if (MaxCapacity == 0) return false;
 
+        using var lockRelease = _lock.Acquire();
         if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
         {
             MarkAccessed(ov.Offset);
@@ -56,17 +61,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
             return Delete(key);
         }
 
-        if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
-        {
-            // Fast path: atomic update using TryUpdate
-            if (_cacheMap.TryUpdate(key, new(val, ov.Offset), comparisonValue: ov))
-            {
-                MarkAccessed(ov.Offset);
-                return false;
-            }
-        }
-
-        // Fallback to slow path with lock
+        // Dictionary is not thread-safe; go through the slow path for all writes.
         return SetSlow(key, val);
     }
 
@@ -115,7 +110,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
             bool accessed = ClearAccessed(position);
             if (!accessed)
             {
-                if (!_cacheMap.TryRemove(KeyToOffset[position], out _))
+                if (!_cacheMap.Remove(KeyToOffset[position]))
                 {
                     ThrowInvalidOperationException();
                 }
@@ -161,7 +156,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
         using var lockRelease = _lock.Acquire();
 
         base.Clear();
-        _cacheMap.NoResizeClear();
+        _cacheMap.Clear();
     }
 
     public bool Contains(TKey key)

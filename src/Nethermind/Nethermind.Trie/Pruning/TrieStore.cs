@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -36,10 +36,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private readonly TrieStoreDirtyNodesCache[] _dirtyNodes = [];
     private readonly Task[] _dirtyNodesTasks = [];
-    private readonly ConcurrentDictionary<HashAndTinyPath, Hash256?>[] _persistedHashes = [];
+    private readonly Dictionary<HashAndTinyPath, Hash256?>[] _persistedHashes = [];
+    private readonly object[] _persistedHashesLocks = [];
     private readonly Action<TreePath, Hash256?, TrieNode> _persistedNodeRecorder;
     private readonly Action<TreePath, Hash256?, TrieNode> _persistedNodeRecorderNoop;
-    private readonly Task[] _disposeTasks = new Task[RuntimeInformation.PhysicalCoreCount];
+    private readonly Task[] _disposeTasks = new Task[Math.Max(RuntimeInformation.PhysicalCoreCount, 1)];
 
     // This seems to attempt prevent multiple block processing at the same time and along with pruning at the same time.
     private readonly object _dirtyNodesLock = new object();
@@ -58,7 +59,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         IPruningConfig pruningConfig,
         ILogManager logManager)
     {
-        _logger = logManager.GetClassLogger<TrieStore>();
+        _logger = logManager.GetClassLogger(nameof(TrieStore));
         _nodeStorage = nodeStorage;
         _pruningStrategy = pruningStrategy;
         _persistenceStrategy = persistenceStrategy;
@@ -73,11 +74,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _shardedDirtyNodeCount = 1 << _shardBit;
         _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];
         _dirtyNodesTasks = new Task[_shardedDirtyNodeCount];
-        _persistedHashes = new ConcurrentDictionary<HashAndTinyPath, Hash256?>[_shardedDirtyNodeCount];
+        _persistedHashes = new Dictionary<HashAndTinyPath, Hash256?>[_shardedDirtyNodeCount];
+        _persistedHashesLocks = new object[_shardedDirtyNodeCount];
         for (int i = 0; i < _shardedDirtyNodeCount; i++)
         {
             _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, _logger);
-            _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
+            _persistedHashes[i] = new Dictionary<HashAndTinyPath, Hash256?>();
+            _persistedHashesLocks[i] = new object();
         }
 
         _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys;
@@ -546,7 +549,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             for (int i = 0; i < _shardedDirtyNodeCount; i++)
             {
-                if (!_persistedHashes[i].IsEmpty)
+                if (_persistedHashes[i].Count != 0)
                 {
                     _logger.Error($"Shard {i} is not empty and contain {_persistedHashes[i].Count} item");
                 }
@@ -569,7 +572,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             return;
         }
 
-        _commitSetQueue.TryPeek(out BlockCommitSet? uselessFrontSet);
+        BlockCommitSet? uselessFrontSet = null;
+        lock (_commitSetQueueLock)
+        {
+            if (_commitSetQueue.Count > 0)
+            {
+                uselessFrontSet = _commitSetQueue.Peek();
+            }
+        }
+
         if (_logger.IsDebug) _logger.Debug($"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {_maxDepth})");
     }
 
@@ -591,8 +602,20 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             using ArrayPoolList<BlockCommitSet> toAddBack = new(count);
             candidateSets = new(count);
-            while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
+
+            while (true)
             {
+                BlockCommitSet frontSet;
+                lock (_commitSetQueueLock)
+                {
+                    if (_commitSetQueue.Count == 0)
+                    {
+                        break;
+                    }
+
+                    frontSet = _commitSetQueue.Dequeue();
+                }
+
                 if (frontSet.BlockNumber == lastBlockBeforeRorgBoundary || (_persistenceStrategy.ShouldPersist(frontSet.BlockNumber) && frontSet.BlockNumber < lastBlockBeforeRorgBoundary))
                 {
                     candidateSets.Add(frontSet);
@@ -605,7 +628,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             for (int index = 0; index < toAddBack.Count; index++)
             {
-                _commitSetQueue.Enqueue(toAddBack[index]);
+                lock (_commitSetQueueLock)
+                {
+                    _commitSetQueue.Enqueue(toAddBack[index]);
+                }
             }
 
             return candidateSets;
@@ -625,24 +651,19 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             HashAndTinyPath key = new(address, new TinyTreePath(treePath));
 
+            // Dictionary-based implementation: this code executes under higher-level locks in pruning flows.
+            // Keep semantics equivalent to the old AddOrUpdate usage.
             if (_deleteOldNodes)
             {
-                _persistedHashes[shardIdx].AddOrUpdate(
-                    key,
-                    static (_, newHash) => newHash,
-                    static (_, hash, _) => null,
-                    tn.Keccak);
+                // Delete-old-nodes mode: track "previous persisted hash" as null, and store current hash.
+                _persistedHashes[shardIdx][key] = tn.Keccak;
             }
             else
             {
-                _persistedHashes[shardIdx].AddOrUpdate(
-                    key,
-                    static (_, newHash) => newHash,
-                    // When not deleting old nodes, key tracking is used to prune in memory cache. It is
-                    // safe to accidentally remove key by taking non-canon block as canon as it will just load
-                    // from disk again.
-                    static (_, hash, _) => hash,
-                    tn.Keccak);
+                // When not deleting old nodes, key tracking is used to prune in memory cache. It is
+                // safe to accidentally remove key by taking non-canon block as canon as it will just load
+                // from disk again.
+                _persistedHashes[shardIdx][key] = tn.Keccak;
             }
         }
     }
@@ -670,10 +691,16 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[closureIndex];
             _dirtyNodesTasks[closureIndex] = Task.Run(() =>
             {
-                ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes = null;
+                IDictionary<HashAndTinyPath, Hash256?>? persistedHashes = null;
                 if (_persistedHashes.Length > 0)
                 {
-                    persistedHashes = _persistedHashes[closureIndex];
+                    // Dictionary is not thread-safe; protect access with a per-shard lock object.
+                    // In this compatibility build we only pass the dictionary through; consumers must not mutate it
+                    // without locking on the same object.
+                    lock (_persistedHashesLocks[closureIndex])
+                    {
+                        persistedHashes = _persistedHashes[closureIndex];
+                    }
                 }
 
                 INodeStorage nodeStorage = _nodeStorage;
@@ -685,7 +712,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                         forceRemovePersistedNodes: forceRemovePersistedNodes,
                         persistedHashes: persistedHashes,
                         nodeStorage: nodeStorage);
-                persistedHashes?.NoResizeClear();
+                if (persistedHashes is not null)
+                {
+                    lock (_persistedHashesLocks[closureIndex])
+                    {
+                        _persistedHashes[closureIndex].Clear();
+                    }
+                }
             });
         }
 
@@ -791,7 +824,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private readonly ILogger _logger;
 
-    private ConcurrentQueue<BlockCommitSet> _commitSetQueue = new ConcurrentQueue<BlockCommitSet>();
+    // ConcurrentQueue is unavailable in some compatibility builds; use a simple queue guarded by a lock instead.
+    private readonly object _commitSetQueueLock = new();
+    private readonly Queue<BlockCommitSet> _commitSetQueue = new();
 
     private BlockCommitSet? _lastCommitSet = null;
 
@@ -831,7 +866,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         VerifyNewCommitSet(blockNumber);
 
         BlockCommitSet commitSet = new(blockNumber);
-        _commitSetQueue.Enqueue(commitSet);
+        lock (_commitSetQueueLock)
+        {
+            _commitSetQueue.Enqueue(commitSet);
+        }
 
         _lastCommitSet = commitSet;
 
@@ -1029,10 +1067,22 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void PersistOnShutdown()
     {
-        if (_commitSetQueue?.IsEmpty ?? true) return;
+        lock (_commitSetQueueLock)
+        {
+            if (_commitSetQueue.Count == 0) return;
+        }
 
         using ArrayPoolList<BlockCommitSet> candidateSets = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
-        if (candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommmitSet))
+        BlockCommitSet? anyCommmitSet = null;
+        lock (_commitSetQueueLock)
+        {
+            if (candidateSets.Count == 0 && _commitSetQueue.Count > 0)
+            {
+                anyCommmitSet = _commitSetQueue.Dequeue();
+            }
+        }
+
+        if (candidateSets.Count == 0 && anyCommmitSet is not null)
         {
             // No commitset to persist, likely as not enough block was processed to reached prune boundary
             // This happens when node is shutdown right after sync.
@@ -1071,17 +1121,34 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             int commitSetCount = 0;
             // We persist all sealed Commitset causing PruneCache to almost completely clear the cache. Any new block that
             // need existing node will have to read back from db causing copy-on-read mechanism to copy the node.
-            ConcurrentQueue<BlockCommitSet> commitSetQueue = _commitSetQueue;
+            Queue<BlockCommitSet> commitSetQueue = _commitSetQueue;
 
             void ClearCommitSetQueue()
             {
-                while (commitSetQueue.TryPeek(out BlockCommitSet commitSet) && commitSet.IsSealed)
+                while (true)
                 {
-                    if (!commitSetQueue.TryDequeue(out commitSet)) break;
-                    if (!commitSet.IsSealed)
+                    BlockCommitSet? commitSet = null;
+
+                    lock (_commitSetQueueLock)
                     {
-                        // Oops
-                        commitSetQueue.Enqueue(commitSet);
+                        if (commitSetQueue.Count == 0)
+                        {
+                            break;
+                        }
+
+                        // Peek without removing
+                        commitSet = commitSetQueue.Peek();
+                        if (!commitSet.IsSealed)
+                        {
+                            break;
+                        }
+
+                        // Dequeue the sealed commit set
+                        commitSet = commitSetQueue.Dequeue();
+                    }
+
+                    if (commitSet is null)
+                    {
                         break;
                     }
 

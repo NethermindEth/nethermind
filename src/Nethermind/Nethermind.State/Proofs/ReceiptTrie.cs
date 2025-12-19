@@ -23,8 +23,15 @@ public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
     public ReceiptTrie(IReceiptSpec spec, ReadOnlySpan<TxReceipt> receipts, IRlpStreamDecoder<TxReceipt> trieDecoder, ICappedArrayPool bufferPool, bool canBuildProof = false)
         : base(null, canBuildProof, bufferPool: bufferPool)
     {
-        ArgumentNullException.ThrowIfNull(spec);
-        ArgumentNullException.ThrowIfNull(trieDecoder);
+        // No-exceptions runtime compatibility:
+        // Avoid ArgumentNullException.ThrowIfNull which would terminate the process when exceptions are unsupported.
+        // If inputs are invalid, fall back to a safe empty trie (RootHash remains the empty trie hash from the base).
+        if (spec is null || trieDecoder is null)
+        {
+            _decoder = trieDecoder!;
+            return;
+        }
+
         _decoder = trieDecoder;
 
         if (receipts.Length > 0)

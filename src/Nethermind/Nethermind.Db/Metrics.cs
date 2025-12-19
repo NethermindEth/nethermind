@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -88,42 +89,46 @@ namespace Nethermind.Db
         [Description("Indicator if StadeDb is being pruned.")]
         public static int StateDbPruning { get; set; }
 
+        // NOTE: Compatibility runtimes may not support generic type construction paths used by NonBlocking.ConcurrentDictionary.
+        // These metrics are best-effort and are typically used for observability only, so we use simple dictionaries here.
+        // Thread-safety is intentionally relaxed for compatibility builds.
+
         [GaugeMetric]
         [Description("Database reads per database")]
         [KeyIsLabel("db")]
-        public static NonBlocking.ConcurrentDictionary<string, long> DbReads { get; } = new();
+        public static Dictionary<string, long> DbReads { get; } = new();
 
         [GaugeMetric]
         [Description("Database writes per database")]
         [KeyIsLabel("db")]
-        public static NonBlocking.ConcurrentDictionary<string, long> DbWrites { get; } = new();
+        public static Dictionary<string, long> DbWrites { get; } = new();
 
         [GaugeMetric]
         [Description("Database size per database")]
         [KeyIsLabel("db")]
-        public static NonBlocking.ConcurrentDictionary<string, long> DbSize { get; } = new();
+        public static Dictionary<string, long> DbSize { get; } = new();
 
         [GaugeMetric]
         [Description("Database memtable per database")]
         [KeyIsLabel("db")]
-        public static NonBlocking.ConcurrentDictionary<string, long> DbMemtableSize { get; } = new();
+        public static Dictionary<string, long> DbMemtableSize { get; } = new();
 
         [GaugeMetric]
         [Description("Database block cache size per database")]
         [KeyIsLabel("db")]
-        public static NonBlocking.ConcurrentDictionary<string, long> DbBlockCacheSize { get; } = new();
+        public static Dictionary<string, long> DbBlockCacheSize { get; } = new();
 
         [GaugeMetric]
         [Description("Database index and filter size per database")]
         [KeyIsLabel("db")]
-        public static NonBlocking.ConcurrentDictionary<string, long> DbIndexFilterSize { get; } = new();
+        public static Dictionary<string, long> DbIndexFilterSize { get; } = new();
 
         [Description("Metrics extracted from RocksDB Compaction Stats and DB Statistics")]
         [KeyIsLabel("db", "metric")]
-        public static NonBlocking.ConcurrentDictionary<(string, string), double> DbStats { get; } = new();
+        public static Dictionary<(string, string), double> DbStats { get; } = new();
 
         [Description("Metrics extracted from RocksDB Compaction Stats")]
         [KeyIsLabel("db", "level", "metric")]
-        public static NonBlocking.ConcurrentDictionary<(string, int, string), double> DbCompactionStats { get; } = new();
+        public static Dictionary<(string, int, string), double> DbCompactionStats { get; } = new();
     }
 }

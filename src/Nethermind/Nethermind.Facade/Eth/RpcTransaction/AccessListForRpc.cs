@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
@@ -43,10 +42,29 @@ public class AccessListForRpc
         }
     }
 
-    public static AccessListForRpc FromAccessList(AccessList? accessList) =>
-        accessList is null
-        ? new AccessListForRpc([])
-        : new AccessListForRpc(accessList.Select(static item => new Item(item.Address, [.. item.StorageKeys])));
+    public static AccessListForRpc FromAccessList(AccessList? accessList)
+    {
+        if (accessList is null)
+        {
+            return new AccessListForRpc([]);
+        }
+
+        // Avoid LINQ: some custom runtimes have issues with iterator/enumerator boxing/unboxing for value-type enumerators.
+        List<Item> items = new();
+        foreach (var item in accessList)
+        {
+            // Materialize storage keys without LINQ/spread, to keep iteration simple and predictable.
+            List<UInt256> keys = new();
+            foreach (UInt256 key in item.StorageKeys)
+            {
+                keys.Add(key);
+            }
+
+            items.Add(new Item(item.Address, keys));
+        }
+
+        return new AccessListForRpc(items);
+    }
 
     public AccessList ToAccessList()
     {

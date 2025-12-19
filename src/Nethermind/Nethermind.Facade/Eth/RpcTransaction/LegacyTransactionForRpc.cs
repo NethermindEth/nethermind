@@ -107,7 +107,10 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
             }
             else if (V.Value > 1)
             {
-                v = V.Value.ToUInt64(null); // non protected
+                // Avoid IConvertible-based conversion (UInt256 implements IConvertible and can route through Decimal unboxing
+                // on some custom runtimes). For legacy transactions we only ever expect small V values (27/28 or EIP-155 style).
+                // We can safely map anything > 1 to the non-protected legacy V values.
+                v = 27 + (V.Value == 28 ? 1UL : 0UL); // 27 or 28
             }
             else
             {

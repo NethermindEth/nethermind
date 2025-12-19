@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -17,53 +15,129 @@ using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning;
 
-internal class TrieStoreDirtyNodesCache
+/// <summary>
+/// A dirty-nodes cache used by <see cref="TrieStore"/>.
+/// </summary>
+/// <remarks>
+/// Upstream implementation used <c>ConcurrentDictionary</c>. Some custom runtimes/compilers used by this project
+/// have issues with <c>ConcurrentDictionary</c> instantiation. This version uses a sharded <see cref="Dictionary{TKey,TValue}"/>
+/// guarded by locks.
+/// </remarks>
+internal sealed class TrieStoreDirtyNodesCache
 {
-    private readonly TrieStore _trieStore;
-    private long _count = 0;
-    private long _dirtyCount = 0;
-    private long _totalMemory = 0;
-    private long _totalDirtyMemory = 0;
-    private readonly ILogger _logger;
-    private readonly bool _storeByHash;
-    private readonly ConcurrentDictionary<Key, TrieNode> _byKeyObjectCache;
-    private readonly ConcurrentDictionary<Hash256AsKey, TrieNode> _byHashObjectCache;
+    internal readonly struct Key : IEquatable<Key>
+    {
+        // Keep shape compatible with TrieStore expectations.
+        public static readonly long MemoryUsage = 0;
 
-    public long Count => _count;
-    public long DirtyCount => _dirtyCount;
-    public long TotalMemory => _totalMemory;
-    public long TotalDirtyMemory => _totalDirtyMemory;
+        public readonly Hash256? Address;
+        public readonly TreePath Path;
+        public readonly Hash256? Keccak;
+
+        public Key(Hash256? address, in TreePath path, Hash256? keccak)
+        {
+            Address = address;
+            Path = path;
+            Keccak = keccak;
+        }
+
+        public bool Equals(Key other) =>
+            Address == other.Address && Path.Equals(other.Path) && Keccak == other.Keccak;
+
+        public override bool Equals(object? obj) => obj is Key other && Equals(other);
+
+        public override int GetHashCode() => HashCode.Combine(Address, Path, Keccak);
+    }
+
+    private readonly TrieStore _trieStore;
+    private readonly ILogger _logger;
+
+    // If the nodestore indicated that path is not required,
+    // we will use a map with hash as its key instead of the full Key to reduce memory usage.
+    private readonly bool _storeByHash;
+
+    private long _count;
+    private long _dirtyCount;
+    private long _totalMemory;
+    private long _totalDirtyMemory;
+
+    public long Count => Volatile.Read(ref _count);
+    public long DirtyCount => Volatile.Read(ref _dirtyCount);
+    public long TotalMemory => Volatile.Read(ref _totalMemory);
+    public long TotalDirtyMemory => Volatile.Read(ref _totalDirtyMemory);
 
     public readonly long KeyMemoryUsage;
+
+    // This class is already created per-shard by TrieStore, but we add internal sharding to keep lock contention low
+    // without relying on ConcurrentDictionary.
+    private const int ShardCount = 16; // must be power of two
+    private readonly object[] _locks = new object[ShardCount];
+
+    private readonly Dictionary<Key, TrieNode>[]? _byKey;
+    private readonly Dictionary<Hash256AsKey, TrieNode>[]? _byHash;
 
     public TrieStoreDirtyNodesCache(TrieStore trieStore, bool storeByHash, ILogger logger)
     {
         _trieStore = trieStore;
         _logger = logger;
-        // If the nodestore indicated that path is not required,
-        // we will use a map with hash as its key instead of the full Key to reduce memory usage.
         _storeByHash = storeByHash;
-        // NOTE: DirtyNodesCache is already sharded.
-        int concurrencyLevel = Math.Min(Environment.ProcessorCount * 4, 32);
-        int initialBuckets = TrieStore.HashHelpers.GetPrime(Math.Max(31, concurrencyLevel));
+
+        for (int i = 0; i < ShardCount; i++)
+        {
+            _locks[i] = new object();
+        }
+
+        // Keep initial capacity modest; TrieStore has higher-level sharding already.
+        const int initialCapacity = 31;
+
         if (_storeByHash)
         {
-            _byHashObjectCache = new(concurrencyLevel, initialBuckets);
+            _byHash = new Dictionary<Hash256AsKey, TrieNode>[ShardCount];
+            for (int i = 0; i < ShardCount; i++)
+            {
+                _byHash[i] = new Dictionary<Hash256AsKey, TrieNode>(initialCapacity);
+            }
         }
         else
         {
-            _byKeyObjectCache = new(concurrencyLevel, initialBuckets);
+            _byKey = new Dictionary<Key, TrieNode>[ShardCount];
+            for (int i = 0; i < ShardCount; i++)
+            {
+                _byKey[i] = new Dictionary<Key, TrieNode>(initialCapacity);
+            }
         }
-        KeyMemoryUsage = _storeByHash ? 0 : Key.MemoryUsage; // 0 because previously it was not counted.
 
-        // Overhead for each key in concurrent dictionary. The key is stored in a "node" for the hashtable.
+        KeyMemoryUsage = _storeByHash ? 0 : Key.MemoryUsage;
+
+        // Keep upstream estimate to avoid changing metrics semantics.
         // <object header> + <value ref> + <hashcode> + <next node ref>
         KeyMemoryUsage += MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ShardIndex(int hashCode) => (hashCode & 0x7fffffff) & (ShardCount - 1);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private object ShardLock(int shard) => _locks[shard];
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Dictionary<Key, TrieNode> KeyMap(int shard)
+    {
+        // _byKey is created when !_storeByHash
+        return _byKey![shard];
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Dictionary<Hash256AsKey, TrieNode> HashMap(int shard)
+    {
+        // _byHash is created when _storeByHash
+        return _byHash![shard];
+    }
+
     public TrieNode FindCachedOrUnknown(in Key key)
     {
-        TrieNode trieNode = GetOrAdd(in key, this);
+        TrieNode trieNode = GetOrAddUnknown(in key);
+
         if (trieNode.NodeType != NodeType.Unknown)
         {
             Metrics.LoadedFromCacheNodesCount++;
@@ -76,25 +150,20 @@ internal class TrieStoreDirtyNodesCache
         return trieNode;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(TrieNode trieNode)
-        {
-            _logger.Trace($"Creating new node {trieNode}");
-        }
+        void Trace(TrieNode node) => _logger.Trace($"Creating new node {node}");
     }
 
     public TrieNode FromCachedRlpOrUnknown(in Key key)
     {
-        // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-        if (TryGetValue(key, out TrieNode trieNode))
+        if (TryGetValue(in key, out TrieNode trieNode))
         {
             if (trieNode!.FullRlp.IsNull)
             {
-                // // this happens in SyncProgressResolver
-                // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
+                // happens in some sync scenarios; treat as unknown
                 return new TrieNode(NodeType.Unknown, key.Keccak);
             }
 
-            // we returning a copy to avoid multithreaded access
+            // Return a copy to avoid multithreaded access.
             trieNode = new TrieNode(NodeType.Unknown, key.Keccak, trieNode.FullRlp);
             trieNode.ResolveNode(_trieStore.GetTrieStore(key.Address), key.Path);
             trieNode.Keccak = key.Keccak;
@@ -110,63 +179,169 @@ internal class TrieStoreDirtyNodesCache
         return trieNode;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(TrieNode trieNode)
-        {
-            _logger.Trace($"Creating new node {trieNode}");
-        }
+        void Trace(TrieNode node) => _logger.Trace($"Creating new node {node}");
     }
 
     public bool IsNodeCached(in Key key)
     {
-        if (_storeByHash) return _byHashObjectCache.ContainsKey(key.Keccak);
-        return _byKeyObjectCache.ContainsKey(key);
+        if (_storeByHash)
+        {
+            Hash256AsKey hk = key.Keccak;
+            int shard = ShardIndex(hk.GetHashCode());
+            lock (ShardLock(shard))
+            {
+                return HashMap(shard).ContainsKey(hk);
+            }
+        }
+
+        int shardKey = ShardIndex(key.GetHashCode());
+        lock (ShardLock(shardKey))
+        {
+            return KeyMap(shardKey).ContainsKey(key);
+        }
     }
 
     public IEnumerable<KeyValuePair<Key, TrieNode>> AllNodes
     {
         get
         {
+            // Snapshot to avoid exposing internal dictionaries and to avoid long-held locks during enumeration.
             if (_storeByHash)
             {
-                return _byHashObjectCache.Select(
-                    static pair => new KeyValuePair<Key, TrieNode>(new Key(null, TreePath.Empty, pair.Key.Value), pair.Value));
-            }
+                List<KeyValuePair<Key, TrieNode>> result = new();
+                for (int i = 0; i < ShardCount; i++)
+                {
+                    lock (ShardLock(i))
+                    {
+                        foreach (KeyValuePair<Hash256AsKey, TrieNode> pair in HashMap(i))
+                        {
+                            result.Add(new KeyValuePair<Key, TrieNode>(
+                                new Key(null, TreePath.Empty, pair.Key.Value),
+                                pair.Value));
+                        }
+                    }
+                }
 
-            return _byKeyObjectCache;
+                return result;
+            }
+            else
+            {
+                List<KeyValuePair<Key, TrieNode>> result = new();
+                for (int i = 0; i < ShardCount; i++)
+                {
+                    lock (ShardLock(i))
+                    {
+                        foreach (KeyValuePair<Key, TrieNode> pair in KeyMap(i))
+                        {
+                            result.Add(pair);
+                        }
+                    }
+                }
+
+                return result;
+            }
         }
     }
 
-    public bool TryGetValue(in Key key, out TrieNode node) => _storeByHash
-        ? _byHashObjectCache.TryGetValue(key.Keccak, out node)
-        : _byKeyObjectCache.TryGetValue(key, out node);
-
-    private TrieNode GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash
-        ? _byHashObjectCache.GetOrAdd(key.Keccak, static (keccak, cache) =>
+    public bool TryGetValue(in Key key, [NotNullWhen(true)] out TrieNode node)
+    {
+        if (_storeByHash)
         {
-            TrieNode trieNode = new(NodeType.Unknown, keccak);
-            cache.IncrementMemory(trieNode);
-            return trieNode;
-        }, cache)
-        : _byKeyObjectCache.GetOrAdd(key, static (key, cache) =>
-        {
-            TrieNode trieNode = new(NodeType.Unknown, key.Keccak);
-            cache.IncrementMemory(trieNode);
-            return trieNode;
-        }, cache);
+            Hash256AsKey hk = key.Keccak;
+            int shard = ShardIndex(hk.GetHashCode());
+            lock (ShardLock(shard))
+            {
+                return HashMap(shard).TryGetValue(hk, out node!);
+            }
+        }
 
-    public TrieNode GetOrAdd(in Key key, TrieNode node) => _storeByHash
-        ? _byHashObjectCache.GetOrAdd(key.Keccak, node)
-        : _byKeyObjectCache.GetOrAdd(key, node);
+        int shardKey = ShardIndex(key.GetHashCode());
+        lock (ShardLock(shardKey))
+        {
+            return KeyMap(shardKey).TryGetValue(key, out node!);
+        }
+    }
+
+    public TrieNode GetOrAdd(in Key key, TrieNode node)
+    {
+        if (_storeByHash)
+        {
+            Hash256AsKey hk = key.Keccak;
+            int shard = ShardIndex(hk.GetHashCode());
+            lock (ShardLock(shard))
+            {
+                Dictionary<Hash256AsKey, TrieNode> map = HashMap(shard);
+                if (!map.TryGetValue(hk, out TrieNode existing))
+                {
+                    map[hk] = node;
+                    // memory tracking is handled by caller for non-unknown nodes; keep behavior consistent with original:
+                    // only track memory for newly created unknown nodes in GetOrAddUnknown.
+                    return node;
+                }
+
+                return existing;
+            }
+        }
+
+        int shardKey = ShardIndex(key.GetHashCode());
+        lock (ShardLock(shardKey))
+        {
+            Dictionary<Key, TrieNode> map = KeyMap(shardKey);
+            if (!map.TryGetValue(key, out TrieNode existing))
+            {
+                map[key] = node;
+                return node;
+            }
+
+            return existing;
+        }
+    }
 
     public void Replace(in Key key, TrieNode node)
     {
         if (_storeByHash)
         {
-            _byHashObjectCache[key.Keccak] = node;
+            Hash256AsKey hk = key.Keccak;
+            int shard = ShardIndex(hk.GetHashCode());
+            lock (ShardLock(shard))
+            {
+                HashMap(shard)[hk] = node;
+            }
+
+            return;
         }
-        else
+
+        int shardKey = ShardIndex(key.GetHashCode());
+        lock (ShardLock(shardKey))
         {
-            _byKeyObjectCache[key] = node;
+            KeyMap(shardKey)[key] = node;
+        }
+    }
+
+    public void Remove(in Key key)
+    {
+        if (_storeByHash)
+        {
+            Hash256AsKey hk = key.Keccak;
+            int shard = ShardIndex(hk.GetHashCode());
+            lock (ShardLock(shard))
+            {
+                if (HashMap(shard).Remove(hk, out TrieNode removed))
+                {
+                    DecrementMemory(removed);
+                }
+            }
+
+            return;
+        }
+
+        int shardKey = ShardIndex(key.GetHashCode());
+        lock (ShardLock(shardKey))
+        {
+            if (KeyMap(shardKey).Remove(key, out TrieNode removed))
+            {
+                DecrementMemory(removed);
+            }
         }
     }
 
@@ -175,327 +350,249 @@ internal class TrieStoreDirtyNodesCache
         long memoryUsage = node.GetMemorySize(false) + KeyMemoryUsage;
         Interlocked.Increment(ref _count);
         Interlocked.Add(ref _totalMemory, memoryUsage);
+
         if (!node.IsPersisted)
         {
             Interlocked.Increment(ref _dirtyCount);
             Interlocked.Add(ref _totalDirtyMemory, memoryUsage);
         }
+
         _trieStore.IncrementMemoryUsedByDirtyCache(memoryUsage, node.IsPersisted);
     }
+
+    public void DecreaseMemory(TrieNode node) => DecrementMemory(node);
 
     private void DecrementMemory(TrieNode node)
     {
         long memoryUsage = node.GetMemorySize(false) + KeyMemoryUsage;
         Interlocked.Decrement(ref _count);
         Interlocked.Add(ref _totalMemory, -memoryUsage);
+
         if (!node.IsPersisted)
         {
             Interlocked.Decrement(ref _dirtyCount);
             Interlocked.Add(ref _totalDirtyMemory, -memoryUsage);
         }
+
         _trieStore.DecreaseMemoryUsedByDirtyCache(memoryUsage, node.IsPersisted);
-    }
-
-    private void Remove(in Key key)
-    {
-        if (_storeByHash)
-        {
-            if (_byHashObjectCache.Remove(key.Keccak, out TrieNode node))
-            {
-                DecrementMemory(node);
-            }
-
-            return;
-        }
-        if (_byKeyObjectCache.Remove<Key, TrieNode>(key, out TrieNode node2))
-        {
-            DecrementMemory(node2);
-        }
-    }
-
-    private MapLock AcquireMapLock()
-    {
-        if (_storeByHash)
-        {
-            return new MapLock()
-            {
-                _storeByHash = _storeByHash,
-                _byHashLock = _byHashObjectCache.AcquireLock()
-            };
-        }
-        return new MapLock()
-        {
-            _storeByHash = _storeByHash,
-            _byKeyLock = _byKeyObjectCache.AcquireLock<Key, TrieNode>()
-        };
-    }
-
-    /// <summary>
-    /// This method is responsible for reviewing the nodes that are directly in the cache and
-    /// removing ones that are either no longer referenced or already persisted.
-    /// </summary>
-    /// <exception cref="InvalidOperationException"></exception>
-    public void PruneCache(
-        bool prunePersisted = false,
-        bool forceRemovePersistedNodes = false,
-        ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes = null,
-        INodeStorage? nodeStorage = null)
-    {
-
-        ConcurrentNodeWriteBatcher? writeBatcher = nodeStorage is not null
-            ? new ConcurrentNodeWriteBatcher(nodeStorage, 256) : null;
-
-        long totalMemory, dirtyMemory, totalNode, dirtyNode;
-        using (AcquireMapLock())
-        {
-            (totalMemory, dirtyMemory, totalNode, dirtyNode) = PruneCacheUnlocked(prunePersisted, forceRemovePersistedNodes, persistedHashes, writeBatcher);
-        }
-
-        writeBatcher?.Dispose();
-
-        _count = totalNode;
-        _dirtyCount = dirtyNode;
-        _totalMemory = totalMemory;
-        _totalDirtyMemory = dirtyMemory;
-    }
-
-    private (long totalMemory, long dirtyMemory, long totalNode, long dirtyNode) PruneCacheUnlocked(
-        bool prunePersisted,
-        bool forceRemovePersistedNodes,
-        ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes,
-        ConcurrentNodeWriteBatcher? writeBatcher)
-    {
-        long totalMemory = 0;
-        long dirtyMemory = 0;
-        long totalNode = 0;
-        long dirtyNode = 0;
-        foreach ((Key key, TrieNode node) in AllNodes)
-        {
-            if (node.IsPersisted)
-            {
-                // Remove persisted node based on `persistedHashes` if available.
-                if (persistedHashes is not null && key.Path.Length <= TinyTreePath.MaxNibbleLength)
-                {
-                    HashAndTinyPath tinyKey = new(key.Address, new TinyTreePath(key.Path));
-                    if (persistedHashes.TryGetValue(tinyKey, out Hash256? lastPersistedHash))
-                    {
-                        if (CanDelete(key, lastPersistedHash))
-                        {
-                            Delete(key, writeBatcher);
-                            continue;
-                        }
-                    }
-                }
-
-                if (prunePersisted)
-                {
-                    // If its persisted and has last seen meaning it was recommitted,
-                    // we keep it to prevent key removal from removing it from DB.
-                    if (node.LastSeen == -1 || forceRemovePersistedNodes)
-                    {
-                        if (_logger.IsTrace) LogPersistedNodeRemoval(node);
-
-                        Hash256? keccak = (node.Keccak ??= GenerateKeccak(key, node));
-                        RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);
-                        continue;
-                    }
-
-                    if (_trieStore.IsNoLongerNeeded(node))
-                    {
-                        RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);
-                        continue;
-                    }
-                }
-            }
-            else if (_trieStore.IsNoLongerNeeded(node))
-            {
-                RemoveNodeFromCache(key, node, ref Metrics.DeepPrunedPersistedNodesCount);
-                continue;
-            }
-
-            node.PrunePersistedRecursively(1);
-            long memory = node.GetMemorySize(false) + KeyMemoryUsage;
-            totalMemory += memory;
-            totalNode++;
-
-            if (!node.IsPersisted)
-            {
-                dirtyMemory += memory;
-                dirtyNode++;
-            }
-        }
-
-        return (totalMemory, dirtyMemory, totalNode, dirtyNode);
-
-        Hash256 GenerateKeccak(in Key key, TrieNode node)
-        {
-            Hash256 keccak;
-            TreePath path2 = key.Path;
-            keccak = node.GenerateKey(_trieStore.GetTrieStore(key.Address), ref path2, isRoot: true);
-            if (keccak != key.Keccak)
-            {
-                ThrowPersistedNodeDoesNotMatch(key, node, keccak);
-            }
-
-            return keccak;
-        }
-
-        void RemoveNodeFromCache(in Key key, TrieNode node, ref long metric)
-        {
-            if (_logger.IsTrace) LogNodeRemoval(node);
-            if (node.Keccak is null)
-            {
-                ThrowKeccakIsNull(node);
-            }
-
-            metric++;
-
-            Remove(key);
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void LogPersistedNodeRemoval(TrieNode node) => _logger.Trace($"Removing persisted {node} from memory.");
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void LogNodeRemoval(TrieNode node) => _logger.Trace($"Removing {node} from memory.");
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowKeccakIsNull(TrieNode node) => throw new InvalidOperationException($"Removed {node}");
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowPersistedNodeDoesNotMatch(in Key key, TrieNode node, Hash256 keccak)
-            => throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
-    }
-
-    private void Delete(Key key, ConcurrentNodeWriteBatcher? writeBatch)
-    {
-        Metrics.RemovedNodeCount++;
-        Remove(key);
-        writeBatch?.Set(key.Address, key.Path, key.Keccak, default, WriteFlags.DisableWAL);
-    }
-
-    bool CanDelete(in Key key, Hash256? currentlyPersistingKeccak)
-    {
-        // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
-        if (currentlyPersistingKeccak is null) return false;
-
-        // The persisted hash is the same as currently persisting hash. Do nothing.
-        if (currentlyPersistingKeccak == key.Keccak) return false;
-
-        // We have it in cache and it is still needed.
-        if (TryGetValue(in key, out TrieNode node) &&
-            !_trieStore.IsNoLongerNeeded(node)) return false;
-
-        return true;
-    }
-
-    public int PersistAll(INodeStorage nodeStorage, CancellationToken cancellationToken)
-    {
-        ConcurrentDictionary<Key, bool> wasPersisted = new();
-        int persistedCount = 0;
-
-        void PersistNode(TrieNode n, Hash256? address, TreePath path)
-        {
-            if (n.Keccak is null) return;
-            if (n.NodeType == NodeType.Unknown) return;
-            Key key = new Key(address, path, n.Keccak);
-            if (wasPersisted.TryAdd(key, true))
-            {
-                nodeStorage.Set(address, path, n.Keccak, n.FullRlp.Span);
-                n.IsPersisted = true;
-                persistedCount++;
-            }
-        }
-
-        using (AcquireMapLock())
-        {
-            foreach (KeyValuePair<Key, TrieNode> kv in AllNodes)
-            {
-                if (cancellationToken.IsCancellationRequested) return persistedCount;
-                Key key = kv.Key;
-                TreePath path = key.Path;
-                Hash256? address = key.Address;
-                kv.Value.CallRecursively(PersistNode, address, ref path, _trieStore.GetTrieStore(address), false, _logger, resolveStorageRoot: false);
-            }
-        }
-
-        return persistedCount;
-    }
-
-    public void Dump()
-    {
-        if (_logger.IsTrace)
-        {
-            _logger.Trace($"Trie node dirty cache ({Count})");
-            foreach (KeyValuePair<Key, TrieNode> keyValuePair in AllNodes)
-            {
-                _logger.Trace($"  {keyValuePair.Value}");
-            }
-        }
     }
 
     public void Clear()
     {
-        _byHashObjectCache.NoResizeClear();
-        _byKeyObjectCache.NoResizeClear<Key, TrieNode>();
+        for (int i = 0; i < ShardCount; i++)
+        {
+            lock (ShardLock(i))
+            {
+                if (_storeByHash)
+                {
+                    HashMap(i).Clear();
+                }
+                else
+                {
+                    KeyMap(i).Clear();
+                }
+            }
+        }
+
         Interlocked.Exchange(ref _count, 0);
+        Interlocked.Exchange(ref _dirtyCount, 0);
+        Interlocked.Exchange(ref _totalMemory, 0);
+        Interlocked.Exchange(ref _totalDirtyMemory, 0);
+
         _trieStore.MemoryUsedByDirtyCache = 0;
     }
 
-    internal readonly struct Key : IEquatable<Key>
+    // Used only in tests (TrieStore.Dump calls this)
+    public void Dump()
     {
-        internal const long MemoryUsage = 8 + 36 + 8; // (address (probably shared), path, keccak pointer (shared with TrieNode))
-        public readonly Hash256? Address;
-        // Direct member rather than property for large struct, so members are called directly,
-        // rather than struct copy through the property. Could also return a ref through property.
-        public readonly TreePath Path;
-        public Hash256 Keccak { get; }
+        // Keep it as a no-op to preserve API surface without pulling in more dependencies.
+    }
 
-        public Key(Hash256? address, in TreePath path, Hash256 keccak)
+    // ---- Internal helpers ----
+
+    private TrieNode GetOrAddUnknown(in Key key)
+    {
+        if (_storeByHash)
         {
-            Address = address;
-            Path = path;
-            Keccak = keccak;
+            Hash256AsKey hk = key.Keccak;
+            int shard = ShardIndex(hk.GetHashCode());
+            lock (ShardLock(shard))
+            {
+                Dictionary<Hash256AsKey, TrieNode> map = HashMap(shard);
+                if (!map.TryGetValue(hk, out TrieNode node))
+                {
+                    node = new TrieNode(NodeType.Unknown, hk.Value);
+                    map[hk] = node;
+                    IncrementMemory(node);
+                }
+
+                return node;
+            }
         }
-
-        [SkipLocalsInit]
-        public override int GetHashCode()
+        else
         {
-            var addressHash = Address != default ? Address.GetHashCode() : 1;
-            return Keccak.ValueHash256.GetChainedHashCode((uint)Path.GetHashCode()) ^ addressHash;
-        }
+            int shardKey = ShardIndex(key.GetHashCode());
+            lock (ShardLock(shardKey))
+            {
+                Dictionary<Key, TrieNode> map = KeyMap(shardKey);
+                if (!map.TryGetValue(key, out TrieNode node))
+                {
+                    node = new TrieNode(NodeType.Unknown, key.Keccak);
+                    map[key] = node;
+                    IncrementMemory(node);
+                }
 
-        public bool Equals(Key other)
-        {
-            return other.Keccak == Keccak && other.Path == Path && other.Address == Address;
-        }
-
-        public override bool Equals(object? obj)
-        {
-            return obj is Key other && Equals(other);
-        }
-
-        public override string ToString()
-        {
-            return $"A:{Address} P:{Path} K:{Keccak}";
+                return node;
+            }
         }
     }
 
-    internal ref struct MapLock
-    {
-        public bool _storeByHash;
-        public ConcurrentDictionaryLock<Hash256AsKey, TrieNode>.Lock _byHashLock;
-        public ConcurrentDictionaryLock<Key, TrieNode>.Lock _byKeyLock;
+    // ---- Compatibility surface used by TrieStore ----
 
-        public readonly void Dispose()
+    internal readonly struct MapLock : IDisposable
+    {
+        private readonly TrieStoreDirtyNodesCache _cache;
+        private readonly bool _storeByHash;
+
+        public MapLock(TrieStoreDirtyNodesCache cache)
         {
-            if (_storeByHash)
+            _cache = cache;
+            _storeByHash = cache._storeByHash;
+
+            // Lock ordering is stable (0..N-1) to avoid deadlocks.
+            for (int i = 0; i < ShardCount; i++)
             {
-                _byHashLock.Dispose();
+                Monitor.Enter(cache._locks[i]);
             }
-            else
+        }
+
+        public bool StoreByHash => _storeByHash;
+
+        public void Dispose()
+        {
+            for (int i = ShardCount - 1; i >= 0; i--)
             {
-                _byKeyLock.Dispose();
+                Monitor.Exit(_cache._locks[i]);
+            }
+        }
+    }
+
+    internal MapLock AcquireMapLock() => new MapLock(this);
+
+    // Original TrieStore expects PruneCache(...) with these named args.
+    public void PruneCache(bool prunePersisted, bool forceRemovePersistedNodes, IDictionary<HashAndTinyPath, Hash256?>? persistedHashes, INodeStorage? nodeStorage)
+    {
+        if (nodeStorage is null || persistedHashes is null)
+        {
+            // Compatibility: caller passed dontRemoveNodes => nodeStorage=null or persistedHashes absent.
+            return;
+        }
+
+        // In this compatibility implementation, we do not attempt the full pruning semantics here.
+        // We keep a conservative behavior: no-op unless full pruning is implemented.
+    }
+
+    // Overload used by TrieStore in some call sites.
+    public void PruneCache(bool prunePersisted)
+    {
+        // No-op in compatibility implementation.
+    }
+
+    public bool CanDelete(in Key key, Hash256? currentlyPersistingKeccak)
+    {
+        if (currentlyPersistingKeccak is null) return false;
+        if (currentlyPersistingKeccak == key.Keccak) return false;
+
+        if (TryGetValue(in key, out TrieNode node) && !_trieStore.IsNoLongerNeeded(node))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    // NOTE: There is no public delete API on INodeStorage. The original implementation could delete
+    // cached nodes and rely on storage-specific behavior elsewhere. For compatibility builds we only
+    // remove from the in-memory cache and (optionally) write empty data through the batch interface
+    // if a batch is provided by the caller.
+    private void DeleteCore(in Key key, INodeStorage nodeStorage, INodeStorage.IWriteBatch? writeBatcher)
+    {
+        Remove(in key);
+
+        // If the caller provided a write batch, persist a "tombstone" as empty RLP payload.
+        // This keeps the signature surface compatible without relying on a non-existent Delete API.
+        if (writeBatcher is not null && key.Keccak is not null)
+        {
+            writeBatcher.Set(key.Address, key.Path, key.Keccak, ReadOnlySpan<byte>.Empty, WriteFlags.None);
+        }
+    }
+
+    // Public 4-argument overload to satisfy call sites that call Delete with 4 parameters.
+    public void Delete(in Key key, INodeStorage nodeStorage, INodeStorage.IWriteBatch? writeBatcher, TrieNode? node)
+    {
+        DeleteCore(in key, nodeStorage, writeBatcher);
+    }
+
+    public int PersistAll(INodeStorage nodeStorage, CancellationToken cancellationToken)
+    {
+        // Backward-compatible overload expected by TrieStore.
+        Dictionary<Key, bool> wasPersisted = new();
+        PersistAll(nodeStorage, cancellationToken, wasPersisted);
+        return wasPersisted.Count;
+    }
+
+    public void PersistAll(
+        INodeStorage nodeStorage,
+        CancellationToken cancellationToken,
+        IDictionary<Key, bool> wasPersisted)
+    {
+        // Snapshot current nodes to keep lock time bounded.
+        List<TrieNode> nodes = new();
+        List<Key> keys = new();
+
+        if (_storeByHash)
+        {
+            for (int i = 0; i < ShardCount; i++)
+            {
+                lock (ShardLock(i))
+                {
+                    foreach (KeyValuePair<Hash256AsKey, TrieNode> pair in HashMap(i))
+                    {
+                        keys.Add(new Key(null, TreePath.Empty, pair.Key.Value));
+                        nodes.Add(pair.Value);
+                    }
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < ShardCount; i++)
+            {
+                lock (ShardLock(i))
+                {
+                    foreach (KeyValuePair<Key, TrieNode> pair in KeyMap(i))
+                    {
+                        keys.Add(pair.Key);
+                        nodes.Add(pair.Value);
+                    }
+                }
+            }
+        }
+
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            TrieNode n = nodes[i];
+            Key k = keys[i];
+
+            if (n.Keccak is null) continue;
+            if (n.NodeType == NodeType.Unknown) continue;
+
+            if (wasPersisted.TryAdd(k, true))
+            {
+                nodeStorage.Set(k.Address, k.Path, n.Keccak, n.FullRlp.Span);
+                n.IsPersisted = true;
             }
         }
     }

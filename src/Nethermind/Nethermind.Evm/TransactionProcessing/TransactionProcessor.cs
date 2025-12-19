@@ -37,6 +37,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected ISpecProvider SpecProvider { get; }
         protected IWorldState WorldState { get; }
         protected IVirtualMachine VirtualMachine { get; }
+        private readonly VirtualMachine? _concreteVirtualMachine;
         private readonly ICodeInfoRepository _codeInfoRepository;
         private SystemTransactionProcessor? _systemTransactionProcessor;
         private readonly ILogManager _logManager;
@@ -92,6 +93,7 @@ namespace Nethermind.Evm.TransactionProcessing
             SpecProvider = specProvider;
             WorldState = worldState;
             VirtualMachine = virtualMachine;
+            _concreteVirtualMachine = virtualMachine as VirtualMachine;
             _codeInfoRepository = codeInfoRepository;
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
@@ -173,9 +175,21 @@ namespace Nethermind.Evm.TransactionProcessing
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment env))) return result;
 
-            int statusCode = !tracer.IsTracingInstructions ?
-                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
-                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
+            // Avoid generic instantiation (GVM lookup failure on some custom runtimes).
+            int statusCode = ExecuteEvmCall(
+                tx,
+                header,
+                spec,
+                tracer,
+                opts,
+                delegationRefunds,
+                intrinsicGas,
+                accessTracker,
+                gasAvailable,
+                env,
+                tracer.IsTracingInstructions,
+                out TransactionSubstate substate,
+                out GasConsumed spentGas);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
             tx.SpentGas = spentGas.SpentGas;
@@ -588,7 +602,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        private int ExecuteEvmCall<TTracingInst>(
+        private int ExecuteEvmCall(
             Transaction tx,
             BlockHeader header,
             IReleaseSpec spec,
@@ -599,9 +613,9 @@ namespace Nethermind.Evm.TransactionProcessing
             in StackAccessTracker accessedItems,
             long gasAvailable,
             in ExecutionEnvironment env,
+            bool tracingInstructions,
             out TransactionSubstate substate,
             out GasConsumed gasConsumed)
-            where TTracingInst : struct, IFlag
         {
             substate = default;
             gasConsumed = tx.GasLimit;
@@ -637,7 +651,19 @@ namespace Nethermind.Evm.TransactionProcessing
 
             using (EvmState state = EvmState.RentTopLevel(gasAvailable, executionType, in env, in accessedItems, in snapshot))
             {
-                substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
+                // Avoid generic virtual method dispatch (GVM) via IVirtualMachine on runtimes that can't resolve it.
+                // Prefer a concrete call when possible.
+                VirtualMachine vm = _concreteVirtualMachine ?? (VirtualMachine)VirtualMachine;
+
+                if (tracingInstructions)
+                {
+                    substate = vm.ExecuteTransaction<OnFlag>(state, WorldState, tracer);
+                }
+                else
+                {
+                    substate = vm.ExecuteTransaction<OffFlag>(state, WorldState, tracer);
+                }
+
                 gasAvailable = state.GasAvailable;
             }
 

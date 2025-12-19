@@ -13,10 +13,12 @@ namespace Nethermind.Core.Threading;
 /// </summary>
 public class ParallelUnbalancedWork : IThreadPoolWorkItem
 {
+    // Some custom/no-threads runtimes can report Environment.ProcessorCount == 0, and also may not support ThreadPool.
+    // ParallelOptions requires MaxDegreeOfParallelism to be -1 or >= 1, so clamp to a safe value.
     public static readonly ParallelOptions DefaultOptions = new()
     {
-        // default to the number of processors
-        MaxDegreeOfParallelism = Environment.ProcessorCount
+        // default to the number of processors (clamped)
+        MaxDegreeOfParallelism = Math.Max(Environment.ProcessorCount, 1)
     };
 
     private readonly Data _data;
@@ -39,24 +41,23 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// <param name="action">The delegate that is invoked once per iteration.</param>
     public static void For(int fromInclusive, int toExclusive, ParallelOptions parallelOptions, Action<int> action)
     {
-        int threads = parallelOptions.MaxDegreeOfParallelism > 0 ? parallelOptions.MaxDegreeOfParallelism : Environment.ProcessorCount;
+        // No-threads / restricted runtime safety:
+        // - Avoid ThreadPool usage (can crash).
+        // - Run sequentially.
+        // - Still honor cancellation.
+        CancellationToken token = parallelOptions.CancellationToken;
 
-        Data data = new(threads, fromInclusive, toExclusive, action, parallelOptions.CancellationToken);
-
-        for (int i = 0; i < threads - 1; i++)
+        for (int i = fromInclusive; i < toExclusive; i++)
         {
-            ThreadPool.UnsafeQueueUserWorkItem(new ParallelUnbalancedWork(data), preferLocal: false);
+            if (token.IsCancellationRequested)
+            {
+                break;
+            }
+
+            action(i);
         }
 
-        new ParallelUnbalancedWork(data).Execute();
-
-        // If there are still active threads, wait for them to complete
-        if (data.ActiveThreads > 0)
-        {
-            data.Event.Wait();
-        }
-
-        parallelOptions.CancellationToken.ThrowIfCancellationRequested();
+        token.ThrowIfCancellationRequested();
     }
 
     /// <summary>

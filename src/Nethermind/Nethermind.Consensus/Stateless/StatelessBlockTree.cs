@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -14,13 +14,37 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Stateless;
 
-public class StatelessBlockTree(BlockHeader[] headers) : IBlockTree
+public class StatelessBlockTree : IBlockTree
 {
-    private readonly Dictionary<Hash256, BlockHeader> _hashToHeader =
-        headers.ToDictionary(header => header.Hash ?? throw new ArgumentNullException(), header => header);
+    private readonly Dictionary<Hash256, BlockHeader> _hashToHeader;
+    private readonly Dictionary<long, BlockHeader> _numberToHeader;
 
-    private readonly Dictionary<long, BlockHeader> _numberToHeader =
-        headers.ToDictionary(header => header.Number, header => header);
+    private sealed class Hash256EqualityComparer : IEqualityComparer<Hash256>
+    {
+        public static readonly Hash256EqualityComparer Instance = new();
+
+        public bool Equals(Hash256? x, Hash256? y) => x == y;
+
+        public int GetHashCode(Hash256 obj) => obj.GetHashCode();
+    }
+
+    public StatelessBlockTree(BlockHeader[] headers)
+    {
+        ArgumentNullException.ThrowIfNull(headers);
+
+        // Avoid LINQ/ToDictionary and also avoid EqualityComparer<T>.Default by providing explicit comparers.
+        _hashToHeader = new Dictionary<Hash256, BlockHeader>(headers.Length, Hash256EqualityComparer.Instance);
+        _numberToHeader = new Dictionary<long, BlockHeader>(headers.Length, EqualityComparer<long>.Default);
+
+        for (int i = 0; i < headers.Length; i++)
+        {
+            BlockHeader header = headers[i] ?? throw new ArgumentNullException(nameof(headers));
+            Hash256 hash = header.Hash ?? throw new ArgumentNullException();
+
+            _hashToHeader[hash] = header;
+            _numberToHeader[header.Number] = header;
+        }
+    }
 
     public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
         throw new NotSupportedException();

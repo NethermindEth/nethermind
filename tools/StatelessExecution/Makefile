@@ -15,7 +15,7 @@ run-docker:
 	docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk-test  /bin/bash
 
 build-zisk:
-		docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk-test bflat build --arch riscv64 --os linux -x --no-pthread --no-pie --libc zisk \
+		docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk-test2 bflat build --arch riscv64 --os linux -x --no-pthread --no-pie --libc zisk \
     				-r /nethermind/Autofac.dll \
     				-r /nethermind/Autofac.Extensions.DependencyInjection.dll \
     				-r /nethermind/BouncyCastle.Cryptography.dll \
@@ -93,7 +93,7 @@ build-zisk:
     				--stdlib dotnet ./Program.cs
 
 build-zisk-sim:
-		docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk-test bflat build --arch riscv64 --os linux -x --no-pthread --no-pie --libc zisk_sim \
+		docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk-test2 bflat build --arch riscv64 --os linux -x --no-pthread --no-pie --libc zisk_sim \
     				-r /nethermind/Autofac.dll \
     				-r /nethermind/Autofac.Extensions.DependencyInjection.dll \
     				-r /nethermind/BouncyCastle.Cryptography.dll \
@@ -171,7 +171,7 @@ build-zisk-sim:
     				--stdlib dotnet ./Program.cs
 
 build-riscv:
-		docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk-test bflat build --arch riscv64 --os linux --no-debug-info -x --no-pthread --no-pie --libc musl \
+		docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk-test2 bflat build --arch riscv64 --os linux --no-debug-info -x --no-pthread --no-pie --libc musl \
 				--extra-ld {libpath}/libbrotlienc.a --extra-ld {libpath}/libbrotlicommon.a --extra-ld {libpath}/libbrotlidec.a \
 				-r /nethermind/Autofac.dll \
 				-r /nethermind/Autofac.Extensions.DependencyInjection.dll \

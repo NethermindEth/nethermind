@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -16,10 +15,9 @@ namespace Nethermind.Core.Crypto;
 /// This is a minimalistic one-way set associative cache for Keccak values.
 ///
 /// It allocates only 12MB of memory to store 128k of entries.
-/// No misaligned reads. Everything is aligned to both cache lines as well as to boundaries so no torn reads.
-/// Requires a single CAS to lock and <see cref="Volatile.Write(ref int,int)"/> to unlock.
-/// On a lock failure, it just moves on with execution.
-/// When a potential hit happens, the value of the result and the value of the key are copied on the stack to release the lock ASAP.
+///
+/// NOTE: In some custom runtimes, aligned allocation APIs can crash (or trigger breakpoints) during startup.
+/// For compatibility we use unaligned allocation here.
 /// </summary>
 public static unsafe class KeccakCache
 {
@@ -41,8 +39,10 @@ public static unsafe class KeccakCache
     {
         const UIntPtr size = Count * Entry.Size;
 
-        // Aligned, so that no torn reads if fields of Entry are properly aligned.
-        Memory = (Entry*)NativeMemory.AlignedAlloc(size, BitOperations.RoundUpToPowerOf2(Entry.Size));
+        // Compatibility: avoid NativeMemory.AlignedAlloc (can crash/trigger breakpoints in custom runtimes).
+        void* ptr = NativeMemory.Alloc(size);
+        Memory = (Entry*)ptr;
+
         NativeMemory.Clear(Memory, size);
         GC.AddMemoryPressure((long)size);
     }

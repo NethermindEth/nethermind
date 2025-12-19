@@ -38,7 +38,18 @@ public sealed unsafe partial class VirtualMachine(
     ILogManager? logManager) : IVirtualMachine
 {
     public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
-    private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    // Avoid BigInteger.Pow in static initialization: some runtimes have no exception support and/or unstable BigInteger internals.
+    // Also avoid relying on a specific UInt256 limb-constructor overload.
+    // 2^255 encoded as a 32-byte big-endian value (MSB set).
+    private static readonly byte[] P255Bytes =
+    {
+        0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    };
+
+    private readonly static UInt256 P255Int = new UInt256(P255Bytes, isBigEndian: true);
     internal readonly static byte[] EofHash256 = KeccakHash.ComputeHashBytes(MAGIC);
     internal static ref readonly UInt256 P255 => ref P255Int;
     internal static readonly UInt256 BigInt256 = 256;
@@ -125,26 +136,26 @@ public sealed unsafe partial class VirtualMachine(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-    public TransactionSubstate ExecuteTransaction<TTracingInst>(
-        EvmState evmState,
-        IWorldState worldState,
-        ITxTracer txTracer)
-        where TTracingInst : struct, IFlag
-    {
-        // Initialize dependencies for transaction tracing and state access.
-        _txTracer = txTracer;
-        _worldState = worldState;
+        public TransactionSubstate ExecuteTransaction<TTracingInst>(
+            EvmState evmState,
+            IWorldState worldState,
+            ITxTracer txTracer)
+            where TTracingInst : struct, IFlag
+        {
+            // Initialize dependencies for transaction tracing and state access.
+            _txTracer = txTracer;
+            _worldState = worldState;
 
-        // Prepare the specification and opcode mapping based on the current block header.
-        IReleaseSpec spec = BlockExecutionContext.Spec;
-        PrepareOpcodes<TTracingInst>(spec);
+            // Prepare the specification and opcode mapping based on the current block header.
+            IReleaseSpec spec = BlockExecutionContext.Spec;
+            PrepareOpcodes<TTracingInst>(spec);
 
-        // Initialize the code repository and set up the initial execution state.
-        _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
-        _currentState = evmState;
-        _previousCallResult = null;
-        _previousCallOutputDestination = UInt256.Zero;
-        ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
+            // Initialize the code repository and set up the initial execution state.
+            _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
+            _currentState = evmState;
+            _previousCallResult = null;
+            _previousCallOutputDestination = UInt256.Zero;
+            ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
 
         // Main execution loop: processes call frames until the top-level transaction completes.
         while (true)

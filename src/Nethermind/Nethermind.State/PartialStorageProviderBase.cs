@@ -28,7 +28,9 @@ namespace Nethermind.State
 
         protected PartialStorageProviderBase(ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
+            // Avoid generic logger retrieval on runtimes where Generic Virtual Method (GVM) resolution can FailFast.
+            // Use the non-generic overload instead.
+            _logger = logManager?.GetClassLogger(nameof(PartialStorageProviderBase)) ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         /// <summary>

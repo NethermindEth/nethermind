@@ -341,7 +341,7 @@ class Program
         return result;
     }
 
-    static int Main(string[] args)
+    static int Main()
     {
         Witness witness = new Witness()
         {
@@ -411,7 +411,6 @@ class Program
             new(specProvider, Always.Valid, NullLogManager.Instance);
 
         IBlockProcessor blockProcessor = blockProcessingEnv.GetProcessor(witness, baseBlock.StateRoot!);
-
         (Block processed, TxReceipt[] _) = blockProcessor.ProcessOne(suggestedBlock,
             ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(suggestedBlock.Header));
         if (processed.Hash != suggestedBlock.Hash)
@@ -420,7 +419,6 @@ class Program
             return 2;
         }
         // Block processed successfully
-
         return 0;
     }
 }

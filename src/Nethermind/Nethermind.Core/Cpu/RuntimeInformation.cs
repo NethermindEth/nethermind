@@ -33,8 +33,13 @@ public static class RuntimeInformation
     }
 
     public static int PhysicalCoreCount { get; } = GetCpuInfo()?.PhysicalCoreCount ?? Environment.ProcessorCount;
-    public static ParallelOptions ParallelOptionsLogicalCores { get; } = new() { MaxDegreeOfParallelism = Environment.ProcessorCount };
-    public static ParallelOptions ParallelOptionsPhysicalCoresUpTo16 { get; } = new() { MaxDegreeOfParallelism = Math.Min(PhysicalCoreCount, 16) };
+
+    // Some custom runtimes can report Environment.ProcessorCount == 0, which breaks ParallelOptions (must be -1 or >= 1).
+    private static int SafeProcessorCount => Math.Max(Environment.ProcessorCount, 1);
+    private static int SafePhysicalCoreCount => Math.Max(PhysicalCoreCount, 1);
+
+    public static ParallelOptions ParallelOptionsLogicalCores { get; } = new() { MaxDegreeOfParallelism = SafeProcessorCount };
+    public static ParallelOptions ParallelOptionsPhysicalCoresUpTo16 { get; } = new() { MaxDegreeOfParallelism = Math.Min(SafePhysicalCoreCount, 16) };
 
     public static bool Is64BitPlatform() => IntPtr.Size == 8;
 }

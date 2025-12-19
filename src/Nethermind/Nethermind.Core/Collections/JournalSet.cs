@@ -19,25 +19,44 @@ namespace Nethermind.Core.Collections
     public sealed class JournalSet<T> : IHashSetEnumerableCollection<T>, ICollection<T>, IJournal<int>
     {
         private readonly List<T> _items = [];
-        private readonly HashSet<T> _set = [];
         public int TakeSnapshot() => Position;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ContainsItem(List<T> items, T item)
+        {
+            // Compatibility: List<T>.Contains can route through EqualityComparer<T>.Default which may trigger
+            // generic type construction in restricted runtimes. We special-case reference types to use
+            // ReferenceEquals scanning instead.
+            if (!typeof(T).IsValueType)
+            {
+                object? target = item;
+                for (int i = 0; i < items.Count; i++)
+                {
+                    if (ReferenceEquals(items[i], target))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            // Value types: fall back to List<T>.Contains (may still use EqualityComparer<T>.Default, but we
+            // cannot safely avoid equality for value types without changing semantics).
+            return items.Contains(item);
+        }
 
         private int Position => Count - 1;
 
         [SkipLocalsInit]
         public void Restore(int snapshot)
         {
-            if (snapshot >= _set.Count)
+            if (snapshot >= Count)
             {
                 ThrowInvalidRestore(snapshot);
             }
 
-            // we use dictionary to remove items added after snapshot
-            foreach (T item in CollectionsMarshal.AsSpan(_items)[(snapshot + 1)..])
-            {
-                _set.Remove(item);
-            }
-
+            // Just truncate; uniqueness is enforced by Add().
             CollectionsMarshal.SetCount(_items, snapshot + 1);
         }
 
@@ -47,9 +66,10 @@ namespace Nethermind.Core.Collections
 
         public bool Add(T item)
         {
-            if (_set.Add(item))
+            // Compatibility: avoid HashSet/Dictionary which can trigger EqualityComparer<T>.Default generic instantiation
+            // in restricted runtimes. Use linear scan instead.
+            if (!ContainsItem(_items, item))
             {
-                // we use dictionary in order to track item positions
                 _items.Add(item);
                 return true;
             }
@@ -60,17 +80,16 @@ namespace Nethermind.Core.Collections
         public void Clear()
         {
             _items.Clear();
-            _set.Clear();
         }
 
-        public HashSet<T>.Enumerator GetEnumerator() => _set.GetEnumerator();
+        public IEnumerator<T> GetEnumerator() => _items.GetEnumerator();
         IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         public bool Remove(T item) => throw new NotSupportedException("Cannot remove from Journal, use Restore(int snapshot) instead.");
-        public int Count => _set.Count;
+        public int Count => _items.Count;
         public bool IsReadOnly => false;
         void ICollection<T>.Add(T item) => Add(item);
-        public bool Contains(T item) => _set.Contains(item);
-        public void CopyTo(T[] array, int arrayIndex) => _set.CopyTo(array, arrayIndex);
+        public bool Contains(T item) => ContainsItem(_items, item);
+        public void CopyTo(T[] array, int arrayIndex) => _items.CopyTo(array, arrayIndex);
     }
 }
