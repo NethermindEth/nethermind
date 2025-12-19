@@ -21,7 +21,7 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig config) : INethermindPlugi
     private INethermindApi? _api;
 
     /// <summary>
-    /// Generates a unique session identifier for RealTime mode cumulative file naming per FR-071.
+    /// Generates a unique session identifier for RealTime mode cumulative file naming.
     /// </summary>
     private static string GenerateSessionId()
     {

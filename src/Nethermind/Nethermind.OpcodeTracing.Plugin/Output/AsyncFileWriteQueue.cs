@@ -8,7 +8,6 @@ namespace Nethermind.OpcodeTracing.Plugin.Output;
 
 /// <summary>
 /// Asynchronous file write queue to prevent blocking the main block processing thread.
-/// Ensures per-block file writes have &lt;100ms latency per FR-005g and FR-022.
 /// </summary>
 public sealed class AsyncFileWriteQueue : IAsyncDisposable
 {
