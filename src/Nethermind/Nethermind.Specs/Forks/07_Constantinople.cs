@@ -14,7 +14,7 @@ namespace Nethermind.Specs.Forks
         protected Constantinople()
         {
             Name = "Constantinople";
-            BlockReward = UInt256.Parse("2000000000000000000");
+            BlockReward = new UInt256(2000000000000000000ul);
             DifficultyBombDelay = 5000000L;
             IsEip145Enabled = true;
             IsEip1014Enabled = true;
