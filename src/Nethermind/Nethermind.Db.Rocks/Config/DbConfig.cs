@@ -345,11 +345,6 @@ public class DbConfig : IDbConfig
     public string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
     public bool? FlatAccountDbVerifyChecksum { get; set; } = false; // YOLO
 
-    public bool FlatAccountDbEnableFileWarmer { get; set; } = false;
-    public ulong FlatAccountDbWriteBufferSize { get; set; } = (ulong)64.MiB();
-    public ulong FlatAccountDbRowCacheSize { get; set; } = 0;
-    public ulong FlatAccountDbWriteBufferNumber { get; set; } = 4;
-    public bool FlatAccountDbSkipDefaultDbOptions { get; set; } = true;
 
     private const string FlatCommonConfigWithBlockBased =
         MinimumBasicOption +
@@ -398,17 +393,29 @@ public class DbConfig : IDbConfig
         // "block_based_table_factory.index_type=kHashSearch;" +
 
         // So that last level bloom is kept. Should accelerate miss state check.
-        // "optimize_filters_for_hits=false;" +
-        "optimize_filters_for_hits=true;" +
+        "optimize_filters_for_hits=false;" +
+        // "optimize_filters_for_hits=true;" +
         "";
 
     public string? FlatDbCommonFlatOptions { get; set; } = FlatCommonConfigWithBlockBased;
 
+
+    public bool FlatAccountDbEnableFileWarmer { get; set; } = false;
+    public ulong FlatAccountDbWriteBufferSize { get; set; } = (ulong)32.MiB();
+    public ulong FlatAccountDbRowCacheSize { get; set; } = 0;
+    public ulong FlatAccountDbWriteBufferNumber { get; set; } = 4;
+    public bool FlatAccountDbSkipDefaultDbOptions { get; set; } = true;
+
+    // Account is too small so we make it so that the file and buffer is smaller so that it does not compact too much
+    // at once
     public string? FlatAccountDbRocksDbOptions
     {
         get { return FlatDbCommonFlatOptions + field; }
         set { field = value ?? ""; }
     } =
+        "target_file_size_base=32000000;" +
+        "target_file_size_multiplier=2;" +
+        "max_bytes_for_level_base=128000000;" +
         "block_based_table_factory.block_size=4096;" +
         "block_based_table_factory.filter_policy=bloomfilter:12;" +
         "";
@@ -426,7 +433,7 @@ public class DbConfig : IDbConfig
         get { return FlatDbCommonFlatOptions + field; }
         set { field = value ?? ""; }
     } =
-        "block_based_table_factory.block_size=16000;" + // Using 4kb size is faster, IO wise, but uses additional 500 MB of memory, which if put on block cache is much betterr.
+        "block_based_table_factory.block_size=4096;" + // Using 4kb size is faster, IO wise, but uses additional 500 MB of memory, which if put on block cache is much betterr.
         "block_based_table_factory.filter_policy=bloomfilter:12;" + // Really increase memory usage.
         "";
 

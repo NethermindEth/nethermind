@@ -70,6 +70,7 @@ public class FakeColumnsDb<T>(
 
         public void Dispose()
         {
+            /*
             using ArrayPoolList<Task> disposeTasks = new ArrayPoolList<Task>(_innerWriteBatch.Count);
             foreach (var keyValuePair2 in _innerWriteBatch)
             {
@@ -83,6 +84,13 @@ public class FakeColumnsDb<T>(
             }
 
             Task.WaitAll(disposeTasks);
+            */
+            foreach (var keyValuePair in _innerWriteBatch)
+            {
+                long sw = Stopwatch.GetTimestamp();
+                keyValuePair.Value.Dispose();
+                _rocksdBPersistenceTimes.WithLabels(keyValuePair.Key.ToString()!).Observe(Stopwatch.GetTimestamp() - sw);
+            }
         }
     }
 

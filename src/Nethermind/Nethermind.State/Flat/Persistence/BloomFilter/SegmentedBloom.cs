@@ -35,12 +35,16 @@ public sealed class SegmentedBloom : IDisposable
 
     private readonly Histogram.Child _bloomHitTime = _bloomTime.WithLabels("hit");
     private readonly Histogram.Child _bloomMissTime = _bloomTime.WithLabels("miss");
+    private readonly bool _enabled;
 
-    public SegmentedBloom(string directory, long segmentCapacity, int bitsPerKey)
+    public SegmentedBloom(string directory, long segmentCapacity, int bitsPerKey, bool enabled = true)
     {
+        _enabled = enabled;
         _directory = directory;
         _segmentCapacity = segmentCapacity;
         _bitsPerKey = bitsPerKey;
+
+        if (!_enabled) return;
 
         Directory.CreateDirectory(directory);
 
@@ -65,6 +69,8 @@ public sealed class SegmentedBloom : IDisposable
 
     public bool MightContain(ulong h1)
     {
+        if (!_enabled) return true;
+
         long sw = Stopwatch.GetTimestamp();
 
         var segs = _snapshot; // lock-free snapshot
@@ -83,6 +89,8 @@ public sealed class SegmentedBloom : IDisposable
 
     public void Add(ulong h1)
     {
+        if (!_enabled) return;
+
         if (MightContain(h1))
         {
             _skipped.Inc();
@@ -153,6 +161,7 @@ public sealed class SegmentedBloom : IDisposable
 
     public void Flush()
     {
+        if (!_enabled) return;
         using var _s = _segmentsLock.EnterScope();
 
         foreach (var seg in _snapshot)
@@ -161,6 +170,7 @@ public sealed class SegmentedBloom : IDisposable
 
     public void Dispose()
     {
+        if (!_enabled) return;
         using var _s = _segmentsLock.EnterScope();
 
         foreach (var seg in _snapshot)

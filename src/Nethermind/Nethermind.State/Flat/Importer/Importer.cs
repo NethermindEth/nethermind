@@ -40,7 +40,7 @@ public class Importer(
 
     private Counter _entriesCount = DevMetric.Factory.CreateCounter("importer_entries", "importer time");
 
-    private record Entry(Hash256? address, TreePath path, TrieNode node);
+    private record struct Entry(Hash256? address, TreePath path, TrieNode node);
 
     public void Copy(StateId to)
     {
@@ -57,13 +57,15 @@ public class Importer(
         Channel<Entry> channel = Channel.CreateBounded<Entry>(1_000_000);
         _logger.Warn("Starting import");
 
+        int maxConcurrency = 8;
+
         Task visitTask = Task.Run(() =>
         {
             try
             {
                 tree.Accept(new Visitor(channel.Writer), to.stateRoot.ToHash256(), new VisitingOptions()
                 {
-                    MaxDegreeOfParallelism = Environment.ProcessorCount
+                    MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, maxConcurrency)
                 });
             }
             finally
@@ -80,6 +82,8 @@ public class Importer(
         {
             concurrentIngestCount = 1;
         }
+
+        concurrentIngestCount = Math.Min(concurrentIngestCount, maxConcurrency);
 
         tasks.AddRange(Enumerable.Range(0, concurrentIngestCount).Select((_) => Task.Run(async () =>
         {

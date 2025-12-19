@@ -49,6 +49,12 @@ public interface IFlatDbConfig: IConfig
 
     [ConfigItem(Description = "Import to flat on state sync finished", DefaultValue = "false")]
     bool ImportOnStateSyncFinished { get; set; }
+
+    [ConfigItem(Description = "Generate preimage", DefaultValue = "false")]
+    bool GeneratePreimage { get; set; }
+
+    [ConfigItem(Description = "Max pruning boundary", DefaultValue = "false")]
+    int MaxPruningBoundary { get; set; }
 }
 
 public enum FlatLayout
@@ -79,4 +85,6 @@ public class FlatDbConfig: IFlatDbConfig
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public long BlockCacheSizeBudget { get; set; } = 1.GiB();
     public bool ImportOnStateSyncFinished { get; set; } = false;
+    public bool GeneratePreimage { get; set; } = false;
+    public int MaxPruningBoundary { get; set; } = 1024;
 }

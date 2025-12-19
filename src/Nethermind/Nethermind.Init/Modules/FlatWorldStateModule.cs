@@ -77,6 +77,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 ReadWithTrie = config.ReadWithTrie,
                 VerifyWithTrie = config.VerifyWithTrie,
                 ConcurrentCompactor = 1,
+                ForcedPruningBoundary = config.MaxPruningBoundary,
                 TrieCacheMemoryTarget = config.TrieCacheMemoryTarget,
                 InlineCompaction = config.InlineCompaction,
                 DisableTrieWarmer = config.DisableTrieWarmer
@@ -129,7 +130,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             {
                 IInitConfig initConfig = ctx.Resolve<IInitConfig>();
                 var bloomPath = initConfig.BaseDbPath + "/flatBloom/";
-                return new SegmentedBloom(bloomPath, 1_000_000_000, 10);
+                // Bloom experiment was a failure.
+                return new SegmentedBloom(bloomPath, 500_000_000, 10, enabled: false);
             })
 
             .AddSingleton<LegacyRocksdbPersistence>()
@@ -154,6 +156,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
         if (flatDbConfig.ImportFromPruningTrieState)
         {
             builder.AddStep(typeof(ImportFlatDb));
+        }
+
+        if (flatDbConfig.GeneratePreimage)
+        {
+            builder.AddStep(typeof(GeneratePreimage));
         }
 
         if (flatDbConfig.ImportOnStateSyncFinished)

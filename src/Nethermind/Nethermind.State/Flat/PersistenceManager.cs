@@ -256,12 +256,12 @@ public class PersistenceManager: IAsyncDisposable
             }
             else
             {
-                using ArrayPoolList<StateId> nextBlockStates = _flatDiffRepository.GetStatesAtBlockNumber(currentPersistedState.blockNumber + 1);
+                using ArrayPoolList<StateId> nextBlockStates = _flatDiffRepository.GetStatesAtBlockNumber(currentPersistedState.blockNumber + _compactSize);
 
                 // Just pick the first one
                 foreach (var stateId in nextBlockStates)
                 {
-                    if (_flatDiffRepository.TryLeaseState(stateId, out var snapshot))
+                    if (_flatDiffRepository.TryLeaseCompactedState(stateId, out var snapshot))
                     {
                         if (snapshot.From == currentPersistedState)
                         {
@@ -273,6 +273,30 @@ public class PersistenceManager: IAsyncDisposable
                         else
                         {
                             snapshot.Dispose();
+                        }
+                    }
+                }
+
+                if (snapshotToSave is null)
+                {
+                    nextBlockStates.Clear();
+                    nextBlockStates.AddRange(_flatDiffRepository.GetStatesAtBlockNumber(currentPersistedState.blockNumber + 1));
+
+                    foreach (var stateId in nextBlockStates)
+                    {
+                        if (_flatDiffRepository.TryLeaseState(stateId, out var snapshot))
+                        {
+                            if (snapshot.From == currentPersistedState)
+                            {
+                                if (_logger.IsWarn) _logger.Warn($"Force persisting state {stateId}");
+
+                                snapshotToSave = snapshot;
+                                break;
+                            }
+                            else
+                            {
+                                snapshot.Dispose();
+                            }
                         }
                     }
                 }
