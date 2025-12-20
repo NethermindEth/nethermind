@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/xdc-test.json",
+    "BaseDbPath": "nethermind_db/xdc-test",
+    "LogFileName": "xdc.log"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "PivotNumber": 0
+  },
+  "JsonRpc": {
+    "Enabled": false
+  },
+  "Merge": {
+    "Enabled": false
+  }
+}

@@ -88,7 +88,7 @@ public class P2PProtocolHandler(
         int size = msg.Data.Length;
 
         switch (msg.PacketType)
-        {
+        { 
             case P2PMessageCode.Hello:
                 {
                     using HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);

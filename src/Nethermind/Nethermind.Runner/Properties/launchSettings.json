@@ -114,7 +114,14 @@
     },
     "Xdc": {
       "commandName": "Project",
-      "commandLineArgs": "-c xdc --data-dir .data --Network.DiagTracerEnabled true --Network.StaticPeers enode://bc10b3f8c5b269e108056cf95f17de812b735f5830ab28fd45939ba579d0c073e1bf1c6890603652ad23faca1d56e2e218578caf75036757e757736ff6550121@172.21.58.14:30304 --Network.OnlyStaticPeers false --Init.DiscoveryEnabled true",
+      "commandLineArgs": "-c xdc --data-dir .data -l debug --Network.DiagTracerEnabled true --Network.StaticPeers enode://2c2ca525855fbed45b67ad507d0839e70e0cd0f670671971b2e42c3e745ed0d6a98e6bd47b26bfa07f834bfc9beced9c44538fa3884e1abea91bcffbe8e17fa1@127.0.0.1:10303,enode://2cbeb39b6bf44e8bee8e20356ea35048574ba4437d0c28350a79e0538e922a711182587c14a3e002392bdc1d1bc2176ca6e920997e97ff744e1e79b197f0f292@206.217.210.10:51210,enode://d838ae731fa6849b3418947a2a50d79e5aa3f76db016084b00a13484e74553568c3ad9a976e9c183232c0875caf84d8de8bf138d438d522ce04dc819f3012eb3@46.23.75.37:41210,enode://f90b5e6f8d76f4f6c56b883caaabd086cfbfc5bbdef4f66de74264d9719526e72953eb17eed34c376dc0324f48703c4383aabaa1dcbf024cb33da1fbea1b6914@50.115.113.29:51210 --Network.OnlyStaticPeers true --Init.DiscoveryEnabled false",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Xdc-test": {
+      "commandName": "Project",
+      "commandLineArgs": "-c xdc-test --data-dir .data -l debug --Network.DiagTracerEnabled false --Network.StaticPeers enode://2c2ca525855fbed45b67ad507d0839e70e0cd0f670671971b2e42c3e745ed0d6a98e6bd47b26bfa07f834bfc9beced9c44538fa3884e1abea91bcffbe8e17fa1@127.0.0.1:10303 --Network.OnlyStaticPeers true --Init.DiscoveryEnabled true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

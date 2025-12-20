@@ -12,4 +12,9 @@
       <Link>chainspec\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </EmbeddedResource>
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Update="..\Chains\xdc-test.json">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
 </Project>
