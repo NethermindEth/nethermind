@@ -781,6 +781,15 @@
           "Snappier": "[1.2.0, )"
         }
       },
+      "nethermind.ethereumclassic": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Api": "[1.37.0-unstable, )",
+          "Nethermind.Consensus": "[1.37.0-unstable, )",
+          "Nethermind.Consensus.Ethash": "[1.37.0-unstable, )",
+          "Nethermind.Specs": "[1.37.0-unstable, )"
+        }
+      },
       "nethermind.ethstats": {
         "type": "Project",
         "dependencies": {

@@ -19,6 +19,7 @@ using Nethermind.Serialization.Rlp;
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 [assembly: InternalsVisibleTo("Ethereum.Test.Base")]
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]
+[assembly: InternalsVisibleTo("Nethermind.EthereumClassic")]
 
 namespace Nethermind.Consensus.Ethash
 {

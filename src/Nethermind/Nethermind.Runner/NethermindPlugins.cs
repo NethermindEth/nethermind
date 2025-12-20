@@ -13,6 +13,7 @@ public static class NethermindPlugins
         typeof(Nethermind.Consensus.AuRa.AuRaPlugin),
         typeof(Nethermind.Consensus.Clique.CliquePlugin),
         typeof(Nethermind.Consensus.Ethash.EthashPlugin),
+        typeof(Nethermind.EthereumClassic.EthereumClassicPlugin),
         typeof(Nethermind.Consensus.Ethash.NethDevPlugin),
         typeof(Nethermind.EthStats.EthStatsPlugin),
         typeof(Nethermind.Flashbots.Flashbots),
