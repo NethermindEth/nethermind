@@ -54,8 +54,7 @@ public static class TypeExtensions
     public static bool CanBeAssignedNull(this Type type) =>
         !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
 
-    public static bool CannotBeAssignedNull(this Type type) =>
-        type.IsValueType && Nullable.GetUnderlyingType(type) is null;
+    public static bool CannotBeAssignedNull(this Type type) => !CanBeAssignedNull(type);
 
     /// <summary>
     /// Returns the type name. If this is a generic type, appends
