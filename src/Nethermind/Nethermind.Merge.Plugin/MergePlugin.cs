@@ -342,6 +342,12 @@ public class BaseMergePluginModule : Module
                             : NoGCStrategy.Instance,
                         ctx.Resolve<ILogManager>());
                 })
+            .AddSingleton<IHttpClient>((ctx) =>
+                {
+                    IJsonSerializer jsonSerializer = ctx.Resolve<IJsonSerializer>();
+                    ILogManager logManager = ctx.Resolve<ILogManager>();
+                    return new DefaultHttpClient(new HttpClient(), jsonSerializer, logManager, retryDelayMilliseconds: 100);
+                })
             ;
     }
 
@@ -357,11 +363,8 @@ public class BaseMergePluginModule : Module
             return new BlockImprovementContextFactory(blockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot));
         }
 
-        ILogManager logManager = ctx.Resolve<ILogManager>();
         IStateReader stateReader = ctx.Resolve<IStateReader>();
-        IJsonSerializer jsonSerializer = ctx.Resolve<IJsonSerializer>();
-
-        DefaultHttpClient httpClient = new(new HttpClient(), jsonSerializer, logManager, retryDelayMilliseconds: 100);
+        IHttpClient httpClient = ctx.Resolve<IHttpClient>();
         IBoostRelay boostRelay = new BoostRelay(httpClient, mergeConfig.BuilderRelayUrl);
         return new BoostBlockImprovementContextFactory(blockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot), boostRelay, stateReader);
     }
