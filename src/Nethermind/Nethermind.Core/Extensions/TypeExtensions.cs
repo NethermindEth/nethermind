@@ -22,9 +22,7 @@ public static class TypeExtensions
 
         foreach (Type implementation in implementations)
         {
-            List<Type> interfaces = implementation.GetInterfaces().ToList();
-
-            interfaces.RemoveAll(i => baseInterfaces.Contains(i));
+            IEnumerable<Type> interfaces = implementation.GetInterfaces().Except(baseInterfaces);
 
             if (interfaces.Contains(interfaceType))
             {
@@ -54,8 +52,7 @@ public static class TypeExtensions
     public static bool CanBeAssignedNull(this Type type) =>
         !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
 
-    public static bool CannotBeAssignedNull(this Type type) =>
-        type.IsValueType && Nullable.GetUnderlyingType(type) is null;
+    public static bool CannotBeAssignedNull(this Type type) => !CanBeAssignedNull(type);
 
     /// <summary>
     /// Returns the type name. If this is a generic type, appends
