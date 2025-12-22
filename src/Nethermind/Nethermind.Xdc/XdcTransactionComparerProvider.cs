@@ -14,17 +14,21 @@ using System.Text;
 
 namespace Nethermind.Xdc;
 
-internal class CompareTxBySender(ISigner signer, ISpecProvider specProvider) : IComparer<Transaction>
+internal class CompareTxBySender(ISigner signer, IXdcReleaseSpec spec) : IComparer<Transaction>
 {
-    private IXdcReleaseSpec finalSpec = (XdcReleaseSpec)specProvider.GetFinalSpec();
+    public CompareTxBySender(ISigner signer, ISpecProvider specProvider)
+        : this(signer, (IXdcReleaseSpec)specProvider.GetFinalSpec())
+    {
+    }
+
     public int Compare(Transaction? newTx, Transaction? oldTx)
     {
         if (ReferenceEquals(newTx, oldTx)) return TxComparisonResult.NotDecided;
         if (oldTx is null) return TxComparisonResult.KeepOld;
         if (newTx is null) return TxComparisonResult.TakeNew;
 
-        bool isNewTxSpecial = newTx.IsSpecialTransaction(finalSpec);
-        bool isOldTxSpecial = oldTx.IsSpecialTransaction(finalSpec);
+        bool isNewTxSpecial = newTx.IsSpecialTransaction(spec);
+        bool isOldTxSpecial = oldTx.IsSpecialTransaction(spec);
 
         if (!isNewTxSpecial && !isOldTxSpecial) return TxComparisonResult.NotDecided;
         if (isNewTxSpecial && !isOldTxSpecial) return TxComparisonResult.TakeNew;
@@ -55,7 +59,9 @@ internal class XdcTransactionComparerProvider(ISpecProvider specProvider, IBlock
     {
         var defaultComparer = defaultComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
-        var signerFilter = new CompareTxBySender(signer, specProvider);
+        var currentSpec = specProvider.GetXdcSpec(blockPreparationContext.BlockNumber);
+
+        var signerFilter = new CompareTxBySender(signer, currentSpec);
 
         return signerFilter.ThenBy(defaultComparer);
     }

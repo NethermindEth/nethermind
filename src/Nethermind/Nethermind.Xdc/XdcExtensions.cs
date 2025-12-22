@@ -84,6 +84,15 @@ public static class XdcExtensions
         return spec;
     }
 
+    public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, long blockNumber, ulong round = 0)
+    {
+        IXdcReleaseSpec spec = specProvider.GetSpec(blockNumber, null) as IXdcReleaseSpec;
+        if (spec is null)
+            throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
+        spec.ApplyV2Config(round);
+        return spec;
+    }
+
     public static ImmutableArray<Address>? ExtractAddresses(this Span<byte> data)
     {
         if (data.Length % Address.Size != 0)
