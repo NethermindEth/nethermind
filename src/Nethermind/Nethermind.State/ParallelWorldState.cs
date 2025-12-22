@@ -40,7 +40,11 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
         for (int i = 0; i < txCount + 2; i++)
         {
-            _intermediateBlockAccessLists[i] = new();
+            BlockAccessList bal = new()
+            {
+                Index = i
+            };
+            _intermediateBlockAccessLists[i] = bal;
             _transientStorageProviders[i] = new(logManager);
         }
     }

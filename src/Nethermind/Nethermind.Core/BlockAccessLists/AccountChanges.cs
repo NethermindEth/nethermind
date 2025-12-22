@@ -236,7 +236,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         UInt256 lastNonce = UInt256.MaxValue;
         foreach (KeyValuePair<int, NonceChange> change in _nonceChanges)
         {
-            if (change.Key > blockAccessIndex)
+            if (change.Key >= blockAccessIndex)
             {
                 return lastNonce;
             }
@@ -250,7 +250,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         UInt256 lastBalance = UInt256.MaxValue;
         foreach (KeyValuePair<int, BalanceChange> change in _balanceChanges)
         {
-            if (change.Key > blockAccessIndex)
+            if (change.Key >= blockAccessIndex)
             {
                 return lastBalance;
             }
@@ -264,7 +264,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         byte[] lastCode = [];
         foreach (KeyValuePair<int, CodeChange> change in _codeChanges)
         {
-            if (change.Key > blockAccessIndex)
+            if (change.Key >= blockAccessIndex)
             {
                 return lastCode;
             }

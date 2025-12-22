@@ -46,9 +46,9 @@ namespace Nethermind.Consensus.Processing
                 int len = block.Transactions.Length;
                 if (_balBuilder.ParallelExecutionEnabled)
                 {
-                        var transactionProcessors = new ITransactionProcessorAdapter[len];
-                        for (int i = 0; i < len; i++)
-                        {
+                    var transactionProcessors = new ITransactionProcessorAdapter[len];
+                    for (int i = 0; i < len; i++)
+                    {
                         TransactionProcessor transactionProcessor = new(blobBaseFeeCalculator, specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
                         ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
                         transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
@@ -118,6 +118,7 @@ namespace Nethermind.Consensus.Processing
                 ProcessingOptions processingOptions)
             {
                 // todo: parallelise tracers
+                currentTx.BlockAccessIndex = index + 1;
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
                 if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
             }
