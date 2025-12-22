@@ -153,17 +153,14 @@ namespace Nethermind.Network.Test
         public void Will_return_exception_on_wrong_ports_part() =>
             Assert.Throws<ArgumentException>(static () => new Enode(enode8String));
         
-
         [Test]
         public void Will_return_exception_on_duplicated_discovery_port_part() =>
             Assert.Throws<ArgumentException>(static () => new Enode(enode9String));
         
-
         [Test]
         public void Will_return_exception_on_wrong_form_of_discovery_port_part() =>
             Assert.Throws<ArgumentException>(static () => new Enode(enode10String));
         
-
         [Test]
         public async Task Will_accept_static_connection()
         {
