@@ -24,10 +24,16 @@ public static class TypeExtensions
         foreach (Type implementation in implementations)
         {
             Type[] allInterfaces = implementation.GetInterfaces();
-            using ArrayPoolListRef<Type> interfaces = allInterfaces
-                .Where(iface => !baseInterfaces.Contains(iface))
-                .ToPooledListRef(allInterfaces.Length);
-            
+            using ArrayPoolListRef<Type> interfaces = new(allInterfaces.Length);
+
+            foreach (Type iface in allInterfaces)
+            {
+                if (!baseInterfaces.Contains(iface))
+                {
+                    interfaces.Add(iface);
+                }
+            }
+
             if (interfaces.Contains(interfaceType))
             {
                 return implementation;
