@@ -121,17 +121,14 @@ namespace Nethermind.Network.Test
         [Test]
         public void Will_return_exception_in_port() =>
             Assert.Throws<ArgumentException>(static () => new Enode(enode3String));
-        
 
         [Test]
         public void Will_return_exception_in_dns() =>
             Assert.Throws<ArgumentException>(static () => new Enode(enode4String));
-        
 
         [Test]
         public void Will_return_exception_when_there_is_no_port() =>
             Assert.Throws<ArgumentException>(static () => new Enode(enode5String));
-        
 
         [Test]
         public void Will_parse_ports_correctly_when_there_are_two_different_ports()
@@ -152,15 +149,14 @@ namespace Nethermind.Network.Test
         [Test]
         public void Will_return_exception_on_wrong_ports_part() =>
             Assert.Throws<ArgumentException>(static () => new Enode(enode8String));
-        
+
         [Test]
         public void Will_return_exception_on_duplicated_discovery_port_part() =>
             Assert.Throws<ArgumentException>(static () => new Enode(enode9String));
-        
+
         [Test]
         public void Will_return_exception_on_wrong_form_of_discovery_port_part() =>
             Assert.Throws<ArgumentException>(static () => new Enode(enode10String));
-        
         [Test]
         public async Task Will_accept_static_connection()
         {
