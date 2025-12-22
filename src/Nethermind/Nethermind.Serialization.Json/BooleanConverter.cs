@@ -1,3 +1,5 @@
+
+
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -44,7 +46,7 @@ namespace Nethermind.Serialization.Json
                 }
             }
 
-            throw new JsonException($"Cannot convert {reader.TokenType} to {nameof(bool)}");
+            throw new JsonException($"Cannot convert {reader.TokenType} to {nameof(Boolean)}");
         }
 
         [SkipLocalsInit]
