@@ -113,9 +113,9 @@ jobs:
     name: Approve
     runs-on: ubuntu-latest
     needs: build
-    environment:
-      name: Releases
-      url: https://github.com/NethermindEth/nethermind/releases/tag/${{ needs.build.outputs.version }}
+    # environment:
+    #   name: Releases
+    #   url: https://github.com/NethermindEth/nethermind/releases/tag/${{ needs.build.outputs.version }}
     steps:
       - name: Wait for approval
         run: echo "Waiting for approval..."
@@ -163,7 +163,7 @@ jobs:
           The packages are signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
           EOF
           )
-            gh release create $GIT_TAG -t v$GIT_TAG -d ${prerelease:+-p} -F <(printf '%s' "$relnotes")
+            gh release create $GIT_TAG --target $GITHUB_SHA -t v$GIT_TAG -d ${prerelease:+-p} -F <(printf '%s' "$relnotes")
           fi
 
           cd $PACKAGE_DIR
@@ -172,49 +172,49 @@ jobs:
 
           if (( publish )); then
             echo "Publishing release $GIT_TAG"
-            gh release edit $GIT_TAG --verify-tag -t v$GIT_TAG ${prerelease:+-p} ${prerelease:---latest}
+            gh release edit $GIT_TAG --verify-tag --target $GITHUB_SHA -t v$GIT_TAG ${prerelease:+-p} ${prerelease:---latest}
           fi
 
           echo "Publishing completed"
 
-  publish-docker:
-    name: Publish to Docker Hub
-    runs-on: ubuntu-latest
-    needs: [approval, build]
-    steps:
-      - name: Check out Nethermind repository
-        uses: actions/checkout@v6
+  # publish-docker:
+  #   name: Publish to Docker Hub
+  #   runs-on: ubuntu-latest
+  #   needs: [approval, build]
+  #   steps:
+  #     - name: Check out Nethermind repository
+  #       uses: actions/checkout@v6
 
-      - name: Create GitHub app token
-        id: gh-app
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+  #     - name: Create GitHub app token
+  #       id: gh-app
+  #       uses: actions/create-github-app-token@v2
+  #       with:
+  #         app-id: ${{ vars.APP_ID }}
+  #         private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+  #     - name: Set up QEMU
+  #       uses: docker/setup-qemu-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+  #     - name: Log in to Docker Hub
+  #       uses: docker/login-action@v3
+  #       with:
+  #         username: ${{ secrets.DOCKER_HUB_USERNAME }}
+  #         password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
-      - name: Build and push image to Docker Hub
-        run: |
-          image=nethermind/nethermind
+  #     - name: Build and push image to Docker Hub
+  #       run: |
+  #         image=nethermind/nethermind
 
-          for suffix in "" ".chiseled"; do
-            tag_suffix=$([[ -z "$suffix" ]] && echo "" || echo "-${suffix:1}")
-            docker buildx build . --platform=linux/amd64,linux/arm64 -f Dockerfile$suffix \
-              ${{ needs.build.outputs.prerelease == 'false' && '-t $image:latest$tag_suffix' || '' }} \
-              -t "$image:${{ needs.build.outputs.version }}$tag_suffix" \
-              --build-arg CI=$CI \
-              --build-arg COMMIT_HASH=$GITHUB_SHA \
-              --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) \
-              --push
-          done
+  #         for suffix in "" ".chiseled"; do
+  #           tag_suffix=$([[ -z "$suffix" ]] && echo "" || echo "-${suffix:1}")
+  #           docker buildx build . --platform=linux/amd64,linux/arm64 -f Dockerfile$suffix \
+  #             ${{ needs.build.outputs.prerelease == 'false' && '-t $image:latest$tag_suffix' || '' }} \
+  #             -t "$image:${{ needs.build.outputs.version }}$tag_suffix" \
+  #             --build-arg CI=$CI \
+  #             --build-arg COMMIT_HASH=$GITHUB_SHA \
+  #             --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) \
+  #             --push
+  #         done
