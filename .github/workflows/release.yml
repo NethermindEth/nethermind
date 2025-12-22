@@ -172,7 +172,7 @@ jobs:
 
           if (( publish )); then
             echo "Publishing release $GIT_TAG"
-            gh release edit $GIT_TAG --verify-tag --target $GITHUB_SHA -t v$GIT_TAG ${prerelease:+-p} ${prerelease:---latest}
+            gh release edit $GIT_TAG --verify-tag --target $GITHUB_SHA -t v$GIT_TAG ${prerelease:+--prerelease} ${prerelease:---latest}
           fi
 
           echo "Publishing completed"
