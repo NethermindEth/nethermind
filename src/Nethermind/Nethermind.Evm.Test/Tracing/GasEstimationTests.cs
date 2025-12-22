@@ -674,7 +674,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             public ISpecProvider _specProvider;
             public IEthereumEcdsa _ethereumEcdsa;
-            public TransactionProcessor _transactionProcessor;
+            public EthereumTransactionProcessor _transactionProcessor;
             public IWorldState _stateProvider;
             public EstimateGasTracer tracer;
             public GasEstimator estimator;
@@ -690,8 +690,8 @@ namespace Nethermind.Evm.Test.Tracing
                 _stateProvider.CommitTree(0);
 
                 EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-                VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-                _transactionProcessor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+                EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+                _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
                 _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
 
                 tracer = new();
