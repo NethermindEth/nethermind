@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.State;
@@ -28,7 +29,7 @@ internal class XdcTransactionProcessor(
         IWorldState? worldState,
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager) : TransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+        ILogManager? logManager) : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
 
     protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
@@ -49,7 +50,7 @@ internal class XdcTransactionProcessor(
         return base.ValidateSender(tx, header, spec, tracer, opts);
     }
 
-    protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts, in IntrinsicGas intrinsicGas)
+    protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts, in IntrinsicGas<EthereumGasPolicy> intrinsicGas)
     {
         var xdcSpec = spec as XdcReleaseSpec;
         Address target = tx.To;
@@ -119,7 +120,7 @@ internal class XdcTransactionProcessor(
         IXdcReleaseSpec spec = GetSpec(header) as IXdcReleaseSpec;
 
         TransactionResult result;
-        IntrinsicGas intrinsicGas = CalculateIntrinsicGas(tx, spec);
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);
         UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
         bool _ = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
