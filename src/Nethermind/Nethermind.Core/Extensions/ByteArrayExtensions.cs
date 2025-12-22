@@ -25,6 +25,11 @@ namespace Nethermind.Core.Extensions
 
         public static byte[] Slice(this byte[] bytes, int startIndex)
         {
+            if ((uint)startIndex > (uint)bytes.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(startIndex));
+            }
+
             byte[] slice = new byte[bytes.Length - startIndex];
             Buffer.BlockCopy(bytes, startIndex, slice, 0, bytes.Length - startIndex);
             return slice;
@@ -32,9 +37,19 @@ namespace Nethermind.Core.Extensions
 
         public static byte[] Slice(this byte[] bytes, int startIndex, int length)
         {
+            if ((uint)startIndex > (uint)bytes.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(startIndex));
+            }
+
+            if ((uint)length > (uint)(bytes.Length - startIndex))
+            {
+                throw new ArgumentOutOfRangeException(nameof(length));
+            }
+
             if (length == 1)
             {
-                return [bytes[startIndex]];
+            return new[] { bytes[startIndex] };
             }
 
             byte[] slice = new byte[length];
