@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -18,9 +19,14 @@ public class TaikoHeaderValidator(
     IBlockTree? blockTree,
     ISealValidator? sealValidator,
     ISpecProvider? specProvider,
+    IL1OriginStore? l1OriginStore,
+    ITimestamper? timestamper,
     ILogManager? logManager)
     : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
+    private readonly IL1OriginStore? _l1OriginStore = l1OriginStore;
+    private readonly ITimestamper _timestamper = timestamper ?? Timestamper.Default;
+
     // EIP-4396 calculation parameters.
     private const ulong BlockTimeTarget = 2;
     private const ulong MaxGasTargetPercentage = 95;
@@ -30,6 +36,39 @@ public class TaikoHeaderValidator(
     private static readonly UInt256 MaxBaseFeeShasta = 1_000_000_000;
 
     protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
+
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    {
+        if (header.UnclesHash != Keccak.OfAnEmptySequenceRlp)
+        {
+            error = "Uncles must be empty";
+            if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - uncles not empty");
+            return false;
+        }
+
+        if (header.WithdrawalsRoot is null)
+        {
+            error = "WithdrawalsRoot is missing";
+            if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - withdrawals root is null");
+            return false;
+        }
+
+        return base.Validate<TOrphaned>(header, parent, isUncle, out error);
+    }
+
+    protected override bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle, ref string? error)
+    {
+        var taikoSpec = (ITaikoReleaseSpec)spec;
+
+        if (taikoSpec.IsShastaEnabled && header.ExtraData is { Length: < TaikoHeaderHelper.ShastaExtraDataMinLen })
+        {
+            error = $"ExtraData must be at least {TaikoHeaderHelper.ShastaExtraDataMinLen} bytes for Shasta, but got {header.ExtraData.Length}";
+            if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
+            return false;
+        }
+
+        return base.ValidateExtraData(header, spec, isUncle, ref error);
+    }
 
     protected override bool Validate1559(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
     {
@@ -140,12 +179,50 @@ public class TaikoHeaderValidator(
 
     protected override bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
     {
-        if (header.Timestamp < parent.Timestamp)
+        var taikoSpec = (ITaikoReleaseSpec)_specProvider.GetSpec(header);
+
+        // Shasta fork enforces a strict timestamp increase, while other forks allow equal timestamps
+        // (multiple L2 blocks per L1 block scenario).
+        if (taikoSpec.IsShastaEnabled)
         {
-            error = BlockErrorMessages.InvalidTimestamp;
-            if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - timestamp before parent");
-            return false;
+            if (header.Timestamp <= parent.Timestamp)
+            {
+                error = BlockErrorMessages.InvalidTimestamp;
+
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn($"Invalid block header ({header.Hash}) - timestamp must be greater than parent for Shasta");
+                }
+
+                return false;
+            }
         }
+        else
+        {
+            if (header.Timestamp < parent.Timestamp)
+            {
+                error = BlockErrorMessages.InvalidTimestamp;
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - timestamp before parent");
+                return false;
+            }
+        }
+
+        // If not a preconfirmation block, check that timestamp is not in the future
+        if (_l1OriginStore is not null)
+        {
+            L1Origin? l1Origin = _l1OriginStore.ReadL1Origin((UInt256)header.Number);
+            if (l1Origin is not null && !l1Origin.IsPreconfBlock)
+            {
+                ulong currentTime = _timestamper.UnixTime.Seconds;
+                if (header.Timestamp > currentTime)
+                {
+                    error = $"Block timestamp {header.Timestamp} is in the future (current time: {currentTime})";
+                    if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
+                    return false;
+                }
+            }
+        }
+
         return true;
     }
 
