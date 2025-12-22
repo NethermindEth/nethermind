@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Core.Extensions;
 
@@ -22,8 +23,11 @@ public static class TypeExtensions
 
         foreach (Type implementation in implementations)
         {
-            IEnumerable<Type> interfaces = implementation.GetInterfaces().Except(baseInterfaces);
-
+            Type[] allInterfaces = implementation.GetInterfaces();
+            using ArrayPoolListRef<Type> interfaces = allInterfaces
+                .Where(iface => !baseInterfaces.Contains(iface))
+                .ToPooledListRef(allInterfaces.Length);
+            
             if (interfaces.Contains(interfaceType))
             {
                 return implementation;
