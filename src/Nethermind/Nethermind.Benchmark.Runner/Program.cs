@@ -23,7 +23,7 @@ namespace Nethermind.Benchmark.Runner
         {
             foreach (Job job in jobs)
             {
-                AddJob(job.WithToolchain(InProcessNoEmitToolchain.Instance));
+                AddJob(job);
             }
 
             AddColumnProvider(DefaultColumnProviders.Descriptor);
@@ -39,7 +39,7 @@ namespace Nethermind.Benchmark.Runner
 
     public class PrecompileBenchmarkConfig : DashboardConfig
     {
-        public PrecompileBenchmarkConfig() : base(Job.MediumRun.WithRuntime(CoreRuntime.Core90))
+        public PrecompileBenchmarkConfig() : base(Job.MediumRun.WithRuntime(CoreRuntime.Core10_0))
         {
             AddColumnProvider(new GasColumnProvider());
         }
@@ -68,7 +68,7 @@ namespace Nethermind.Benchmark.Runner
             {
                 foreach (Assembly assembly in additionalJobAssemblies)
                 {
-                    BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core90)), args);
+                    BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core10_0)), args);
                 }
 
                 foreach (Assembly assembly in simpleJobAssemblies)

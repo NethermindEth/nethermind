@@ -1,65 +1,59 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Diagnosers;
+
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-//using Nethermind.HashLib;
+using Nethermind.Int256;
 
-namespace Nethermind.Benchmarks.Core
+using System;
+
+namespace Nethermind.Benchmarks.Core;
+
+[HardwareCounters(HardwareCounter.InstructionRetired, HardwareCounter.TotalCycles, HardwareCounter.BranchMispredictions)]
+public class Keccak256Benchmarks
 {
-    public class Keccak256Benchmarks
+    public enum Scenario
     {
-        //private static HashLib.Crypto.SHA3.Keccak256 _hash = HashFactory.Crypto.SHA3.CreateKeccak256();
+        Empty = 0,
+        Address,
+        UInt256One,
+        UInt256MaxValue,
+        LargeData
+    }
 
-        private byte[] _a;
+    private byte[] _a;
+    private readonly byte[] _output = new byte[32];
 
-        private byte[][] _scenarios =
-        {
-            new byte[]{},
-            new byte[]{1},
-            new byte[100000],
-            TestItem.AddressA.Bytes
-        };
+    private static readonly byte[][] _scenarios =
+    {
+        new byte[]{},
+        TestItem.AddressA.Bytes,
+        UInt256.One.ToBigEndian(),
+        UInt256.MaxValue.ToBigEndian(),
+        new byte[100000],
+    };
 
-        [Params(1)]
-        public int ScenarioIndex { get; set; }
+    [Params(Scenario.Empty, Scenario.Address, Scenario.UInt256One, Scenario.UInt256MaxValue, Scenario.LargeData)]
+    public Scenario ScenarioIndex { get; set; }
 
-        [GlobalSetup]
-        public void Setup()
-        {
-            _a = _scenarios[ScenarioIndex];
-        }
+    [GlobalSetup]
+    public void Setup()
+    {
+        _a = _scenarios[(int)ScenarioIndex];
+    }
 
-        [Benchmark]
-        public void MeadowHashSpan()
-        {
-            MeadowHashBenchmarks.ComputeHash(_a);
-        }
+    [Benchmark]
+    public void Avx512()
+    {
+        KeccakHash.BenchmarkHash(_a, _output, KeccakHash.Implementation.Avx512);
+    }
 
-        [Benchmark]
-        public byte[] MeadowHashBytes()
-        {
-            return MeadowHashBenchmarks.ComputeHashBytes(_a);
-        }
-
-        [Benchmark(Baseline = true)]
-        public byte[] Current()
-        {
-            return Keccak.Compute(_a).BytesToArray();
-        }
-
-        [Benchmark]
-        public Span<byte> ValueKeccak()
-        {
-            return Nethermind.Core.Crypto.ValueKeccak.Compute(_a).BytesAsSpan;
-        }
-
-        //[Benchmark]
-        //public byte[] HashLib()
-        //{
-        //    return _hash.ComputeBytes(_a).GetBytes();
-        //}
+    [Benchmark(Baseline = true)]
+    public void Scalar()
+    {
+        KeccakHash.BenchmarkHash(_a, _output, KeccakHash.Implementation.Software);
     }
 }
