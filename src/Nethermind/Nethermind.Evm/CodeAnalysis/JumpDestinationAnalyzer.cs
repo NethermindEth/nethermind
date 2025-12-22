@@ -113,9 +113,9 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
 
         long[] bitmap = CreateBitmap(code.Length);
 
-        return Vector512<sbyte>.IsSupported && code.Length >= Vector512<sbyte>.Count ?
+        return Vector512.IsHardwareAccelerated && code.Length >= Vector512<sbyte>.Count ?
             PopulateJumpDestinationBitmap_Vector512(bitmap, code) :
-            Vector128<sbyte>.IsSupported && code.Length >= Vector128<sbyte>.Count ?
+            Vector128.IsHardwareAccelerated && code.Length >= Vector128<sbyte>.Count ?
             PopulateJumpDestinationBitmap_Vector128(bitmap, code) :
             PopulateJumpDestinationBitmap_Scalar(bitmap, code);
     }
@@ -266,7 +266,7 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
             int move = 1;
             // We use 128bit rather than Avx or Avx-512 as is optimization for stretch of code without PUSHes.
             // As the vector size increases the chance of there being a PUSH increases which will disable this optimization.
-            if (Vector128<sbyte>.IsSupported &&
+            if (Vector128.IsHardwareAccelerated &&
                 // Check not going to read passed end of code.
                 programCounter <= code.Length - Vector128<sbyte>.Count &&
                 // Are we on an short stride, one quarter of the long flags?
