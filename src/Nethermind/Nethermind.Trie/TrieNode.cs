@@ -230,7 +230,7 @@ namespace Nethermind.Trie
                 int nonEmptyNodes = 0;
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                   if (!IsChildNull(i) && ++nonEmptyNodes > 2)
+                    if (!IsChildNull(i) && ++nonEmptyNodes > 2)
                     {
                         return true;
                     }
