@@ -72,6 +72,8 @@ public static unsafe class KeccakCache
         ref Entry e = ref Unsafe.Add(ref Unsafe.AsRef<Entry>(Memory), index);
         if (Sse.IsSupported)
         {
+            // This would be a GC hole if was managed memory, but it's native.
+            // Regardless, prefetch is non-faulting so it's safe.
             Sse.PrefetchNonTemporal((byte*)Unsafe.AsPointer(ref e) + 64);
         }
 
