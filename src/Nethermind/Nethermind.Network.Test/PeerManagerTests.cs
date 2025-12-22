@@ -150,7 +150,7 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        ublic void Will_return_exception_on_wrong_ports_part() =>
+        public void Will_return_exception_on_wrong_ports_part() =>
             Assert.Throws<ArgumentException>(static () => new Enode(enode8String));
         
 
