@@ -50,6 +50,7 @@ public partial class BlockProcessor
     private readonly ILogManager _logManager;
     private readonly IWithdrawalProcessor _withdrawalProcessor;
     private readonly IExecutionRequestsProcessor _executionRequestsProcessor;
+    private Hash256 _lastLoadedBal = Hash256.Zero;
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -132,7 +133,7 @@ public partial class BlockProcessor
         // need one receipts / block tracer per thread & combine
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        SetupBlockAccessLists(spec, block.BlockAccessList, block.Transactions.Length, block.IsGenesis);
+        SetupBlockAccessLists(spec, block);
         bool shouldComputeStateRoot = ShouldComputeStateRoot(header);
         Task stateApplication = _balBuilder.ParallelExecutionEnabled ? ApplyBlockAccessListToState(spec, shouldComputeStateRoot) : Task.CompletedTask;
         _blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
@@ -338,17 +339,22 @@ public partial class BlockProcessor
         }
     }
 
-    private void SetupBlockAccessLists(IReleaseSpec spec, BlockAccessList? suggestedBal, int txCount, bool isGenesis)
+    // private void SetupBlockAccessLists(IReleaseSpec spec, BlockAccessList? suggestedBal, int txCount, bool isGenesis)
+    private void SetupBlockAccessLists(IReleaseSpec spec, Block suggested)
     {
         if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
         {
             _balBuilder.TracingEnabled = true;
-            _balBuilder.IsGenesis = isGenesis;
+            _balBuilder.IsGenesis = suggested.IsGenesis;
 
             if (_balBuilder.ParallelExecutionEnabled)
             {
-                _balBuilder.SetupGeneratedAccessLists(_logManager, txCount);
-                _balBuilder.LoadSuggestedBlockAccessList(suggestedBal.Value);
+                _balBuilder.SetupGeneratedAccessLists(_logManager, suggested.Transactions.Length);
+                if (_lastLoadedBal != suggested.Hash)
+                {
+                    _balBuilder.LoadSuggestedBlockAccessList(suggested.BlockAccessList.Value);
+                }
+                _lastLoadedBal = suggested.Hash;
             }
             else
             {

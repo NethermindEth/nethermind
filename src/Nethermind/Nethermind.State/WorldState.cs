@@ -182,7 +182,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             _stateProvider.DeleteAccount(address);
         }
-        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null)
         {
             DebugGuardInScope();
             _stateProvider.CreateAccount(address, balance, nonce);
@@ -347,7 +347,7 @@ namespace Nethermind.State
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
         }
 
-        public Snapshot TakeSnapshot(bool newTransactionStart = false)
+        public Snapshot TakeSnapshot(bool newTransactionStart = false, int? blockAccessIndex = null)
         {
             DebugGuardInScope();
             int persistentSnapshot = _persistentStorageProvider.TakeSnapshot(newTransactionStart);
@@ -357,7 +357,7 @@ namespace Nethermind.State
             return new Snapshot(storageSnapshot, stateSnapshot, -1);
         }
 
-        public void Restore(Snapshot snapshot)
+        public void Restore(Snapshot snapshot, int? blockAccessIndex = null)
         {
             DebugGuardInScope();
             _persistentStorageProvider.Restore(snapshot.StorageSnapshot.PersistentStorageSnapshot);
@@ -371,7 +371,7 @@ namespace Nethermind.State
             Restore(new Snapshot(new Snapshot.Storage(persistentStorage, transientStorage), state, -1));
         }
 
-        public void SetNonce(Address address, in UInt256 nonce)
+        public void SetNonce(Address address, in UInt256 nonce, int? blockAccessIndex = null)
         {
             DebugGuardInScope();
             _stateProvider.SetNonce(address, nonce);

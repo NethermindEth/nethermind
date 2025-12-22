@@ -35,10 +35,10 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
     public void SetupGeneratedAccessLists(ILogManager logManager, int txCount)
     {
-        _intermediateBlockAccessLists = new BlockAccessList[txCount + 1];
-        _transientStorageProviders = new TransientStorageProvider[txCount + 1];
+        _intermediateBlockAccessLists = new BlockAccessList[txCount + 2];
+        _transientStorageProviders = new TransientStorageProvider[txCount + 2];
 
-        for (int i = 0; i < txCount + 1; i++)
+        for (int i = 0; i < txCount + 2; i++)
         {
             _intermediateBlockAccessLists[i] = new();
             _transientStorageProviders[i] = new(logManager);
@@ -131,6 +131,12 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
     public void GenerateBlockAccessList()
     {
         // combine intermediate BALs and receipt tracers
+        BlockAccessList first = _intermediateBlockAccessLists[0];
+        foreach (BlockAccessList bal in _intermediateBlockAccessLists.Skip(1))
+        {
+            first.Merge(bal);
+        }
+        GeneratedBlockAccessList = first;
     }
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null)
@@ -153,7 +159,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         if (TracingEnabled)
         {
             UInt256 newBalance = oldBalance + balanceChange;
-            GeneratedBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+            GetGeneratingBlockAccessList(blockAccessIndex).AddBalanceChange(address, oldBalance, newBalance);
         }
     }
 
@@ -179,7 +185,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         if (TracingEnabled)
         {
             UInt256 newBalance = oldBalance + balanceChange;
-            GeneratedBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+            GetGeneratingBlockAccessList(blockAccessIndex).AddBalanceChange(address, oldBalance, newBalance);
         }
 
         return res;
@@ -198,7 +204,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
         if (TracingEnabled)
         {
-            GeneratedBlockAccessList.AddStorageRead(storageCell);
+            GetGeneratingBlockAccessList(blockAccessIndex).AddStorageRead(storageCell);
         }
         return GetInternal(storageCell, blockAccessIndex.Value);
     }
@@ -210,7 +216,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
         if (TracingEnabled)
         {
-            GeneratedBlockAccessList.AddStorageRead(storageCell);
+            GetGeneratingBlockAccessList(blockAccessIndex).AddStorageRead(storageCell);
         }
         return GetOriginalInternal(storageCell, blockAccessIndex.Value);
     }
@@ -234,12 +240,15 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
         if (TracingEnabled)
         {
-            GeneratedBlockAccessList.AddNonceChange(address, (ulong)(oldNonce + delta));
+            GetGeneratingBlockAccessList(blockAccessIndex).AddNonceChange(address, (ulong)(oldNonce + delta));
         }
     }
 
-    public override void SetNonce(Address address, in UInt256 nonce)
+    public override void SetNonce(Address address, in UInt256 nonce, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         if (!ParallelExecutionEnabled)
         {
             _innerWorldState.SetNonce(address, nonce);
@@ -247,7 +256,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
         if (TracingEnabled)
         {
-            GeneratedBlockAccessList.AddNonceChange(address, (ulong)nonce);
+            GetGeneratingBlockAccessList(blockAccessIndex).AddNonceChange(address, (ulong)nonce);
         }
     }
 
@@ -259,7 +268,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         if (TracingEnabled)
         {
             byte[] oldCode = GetCodeInternal(address, blockAccessIndex.Value) ?? [];
-            GeneratedBlockAccessList.AddCodeChange(address, oldCode, code.ToArray());
+            GetGeneratingBlockAccessList(blockAccessIndex).AddCodeChange(address, oldCode, code.ToArray());
         }
         return !ParallelExecutionEnabled && _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
     }
@@ -272,7 +281,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         if (TracingEnabled)
         {
             ReadOnlySpan<byte> oldValue = GetInternal(storageCell, blockAccessIndex.Value);
-            GeneratedBlockAccessList.AddStorageChange(storageCell, new(oldValue, true), new(newValue, true));
+            GetGeneratingBlockAccessList(blockAccessIndex).AddStorageChange(storageCell, new(oldValue, true), new(newValue, true));
         }
         if (!ParallelExecutionEnabled)
         {
@@ -342,7 +351,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         {
             UInt256 before = GetBalanceInternal(address, blockAccessIndex.Value);
             UInt256 after = before - balanceChange;
-            GeneratedBlockAccessList.AddBalanceChange(address, before, after);
+            GetGeneratingBlockAccessList(blockAccessIndex).AddBalanceChange(address, before, after);
         }
         if (!ParallelExecutionEnabled)
         {
@@ -357,7 +366,7 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
         if (TracingEnabled)
         {
-            GeneratedBlockAccessList.DeleteAccount(address, GetBalanceInternal(address, blockAccessIndex.Value));
+            GetGeneratingBlockAccessList(blockAccessIndex).DeleteAccount(address, GetBalanceInternal(address, blockAccessIndex.Value));
         }
         if (!ParallelExecutionEnabled)
         {
@@ -365,19 +374,22 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         }
     }
 
-    public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         if (TracingEnabled)
         {
             AddAccountRead(address);
             // todo move inside bal
             if (balance != 0)
             {
-                GeneratedBlockAccessList.AddBalanceChange(address, 0, balance);
+                GetGeneratingBlockAccessList(blockAccessIndex).AddBalanceChange(address, 0, balance);
             }
             if (nonce != 0)
             {
-                GeneratedBlockAccessList.AddNonceChange(address, (ulong)nonce);
+                GetGeneratingBlockAccessList(blockAccessIndex).AddNonceChange(address, (ulong)nonce);
             }
         }
         if (!ParallelExecutionEnabled)
@@ -421,11 +433,14 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
     public void AddAccountRead(Address address, int? blockAccessIndex = null)
         => GetGeneratingBlockAccessList(blockAccessIndex).AddAccountRead(address);
 
-    public override void Restore(Snapshot snapshot)
+    public override void Restore(Snapshot snapshot, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         if (TracingEnabled)
         {
-            GeneratedBlockAccessList.Restore(snapshot.BlockAccessListSnapshot);
+            GetGeneratingBlockAccessList(blockAccessIndex).Restore(snapshot.BlockAccessListSnapshot);
         }
         if (!ParallelExecutionEnabled)
         {
@@ -433,9 +448,12 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
         }
     }
 
-    public override Snapshot TakeSnapshot(bool newTransactionStart = false)
+    public override Snapshot TakeSnapshot(bool newTransactionStart = false, int? blockAccessIndex = null)
     {
-        int blockAccessListSnapshot = GeneratedBlockAccessList.TakeSnapshot();
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
+        int blockAccessListSnapshot = GetGeneratingBlockAccessList(blockAccessIndex).TakeSnapshot();
         Snapshot snapshot = ParallelExecutionEnabled ? Snapshot.Empty : _innerWorldState.TakeSnapshot(newTransactionStart);
         return new(snapshot.StorageSnapshot, snapshot.StateSnapshot, blockAccessListSnapshot);
     }
@@ -488,6 +506,9 @@ public class ParallelWorldState(IWorldState innerWorldState, bool enableParallel
 
     public override void ClearStorage(Address address, int? blockAccessIndex = null)
     {
+        if (!blockAccessIndex.HasValue)
+            throw new ArgumentNullException(nameof(blockAccessIndex));
+
         if (TracingEnabled)
         {
             AddAccountRead(address, blockAccessIndex.Value);

@@ -588,7 +588,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             UInt256 newNonce = validate || nonce < ulong.MaxValue ? nonce + 1 : 0;
-            WorldState.SetNonce(tx.SenderAddress, newNonce);
+            WorldState.SetNonce(tx.SenderAddress, newNonce, VirtualMachine.TxExecutionContext.BlockAccessIndex);
 
             return TransactionResult.Ok;
         }
@@ -673,7 +673,7 @@ namespace Nethermind.Evm.TransactionProcessing
             gasConsumed = tx.GasLimit;
             byte statusCode = StatusCode.Failure;
 
-            Snapshot snapshot = WorldState.TakeSnapshot();
+            Snapshot snapshot = WorldState.TakeSnapshot(blockAccessIndex: VirtualMachine.TxExecutionContext.BlockAccessIndex);
 
             PayValue(tx, spec, opts);
 

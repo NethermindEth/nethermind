@@ -77,7 +77,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// If <see cref="newTransactionStart"/> is true and there are already changes in <see cref="IStorageProvider"/> then next call to
     /// <see cref="GetOriginal"/> will use changes before this snapshot as original values for this new transaction.
     /// </remarks>
-    Snapshot TakeSnapshot(bool newTransactionStart = false);
+    Snapshot TakeSnapshot(bool newTransactionStart = false, int? blockAccessIndex = null);
 
     Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
 
@@ -95,7 +95,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void DeleteAccount(Address address, int? blockAccessIndex = null);
 
-    void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
+    void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null);
     void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null);
     // void CreateEmptyAccountIfDeleted(Address address);
 
@@ -133,7 +133,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void DecrementNonce(Address address) => DecrementNonce(address, UInt256.One);
 
-    void SetNonce(Address address, in UInt256 nonce);
+    void SetNonce(Address address, in UInt256 nonce, int? blockAccessIndex = null);
 
     /* snapshots */
 

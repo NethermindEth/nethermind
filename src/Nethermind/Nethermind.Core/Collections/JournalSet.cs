@@ -25,7 +25,7 @@ namespace Nethermind.Core.Collections
         private int Position => Count - 1;
 
         [SkipLocalsInit]
-        public void Restore(int snapshot)
+        public void Restore(int snapshot, int? blockAccessIndex = null)
         {
             if (snapshot >= _set.Count)
             {

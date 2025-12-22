@@ -110,6 +110,15 @@ public class AccountChanges : IEquatable<AccountChanges>
     public static bool operator !=(AccountChanges left, AccountChanges right) =>
         !(left == right);
 
+    public void Merge(AccountChanges other)
+    {
+        _storageChanges.AddRange(other._storageChanges);
+        _storageReads.AddRange(other._storageReads);
+        _balanceChanges.AddRange(other._balanceChanges);
+        _nonceChanges.AddRange(other._nonceChanges);
+        _codeChanges.AddRange(other._codeChanges);
+    }
+
     // n.b. implies that length of changes is zero
     public bool HasStorageChange(UInt256 key)
         => _storageChanges.ContainsKey(key);

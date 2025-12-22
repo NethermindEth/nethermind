@@ -32,8 +32,8 @@ public class WorldStateMetricsDecorator(IWorldState innerWorldState) : WrappedWo
     public override void DeleteAccount(Address address, int? _ = null)
         => _innerWorldState.DeleteAccount(address);
 
-    public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
-        => _innerWorldState.CreateAccount(address, in balance, in nonce);
+    public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null)
+        => _innerWorldState.CreateAccount(address, in balance, in nonce, blockAccessIndex);
 
     public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default, int? _ = null) =>
         _innerWorldState.CreateAccountIfNotExists(address, in balance, in nonce);
@@ -59,8 +59,8 @@ public class WorldStateMetricsDecorator(IWorldState innerWorldState) : WrappedWo
     public override void DecrementNonce(Address address, UInt256 delta)
         => _innerWorldState.DecrementNonce(address, delta);
 
-    public override void SetNonce(Address address, in UInt256 nonce)
-        => _innerWorldState.SetNonce(address, nonce);
+    public override void SetNonce(Address address, in UInt256 nonce, int? blockAccessIndex = null)
+        => _innerWorldState.SetNonce(address, nonce, blockAccessIndex);
 
     public override void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
     {

@@ -47,6 +47,21 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public static bool operator !=(BlockAccessList left, BlockAccessList right) =>
         !(left == right);
 
+    public void Merge(BlockAccessList other)
+    {
+        foreach (AccountChanges otherAccountChange in other.AccountChanges)
+        {
+            if (_accountChanges.TryGetValue(otherAccountChange.Address, out AccountChanges? accountChange))
+            {
+               accountChange.Merge(otherAccountChange);
+            }
+            else
+            {
+                _accountChanges.Add(otherAccountChange.Address, otherAccountChange);
+            }
+        }
+    }
+
     public readonly AccountChanges? GetAccountChanges(Address address) => _accountChanges.TryGetValue(address, out AccountChanges? value) ? value : null;
 
     public void IncrementBlockAccessIndex()
@@ -245,7 +260,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public readonly int TakeSnapshot()
         => _changes.Count;
 
-    public readonly void Restore(int snapshot)
+    public readonly void Restore(int snapshot, int? blockAccessIndex = null)
     {
         snapshot = int.Max(0, snapshot);
         while (_changes.Count > snapshot)

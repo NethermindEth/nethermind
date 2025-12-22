@@ -50,8 +50,8 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void CommitTree(long blockNumber)
         => _innerWorldState.CommitTree(blockNumber);
 
-    public virtual void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
-        => _innerWorldState.CreateAccount(address, balance, nonce);
+    public virtual void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null)
+        => _innerWorldState.CreateAccount(address, balance, nonce, blockAccessIndex);
 
     public virtual void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null)
         => _innerWorldState.CreateAccountIfNotExists(address, balance, nonce, blockAccessIndex);
@@ -122,14 +122,14 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void ResetTransient(int? blockAccessIndex = null)
         => _innerWorldState.ResetTransient(blockAccessIndex);
 
-    public virtual void Restore(Snapshot snapshot)
-        => _innerWorldState.Restore(snapshot);
+    public virtual void Restore(Snapshot snapshot, int? blockAccessIndex = null)
+        => _innerWorldState.Restore(snapshot, blockAccessIndex);
 
     public virtual void Set(in StorageCell storageCell, byte[] newValue, int? blockAccessIndex = null)
         => _innerWorldState.Set(storageCell, newValue, blockAccessIndex);
 
-    public virtual void SetNonce(Address address, in UInt256 nonce)
-        => _innerWorldState.SetNonce(address, nonce);
+    public virtual void SetNonce(Address address, in UInt256 nonce, int? blockAccessIndex = null)
+        => _innerWorldState.SetNonce(address, nonce, blockAccessIndex);
 
     public virtual void SetTransientState(in StorageCell storageCell, byte[] newValue, int? blockAccessIndex = null)
         => _innerWorldState.SetTransientState(storageCell, newValue, blockAccessIndex);
@@ -140,8 +140,8 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
         => _innerWorldState.SubtractFromBalance(address, balanceChange, spec, out oldBalance, blockAccessIndex);
 
-    public virtual Snapshot TakeSnapshot(bool newTransactionStart = false)
-        => _innerWorldState.TakeSnapshot(newTransactionStart);
+    public virtual Snapshot TakeSnapshot(bool newTransactionStart = false, int? blockAccessIndex = null)
+        => _innerWorldState.TakeSnapshot(newTransactionStart, blockAccessIndex);
 
     public virtual bool TryGetAccount(Address address, out AccountStruct account, int? blockAccessIndex = null)
         => _innerWorldState.TryGetAccount(address, out account, blockAccessIndex);
