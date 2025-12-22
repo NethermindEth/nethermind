@@ -113,7 +113,7 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
 
         long[] bitmap = CreateBitmap(code.Length);
 
-        return Vector512<sbyte>.IsSupported && code.Length >= Vector512<sbyte>.Count ?
+        return Vector512.IsHardwareAccelerated && code.Length >= Vector512<sbyte>.Count ?
             PopulateJumpDestinationBitmap_Vector512(bitmap, code) :
             Vector128.IsHardwareAccelerated && code.Length >= Vector128<sbyte>.Count ?
             PopulateJumpDestinationBitmap_Vector128(bitmap, code) :
