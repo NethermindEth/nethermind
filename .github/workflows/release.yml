@@ -168,7 +168,7 @@ jobs:
 
           cd $PACKAGE_DIR
           echo "Uploading assets"
-          gh release upload "$GIT_TAG" *.zip *.zip.asc
+          gh release upload "$GIT_TAG" *.zip *.zip.asc --clobber
 
           if (( publish )); then
             echo "Publishing release $GIT_TAG"
