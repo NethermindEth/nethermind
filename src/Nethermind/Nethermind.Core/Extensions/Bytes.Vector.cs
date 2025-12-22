@@ -51,7 +51,7 @@ public static unsafe partial class Bytes
         ref byte thisRef = ref MemoryMarshal.GetReference(thisSpan);
         ref byte valueRef = ref MemoryMarshal.GetReference(valueSpan);
 
-        if (Vector512<byte>.IsSupported && thisSpan.Length >= Vector512<byte>.Count)
+        if (Vector512.IsHardwareAccelerated && thisSpan.Length >= Vector512<byte>.Count)
         {
             for (int i = 0; i < thisSpan.Length - Vector512<byte>.Count; i += Vector512<byte>.Count)
             {
@@ -118,7 +118,7 @@ public static unsafe partial class Bytes
         int i = 0;
 
         // We can't do the fold back technique for xor so need to fall though each size
-        if (Vector512<byte>.IsSupported)
+        if (Vector512.IsHardwareAccelerated)
         {
             for (; i <= thisSpan.Length - Vector512<byte>.Count; i += Vector512<byte>.Count)
             {

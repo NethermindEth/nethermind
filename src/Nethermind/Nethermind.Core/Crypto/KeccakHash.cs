@@ -422,7 +422,7 @@ namespace Nethermind.Core.Crypto
         private static unsafe void XorVectors(Span<byte> state, ReadOnlySpan<byte> input)
         {
             ref byte stateRef = ref MemoryMarshal.GetReference(state);
-            if (Vector512<byte>.IsSupported && input.Length >= Vector512<byte>.Count)
+            if (Vector512.IsHardwareAccelerated && input.Length >= Vector512<byte>.Count)
             {
                 // Convert to uint for the mod else the Jit does a more complicated signed mod
                 // whereas as uint it just does an And
