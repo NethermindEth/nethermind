@@ -12,7 +12,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Proxy
 {
-    public class DefaultHttpClient : IHttpClient
+    public class DefaultHttpClient : IHttpClient, IDisposable
     {
         private readonly HttpClient _client;
         private readonly IJsonSerializer _jsonSerializer;
@@ -109,6 +109,11 @@ namespace Nethermind.Facade.Proxy
         {
             Get,
             Post
+        }
+
+        public void Dispose()
+        {
+            _client?.Dispose();
         }
     }
 }
