@@ -10,15 +10,15 @@ public interface IReadOnlyStateProvider : IAccountStateProvider
 {
     Hash256 StateRoot { get; }
 
-    byte[]? GetCode(Address address);
+    byte[]? GetCode(Address address, int? blockAccessIndex = null);
 
     byte[]? GetCode(in ValueHash256 codeHash);
 
-    public bool IsContract(Address address);
+    public bool IsContract(Address address, int? blockAccessIndex = null);
 
-    bool AccountExists(Address address);
+    bool AccountExists(Address address, int? blockAccessIndex = null);
 
-    bool IsDeadAccount(Address address);
+    bool IsDeadAccount(Address address, int? blockAccessIndex = null);
 
     bool IsDelegatedCode(Address address) => Eip7702Constants.IsDelegatedCode(GetCode(address));
     bool IsDelegatedCode(in ValueHash256 codeHash) => Eip7702Constants.IsDelegatedCode(GetCode(codeHash));

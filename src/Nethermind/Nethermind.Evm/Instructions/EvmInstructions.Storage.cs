@@ -47,7 +47,7 @@ internal static partial class EvmInstructions
         StorageCell storageCell = new(vm.EvmState.Env.ExecutingAccount, in result);
 
         // Retrieve the value from transient storage.
-        ReadOnlySpan<byte> value = vm.WorldState.GetTransientState(in storageCell);
+        ReadOnlySpan<byte> value = vm.WorldState.GetTransientState(in storageCell, vm.TxExecutionContext.BlockAccessIndex);
 
         // Push the retrieved value onto the stack.
         stack.PushBytes<TTracingInst>(value);
@@ -103,13 +103,13 @@ internal static partial class EvmInstructions
         Span<byte> bytes = stack.PopWord256();
 
         // Store either the actual value (if non-zero) or a predefined zero constant.
-        vm.WorldState.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
+        vm.WorldState.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32, vm.TxExecutionContext.BlockAccessIndex);
 
         // If storage tracing is enabled, retrieve the current stored value and log the operation.
         if (vm.TxTracer.IsTracingStorage)
         {
             if (gasAvailable < 0) goto OutOfGas;
-            ReadOnlySpan<byte> currentValue = vm.WorldState.GetTransientState(in storageCell);
+            ReadOnlySpan<byte> currentValue = vm.WorldState.GetTransientState(in storageCell, vm.TxExecutionContext.BlockAccessIndex);
             vm.TxTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
         }
 
@@ -358,7 +358,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Retrieve the current value from persistent storage.
-        ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell);
+        ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell, vm.TxExecutionContext.BlockAccessIndex);
         bool currentIsZero = currentValue.IsZero();
 
         // Determine whether the new value is identical to the current stored value.
@@ -387,7 +387,7 @@ internal static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
-            vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
+            vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray(), vm.TxExecutionContext.BlockAccessIndex);
         }
 
         // Report storage changes for tracing if enabled.
@@ -464,7 +464,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Retrieve the current value from persistent storage.
-        ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell);
+        ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell, vm.TxExecutionContext.BlockAccessIndex);
         bool currentIsZero = currentValue.IsZero();
 
         // Determine whether the new value is identical to the current stored value.
@@ -481,7 +481,7 @@ internal static partial class EvmInstructions
         else
         {
             // Retrieve the original storage value to determine if this is a reversal.
-            Span<byte> originalValue = vm.WorldState.GetOriginal(in storageCell);
+            Span<byte> originalValue = vm.WorldState.GetOriginal(in storageCell, vm.TxExecutionContext.BlockAccessIndex);
             bool originalIsZero = originalValue.IsZero();
             bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
 
@@ -547,7 +547,7 @@ internal static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
-            vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
+            vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray(), vm.TxExecutionContext.BlockAccessIndex);
         }
 
         // Report storage changes for tracing if enabled.
@@ -618,7 +618,7 @@ internal static partial class EvmInstructions
         }
 
         // Retrieve the persistent storage value and push it onto the stack.
-        ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell);
+        ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell, vm.TxExecutionContext.BlockAccessIndex);
         stack.PushBytes<TTracingInst>(value);
 
         // Log the storage load operation if tracing is enabled.

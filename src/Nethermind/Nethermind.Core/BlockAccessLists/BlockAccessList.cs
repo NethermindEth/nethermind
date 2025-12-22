@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -15,22 +16,20 @@ namespace Nethermind.Core.BlockAccessLists;
 public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 {
     [JsonIgnore]
-    public ushort Index = 0;
-    public readonly IEnumerable<AccountChanges> AccountChanges => _accountChanges.Values;
+    public int Index = 0;
+    public readonly EnumerableWithCount<AccountChanges> AccountChanges => new(_accountChanges.Values, _accountChanges.Count);
+    public readonly bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
-    private readonly SortedDictionary<Address, AccountChanges> _accountChanges;
-    private readonly Stack<Change> _changes;
+    private readonly SortedDictionary<Address, AccountChanges> _accountChanges = [];
+    private readonly Stack<Change> _changes = new();
 
     public BlockAccessList()
     {
-        _accountChanges = [];
-        _changes = new();
     }
 
     public BlockAccessList(SortedDictionary<Address, AccountChanges> accountChanges)
     {
         _accountChanges = accountChanges;
-        _changes = new();
     }
 
     public readonly bool Equals(BlockAccessList other) =>
@@ -47,6 +46,21 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     public static bool operator !=(BlockAccessList left, BlockAccessList right) =>
         !(left == right);
+
+    public void Merge(BlockAccessList other)
+    {
+        foreach (AccountChanges otherAccountChange in other.AccountChanges)
+        {
+            if (_accountChanges.TryGetValue(otherAccountChange.Address, out AccountChanges? accountChange))
+            {
+               accountChange.Merge(otherAccountChange);
+            }
+            else
+            {
+                _accountChanges.Add(otherAccountChange.Address, otherAccountChange);
+            }
+        }
+    }
 
     public readonly AccountChanges? GetAccountChanges(Address address) => _accountChanges.TryGetValue(address, out AccountChanges? value) ? value : null;
 
@@ -234,7 +248,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                 NewValue = after
             };
 
-            slotChanges.Changes.Add(storageChange);
+            slotChanges.AddStorageChange(storageChange);
             accountChanges.RemoveStorageRead(key);
         }
         else
@@ -246,7 +260,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public readonly int TakeSnapshot()
         => _changes.Count;
 
-    public readonly void Restore(int snapshot)
+    public readonly void Restore(int snapshot, int? blockAccessIndex = null)
     {
         snapshot = int.Max(0, snapshot);
         while (_changes.Count > snapshot)
@@ -291,7 +305,7 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
                     slotChanges.PopStorageChange(Index, out _);
                     if (previousStorage is not null)
                     {
-                        slotChanges.Changes.Add(previousStorage.Value);
+                        slotChanges.AddStorageChange(previousStorage.Value);
                     }
 
                     accountChanges.ClearEmptySlotChangesAndAddRead(change.Slot!.Value);
@@ -442,6 +456,6 @@ public struct BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         public UInt256? PreTxBalance { get; init; }
         public UInt256? PreTxStorage { get; init; }
         public byte[]? PreTxCode { get; init; }
-        public ushort BlockAccessIndex { get; init; }
+        public int BlockAccessIndex { get; init; }
     }
 }

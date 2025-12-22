@@ -24,6 +24,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Rlp;
+using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
@@ -360,7 +361,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <summary>
         /// Trace simulated blocks transactions (eth_simulateV1)
         /// </summary>
-        public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(
+        public Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>>> trace_simulateV1(
             SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null)
         {
             return new SimulateTxExecutor<ParityLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, new ParityStyleSimulateBlockTracerFactory(types: GetParityTypes(traceTypes ?? ["Trace"])), _secondsPerSlot)
