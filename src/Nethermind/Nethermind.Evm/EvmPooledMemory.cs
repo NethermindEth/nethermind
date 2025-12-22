@@ -45,7 +45,7 @@ public struct EvmPooledMemory : IEvmMemory
 
     public bool TrySaveByte(in UInt256 location, byte value)
     {
-        CheckMemoryAccessViolation(in location, WordSize, out _, out bool isViolation);
+        CheckMemoryAccessViolation(in location, 1, out _, out bool isViolation);
         if (isViolation) return false;
 
         UpdateSize(location.u0 + 1);

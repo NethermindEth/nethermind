@@ -187,6 +187,19 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [Test]
+    public void SaveByte_AtMaxAllowedLocation_ShouldSucceedAfterCostCheck()
+    {
+        EvmPooledMemory memory = new();
+        // Use a large but realistic offset to avoid huge allocations while
+        // still validating that a successful cost calculation allows a byte write.
+        UInt256 location = (UInt256)(1024 * 1024); // 1 MiB
+        long cost = memory.CalculateMemoryCost(in location, UInt256.One, out bool outOfGas);
+        Assert.That(outOfGas, Is.EqualTo(false));
+        bool result = memory.TrySaveByte(in location, 0x42);
+        Assert.That(result, Is.EqualTo(true));
+    }
+
+    [Test]
     public void LoadSpan_LocationExceedsULong_ShouldReturnOutOfGas()
     {
         EvmPooledMemory memory = new();
