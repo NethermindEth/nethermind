@@ -35,6 +35,9 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
                 }
 
                 dbConfig.MaxOpenFiles = perDbLimit;
+
+                // Drastically speeds up DB open time on systems with limited file descriptors
+                dbConfig.RocksDbOptions += "skip_checking_sst_file_sizes_on_db_open=true;";
             }
         }
 
