@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm;
 
@@ -18,7 +19,8 @@ internal static partial class EvmInstructions
     /// and pushes the resulting 256-bit hash onto the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionKeccak256<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionKeccak256<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Ensure two 256-bit words are available (memory offset and length).
@@ -26,12 +28,12 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Deduct gas: base cost plus additional cost per 32-byte word.
-        gasAvailable -= GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in b, out bool outOfGas);
+        TGasPolicy.Consume(ref gas, GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in b, out bool outOfGas));
         if (outOfGas) goto OutOfGas;
 
-        EvmState vmState = vm.EvmState;
+        VmState<TGasPolicy> vmState = vm.VmState;
         // Charge gas for any required memory expansion.
-        if (!EvmCalculations.UpdateMemoryCost(vmState, ref gasAvailable, in a, b) ||
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, b, vmState) ||
             !vmState.Memory.TryLoadSpan(in a, b, out Span<byte> bytes))
         {
             goto OutOfGas;

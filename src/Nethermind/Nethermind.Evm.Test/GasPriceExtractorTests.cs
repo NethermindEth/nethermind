@@ -35,7 +35,7 @@ namespace Nethermind.Evm.Test
             Rlp rlp = BuildHeader();
 
             Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
-            IntrinsicGas gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
+            EthereumIntrinsicGas gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
             gasCost.FloorGas.Should().Be(0);
             gasCost.Standard.Should().BeLessThan(21000 + 9600);
         }

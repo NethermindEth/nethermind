@@ -39,11 +39,11 @@ public static class T8nExecutor
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
 
-        IVirtualMachine virtualMachine = new VirtualMachine(
+        IVirtualMachine virtualMachine = new EthereumVirtualMachine(
             blockhashProvider,
             test.SpecProvider,
             _logManager);
-        TransactionProcessor transactionProcessor = new(
+        EthereumTransactionProcessor transactionProcessor = new(
             BlobBaseFeeCalculator.Instance,
             test.SpecProvider,
             stateProvider,
