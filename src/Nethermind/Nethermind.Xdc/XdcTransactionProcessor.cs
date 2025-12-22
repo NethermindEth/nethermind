@@ -142,32 +142,15 @@ internal class XdcTransactionProcessor(
             return result;
         }
 
+        // the code here will only be reached by a tx if tx.RequiresSpecialHandling returns true
         if (tx.IsSignTransaction(spec))
         {
             return ProcessSignTranscation(tx, tracer, spec, opts);
         }
 
-        if (tx.IsTradingStateTransaction(spec))
-        {
-            return ProcessEmptyTransaction(tx, tracer, spec);
-        }
 
-        if (tx.IsLendingTransaction(spec))
-        {
-            return ProcessEmptyTransaction(tx, tracer, spec);
-        }
-
-        if (tx.IsTradingTransaction(spec))
-        {
-            return ProcessEmptyTransaction(tx, tracer, spec);
-        }
-
-        if (tx.IsLendingFinalizedTradeTransaction(spec))
-        {
-            return ProcessEmptyTransaction(tx, tracer, spec);
-        }
-
-        throw new UnreachableException();
+        // the code here will only be reached by a tx if tx.RequiresSpecialHandling returns true and IsSignTx is false
+        return ProcessEmptyTransaction(tx, tracer, spec);
     }
 
     private TransactionResult ProcessEmptyTransaction(Transaction tx, ITxTracer tracer, IReleaseSpec spec)
