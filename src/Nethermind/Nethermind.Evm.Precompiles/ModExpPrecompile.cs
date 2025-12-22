@@ -130,7 +130,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     private static (uint baseLength, uint expLength, uint modulusLength) GetInputLengths(ReadOnlySpan<byte> inputData)
     {
         // Test if too high
-        if (Vector256<byte>.IsSupported)
+        if (Vector256.IsHardwareAccelerated)
         {
             ref var firstByte = ref MemoryMarshal.GetReference(inputData);
             Vector256<byte> mask = ~Vector256.Create(0, 0, 0, 0, 0, 0, 0, uint.MaxValue).AsByte();
@@ -145,7 +145,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
                 return GetInputLengthsMayOverflow(inputData);
             }
         }
-        else if (Vector128<byte>.IsSupported)
+        else if (Vector128.IsHardwareAccelerated)
         {
             ref var firstByte = ref MemoryMarshal.GetReference(inputData);
             Vector128<byte> mask = ~Vector128.Create(0, 0, 0, uint.MaxValue).AsByte();
@@ -184,7 +184,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     private static (uint baseLength, uint expLength, uint modulusLength) GetInputLengthsMayOverflow(ReadOnlySpan<byte> inputData)
     {
         // Only valid if baseLength and modulusLength are zero; when expLength doesn't matter
-        if (Vector256<byte>.IsSupported)
+        if (Vector256.IsHardwareAccelerated)
         {
             ref var firstByte = ref MemoryMarshal.GetReference(inputData);
             if (Vector256.BitwiseOr(
@@ -196,7 +196,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
                 return (uint.MaxValue, uint.MaxValue, uint.MaxValue);
             }
         }
-        else if (Vector128<byte>.IsSupported)
+        else if (Vector128.IsHardwareAccelerated)
         {
             ref var firstByte = ref MemoryMarshal.GetReference(inputData);
             if (Vector128.BitwiseOr(
