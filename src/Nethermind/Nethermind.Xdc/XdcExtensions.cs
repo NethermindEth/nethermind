@@ -13,7 +13,7 @@ using System.Collections.Immutable;
 
 namespace Nethermind.Xdc;
 
-public static class XdcExtensions
+public static partial class XdcExtensions
 {
     //TODO can we wire up this so we can use Rlp.Encode()?
     private static readonly XdcHeaderDecoder _headerDecoder = new();
@@ -23,49 +23,6 @@ public static class XdcExtensions
         ValueHash256 hash = ValueKeccak.Compute(_headerDecoder.Encode(header, RlpBehaviors.ForSealing).Bytes);
         return ecdsa.Sign(privateKey, in hash);
     }
-    public static bool IsSpecialTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
-    {
-        return currentTx.To is not null && ((currentTx.To == spec.BlockSignersAddress) || (currentTx.To == spec.RandomizeSMCBinary));
-    }
-    public static bool RequiresSpecialHandling(this Transaction currentTx, IXdcReleaseSpec spec)
-    {
-        return IsSignTransaction(currentTx, spec)
-            || IsLendingTransaction(currentTx, spec)
-            || IsTradingTransaction(currentTx, spec)
-            || IsLendingFinalizedTradeTransaction(currentTx, spec)
-            || IsTradingStateTransaction(currentTx, spec);
-    }
-    public static bool IsSignTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
-    {
-        return currentTx.To is not null && currentTx.To == spec.BlockSignersAddress;
-    }
-    public static bool IsTradingTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
-    {
-        return currentTx.To is not null && currentTx.To == spec.XDCXAddressBinary;
-    }
-    public static bool IsLendingTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
-    {
-        return currentTx.To is not null && currentTx.To == spec.XDCXLendingAddressBinary;
-    }
-    public static bool IsLendingFinalizedTradeTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
-    {
-        return currentTx.To is not null && currentTx.To == spec.XDCXLendingFinalizedTradeAddressBinary;
-    }
-    public static bool IsTradingStateTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
-    {
-        return currentTx.To is not null && currentTx.To == spec.TradingStateAddressBinary;
-    }
-
-    public static bool IsSkipNonceTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
-    {
-        return currentTx.To is not null
-            && (IsTradingStateTransaction(currentTx, spec)
-            || IsTradingTransaction(currentTx, spec)
-            || IsLendingTransaction(currentTx, spec)
-            || IsLendingFinalizedTradeTransaction(currentTx, spec));
-
-    }
-
     public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
     {
         KeccakRlpStream stream = new();

@@ -114,6 +114,17 @@ internal class XdcTransactionProcessor(
         return TransactionResult.Ok;
     }
 
+    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
+    {
+        if(tx.RequiresSpecialHandling((IXdcReleaseSpec)spec))
+        {
+            EthereumGasPolicy zeroGas = EthereumGasPolicy.FromLong(0);
+            return new IntrinsicGas<EthereumGasPolicy>(zeroGas, zeroGas);
+        }
+
+        return base.CalculateIntrinsicGas(tx, spec);
+    }
+
     private TransactionResult ExecuteSpecialTransaction(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
@@ -159,8 +170,6 @@ internal class XdcTransactionProcessor(
         throw new UnreachableException();
     }
 
-
-
     private TransactionResult ProcessEmptyTransaction(Transaction tx, ITxTracer tracer, IReleaseSpec spec)
     {
         WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);
@@ -184,8 +193,6 @@ internal class XdcTransactionProcessor(
     private TransactionResult ProcessSignTranscation(Transaction tx, ITxTracer tracer, IReleaseSpec spec, ExecutionOptions opts)
     {
         WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);
-
-        
 
         WorldState.IncrementNonce(tx.SenderAddress);
 
