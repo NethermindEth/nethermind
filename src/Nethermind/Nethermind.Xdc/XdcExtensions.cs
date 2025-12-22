@@ -13,7 +13,7 @@ using System.Collections.Immutable;
 
 namespace Nethermind.Xdc;
 
-public static partial class XdcExtensions
+internal static partial class XdcExtensions
 {
     //TODO can we wire up this so we can use Rlp.Encode()?
     private static readonly XdcHeaderDecoder _headerDecoder = new();

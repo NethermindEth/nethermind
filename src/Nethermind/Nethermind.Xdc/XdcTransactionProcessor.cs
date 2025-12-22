@@ -114,15 +114,14 @@ internal class XdcTransactionProcessor(
         return TransactionResult.Ok;
     }
 
-    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired)
     {
-        if(tx.RequiresSpecialHandling((IXdcReleaseSpec)spec))
+        var spec = SpecProvider.GetXdcSpec((XdcBlockHeader)header);
+        if(tx.RequiresSpecialHandling(spec))
         {
-            EthereumGasPolicy zeroGas = EthereumGasPolicy.FromLong(0);
-            return new IntrinsicGas<EthereumGasPolicy>(zeroGas, zeroGas);
+            return TransactionResult.Ok;
         }
-
-        return base.CalculateIntrinsicGas(tx, spec);
+        return base.ValidateGas(tx, header, minGasRequired);
     }
 
     private TransactionResult ExecuteSpecialTransaction(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
@@ -130,6 +129,7 @@ internal class XdcTransactionProcessor(
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
         IXdcReleaseSpec spec = GetSpec(header) as IXdcReleaseSpec;
 
+        // maybe a better appraoch would be adding an XdcGasPolicy 
         TransactionResult result;
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);
         UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
