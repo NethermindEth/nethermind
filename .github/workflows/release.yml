@@ -174,7 +174,7 @@ jobs:
             echo "Publishing release $GIT_TAG"
             flags=()
             [[ -n "$prerelease" ]] && flags+=(--prerelease) || flags+=(--latest)
-            gh release edit "$GIT_TAG" --verify-tag --target "$GITHUB_SHA" -t "v$GIT_TAG" --draft false "${flags[@]}"
+            gh release edit "$GIT_TAG" --verify-tag --target "$GITHUB_SHA" -t "v$GIT_TAG" --draft=false "${flags[@]}"
           fi
 
           echo "Publishing completed"
