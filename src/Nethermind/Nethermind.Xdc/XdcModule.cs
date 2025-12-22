@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -47,6 +48,7 @@ public class XdcModule : Module
             // penalty handler
 
             // reward handler
+            .AddSingleton<IRewardCalculator, XdcRewardCalculator>()
 
             // forensics handler
 

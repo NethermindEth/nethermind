@@ -54,10 +54,12 @@ namespace Nethermind.Xdc
             if (block.Header is not XdcBlockHeader xdcHeader)
                 throw new InvalidOperationException("Only supports XDC headers");
 
-            var rewards = new List<BlockReward>();
+            // Rewards in XDC are calculated only if it's an epoch switch block
+            if (!epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader)) return Array.Empty<BlockReward>();
+
             var number = xdcHeader.Number;
             IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
-            if (number == spec.SwitchBlock + 1) return rewards.ToArray();
+            if (number == spec.SwitchBlock + 1) return Array.Empty<BlockReward>();
 
             Address foundationWalletAddr = spec.FoundationWallet;
             if (foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
@@ -68,6 +70,7 @@ namespace Nethermind.Xdc
             Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, signers, count);
 
             UInt256 totalFoundationWalletReward = UInt256.Zero;
+            var rewards = new List<BlockReward>();
             foreach (var (signer, reward) in rewardSigners)
             {
                 (BlockReward holderReward, UInt256 foundationWalletReward) = DistributeRewards(signer, reward, xdcHeader);
@@ -80,13 +83,14 @@ namespace Nethermind.Xdc
 
         private (Dictionary<Address, long> Signers, long Count) GetSigningTxCount(long number, XdcBlockHeader header, IXdcReleaseSpec spec)
         {
-            long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = 0, startBlockNumber = 0, signingCount = 0;
             var signers = new Dictionary<Address, long>();
+            if (number == 0) return (signers, 0);
+
+            long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = 0, startBlockNumber = 0, signingCount = 0;
             var blockNumberToHash = new Dictionary<long, Hash256>();
             var hashToSigningAddress = new Dictionary<Hash256, HashSet<Address>>();
             var masternodes = new HashSet<Address>();
 
-            if (number == 0) return (signers, signingCount);
             XdcBlockHeader h = header;
             for (long i = number - 1; i >= 0; i--)
             {

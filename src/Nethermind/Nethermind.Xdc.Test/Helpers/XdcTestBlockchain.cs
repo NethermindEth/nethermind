@@ -195,7 +195,7 @@ public class XdcTestBlockchain : TestBlockchain
             })
             .AddSingleton((_) => BlockProducer)
             //.AddSingleton((_) => BlockProducerRunner)
-            .AddSingleton<IRewardCalculator, NullRewardCalculator>()
+            .AddSingleton<IRewardCalculator, ZeroRewardCalculator>()
             .AddSingleton<IBlockProducerRunner, XdcHotStuff>()
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(TestContext.CurrentContext.CancellationToken))
 
@@ -355,7 +355,7 @@ public class XdcTestBlockchain : TestBlockchain
         }
     }
 
-    private class NullRewardCalculator : IRewardCalculator
+    private class ZeroRewardCalculator : IRewardCalculator
     {
         public BlockReward[] CalculateRewards(Block block) => Array.Empty<BlockReward>();
     }

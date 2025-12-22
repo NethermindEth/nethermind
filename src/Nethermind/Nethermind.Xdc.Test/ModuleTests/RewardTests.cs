@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -135,7 +138,6 @@ public class RewardTests
         IXdcReleaseSpec spec = chain.SpecProvider.GetXdcSpec(head, chain.XdcContext.CurrentRound);
         var epochLength = spec.EpochLength;
 
-        // === Layout (mirrors Go test intent) ===
         // - Insert 1 signing tx for header (E + 15) signed by signerA into block (E + 16)
         // - Insert 2 signing txs (one for header (E + 15), one for header (2E - 15)) signed by signerB into block (2E - 1)
         // - Verify: rewards at (3E) split 1:2 between A:B with 90/10 owner/foundation
@@ -213,6 +215,86 @@ public class RewardTests
             if (reward.Address == foundation) Assert.That(reward.Value, Is.EqualTo(foundationReward));
         }
     }
+
+    [Test]
+    public void RewardCalculator_SplitReward_MatchesRounding()
+    {
+        const long epoch = 45, reward = 250;
+        PrivateKey[] masternodes = XdcTestHelper.GeneratePrivateKeys(2);
+        PrivateKey signerA = masternodes.First();
+        PrivateKey signerB = masternodes.Last();
+        var foundationWalletAddr = new Address("0x0000000000000000000000000000000000000068");
+        var blockSignerContract = new Address("0x0000000000000000000000000000000000000089");
+
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>())
+            .Returns(ci => ((XdcBlockHeader)ci.Args()[0]!).Number % epoch == 0);
+
+        IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcSpec.EpochLength.Returns((int)epoch);
+        xdcSpec.FoundationWallet.Returns(foundationWalletAddr);
+        xdcSpec.BlockSignerContract.Returns(blockSignerContract);
+        xdcSpec.Reward.Returns(reward);
+        xdcSpec.SwitchBlock.Returns(0);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
+
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        long size = 2 * epoch + 1;
+        var blockHeaders = new XdcBlockHeader[size];
+        var blocks = new Block[size];
+        for (int i = 0; i <= epoch * 2; i++)
+        {
+            blockHeaders[i] = Build.A.XdcBlockHeader()
+                .WithNumber(i)
+                .WithValidators(masternodes.Select(m => m.Address).ToArray())
+                .WithExtraConsensusData(new ExtraFieldsV2((ulong)i, Build.A.QuorumCertificate().TestObject))
+                .TestObject;
+            blocks[i] = new Block(blockHeaders[i]);
+        }
+
+        // SignerA signs blocks 15 and 30
+        // SignerB signs blocks 15
+        var txsBlock16 = new List<Transaction>();
+        txsBlock16.Add(BuildSigningTx(xdcSpec, 15, blockHeaders[15].Hash!, signerA, 1));
+        txsBlock16.Add(BuildSigningTx(xdcSpec, 15, blockHeaders[15].Hash!, signerB, 2));
+        var txsBlock31 = new List<Transaction>();
+        txsBlock31.Add(BuildSigningTx(xdcSpec, 30, blockHeaders[30].Hash!, signerA, 3));
+        blocks[16] = new Block(blockHeaders[16], new BlockBody(txsBlock16.ToArray(), null, null));
+        blocks[31] = new Block(blockHeaders[31], new BlockBody(txsBlock31.ToArray(), null, null));
+        tree.FindHeader(Arg.Any<Hash256>(), Arg.Any<long>())
+            .Returns(ci => blockHeaders[(long)ci.Args()[1]]);
+        tree.FindBlock(Arg.Any<long>())
+            .Returns(ci => blocks[(long)ci.Args()[0]]);
+
+        IMasternodeVotingContract votingContract = Substitute.For<IMasternodeVotingContract>();
+        votingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), Arg.Any<Address>())
+            .Returns(ci => ci.Arg<Address>());
+
+        var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract);
+        BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks.Last());
+
+        // Expect ownerA, ownerB, and foundation
+        Assert.That(rewards, Has.Length.EqualTo(3));
+
+        // Expected values from XDC repo:
+        // A gets 2/3 of total, then 90% owner, 10% foundation (flooring at each integer division step)
+        // B gets 1/3 of total, then 90% owner, 10% foundation
+        var aOwnerExpected = UInt256.Parse("149999999999999999999");
+        var aFoundExpected = UInt256.Parse("16666666666666666666");
+        var bOwnerExpected = UInt256.Parse("74999999999999999999");
+        var bFoundExpected = UInt256.Parse("8333333333333333333");
+
+        UInt256 aOwnerReward = rewards.Single(r => r.Address == signerA.Address).Value;
+        UInt256 bOwnerReward = rewards.Single(r => r.Address == signerB.Address).Value;
+        UInt256 foundationReward = rewards.Single(r => r.Address == foundationWalletAddr).Value;
+
+        Assert.That(foundationReward, Is.EqualTo(aFoundExpected + bFoundExpected));
+        Assert.That(aOwnerReward, Is.EqualTo(aOwnerExpected));
+        Assert.That(bOwnerReward, Is.EqualTo(bOwnerExpected));
+
+    }
+
 
     private static Transaction BuildSigningTx(IXdcReleaseSpec spec, long blockNumber, Hash256 blockHash, PrivateKey signer, long nonce = 0)
     {
