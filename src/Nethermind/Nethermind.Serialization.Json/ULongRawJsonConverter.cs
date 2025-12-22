@@ -10,28 +10,14 @@ namespace Nethermind.Serialization.Json;
 
 public class ULongRawJsonConverter : JsonConverter<ulong>
 {
+    private readonly ULongConverter _converter = new();
+
     public override ulong Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
         JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonTokenType.Number)
-        {
-            return reader.GetUInt64();
-        }
-        else if (reader.TokenType == JsonTokenType.String)
-        {
-            if (!reader.HasValueSequence)
-            {
-                return ULongConverter.FromString(reader.ValueSpan);
-            }
-            else
-            {
-                return ULongConverter.FromString(reader.ValueSequence.ToArray());
-            }
-        }
-
-        throw new JsonException();
+        return _converter.Read(ref reader, typeToConvert, options);
     }
 
     public override void Write(
