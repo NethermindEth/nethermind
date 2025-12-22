@@ -90,8 +90,8 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
         int cellCount = blobCount * Ckzg.CellsPerExtBlob;
 
         using ArrayPoolSpan<byte> cells = new(blobCount * Ckzg.BytesPerBlob * 2);
-        using ArrayPoolSpan<byte> flatCommitments = new(blobCount * Ckzg.BytesPerCommitment * Ckzg.CellsPerExtBlob);
-        using ArrayPoolSpan<byte> flatProofs = new(blobCount * Ckzg.BytesPerProof * Ckzg.CellsPerExtBlob);
+        using ArrayPoolSpan<byte> flatCommitments = new(cellCount * Ckzg.BytesPerCommitment);
+        using ArrayPoolSpan<byte> flatProofs = new(cellCount * Ckzg.BytesPerProof);
         using ArrayPoolSpan<ulong> indices = new(cellCount);
 
         try
