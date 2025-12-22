@@ -124,8 +124,9 @@ public abstract class StateSyncFeedTestsBase(int defaultPeerCount = 1, int defau
             .AddSingleton<INodeStorage>(dbContext.LocalNodeStorage)
 
             // Use factory function to make it lazy in case test need to replace IBlockTree
+            // Use unique ID per test to avoid cache collisions during parallel execution
             .AddSingleton<IBlockTree>((ctx) => CachedBlockTreeBuilder.BuildCached(
-                $"{nameof(StateSyncFeedTestsBase)}{dbContext.RemoteStateTree.RootHash}{TestChainLength}",
+                $"{GetType().Name}{dbContext.RemoteStateTree.RootHash}{TestChainLength}{Guid.NewGuid()}",
                 () => Build.A.BlockTree().WithStateRoot(dbContext.RemoteStateTree.RootHash).OfChainLength(TestChainLength)))
 
             .Add<SafeContext>();
