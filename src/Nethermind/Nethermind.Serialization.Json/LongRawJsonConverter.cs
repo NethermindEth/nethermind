@@ -10,28 +10,14 @@ namespace Nethermind.Serialization.Json;
 
 public class LongRawJsonConverter : JsonConverter<long>
 {
+    private readonly LongConverter _converter = new();
+
     public override long Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
         JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonTokenType.Number)
-        {
-            return reader.GetInt64();
-        }
-        else if (reader.TokenType == JsonTokenType.String)
-        {
-            if (!reader.HasValueSequence)
-            {
-                return LongConverter.FromString(reader.ValueSpan);
-            }
-            else
-            {
-                return LongConverter.FromString(reader.ValueSequence.ToArray());
-            }
-        }
-
-        throw new JsonException();
+        return _converter.Read(ref reader, typeToConvert, options);
     }
 
     public override void Write(
