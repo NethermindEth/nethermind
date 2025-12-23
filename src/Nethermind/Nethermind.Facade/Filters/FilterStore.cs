@@ -172,63 +172,28 @@ namespace Nethermind.Blockchain.Filters
                 return SequenceTopicsFilter.AnyTopic;
             }
 
-            FilterTopic?[]? filterTopics = GetFilterTopics(topics);
             List<TopicExpression> expressions = new();
 
-            for (int i = 0; i < filterTopics?.Length; i++)
+            foreach (Hash256[]? group in topics)
             {
-                expressions.Add(GetTopicExpression(filterTopics[i]));
+                if (group is null || group.Length == 0)
+                {
+                    expressions.Add(AnyTopic.Instance);
+                }
+                else if (group.Length == 1)
+                {
+                    expressions.Add(new SpecificTopic(group[0]));
+                }
+                else
+                {
+                    expressions.Add(new OrExpression(group.Select(static t => new SpecificTopic(t)).ToArray<TopicExpression>()));
+                }
             }
 
             return new SequenceTopicsFilter(expressions.ToArray());
         }
 
-        private static TopicExpression GetTopicExpression(FilterTopic? filterTopic)
-        {
-            if (filterTopic is not null)
-            {
-                if (filterTopic.Topic is not null)
-                {
-                    return new SpecificTopic(filterTopic.Topic);
-                }
-
-                if (filterTopic.Topics?.Length > 0)
-                {
-                    return new OrExpression(filterTopic.Topics.Select(
-                        static t => new SpecificTopic(t)).ToArray<TopicExpression>());
-                }
-            }
-
-            return AnyTopic.Instance;
-        }
-
         private static AddressFilter GetAddress(AddressAsKey[]? addresses) => addresses is null ? AddressFilter.AnyAddress : new AddressFilter(addresses);
-
-        private static FilterTopic?[]? GetFilterTopics(IEnumerable<Hash256[]?>? topics) => topics?.Select(GetTopic).ToArray();
-
-        private static FilterTopic? GetTopic(Hash256[]? topics)
-        {
-            if (topics?.Length == 1)
-            {
-                return new FilterTopic
-                {
-                    Topic = topics[0]
-                };
-            }
-            else
-            {
-                return new FilterTopic()
-                {
-                    Topics = topics
-                };
-            }
-        }
-
-        private class FilterTopic
-        {
-            public Hash256? Topic { get; init; }
-            public Hash256[]? Topics { get; init; }
-        }
 
         public void Dispose()
         {
