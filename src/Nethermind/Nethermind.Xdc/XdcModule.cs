@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
@@ -16,6 +17,10 @@ using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Contracts;
+using Nethermind.Abi;
+using Nethermind.Evm.State;
+using Nethermind.State;
 
 namespace Nethermind.Xdc;
 
@@ -49,6 +54,7 @@ public class XdcModule : Module
 
             // reward handler
             .AddSingleton<IRewardCalculator, XdcRewardCalculator>()
+            .AddSingleton<IMasternodeVotingContract, ISpecProvider, IAbiEncoder, IWorldStateManager, IReadOnlyTxProcessingEnvFactory>(CreateMasternodeVotingContract)
 
             // forensics handler
 
@@ -74,6 +80,23 @@ public class XdcModule : Module
     private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IPenaltyHandler penaltyHandler)
     {
         return new SnapshotManager(db, blockTree, penaltyHandler);
+    }
+
+    private IMasternodeVotingContract CreateMasternodeVotingContract(
+        ISpecProvider specProvider,
+        IAbiEncoder abiEncoder,
+        IWorldStateManager worldStateManager,
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory)
+    {
+        Address contractAddress = specProvider.GenesisSpec.DepositContractAddress;
+        if (contractAddress == null || contractAddress == Address.Zero)
+        {
+            throw new InvalidOperationException("depositContractAddress must be set in chain spec parameters");
+        }
+
+        IWorldState worldState = worldStateManager.CreateResettableWorldState();
+        IReadOnlyTxProcessorSource readOnlyTxProcessorSource = readOnlyTxProcessingEnvFactory.Create();
+        return new MasternodeVotingContract(worldState, abiEncoder, contractAddress, readOnlyTxProcessorSource);
     }
 
 }
