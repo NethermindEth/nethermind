@@ -215,21 +215,6 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         return sortedSnapshots.GetViewBetween(min, max).ToPooledList(0);
     }
 
-    internal ref struct RepolockReadExiter(ReaderWriterLockSlim @lock, bool read) : IDisposable
-    {
-        public void Dispose()
-        {
-            if (read)
-            {
-                @lock.ExitReadLock();
-            }
-            else
-            {
-                @lock.ExitWriteLock();
-            }
-        }
-    }
-
     internal StateId? GetLastSnapshotId()
     {
         using var _ = _sortedKnownStates.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
@@ -435,7 +420,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     public void RemoveAndReleaseCompactedKnownState(StateId stateId)
     {
-        if (_compactedKnownStates.Remove(stateId, out var existingState))
+        if (_compactedKnownStates.TryRemove(stateId, out var existingState))
         {
             var memory = existingState.EstimateMemory();
             foreach (var keyValuePair in memory)

@@ -73,6 +73,15 @@ public class Snapshot(
 
     protected override void CleanUp()
     {
+        foreach (var kv in content.StateNodes)
+        {
+            kv.Value.PrunePersistedRecursively(1);
+        }
+        foreach (var kv in content.StorageNodes)
+        {
+            kv.Value.PrunePersistedRecursively(1);
+        }
+
         pool.Return(content);
     }
 

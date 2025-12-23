@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -11,8 +10,8 @@ using Nethermind.Trie;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// The trienode cache is a populated on the latest snapshot instead of on the last one.
-/// This has a slightly better hit rate and uses less memory overall.
+/// The trienode cache significantly reduce the amount of RLP needed to be read by almost 60%. is a populated on the
+/// latest snapshot instead of on the last one. This has a slightly better hit rate and uses less memory overall.
 /// </summary>
 public class TrieNodeCache
 {

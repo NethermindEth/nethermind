@@ -4,9 +4,11 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -27,16 +29,21 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public class PreimageRocksdbPersistence : IPersistence
 {
+    private const int PreimageLookupSize = 12; // Store only 12 byte
+
     private readonly IColumnsDb<FlatDbColumns> _db;
     private static byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
 
     private readonly SegmentedBloom _bloomFilter;
+    private IDb _preimageDb;
 
     public PreimageRocksdbPersistence(
         IColumnsDb<FlatDbColumns> db,
+        [KeyFilter(DbNames.Preimage)] IDb preimageDb,
         [KeyFilter(DbNames.Flat)] SegmentedBloom bloomFilter)
     {
         _db = db;
+        _preimageDb = preimageDb;
         _bloomFilter = bloomFilter;
     }
 
@@ -107,6 +114,7 @@ public class PreimageRocksdbPersistence : IPersistence
     public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags flags)
     {
         IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch();
+        IWriteBatch preimageWriteBatch = _preimageDb.StartWriteBatch();
         IColumnDbSnapshot<FlatDbColumns> dbSnap = _db.CreateSnapshot();
         StateId currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
         if (currentState != from)
@@ -122,7 +130,9 @@ public class PreimageRocksdbPersistence : IPersistence
                 batch.GetColumnBatch(FlatDbColumns.Account),
                 batch.GetColumnBatch(FlatDbColumns.Storage),
                 flags
-            )
+            ),
+            preimageWriteBatch,
+            _preimageDb
         );
 
         var trieWriteBatch = new TriePersistence.WriteBatch(
@@ -139,6 +149,7 @@ public class PreimageRocksdbPersistence : IPersistence
             {
                 SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), to);
                 batch.Dispose();
+                preimageWriteBatch.Dispose();
                 dbSnap.Dispose();
                 if (!flags.HasFlag(WriteFlags.DisableWAL))
                 {
@@ -149,7 +160,9 @@ public class PreimageRocksdbPersistence : IPersistence
     }
 
     public struct FakeHashWriter<TWriteBatch>(
-        TWriteBatch flatWriteBatch
+        TWriteBatch flatWriteBatch,
+        IWriteBatch preimageWriteBatch,
+        IKeyValueStore preimageDb
     ) : BaseRocksdbPersistence.IFlatWriteBatch
         where TWriteBatch : struct, BaseRocksdbPersistence.IHashedFlatWriteBatch
     {
@@ -161,6 +174,9 @@ public class PreimageRocksdbPersistence : IPersistence
             ValueHash256 fakeAddrHash = ValueKeccak.Zero;
             addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
 
+            ValueHash256 computed = addr.ToAccountPath;
+            preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], addr.Bytes);
+
             return _flatWriteBatch.SelfDestruct(fakeAddrHash);
         }
 
@@ -169,6 +185,9 @@ public class PreimageRocksdbPersistence : IPersistence
             ValueHash256 fakeAddrHash = ValueKeccak.Zero;
             addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
 
+            ValueHash256 computed = addr.ToAccountPath;
+            preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], addr.Bytes);
+
             _flatWriteBatch.RemoveAccount(fakeAddrHash);
         }
 
@@ -176,6 +195,9 @@ public class PreimageRocksdbPersistence : IPersistence
         {
             ValueHash256 fakeAddrHash = ValueKeccak.Zero;
             addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
+
+            ValueHash256 computed = addr.ToAccountPath;
+            preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], addr.Bytes);
 
             using var stream = _accountDecoder.EncodeToNewNettyStream(account);
             _flatWriteBatch.SetAccount(fakeAddrHash, stream.AsSpan());
@@ -189,7 +211,13 @@ public class PreimageRocksdbPersistence : IPersistence
             ValueHash256 fakeSlotHash = ValueKeccak.Zero;
             slot.ToBigEndian(fakeSlotHash.BytesAsSpan);
 
-            _flatWriteBatch.SetStorage(addr.ToAccountPath, fakeSlotHash, value);
+            ValueHash256 computed = addr.ToAccountPath;
+            preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], addr.Bytes);
+
+            StorageTree.ComputeKeyWithLookup(slot,  computed.BytesAsSpan);
+            preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], slot.ToBigEndian());
+
+            _flatWriteBatch.SetStorage(fakeAddrHash, fakeSlotHash, value);
         }
 
         public void RemoveStorage(Address addr, UInt256 slot)
@@ -200,17 +228,66 @@ public class PreimageRocksdbPersistence : IPersistence
             ValueHash256 fakeSlotHash = ValueKeccak.Zero;
             slot.ToBigEndian(fakeSlotHash.BytesAsSpan);
 
-            _flatWriteBatch.RemoveStorage(addr.ToAccountPath, fakeSlotHash);
+            ValueHash256 computed = addr.ToAccountPath;
+            preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], addr.Bytes);
+
+            StorageTree.ComputeKeyWithLookup(slot,  computed.BytesAsSpan);
+            preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], slot.ToBigEndian());
+
+            _flatWriteBatch.RemoveStorage(fakeAddrHash, fakeSlotHash);
         }
 
         public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
         {
-            throw new InvalidOperationException("Raw operation not available in preimage mode");
+            try
+            {
+                byte[]? addressBytes = preimageDb.Get(addrHash.Bytes);
+                if (addressBytes == null || addressBytes.Length != 20)
+                {
+                    throw new InvalidOperationException(
+                        $"Unable to translate back hash {addrHash} to address. Got {addressBytes?.ToHexString()}");
+                }
+
+                Address addr = new Address(addressBytes);
+
+                byte[]? slotBytes = preimageDb.Get(slotHash.Bytes);
+                if (slotBytes == null || slotBytes.Length != 32)
+                {
+                    throw new InvalidOperationException(
+                        $"Unable to translate back slot {slotHash} to slot. Got {slotBytes?.ToHexString()}");
+                }
+
+                UInt256 slot = new UInt256(slotBytes, isBigEndian: true);
+                SetStorage(addr, slot, value);
+            }
+            catch (Exception e)
+            {
+                Console.Error.WriteLine($"Error {e}");
+                throw;
+            }
         }
 
         public void SetAccountRaw(Hash256 addrHash, Account account)
         {
-            throw new InvalidOperationException("Raw operation not available in preimage mode");
+            try
+            {
+                byte[]? addressBytes = preimageDb.Get(addrHash.Bytes);
+                if (addressBytes == null || addressBytes.Length != 20)
+                {
+                    throw new InvalidOperationException( $"Unable to translate back hash {addrHash} to address. Got {addressBytes?.ToHexString()}");
+                }
+
+                using var stream = _accountDecoder.EncodeToNewNettyStream(account);
+                _flatWriteBatch.SetAccount(addrHash, stream.AsSpan());
+
+                Address addr = new Address(addressBytes);
+                SetAccount(addr, account);
+            }
+            catch (Exception e)
+            {
+                Console.Error.WriteLine($"Error {e}");
+                throw;
+            }
         }
     }
 

@@ -537,5 +537,11 @@ public class DbConfig : IDbConfig
         set { field = value ?? ""; }
     } = "";
     public string? FlatStorageTopNodesNodesDbAdditionalRocksDbOptions { get; set; }
-    public ulong PreimageDbWriteBufferSize { get; set; } = (ulong)16.MiB();
+    public ulong PreimageDbWriteBufferSize { get; set; } = (ulong)64.MiB();
+
+    public string? PreimageDbRocksDbOptions
+    {
+        get { return field; }
+        set { field = value; }
+    } = "";
 }
