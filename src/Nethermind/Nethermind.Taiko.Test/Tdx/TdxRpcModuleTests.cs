@@ -6,6 +6,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -80,7 +81,7 @@ public class TdxRpcModuleTests
 
         var attestation = new BlockHashTdxAttestation
         {
-            Signature = new byte[85],
+            Signature = new byte[Signature.Size],
             BlockHash = header.Hash!
         };
         _tdxService.AttestBlockHash(header.Hash!).Returns(attestation);
@@ -139,7 +140,7 @@ public class TdxRpcModuleTests
 
         var attestation = new BlockHeaderTdxAttestation
         {
-            Signature = new byte[85],
+            Signature = new byte[Signature.Size],
             BlockHash = header.Hash!,
             HeaderRlp = new byte[200]
         };

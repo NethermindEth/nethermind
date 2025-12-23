@@ -106,7 +106,7 @@ public class TdxService : ITdxService
 
         return new BlockHashTdxAttestation
         {
-            Signature = signature.BytesWithRecovery,
+            Signature = GetSignatureBytes(signature),
             BlockHash = blockHash
         };
     }
@@ -126,10 +126,21 @@ public class TdxService : ITdxService
 
         return new BlockHeaderTdxAttestation
         {
-            Signature = signature.BytesWithRecovery,
+            Signature = GetSignatureBytes(signature),
             BlockHash = blockHeader.Hash,
             HeaderRlp = headerRlp
         };
+    }
+
+    /// <summary>
+    /// Get 65-byte signature in format [r:32][s:32][v:1] where v = 27 + recovery_id
+    /// </summary>
+    private static byte[] GetSignatureBytes(Signature signature)
+    {
+        byte[] result = new byte[Signature.Size];
+        signature.Bytes.CopyTo(result.AsSpan(0, Signature.Size - 1)); // r + s
+        result[Signature.Size - 1] = (byte)signature.V;
+        return result;
     }
 
     private bool TryLoadBootstrap()
@@ -212,4 +223,19 @@ public class TdxService : ITdxService
 
     private string GetBootstrapPath() => Path.Combine(GetConfigDir(), "bootstrap.json");
     private string GetKeyPath() => Path.Combine(GetConfigDir(), "secrets", "priv.key");
+}
+
+/// <summary>
+/// Null implementation of ITdxService for when TDX is disabled.
+/// </summary>
+internal sealed class NullTdxService : ITdxService
+{
+    public static readonly NullTdxService Instance = new();
+    private NullTdxService() { }
+
+    public bool IsBootstrapped => false;
+    public TdxGuestInfo? GetGuestInfo() => null;
+    public TdxGuestInfo Bootstrap() => throw new TdxException("TDX is not enabled");
+    public BlockHashTdxAttestation AttestBlockHash(Hash256 blockHash) => throw new TdxException("TDX is not enabled");
+    public BlockHeaderTdxAttestation AttestBlockHeader(BlockHeader blockHeader) => throw new TdxException("TDX is not enabled");
 }

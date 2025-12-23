@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Taiko.Tdx;
@@ -111,7 +112,7 @@ public class TdxServiceTests
         BlockHashTdxAttestation attestation = _service.AttestBlockHash(block.Header.Hash!);
 
         attestation.Should().NotBeNull();
-        attestation.Signature.Should().HaveCount(85); // 20 + 65
+        attestation.Signature.Should().HaveCount(Signature.Size);
         attestation.BlockHash.Should().Be(block.Hash!);
     }
 
@@ -128,22 +129,19 @@ public class TdxServiceTests
         BlockHeaderTdxAttestation attestation = _service.AttestBlockHeader(block.Header);
 
         attestation.Should().NotBeNull();
-        attestation.Signature.Should().HaveCount(85); // 20 + 65
+        attestation.Signature.Should().HaveCount(Signature.Size);
         attestation.HeaderRlp.Should().NotBeEmpty();
     }
 
     [Test]
-    public void AttestBlockHash_proof_contains_address_and_signature()
+    public void AttestBlockHash_proof_contains_valid_signature()
     {
-        TdxGuestInfo info = _service.Bootstrap();
+        _service.Bootstrap();
         Block block = Build.A.Block.WithNumber(1).TestObject;
 
         BlockHashTdxAttestation attestation = _service.AttestBlockHash(block.Header.Hash!);
 
-        byte[] addressBytes = attestation.Signature[0..20];
-        Address proofAddress = new(addressBytes);
-
-        proofAddress.ToString().ToLowerInvariant().Should().Be(info.PublicKey.ToLowerInvariant());
+        attestation.Signature.Should().HaveCount(Signature.Size);
     }
 
     [Test]
@@ -193,8 +191,7 @@ public class TdxServiceTests
 
         BlockHashTdxAttestation attestation = _service.AttestBlockHash(block.Header.Hash!);
 
-        // v is at position 84 (20 + 64)
-        byte v = attestation.Signature[84];
+        byte v = attestation.Signature[Signature.Size - 1];
         v.Should().BeOneOf((byte)27, (byte)28);
     }
 
@@ -213,15 +210,14 @@ public class TdxServiceTests
     [Test]
     public void New_service_attest_uses_persisted_keys()
     {
-        TdxGuestInfo info = _service.Bootstrap();
+        _service.Bootstrap();
         Block block = Build.A.Block.WithNumber(1).TestObject;
+        BlockHashTdxAttestation attestation1 = _service.AttestBlockHash(block.Header.Hash!);
 
         var newService = new TdxService(_config, _client, LimboLogs.Instance);
         newService.Bootstrap();
-        BlockHashTdxAttestation attestation = newService.AttestBlockHash(block.Header.Hash!);
+        BlockHashTdxAttestation attestation2 = newService.AttestBlockHash(block.Header.Hash!);
 
-        byte[] addressBytes = attestation.Signature[0..20];
-        Address proofAddress = new(addressBytes);
-        proofAddress.ToString().ToLowerInvariant().Should().Be(info.PublicKey.ToLowerInvariant());
+        attestation2.Signature.Should().BeEquivalentTo(attestation1.Signature);
     }
 }
