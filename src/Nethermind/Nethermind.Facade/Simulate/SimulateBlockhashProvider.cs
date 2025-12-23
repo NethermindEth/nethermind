@@ -20,7 +20,6 @@ public sealed class SimulateBlockhashProvider(IBlockhashProvider blockhashProvid
     public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
     {
         long bestKnown = blockTree.BestKnownNumber;
-        _logger.Error($"Call: {blockTree.GetType().FullName}. current: {currentBlock.Number}, number: {number}, bestKnown: {bestKnown}");
         return bestKnown < number && blockTree.BestSuggestedHeader is not null
             ? blockhashProvider.GetBlockhash(blockTree.BestSuggestedHeader!, number, spec)
             : blockhashProvider.GetBlockhash(currentBlock, number, spec);
