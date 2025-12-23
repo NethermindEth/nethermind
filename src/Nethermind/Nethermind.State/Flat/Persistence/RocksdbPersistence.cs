@@ -79,15 +79,17 @@ public class RocksdbPersistence : IPersistence
             storage = snapshot.GetColumn(FlatDbColumns.Storage);
         }
 
-        var flatReader = new BaseRocksdbPersistence.ToHashedFlatReader<HashedFlatPersistence.Reader>(
-            new HashedFlatPersistence.Reader(
-                state,
-                storage,
+        var flatReader = new BaseRocksdbPersistence.ToHashedFlatReader<BloomFlatWrapper.BloomInterceptor<RocksDbFlatPersistence.Reader>>(
+            new BloomFlatWrapper.BloomInterceptor<RocksDbFlatPersistence.Reader>(
+                new RocksDbFlatPersistence.Reader(
+                    state,
+                    storage
+                ),
                 _bloomFilter
             )
         );
 
-        return new BaseRocksdbPersistence.PersistenceReader<BaseRocksdbPersistence.ToHashedFlatReader<HashedFlatPersistence.Reader>, TriePersistence.Reader>(
+        return new BaseRocksdbPersistence.PersistenceReader<BaseRocksdbPersistence.ToHashedFlatReader<BloomFlatWrapper.BloomInterceptor<RocksDbFlatPersistence.Reader>>, TriePersistence.Reader>(
             flatReader,
             trieReader,
             currentState,
@@ -123,12 +125,14 @@ public class RocksdbPersistence : IPersistence
             storage = batch.GetColumnBatch(FlatDbColumns.Storage);
         }
 
-        var flatWriter = new BaseRocksdbPersistence.ToHashedWriteBatch<HashedFlatPersistence.WriteBatch>(
-            new HashedFlatPersistence.WriteBatch(
-                ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
-                state,
-                storage,
-                flags,
+        var flatWriter = new BaseRocksdbPersistence.ToHashedWriteBatch<BloomFlatWrapper.BloomWriter<RocksDbFlatPersistence.WriteBatch>>(
+            new BloomFlatWrapper.BloomWriter<RocksDbFlatPersistence.WriteBatch>(
+                new RocksDbFlatPersistence.WriteBatch(
+                    ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
+                    state,
+                    storage,
+                    flags
+                ),
                 _bloomFilter
             )
         );
@@ -140,7 +144,7 @@ public class RocksdbPersistence : IPersistence
             batch.GetColumnBatch(FlatDbColumns.StorageNodes),
             flags);
 
-        return new BaseRocksdbPersistence.WriteBatch<BaseRocksdbPersistence.ToHashedWriteBatch<HashedFlatPersistence.WriteBatch>, TriePersistence.WriteBatch>(
+        return new BaseRocksdbPersistence.WriteBatch<BaseRocksdbPersistence.ToHashedWriteBatch<BloomFlatWrapper.BloomWriter<RocksDbFlatPersistence.WriteBatch>>, TriePersistence.WriteBatch>(
             flatWriter,
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>

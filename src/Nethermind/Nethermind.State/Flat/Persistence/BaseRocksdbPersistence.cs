@@ -200,7 +200,7 @@ public class BaseRocksdbPersistence
             if (responseSize == 0)
             {
                 acc = null;
-                return false;
+                return true;
             }
 
             var ctx = new Rlp.ValueDecoderContext(valueBuffer[..responseSize]);
@@ -218,7 +218,7 @@ public class BaseRocksdbPersistence
             if (responseSize == 0)
             {
                 valueBytes = null;
-                return false;
+                return true;
             }
 
             valueBytes = valueBuffer[..responseSize].ToArray();

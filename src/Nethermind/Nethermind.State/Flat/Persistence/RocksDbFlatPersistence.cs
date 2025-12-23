@@ -2,54 +2,38 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Prometheus;
 using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class HashedFlatPersistence
+public static class RocksDbFlatPersistence
 {
     private const int StateKeyPrefixLength = 20;
     private const int StorageHashPrefixLength = 20; // Store prefix of the 32 byte of the storage. Reduces index size.
     private const int StorageSlotKeySize = 32;
     private const int StorageKeyLength = StorageHashPrefixLength + StorageSlotKeySize;
-    private static ReadOnlySpan<byte> EncodeAccountKeyHashed(Span<byte> buffer, in ValueHash256 address, out ulong h1)
+    private static ReadOnlySpan<byte> EncodeAccountKeyHashed(Span<byte> buffer, in ValueHash256 address)
     {
-        h1 = BinaryPrimitives.ReadUInt64LittleEndian(address.Bytes);
         address.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
         return buffer[..StateKeyPrefixLength];
     }
 
-    internal static ReadOnlySpan<byte> EncodeStorageKeyHashed(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash, out ulong h1)
+    internal static ReadOnlySpan<byte> EncodeStorageKeyHashed(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash)
     {
         addrHash.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
         slotHash.Bytes.CopyTo(buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]);
-        h1 = Mix(BinaryPrimitives.ReadUInt64LittleEndian(addrHash.Bytes), BinaryPrimitives.ReadUInt64LittleEndian(buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]));
         return buffer[..StorageKeyLength];
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static ulong Mix(ulong a, ulong b)
-    {
-        return (a ^ RotateLeft(b, 23)) * 0x9E3779B97F4A7C15UL;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static ulong RotateLeft(ulong x, int k)
-        => (x << k) | (x >> (64 - k));
 
     public struct WriteBatch(
         ISortedKeyValueStore storageSnap,
         IWriteOnlyKeyValueStore state,
         IWriteOnlyKeyValueStore storage,
-        WriteFlags flags,
-        SegmentedBloom bloomFilter
+        WriteFlags flags
     ) : BaseRocksdbPersistence.IHashedFlatWriteBatch
     {
         public int SelfDestruct(in ValueHash256 accountPath)
@@ -83,21 +67,19 @@ public class HashedFlatPersistence
 
         public void RemoveStorage(in ValueHash256 addrHash, in ValueHash256 slotHash)
         {
-            ReadOnlySpan<byte> theKey = EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash, slotHash, out ulong bloomHash);
+            ReadOnlySpan<byte> theKey = EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash, slotHash);
             storage.Remove(theKey);
         }
 
         public void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, ReadOnlySpan<byte> value)
         {
-            ReadOnlySpan<byte> theKey = EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash, slotHash, out ulong bloomHash);
-            bloomFilter.Add(bloomHash);
+            ReadOnlySpan<byte> theKey = EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash, slotHash);
             storage.PutSpan(theKey, value, flags);
         }
 
         public void SetAccount(in ValueHash256 addrHash, ReadOnlySpan<byte> account)
         {
             ReadOnlySpan<byte> key = addrHash.Bytes[..StateKeyPrefixLength];
-            bloomFilter.Add(BinaryPrimitives.ReadUInt64LittleEndian(key));
             state.PutSpan(key, account, flags);
         }
     }
@@ -105,8 +87,7 @@ public class HashedFlatPersistence
 
     public struct Reader(
         IReadOnlyKeyValueStore _state,
-        IReadOnlyKeyValueStore _storage,
-        SegmentedBloom _bloomFilter
+        IReadOnlyKeyValueStore _storage
     ) : BaseRocksdbPersistence.IHashedFlatReader
     {
         private static Counter _slotBloomHit = Metrics.CreateCounter("rocksdb_slot_bloom", "slot_blom", "hitmiss");
@@ -115,12 +96,7 @@ public class HashedFlatPersistence
 
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
         {
-            ReadOnlySpan<byte> key = EncodeAccountKeyHashed(stackalloc byte[StateKeyPrefixLength], address, out ulong bloomHash);
-            if (!_bloomFilter.MightContain(bloomHash))
-            {
-                return 0;
-            }
-
+            ReadOnlySpan<byte> key = EncodeAccountKeyHashed(stackalloc byte[StateKeyPrefixLength], address);
             ReadOnlySpan<byte> span = _state.GetSpan(key);
             try
             {
@@ -136,12 +112,7 @@ public class HashedFlatPersistence
         public int GetStorage(in ValueHash256 address, in ValueHash256 slot, Span<byte> outBuffer)
         {
             Span<byte> keySpan = stackalloc byte[StorageKeyLength];
-            ReadOnlySpan<byte> storageKey = EncodeStorageKeyHashed(keySpan, address, slot, out ulong bloomHash);
-            if (!_bloomFilter.MightContain(bloomHash))
-            {
-                return 0;
-            }
-
+            ReadOnlySpan<byte> storageKey = EncodeStorageKeyHashed(keySpan, address, slot);
             Span<byte> value = _storage.GetSpan(storageKey);
             try
             {

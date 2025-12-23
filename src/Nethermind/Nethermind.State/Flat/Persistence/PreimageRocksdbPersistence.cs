@@ -14,6 +14,17 @@ using Nethermind.State.Flat.Persistence.BloomFilter;
 
 namespace Nethermind.State.Flat.Persistence;
 
+/// <summary>
+/// Preimage means that instead of hashing the address and slot and using the address as key, it uses the address and
+/// slot directly as key. This implementation simply fake the hash by copying the bytes directly.
+/// This has a few benefit:
+/// - Skipping hash calculation, address and slot (around 0.3 micros).
+/// - Improved compression ratio, lower storage db size by about 15%, and therefore better os cache utilization.
+/// - Related slot value tend to be closer together resulting in better block cache.
+/// However, it has some major downside.
+/// - Cannot snap sync.
+/// - Cannot import without a complete preimage db.
+/// </summary>
 public class PreimageRocksdbPersistence : IPersistence
 {
     private readonly IColumnsDb<FlatDbColumns> _db;
@@ -75,15 +86,14 @@ public class PreimageRocksdbPersistence : IPersistence
         IReadOnlyKeyValueStore state = snapshot.GetColumn(FlatDbColumns.Account);
         IReadOnlyKeyValueStore storage = snapshot.GetColumn(FlatDbColumns.Storage);
 
-        var flatReader = new FakeHashFlatReader<HashedFlatPersistence.Reader>(
-            new HashedFlatPersistence.Reader(
+        var flatReader = new FakeHashFlatReader<RocksDbFlatPersistence.Reader>(
+            new RocksDbFlatPersistence.Reader(
                 state,
-                storage,
-                _bloomFilter
+                storage
             )
         );
 
-        return new BaseRocksdbPersistence.PersistenceReader<FakeHashFlatReader<HashedFlatPersistence.Reader>, TriePersistence.Reader>(
+        return new BaseRocksdbPersistence.PersistenceReader<FakeHashFlatReader<RocksDbFlatPersistence.Reader>, TriePersistence.Reader>(
             flatReader,
             trieReader,
             currentState,
@@ -106,13 +116,12 @@ public class PreimageRocksdbPersistence : IPersistence
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        var flatWriter = new FakeHashWriter<HashedFlatPersistence.WriteBatch>(
-            new HashedFlatPersistence.WriteBatch(
+        var flatWriter = new FakeHashWriter<RocksDbFlatPersistence.WriteBatch>(
+            new RocksDbFlatPersistence.WriteBatch(
                 ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
                 batch.GetColumnBatch(FlatDbColumns.Account),
                 batch.GetColumnBatch(FlatDbColumns.Storage),
-                flags,
-                _bloomFilter
+                flags
             )
         );
 
@@ -123,7 +132,7 @@ public class PreimageRocksdbPersistence : IPersistence
             batch.GetColumnBatch(FlatDbColumns.StorageNodes),
             flags);
 
-        return new BaseRocksdbPersistence.WriteBatch<FakeHashWriter<HashedFlatPersistence.WriteBatch>, TriePersistence.WriteBatch>(
+        return new BaseRocksdbPersistence.WriteBatch<FakeHashWriter<RocksDbFlatPersistence.WriteBatch>, TriePersistence.WriteBatch>(
             flatWriter,
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
