@@ -7,8 +7,6 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Prometheus;
 using Metrics = Prometheus.Metrics;
@@ -21,26 +19,11 @@ public class HashedFlatPersistence
     private const int StorageHashPrefixLength = 20; // Store prefix of the 32 byte of the storage. Reduces index size.
     private const int StorageSlotKeySize = 32;
     private const int StorageKeyLength = StorageHashPrefixLength + StorageSlotKeySize;
-    private static ReadOnlySpan<byte> EncodeAccountKey(Span<byte> buffer, in Address addr, out ulong h1)
+    private static ReadOnlySpan<byte> EncodeAccountKeyHashed(Span<byte> buffer, in ValueHash256 address, out ulong h1)
     {
-        ValueHash256 hashBuffer = ValueKeccak.Zero;
-        hashBuffer = addr.ToAccountPath;
-        h1 = BinaryPrimitives.ReadUInt64LittleEndian(hashBuffer.Bytes);
-        hashBuffer.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
+        h1 = BinaryPrimitives.ReadUInt64LittleEndian(address.Bytes);
+        address.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
         return buffer[..StateKeyPrefixLength];
-    }
-
-    internal static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, in Address addr, in UInt256 slot, out ulong h1)
-    {
-        ValueHash256 hashBuffer = ValueKeccak.Zero;
-        hashBuffer = addr.ToAccountPath; // 75ns on average
-        hashBuffer.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
-
-        // around 300ns on average. 30% keccak cache hit rate.
-        StorageTree.ComputeKeyWithLookup(slot, buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]);
-
-        h1 = Mix(BinaryPrimitives.ReadUInt64LittleEndian(buffer), BinaryPrimitives.ReadUInt64LittleEndian(buffer[StorageHashPrefixLength..]));
-        return buffer[..StorageKeyLength];
     }
 
     internal static ReadOnlySpan<byte> EncodeStorageKeyHashed(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash, out ulong h1)
@@ -67,13 +50,10 @@ public class HashedFlatPersistence
         IWriteOnlyKeyValueStore storage,
         WriteFlags flags,
         SegmentedBloom bloomFilter
-    ) : BaseRocksdbPersistence.IFlatWriteBatch
+    ) : BaseRocksdbPersistence.IHashedFlatWriteBatch
     {
-        internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
-
-        public int SelfDestruct(Address addr)
+        public int SelfDestruct(in ValueHash256 accountPath)
         {
-            ValueHash256 accountPath = addr.ToAccountPath;
             Span<byte> firstKey = stackalloc byte[StorageHashPrefixLength]; // Because slot 0 is a thing, its just the address prefix.
             Span<byte> lastKey = stackalloc byte[StorageKeyLength];
             firstKey.Fill(0x00);
@@ -82,9 +62,6 @@ public class HashedFlatPersistence
             accountPath.Bytes[..StorageHashPrefixLength].CopyTo(lastKey);
 
             int removedEntry = 0;
-            // for storage the prefix might change depending on the encoding
-            EncodeAccountKey(firstKey, addr, out _);
-            EncodeAccountKey(lastKey, addr, out _);
             using (ISortedView storageReader = storageSnap.GetViewBetween(firstKey, lastKey))
             {
                 IWriteOnlyKeyValueStore? storageWriter = storage;
@@ -98,52 +75,30 @@ public class HashedFlatPersistence
             return removedEntry;
         }
 
-        public void RemoveAccount(Address addr)
+        public void RemoveAccount(in ValueHash256 addrHash)
         {
-            state.Remove(EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr, out _));
+            ReadOnlySpan<byte> key = addrHash.Bytes[..StateKeyPrefixLength];
+            state.Remove(key);
         }
 
-        public void SetAccount(Address addr, Account account)
+        public void RemoveStorage(in ValueHash256 addrHash, in ValueHash256 slotHash)
         {
-            using var stream = _accountDecoder.EncodeToNewNettyStream(account);
-            ReadOnlySpan<byte> key = EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr, out var bloomHash);
-
-            if (account != null)
-            {
-                bloomFilter.Add(bloomHash);
-            }
-
-            state.PutSpan(key, stream.AsSpan());
-        }
-
-        public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
-        {
-            ReadOnlySpan<byte> theKey =  EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot, out ulong bloomHash);
-
-            bloomFilter.Add(bloomHash);
-            storage.PutSpan(theKey, value, flags);
-        }
-
-        public void RemoveStorage(Address addr, UInt256 slot)
-        {
-            ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot, out _);
+            ReadOnlySpan<byte> theKey = EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash, slotHash, out ulong bloomHash);
             storage.Remove(theKey);
         }
 
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
+        public void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, ReadOnlySpan<byte> value)
         {
-            ReadOnlySpan<byte> theKey = EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash.ValueHash256, slotHash.ValueHash256, out ulong bloomHash);
+            ReadOnlySpan<byte> theKey = EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash, slotHash, out ulong bloomHash);
             bloomFilter.Add(bloomHash);
             storage.PutSpan(theKey, value, flags);
         }
 
-        public void SetAccountRaw(Hash256 addrHash, Account account)
+        public void SetAccount(in ValueHash256 addrHash, ReadOnlySpan<byte> account)
         {
-            using var stream = _accountDecoder.EncodeToNewNettyStream(account);
-
-            var key = addrHash.Bytes[..StateKeyPrefixLength];
+            ReadOnlySpan<byte> key = addrHash.Bytes[..StateKeyPrefixLength];
             bloomFilter.Add(BinaryPrimitives.ReadUInt64LittleEndian(key));
-            state.PutSpan(key, stream.AsSpan(), flags);
+            state.PutSpan(key, account, flags);
         }
     }
 
@@ -152,88 +107,58 @@ public class HashedFlatPersistence
         IReadOnlyKeyValueStore _state,
         IReadOnlyKeyValueStore _storage,
         SegmentedBloom _bloomFilter
-    ) : BaseRocksdbPersistence.IFlatReader
+    ) : BaseRocksdbPersistence.IHashedFlatReader
     {
-        internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
-
         private static Counter _slotBloomHit = Metrics.CreateCounter("rocksdb_slot_bloom", "slot_blom", "hitmiss");
         private static Counter.Child _slotBloomHitHit = _slotBloomHit.WithLabels("true_positive");
         private static Counter.Child _slotBloomHitMiss = _slotBloomHit.WithLabels("false_positive");
 
-
-        public bool TryGetAccount(Address address, out Account? acc)
+        public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
         {
-            var key = EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], address, out ulong bloomHash);
+            ReadOnlySpan<byte> key = EncodeAccountKeyHashed(stackalloc byte[StateKeyPrefixLength], address, out ulong bloomHash);
             if (!_bloomFilter.MightContain(bloomHash))
             {
-                acc = null;
-                return true;
+                return 0;
             }
 
-            Span<byte> value = _state.GetSpan(key);
+            ReadOnlySpan<byte> span = _state.GetSpan(key);
             try
             {
-                if (value.IsNullOrEmpty())
-                {
-                    acc = null;
-                    return true;
-                }
-
-                var ctx = new Rlp.ValueDecoderContext(value);
-                acc = _accountDecoder.Decode(ref ctx);
-                return true;
+                span.CopyTo(outBuffer);
+                return span.Length;
             }
             finally
             {
-                _state.DangerousReleaseMemory(value);
+                _state.DangerousReleaseMemory(span);
             }
         }
 
-
-        public bool TryGetSlot(Address address, in UInt256 index, out byte[] valueBytes)
+        public int GetStorage(in ValueHash256 address, in ValueHash256 slot, Span<byte> outBuffer)
         {
-            ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], address, index, out ulong h1);
-            if (!_bloomFilter.MightContain(h1))
+            Span<byte> keySpan = stackalloc byte[StorageKeyLength];
+            ReadOnlySpan<byte> storageKey = EncodeStorageKeyHashed(keySpan, address, slot, out ulong bloomHash);
+            if (!_bloomFilter.MightContain(bloomHash))
             {
-                valueBytes = null;
-                return true;
+                return 0;
             }
 
-            Span<byte> value = _storage.GetSpan(theKey);
+            Span<byte> value = _storage.GetSpan(storageKey);
             try
             {
                 if (value.IsNullOrEmpty())
                 {
                     _slotBloomHitMiss.Inc();
-                    valueBytes = null;
-                    return true;
+                    return 0;
                 }
 
                 _slotBloomHitHit.Inc();
-                valueBytes = value.ToArray();
-                return true;
+                value.CopyTo(outBuffer);
+                return value.Length;
             }
             finally
             {
                 _storage.DangerousReleaseMemory(value);
             }
-        }
-
-        public byte[]? GetAccountRaw(Hash256 addrHash)
-        {
-            return GetAccountRaw(addrHash.ValueHash256);
-        }
-
-        private byte[]? GetAccountRaw(in ValueHash256 accountHash)
-        {
-            return _state.GetSpan(accountHash.Bytes[..StateKeyPrefixLength]).ToArray();
-        }
-
-        public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash)
-        {
-            Span<byte> keySpan = stackalloc byte[StorageKeyLength];
-            ReadOnlySpan<byte> storageKey = EncodeStorageKeyHashed(keySpan, addrHash.ValueHash256, slotHash.ValueHash256, out ulong _);
-            return _storage.Get(storageKey);
         }
     }
 }

@@ -86,8 +86,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddSingleton<IPersistence, IFlatDbConfig, IComponentContext>((flatDbConfig, ctx) =>
             {
                 if (
-                    flatDbConfig.Layout == FlatLayout.PreimageFlat
-                    || flatDbConfig.Layout == FlatLayout.FlatSeparateTopStorage
+                    flatDbConfig.Layout == FlatLayout.FlatSeparateTopStorage
                     || flatDbConfig.Layout == FlatLayout.Flat
                     || flatDbConfig.Layout == FlatLayout.FlatInTrie
                 )
@@ -105,9 +104,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                     return ctx.Resolve<LMDBPersistence>();
                 }
 
-                if (flatDbConfig.Layout == FlatLayout.FlatSeparateTopStorage || flatDbConfig.Layout == FlatLayout.PreimageFlat)
+                if (flatDbConfig.Layout == FlatLayout.PreimageFlat)
                 {
-                    return ctx.Resolve<LegacyRocksdbPersistence>();
+                    return ctx.Resolve<PreimageRocksdbPersistence>();
                 }
 
                 throw new Exception($"Unsupported layout {flatDbConfig.Layout}");
@@ -120,10 +119,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 return dbConfig;
             })
 
+            .AddSingleton<PreimageRocksdbPersistence>()
+
             .AddSingleton<RocksdbPersistence>()
             .AddSingleton<RocksdbPersistence.Configuration, IFlatDbConfig>((config) => new RocksdbPersistence.Configuration()
             {
-                UsePreimage = config.Layout == FlatLayout.PreimageFlat,
                 FlatInTrie = config.Layout == FlatLayout.FlatInTrie,
             })
             .AddKeyedSingleton<SegmentedBloom>(DbNames.Flat, (ctx) =>

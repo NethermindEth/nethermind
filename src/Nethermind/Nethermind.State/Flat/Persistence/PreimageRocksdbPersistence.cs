@@ -7,14 +7,10 @@ using System.Runtime.CompilerServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence.BloomFilter;
-using Nethermind.Trie;
-using Prometheus;
-using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State.Flat.Persistence;
 
@@ -22,14 +18,6 @@ public class PreimageRocksdbPersistence : IPersistence
 {
     private readonly IColumnsDb<FlatDbColumns> _db;
     private static byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
-
-    private const int StateKeyPrefixLength = 20;
-
-    private const int StorageHashPrefixLength = 20; // Store prefix of the 32 byte of the storage. Reduces index size.
-    private const int StorageSlotKeySize = 32;
-    private const int StorageKeyLength = StorageHashPrefixLength + StorageSlotKeySize;
-
-    internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
     private readonly SegmentedBloom _bloomFilter;
 
@@ -63,21 +51,6 @@ public class PreimageRocksdbPersistence : IPersistence
         kv.PutSpan(CurrentStateKey, bytes);
     }
 
-    internal static ReadOnlySpan<byte> EncodeAccountKey(Span<byte> buffer, in Address addr, out ulong h1)
-    {
-        addr.Bytes.CopyTo(buffer);
-        h1 = BinaryPrimitives.ReadUInt64LittleEndian(addr.Bytes);
-        return (buffer[..StateKeyPrefixLength]);
-    }
-
-    private static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, in Address addr, in UInt256 slot, out ulong h1)
-    {
-        addr.Bytes.CopyTo(buffer);
-        slot.ToBigEndian(buffer[StorageHashPrefixLength..]);
-        h1 = Mix(BinaryPrimitives.ReadUInt64LittleEndian(buffer), BinaryPrimitives.ReadUInt64LittleEndian(buffer[StorageHashPrefixLength..]));
-        return buffer[..StorageKeyLength];
-    }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static ulong Mix(ulong a, ulong b)
     {
@@ -102,13 +75,15 @@ public class PreimageRocksdbPersistence : IPersistence
         IReadOnlyKeyValueStore state = snapshot.GetColumn(FlatDbColumns.Account);
         IReadOnlyKeyValueStore storage = snapshot.GetColumn(FlatDbColumns.Storage);
 
-        var flatReader = new PreimageReader(
-            state,
-            storage,
-            _bloomFilter
+        var flatReader = new FakeHashFlatReader<HashedFlatPersistence.Reader>(
+            new HashedFlatPersistence.Reader(
+                state,
+                storage,
+                _bloomFilter
+            )
         );
 
-        return new BaseRocksdbPersistence.PersistenceReader<PreimageReader, TriePersistence.Reader>(
+        return new BaseRocksdbPersistence.PersistenceReader<FakeHashFlatReader<HashedFlatPersistence.Reader>, TriePersistence.Reader>(
             flatReader,
             trieReader,
             currentState,
@@ -131,12 +106,15 @@ public class PreimageRocksdbPersistence : IPersistence
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        var flatWriter = new PreimageWriteBatch(
-            batch,
-            _bloomFilter,
-            dbSnap,
-            flags
-        ) ;
+        var flatWriter = new FakeHashWriter<HashedFlatPersistence.WriteBatch>(
+            new HashedFlatPersistence.WriteBatch(
+                ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
+                batch.GetColumnBatch(FlatDbColumns.Account),
+                batch.GetColumnBatch(FlatDbColumns.Storage),
+                flags,
+                _bloomFilter
+            )
+        );
 
         var trieWriteBatch = new TriePersistence.WriteBatch(
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
@@ -145,7 +123,7 @@ public class PreimageRocksdbPersistence : IPersistence
             batch.GetColumnBatch(FlatDbColumns.StorageNodes),
             flags);
 
-        return new BaseRocksdbPersistence.WriteBatch<PreimageWriteBatch, TriePersistence.WriteBatch>(
+        return new BaseRocksdbPersistence.WriteBatch<FakeHashWriter<HashedFlatPersistence.WriteBatch>, TriePersistence.WriteBatch>(
             flatWriter,
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
@@ -161,176 +139,119 @@ public class PreimageRocksdbPersistence : IPersistence
         );
     }
 
-    private struct PreimageWriteBatch : BaseRocksdbPersistence.IFlatWriteBatch
+    public struct FakeHashWriter<TWriteBatch>(
+        TWriteBatch flatWriteBatch
+    ) : BaseRocksdbPersistence.IFlatWriteBatch
+        where TWriteBatch : struct, BaseRocksdbPersistence.IHashedFlatWriteBatch
     {
-        private IWriteOnlyKeyValueStore state;
-        private IWriteOnlyKeyValueStore storage;
-
-        private ISortedKeyValueStore storageSnap;
-        private readonly SegmentedBloom _bloomFilter;
-
-        private AccountDecoder _accountDecoder = AccountDecoder.Instance;
-        private WriteFlags _flags;
-
-        public PreimageWriteBatch(
-            IColumnsWriteBatch<FlatDbColumns> batch,
-            SegmentedBloom bloomFilter,
-            IColumnDbSnapshot<FlatDbColumns> dbSnap,
-            WriteFlags flags)
-        {
-            _flags = flags;
-            _bloomFilter = bloomFilter;
-
-            state = batch.GetColumnBatch(FlatDbColumns.Account);
-            storage = batch.GetColumnBatch(FlatDbColumns.Storage);
-
-            storageSnap = (ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage);
-        }
+        internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
+        private TWriteBatch _flatWriteBatch = flatWriteBatch;
 
         public int SelfDestruct(Address addr)
         {
-            ValueHash256 accountPath = addr.ToAccountPath;
-            Span<byte> firstKey = stackalloc byte[StorageHashPrefixLength]; // Because slot 0 is a thing, its just the address prefix.
-            Span<byte> lastKey = stackalloc byte[StorageKeyLength];
-            firstKey.Fill(0x00);
-            lastKey.Fill(0xff);
-            accountPath.Bytes[..StorageHashPrefixLength].CopyTo(firstKey);
-            accountPath.Bytes[..StorageHashPrefixLength].CopyTo(lastKey);
+            ValueHash256 fakeAddrHash = ValueKeccak.Zero;
+            addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
 
-            int removedEntry = 0;
-            // for storage the prefix might change depending on the encoding
-            EncodeAccountKey(firstKey, addr, out _);
-            EncodeAccountKey(lastKey, addr, out _);
-            using (ISortedView storageReader = storageSnap.GetViewBetween(firstKey, lastKey))
-            {
-                IWriteOnlyKeyValueStore? storageWriter = storage;
-                while (storageReader.MoveNext())
-                {
-                    storageWriter.Remove(storageReader.CurrentKey);
-                    removedEntry++;
-                }
-            }
-
-            return removedEntry;
+            return _flatWriteBatch.SelfDestruct(fakeAddrHash);
         }
 
         public void RemoveAccount(Address addr)
         {
-            state.Remove(EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr, out _));
+            ValueHash256 fakeAddrHash = ValueKeccak.Zero;
+            addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
+
+            _flatWriteBatch.RemoveAccount(fakeAddrHash);
         }
 
         public void SetAccount(Address addr, Account account)
         {
+            ValueHash256 fakeAddrHash = ValueKeccak.Zero;
+            addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
+
             using var stream = _accountDecoder.EncodeToNewNettyStream(account);
-            ReadOnlySpan<byte> key = EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr, out var bloomHash);
-
-            if (account != null)
-            {
-                _bloomFilter.Add(bloomHash);
-            }
-
-            state.PutSpan(key, stream.AsSpan());
+            _flatWriteBatch.SetAccount(fakeAddrHash, stream.AsSpan());
         }
 
         public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
         {
-            ReadOnlySpan<byte> theKey =  EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot, out ulong bloomHash);
+            ValueHash256 fakeAddrHash = ValueKeccak.Zero;
+            addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
 
-            _bloomFilter.Add(bloomHash);
-            storage.PutSpan(theKey, value, _flags);
+            ValueHash256 fakeSlotHash = ValueKeccak.Zero;
+            slot.ToBigEndian(fakeSlotHash.BytesAsSpan);
+
+            _flatWriteBatch.SetStorage(addr.ToAccountPath, fakeSlotHash, value);
         }
 
         public void RemoveStorage(Address addr, UInt256 slot)
         {
-            ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot, out _);
-            storage.Remove(theKey);
+            ValueHash256 fakeAddrHash = ValueKeccak.Zero;
+            addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
+
+            ValueHash256 fakeSlotHash = ValueKeccak.Zero;
+            slot.ToBigEndian(fakeSlotHash.BytesAsSpan);
+
+            _flatWriteBatch.RemoveStorage(addr.ToAccountPath, fakeSlotHash);
         }
 
         public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
         {
-            throw new InvalidOperationException("Cannot set raw when using preimage");
+            throw new InvalidOperationException("Raw operation not available in preimage mode");
         }
 
         public void SetAccountRaw(Hash256 addrHash, Account account)
         {
-            throw new InvalidOperationException("Cannot set raw when using preimage");
+            throw new InvalidOperationException("Raw operation not available in preimage mode");
         }
     }
 
-    private struct PreimageReader(
-        IReadOnlyKeyValueStore accountDb,
-        IReadOnlyKeyValueStore storageDb,
-        SegmentedBloom bloomFilter)
-        : BaseRocksdbPersistence.IFlatReader
+    public struct FakeHashFlatReader<TFlatReader>(
+        TFlatReader flatReader
+    ) : BaseRocksdbPersistence.IFlatReader
+        where TFlatReader : struct, BaseRocksdbPersistence.IHashedFlatReader
     {
-        private AccountDecoder _accountDecoder = AccountDecoder.Instance;
-        private static Counter _slotBloomHit = Metrics.CreateCounter("rocksdb_slot_bloom", "slot_blom", "hitmiss");
-        private static Counter.Child _slotBloomHitHit = _slotBloomHit.WithLabels("true_positive");
-        private static Counter.Child _slotBloomHitMiss = _slotBloomHit.WithLabels("false_positive");
-
+        internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
+        private int _accountSpanBufferSize = 256;
+        private int _slotSpanBufferSize = 40;
         public bool TryGetAccount(Address address, out Account? acc)
         {
-            var key = EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], address, out ulong bloomHash);
-            if (!bloomFilter.MightContain(bloomHash))
+            ValueHash256 fakeHash = ValueKeccak.Zero;
+            address.Bytes.CopyTo(fakeHash.BytesAsSpan);
+
+            Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
+            int responseSize = flatReader.GetAccount(fakeHash, valueBuffer);
+            if (responseSize == 0)
             {
                 acc = null;
-                return true;
+                return false;
             }
 
-            Span<byte> value = accountDb.GetSpan(key);
-            try
-            {
-                if (value.IsNullOrEmpty())
-                {
-                    acc = null;
-                    return true;
-                }
-
-                var ctx = new Rlp.ValueDecoderContext(value);
-                acc = _accountDecoder.Decode(ref ctx);
-                return true;
-            }
-            finally
-            {
-                accountDb.DangerousReleaseMemory(value);
-            }
+            var ctx = new Rlp.ValueDecoderContext(valueBuffer[..responseSize]);
+            acc = _accountDecoder.Decode(ref ctx);
+            return true;
         }
 
         public bool TryGetSlot(Address address, in UInt256 index, out byte[] valueBytes)
         {
-            ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], address, index, out ulong h1);
-            if (!bloomFilter.MightContain(h1))
+            ValueHash256 fakeHash = ValueKeccak.Zero;
+            address.Bytes.CopyTo(fakeHash.BytesAsSpan);
+
+            ValueHash256 fakeSlotHash = ValueKeccak.Zero;
+            index.ToBigEndian(fakeSlotHash.BytesAsSpan);
+
+            Span<byte> valueBuffer = stackalloc byte[_slotSpanBufferSize];
+            int responseSize = flatReader.GetStorage(fakeHash, fakeSlotHash, valueBuffer);
+            if (responseSize == 0)
             {
                 valueBytes = null;
-                return true;
+                return false;
             }
 
-            Span<byte> value = storageDb.GetSpan(theKey);
-            try
-            {
-                if (value.IsNullOrEmpty())
-                {
-                    _slotBloomHitMiss.Inc();
-                    valueBytes = null;
-                    return true;
-                }
-
-                _slotBloomHitHit.Inc();
-                valueBytes = value.ToArray();
-                return true;
-            }
-            finally
-            {
-                storageDb.DangerousReleaseMemory(value);
-            }
+            valueBytes = valueBuffer[..responseSize].ToArray();
+            return true;
         }
 
         public byte[]? GetAccountRaw(Hash256 addrHash)
-        {
-            return GetAccountRaw(addrHash.ValueHash256);
-        }
-
-        private byte[]? GetAccountRaw(in ValueHash256 accountHash)
         {
             throw new InvalidOperationException("Raw operation not available in preimage mode");
         }

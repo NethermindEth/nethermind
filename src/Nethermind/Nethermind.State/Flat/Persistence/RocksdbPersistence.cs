@@ -79,13 +79,15 @@ public class RocksdbPersistence : IPersistence
             storage = snapshot.GetColumn(FlatDbColumns.Storage);
         }
 
-        var flatReader = new HashedFlatPersistence.Reader(
-            state,
-            storage,
-            _bloomFilter
+        var flatReader = new BaseRocksdbPersistence.ToHashedFlatReader<HashedFlatPersistence.Reader>(
+            new HashedFlatPersistence.Reader(
+                state,
+                storage,
+                _bloomFilter
+            )
         );
 
-        return new BaseRocksdbPersistence.PersistenceReader<HashedFlatPersistence.Reader, TriePersistence.Reader>(
+        return new BaseRocksdbPersistence.PersistenceReader<BaseRocksdbPersistence.ToHashedFlatReader<HashedFlatPersistence.Reader>, TriePersistence.Reader>(
             flatReader,
             trieReader,
             currentState,
@@ -121,12 +123,14 @@ public class RocksdbPersistence : IPersistence
             storage = batch.GetColumnBatch(FlatDbColumns.Storage);
         }
 
-        var flatWriter = new HashedFlatPersistence.WriteBatch(
-            ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage)),
-            state,
-            storage,
-            flags,
-            _bloomFilter
+        var flatWriter = new BaseRocksdbPersistence.ToHashedWriteBatch<HashedFlatPersistence.WriteBatch>(
+            new HashedFlatPersistence.WriteBatch(
+                ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
+                state,
+                storage,
+                flags,
+                _bloomFilter
+            )
         );
 
         var trieWriteBatch = new TriePersistence.WriteBatch(
@@ -136,7 +140,7 @@ public class RocksdbPersistence : IPersistence
             batch.GetColumnBatch(FlatDbColumns.StorageNodes),
             flags);
 
-        return new BaseRocksdbPersistence.WriteBatch<HashedFlatPersistence.WriteBatch, TriePersistence.WriteBatch>(
+        return new BaseRocksdbPersistence.WriteBatch<BaseRocksdbPersistence.ToHashedWriteBatch<HashedFlatPersistence.WriteBatch>, TriePersistence.WriteBatch>(
             flatWriter,
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
