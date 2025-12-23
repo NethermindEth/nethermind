@@ -3,18 +3,13 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
-using Prometheus;
-using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State.Flat.Persistence;
 
@@ -22,14 +17,6 @@ public class RocksdbPersistence : IPersistence
 {
     private readonly IColumnsDb<FlatDbColumns> _db;
     private static byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
-
-    private const int StateKeyPrefixLength = 20;
-
-    private const int StorageHashPrefixLength = 20; // Store prefix of the 32 byte of the storage. Reduces index size.
-    private const int StorageSlotKeySize = 32;
-    private const int StorageKeyLength = StorageHashPrefixLength + StorageSlotKeySize;
-
-    internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
     private readonly Configuration _configuration;
     private readonly SegmentedBloom _bloomFilter;
@@ -70,46 +57,6 @@ public class RocksdbPersistence : IPersistence
         kv.PutSpan(CurrentStateKey, bytes);
     }
 
-    private ReadOnlySpan<byte> EncodeAccountKey(Span<byte> buffer, in Address addr, out ulong h1)
-    {
-        ValueHash256 hashBuffer = ValueKeccak.Zero;
-        hashBuffer = addr.ToAccountPath;
-        h1 = BinaryPrimitives.ReadUInt64LittleEndian(hashBuffer.Bytes);
-        hashBuffer.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
-        return buffer[..StateKeyPrefixLength];
-    }
-
-    internal ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, in Address addr, in UInt256 slot, out ulong h1)
-    {
-        ValueHash256 hashBuffer = ValueKeccak.Zero;
-        hashBuffer = addr.ToAccountPath; // 75ns on average
-        hashBuffer.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
-
-        // around 300ns on average. 30% keccak cache hit rate.
-        StorageTree.ComputeKeyWithLookup(slot, buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]);
-
-        h1 = Mix(BinaryPrimitives.ReadUInt64LittleEndian(buffer), BinaryPrimitives.ReadUInt64LittleEndian(buffer[StorageHashPrefixLength..]));
-        return buffer[..StorageKeyLength];
-    }
-
-    internal ReadOnlySpan<byte> EncodeStorageKeyHashed(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash, out ulong h1)
-    {
-        addrHash.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
-        slotHash.Bytes.CopyTo(buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]);
-        h1 = Mix(BinaryPrimitives.ReadUInt64LittleEndian(addrHash.Bytes), BinaryPrimitives.ReadUInt64LittleEndian(buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]));
-        return buffer[..StorageKeyLength];
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static ulong Mix(ulong a, ulong b)
-    {
-        return (a ^ RotateLeft(b, 23)) * 0x9E3779B97F4A7C15UL;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static ulong RotateLeft(ulong x, int k)
-        => (x << k) | (x >> (64 - k));
-
     public IPersistence.IPersistenceReader CreateReader()
     {
         return new PersistenceReader(_db.CreateSnapshot(), _bloomFilter, this);
@@ -131,22 +78,15 @@ public class RocksdbPersistence : IPersistence
 
     private class WriteBatch : IPersistence.IWriteBatch
     {
-        private IWriteOnlyKeyValueStore state;
-        private IWriteOnlyKeyValueStore storage;
-
-        private ISortedKeyValueStore storageSnap;
         private readonly SegmentedBloom _bloomFilter;
 
-        private AccountDecoder _accountDecoder = AccountDecoder.Instance;
-
         WriteFlags _flags = WriteFlags.DisableWAL;
-        private readonly RocksdbPersistence _mainDb;
         private readonly IColumnsWriteBatch<FlatDbColumns> _batch;
         private readonly IColumnDbSnapshot<FlatDbColumns> _dbSnap;
         private readonly StateId _to;
-        private readonly bool _flatInTrie;
 
         private readonly TriePersistence.WriteBatch _trieWriteBatch;
+        private readonly HashedFlatPersistence.WriteBatch _flatWriter;
 
         public WriteBatch(
             RocksdbPersistence mainDb,
@@ -157,13 +97,13 @@ public class RocksdbPersistence : IPersistence
             WriteFlags flags)
         {
             _flags = flags;
-            _mainDb = mainDb;
             _batch = batch;
             _bloomFilter = bloomFilter;
             _dbSnap = dbSnap;
             _to = to;
 
-            _flatInTrie = mainDb._configuration.FlatInTrie;
+            IWriteOnlyKeyValueStore state;
+            IWriteOnlyKeyValueStore storage;
             if (mainDb._configuration.FlatInTrie)
             {
                 state = batch.GetColumnBatch(FlatDbColumns.StateNodes);
@@ -175,6 +115,13 @@ public class RocksdbPersistence : IPersistence
                 storage = batch.GetColumnBatch(FlatDbColumns.Storage);
             }
 
+            _flatWriter = new HashedFlatPersistence.WriteBatch(
+                ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage)),
+                state,
+                storage,
+                flags,
+                bloomFilter
+            );
 
             _trieWriteBatch = new TriePersistence.WriteBatch(
                 (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
@@ -182,8 +129,6 @@ public class RocksdbPersistence : IPersistence
                 batch.GetColumnBatch(FlatDbColumns.StateNodes),
                 batch.GetColumnBatch(FlatDbColumns.StorageNodes),
                 flags);
-
-            storageSnap = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage));
         }
 
         public void Dispose()
@@ -199,60 +144,24 @@ public class RocksdbPersistence : IPersistence
 
         public int SelfDestruct(Address addr)
         {
+            int removed = _flatWriter.SelfDestruct(addr);
             _trieWriteBatch.SelfDestruct(addr.ToAccountPath);
-
-            ValueHash256 accountPath = addr.ToAccountPath;
-            Span<byte> firstKey = stackalloc byte[StorageHashPrefixLength]; // Because slot 0 is a thing, its just the address prefix.
-            Span<byte> lastKey = stackalloc byte[StorageKeyLength];
-            firstKey.Fill(0x00);
-            lastKey.Fill(0xff);
-            accountPath.Bytes[..StorageHashPrefixLength].CopyTo(firstKey);
-            accountPath.Bytes[..StorageHashPrefixLength].CopyTo(lastKey);
-
-            int removedEntry = 0;
-            if (!_flatInTrie)
-            {
-                // for storage the prefix might change depending on the encoding
-                _mainDb.EncodeAccountKey(firstKey, addr, out _);
-                _mainDb.EncodeAccountKey(lastKey, addr, out _);
-                using (ISortedView storageReader = storageSnap.GetViewBetween(firstKey, lastKey))
-                {
-                    IWriteOnlyKeyValueStore? storageWriter = storage;
-                    while (storageReader.MoveNext())
-                    {
-                        storageWriter.Remove(storageReader.CurrentKey);
-                        removedEntry++;
-                    }
-                }
-            }
-
-            return removedEntry;
+            return removed;
         }
 
         public void RemoveAccount(Address addr)
         {
-            state.Remove(_mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr, out _));
+            _flatWriter.RemoveAccount(addr);
         }
 
         public void SetAccount(Address addr, Account account)
         {
-            using var stream = _accountDecoder.EncodeToNewNettyStream(account);
-            ReadOnlySpan<byte> key = _mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr, out var bloomHash);
-
-            if (account != null)
-            {
-                _bloomFilter.Add(bloomHash);
-            }
-
-            state.PutSpan(key, stream.AsSpan());
+            _flatWriter.SetAccount(addr, account);
         }
 
         public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
         {
-            ReadOnlySpan<byte> theKey =  _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot, out ulong bloomHash);
-
-            _bloomFilter.Add(bloomHash);
-            storage.PutSpan(theKey, value, _flags);
+            _flatWriter.SetStorage(addr, slot, value);
         }
 
         public void SetTrieNodes(Hash256? address, TreePath path, TrieNode tnValue)
@@ -262,36 +171,25 @@ public class RocksdbPersistence : IPersistence
 
         public void RemoveStorage(Address addr, UInt256 slot)
         {
-            ReadOnlySpan<byte> theKey = _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot, out _);
-            storage.Remove(theKey);
+            _flatWriter.RemoveStorage(addr, slot);
         }
 
         public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
         {
-            ReadOnlySpan<byte> theKey = _mainDb.EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash.ValueHash256, slotHash.ValueHash256, out ulong bloomHash);
-            _bloomFilter.Add(bloomHash);
-            storage.PutSpan(theKey, value, _flags);
+            _flatWriter.SetStorageRaw(addrHash, slotHash, value);
         }
 
         public void SetAccountRaw(Hash256 addrHash, Account account)
         {
-            using var stream = _accountDecoder.EncodeToNewNettyStream(account);
-
-            var key = addrHash.Bytes[..StateKeyPrefixLength];
-            _bloomFilter.Add(BinaryPrimitives.ReadUInt64LittleEndian(key));
-            state.PutSpan(key, stream.AsSpan(), _flags);
+            _flatWriter.SetAccountRaw(addrHash, account);
         }
     }
 
     private class PersistenceReader : IPersistence.IPersistenceReader
     {
         private readonly IColumnDbSnapshot<FlatDbColumns> _db;
-        private readonly IReadOnlyKeyValueStore _state;
-        private readonly IReadOnlyKeyValueStore _storage;
-        private readonly RocksdbPersistence _mainDb;
-        private readonly bool _flatInTrie;
-        private readonly SegmentedBloom _bloomFilter;
         private readonly TriePersistence.Reader _trieReader;
+        private readonly HashedFlatPersistence.Reader _flatReader;
 
         public PersistenceReader(IColumnDbSnapshot<FlatDbColumns> db, SegmentedBloom bloomFilter, RocksdbPersistence mainDb)
         {
@@ -300,21 +198,28 @@ public class RocksdbPersistence : IPersistence
                 _db.GetColumn(FlatDbColumns.StateNodes),
                 _db.GetColumn(FlatDbColumns.StorageNodes)
             );
-            _flatInTrie = mainDb._configuration.FlatInTrie;
-            _bloomFilter = bloomFilter;
+
             _db = db;
-            _mainDb = mainDb;
             CurrentState = ReadCurrentState(db.GetColumn(FlatDbColumns.Metadata));
-            if (_flatInTrie)
+
+            IReadOnlyKeyValueStore state;
+            IReadOnlyKeyValueStore storage;
+            if (mainDb._configuration.FlatInTrie)
             {
-                _state = _db.GetColumn(FlatDbColumns.StateNodes);
-                _storage = _db.GetColumn(FlatDbColumns.StorageNodes);
+                state = _db.GetColumn(FlatDbColumns.StateNodes);
+                storage = _db.GetColumn(FlatDbColumns.StorageNodes);
             }
             else
             {
-                _state = _db.GetColumn(FlatDbColumns.Account);
-                _storage = _db.GetColumn(FlatDbColumns.Storage);
+                state = _db.GetColumn(FlatDbColumns.Account);
+                storage = _db.GetColumn(FlatDbColumns.Storage);
             }
+
+            _flatReader = new HashedFlatPersistence.Reader(
+                state,
+                storage,
+                bloomFilter
+            );
         }
 
         public StateId CurrentState { get; }
@@ -326,64 +231,12 @@ public class RocksdbPersistence : IPersistence
 
         public bool TryGetAccount(Address address, out Account? acc)
         {
-            var key = _mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], address, out ulong bloomHash);
-            if (!_bloomFilter.MightContain(bloomHash))
-            {
-                acc = null;
-                return true;
-            }
-
-            Span<byte> value = _state.GetSpan(key);
-            try
-            {
-                if (value.IsNullOrEmpty())
-                {
-                    acc = null;
-                    return true;
-                }
-
-                var ctx = new Rlp.ValueDecoderContext(value);
-                acc = _mainDb._accountDecoder.Decode(ref ctx);
-                return true;
-            }
-            finally
-            {
-                _state.DangerousReleaseMemory(value);
-            }
+            return _flatReader.TryGetAccount(address, out acc);
         }
-
-        private static Counter _slotBloomHit = Metrics.CreateCounter("rocksdb_slot_bloom", "slot_blom", "hitmiss");
-        private static Counter.Child _slotBloomHitHit = _slotBloomHit.WithLabels("true_positive");
-        private static Counter.Child _slotBloomHitMiss = _slotBloomHit.WithLabels("false_positive");
-
 
         public bool TryGetSlot(Address address, in UInt256 index, out byte[] valueBytes)
         {
-            ReadOnlySpan<byte> theKey = _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], address, index, out ulong h1);
-            if (!_bloomFilter.MightContain(h1))
-            {
-                valueBytes = null;
-                return true;
-            }
-
-            Span<byte> value = _storage.GetSpan(theKey);
-            try
-            {
-                if (value.IsNullOrEmpty())
-                {
-                    _slotBloomHitMiss.Inc();
-                    valueBytes = null;
-                    return true;
-                }
-
-                _slotBloomHitHit.Inc();
-                valueBytes = value.ToArray();
-                return true;
-            }
-            finally
-            {
-                _storage.DangerousReleaseMemory(value);
-            }
+            return _flatReader.TryGetSlot(address, in index, out valueBytes);
         }
 
         public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
@@ -393,19 +246,12 @@ public class RocksdbPersistence : IPersistence
 
         public byte[]? GetAccountRaw(Hash256 addrHash)
         {
-            return GetAccountRaw(addrHash.ValueHash256);
-        }
-
-        private byte[]? GetAccountRaw(in ValueHash256 accountHash)
-        {
-            return _state.GetSpan(accountHash.Bytes[..StateKeyPrefixLength]).ToArray();
+            return _flatReader.GetAccountRaw(addrHash);
         }
 
         public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash)
         {
-            Span<byte> keySpan = stackalloc byte[StorageKeyLength];
-            ReadOnlySpan<byte> storageKey = _mainDb.EncodeStorageKeyHashed(keySpan, addrHash.ValueHash256, slotHash.ValueHash256, out ulong _);
-            return _storage.Get(storageKey);
+            return _flatReader.GetStorageRaw(addrHash, slotHash);
         }
     }
 }
