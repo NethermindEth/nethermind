@@ -491,8 +491,6 @@ namespace Nethermind.State
                 if (isTracing) TraceNoChanges();
 
                 codeFlushTask.GetAwaiter().GetResult();
-
-                codeFlushTask.GetAwaiter().GetResult();
                 return;
             }
 

@@ -11,7 +11,7 @@ public sealed class NodeStorageCache
 {
     private ConcurrentDictionary<NodeKey, byte[]> _cache = new();
 
-    private bool _enabled = false;
+    private volatile bool _enabled = false;
 
     public bool Enabled
     {
