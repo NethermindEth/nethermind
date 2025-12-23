@@ -12,7 +12,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.LogIndex;
 
-partial class LogIndexStorage
+partial class LogIndexStorage<TPosition>
 {
     private class Compressor : ICompressor
     {
@@ -20,7 +20,7 @@ partial class LogIndexStorage
 
         // Used instead of a channel to prevent duplicates
         private readonly ConcurrentDictionary<byte[], bool> _compressQueue = new(Bytes.EqualityComparer);
-        private readonly LogIndexStorage _storage;
+        private readonly LogIndexStorage<TPosition> _storage;
         private readonly ActionBlock<(int?, byte[])> _processing;
         private readonly ManualResetEventSlim _startEvent = new(false);
         private readonly ManualResetEventSlim _queueEmptyEvent = new(true);
@@ -34,7 +34,7 @@ partial class LogIndexStorage
             return Interlocked.Exchange(ref _stats, new());
         }
 
-        public Compressor(LogIndexStorage storage, int compressionDistance, int parallelism)
+        public Compressor(LogIndexStorage<TPosition> storage, int compressionDistance, int parallelism)
         {
             _storage = storage;
 
@@ -97,15 +97,15 @@ partial class LogIndexStorage
                 if (dbValue.Length < MinLengthToCompress)
                     return;
 
-                LogPosition postfixPosition = GetFirstLogPosition(dbValue);
-                LogPosition truncatePosition = GetLastLogPosition(dbValue);
+                TPosition postfixPosition = TPosition.ReadFirstFrom(dbValue);
+                TPosition truncatePosition = TPosition.ReadLastFrom(dbValue);
 
                 ReverseBlocksIfNeeded(dbValue);
 
                 ReadOnlySpan<byte> key = ExtractKey(dbKey);
-                Span<byte> dbKeyComp = stackalloc byte[key.Length + LogPosition.Size];
+                Span<byte> dbKeyComp = stackalloc byte[key.Length + FullLogPosition.Size];
                 key.CopyTo(dbKeyComp);
-                SetKeyBlockNum(dbKeyComp[key.Length..], postfixPosition);
+                postfixPosition.WriteFirstTo(dbKeyComp[key.Length..]);
 
                 timestamp = Stopwatch.GetTimestamp();
                 dbValue = _storage.CompressDbValue(dbKey, dbValue);

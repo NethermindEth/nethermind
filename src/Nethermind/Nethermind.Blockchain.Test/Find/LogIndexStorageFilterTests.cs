@@ -23,10 +23,10 @@ namespace Nethermind.Blockchain.Test.Find;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class LogIndexStorageFilterTests
 {
-    private record Ranges(Dictionary<Address, List<LogPosition>> Address, Dictionary<Hash256, List<LogPosition>>[] Topic)
+    private record Ranges(Dictionary<Address, List<LongLogPosition>> Address, Dictionary<Hash256, List<LongLogPosition>>[] Topic)
     {
-        public List<LogPosition> this[Address address] => Address[address];
-        public List<LogPosition> this[int topicIndex, Hash256 hash] => Topic[topicIndex][hash];
+        public List<LongLogPosition> this[Address address] => Address[address];
+        public List<LongLogPosition> this[int topicIndex, Hash256 hash] => Topic[topicIndex][hash];
     }
 
     private ILogIndexStorage _logIndexStorage = null!;
@@ -223,27 +223,27 @@ public class LogIndexStorageFilterTests
     {
         var random = new Random(42);
 
-        var addressRanges = new Dictionary<Address, List<LogPosition>>();
+        var addressRanges = new Dictionary<Address, List<LongLogPosition>>();
         foreach (Address address in new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE })
         {
             var range = Enumerable.Range((int)FromBlock, (int)(ToBlock + 1))
-                .SelectMany(block => Enumerable.Range(0, PositionsPerBlock).Select(logIndex => new LogPosition(block, logIndex)))
+                .SelectMany(block => Enumerable.Range(0, PositionsPerBlock).Select(logIndex => new LongLogPosition(block, logIndex)))
                 .Where(_ => random.NextDouble() < AddressLogFrequency)
                 .ToList();
 
             addressRanges.Add(address, range);
         }
 
-        Dictionary<Hash256, List<LogPosition>>[] topicRanges = Enumerable
+        Dictionary<Hash256, List<LongLogPosition>>[] topicRanges = Enumerable
             .Range(0, LogIndexStorage.MaxTopics)
-            .Select(_ => new Dictionary<Hash256, List<LogPosition>>()).ToArray();
+            .Select(_ => new Dictionary<Hash256, List<LongLogPosition>>()).ToArray();
 
-        foreach (Dictionary<Hash256, List<LogPosition>> ranges in topicRanges)
+        foreach (Dictionary<Hash256, List<LongLogPosition>> ranges in topicRanges)
         {
             foreach (Hash256 topic in new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD, TestItem.KeccakE })
             {
                 var range = Enumerable.Range((int)FromBlock, (int)(ToBlock + 1))
-                    .SelectMany(block => Enumerable.Range(0, PositionsPerBlock).Select(logIndex => new LogPosition(block, logIndex)))
+                    .SelectMany(block => Enumerable.Range(0, PositionsPerBlock).Select(logIndex => new LongLogPosition(block, logIndex)))
                     .Where(_ => random.NextDouble() < TopicLogFrequency)
                     .ToList();
                 ranges.Add(topic, range);
@@ -255,7 +255,7 @@ public class LogIndexStorageFilterTests
 
     private void MockLogIndex()
     {
-        foreach ((Address address, List<LogPosition> range) in LogIndexRanges.Address)
+        foreach ((Address address, List<LongLogPosition> range) in LogIndexRanges.Address)
         {
             _logIndexStorage
                 .GetLogPositions(address, Arg.Any<int>(), Arg.Any<int>())
@@ -264,7 +264,7 @@ public class LogIndexStorageFilterTests
 
         for (var i = 0; i < LogIndexRanges.Topic.Length; i++)
         {
-            foreach ((Hash256 topic, List<LogPosition> range) in LogIndexRanges.Topic[i])
+            foreach ((Hash256 topic, List<LongLogPosition> range) in LogIndexRanges.Topic[i])
             {
                 _logIndexStorage
                     .GetLogPositions(Arg.Is(i), topic, Arg.Any<int>(), Arg.Any<int>())

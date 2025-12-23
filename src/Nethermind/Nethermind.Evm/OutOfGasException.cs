@@ -5,6 +5,8 @@ namespace Nethermind.Evm
 {
     public class OutOfGasException : EvmException
     {
+        public OutOfGasException() { }
+
         public override EvmExceptionType ExceptionType => EvmExceptionType.OutOfGas;
     }
 }

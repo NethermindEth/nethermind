@@ -58,17 +58,17 @@ public class MergeOperatorTests
             : new(existingValue, true, operandsPtrs, operandsLengths);
     }
 
-    private static void CreateEnumerator(LogPosition[]? existingValue, object[] operands, out RocksDbMergeEnumerator enumerator)
+    private static void CreateEnumerator(FullLogPosition[]? existingValue, object[] operands, out RocksDbMergeEnumerator enumerator)
     {
         var existingBytes = existingValue is null
             ? null
-            : MemoryMarshal.Cast<LogPosition, byte>(existingValue).ToArray();
+            : MemoryMarshal.Cast<FullLogPosition, byte>(existingValue).ToArray();
 
         var operandsBytes = operands
             .Select(x => x switch
             {
                 byte[] bytes => bytes,
-                LogPosition[] positions => MemoryMarshal.Cast<LogPosition, byte>(positions).ToArray(),
+                FullLogPosition[] positions => MemoryMarshal.Cast<FullLogPosition, byte>(positions).ToArray(),
                 _ => throw new NotSupportedException()
             })
             .ToArray();
@@ -81,38 +81,38 @@ public class MergeOperatorTests
         .Concat(isBackward ? LogIndexStorage.SpecialPostfix.BackwardMerge : LogIndexStorage.SpecialPostfix.ForwardMerge)
         .ToArray();
 
-    private static IEnumerable<TestCaseData<LogPosition[]?, object[]>> MergeTestCases
+    private static IEnumerable<TestCaseData<FullLogPosition[]?, object[]>> MergeTestCases
     {
         get
         {
             yield return new(
                 null,
-                new LogPosition[] { new(1, 1), new(1, 2), new(2, 1), new(2, 2), new(2, 3) }
+                new FullLogPosition[] { new(1, 1), new(1, 2), new(2, 1), new(2, 2), new(2, 3) }
                     .Cast<object>().ToArray()
             )
             {
-                ExpectedResult = new LogPosition[] { new(1, 1), new(1, 2), new(2, 1), new(2, 2), new(2, 3) }
+                ExpectedResult = new FullLogPosition[] { new(1, 1), new(1, 2), new(2, 1), new(2, 2), new(2, 3) }
             };
 
             yield return new(
                 null,
-                new LogPosition[] { new(1, 1), new(1, 2), new(2, 1), new(2, 2), new(2, 3) }
+                new FullLogPosition[] { new(1, 1), new(1, 2), new(2, 1), new(2, 2), new(2, 3) }
                     .Cast<object>().ToArray()
             )
             {
-                ExpectedResult = new LogPosition[] { new(1, 1), new(1, 2), new(2, 1), new(2, 2), new(2, 3) }
+                ExpectedResult = new FullLogPosition[] { new(1, 1), new(1, 2), new(2, 1), new(2, 2), new(2, 3) }
             };
         }
     }
 
     private static byte[]? Serialize(string? input) => input is null ? null : Bytes.Concat(input.Split(',').Select(s => s.Trim()).Select(s => s switch
     {
-        _ when LogPosition.TryParse(s, out LogPosition pos) => pos.ToArray(),
+        _ when FullLogPosition.TryParse(s, out FullLogPosition pos) => pos.ToArray(),
         _ when LogIndexStorage.MergeOps.TryParse(s, out Span<byte> op) => op.ToArray(),
         _ => throw new FormatException($"Invalid operand: \"{input}\".")
     }).ToArray());
 
-    private static LogPosition[]? Deserialize(byte[]? input) => input is null ? null : MemoryMarshal.Cast<byte, LogPosition>(input).ToArray();
+    private static FullLogPosition[]? Deserialize(byte[]? input) => input is null ? null : MemoryMarshal.Cast<byte, FullLogPosition>(input).ToArray();
 
     [TestCase(
         null,
@@ -142,7 +142,7 @@ public class MergeOperatorTests
         var key = GenerateKey(Address.Size, isBackward: false);
         Assert.That(
             Deserialize(op.FullMerge(key, enumerator)?.ToArray()),
-            Is.EqualTo(expected.Split(',').Select(LogPosition.Parse).ToArray())
+            Is.EqualTo(expected.Split(',').Select(FullLogPosition.Parse).ToArray())
         );
     }
 }

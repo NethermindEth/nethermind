@@ -19,7 +19,8 @@ using Nethermind.Logging;
 namespace Nethermind.Db.LogIndex
 {
     // TODO: test on big-endian system?
-    public partial class LogIndexStorage : ILogIndexStorage
+    public abstract partial class LogIndexStorage<TPosition> : ILogIndexStorage<TPosition>
+        where TPosition: struct, ILogPosition<TPosition>
     {
         // Use values that we won't encounter in the middle of a regular iteration
         private static class SpecialKey
@@ -40,13 +41,13 @@ namespace Nethermind.Db.LogIndex
         public static class SpecialPostfix
         {
             // Any ordered prefix seeking will start on it.
-            public static readonly byte[] BackwardMerge = Enumerable.Repeat(byte.MinValue, LogPosition.Size).ToArray();
+            public static readonly byte[] BackwardMerge = Enumerable.Repeat(byte.MinValue, TPosition.Size).ToArray();
 
             // Any ordered prefix seeking will end on it.
-            public static readonly byte[] ForwardMerge = Enumerable.Repeat(byte.MaxValue, LogPosition.Size).ToArray();
+            public static readonly byte[] ForwardMerge = Enumerable.Repeat(byte.MaxValue, TPosition.Size).ToArray();
 
             // Exclusive upper bound for iterator seek, immediately following ForwardMerge, as iterator bounds are exclusive.
-            public static readonly byte[] UpperBound = Enumerable.Repeat(byte.MaxValue, LogPosition.Size).Concat([byte.MinValue]).ToArray();
+            public static readonly byte[] UpperBound = Enumerable.Repeat(byte.MaxValue, TPosition.Size).Concat([byte.MinValue]).ToArray();
         }
 
         private struct DbBatches : IDisposable
@@ -102,9 +103,9 @@ namespace Nethermind.Db.LogIndex
 
         public const int BlockNumberSize = sizeof(int);
         public const int CompressionMarkerSize = sizeof(int);
-        public const int ValueSize = LogPosition.Size;
+        public static int ValueSize => TPosition.Size;
         private const int MaxKeyLength = Hash256.Size + 1; // Math.Max(Address.Size, Hash256.Size) + 1
-        private const int MaxDbKeyLength = MaxKeyLength + ValueSize;
+        private static int MaxDbKeyLength => MaxKeyLength + ValueSize;
 
         private static readonly ArrayPool<byte> Pool = ArrayPool<byte>.Shared;
 
@@ -126,7 +127,6 @@ namespace Nethermind.Db.LogIndex
         private readonly ILogger _logger;
 
         private readonly int _maxReorgDepth;
-        private readonly int _compressionDistance;
 
         private readonly Dictionary<LogIndexColumns, IMergeOperator> _mergeOperators;
         private readonly ICompressor _compressor;
@@ -173,9 +173,8 @@ namespace Nethermind.Db.LogIndex
                 Enabled = config.Enabled;
 
                 _maxReorgDepth = config.MaxReorgDepth;
-                _compressionDistance = config.CompressionDistance;
 
-                _logger = logManager.GetClassLogger<LogIndexStorage>();
+                _logger = logManager.GetClassLogger<LogIndexStorage<TPosition>>();
 
                 _compressor = config.CompressionDistance > 0
                     ? new Compressor(this, config.CompressionDistance, config.MaxCompressionParallelism)
@@ -421,7 +420,7 @@ namespace Nethermind.Db.LogIndex
 
             try
             {
-                SetFirstLogPosition(buffer, value);
+                SetFirstBlock(buffer, value);
                 dbBatch.PutSpan(key, buffer);
                 return value;
             }
@@ -479,14 +478,14 @@ namespace Nethermind.Db.LogIndex
             ? lastMin is null || next < lastMin
             : lastMax is null || next > lastMax;
 
-        private static bool IsBlockNewer(long next, long? lastMin, long? lastMax, bool isBackwardSync) => isBackwardSync
+        private static bool IsPositionNewer(TPosition next, TPosition? lastMin, TPosition? lastMax, bool isBackwardSync) => isBackwardSync
             ? lastMin is null || next < lastMin
             : lastMax is null || next > lastMax;
 
         private bool IsAddressBlockNewer(int next, bool isBackwardSync) => IsBlockNewer(next, _addressMinBlock, _addressMaxBlock, isBackwardSync);
         private bool IsTopicBlockNewer(int topicIndex, int next, bool isBackwardSync) => IsBlockNewer(next, _topicMinBlocks[topicIndex], _topicMaxBlocks[topicIndex], isBackwardSync);
 
-        private bool IsBlockNewer(int next, bool isBackwardSync) =>
+        private bool IsPositionNewer(int next, bool isBackwardSync) =>
             IsAddressBlockNewer(next, isBackwardSync) ||
             IsTopicBlockNewer(0, next, isBackwardSync) ||
             IsTopicBlockNewer(1, next, isBackwardSync) ||
@@ -516,26 +515,26 @@ namespace Nethermind.Db.LogIndex
             return GetBlockNumbersFor(topicIndex, topic.Bytes.ToArray(), from, to);
         }
 
-        public IList<LogPosition> GetLogPositions(Address address, int from, int to)
+        public IList<TPosition> GetLogPositions(Address address, int from, int to)
         {
             return GetLogPositionsFor(null, address.Bytes, from, to);
         }
 
-        public IList<LogPosition> GetLogPositions(int index, Hash256 topic, int from, int to)
+        public IList<TPosition> GetLogPositions(int index, Hash256 topic, int from, int to)
         {
             return GetLogPositionsFor(index, topic.Bytes.ToArray(), from, to);
         }
 
         // TODO: limit to avoid potential OOM?
-        private List<LogPosition> GetLogPositionsFor(int? topicIndex, byte[] key, int from, int to)
+        private List<TPosition> GetLogPositionsFor(int? topicIndex, byte[] key, int from, int to)
         {
             // TODO: use ArrayPoolList?
-            var result = new List<LogPosition>();
+            var result = new List<TPosition>();
 
             IterateBlockNumbersFor(topicIndex, key, from, to, view =>
             {
                 var value = view.CurrentValue.ToArray(); // TODO: remove ToArray
-                foreach (LogPosition position in EnumerateLogPositions(value, from))
+                foreach (TPosition position in EnumerateLogPositions(value, from))
                 {
                     if (position.BlockNumber > to)
                         return false;
@@ -558,7 +557,7 @@ namespace Nethermind.Db.LogIndex
             IterateBlockNumbersFor(topicIndex, key, from, to, view =>
             {
                 var value = view.CurrentValue.ToArray(); // TODO: remove ToArray
-                foreach (LogPosition position in EnumerateLogPositions(value, from))
+                foreach (TPosition position in EnumerateLogPositions(value, from))
                 {
                     if (position.BlockNumber > to)
                         return false;
@@ -590,7 +589,7 @@ namespace Nethermind.Db.LogIndex
                 ISortedKeyValueStore? sortedDb = db as ISortedKeyValueStore
                     ?? throw new NotSupportedException($"{db.GetType().Name} DB does not support sorted lookups.");
 
-                ReadOnlySpan<byte> startKey = CreateDbKey(key, new LogPosition(from), stackalloc byte[MaxDbKeyLength]);
+                ReadOnlySpan<byte> startKey = CreateDbKey(key, CreateLogPosition(from), stackalloc byte[MaxDbKeyLength]);
                 ReadOnlySpan<byte> fromKey = CreateDbKey(key, SpecialPostfix.BackwardMerge, stackalloc byte[MaxDbKeyLength]);
                 ReadOnlySpan<byte> toKey = CreateDbKey(key, SpecialPostfix.UpperBound, stackalloc byte[MaxDbKeyLength]);
 
@@ -613,27 +612,28 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        private IEnumerable<LogPosition> EnumerateLogPositions(byte[] data, int from)
+        private IEnumerable<TPosition> EnumerateLogPositions(byte[] data, int from)
         {
             if (data.Length == 0)
                 yield break;
 
             // TODO: optimize
             var positions = data.Length == 0 || !IsCompressed(data, out _)
-                ? MemoryMarshal.Cast<byte, long>(data).ToArray()
+                ? MemoryMarshal.Cast<byte, TPosition>(data).ToArray()
                 : DecompressDbValue(data);
 
             ReverseBlocksIfNeeded(positions);
 
             // TODO: binary search for start?
-            foreach (LogPosition val in positions)
+            foreach (TPosition val in positions)
             {
                 if (val.BlockNumber < from) continue;
                 yield return val;
             }
         }
 
-        public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats)
+        // TODO: use some custom fast-but-unreliable hash function
+        public LogIndexAggregate<TPosition> Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats)
         {
             ThrowIfStopped();
             ThrowIfHasError();
@@ -641,15 +641,15 @@ namespace Nethermind.Db.LogIndex
             if ((!isBackwardSync && !IsSeqAsc(batch)) || (isBackwardSync && !IsSeqDesc(batch)))
                 throw new ArgumentException($"Unexpected blocks batch order: ({batch[0]} to {batch[^1]}).");
 
-            if (!IsBlockNewer(batch[^1].BlockNumber, isBackwardSync))
+            if (!IsPositionNewer(batch[^1].BlockNumber, isBackwardSync))
                 return new(batch);
 
             var timestamp = Stopwatch.GetTimestamp();
 
-            var aggregate = new LogIndexAggregate(batch);
+            var aggregate = new LogIndexAggregate<TPosition>(batch);
             foreach ((var blockNumber, TxReceipt[] receipts) in batch)
             {
-                if (!IsBlockNewer(blockNumber, isBackwardSync))
+                if (!IsPositionNewer(blockNumber, isBackwardSync))
                     continue;
 
                 stats?.IncrementBlocks();
@@ -662,15 +662,15 @@ namespace Nethermind.Db.LogIndex
                 foreach ((var logIndex, LogEntry log) in logsEnumerator)
                 {
                     stats?.IncrementLogs();
-                    LogPosition position = new(blockNumber, logIndex);
+                    TPosition position = TPosition.Create(blockNumber, logIndex);
 
                     if (IsAddressBlockNewer(blockNumber, isBackwardSync))
                     {
-                        IList<long> addressPositions = aggregate.Address
-                            .GetOrAdd(log.Address, static _ => new List<long>(1));
+                        IList<TPosition> addressPositions = aggregate.Address
+                            .GetOrAdd(log.Address, static _ => new List<TPosition>(1));
 
-                        // For address - log position is guaranteed to change each iteration
-                        addressPositions.Add(position);
+                        if (addressPositions.Count == 0 || addressPositions[^1] != position)
+                            addressPositions.Add(position);
                     }
 
                     var topicsLength = Math.Min(log.Topics.Length, MaxTopics);
@@ -680,8 +680,8 @@ namespace Nethermind.Db.LogIndex
                         {
                             stats?.IncrementTopics();
 
-                            IList<long> topicPositions = aggregate.Topic[topicIndex]
-                                .GetOrAdd(log.Topics[topicIndex], static _ => new List<long>(1));
+                            IList<TPosition> topicPositions = aggregate.Topic[topicIndex]
+                                .GetOrAdd(log.Topics[topicIndex], static _ => new List<TPosition>(1));
 
                             if (topicPositions.Count == 0 || topicPositions[^1] != position)
                                 topicPositions.Add(position);
@@ -701,7 +701,7 @@ namespace Nethermind.Db.LogIndex
             if (!await semaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
             {
                 ThrowIfStopped();
-                throw new InvalidOperationException($"{nameof(LogIndexStorage)} does not support concurrent invocations in the same direction.");
+                throw new InvalidOperationException($"{nameof(LogIndexStorage<>)} does not support concurrent invocations in the same direction.");
             }
         }
 
@@ -727,7 +727,7 @@ namespace Nethermind.Db.LogIndex
 
                 using var batches = new DbBatches(_addressDb, _topicDbs);
 
-                Span<byte> dbValue = MergeOps.Create(MergeOp.Reorg, new LogPosition(block.BlockNumber), valueArray);
+                Span<byte> dbValue = MergeOps.Create(MergeOp.Reorg, CreateLogPosition(block.BlockNumber), valueArray);
 
                 foreach (TxReceipt receipt in block.Receipts)
                 {
@@ -798,7 +798,7 @@ namespace Nethermind.Db.LogIndex
                 _logger.Info($"Log index forced compaction finished in {Stopwatch.GetElapsedTime(timestamp)}, DB size: {GetDbSize()} {stats:d}");
         }
 
-        public async Task SetReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
+        public async Task SetReceiptsAsync(LogIndexAggregate<TPosition> aggregate, LogIndexUpdateStats? stats = null)
         {
             ThrowIfStopped();
             ThrowIfHasError();
@@ -824,7 +824,7 @@ namespace Nethermind.Db.LogIndex
                     timestamp = Stopwatch.GetTimestamp();
 
                     // Add addresses
-                    foreach ((Address address, IList<long> positions) in aggregate.Address)
+                    foreach ((Address address, IList<TPosition> positions) in aggregate.Address)
                     {
                         SavePositions(batches.Address, address.Bytes, positions, isBackwardSync, stats);
                     }
@@ -832,9 +832,9 @@ namespace Nethermind.Db.LogIndex
                     // Add topics
                     for (var topicIndex = 0; topicIndex < aggregate.Topic.Length; topicIndex++)
                     {
-                        Dictionary<Hash256, IList<long>> topics = aggregate.Topic[topicIndex];
+                        Dictionary<Hash256, IList<TPosition>> topics = aggregate.Topic[topicIndex];
 
-                        foreach ((Hash256 topic, IList<long> positions) in topics)
+                        foreach ((Hash256 topic, IList<TPosition> positions) in topics)
                             SavePositions(batches.Topics[topicIndex], topic.Bytes, positions, isBackwardSync, stats);
                     }
 
@@ -872,12 +872,12 @@ namespace Nethermind.Db.LogIndex
 
         public Task SetReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
         {
-            LogIndexAggregate aggregate = Aggregate(batch, isBackwardSync, stats);
+            LogIndexAggregate<TPosition> aggregate = Aggregate(batch, isBackwardSync, stats);
             return SetReceiptsAsync(aggregate, stats);
         }
 
         protected virtual void SavePositions(
-            IWriteBatch dbBatch, ReadOnlySpan<byte> key, IList<long> positions,
+            IWriteBatch dbBatch, ReadOnlySpan<byte> key, IList<TPosition> positions,
             bool isBackwardSync, LogIndexUpdateStats? stats
         )
         {
@@ -894,7 +894,7 @@ namespace Nethermind.Db.LogIndex
                 if (newValue is null or [])
                     throw new LogIndexStateException("No block numbers to save.", key);
 
-                var pos = MemoryMarshal.Cast<byte, long>(newValue).ToArray();
+                TPosition[] pos = MemoryMarshal.Cast<byte, TPosition>(newValue).ToArray();
                 if (isBackwardSync) Array.Reverse(pos);
 
                 // TODO: consider disabling WAL, but check:
@@ -915,41 +915,29 @@ namespace Nethermind.Db.LogIndex
             return buffer[..key.Length];
         }
 
-        private static ReadOnlySpan<byte> ExtractKey(ReadOnlySpan<byte> dbKey) => dbKey[..^LogPosition.Size];
-
-        // /// <summary>
-        // /// Generates a key consisting of the <c>key || block-number</c> byte array.
-        // /// </summary>/
-        // private static ReadOnlySpan<byte> CreateDbKey(ReadOnlySpan<byte> key, int blockNumber, Span<byte> buffer)
-        // {
-        //     key = WriteKey(key, buffer);
-        //     SetKeyBlockNum(buffer[key.Length..], blockNumber);
-        //
-        //     var length = key.Length + BlockNumSize;
-        //     return buffer[..length];
-        // }
+        private static ReadOnlySpan<byte> ExtractKey(ReadOnlySpan<byte> dbKey) => dbKey[..^TPosition.Size];
 
         /// <summary>
         /// Generates a key consisting of the <c>key || log-position</c> byte array.
         /// </summary>/
-        private static ReadOnlySpan<byte> CreateDbKey(ReadOnlySpan<byte> key, long position, Span<byte> buffer)
+        private static ReadOnlySpan<byte> CreateDbKey(ReadOnlySpan<byte> key, TPosition position, Span<byte> buffer)
         {
             key = WriteKey(key, buffer);
-            SetKeyBlockNum(buffer[key.Length..], position);
+            position.WriteFirstTo(buffer[key.Length..]);
 
-            var length = key.Length + LogPosition.Size;
+            var length = key.Length + TPosition.Size;
             return buffer[..length];
         }
 
         /// <summary>
-        /// Generates a key consisting of the <c>key || block-number</c> byte array.
+        /// Generates a key consisting of the <c>key || postfix</c> byte array.
         /// </summary>/
-        private static ReadOnlySpan<byte> CreateDbKey(ReadOnlySpan<byte> key, ReadOnlySpan<byte> blockNumber, Span<byte> buffer)
+        private static ReadOnlySpan<byte> CreateDbKey(ReadOnlySpan<byte> key, ReadOnlySpan<byte> postfix, Span<byte> buffer)
         {
             key = WriteKey(key, buffer);
-            blockNumber.CopyTo(buffer[key.Length..]);
+            postfix.CopyTo(buffer[key.Length..]);
 
-            var length = key.Length + blockNumber.Length;
+            var length = key.Length + postfix.Length;
             return buffer[..length];
         }
 
@@ -963,17 +951,9 @@ namespace Nethermind.Db.LogIndex
             return buffer[..length];
         }
 
-        // // RocksDB uses big-endian (lexicographic) ordering
-        // // +1 is needed as 0 is used for the backward-merge key
-        // private static void SetKeyBlockNum(Span<byte> dbKeyEnd, int blockNumber) => BinaryPrimitives.WriteInt32BigEndian(dbKeyEnd, blockNumber + 1);
-
-        // RocksDB uses big-endian (lexicographic) ordering
-        // +1 is needed as 0 is used for the backward-merge key
-        private static void SetKeyBlockNum(Span<byte> dbKeyEnd, long logPosition) => BinaryPrimitives.WriteInt64BigEndian(dbKeyEnd, logPosition + 1);
-
         private static bool UseBackwardSyncFor(ReadOnlySpan<byte> dbKey) => !dbKey.EndsWith(SpecialPostfix.ForwardMerge);
 
-        private ReadOnlySpan<long> Decompress(ReadOnlySpan<byte> data, Span<long> decompressedBlockNumbers)
+        private ReadOnlySpan<TPosition> Decompress(ReadOnlySpan<byte> data, Span<TPosition> decompressedBlockNumbers)
         {
             _ = _compressionAlgorithm.Decompress(data, (nuint)decompressedBlockNumbers.Length, decompressedBlockNumbers);
             return decompressedBlockNumbers;
@@ -981,8 +961,8 @@ namespace Nethermind.Db.LogIndex
 
         private ReadOnlySpan<byte> Compress(Span<byte> data, Span<byte> buffer)
         {
-            ReadOnlySpan<long> blockNumbers = MemoryMarshal.Cast<byte, long>(data);
-            var length = (int)_compressionAlgorithm.Compress(blockNumbers, (nuint)blockNumbers.Length, buffer);
+            ReadOnlySpan<TPosition> position = MemoryMarshal.Cast<byte, TPosition>(data);
+            var length = (int)_compressionAlgorithm.Compress(position, (nuint)position.Length, buffer);
             return buffer[..length];
         }
 
@@ -996,25 +976,22 @@ namespace Nethermind.Db.LogIndex
         }
 
         private static int GetRangeBlockNumber(ReadOnlySpan<byte> dbValue) => BinaryPrimitives.ReadInt32LittleEndian(dbValue);
+        private static void SetFirstBlock(Span<byte> dbValue, int block) => BinaryPrimitives.WriteInt32LittleEndian(dbValue, block);
 
-        private static void SetFirstLogPosition(Span<byte> dbValue, LogPosition position) => BinaryPrimitives.WriteInt64LittleEndian(dbValue, position);
-        private static LogPosition GetFirstLogPosition(ReadOnlySpan<byte> dbValue) => BinaryPrimitives.ReadInt64LittleEndian(dbValue);
-        private static LogPosition GetLastLogPosition(ReadOnlySpan<byte> dbValue) => GetFirstLogPosition(dbValue[^ValueSize..]);
-
-        private static void SetValBlockNums(Span<byte> destination, IEnumerable<long> blockNums)
+        private static void SetPositions(Span<byte> destination, IEnumerable<TPosition> positions)
         {
             var shift = 0;
-            foreach (var blockNum in blockNums)
+            foreach (TPosition position in positions)
             {
-                SetFirstLogPosition(destination[shift..], blockNum);
+                position.WriteFirstTo(destination[shift..]);
                 shift += ValueSize;
             }
         }
 
-        private static byte[] CreateDbValue(IList<long> positions)
+        private static byte[] CreateDbValue(IList<TPosition> positions)
         {
             var value = new byte[positions.Count * ValueSize];
-            SetValBlockNums(value, positions);
+            SetPositions(value, positions);
             return value;
         }
 
@@ -1042,23 +1019,23 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        private long[] DecompressDbValue(ReadOnlySpan<byte> data)
+        private TPosition[] DecompressDbValue(ReadOnlySpan<byte> data)
         {
             if (!IsCompressed(data, out int len))
                 throw new ValidationException("Data is not compressed.");
 
             // TODO: reuse buffer
-            Span<long> buffer = new long[len + 1]; // +1 fixes TurboPFor reading outside of array bounds
+            Span<TPosition> buffer = new TPosition[len + 1]; // +1 fixes TurboPFor reading outside of array bounds
             buffer = buffer[..^1];
 
-            ReadOnlySpan<long> result = Decompress(data[CompressionMarkerSize..], buffer);
+            ReadOnlySpan<TPosition> result = Decompress(data[CompressionMarkerSize..], buffer);
             return result.ToArray();
         }
 
         private Span<byte> RemoveReorgableBlocks(Span<byte> data)
         {
             var lastCompressBlock = GetLastReorgableBlockNumber();
-            var lastCompressIndex = LastValueSearch(data, new LogPosition(lastCompressBlock), false);
+            var lastCompressIndex = LastValueSearch(data, CreateLogPosition(lastCompressBlock), false);
 
             if (lastCompressIndex < 0) lastCompressIndex = 0;
             if (lastCompressIndex > data.Length) lastCompressIndex = data.Length;
@@ -1068,17 +1045,17 @@ namespace Nethermind.Db.LogIndex
 
         private static void ReverseBlocksIfNeeded(Span<byte> data)
         {
-            if (data.Length != 0 && GetFirstLogPosition(data) > GetLastLogPosition(data))
-                MemoryMarshal.Cast<byte, long>(data).Reverse();
+            if (data.Length != 0 && TPosition.ReadFirstFrom(data) > TPosition.ReadLastFrom(data))
+                MemoryMarshal.Cast<byte, TPosition>(data).Reverse();
         }
 
-        private static void ReverseBlocksIfNeeded(Span<long> values)
+        private static void ReverseBlocksIfNeeded(Span<TPosition> values)
         {
             if (values.Length != 0 && values[0] > values[^1])
                 values.Reverse();
         }
 
-        private static int LastValueSearch(ReadOnlySpan<byte> dbValue, LogPosition position, bool isBackward)
+        private static int LastValueSearch(ReadOnlySpan<byte> dbValue, TPosition position, bool isBackward)
         {
             if (dbValue.IsEmpty)
                 return 0;
@@ -1086,18 +1063,18 @@ namespace Nethermind.Db.LogIndex
             var i = dbValue.Length - ValueSize;
             for (; i >= 0; i -= ValueSize)
             {
-                LogPosition currentPos = GetFirstLogPosition(dbValue[i..]);
-                if (currentPos == position)
+                TPosition currentPosition = TPosition.ReadFirstFrom(dbValue[i..]);
+                if (currentPosition == position)
                     return i;
 
                 if (isBackward)
                 {
-                    if (currentPos > position)
+                    if (currentPosition > position)
                         return i + ValueSize;
                 }
                 else
                 {
-                    if (currentPos < position)
+                    if (currentPosition < position)
                         return i + ValueSize;
                 }
             }
@@ -1105,10 +1082,10 @@ namespace Nethermind.Db.LogIndex
             return i;
         }
 
-        private static int BinarySearch(ReadOnlySpan<byte> dbValue, LogPosition position)
+        private static int BinarySearch(ReadOnlySpan<byte> dbValue, TPosition position)
         {
-            ReadOnlySpan<long> positions = MemoryMarshal.Cast<byte, long>(dbValue);
-            int index = positions.BinarySearch((long)position);
+            ReadOnlySpan<TPosition> positions = MemoryMarshal.Cast<byte, TPosition>(dbValue);
+            int index = positions.BinarySearch(position);
             return index < 0 ? ~index : index;
         }
 

@@ -23,16 +23,16 @@ public static class LogIndexStorageRpcExtensions
     {
         (int from, int to) = ((int)fromBlock, (int)toBlock);
 
-        IList<LogPosition>? addressPositions = null;
+        IList<FullLogPosition>? addressPositions = null;
         if (filter.AddressFilter.Addresses is { Count: > 0 } addresses)
             addressPositions = AscListHelper.UnionAll(addresses.Select(a => storage.GetLogPositions(a, from, to)));
 
         // TODO: consider passing storage directly to keep abstractions
         var topicIndex = 0;
-        Dictionary<Hash256, IList<LogPosition>>[]? byTopic = null;
+        Dictionary<Hash256, IList<FullLogPosition>>[]? byTopic = null;
         foreach (TopicExpression expression in filter.TopicsFilter.Expressions)
         {
-            byTopic ??= new Dictionary<Hash256, IList<LogPosition>>[LogIndexStorage.MaxTopics];
+            byTopic ??= new Dictionary<Hash256, IList<FullLogPosition>>[LogIndexStorage.MaxTopics];
             byTopic[topicIndex] = new();
 
             foreach (Hash256 topic in expression.Topics)
@@ -48,7 +48,7 @@ public static class LogIndexStorageRpcExtensions
             return addressPositions?.ToBlockNumbers() ?? [];
 
         // ReSharper disable once CoVariantArrayConversion
-        IList<LogPosition> topicPositions = filter.TopicsFilter.FilterPositions(byTopic);
+        IList<FullLogPosition> topicPositions = filter.TopicsFilter.FilterPositions(byTopic);
 
         if (addressPositions is null)
             return topicPositions.ToBlockNumbers();
@@ -56,10 +56,10 @@ public static class LogIndexStorageRpcExtensions
         return AscListHelper.Intersect(addressPositions, topicPositions).ToBlockNumbers();
     }
 
-    private static IList<int> ToBlockNumbers(this IList<LogPosition> positions)
+    private static IList<int> ToBlockNumbers(this IList<FullLogPosition> positions)
     {
         var blockNumbers = new List<int>();
-        foreach (LogPosition position in positions)
+        foreach (FullLogPosition position in positions)
         {
             if (blockNumbers.Count is 0 || blockNumbers[^1] != position.BlockNumber)
                 blockNumbers.Add(position.BlockNumber);

@@ -10,7 +10,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.LogIndex;
 
-partial class LogIndexStorage
+partial class LogIndexStorage<TPosition>
 {
     /// <summary>
     /// Periodically forces background log index compaction for every N added blocks.
@@ -29,7 +29,7 @@ partial class LogIndexStorage
         private int? _lastAtMax;
 
         private CompactingStats _stats = new();
-        private readonly LogIndexStorage _storage;
+        private readonly LogIndexStorage<TPosition> _storage;
         private readonly ILogger _logger;
         private readonly int _compactionDistance;
 
@@ -40,7 +40,7 @@ partial class LogIndexStorage
         private readonly ManualResetEvent _compactionEndedEvent = new(true);
         private readonly Task _compactionTask;
 
-        public Compactor(LogIndexStorage storage, ILogger logger, int compactionDistance)
+        public Compactor(LogIndexStorage<TPosition> storage, ILogger logger, int compactionDistance)
         {
             _storage = storage;
             _logger = logger;

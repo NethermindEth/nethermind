@@ -9,7 +9,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Db.LogIndex;
 
-partial class LogIndexStorage
+partial class LogIndexStorage<TPosition>
 {
     private readonly struct LogsEnumerator(TxReceipt[] receipts) : IEnumerable<(int logIndex, LogEntry log)>
     {

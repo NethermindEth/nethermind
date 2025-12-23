@@ -20,14 +20,20 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     IList<int> GetBlockNumbersFor(Address address, int from, int to);
     IList<int> GetBlockNumbersFor(int topicIndex, Hash256 topic, int from, int to);
 
-    IList<LogPosition> GetLogPositions(Address address, int from, int to);
-    IList<LogPosition> GetLogPositions(int index, Hash256 topic, int from, int to);
-
     string GetDbSize();
 
-    LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
     Task SetReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
-    Task SetReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null);
+
     Task ReorgFrom(BlockReceipts block);
     Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null);
+}
+
+public interface ILogIndexStorage<TPosition> : ILogIndexStorage
+    where TPosition : struct, ILogPosition<TPosition>
+{
+    IList<TPosition> GetLogPositions(Address address, int from, int to);
+    IList<TPosition> GetLogPositions(int index, Hash256 topic, int from, int to);
+
+    LogIndexAggregate<TPosition> Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
+    Task SetReceiptsAsync(LogIndexAggregate<TPosition> aggregate, LogIndexUpdateStats? stats = null);
 }

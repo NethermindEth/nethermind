@@ -6,7 +6,7 @@ using System.Linq;
 
 namespace Nethermind.Db.LogIndex;
 
-partial class LogIndexStorage
+partial class LogIndexStorage<TPosition>
 {
     public enum MergeOp : byte
     {
@@ -25,22 +25,22 @@ partial class LogIndexStorage
 
     public static class MergeOps
     {
-        public const int Size = ValueSize + 1;
+        public static int Size => ValueSize + 1;
 
         public static bool Is(MergeOp op, ReadOnlySpan<byte> operand)
         {
             return operand.Length == Size && operand[0] == (byte)op;
         }
 
-        public static bool Is(MergeOp op, ReadOnlySpan<byte> operand, out LogPosition position)
+        public static bool Is(MergeOp op, ReadOnlySpan<byte> operand, out TPosition position)
         {
             if (operand.Length == Size && operand[0] == (byte)op)
             {
-                position = GetLastLogPosition(operand);
+                position = TPosition.ReadFirstFrom(operand[1..]);
                 return true;
             }
 
-            position = 0;
+            position = default;
             return false;
         }
 
@@ -48,22 +48,22 @@ partial class LogIndexStorage
             Is(MergeOp.Reorg, operand) ||
             Is(MergeOp.Truncate, operand);
 
-        public static Span<byte> Create(MergeOp op, LogPosition position, Span<byte> buffer)
+        public static Span<byte> Create(MergeOp op, TPosition position, Span<byte> buffer)
         {
             Span<byte> dbValue = buffer[..Size];
             dbValue[0] = (byte)op;
-            SetFirstLogPosition(dbValue[1..], position);
+            position.WriteFirstTo(dbValue[1..]);
             return dbValue;
         }
 
         // TODO: use ArrayPool?
-        public static Span<byte> Create(MergeOp op, LogPosition position)
+        public static Span<byte> Create(MergeOp op, TPosition position)
         {
             var buffer = new byte[Size];
             return Create(op, position, buffer);
         }
 
-        public static Span<byte> ApplyTo(Span<byte> operand, MergeOp op, LogPosition position, bool isBackward)
+        public static Span<byte> ApplyTo(Span<byte> operand, MergeOp op, TPosition position, bool isBackward)
         {
             // In most cases the searched block will be near or at the end of the operand, if present there
             var i = LastValueSearch(operand, position, isBackward);
@@ -96,7 +96,7 @@ partial class LogIndexStorage
             if (parts.Length == 2)
             {
                 if (!Enum.TryParse(parts[0], out MergeOp op)) return false;
-                if (!long.TryParse(parts[1], out var pos)) return false;
+                if (!TPosition.TryParse(parts[1], out TPosition pos)) return false;
 
                 mergeOp = Create(op, pos);
                 return true;
@@ -108,7 +108,7 @@ partial class LogIndexStorage
                 if (!int.TryParse(parts[1], out var posBlock)) return false;
                 if (!int.TryParse(parts[2], out var posIndex)) return false;
 
-                mergeOp = Create(op, new LogPosition(posBlock, posIndex));
+                mergeOp = Create(op, TPosition.Create(posBlock, posIndex));
                 return true;
             }
 

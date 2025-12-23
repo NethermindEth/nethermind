@@ -57,10 +57,10 @@ public class LogIndexBuilderTests
         public IList<int> GetBlockNumbersFor(int topicIndex, Hash256 topic, int from, int to) =>
             throw new NotImplementedException();
 
-        public IList<LogPosition> GetLogPositions(Address address, int from, int to) =>
+        public IList<LongLogPosition> GetLogPositions(Address address, int from, int to) =>
             throw new NotImplementedException();
 
-        public IList<LogPosition> GetLogPositions(int index, Hash256 topic, int from, int to) =>
+        public IList<LongLogPosition> GetLogPositions(int index, Hash256 topic, int from, int to) =>
             throw new NotImplementedException();
 
         public string GetDbSize() => 0L.SizeToString();

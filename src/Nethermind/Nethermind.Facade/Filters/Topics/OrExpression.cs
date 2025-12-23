@@ -75,9 +75,9 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override IEnumerable<Hash256> Topics => _subexpressions.SelectMany(e => e.Topics);
 
-        public override IList<LogPosition>? FilterPositions(IDictionary<Hash256, IList<LogPosition>> byTopic)
+        public override IList<LongLogPosition>? FilterPositions(IDictionary<Hash256, IList<LongLogPosition>> byTopic)
         {
-            IList<LogPosition>? result = null;
+            IList<LongLogPosition>? result = null;
             foreach (TopicExpression subexpression in _subexpressions)
             {
                 if (result == null)

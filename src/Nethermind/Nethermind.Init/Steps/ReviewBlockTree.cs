@@ -58,6 +58,7 @@ namespace Nethermind.Init.Steps
             }
             else
             {
+                //Console.WriteLine(worldStateManager);
                 using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager!.GlobalStateReader, _logger!);
                 await blockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
                 {

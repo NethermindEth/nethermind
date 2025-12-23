@@ -25,7 +25,7 @@ public class LogIndexConfig : ILogIndexConfig
     public int CompressionDistance { get; set; } = 128;
     public int CompactionDistance { get; set; } = 262_144;
 
-    public string? CompressionAlgorithm { get; set; } = LogIndexStorage.CompressionAlgorithm.Best.Key;
+    public string? CompressionAlgorithm { get; set; } = null;
 
     public bool DetailedLogs { get; set; } = false;
     public bool VerifyRpcResponse { get; set; } = false;

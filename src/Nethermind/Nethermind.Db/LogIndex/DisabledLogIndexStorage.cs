@@ -9,7 +9,8 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Db.LogIndex;
 
-public sealed class DisabledLogIndexStorage : ILogIndexStorage
+public sealed class DisabledLogIndexStorage<TPosition> : ILogIndexStorage<TPosition>
+    where TPosition : struct, ILogPosition<TPosition>
 {
     public bool Enabled => false;
 
@@ -20,23 +21,20 @@ public sealed class DisabledLogIndexStorage : ILogIndexStorage
     public IList<int> GetBlockNumbersFor(Address address, int from, int to) => throw new NotSupportedException();
     public IList<int> GetBlockNumbersFor(int topicIndex, Hash256 topic, int from, int to) => throw new NotSupportedException();
 
-    public IList<LogPosition> GetLogPositions(Address address, int from, int to) => throw new NotSupportedException();
-    public IList<LogPosition> GetLogPositions(int index, Hash256 topic, int from, int to) => throw new NotSupportedException();
+    public IList<TPosition> GetLogPositions(Address address, int from, int to) => throw new NotSupportedException();
+    public IList<TPosition> GetLogPositions(int index, Hash256 topic, int from, int to) => throw new NotSupportedException();
 
-    public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
+    LogIndexAggregate<TPosition> ILogIndexStorage<TPosition>.Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats)
+        => throw new NotSupportedException();
+
+    public Task SetReceiptsAsync(LogIndexAggregate<TPosition> aggregate, LogIndexUpdateStats? stats = null) =>
         throw new NotSupportedException();
 
     public Task SetReceiptsAsync(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
         throw new NotSupportedException();
 
-    public Task SetReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null) =>
-        throw new NotSupportedException();
-
-    public Task ReorgFrom(BlockReceipts block) =>
-        throw new NotSupportedException();
-
-    public Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null) =>
-        throw new NotSupportedException();
+    public Task ReorgFrom(BlockReceipts block) => throw new NotSupportedException();
+    public Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null) => throw new NotSupportedException();
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     public Task StopAsync() => Task.CompletedTask;

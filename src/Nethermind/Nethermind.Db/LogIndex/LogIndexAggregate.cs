@@ -8,18 +8,19 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Db.LogIndex;
 
-public struct LogIndexAggregate(int firstBlockNum, int lastBlockNum)
+public struct LogIndexAggregate<TPos>(int firstBlockNum, int lastBlockNum)
+    where TPos: struct, ILogPosition<TPos>
 {
-    private Dictionary<Address, IList<long>>? _address;
-    private Dictionary<Hash256, IList<long>>[]? _topic;
+    private Dictionary<Address, IList<TPos>>? _address;
+    private Dictionary<Hash256, IList<TPos>>[]? _topic;
 
     public int FirstBlockNum { get; } = firstBlockNum;
     public int LastBlockNum { get; } = lastBlockNum;
 
-    public Dictionary<Address, IList<long>> Address => _address ??= new();
+    public Dictionary<Address, IList<TPos>> Address => _address ??= new();
 
-    public Dictionary<Hash256, IList<long>>[] Topic => _topic ??= Enumerable.Range(0, LogIndexStorage.MaxTopics)
-        .Select(static _ => new Dictionary<Hash256, IList<long>>())
+    public Dictionary<Hash256, IList<TPos>>[] Topic => _topic ??= Enumerable.Range(0, LogIndexStorage<TPos>.MaxTopics)
+        .Select(static _ => new Dictionary<Hash256, IList<TPos>>())
         .ToArray();
 
     public bool IsEmpty => (_address is null || _address.Count == 0) && (_topic is null || _topic[0].Count == 0);

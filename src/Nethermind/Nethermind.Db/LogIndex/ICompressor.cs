@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Db.LogIndex;
 
-partial class LogIndexStorage
+partial class LogIndexStorage<TPosition>
 {
     /// <summary>
     /// Does background compression for keys with the number of blocks above the threshold.

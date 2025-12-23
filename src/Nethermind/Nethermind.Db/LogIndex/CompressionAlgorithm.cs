@@ -8,7 +8,7 @@ using static Nethermind.Db.LogIndex.TurboPFor2;
 
 namespace Nethermind.Db.LogIndex;
 
-partial class LogIndexStorage
+partial class LogIndexStorage<TPosition>
 {
     /// <summary>
     /// Represents compression algorithm to be used by log index.
@@ -19,8 +19,8 @@ partial class LogIndexStorage
         CompressionAlgorithm.DecompressFunc decompressionFunc
     )
     {
-        public delegate nuint CompressFunc(ReadOnlySpan<long> @in, nuint n, Span<byte> @out);
-        public delegate nuint DecompressFunc(ReadOnlySpan<byte> @in, nuint n, Span<long> @out);
+        public delegate nuint CompressFunc(ReadOnlySpan<TPosition> @in, nuint n, Span<byte> @out);
+        public delegate nuint DecompressFunc(ReadOnlySpan<byte> @in, nuint n, Span<TPosition> @out);
 
         private static readonly Dictionary<string, CompressionAlgorithm> SupportedMap = new();
 
@@ -41,9 +41,9 @@ partial class LogIndexStorage
         public string Name => name;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public nuint Compress(ReadOnlySpan<long> @in, nuint n, Span<byte> @out) => compressionFunc(@in, n, @out);
+        public nuint Compress(ReadOnlySpan<TPosition> @in, nuint n, Span<byte> @out) => compressionFunc(@in, n, @out);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public nuint Decompress(ReadOnlySpan<byte> @in, nuint n, Span<long> @out) => decompressionFunc(@in, n, @out);
+        public nuint Decompress(ReadOnlySpan<byte> @in, nuint n, Span<TPosition> @out) => decompressionFunc(@in, n, @out);
     }
 }

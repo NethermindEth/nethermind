@@ -585,10 +585,10 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
-            Dictionary<Address, HashSet<LogPosition>>? excludedByAddress = null,
-            Dictionary<int, Dictionary<Hash256, HashSet<LogPosition>>>? excludedByTopic = null,
-            Dictionary<Address, HashSet<LogPosition>>? addedByAddress = null,
-            Dictionary<int, Dictionary<Hash256, HashSet<LogPosition>>>? addedByTopic = null,
+            Dictionary<Address, HashSet<FullLogPosition>>? excludedByAddress = null,
+            Dictionary<int, Dictionary<Hash256, HashSet<FullLogPosition>>>? excludedByTopic = null,
+            Dictionary<Address, HashSet<FullLogPosition>>? addedByAddress = null,
+            Dictionary<int, Dictionary<Hash256, HashSet<FullLogPosition>>>? addedByTopic = null,
             int? minBlock = null, int? maxBlock = null,
             bool validateMinMax = true
         )
@@ -607,12 +607,12 @@ namespace Nethermind.Db.Test.LogIndex
 
             foreach (var (address, positions) in testData.AddressMap)
             {
-                IEnumerable<LogPosition> expected = positions;
+                IEnumerable<FullLogPosition> expected = positions;
 
-                if (excludedByAddress != null && excludedByAddress.TryGetValue(address, out HashSet<LogPosition> addressExcluded))
+                if (excludedByAddress != null && excludedByAddress.TryGetValue(address, out HashSet<FullLogPosition> addressExcluded))
                     expected = expected.Except(addressExcluded);
 
-                if (addedByAddress != null && addedByAddress.TryGetValue(address, out HashSet<LogPosition> addressAdded))
+                if (addedByAddress != null && addedByAddress.TryGetValue(address, out HashSet<FullLogPosition> addressAdded))
                     expected = expected.Concat(addressAdded);
 
                 expected = expected.Order();
@@ -639,12 +639,12 @@ namespace Nethermind.Db.Test.LogIndex
             {
                 foreach (var (topic, positions) in byTopic)
                 {
-                    IEnumerable<LogPosition> expected = positions;
+                    IEnumerable<FullLogPosition> expected = positions;
 
-                    if (excludedByTopic != null && excludedByTopic[idx].TryGetValue(topic, out HashSet<LogPosition> topicExcluded))
+                    if (excludedByTopic != null && excludedByTopic[idx].TryGetValue(topic, out HashSet<FullLogPosition> topicExcluded))
                         expected = expected.Except(topicExcluded);
 
-                    if (addedByTopic != null && addedByTopic[idx].TryGetValue(topic, out HashSet<LogPosition> topicAdded))
+                    if (addedByTopic != null && addedByTopic[idx].TryGetValue(topic, out HashSet<FullLogPosition> topicAdded))
                         expected = expected.Concat(topicAdded);
 
                     expected = expected.Order();
@@ -698,7 +698,7 @@ namespace Nethermind.Db.Test.LogIndex
                     if (addresses.Count != 0)
                     {
                         Address address = random.NextFrom(addresses);
-                        HashSet<LogPosition> expected = testData.AddressMap[address];
+                        HashSet<FullLogPosition> expected = testData.AddressMap[address];
 
                         if (logIndexStorage.GetMinBlockNumber() is not { } min || logIndexStorage.GetMaxBlockNumber() is not { } max)
                             continue;
@@ -713,7 +713,7 @@ namespace Nethermind.Db.Test.LogIndex
                     if (topics.Count != 0)
                     {
                         (int idx, Hash256 topic) = random.NextFrom(topics);
-                        HashSet<LogPosition> expected = testData.TopicMap[idx][topic];
+                        HashSet<FullLogPosition> expected = testData.TopicMap[idx][topic];
 
                         if (logIndexStorage.GetMinBlockNumber() is not { } min || logIndexStorage.GetMaxBlockNumber() is not { } max)
                             continue;
@@ -794,8 +794,8 @@ namespace Nethermind.Db.Test.LogIndex
             private readonly Lazy<IEnumerable<(int from, int to)>> _ranges;
             public IEnumerable<(int from, int to)> Ranges => _ranges.Value;
 
-            public Dictionary<Address, HashSet<LogPosition>> AddressMap { get; private set; } = new();
-            public Dictionary<int, Dictionary<Hash256, HashSet<LogPosition>>> TopicMap { get; private set; } = new();
+            public Dictionary<Address, HashSet<FullLogPosition>> AddressMap { get; private set; } = new();
+            public Dictionary<int, Dictionary<Hash256, HashSet<FullLogPosition>>> TopicMap { get; private set; } = new();
 
             public List<Address> Addresses
             {
@@ -882,11 +882,11 @@ namespace Nethermind.Db.Test.LogIndex
                 return batches;
             }
 
-            public static (Dictionary<Address, HashSet<LogPosition>> address, Dictionary<int, Dictionary<Hash256, HashSet<LogPosition>>> topic) GenerateMaps(
+            public static (Dictionary<Address, HashSet<FullLogPosition>> address, Dictionary<int, Dictionary<Hash256, HashSet<FullLogPosition>>> topic) GenerateMaps(
                 IEnumerable<BlockReceipts> blocks)
             {
-                var address = new Dictionary<Address, HashSet<LogPosition>>();
-                var topic = new Dictionary<int, Dictionary<Hash256, HashSet<LogPosition>>>();
+                var address = new Dictionary<Address, HashSet<FullLogPosition>>();
+                var topic = new Dictionary<int, Dictionary<Hash256, HashSet<FullLogPosition>>>();
 
                 foreach (BlockReceipts block in blocks)
                 {
@@ -895,14 +895,14 @@ namespace Nethermind.Db.Test.LogIndex
                     {
                         foreach (LogEntry log in txReceipt.Logs!)
                         {
-                            var position = new LogPosition(block.BlockNumber, logIndex++);
+                            var position = new FullLogPosition(block.BlockNumber, logIndex++);
 
-                            HashSet<LogPosition> addressMap = address.GetOrAdd(log.Address, static _ => []);
+                            HashSet<FullLogPosition> addressMap = address.GetOrAdd(log.Address, static _ => []);
                             addressMap.Add(position);
 
                             for (var i = 0; i < log.Topics.Length; i++)
                             {
-                                HashSet<LogPosition> topicMap = topic.GetOrAdd(i, static _ => []).GetOrAdd(log.Topics[i], static _ => []);
+                                HashSet<FullLogPosition> topicMap = topic.GetOrAdd(i, static _ => []).GetOrAdd(log.Topics[i], static _ => []);
                                 topicMap.Add(position);
                             }
                         }
@@ -990,7 +990,7 @@ namespace Nethermind.Db.Test.LogIndex
                 LogIndexUpdateStats? stats
             )
             {
-                (LogPosition first, LogPosition last) pos = (positions[0], positions[^1]);
+                (FullLogPosition first, FullLogPosition last) pos = (positions[0], positions[^1]);
 
                 var isFailBlock =
                     FailOnBlock >= Math.Min(pos.first.BlockNumber, pos.last.BlockNumber) &&

@@ -46,9 +46,9 @@ namespace Nethermind.Blockchain.Filters.Topics
             get { yield return _topic; }
         }
 
-        public override IList<LogPosition>? FilterPositions(IDictionary<Hash256, IList<LogPosition>> byTopic)
+        public override IList<LongLogPosition>? FilterPositions(IDictionary<Hash256, IList<LongLogPosition>> byTopic)
         {
-            return byTopic.TryGetValue(_topic, out IList<LogPosition>? result) ? result : [];
+            return byTopic.TryGetValue(_topic, out IList<LongLogPosition>? result) ? result : [];
         }
 
         private bool Equals(SpecificTopic other) => _topic.Equals(other._topic);

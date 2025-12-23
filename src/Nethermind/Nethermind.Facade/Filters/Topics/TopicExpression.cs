@@ -22,6 +22,6 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public abstract IEnumerable<Hash256> Topics { get; }
 
-        public abstract IList<LogPosition>? FilterPositions(IDictionary<Hash256, IList<LogPosition>> byTopic);
+        public abstract IList<FullLogPosition>? FilterPositions(IDictionary<Hash256, IList<FullLogPosition>> byTopic);
     }
 }

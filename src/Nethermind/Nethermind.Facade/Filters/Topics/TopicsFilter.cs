@@ -24,6 +24,6 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public abstract IReadOnlyList<TopicExpression> Expressions { get; }
 
-        public abstract IList<LogPosition> FilterPositions(IDictionary<Hash256, IList<LogPosition>>[] byTopic);
+        public abstract IList<LongLogPosition> FilterPositions(IDictionary<Hash256, IList<LongLogPosition>>[] byTopic);
     }
 }

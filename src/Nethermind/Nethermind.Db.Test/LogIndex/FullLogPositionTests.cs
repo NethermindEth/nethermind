@@ -8,12 +8,12 @@ using NUnit.Framework;
 
 namespace Nethermind.Db.Test.LogIndex;
 
-public class LogPositionTests
+public class FullLogPositionTests
 {
     [Test]
     public void HasCorrectSize()
     {
-        Assert.That(Marshal.SizeOf<LogPosition>(), Is.EqualTo(LogPosition.Size));
+        Assert.That(Marshal.SizeOf<FullLogPosition>(), Is.EqualTo(FullLogPosition.Size));
     }
 
     [Test]
@@ -22,7 +22,7 @@ public class LogPositionTests
         var blocks = Enumerable.Range(0, 20).ToArray();
         var indexes = Enumerable.Range(0, 20).ToArray();
 
-        LogPosition[] positions = blocks.SelectMany(b => indexes.Select(i => new LogPosition(b, i))).ToArray();
+        FullLogPosition[] positions = blocks.SelectMany(b => indexes.Select(i => new FullLogPosition(b, i))).ToArray();
 
         Assert.That(positions, Is.EqualTo(positions.Order()));
     }
@@ -33,8 +33,8 @@ public class LogPositionTests
         var blocks = Enumerable.Range(0, 20).ToArray();
         var indexes = Enumerable.Range(0, 20).ToArray();
 
-        long[] positions = MemoryMarshal.Cast<LogPosition, long>(
-            blocks.SelectMany(b => indexes.Select(i => new LogPosition(b, i))).ToArray()
+        long[] positions = MemoryMarshal.Cast<FullLogPosition, long>(
+            blocks.SelectMany(b => indexes.Select(i => new FullLogPosition(b, i))).ToArray()
         ).ToArray();
 
         Assert.That(positions, Is.EqualTo(positions.Order()));

@@ -8,15 +8,15 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Db.LogIndex;
 
-partial class LogIndexStorage
+partial class LogIndexStorage<TPosition>
 {
-    public class MergeOperator(ILogIndexStorage storage, ICompressor compressor, int? topicIndex) : IMergeOperator
+    public class MergeOperator(ILogIndexStorage<TPosition> storage, ICompressor compressor, int? topicIndex) : IMergeOperator
     {
         private LogIndexUpdateStats _stats = new(storage);
         public LogIndexUpdateStats Stats => _stats;
         public LogIndexUpdateStats GetAndResetStats() => Interlocked.Exchange(ref _stats, new(storage));
 
-        public string Name => $"{nameof(LogIndexStorage)}.{nameof(MergeOperator)}";
+        public string Name => $"{nameof(LogIndexStorage<>)}.{nameof(MergeOperator)}";
 
         public ArrayPoolList<byte>? FullMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator) =>
             Merge(key, enumerator, isPartial: false);
@@ -24,22 +24,22 @@ partial class LogIndexStorage
         public ArrayPoolList<byte>? PartialMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator) =>
             Merge(key, enumerator, isPartial: true);
 
-        private static bool IsBlockNewer(long next, long? last, bool isBackwardSync) =>
-            LogIndexStorage.IsBlockNewer(next, last, last, isBackwardSync);
+        private bool IsPositionNewer(TPosition next, TPosition? last, bool isBackwardSync) =>
+            LogIndexStorage<TPosition>.IsPositionNewer(next, last, last, isBackwardSync);
 
         // Validate we are merging non-intersecting segments - to prevent data corruption
-        private static void AddEnsureSorted(ReadOnlySpan<byte> key, ArrayPoolList<byte> result, ReadOnlySpan<byte> value, bool isBackwards)
+        private void AddEnsureSorted(ReadOnlySpan<byte> key, ArrayPoolList<byte> result, ReadOnlySpan<byte> value, bool isBackwards)
         {
             if (value.Length == 0)
                 return;
 
-            var nextPos = GetFirstLogPosition(value);
-            var lastPos = result.Count > 0 ? GetLastLogPosition(result.AsSpan()) : (long?)null;
+            TPosition nextPos = TPosition.ReadFirstFrom(value);
+            TPosition? lastPos = result.Count > 0 ? TPosition.ReadLastFrom(result.AsSpan()) : null;
 
-            if (!IsBlockNewer(next: nextPos, last: lastPos, isBackwards))
+            if (!IsPositionNewer(next: nextPos, last: lastPos, isBackwards))
             {
                 throw new LogIndexStateException(
-                    $"Invalid order during merge: {(LogPosition?)lastPos} -> {(LogPosition?)nextPos} (backwards: {isBackwards}).",
+                    $"Invalid order during merge: {lastPos} -> {nextPos} (backwards: {isBackwards}).",
                     key
                 );
             }
@@ -82,7 +82,7 @@ partial class LogIndexStorage
                 result = new(resultLength);
 
                 // For truncate - just use max/min for all operands
-                LogPosition? truncateAggregate = Aggregate(MergeOp.Truncate, enumerator, isBackwards);
+                TPosition? truncateAggregate = Aggregate(MergeOp.Truncate, enumerator, isBackwards);
 
                 var iReorg = 0;
                 for (var i = 0; i < enumerator.TotalCount; i++)
@@ -111,7 +111,7 @@ partial class LogIndexStorage
                 success = true;
                 return result;
             }
-            catch (Exception exception) when (storage is LogIndexStorage logIndexStorage)
+            catch (Exception exception) when (storage is LogIndexStorage<TPosition> logIndexStorage)
             {
                 logIndexStorage.OnBackgroundError<MergeOperator>(exception);
                 return null;
@@ -124,23 +124,23 @@ partial class LogIndexStorage
             }
         }
 
-        private static LogPosition? FindNext(MergeOp op, RocksDbMergeEnumerator enumerator, ref int i)
+        private TPosition? FindNext(MergeOp op, RocksDbMergeEnumerator enumerator, ref int i)
         {
             while (i < enumerator.TotalCount && !MergeOps.Is(op, enumerator.Get(i)))
                 i++;
 
-            if (i < enumerator.TotalCount && MergeOps.Is(op, enumerator.Get(i), out LogPosition position))
+            if (i < enumerator.TotalCount && MergeOps.Is(op, enumerator.Get(i), out TPosition position))
                 return position;
 
             return null;
         }
 
-        private static long? Aggregate(MergeOp op, RocksDbMergeEnumerator enumerator, bool isBackwardSync)
+        private static TPosition? Aggregate(MergeOp op, RocksDbMergeEnumerator enumerator, bool isBackwardSync)
         {
-            long? result = null;
+            TPosition? result = null;
             for (var i = 0; i < enumerator.OperandsCount; i++)
             {
-                if (!MergeOps.Is(op, enumerator.GetOperand(i), out var next))
+                if (!MergeOps.Is(op, enumerator.GetOperand(i), out TPosition next))
                     continue;
 
                 if (result is null || (isBackwardSync && next < result) || (!isBackwardSync && next > result))

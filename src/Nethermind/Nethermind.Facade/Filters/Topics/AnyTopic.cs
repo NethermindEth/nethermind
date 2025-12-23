@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override IEnumerable<Hash256> Topics => [];
 
-        public override IList<LogPosition>? FilterPositions(IDictionary<Hash256, IList<LogPosition>> byTopic) => null;
+        public override IList<FullLogPosition>? FilterPositions(IDictionary<Hash256, IList<FullLogPosition>> byTopic) => null;
 
         public override string ToString() => "null";
     }
