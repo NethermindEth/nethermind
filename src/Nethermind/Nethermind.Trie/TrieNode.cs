@@ -241,7 +241,7 @@ namespace Nethermind.Trie
                     }
                 }
 
-                return nonEmptyNodes > 2;
+                return false;
             }
         }
 
