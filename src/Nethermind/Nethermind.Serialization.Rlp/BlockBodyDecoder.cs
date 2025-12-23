@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
+using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -15,6 +16,7 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
     private static BlockBodyDecoder? _instance = null;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
 
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockBodyDecoder))]
     // Cant set to private because of `Rlp.RegisterDecoder`.
     public BlockBodyDecoder(IHeaderDecoder headerDecoder = null)
     {

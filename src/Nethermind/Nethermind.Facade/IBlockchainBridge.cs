@@ -1,19 +1,20 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Find;
-using Nethermind.Facade.Simulate;
 using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.Trie;
+using System.Collections.Generic;
+using System.Threading;
 using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
@@ -50,5 +51,6 @@ namespace Nethermind.Facade
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>;
         bool HasStateForBlock(BlockHeader? baseBlock);
+        Witness GenerateExecutionWitness(BlockHeader parent, Block block);
     }
 }

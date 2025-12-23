@@ -36,14 +36,23 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
     protected TxDecoder(Func<T>? transactionFactory = null)
     {
         Func<T> factory = transactionFactory ?? (static () => new T());
+        RegisterDecoder(TxType.Legacy, new LegacyTxDecoder<T>(factory));
+        RegisterDecoder(TxType.AccessList, new AccessListTxDecoder<T>(factory));
+        RegisterDecoder(TxType.EIP1559, new EIP1559TxDecoder<T>(factory));
+        RegisterDecoder(TxType.Blob, new BlobTxDecoder<T>(factory));
+        RegisterDecoder(TxType.SetCode, new SetCodeTxDecoder<T>(factory));
+        /*
         RegisterDecoder(new LegacyTxDecoder<T>(factory));
         RegisterDecoder(new AccessListTxDecoder<T>(factory));
         RegisterDecoder(new EIP1559TxDecoder<T>(factory));
         RegisterDecoder(new BlobTxDecoder<T>(factory));
         RegisterDecoder(new SetCodeTxDecoder<T>(factory));
+        */
     }
 
     public void RegisterDecoder(ITxDecoder decoder) => _decoders[(int)decoder.Type] = decoder;
+
+    public void RegisterDecoder(TxType type, ITxDecoder decoder) => _decoders[(int)type] = decoder;
 
     protected override T? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

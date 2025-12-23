@@ -97,14 +97,14 @@ namespace Nethermind.Serialization.Rlp
 
         private static FrozenDictionary<RlpDecoderKey, IRlpDecoder> CreateDecoders()
         {
-            using Lock.Scope _ = _decoderLock.EnterScope();
+            //using Lock.Scope _ = _decoderLock.EnterScope();
             // Recreate, if not already recreated
             return _decoders ??= _decoderBuilder.ToFrozenDictionary();
         }
 
         public static void ResetDecoders()
         {
-            using Lock.Scope _ = _decoderLock.EnterScope();
+            //using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder.Clear();
             _decoders = null;
             RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
@@ -113,14 +113,40 @@ namespace Nethermind.Serialization.Rlp
 
         public static void RegisterDecoder(RlpDecoderKey key, IRlpDecoder decoder)
         {
-            using Lock.Scope _ = _decoderLock.EnterScope();
+            //using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder[key] = decoder;
             // Mark FrozenDictionary as null to force re-creation
             _decoders = null;
         }
 
+        private static readonly (Type KeyType, IRlpDecoder Decoder, string? AttrKey)[] _nativeAotDecoders =
+        {
+            (typeof(BlockHeader), new HeaderDecoder(), null),
+            (typeof(Block),       new BlockDecoder(),  null),
+            (typeof(Transaction), TxDecoder.Instance, null),
+            /* (typeof(Transaction), new TxDecoder(null), null), */
+        };
+
         public static void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false)
         {
+            foreach (var (keyType, decoder, attrKey) in _nativeAotDecoders)
+            {
+                var key = attrKey is null
+                    ? new RlpDecoderKey(keyType)
+                    : new RlpDecoderKey(keyType, attrKey);
+
+                if (!_decoderBuilder.TryGetValue(key, out var existing) || canOverrideExistingDecoders)
+                {
+                    _decoderBuilder[key] = decoder;
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"Unable to override decoder for {key}, because the following decoder is already set: {existing}.");
+                }
+            }
+
+#if false
             foreach (Type? type in assembly.GetExportedTypes())
             {
                 if (!type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
@@ -162,19 +188,14 @@ namespace Nethermind.Serialization.Rlp
 
                         void AddEncoder(RlpDecoderKey key)
                         {
-                            using Lock.Scope _ = _decoderLock.EnterScope();
+                            //using Lock.Scope _ = _decoderLock.EnterScope();
                             if (!_decoderBuilder.TryGetValue(key, out IRlpDecoder? value) || canOverrideExistingDecoders)
                             {
-                                try
-                                {
+
                                     _decoderBuilder[key] = instance ??= (IRlpDecoder)(type.GetConstructor(Type.EmptyTypes) is not null ?
                                         Activator.CreateInstance(type) :
                                         Activator.CreateInstance(type, BindingFlags.CreateInstance | BindingFlags.OptionalParamBinding, null, [Type.Missing], null));
-                                }
-                                catch (Exception)
-                                {
-                                    throw new ArgumentException($"Unable to set decoder for {key}, because {type} decoder has no suitable constructor.");
-                                }
+
                             }
                             else
                             {
@@ -184,7 +205,7 @@ namespace Nethermind.Serialization.Rlp
                     }
                 }
             }
-
+#endif
             // Mark FrozenDictionary as null to force re-creation
             _decoders = null;
         }
@@ -1896,7 +1917,7 @@ namespace Nethermind.Serialization.Rlp
 
         public bool Equals(RlpDecoderKey other) => _type.Equals(other._type) && _key.Equals(other._key);
 
-        public override int GetHashCode() => (int)BitOperations.Crc32C(
+        public override int GetHashCode() => (int)HashCode.Combine(
             (uint)_type.GetHashCode(),
             (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash());
 

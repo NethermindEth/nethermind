@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -9,6 +8,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
@@ -38,6 +38,7 @@ using Nethermind.Sockets;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.TxPool;
+using System;
 
 namespace Nethermind.Init.Modules;
 
@@ -84,6 +85,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                     .AddSingleton<FilterStore, ITimerFactory, IJsonRpcConfig>((timerFactory, rpcConfig) => new FilterStore(timerFactory, rpcConfig.FiltersTimeout))
                     .AddSingleton<FilterManager>()
                     .AddSingleton<ISimulateReadOnlyBlocksProcessingEnvFactory, SimulateReadOnlyBlocksProcessingEnvFactory>()
+                    .AddSingleton<IWitnessGeneratingBlockProcessingEnvFactory, WitnessGeneratingBlockProcessingEnvFactory>()
 
             // Proof
             .RegisterBoundedJsonRpcModule<IProofRpcModule, ProofModuleFactory>(2, jsonRpcConfig.Timeout)

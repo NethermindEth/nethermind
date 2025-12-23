@@ -1,38 +1,39 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
-using Nethermind.Int256;
-using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
-using Nethermind.Trie;
-using Nethermind.TxPool;
-using Block = Nethermind.Core.Block;
-using System.Threading;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
-using Nethermind.State;
-using Nethermind.Config;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
-using Transaction = Nethermind.Core.Transaction;
-using Autofac;
-using Nethermind.Blockchain.Tracing;
-using Nethermind.Consensus;
-using Nethermind.Evm.State;
+using Nethermind.Int256;
+using Nethermind.State;
 using Nethermind.State.OverridableEnv;
+using Nethermind.Trie;
+using Nethermind.TxPool;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
+using Block = Nethermind.Core.Block;
+using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade
 {
@@ -40,6 +41,7 @@ namespace Nethermind.Facade
     public class BlockchainBridge(
         IOverridableEnv<BlockchainBridge.BlockProcessingComponents> processingEnv,
         Lazy<ISimulateReadOnlyBlocksProcessingEnv> lazySimulateProcessingEnv,
+        IWitnessGeneratingBlockProcessingEnv statelessBlocksProcessingEnv,
         IBlockTree blockTree,
         IStateReader stateReader,
         ITxPool txPool,
@@ -398,6 +400,18 @@ namespace Nethermind.Facade
             return logFinder.FindLogs(filter, cancellationToken);
         }
 
+        public bool ExecuteWitness(Block blockParameter, Witness witness)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Witness GenerateExecutionWitness(BlockHeader parent, Block block)
+        {
+            RecoverTxSenders(block);
+            WitnessCollector witnessCollector = statelessBlocksProcessingEnv.CreateWitnessCollector();
+            return witnessCollector.GetWitness(parent, block);
+        }
+
         private static string? ConstructError(TransactionResult txResult, string? tracerError)
         {
             var error = txResult switch
@@ -425,6 +439,7 @@ namespace Nethermind.Facade
 
     public class BlockchainBridgeFactory(
         ISimulateReadOnlyBlocksProcessingEnvFactory simulateEnvFactory,
+        IWitnessGeneratingBlockProcessingEnvFactory witnessGeneratingEnvFactory,
         IOverridableEnvFactory envFactory,
         ILifetimeScope rootLifetimeScope
     ) : IBlockchainBridgeFactory
@@ -443,6 +458,7 @@ namespace Nethermind.Facade
 
             ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddScoped<BlockchainBridge>()
+                .AddScoped<IWitnessGeneratingBlockProcessingEnv>(_ => witnessGeneratingEnvFactory.Create())
                 .AddScoped<ISimulateReadOnlyBlocksProcessingEnv>((_) => simulateEnvFactory.Create())
                 .AddScoped(blockProcessingEnv));
 

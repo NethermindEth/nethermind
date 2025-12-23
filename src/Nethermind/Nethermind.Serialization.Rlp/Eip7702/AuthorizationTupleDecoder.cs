@@ -13,6 +13,9 @@ public sealed class AuthorizationTupleDecoder : RlpValueDecoder<AuthorizationTup
 {
     public static readonly AuthorizationTupleDecoder Instance = new();
 
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AuthorizationTupleDecoder))]
+    public AuthorizationTupleDecoder() { }
+
     protected override AuthorizationTuple DecodeInternal(RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int length = stream.ReadSequenceLength();
