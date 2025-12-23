@@ -402,38 +402,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
         public int Capacity => _dictionary.Capacity;
-        /*
-         *
-<<<<<<< HEAD
-           =======
-                   // Note: These all run in about 0.4ms. So the little overhead like attempting to sort the tasks
-                   // may make it worse. Always check on mainnet.
-
-                   using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
-                   foreach (PerContractState storage in _storages.Values)
-                   {
-                       storage.EnsureStorageTree(); // Cannot be called concurrently
-                       if (blockCommitter.TryRequestConcurrencyQuota())
-                       {
-                           commitTask.Add(Task.Factory.StartNew((ctx) =>
-                           {
-                               PerContractState st = (PerContractState)ctx;
-                               st.Commit();
-                               st.Return();
-                               blockCommitter.ReturnConcurrencyQuota();
-                           }, storage));
-                       }
-                       else
-                       {
-                           storage.Commit();
-                           storage.Return();
-                       }
-                   }
-
-                   Task.WaitAll(commitTask.AsSpan());
-
-           >>>>>>> origin/master
-                        */
 
         public void Reset()
         {
