@@ -676,17 +676,17 @@ public class PatriciaTreeBulkSetterTests
         using ArrayPoolList<PatriciaTree.BulkSetEntry> buffer = new ArrayPoolList<PatriciaTree.BulkSetEntry>(paths.Count, paths.Count);
 
         int resultMask = PatriciaTree.BucketSort16Small(items.AsSpan(), buffer.AsSpan(), nibIndex, result);
-        buffer.Select((it) => it.Path).ToList().Should().BeEquivalentTo(expectedPaths);
+        buffer.Select((it) => it.Path).Should().BeEquivalentTo(expectedPaths);
         result.ToArray().Should().BeEquivalentTo(expectedResult);
         resultMask.Should().Be(expectedMask);
 
         resultMask = PatriciaTree.BucketSort16Large(items.AsSpan(), buffer.AsSpan(), nibIndex, result);
-        buffer.Select((it) => it.Path).ToList().Should().BeEquivalentTo(expectedPaths);
+        buffer.Select((it) => it.Path).Should().BeEquivalentTo(expectedPaths);
         result.ToArray().Should().BeEquivalentTo(expectedResult);
         resultMask.Should().Be(expectedMask);
 
         resultMask = PatriciaTree.BucketSort16(items.AsSpan(), buffer.AsSpan(), nibIndex, result);
-        buffer.Select((it) => it.Path).ToList().Should().BeEquivalentTo(expectedPaths);
+        buffer.Select((it) => it.Path).Should().BeEquivalentTo(expectedPaths);
         result.ToArray().Should().BeEquivalentTo(expectedResult);
         resultMask.Should().Be(expectedMask);
     }

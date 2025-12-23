@@ -39,11 +39,11 @@ public static class T8nExecutor
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
 
-        IVirtualMachine virtualMachine = new VirtualMachine(
+        IVirtualMachine virtualMachine = new EthereumVirtualMachine(
             blockhashProvider,
             test.SpecProvider,
             _logManager);
-        TransactionProcessor transactionProcessor = new(
+        EthereumTransactionProcessor transactionProcessor = new(
             BlobBaseFeeCalculator.Instance,
             test.SpecProvider,
             stateProvider,
@@ -52,7 +52,7 @@ public static class T8nExecutor
             _logManager);
 
         stateProvider.CreateAccount(test.CurrentCoinbase, 0);
-        GeneralStateTestBase.InitializeTestState(test.Alloc, test.CurrentCoinbase, stateProvider, test.SpecProvider);
+        GeneralStateTestBase.InitializeTestState(test.Alloc, stateProvider, test.SpecProvider);
 
         Block block = test.ConstructBlock();
         var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);

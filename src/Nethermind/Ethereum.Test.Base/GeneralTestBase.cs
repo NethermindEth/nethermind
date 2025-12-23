@@ -89,7 +89,17 @@ namespace Ethereum.Test.Base
             using IDisposable _ = stateProvider.BeginScope(null);
             ITransactionProcessor transactionProcessor = mainBlockProcessingContext.TransactionProcessor;
 
-            InitializeTestState(test.Pre, test.CurrentCoinbase, stateProvider, specProvider);
+            InitializeTestState(test.Pre, stateProvider, specProvider);
+
+            // Legacy tests expect coinbase to be created BEFORE transaction execution
+            // (old buggy behavior that was baked into expected state roots).
+            // Modern tests correctly create coinbase only after successful tx.
+            if (test.IsLegacy && test.CurrentCoinbase is not null)
+            {
+                stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero);
+                stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
+                stateProvider.RecalculateStateRoot();
+            }
 
             BlockHeader header = new(
                 test.PreviousHash,
@@ -154,11 +164,29 @@ namespace Ethereum.Test.Base
             {
                 stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.CommitTree(1);
+
+                // '@winsvega added a 0-wei reward to the miner, so we had to add that into the state test execution phase. He needed it for retesteth.'
+                // This must only happen after successful transaction execution, not when tx fails validation.
+                // For legacy tests, coinbase was already created before tx execution.
+                if (!test.IsLegacy)
+                {
+                    stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero);
+                }
+                stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.RecalculateStateRoot();
             }
             else
             {
-                stateProvider.Reset();
+                // For legacy tests with failed tx, we need to recalculate root since coinbase was created
+                if (test.IsLegacy)
+                {
+                    stateProvider.CommitTree(0);
+                    stateProvider.RecalculateStateRoot();
+                }
+                else
+                {
+                    stateProvider.Reset();
+                }
             }
 
             List<string> differences = RunAssertions(test, stateProvider);
@@ -176,7 +204,7 @@ namespace Ethereum.Test.Base
             return testResult;
         }
 
-        public static void InitializeTestState(Dictionary<Address, AccountState> preState, Address coinbase, IWorldState stateProvider, ISpecProvider specProvider)
+        public static void InitializeTestState(Dictionary<Address, AccountState> preState, IWorldState stateProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in preState)
             {
@@ -194,13 +222,6 @@ namespace Ethereum.Test.Base
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
             stateProvider.Reset();
-
-            if (!stateProvider.AccountExists(coinbase))
-            {
-                stateProvider.CreateAccount(coinbase, 0);
-                stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
-                stateProvider.RecalculateStateRoot();
-            }
         }
 
         private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)

@@ -11,6 +11,7 @@ using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Specs;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -32,7 +33,7 @@ namespace Nethermind.Evm.Benchmark
         private IVirtualMachine _virtualMachine;
         private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
-        private EvmState _evmState;
+        private VmState<EthereumGasPolicy> _evmState;
         private IWorldState _stateProvider;
 
         [GlobalSetup]
@@ -45,7 +46,7 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
             EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
+            _virtualMachine = new EthereumVirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
             _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
             _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
 
@@ -60,7 +61,7 @@ namespace Nethermind.Evm.Benchmark
                 inputData: default
             );
 
-            _evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
+            _evmState = VmState<EthereumGasPolicy>.RentTopLevel(EthereumGasPolicy.FromLong(long.MaxValue), ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
         }
 
         [GlobalCleanup]
