@@ -19,12 +19,12 @@ public class TaikoHeaderValidator(
     IBlockTree? blockTree,
     ISealValidator? sealValidator,
     ISpecProvider? specProvider,
-    IL1OriginStore? l1OriginStore,
+    IL1OriginStore l1OriginStore,
     ITimestamper? timestamper,
     ILogManager? logManager)
     : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
-    private readonly IL1OriginStore? _l1OriginStore = l1OriginStore;
+    private readonly IL1OriginStore _l1OriginStore = l1OriginStore ?? throw new ArgumentNullException(nameof(l1OriginStore));
     private readonly ITimestamper _timestamper = timestamper ?? Timestamper.Default;
 
     // EIP-4396 calculation parameters.
@@ -208,22 +208,21 @@ public class TaikoHeaderValidator(
         }
 
         // If not a preconfirmation block, check that timestamp is not in the future
-        if (_l1OriginStore is not null)
+        L1Origin? l1Origin = _l1OriginStore.ReadL1Origin((UInt256)header.Number);
+        if (l1Origin is null || l1Origin.IsPreconfBlock)
         {
-            L1Origin? l1Origin = _l1OriginStore.ReadL1Origin((UInt256)header.Number);
-            if (l1Origin is not null && !l1Origin.IsPreconfBlock)
-            {
-                ulong currentTime = _timestamper.UnixTime.Seconds;
-                if (header.Timestamp > currentTime)
-                {
-                    error = $"Block timestamp {header.Timestamp} is in the future (current time: {currentTime})";
-                    if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
-                    return false;
-                }
-            }
+            return true;
         }
 
-        return true;
+        ulong currentTime = _timestamper.UnixTime.Seconds;
+        if (header.Timestamp <= currentTime)
+        {
+            return true;
+        }
+
+        error = $"Block timestamp {header.Timestamp} is in the future (current time: {currentTime})";
+        if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
+        return false;
     }
 
     protected override bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
