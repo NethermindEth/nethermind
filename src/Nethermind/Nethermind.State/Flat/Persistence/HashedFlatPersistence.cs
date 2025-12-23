@@ -61,13 +61,13 @@ public class HashedFlatPersistence
     static ulong RotateLeft(ulong x, int k)
         => (x << k) | (x >> (64 - k));
 
-    public class WriteBatch(
+    public struct WriteBatch(
         ISortedKeyValueStore storageSnap,
         IWriteOnlyKeyValueStore state,
         IWriteOnlyKeyValueStore storage,
         WriteFlags flags,
         SegmentedBloom bloomFilter
-    )
+    ) : BaseRocksdbPersistence.IFlatWriteBatch
     {
         internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
@@ -148,11 +148,11 @@ public class HashedFlatPersistence
     }
 
 
-    public class Reader(
+    public struct Reader(
         IReadOnlyKeyValueStore _state,
         IReadOnlyKeyValueStore _storage,
         SegmentedBloom _bloomFilter
-    )
+    ) : BaseRocksdbPersistence.IFlatReader
     {
         internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
 

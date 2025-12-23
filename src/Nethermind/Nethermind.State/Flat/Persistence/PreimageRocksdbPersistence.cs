@@ -63,14 +63,14 @@ public class PreimageRocksdbPersistence : IPersistence
         kv.PutSpan(CurrentStateKey, bytes);
     }
 
-    private ReadOnlySpan<byte> EncodeAccountKey(Span<byte> buffer, in Address addr, out ulong h1)
+    internal static ReadOnlySpan<byte> EncodeAccountKey(Span<byte> buffer, in Address addr, out ulong h1)
     {
         addr.Bytes.CopyTo(buffer);
         h1 = BinaryPrimitives.ReadUInt64LittleEndian(addr.Bytes);
         return (buffer[..StateKeyPrefixLength]);
     }
 
-    private ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, in Address addr, in UInt256 slot, out ulong h1)
+    private static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, in Address addr, in UInt256 slot, out ulong h1)
     {
         addr.Bytes.CopyTo(buffer);
         slot.ToBigEndian(buffer[StorageHashPrefixLength..]);
@@ -90,13 +90,40 @@ public class PreimageRocksdbPersistence : IPersistence
 
     public IPersistence.IPersistenceReader CreateReader()
     {
-        return new PersistenceReader(_db.CreateSnapshot(), _bloomFilter, this);
+        var snapshot = _db.CreateSnapshot();
+        var trieReader = new TriePersistence.Reader(
+            snapshot.GetColumn(FlatDbColumns.StateTopNodes),
+            snapshot.GetColumn(FlatDbColumns.StateNodes),
+            snapshot.GetColumn(FlatDbColumns.StorageNodes)
+        );
+
+        var currentState = ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
+
+        IReadOnlyKeyValueStore state = snapshot.GetColumn(FlatDbColumns.Account);
+        IReadOnlyKeyValueStore storage = snapshot.GetColumn(FlatDbColumns.Storage);
+
+        var flatReader = new PreimageReader(
+            state,
+            storage,
+            _bloomFilter
+        );
+
+        return new BaseRocksdbPersistence.PersistenceReader<PreimageReader, TriePersistence.Reader>(
+            flatReader,
+            trieReader,
+            currentState,
+            new Reactive.AnonymousDisposable(() =>
+            {
+                snapshot.Dispose();
+            })
+        );
     }
 
     public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags flags)
     {
-        var dbSnap = _db.CreateSnapshot();
-        var currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
+        IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch();
+        IColumnDbSnapshot<FlatDbColumns> dbSnap = _db.CreateSnapshot();
+        StateId currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
         if (currentState != from)
         {
             dbSnap.Dispose();
@@ -104,10 +131,37 @@ public class PreimageRocksdbPersistence : IPersistence
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        return new WriteBatch(this, _db.StartWriteBatch(), _bloomFilter, dbSnap, to, flags);
+        var flatWriter = new PreimageWriteBatch(
+            batch,
+            _bloomFilter,
+            dbSnap,
+            flags
+        ) ;
+
+        var trieWriteBatch = new TriePersistence.WriteBatch(
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
+            batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
+            batch.GetColumnBatch(FlatDbColumns.StateNodes),
+            batch.GetColumnBatch(FlatDbColumns.StorageNodes),
+            flags);
+
+        return new BaseRocksdbPersistence.WriteBatch<PreimageWriteBatch, TriePersistence.WriteBatch>(
+            flatWriter,
+            trieWriteBatch,
+            new Reactive.AnonymousDisposable(() =>
+            {
+                SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), to);
+                batch.Dispose();
+                dbSnap.Dispose();
+                if (!flags.HasFlag(WriteFlags.DisableWAL))
+                {
+                    _bloomFilter.Flush();
+                }
+            })
+        );
     }
 
-    private class WriteBatch : IPersistence.IWriteBatch
+    private struct PreimageWriteBatch : BaseRocksdbPersistence.IFlatWriteBatch
     {
         private IWriteOnlyKeyValueStore state;
         private IWriteOnlyKeyValueStore storage;
@@ -116,59 +170,25 @@ public class PreimageRocksdbPersistence : IPersistence
         private readonly SegmentedBloom _bloomFilter;
 
         private AccountDecoder _accountDecoder = AccountDecoder.Instance;
+        private WriteFlags _flags;
 
-        WriteFlags _flags = WriteFlags.DisableWAL;
-        private readonly PreimageRocksdbPersistence _mainDb;
-        private readonly IColumnsWriteBatch<FlatDbColumns> _batch;
-        private readonly IColumnDbSnapshot<FlatDbColumns> _dbSnap;
-        private readonly StateId _to;
-
-        private readonly TriePersistence.WriteBatch _trieWriteBatch;
-
-        public WriteBatch(
-            PreimageRocksdbPersistence mainDb,
+        public PreimageWriteBatch(
             IColumnsWriteBatch<FlatDbColumns> batch,
             SegmentedBloom bloomFilter,
             IColumnDbSnapshot<FlatDbColumns> dbSnap,
-            StateId to,
             WriteFlags flags)
         {
             _flags = flags;
-            _mainDb = mainDb;
-            _batch = batch;
             _bloomFilter = bloomFilter;
-            _dbSnap = dbSnap;
-            _to = to;
 
             state = batch.GetColumnBatch(FlatDbColumns.Account);
             storage = batch.GetColumnBatch(FlatDbColumns.Storage);
 
-
-            _trieWriteBatch = new TriePersistence.WriteBatch(
-                (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
-                batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
-                batch.GetColumnBatch(FlatDbColumns.StateNodes),
-                batch.GetColumnBatch(FlatDbColumns.StorageNodes),
-                flags);
-
             storageSnap = (ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage);
-        }
-
-        public void Dispose()
-        {
-            SetCurrentState(_batch.GetColumnBatch(FlatDbColumns.Metadata), _to);
-            _batch.Dispose();
-            _dbSnap.Dispose();
-            if (!_flags.HasFlag(WriteFlags.DisableWAL))
-            {
-                _bloomFilter.Flush();
-            }
         }
 
         public int SelfDestruct(Address addr)
         {
-            _trieWriteBatch.SelfDestruct(addr.ToAccountPath);
-
             ValueHash256 accountPath = addr.ToAccountPath;
             Span<byte> firstKey = stackalloc byte[StorageHashPrefixLength]; // Because slot 0 is a thing, its just the address prefix.
             Span<byte> lastKey = stackalloc byte[StorageKeyLength];
@@ -179,8 +199,8 @@ public class PreimageRocksdbPersistence : IPersistence
 
             int removedEntry = 0;
             // for storage the prefix might change depending on the encoding
-            _mainDb.EncodeAccountKey(firstKey, addr, out _);
-            _mainDb.EncodeAccountKey(lastKey, addr, out _);
+            EncodeAccountKey(firstKey, addr, out _);
+            EncodeAccountKey(lastKey, addr, out _);
             using (ISortedView storageReader = storageSnap.GetViewBetween(firstKey, lastKey))
             {
                 IWriteOnlyKeyValueStore? storageWriter = storage;
@@ -196,13 +216,13 @@ public class PreimageRocksdbPersistence : IPersistence
 
         public void RemoveAccount(Address addr)
         {
-            state.Remove(_mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr, out _));
+            state.Remove(EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr, out _));
         }
 
         public void SetAccount(Address addr, Account account)
         {
             using var stream = _accountDecoder.EncodeToNewNettyStream(account);
-            ReadOnlySpan<byte> key = _mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr, out var bloomHash);
+            ReadOnlySpan<byte> key = EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr, out var bloomHash);
 
             if (account != null)
             {
@@ -214,20 +234,15 @@ public class PreimageRocksdbPersistence : IPersistence
 
         public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
         {
-            ReadOnlySpan<byte> theKey =  _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot, out ulong bloomHash);
+            ReadOnlySpan<byte> theKey =  EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot, out ulong bloomHash);
 
             _bloomFilter.Add(bloomHash);
             storage.PutSpan(theKey, value, _flags);
         }
 
-        public void SetTrieNodes(Hash256? address, TreePath path, TrieNode tnValue)
-        {
-            _trieWriteBatch.SetTrieNodes(address, path, tnValue);
-        }
-
         public void RemoveStorage(Address addr, UInt256 slot)
         {
-            ReadOnlySpan<byte> theKey = _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot, out _);
+            ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot, out _);
             storage.Remove(theKey);
         }
 
@@ -242,47 +257,27 @@ public class PreimageRocksdbPersistence : IPersistence
         }
     }
 
-    private class PersistenceReader : IPersistence.IPersistenceReader
+    private struct PreimageReader(
+        IReadOnlyKeyValueStore accountDb,
+        IReadOnlyKeyValueStore storageDb,
+        SegmentedBloom bloomFilter)
+        : BaseRocksdbPersistence.IFlatReader
     {
-        private readonly IColumnDbSnapshot<FlatDbColumns> _db;
-        private readonly IReadOnlyKeyValueStore _state;
-        private readonly IReadOnlyKeyValueStore _storage;
-        private readonly PreimageRocksdbPersistence _mainDb;
-        private readonly SegmentedBloom _bloomFilter;
-        private readonly TriePersistence.Reader _trieReader;
-
-        public PersistenceReader(IColumnDbSnapshot<FlatDbColumns> db, SegmentedBloom bloomFilter, PreimageRocksdbPersistence mainDb)
-        {
-            _trieReader = new TriePersistence.Reader(
-                _db.GetColumn(FlatDbColumns.StateTopNodes),
-                _db.GetColumn(FlatDbColumns.StateNodes),
-                _db.GetColumn(FlatDbColumns.StorageNodes)
-            );
-            _bloomFilter = bloomFilter;
-            _db = db;
-            _mainDb = mainDb;
-            CurrentState = ReadCurrentState(db.GetColumn(FlatDbColumns.Metadata));
-            _state = _db.GetColumn(FlatDbColumns.Account);
-            _storage = _db.GetColumn(FlatDbColumns.Storage);
-        }
-
-        public StateId CurrentState { get; }
-
-        public void Dispose()
-        {
-            _db.Dispose();
-        }
+        private AccountDecoder _accountDecoder = AccountDecoder.Instance;
+        private static Counter _slotBloomHit = Metrics.CreateCounter("rocksdb_slot_bloom", "slot_blom", "hitmiss");
+        private static Counter.Child _slotBloomHitHit = _slotBloomHit.WithLabels("true_positive");
+        private static Counter.Child _slotBloomHitMiss = _slotBloomHit.WithLabels("false_positive");
 
         public bool TryGetAccount(Address address, out Account? acc)
         {
-            var key = _mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], address, out ulong bloomHash);
-            if (!_bloomFilter.MightContain(bloomHash))
+            var key = EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], address, out ulong bloomHash);
+            if (!bloomFilter.MightContain(bloomHash))
             {
                 acc = null;
                 return true;
             }
 
-            Span<byte> value = _state.GetSpan(key);
+            Span<byte> value = accountDb.GetSpan(key);
             try
             {
                 if (value.IsNullOrEmpty())
@@ -292,30 +287,25 @@ public class PreimageRocksdbPersistence : IPersistence
                 }
 
                 var ctx = new Rlp.ValueDecoderContext(value);
-                acc = _mainDb._accountDecoder.Decode(ref ctx);
+                acc = _accountDecoder.Decode(ref ctx);
                 return true;
             }
             finally
             {
-                _state.DangerousReleaseMemory(value);
+                accountDb.DangerousReleaseMemory(value);
             }
         }
 
-        private static Counter _slotBloomHit = Metrics.CreateCounter("rocksdb_slot_bloom", "slot_blom", "hitmiss");
-        private static Counter.Child _slotBloomHitHit = _slotBloomHit.WithLabels("true_positive");
-        private static Counter.Child _slotBloomHitMiss = _slotBloomHit.WithLabels("false_positive");
-
-
         public bool TryGetSlot(Address address, in UInt256 index, out byte[] valueBytes)
         {
-            ReadOnlySpan<byte> theKey = _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], address, index, out ulong h1);
-            if (!_bloomFilter.MightContain(h1))
+            ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], address, index, out ulong h1);
+            if (!bloomFilter.MightContain(h1))
             {
                 valueBytes = null;
                 return true;
             }
 
-            Span<byte> value = _storage.GetSpan(theKey);
+            Span<byte> value = storageDb.GetSpan(theKey);
             try
             {
                 if (value.IsNullOrEmpty())
@@ -331,13 +321,8 @@ public class PreimageRocksdbPersistence : IPersistence
             }
             finally
             {
-                _storage.DangerousReleaseMemory(value);
+                storageDb.DangerousReleaseMemory(value);
             }
-        }
-
-        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
-        {
-            return _trieReader.TryLoadRlp(address, path, hash, flags);
         }
 
         public byte[]? GetAccountRaw(Hash256 addrHash)

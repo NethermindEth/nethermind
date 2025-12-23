@@ -43,13 +43,14 @@ public class TriePersistence
         return buffer[..StorageNodesKeyLength];
     }
 
-    public class WriteBatch(
+    public struct WriteBatch(
         ISortedKeyValueStore storageNodesSnap,
         IWriteOnlyKeyValueStore stateTopNodes,
         IWriteOnlyKeyValueStore stateNodes,
         IWriteOnlyKeyValueStore storageNodes,
         WriteFlags flags
-    ) {
+    ) : BaseRocksdbPersistence.ITrieWriteBatch
+    {
 
         public void SelfDestruct(in ValueHash256 accountPath)
         {
@@ -93,11 +94,11 @@ public class TriePersistence
     }
 
 
-    public class Reader(
+    public struct Reader(
         IReadOnlyKeyValueStore stateTopNodes,
         IReadOnlyKeyValueStore stateNodes,
         IReadOnlyKeyValueStore storageNodes
-    )
+    ) : BaseRocksdbPersistence.ITrieReader
     {
         public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
         {
