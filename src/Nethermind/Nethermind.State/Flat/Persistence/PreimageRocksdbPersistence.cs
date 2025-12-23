@@ -18,7 +18,7 @@ using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RocksdbPersistence : IPersistence
+public class PreimageRocksdbPersistence : IPersistence
 {
     private readonly IColumnsDb<FlatDbColumns> _db;
     private static byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
@@ -31,19 +31,12 @@ public class RocksdbPersistence : IPersistence
 
     internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
-    private readonly Configuration _configuration;
     private readonly SegmentedBloom _bloomFilter;
 
-    public record Configuration(bool FlatInTrie = false)
-    {
-    }
-
-    public RocksdbPersistence(
+    public PreimageRocksdbPersistence(
         IColumnsDb<FlatDbColumns> db,
-        [KeyFilter(DbNames.Flat)] SegmentedBloom bloomFilter,
-        Configuration configuration)
+        [KeyFilter(DbNames.Flat)] SegmentedBloom bloomFilter)
     {
-        _configuration = configuration;
         _db = db;
         _bloomFilter = bloomFilter;
     }
@@ -72,31 +65,16 @@ public class RocksdbPersistence : IPersistence
 
     private ReadOnlySpan<byte> EncodeAccountKey(Span<byte> buffer, in Address addr, out ulong h1)
     {
-        ValueHash256 hashBuffer = ValueKeccak.Zero;
-        hashBuffer = addr.ToAccountPath;
-        h1 = BinaryPrimitives.ReadUInt64LittleEndian(hashBuffer.Bytes);
-        hashBuffer.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
-        return buffer[..StateKeyPrefixLength];
+        addr.Bytes.CopyTo(buffer);
+        h1 = BinaryPrimitives.ReadUInt64LittleEndian(addr.Bytes);
+        return (buffer[..StateKeyPrefixLength]);
     }
 
-    internal ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, in Address addr, in UInt256 slot, out ulong h1)
+    private ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, in Address addr, in UInt256 slot, out ulong h1)
     {
-        ValueHash256 hashBuffer = ValueKeccak.Zero;
-        hashBuffer = addr.ToAccountPath; // 75ns on average
-        hashBuffer.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
-
-        // around 300ns on average. 30% keccak cache hit rate.
-        StorageTree.ComputeKeyWithLookup(slot, buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]);
-
+        addr.Bytes.CopyTo(buffer);
+        slot.ToBigEndian(buffer[StorageHashPrefixLength..]);
         h1 = Mix(BinaryPrimitives.ReadUInt64LittleEndian(buffer), BinaryPrimitives.ReadUInt64LittleEndian(buffer[StorageHashPrefixLength..]));
-        return buffer[..StorageKeyLength];
-    }
-
-    internal ReadOnlySpan<byte> EncodeStorageKeyHashed(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash, out ulong h1)
-    {
-        addrHash.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
-        slotHash.Bytes.CopyTo(buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]);
-        h1 = Mix(BinaryPrimitives.ReadUInt64LittleEndian(addrHash.Bytes), BinaryPrimitives.ReadUInt64LittleEndian(buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]));
         return buffer[..StorageKeyLength];
     }
 
@@ -140,16 +118,15 @@ public class RocksdbPersistence : IPersistence
         private AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
         WriteFlags _flags = WriteFlags.DisableWAL;
-        private readonly RocksdbPersistence _mainDb;
+        private readonly PreimageRocksdbPersistence _mainDb;
         private readonly IColumnsWriteBatch<FlatDbColumns> _batch;
         private readonly IColumnDbSnapshot<FlatDbColumns> _dbSnap;
         private readonly StateId _to;
-        private readonly bool _flatInTrie;
 
         private readonly TriePersistence.WriteBatch _trieWriteBatch;
 
         public WriteBatch(
-            RocksdbPersistence mainDb,
+            PreimageRocksdbPersistence mainDb,
             IColumnsWriteBatch<FlatDbColumns> batch,
             SegmentedBloom bloomFilter,
             IColumnDbSnapshot<FlatDbColumns> dbSnap,
@@ -163,17 +140,8 @@ public class RocksdbPersistence : IPersistence
             _dbSnap = dbSnap;
             _to = to;
 
-            _flatInTrie = mainDb._configuration.FlatInTrie;
-            if (mainDb._configuration.FlatInTrie)
-            {
-                state = batch.GetColumnBatch(FlatDbColumns.StateNodes);
-                storage = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
-            }
-            else
-            {
-                state = batch.GetColumnBatch(FlatDbColumns.Account);
-                storage = batch.GetColumnBatch(FlatDbColumns.Storage);
-            }
+            state = batch.GetColumnBatch(FlatDbColumns.Account);
+            storage = batch.GetColumnBatch(FlatDbColumns.Storage);
 
 
             _trieWriteBatch = new TriePersistence.WriteBatch(
@@ -183,7 +151,7 @@ public class RocksdbPersistence : IPersistence
                 batch.GetColumnBatch(FlatDbColumns.StorageNodes),
                 flags);
 
-            storageSnap = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage));
+            storageSnap = (ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage);
         }
 
         public void Dispose()
@@ -210,19 +178,16 @@ public class RocksdbPersistence : IPersistence
             accountPath.Bytes[..StorageHashPrefixLength].CopyTo(lastKey);
 
             int removedEntry = 0;
-            if (!_flatInTrie)
+            // for storage the prefix might change depending on the encoding
+            _mainDb.EncodeAccountKey(firstKey, addr, out _);
+            _mainDb.EncodeAccountKey(lastKey, addr, out _);
+            using (ISortedView storageReader = storageSnap.GetViewBetween(firstKey, lastKey))
             {
-                // for storage the prefix might change depending on the encoding
-                _mainDb.EncodeAccountKey(firstKey, addr, out _);
-                _mainDb.EncodeAccountKey(lastKey, addr, out _);
-                using (ISortedView storageReader = storageSnap.GetViewBetween(firstKey, lastKey))
+                IWriteOnlyKeyValueStore? storageWriter = storage;
+                while (storageReader.MoveNext())
                 {
-                    IWriteOnlyKeyValueStore? storageWriter = storage;
-                    while (storageReader.MoveNext())
-                    {
-                        storageWriter.Remove(storageReader.CurrentKey);
-                        removedEntry++;
-                    }
+                    storageWriter.Remove(storageReader.CurrentKey);
+                    removedEntry++;
                 }
             }
 
@@ -268,18 +233,12 @@ public class RocksdbPersistence : IPersistence
 
         public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
         {
-            ReadOnlySpan<byte> theKey = _mainDb.EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash.ValueHash256, slotHash.ValueHash256, out ulong bloomHash);
-            _bloomFilter.Add(bloomHash);
-            storage.PutSpan(theKey, value, _flags);
+            throw new InvalidOperationException("Cannot set raw when using preimage");
         }
 
         public void SetAccountRaw(Hash256 addrHash, Account account)
         {
-            using var stream = _accountDecoder.EncodeToNewNettyStream(account);
-
-            var key = addrHash.Bytes[..StateKeyPrefixLength];
-            _bloomFilter.Add(BinaryPrimitives.ReadUInt64LittleEndian(key));
-            state.PutSpan(key, stream.AsSpan(), _flags);
+            throw new InvalidOperationException("Cannot set raw when using preimage");
         }
     }
 
@@ -288,33 +247,23 @@ public class RocksdbPersistence : IPersistence
         private readonly IColumnDbSnapshot<FlatDbColumns> _db;
         private readonly IReadOnlyKeyValueStore _state;
         private readonly IReadOnlyKeyValueStore _storage;
-        private readonly RocksdbPersistence _mainDb;
-        private readonly bool _flatInTrie;
+        private readonly PreimageRocksdbPersistence _mainDb;
         private readonly SegmentedBloom _bloomFilter;
         private readonly TriePersistence.Reader _trieReader;
 
-        public PersistenceReader(IColumnDbSnapshot<FlatDbColumns> db, SegmentedBloom bloomFilter, RocksdbPersistence mainDb)
+        public PersistenceReader(IColumnDbSnapshot<FlatDbColumns> db, SegmentedBloom bloomFilter, PreimageRocksdbPersistence mainDb)
         {
             _trieReader = new TriePersistence.Reader(
                 _db.GetColumn(FlatDbColumns.StateTopNodes),
                 _db.GetColumn(FlatDbColumns.StateNodes),
                 _db.GetColumn(FlatDbColumns.StorageNodes)
             );
-            _flatInTrie = mainDb._configuration.FlatInTrie;
             _bloomFilter = bloomFilter;
             _db = db;
             _mainDb = mainDb;
             CurrentState = ReadCurrentState(db.GetColumn(FlatDbColumns.Metadata));
-            if (_flatInTrie)
-            {
-                _state = _db.GetColumn(FlatDbColumns.StateNodes);
-                _storage = _db.GetColumn(FlatDbColumns.StorageNodes);
-            }
-            else
-            {
-                _state = _db.GetColumn(FlatDbColumns.Account);
-                _storage = _db.GetColumn(FlatDbColumns.Storage);
-            }
+            _state = _db.GetColumn(FlatDbColumns.Account);
+            _storage = _db.GetColumn(FlatDbColumns.Storage);
         }
 
         public StateId CurrentState { get; }
@@ -398,14 +347,12 @@ public class RocksdbPersistence : IPersistence
 
         private byte[]? GetAccountRaw(in ValueHash256 accountHash)
         {
-            return _state.GetSpan(accountHash.Bytes[..StateKeyPrefixLength]).ToArray();
+            throw new InvalidOperationException("Raw operation not available in preimage mode");
         }
 
         public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash)
         {
-            Span<byte> keySpan = stackalloc byte[StorageKeyLength];
-            ReadOnlySpan<byte> storageKey = _mainDb.EncodeStorageKeyHashed(keySpan, addrHash.ValueHash256, slotHash.ValueHash256, out ulong _);
-            return _storage.Get(storageKey);
+            throw new InvalidOperationException("Raw operation not available in preimage mode");
         }
     }
 }
