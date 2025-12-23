@@ -342,12 +342,7 @@ public class BaseMergePluginModule : Module
                             : NoGCStrategy.Instance,
                         ctx.Resolve<ILogManager>());
                 })
-                .AddSingleton<IHttpClient>((ctx) =>
-                {
-                    IJsonSerializer jsonSerializer = ctx.Resolve<IJsonSerializer>();
-                    ILogManager logManager = ctx.Resolve<ILogManager>();
-                    return new DefaultHttpClient(new HttpClient(), jsonSerializer, logManager, retryDelayMilliseconds: 100);
-                })
+                .AddSingleton<IHttpClient, DefaultHttpClient>()
             ;
     }
 
