@@ -25,7 +25,7 @@ namespace Nethermind.Facade.Proxy
             IJsonSerializer jsonSerializer,
             ILogManager logManager,
             int retries = 3,
-            int retryDelayMilliseconds = 1000)
+            int retryDelayMilliseconds = 100)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
