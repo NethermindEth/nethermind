@@ -51,6 +51,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
 
     private static Gauge _knownStatesMemory = DevMetric.Factory.CreateGauge("flatdiff_knownstates_memory", "memory", "category");
     private static Gauge _compactedMemory = DevMetric.Factory.CreateGauge("flatdiff_compacted_memory", "memory", "category");
+    private static Gauge _snapshotCount = DevMetric.Factory.CreateGauge("flatdiff_snapshot_count", "memory", "category");
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
@@ -116,8 +117,14 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
                     _snapshotCompactor.CompactLevel(stateId);
                     if (stateId.blockNumber % _compactSize == 0)
                     {
+                        _snapshotCount.WithLabels("snapshots").Set(_knownStates.Count);
+                        _snapshotCount.WithLabels("compacted_snapshots").Set(_compactedKnownStates.Count);
                         await _persistenceJob.Writer.WriteAsync(stateId, cancellationToken);
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -323,6 +330,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         IPersistence.IPersistenceReader persistenceReader = _persistenceManager.LeaseReader();
         if (current != baseBlock && persistenceReader.CurrentState.blockNumber != -1 && current.blockNumber > persistenceReader.CurrentState.blockNumber)
         {
+            persistenceReader.Dispose();
             throw new Exception($"Non consecutive snapshots. Current {current} vs {persistenceReader.CurrentState}, {persistedState}, {baseBlock}, {_knownStates.TryGetValue(current, out var snapshot)}, ");
         }
 

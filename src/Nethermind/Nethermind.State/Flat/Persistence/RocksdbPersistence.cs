@@ -33,15 +33,12 @@ public class RocksdbPersistence : IPersistence
     private const int FullPathLength = 32;
     private const int PathLengthLength = 1;
 
+    // Note to self: Splitting the storage tree have been shown to not improve block cache hit rate
     private const int StateNodesKeyLength = FullPathLength + PathLengthLength;
     private const int StateNodesTopThreshold = 5;
     private const int StateNodesTopPathLength = 3;
     private const int StateNodesTopKeyLength = StateNodesTopPathLength + PathLengthLength;
-
     private const int StorageNodesKeyLength = StorageHashPrefixLength + FullPathLength + PathLengthLength;
-    // private const int StorageNodesTopThreshold = 3;
-    // private const int StorageNodesTopPathLength = 2;
-    // private const int StorageNodesTopKeyLength = StorageHashPrefixLength + StorageNodesTopPathLength + PathLengthLength;
 
     internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
 

@@ -323,7 +323,7 @@ public class DbConfig : IDbConfig
 
         "block_based_table_factory.block_size=16000;" +
 
-        "block_based_table_factory.filter_policy=bloomfilter:15;" +
+        "block_based_table_factory.filter_policy=ribbonfilter:10:3;" +
 
         // Default is 1 MB.
         "max_write_batch_group_size_bytes=4000000;" +
@@ -417,7 +417,7 @@ public class DbConfig : IDbConfig
         "target_file_size_multiplier=2;" +
         "max_bytes_for_level_base=128000000;" +
         "block_based_table_factory.block_size=4096;" +
-        "block_based_table_factory.filter_policy=bloomfilter:12;" +
+        "block_based_table_factory.filter_policy=ribbonfilter:10:3;" +
         "";
 
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
@@ -433,8 +433,8 @@ public class DbConfig : IDbConfig
         get { return FlatDbCommonFlatOptions + field; }
         set { field = value ?? ""; }
     } =
-        "block_based_table_factory.block_size=4096;" + // Using 4kb size is faster, IO wise, but uses additional 500 MB of memory, which if put on block cache is much betterr.
-        "block_based_table_factory.filter_policy=bloomfilter:12;" + // Really increase memory usage.
+        "block_based_table_factory.block_size=8000;" + // Using 4kb size is faster, IO wise, but uses additional 500 MB of memory, which if put on block cache is much betterr.
+        "block_based_table_factory.filter_policy=ribbonfilter:10:3;" + // Really increase memory usage.
         "";
 
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
@@ -466,7 +466,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.data_block_hash_table_util_ratio=0.75;" +
 
         "block_based_table_factory.block_size=32000;" +
-        "block_based_table_factory.filter_policy=bloomfilter:15;" +
+        "block_based_table_factory.filter_policy=ribbonfilter:10:3;" +
 
         // Make it
         "optimize_filters_for_hits=true;" +
@@ -491,7 +491,7 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.data_block_hash_table_util_ratio=0.75;" +
 
         "block_based_table_factory.block_size=32000;" +
-        "block_based_table_factory.filter_policy=bloomfilter:8;" +
+        "block_based_table_factory.filter_policy=ribbonfilter:10:3;" +
 
         // very important for null check
         "optimize_filters_for_hits=false;" +

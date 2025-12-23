@@ -35,6 +35,7 @@ public class ResourcePool
     };
 
     private static Counter _createdSnapshotContent = DevMetric.Factory.CreateCounter("resourcepool_created_snapshot_content", "created snapshot content", "compacted");
+    private static Gauge _activeSnapshotContent = DevMetric.Factory.CreateGauge("resourcepool_active_snapshot_content", "active snapshot content", "category");
 
     private class SnapshotContentPolicy(IFlatDiffRepository.SnapshotBundleUsage usage) : IPooledObjectPolicy<SnapshotContent>
     {
@@ -77,11 +78,13 @@ public class ResourcePool
 
     public SnapshotContent GetSnapshotContent(IFlatDiffRepository.SnapshotBundleUsage usage)
     {
+        _activeSnapshotContent.WithLabels(usage.ToString()).Inc();
         return _snapshotPools[usage].Get();
     }
 
     public void ReturnSnapshotContent(IFlatDiffRepository.SnapshotBundleUsage usage, SnapshotContent snapshotContent)
     {
+        _activeSnapshotContent.WithLabels(usage.ToString()).Dec();
         _snapshotPools[usage].Return(snapshotContent);
     }
 

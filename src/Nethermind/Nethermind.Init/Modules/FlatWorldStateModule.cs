@@ -130,7 +130,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             {
                 IInitConfig initConfig = ctx.Resolve<IInitConfig>();
                 var bloomPath = initConfig.BaseDbPath + "/flatBloom/";
-                // Bloom experiment was a failure.
                 return new SegmentedBloom(bloomPath, 500_000_000, 10, enabled: false);
             })
 
