@@ -11,7 +11,7 @@ namespace Nethermind.Taiko.Tdx;
 /// </summary>
 public class BlockHashTdxAttestation
 {
-    public required byte[] Proof { get; init; }
+    public required byte[] Signature { get; init; }
     public required Hash256 BlockHash { get; init; }
 }
 
@@ -20,7 +20,7 @@ public class BlockHashTdxAttestation
 /// </summary>
 public class BlockHeaderTdxAttestation
 {
-    public required byte[] Proof { get; init; }
+    public required byte[] Signature { get; init; }
     public required Hash256 BlockHash { get; init; }
     public required byte[] HeaderRlp { get; init; }
 }

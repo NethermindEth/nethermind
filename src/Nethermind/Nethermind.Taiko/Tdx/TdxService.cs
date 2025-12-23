@@ -18,8 +18,6 @@ namespace Nethermind.Taiko.Tdx;
 /// </summary>
 public class TdxService : ITdxService
 {
-    // Proof layout: [address: 20 bytes][signature: 65 bytes]
-    private const int ProofSize = 85;
 
     private readonly ISurgeTdxConfig _config;
     private readonly ITdxsClient _client;
@@ -105,14 +103,10 @@ public class TdxService : ITdxService
 
         // Sign the header hash
         Signature signature = _ecdsa.Sign(_privateKey!, blockHash.ValueHash256);
-        byte[] signatureBytes = GetSignatureBytes(signature);
-
-        // Build proof: address (20) + signature (65)
-        byte[] proof = BuildProof(_privateKey!.Address, signatureBytes);
 
         return new BlockHashTdxAttestation
         {
-            Proof = proof,
+            Signature = signature.BytesWithRecovery,
             BlockHash = blockHash
         };
     }
@@ -124,51 +118,18 @@ public class TdxService : ITdxService
 
         // Get the RLP encoded block header and re-compute the hash
         byte[] headerRlp = Rlp.Encode(blockHeader).Bytes;
-        Hash256 rlpHash = Keccak.Compute(headerRlp);
 
-        if (rlpHash != blockHeader.Hash)
-            throw new TdxException($"RLP hash does not match block hash {rlpHash} != {blockHeader.Hash}");
+        blockHeader.Hash ??= blockHeader.CalculateHash();
 
         // Sign the RLP hash
-        Signature signature = _ecdsa.Sign(_privateKey!, rlpHash.ValueHash256);
-        byte[] signatureBytes = GetSignatureBytes(signature);
-
-        // Build proof: address (20) + signature (65)
-        byte[] proof = BuildProof(_privateKey!.Address, signatureBytes);
+        Signature signature = _ecdsa.Sign(_privateKey!, blockHeader.Hash);
 
         return new BlockHeaderTdxAttestation
         {
-            Proof = proof,
-            BlockHash = rlpHash,
+            Signature = signature.BytesWithRecovery,
+            BlockHash = blockHeader.Hash,
             HeaderRlp = headerRlp
         };
-    }
-
-    /// <summary>
-    /// Build the 85-byte proof: [address:20][signature:65]
-    /// </summary>
-    private static byte[] BuildProof(Address address, byte[] signature)
-    {
-        byte[] proof = new byte[ProofSize];
-
-        // Address (20 bytes)
-        address.Bytes.CopyTo(proof.AsSpan(0, 20));
-
-        // Signature (65 bytes)
-        signature.AsSpan(0, 65).CopyTo(proof.AsSpan(20));
-
-        return proof;
-    }
-
-    /// <summary>
-    /// Get 65-byte signature in format [r:32][s:32][v:1] where v = 27 + recovery_id
-    /// </summary>
-    private static byte[] GetSignatureBytes(Signature signature)
-    {
-        byte[] result = new byte[65];
-        signature.Bytes.CopyTo(result.AsSpan(0, 64)); // r + s
-        result[64] = (byte)(signature.RecoveryId + 27); // v = recovery_id + 27
-        return result;
     }
 
     private bool TryLoadBootstrap()

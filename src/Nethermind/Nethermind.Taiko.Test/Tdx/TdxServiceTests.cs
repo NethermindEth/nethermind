@@ -111,7 +111,7 @@ public class TdxServiceTests
         BlockHashTdxAttestation attestation = _service.AttestBlockHash(block.Header.Hash!);
 
         attestation.Should().NotBeNull();
-        attestation.Proof.Should().HaveCount(85); // 20 + 65
+        attestation.Signature.Should().HaveCount(85); // 20 + 65
         attestation.BlockHash.Should().Be(block.Hash!);
     }
 
@@ -128,7 +128,7 @@ public class TdxServiceTests
         BlockHeaderTdxAttestation attestation = _service.AttestBlockHeader(block.Header);
 
         attestation.Should().NotBeNull();
-        attestation.Proof.Should().HaveCount(85); // 20 + 65
+        attestation.Signature.Should().HaveCount(85); // 20 + 65
         attestation.HeaderRlp.Should().NotBeEmpty();
     }
 
@@ -140,7 +140,7 @@ public class TdxServiceTests
 
         BlockHashTdxAttestation attestation = _service.AttestBlockHash(block.Header.Hash!);
 
-        byte[] addressBytes = attestation.Proof[0..20];
+        byte[] addressBytes = attestation.Signature[0..20];
         Address proofAddress = new(addressBytes);
 
         proofAddress.ToString().ToLowerInvariant().Should().Be(info.PublicKey.ToLowerInvariant());
@@ -194,7 +194,7 @@ public class TdxServiceTests
         BlockHashTdxAttestation attestation = _service.AttestBlockHash(block.Header.Hash!);
 
         // v is at position 84 (20 + 64)
-        byte v = attestation.Proof[84];
+        byte v = attestation.Signature[84];
         v.Should().BeOneOf((byte)27, (byte)28);
     }
 
@@ -220,7 +220,7 @@ public class TdxServiceTests
         newService.Bootstrap();
         BlockHashTdxAttestation attestation = newService.AttestBlockHash(block.Header.Hash!);
 
-        byte[] addressBytes = attestation.Proof[0..20];
+        byte[] addressBytes = attestation.Signature[0..20];
         Address proofAddress = new(addressBytes);
         proofAddress.ToString().ToLowerInvariant().Should().Be(info.PublicKey.ToLowerInvariant());
     }

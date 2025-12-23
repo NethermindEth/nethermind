@@ -80,7 +80,7 @@ public class TdxRpcModuleTests
 
         var attestation = new BlockHashTdxAttestation
         {
-            Proof = new byte[85],
+            Signature = new byte[85],
             BlockHash = header.Hash!
         };
         _tdxService.AttestBlockHash(header.Hash!).Returns(attestation);
@@ -139,7 +139,7 @@ public class TdxRpcModuleTests
 
         var attestation = new BlockHeaderTdxAttestation
         {
-            Proof = new byte[85],
+            Signature = new byte[85],
             BlockHash = header.Hash!,
             HeaderRlp = new byte[200]
         };
