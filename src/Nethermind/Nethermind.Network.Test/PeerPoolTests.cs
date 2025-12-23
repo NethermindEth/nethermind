@@ -26,6 +26,10 @@ public class PeerPoolTests
         var trustedNodesManager = Substitute.For<ITrustedNodesManager>();
 
         TestNodeSource nodeSource = new TestNodeSource();
+        IPeerRandomizerService randomizedService = Substitute.For<IPeerRandomizerService>();
+        randomizedService.IsEnabled.Returns(false);
+        randomizedService.GetRandomizedScore(Arg.Any<PublicKey>()).Returns(0);
+
         PeerPool pool = new PeerPool(
             nodeSource,
             Substitute.For<INodeStatsManager>(),
@@ -35,6 +39,7 @@ public class PeerPoolTests
                 MaxActivePeers = 5,
                 MaxCandidatePeerCount = 10
             },
+            randomizedService,
             LimboLogs.Instance,
             trustedNodesManager);
 
