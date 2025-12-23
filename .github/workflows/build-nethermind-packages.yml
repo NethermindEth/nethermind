@@ -11,7 +11,6 @@ jobs:
       PACKAGE_DIR: pkg
       PACKAGE_RETENTION: 7
       PUB_DIR: pub
-      SCRIPTS_PATH: ${{ github.workspace }}/scripts/build
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -29,16 +28,14 @@ jobs:
 
       - name: Build Nethermind.Runner
         run: |
-          mkdir $GITHUB_WORKSPACE/$PUB_DIR
-
-          docker build . -t nethermind-build -f $SCRIPTS_PATH/Dockerfile \
+          mkdir $PUB_DIR
+          docker build . -t nethermind-build -f scripts/build/Dockerfile \
             --build-arg COMMIT_HASH=$GITHUB_SHA \
             --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
-
-          docker run --rm --mount type=bind,source=$GITHUB_WORKSPACE/$PUB_DIR,target=/output nethermind-build
+          docker run --rm --mount type=bind,source=./$PUB_DIR,target=/output nethermind-build
 
       - name: Archive packages
-        run: $SCRIPTS_PATH/archive.sh
+        run: scripts/build/archive.sh
 
       - name: Upload Nethermind Linux arm64 package
         uses: actions/upload-artifact@v4

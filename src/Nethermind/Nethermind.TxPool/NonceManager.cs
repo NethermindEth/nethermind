@@ -63,8 +63,9 @@ public class NonceManager : INonceManager
 
         public NonceLocker TxWithNonceReceived(UInt256 nonce)
         {
+            NonceLocker locker = new(_accountLock, TxAccepted);
             _reservedNonce = nonce;
-            return new(_accountLock, TxAccepted);
+            return locker;
         }
 
         private void ReleaseNonces(UInt256 accountNonce)

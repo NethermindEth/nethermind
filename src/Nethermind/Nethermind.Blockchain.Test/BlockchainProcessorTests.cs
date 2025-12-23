@@ -623,7 +623,7 @@ public class BlockchainProcessorTests
     }
 
     [Test(Description = "Covering scenario when we have an invalid block followed by its descendants." +
-                        "All the descandant blocks should get discarded and an alternative branch should get selected." +
+                        "All the descendant blocks should get discarded and an alternative branch should get selected." +
                         "BRANCH A | BLOCK 2 | INVALID |  DISCARD" +
                         "BRANCH A | BLOCK 3 |   VALID |  DISCARD" +
                         "BRANCH A | BLOCK 4 |   VALID |  DISCARD" +

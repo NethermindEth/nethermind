@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using RocksDbSharp;
@@ -62,8 +61,15 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore
         _mainDb.MergeWithColumnFamily(key, _columnFamily, value, writeFlags);
     }
 
-    public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] =>
-        _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());
+    public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
+    {
+        get
+        {
+            ColumnFamilyHandle[] columnFamilies = new ColumnFamilyHandle[keys.Length];
+            Array.Fill(columnFamilies, _columnFamily);
+            return _rocksDb.MultiGet(keys, columnFamilies);
+        }
+    }
 
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
     {
