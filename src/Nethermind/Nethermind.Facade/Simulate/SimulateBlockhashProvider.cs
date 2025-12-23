@@ -18,7 +18,7 @@ public sealed class SimulateBlockhashProvider(IBlockhashProvider blockhashProvid
     {
         long bestKnown = blockTree.BestKnownNumber;
         return bestKnown < number && blockTree.BestSuggestedHeader is not null
-            ? blockhashProvider.GetBlockhash(blockTree.BestSuggestedHeader!, bestKnown, spec)
+            ? blockhashProvider.GetBlockhash(blockTree.BestSuggestedHeader!, number, spec)
             : blockhashProvider.GetBlockhash(currentBlock, number, spec);
     }
 
