@@ -198,19 +198,7 @@ public class TaikoModule : Module
                 .AddSingleton<IForkchoiceUpdatedHandler, TaikoForkchoiceUpdatedHandler>()
 
             // TDX attestation (enabled with Surge.TdxEnabled) 
-            .AddSingleton<ITdxService>(ctx =>
-            {
-                ISurgeConfig surgeConfig = ctx.Resolve<ISurgeConfig>();
-                if (!surgeConfig.TdxEnabled)
-                    return NullTdxService.Instance;
-
-                return new TdxService(
-                    ctx.Resolve<ISurgeTdxConfig>(),
-                    new TdxsClient(ctx.Resolve<ISurgeTdxConfig>(), ctx.Resolve<ILogManager>()),
-                    ctx.Resolve<ILogManager>());
-            })
-            .AddSingleton<ITdxsClient, TdxsClient>()
-            .RegisterSingletonJsonRpcModule<ITdxRpcModule, TdxRpcModule>()
+            .AddModule(new TdxModule())
 
             // Need to set the rlp globally
             .OnBuild(ctx =>
