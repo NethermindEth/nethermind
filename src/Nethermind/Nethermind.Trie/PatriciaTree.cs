@@ -936,6 +936,7 @@ namespace Nethermind.Trie
                         return;
                     }
 
+                    if (node.IsSealed && node.Keccak is not null) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
                     node.ResolveNode(TrieStore, path);
 
                     if (node.IsLeaf || node.IsExtension)

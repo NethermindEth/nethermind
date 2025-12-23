@@ -133,14 +133,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 return new SegmentedBloom(bloomPath, 500_000_000, 10, enabled: false);
             })
 
-            .AddSingleton<LegacyRocksdbPersistence>()
-            .AddSingleton<LegacyRocksdbPersistence.Configuration, IFlatDbConfig>((config) => new LegacyRocksdbPersistence.Configuration()
-            {
-                UsePreimage = config.Layout == FlatLayout.PreimageFlat,
-                FlatInTrie = config.Layout == FlatLayout.FlatInTrie,
-                SeparateStorageTop = config.Layout == FlatLayout.FlatSeparateTopStorage || config.Layout == FlatLayout.PreimageFlat
-            })
-
             .AddSingleton<NoLeafValueRocksdbPersistence>()
             .AddSingleton<NoLeafValueRocksdbPersistence.Configuration>()
             .AddSingleton<IStateReader, FlatStateReader>()
