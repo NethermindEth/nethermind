@@ -246,6 +246,7 @@ public class LMDBPersistence : IPersistence
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
         {
             (MDBResultCode resultCode, MDBValue key, MDBValue valueMdb) = lmdbTx.Get(state, address.Bytes[..StateKeyPrefixLength]);
+            if (resultCode == MDBResultCode.NotFound) return 0;
             if (resultCode != MDBResultCode.Success) throw new Exception($"Read account raw failed with result code {resultCode}");
             valueMdb.AsSpan().CopyTo(outBuffer);
             return valueMdb.AsSpan().Length;
@@ -256,6 +257,7 @@ public class LMDBPersistence : IPersistence
             Span<byte> keySpan = stackalloc byte[StorageKeyLength];
             ReadOnlySpan<byte> storageKey = EncodeStorageKeyHashed(keySpan, address, slot);
             (MDBResultCode resultCode, MDBValue key, MDBValue valueMdb) = lmdbTx.Get(storage, storageKey);
+            if (resultCode == MDBResultCode.NotFound) return 0;
             if (resultCode != MDBResultCode.Success) throw new Exception($"Read storage raw failed with result code {resultCode}");
             valueMdb.AsSpan().CopyTo(outBuffer);
             return valueMdb.AsSpan().Length;
