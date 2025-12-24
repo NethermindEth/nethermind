@@ -90,51 +90,6 @@ public sealed class CumulativeTraceWriter
     }
 
     /// <summary>
-    /// Writes the cumulative trace output synchronously.
-    /// </summary>
-    /// <param name="traceOutput">The cumulative trace output to write.</param>
-    /// <returns>The full path to the file, or null if writing failed.</returns>
-    public string? Write(CumulativeTraceOutput traceOutput)
-    {
-        if (traceOutput is null)
-        {
-            if (_logger.IsError)
-            {
-                _logger.Error("Cumulative trace output is null");
-            }
-            return null;
-        }
-
-        try
-        {
-            // Ensure directory exists
-            if (!Directory.Exists(_outputDirectory))
-            {
-                Directory.CreateDirectory(_outputDirectory);
-            }
-
-            // Serialize and write (overwrite existing file)
-            string json = JsonSerializer.Serialize(traceOutput, _serializerOptions);
-            File.WriteAllText(_filePath!, json);
-
-            if (_logger.IsDebug)
-            {
-                _logger.Debug($"Cumulative opcode trace updated: {_filePath} (blocks {traceOutput.Metadata.FirstBlock}-{traceOutput.Metadata.LastBlock})");
-            }
-
-            return _filePath;
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsError)
-            {
-                _logger.Error($"Failed to write cumulative opcode trace: {ex.Message}", ex);
-            }
-            return null;
-        }
-    }
-
-    /// <summary>
     /// Finalizes the cumulative file with the specified completion status.
     /// </summary>
     /// <param name="traceOutput">The final trace output.</param>

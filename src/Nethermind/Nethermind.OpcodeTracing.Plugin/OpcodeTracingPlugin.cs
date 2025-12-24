@@ -12,10 +12,10 @@ namespace Nethermind.OpcodeTracing.Plugin;
 /// <summary>
 /// Nethermind plugin for tracing opcode usage across block ranges.
 /// </summary>
-public class OpcodeTracingPlugin(IOpcodeTracingConfig config) : INethermindPlugin, IAsyncDisposable
+public class OpcodeTracingPlugin(IOpcodeTracingConfig? config = null) : INethermindPlugin, IAsyncDisposable
 {
-    private readonly IOpcodeTracingConfig _config = config ?? throw new ArgumentNullException(nameof(config));
-    private readonly string _sessionId = GenerateSessionId();
+    private IOpcodeTracingConfig? _config = config;
+    private string? _sessionId;
     private OpcodeTraceRecorder? _traceRecorder;
     private ILogger? _logger;
     private INethermindApi? _api;
@@ -46,7 +46,7 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig config) : INethermindPlugi
     /// <summary>
     /// Gets a value indicating whether the plugin is enabled.
     /// </summary>
-    public bool Enabled => _config.Enabled;
+    public bool Enabled => _config?.Enabled ?? false;
 
     /// <summary>
     /// Gets a value indicating whether the plugin must initialize.
@@ -61,6 +61,7 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig config) : INethermindPlugi
     public async Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
+        _config ??= _api.Config<IOpcodeTracingConfig>();
         _logger = _api.LogManager.GetClassLogger<OpcodeTracingPlugin>();
 
         if (!Enabled)
@@ -68,19 +69,21 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig config) : INethermindPlugi
             return;
         }
 
+        _sessionId = GenerateSessionId();
+
         try
         {
             // Initialize dependencies from DI container or create them directly
             var counter = new OpcodeCounter();
             var outputWriter = new Output.TraceOutputWriter(_api.LogManager);
-            _traceRecorder = new OpcodeTraceRecorder(_config, counter, outputWriter, _sessionId, _api.LogManager);
+            _traceRecorder = new OpcodeTraceRecorder(_config!, counter, outputWriter, _sessionId!, _api.LogManager);
 
             await _traceRecorder.PrepareAsync(_api).ConfigureAwait(false);
 
             _logger?.Info($"Opcode tracing plugin initialized (session={_sessionId}).");
 
             // Provide guidance for RealTime mode users
-            if (string.Equals(_config.Mode, "RealTime", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(_config!.Mode, "RealTime", StringComparison.OrdinalIgnoreCase))
             {
                 _logger?.Info(
                     "RealTime mode: Tracing will begin automatically when the node reaches the chain tip. " +
@@ -89,8 +92,10 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig config) : INethermindPlugi
         }
         catch (Exception ex)
         {
-            _logger?.Error($"Failed to initialize opcode tracing plugin: {ex.Message}", ex);
-            throw;
+            // Log error, disable plugin, but do NOT crash the client
+            _logger?.Error($"Opcode tracing plugin disabled due to configuration error: {ex.Message}");
+            _traceRecorder = null; // Disable the plugin by clearing the recorder
+            // Do not re-throw - allow client to continue running normally
         }
     }
 
