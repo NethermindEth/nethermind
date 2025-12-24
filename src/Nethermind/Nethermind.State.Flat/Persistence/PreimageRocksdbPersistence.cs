@@ -299,7 +299,8 @@ public class PreimageRocksdbPersistence : IPersistence
         internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
         private int _accountSpanBufferSize = 256;
         private int _slotSpanBufferSize = 40;
-        public bool TryGetAccount(Address address, out Account? acc)
+        
+        public Account? GetAccount(Address address)
         {
             ValueHash256 fakeHash = ValueKeccak.Zero;
             address.Bytes.CopyTo(fakeHash.BytesAsSpan);
@@ -308,33 +309,29 @@ public class PreimageRocksdbPersistence : IPersistence
             int responseSize = flatReader.GetAccount(fakeHash, valueBuffer);
             if (responseSize == 0)
             {
-                acc = null;
-                return true;
+                return null;
             }
 
             var ctx = new Rlp.ValueDecoderContext(valueBuffer[..responseSize]);
-            acc = _accountDecoder.Decode(ref ctx);
-            return true;
+            return _accountDecoder.Decode(ref ctx);
         }
 
-        public bool TryGetSlot(Address address, in UInt256 index, out byte[]? valueBytes)
+        public byte[]? GetSlot(Address address, in UInt256 slot)
         {
             ValueHash256 fakeHash = ValueKeccak.Zero;
             address.Bytes.CopyTo(fakeHash.BytesAsSpan);
 
             ValueHash256 fakeSlotHash = ValueKeccak.Zero;
-            index.ToBigEndian(fakeSlotHash.BytesAsSpan);
+            slot.ToBigEndian(fakeSlotHash.BytesAsSpan);
 
             Span<byte> valueBuffer = stackalloc byte[_slotSpanBufferSize];
             int responseSize = flatReader.GetStorage(fakeHash, fakeSlotHash, valueBuffer);
             if (responseSize == 0)
             {
-                valueBytes = null;
-                return true;
+                return null;
             }
 
-            valueBytes = valueBuffer[..responseSize].ToArray();
-            return true;
+            return valueBuffer[..responseSize].ToArray();
         }
 
         public byte[]? GetAccountRaw(Hash256 addrHash)

@@ -45,8 +45,8 @@ public static class BasePersistence
 
     public interface IFlatReader
     {
-        public bool TryGetAccount(Address address, out Account? acc);
-        public bool TryGetSlot(Address address, in UInt256 index, out byte[]? valueBytes);
+        public Account? GetAccount(Address address);
+        public byte[]? GetSlot(Address address, in UInt256 slot);
         public byte[]? GetAccountRaw(Hash256 addrHash);
         public byte[]? GetStorageRaw(Hash256 addrHash, Hash256 slotHash);
     }
@@ -138,36 +138,33 @@ public static class BasePersistence
         private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
         private readonly int _accountSpanBufferSize = 256;
         private readonly int _slotSpanBufferSize = 40;
-        public bool TryGetAccount(Address address, out Account? acc)
+        
+        public Account? GetAccount(Address address)
         {
             Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
             int responseSize = flatReader.GetAccount(address.ToAccountPath, valueBuffer);
             if (responseSize == 0)
             {
-                acc = null;
-                return true;
+                return null;
             }
 
             var ctx = new Rlp.ValueDecoderContext(valueBuffer[..responseSize]);
-            acc = _accountDecoder.Decode(ref ctx);
-            return true;
+            return _accountDecoder.Decode(ref ctx);
         }
 
-        public bool TryGetSlot(Address address, in UInt256 index, out byte[]? valueBytes)
+        public byte[]? GetSlot(Address address, in UInt256 slot)
         {
             ValueHash256 slotHash = ValueKeccak.Zero;
-            StorageTree.ComputeKeyWithLookup(index, slotHash.BytesAsSpan);
+            StorageTree.ComputeKeyWithLookup(slot, slotHash.BytesAsSpan);
 
             Span<byte> valueBuffer = stackalloc byte[_slotSpanBufferSize];
             int responseSize = flatReader.GetStorage(address.ToAccountPath, slotHash, valueBuffer);
             if (responseSize == 0)
             {
-                valueBytes = null;
-                return true;
+                return null;
             }
 
-            valueBytes = valueBuffer[..responseSize].ToArray();
-            return true;
+            return valueBuffer[..responseSize].ToArray();
         }
 
         public byte[]? GetAccountRaw(Hash256 addrHash)
@@ -211,14 +208,14 @@ public static class BasePersistence
             _disposer.Dispose();
         }
 
-        public bool TryGetAccount(Address address, out Account? acc)
+        public Account? GetAccount(Address address)
         {
-            return _flatReader.TryGetAccount(address, out acc);
+            return _flatReader.GetAccount(address);
         }
 
-        public bool TryGetSlot(Address address, in UInt256 index, out byte[]? valueBytes)
+        public byte[]? GetSlot(Address address, in UInt256 slot)
         {
-            return _flatReader.TryGetSlot(address, in index, out valueBytes);
+            return _flatReader.GetSlot(address, in slot);
         }
 
         public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)

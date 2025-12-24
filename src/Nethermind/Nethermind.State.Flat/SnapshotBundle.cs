@@ -197,20 +197,16 @@ public class SnapshotBundle : IDisposable
         }
 
         long sw = Stopwatch.GetTimestamp();
-        if (_persistenceReader.TryGetAccount(address, out acc))
+        acc = _persistenceReader.GetAccount(address);
+        if (acc is null)
         {
-            if (acc is null)
-            {
-                _accountPersistenceEmptyRead.Observe(Stopwatch.GetTimestamp() - sw);
-            }
-            else
-            {
-                _accountPersistenceRead.Observe(Stopwatch.GetTimestamp() - sw);
-            }
-            return true;
+            _accountPersistenceEmptyRead.Observe(Stopwatch.GetTimestamp() - sw);
         }
-
-        return false;
+        else
+        {
+            _accountPersistenceRead.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+        return true;
     }
 
     public int DetermineSelfDestructSnapshotIdx(Address address)
@@ -268,20 +264,16 @@ public class SnapshotBundle : IDisposable
         }
 
         long sw = Stopwatch.GetTimestamp();
-        if (_persistenceReader.TryGetSlot(address, index, out value))
+        value = _persistenceReader.GetSlot(address, index);
+        if (value is null || value.Length == 0 || Bytes.AreEqual(value, StorageTree.ZeroBytes))
         {
-            if (value is null || value.Length == 0 || Bytes.AreEqual(value, StorageTree.ZeroBytes))
-            {
-                _slotPersistenceEmptyRead.Observe(Stopwatch.GetTimestamp() - sw);
-            }
-            else
-            {
-                _slotPersistenceRead.Observe(Stopwatch.GetTimestamp() - sw);
-            }
-            return true;
+            _slotPersistenceEmptyRead.Observe(Stopwatch.GetTimestamp() - sw);
         }
-
-        return false;
+        else
+        {
+            _slotPersistenceRead.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+        return true;
     }
 
     public void SetChangedSlot(AddressAsKey address, in UInt256 index, byte[] value)

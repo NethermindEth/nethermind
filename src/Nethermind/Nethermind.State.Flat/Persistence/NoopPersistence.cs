@@ -14,16 +14,14 @@ public class NoopPersistenceReader: IPersistence.IPersistenceReader
     {
     }
 
-    public bool TryGetAccount(Address address, out Account? acc)
+    public Account? GetAccount(Address address)
     {
-        acc = null;
-        return false;
+        return null;
     }
 
-    public bool TryGetSlot(Address address, in UInt256 index, out byte[]? value)
+    public byte[]? GetSlot(Address address, in UInt256 slot)
     {
-        value = null;
-        return false;
+        return null;
     }
 
     public StateId CurrentState => new StateId(0, Keccak.EmptyTreeHash);

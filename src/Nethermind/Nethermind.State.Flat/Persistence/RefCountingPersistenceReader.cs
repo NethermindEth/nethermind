@@ -32,14 +32,14 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
         });
     }
 
-    public bool TryGetAccount(Address address, out Account? acc)
+    public Account? GetAccount(Address address)
     {
-        return _innerReader.TryGetAccount(address, out acc);
+        return _innerReader.GetAccount(address);
     }
 
-    public bool TryGetSlot(Address address, in UInt256 index, out byte[]? value)
+    public byte[]? GetSlot(Address address, in UInt256 slot)
     {
-        return _innerReader.TryGetSlot(address, in index, out value);
+        return _innerReader.GetSlot(address, in slot);
     }
 
     public StateId CurrentState => _innerReader.CurrentState;

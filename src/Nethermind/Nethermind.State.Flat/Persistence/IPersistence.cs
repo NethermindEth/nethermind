@@ -16,8 +16,8 @@ public interface IPersistence
 
     public interface IPersistenceReader: IDisposable
     {
-        bool TryGetAccount(Address address, out Account? acc);
-        bool TryGetSlot(Address address, in UInt256 index, out byte[]? value);
+        Account? GetAccount(Address address);
+        byte[]? GetSlot(Address address, in UInt256 slot);
         StateId CurrentState { get; }
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags);
 
