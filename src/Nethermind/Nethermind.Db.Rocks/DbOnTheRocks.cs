@@ -199,29 +199,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 WarmupFile(_fullPath, db);
             }
 
-            /*
-            if (Name == "FlatState")
-            {
-                Console.Error.WriteLine("Reading all from flat state");
-                long keyCount = 0;
-                using (var it = db.NewIterator())
-                {
-                    it.SeekToFirst();
-
-                    while (it.Valid())
-                    {
-                        keyCount++;
-                        if (keyCount % 1000000 == 0)
-                        {
-                            Console.Error.WriteLine($"{keyCount} keys");
-                        }
-                        it.Next();
-                    }
-                }
-                Console.Error.WriteLine($"{keyCount} keys");
-            }
-            */
-
             return db;
         }
         catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
@@ -549,8 +526,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             options.SetMaxWriteBufferNumber(_maxWriteBufferNumber);
         }
         if (_maxWriteBufferNumber < 1) throw new InvalidConfigurationException($"Error initializing {Name} db. Max write buffer number must be more than 1. max write buffer number: {_maxWriteBufferNumber}", ExitCodes.GeneralError);
-
-        options.SetAllowConcurrentMemtableWrite(false);
 
         #endregion
 

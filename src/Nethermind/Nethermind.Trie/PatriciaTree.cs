@@ -124,7 +124,7 @@ namespace Nethermind.Trie
             _bufferPool = bufferPool;
         }
 
-        public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None, bool noConcurrent = false)
+        public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
         {
             if (!_allowCommits)
             {
@@ -138,8 +138,6 @@ namespace Nethermind.Trie
                 > 4 => 0, // we separate at top level
                 _ => -1
             };
-
-            if (noConcurrent) maxLevelForConcurrentCommit = -1;
 
             _writeBeforeCommit = 0;
 
