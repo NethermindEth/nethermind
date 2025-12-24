@@ -51,7 +51,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddDatabase(DbNames.FlatStateNodes)
             .AddDatabase(DbNames.FlatStateTopNodes)
             .AddDatabase(DbNames.FlatStorageNodes)
-            .AddDatabase(DbNames.FlatStorageTopNodes)
             .AddSingleton<IColumnsDb<FlatDbColumns>>((ctx) =>
             {
                 return new FakeColumnsDb<FlatDbColumns>(new Dictionary<FlatDbColumns, IDb>()
@@ -62,7 +61,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                     { FlatDbColumns.StateNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStateNodes) },
                     { FlatDbColumns.StorageNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStorageNodes) },
                     { FlatDbColumns.StateTopNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStateTopNodes) },
-                    { FlatDbColumns.StorageTopNodes, ctx.ResolveKeyed<IDb>(DbNames.FlatStorageTopNodes) },
                 });
             })
 
@@ -133,7 +131,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             })
 
             .AddSingleton<NoLeafValueRocksdbPersistence>()
-            .AddSingleton<NoLeafValueRocksdbPersistence.Configuration>()
             .AddSingleton<IStateReader, FlatStateReader>()
 
             .AddDecorator<IRocksDbConfigFactory, FlatBlockCacheAdjuster>()

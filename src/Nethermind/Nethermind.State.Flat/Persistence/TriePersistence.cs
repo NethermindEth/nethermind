@@ -10,16 +10,16 @@ namespace Nethermind.State.Flat.Persistence;
 
 public class TriePersistence
 {
-    private const int StorageHashPrefixLength = 20; // Store prefix of the 32 byte of the storage. Reduces index size.
+    public const int StorageHashPrefixLength = 20; // Store prefix of the 32 byte of the storage. Reduces index size.
     private const int FullPathLength = 32;
     private const int PathLengthLength = 1;
 
     // Note to self: Splitting the storage tree have been shown to not improve block cache hit rate
-    private const int StateNodesKeyLength = FullPathLength + PathLengthLength;
-    private const int StateNodesTopThreshold = 5;
+    public const int StateNodesKeyLength = FullPathLength + PathLengthLength;
+    public const int StateNodesTopThreshold = 5;
     private const int StateNodesTopPathLength = 3;
-    private const int StateNodesTopKeyLength = StateNodesTopPathLength + PathLengthLength;
-    private const int StorageNodesKeyLength = StorageHashPrefixLength + FullPathLength + PathLengthLength;
+    public const int StateNodesTopKeyLength = StateNodesTopPathLength + PathLengthLength;
+    public const int StorageNodesKeyLength = StorageHashPrefixLength + FullPathLength + PathLengthLength;
 
     internal static ReadOnlySpan<byte> EncodeStateNodeKey(Span<byte> buffer, in TreePath path)
     {

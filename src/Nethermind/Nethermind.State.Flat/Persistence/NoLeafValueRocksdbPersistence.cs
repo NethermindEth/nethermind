@@ -6,46 +6,20 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
 // this persistence remove the leaf data and rely on the flat db to reconstruct it. It means the trie db is smaller
-// and probably faster but adds the latency of the flat during a leaf lookup
+// and probably faster but adds the latency of the flat during a leaf lookup.
 public class NoLeafValueRocksdbPersistence : IPersistence
 {
     private readonly IColumnsDb<FlatDbColumns> _db;
     private static byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
 
-    private const int StateKeyPrefixLength = 20;
-
-    private const int StorageHashPrefixLength = 20; // Store prefix of the 32 byte of the storage. Reduces index size.
-    private const int StorageSlotKeySize = 32;
-    private const int StorageKeyLength = StorageHashPrefixLength + StorageSlotKeySize;
-    private const int FullPathLength = 32;
-    private const int PathLengthLength = 1;
-
-    private const int StateNodesKeyLength = FullPathLength + PathLengthLength;
-    private const int StateNodesTopThreshold = 5;
-    private const int StateNodesTopPathLength = 3;
-    private const int StateNodesTopKeyLength = StateNodesTopPathLength + PathLengthLength;
-    private const int StorageNodesKeyLength = StorageHashPrefixLength + FullPathLength + PathLengthLength;
-
-    internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
-    private readonly Configuration _configuration;
-
-    public record Configuration()
+    public NoLeafValueRocksdbPersistence(IColumnsDb<FlatDbColumns> db)
     {
-    }
-
-    public NoLeafValueRocksdbPersistence(
-        IColumnsDb<FlatDbColumns> db,
-        Configuration configuration)
-    {
-        _configuration = configuration;
         _db = db;
     }
 
@@ -71,61 +45,39 @@ public class NoLeafValueRocksdbPersistence : IPersistence
         kv.PutSpan(CurrentStateKey, bytes);
     }
 
-    private ReadOnlySpan<byte> EncodeAccountKey(Span<byte> buffer, in Address addr)
-    {
-        ValueHash256 hashBuffer = ValueKeccak.Zero;
-        hashBuffer = addr.ToAccountPath;
-        hashBuffer.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
-        return buffer[..StateKeyPrefixLength];
-    }
-
-    internal ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, in Address addr, in UInt256 slot)
-    {
-        ValueHash256 hashBuffer = ValueKeccak.Zero;
-        hashBuffer = addr.ToAccountPath; // 75ns on average
-        hashBuffer.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
-
-        // around 300ns on average. 30% keccak cache hit rate.
-        StorageTree.ComputeKeyWithLookup(slot, buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]);
-
-        return buffer[..StorageKeyLength];
-    }
-
-    internal ReadOnlySpan<byte> EncodeStorageKeyHashed(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash)
-    {
-        addrHash.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
-        slotHash.Bytes.CopyTo(buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]);
-        return buffer[..StorageKeyLength];
-    }
-
-    internal static ReadOnlySpan<byte> EncodeStateNodeKey(Span<byte> buffer, in TreePath path)
-    {
-        path.Path.Bytes.CopyTo(buffer);
-        buffer[FullPathLength] = (byte)path.Length;
-        return buffer[..StateNodesKeyLength];
-    }
-
-    internal static ReadOnlySpan<byte> EncodeStateTopNodeKey(Span<byte> buffer, in TreePath path)
-    {
-        path.Path.Bytes[0..StateNodesTopPathLength].CopyTo(buffer);
-        buffer[StateNodesTopPathLength] = (byte)path.Length;
-        return buffer[..StateNodesTopKeyLength];
-    }
-
-    internal static ReadOnlySpan<byte> EncodeStorageNodeKey(Span<byte> buffer, Hash256 addr, in TreePath path)
-    {
-        addr.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
-        path.Path.Bytes.CopyTo(buffer[StorageHashPrefixLength..]);
-        buffer[StorageHashPrefixLength + FullPathLength] = (byte)path.Length;
-        return buffer[..StorageNodesKeyLength];
-    }
-
     public IPersistence.IPersistenceReader CreateReader()
     {
-        return new PersistenceReader(_db.CreateSnapshot(), this);
+        var snapshot = _db.CreateSnapshot();
+        var currentState = ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
+
+        IReadOnlyKeyValueStore state = snapshot.GetColumn(FlatDbColumns.Account);
+        IReadOnlyKeyValueStore storage = snapshot.GetColumn(FlatDbColumns.Storage);
+
+        var hashedFlatReader = new RocksDbFlatPersistence.Reader(
+            state,
+            storage
+        );
+        var flatReader = new BaseRocksdbPersistence.ToHashedFlatReader<RocksDbFlatPersistence.Reader>(hashedFlatReader);
+
+        var trieReader = new TrieReader(
+            snapshot.GetColumn(FlatDbColumns.StateTopNodes),
+            snapshot.GetColumn(FlatDbColumns.StateNodes),
+            snapshot.GetColumn(FlatDbColumns.StorageNodes),
+            hashedFlatReader
+        );
+
+        return new BaseRocksdbPersistence.PersistenceReader<BaseRocksdbPersistence.ToHashedFlatReader<RocksDbFlatPersistence.Reader>, TrieReader>(
+            flatReader,
+            trieReader,
+            currentState,
+            new Reactive.AnonymousDisposable(() =>
+            {
+                snapshot.Dispose();
+            })
+        );
     }
 
-    public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags writeFlags)
+    public IPersistence.IWriteBatch CreateWriteBatch(StateId from, StateId to, WriteFlags flags)
     {
         var dbSnap = _db.CreateSnapshot();
         var currentState = ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
@@ -136,68 +88,54 @@ public class NoLeafValueRocksdbPersistence : IPersistence
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        return new WriteBatch(this, _db.StartWriteBatch(), dbSnap, to, writeFlags);
+        IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch();
+        IWriteOnlyKeyValueStore state = batch.GetColumnBatch(FlatDbColumns.Account);
+        IWriteOnlyKeyValueStore storage = batch.GetColumnBatch(FlatDbColumns.Storage);
+
+        var flatWriter = new BaseRocksdbPersistence.ToHashedWriteBatch<RocksDbFlatPersistence.WriteBatch>(
+            new RocksDbFlatPersistence.WriteBatch(
+                ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
+                state,
+                storage,
+                flags
+            )
+        );
+
+        var trieWriteBatch = new TrieWriter(
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
+            batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
+            batch.GetColumnBatch(FlatDbColumns.StateNodes),
+            batch.GetColumnBatch(FlatDbColumns.StorageNodes),
+            flags);
+
+        return new BaseRocksdbPersistence.WriteBatch<BaseRocksdbPersistence.ToHashedWriteBatch<RocksDbFlatPersistence.WriteBatch>, TrieWriter>(
+            flatWriter,
+            trieWriteBatch,
+            new Reactive.AnonymousDisposable(() =>
+            {
+                SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), to);
+                batch.Dispose();
+                dbSnap.Dispose();
+            })
+        );
     }
 
-    private class WriteBatch : IPersistence.IWriteBatch
+    private struct TrieWriter(
+        ISortedKeyValueStore storageNodesSnap,
+        IWriteOnlyKeyValueStore stateTopNodes,
+        IWriteOnlyKeyValueStore stateNodes,
+        IWriteOnlyKeyValueStore storageNodes,
+        WriteFlags flags
+        ) : BaseRocksdbPersistence.ITrieWriteBatch
     {
-        private IWriteOnlyKeyValueStore state;
-        private IWriteOnlyKeyValueStore storage;
-        private IWriteOnlyKeyValueStore stateNodes;
-        private IWriteOnlyKeyValueStore stateTopNodes;
-        private IWriteOnlyKeyValueStore storageNodes;
-
-        private ISortedKeyValueStore storageSnap;
-        private ISortedKeyValueStore storageNodesSnap;
-
-        private AccountDecoder _accountDecoder = AccountDecoder.Instance;
-
-        WriteFlags _flags = WriteFlags.None;
-        private readonly NoLeafValueRocksdbPersistence _mainDb;
-        private readonly IColumnsWriteBatch<FlatDbColumns> _batch;
-        private readonly IColumnDbSnapshot<FlatDbColumns> _dbSnap;
-        private readonly StateId _to;
-
-        public WriteBatch(NoLeafValueRocksdbPersistence mainDb,
-            IColumnsWriteBatch<FlatDbColumns> batch,
-            IColumnDbSnapshot<FlatDbColumns> dbSnap,
-            StateId to,
-            WriteFlags writeFlags
-            )
+        public void SelfDestruct(in ValueHash256 accountPath)
         {
-            _flags =  writeFlags;
-            _mainDb = mainDb;
-            _batch = batch;
-            _dbSnap = dbSnap;
-            _to = to;
-
-            state = batch.GetColumnBatch(FlatDbColumns.Account);
-            storage = batch.GetColumnBatch(FlatDbColumns.Storage);
-
-            stateNodes = batch.GetColumnBatch(FlatDbColumns.StateNodes);
-            stateTopNodes = batch.GetColumnBatch(FlatDbColumns.StateTopNodes);
-            storageNodes = batch.GetColumnBatch(FlatDbColumns.StorageNodes);
-
-            storageSnap = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.Storage));
-            storageNodesSnap = ((ISortedKeyValueStore) dbSnap.GetColumn(FlatDbColumns.StorageNodes));
-        }
-
-        public void Dispose()
-        {
-            SetCurrentState(_batch.GetColumnBatch(FlatDbColumns.Metadata), _to);
-            _batch.Dispose();
-            _dbSnap.Dispose();
-        }
-
-        public int SelfDestruct(Address addr)
-        {
-            ValueHash256 accountPath = addr.ToAccountPath;
-            Span<byte> firstKey = stackalloc byte[StorageHashPrefixLength]; // Because slot 0 is a thing, its just the address prefix.
-            Span<byte> lastKey = stackalloc byte[StorageNodesKeyLength];
+            Span<byte> firstKey = stackalloc byte[TriePersistence.StorageHashPrefixLength]; // Because slot 0 is a thing, its just the address prefix.
+            Span<byte> lastKey = stackalloc byte[TriePersistence.StorageNodesKeyLength];
             firstKey.Fill(0x00);
             lastKey.Fill(0xff);
-            accountPath.Bytes[..StorageHashPrefixLength].CopyTo(firstKey);
-            accountPath.Bytes[..StorageHashPrefixLength].CopyTo(lastKey);
+            accountPath.Bytes[..TriePersistence.StorageHashPrefixLength].CopyTo(firstKey);
+            accountPath.Bytes[..TriePersistence.StorageHashPrefixLength].CopyTo(lastKey);
 
             int removedEntry = 0;
             using (ISortedView storageNodeReader = storageNodesSnap.GetViewBetween(firstKey, lastKey))
@@ -209,60 +147,6 @@ public class NoLeafValueRocksdbPersistence : IPersistence
                     removedEntry++;
                 }
             }
-
-            firstKey.Fill(0x00);
-            lastKey.Fill(0xff);
-            _mainDb.EncodeAccountKey(firstKey, addr);
-            _mainDb.EncodeAccountKey(lastKey, addr);
-            using (ISortedView storageReader = storageSnap.GetViewBetween(firstKey, lastKey))
-            {
-                IWriteOnlyKeyValueStore? storageWriter = storage;
-                while (storageReader.MoveNext())
-                {
-                    storageWriter.Remove(storageReader.CurrentKey);
-                    removedEntry++;
-                }
-            }
-
-            return removedEntry;
-        }
-
-        public void RemoveAccount(Address addr)
-        {
-            state.Remove(_mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr));
-        }
-
-        public void SetAccount(Address addr, Account account)
-        {
-            using var stream = _accountDecoder.EncodeToNewNettyStream(account);
-            state.PutSpan(_mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], addr), stream.AsSpan());
-        }
-
-        public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
-        {
-            ValueHash256 hash256 = ValueKeccak.Zero;
-            StorageTree.ComputeKeyWithLookup(slot, hash256.BytesAsSpan);
-
-            ReadOnlySpan<byte> theKey =  _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot);
-            storage.PutSpan(theKey, value, _flags);
-        }
-
-        public void RemoveStorage(Address addr, UInt256 slot)
-        {
-            ReadOnlySpan<byte> theKey = _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slot);
-            storage.Remove(theKey);
-        }
-
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
-        {
-            storage.PutSpan(_mainDb.EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash.ValueHash256, slotHash.ValueHash256), value, _flags);
-        }
-
-        public void SetAccountRaw(Hash256 addrHash, Account account)
-        {
-            using var stream = _accountDecoder.EncodeToNewNettyStream(account);
-
-            state.PutSpan(addrHash.Bytes[..StateKeyPrefixLength], stream.AsSpan(), _flags);
         }
 
         public void SetTrieNodes(Hash256? address, TreePath path, TrieNode tn)
@@ -338,96 +222,32 @@ public class NoLeafValueRocksdbPersistence : IPersistence
         {
             if (address is null)
             {
-                if (path.Length <= StateNodesTopThreshold)
+                if (path.Length <= TriePersistence.StateNodesTopThreshold)
                 {
-                    stateTopNodes.PutSpan(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopKeyLength], path), rlpSpan, _flags);
+                    stateTopNodes.PutSpan(TriePersistence.EncodeStateTopNodeKey(stackalloc byte[TriePersistence.StateNodesTopKeyLength], path), rlpSpan, flags);
                 }
                 else
                 {
-                    stateNodes.PutSpan(EncodeStateNodeKey(stackalloc byte[StateNodesKeyLength], path), rlpSpan, _flags);
+                    stateNodes.PutSpan(TriePersistence.EncodeStateNodeKey(stackalloc byte[TriePersistence.StateNodesKeyLength], path), rlpSpan, flags);
                 }
             }
             else
             {
-                storageNodes.PutSpan(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, path), rlpSpan, _flags);
+                storageNodes.PutSpan(TriePersistence.EncodeStorageNodeKey(stackalloc byte[TriePersistence.StorageNodesKeyLength], address, path), rlpSpan, flags);
             }
         }
+
     }
 
-    private class PersistenceReader : IPersistence.IPersistenceReader
+    private readonly struct TrieReader(
+        IReadOnlyKeyValueStore _stateNodes,
+        IReadOnlyKeyValueStore _stateTopNodes,
+        IReadOnlyKeyValueStore _storageNodes,
+        BaseRocksdbPersistence.IHashedFlatReader flatReader
+        ) : BaseRocksdbPersistence.ITrieReader
     {
-        private readonly IColumnDbSnapshot<FlatDbColumns> _db;
-        private readonly IReadOnlyKeyValueStore _state;
-        private readonly IReadOnlyKeyValueStore _storage;
-        private readonly IReadOnlyKeyValueStore _stateNodes;
-        private readonly IReadOnlyKeyValueStore _stateTopNodes;
-        private readonly IReadOnlyKeyValueStore _storageNodes;
-        private readonly NoLeafValueRocksdbPersistence _mainDb;
-
-        public PersistenceReader(IColumnDbSnapshot<FlatDbColumns> db, NoLeafValueRocksdbPersistence mainDb)
-        {
-            _db = db;
-            _mainDb = mainDb;
-            CurrentState = ReadCurrentState(db.GetColumn(FlatDbColumns.Metadata));
-            _state = _db.GetColumn(FlatDbColumns.Account);
-            _storage = _db.GetColumn(FlatDbColumns.Storage);
-            _stateNodes = _db.GetColumn(FlatDbColumns.StateNodes);
-            _stateTopNodes = _db.GetColumn(FlatDbColumns.StateTopNodes);
-            _storageNodes = _db.GetColumn(FlatDbColumns.StorageNodes);
-        }
-
-        public StateId CurrentState { get; }
-
-        public void Dispose()
-        {
-            _db.Dispose();
-        }
-
-        public bool TryGetAccount(Address address, out Account? acc)
-        {
-            Span<byte> value = _state.GetSpan(_mainDb.EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], address));
-            try
-            {
-                if (address == FlatWorldStateScope.DebugAddress)
-                {
-                    Console.Error.WriteLine($"Get {address}, got {value.ToHexString()}");
-                }
-                if (value.IsNullOrEmpty())
-                {
-                    acc = null;
-                    return true;
-                }
-
-                var ctx = new Rlp.ValueDecoderContext(value);
-                acc = _mainDb._accountDecoder.Decode(ref ctx);
-                return true;
-            }
-            finally
-            {
-                _state.DangerousReleaseMemory(value);
-            }
-        }
-
-        public bool TryGetSlot(Address address, in UInt256 index, out byte[]? valueBytes)
-        {
-            ReadOnlySpan<byte> theKey = _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], address, index);
-            Span<byte> value = _storage.GetSpan(theKey);
-            try
-            {
-                if (value.IsNullOrEmpty())
-                {
-                    valueBytes = null;
-                    return true;
-                }
-
-                valueBytes = value.ToArray();
-                return true;
-            }
-            finally
-            {
-                _storage.DangerousReleaseMemory(value);
-            }
-        }
+        private const int AccountSpanBufferSize = 256;
+        private const int SlotSpanBufferSize = 40;
 
         public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
         {
@@ -448,33 +268,25 @@ public class NoLeafValueRocksdbPersistence : IPersistence
                 ValueHash256 fullPath = path.Append(key).Path;
                 if (address is null)
                 {
-                    var leafValue = GetAccountRawSpan(fullPath);
-                    try
-                    {
-                        byte[] resultingValue = new byte[rocksDbSpan.Length + leafValue.Length];
-                        rocksDbSpan.CopyTo(resultingValue);
-                        leafValue.CopyTo(resultingValue.AsSpan(rocksDbSpan.Length));
-                        return resultingValue;
-                    }
-                    finally
-                    {
-                        _storage.DangerousReleaseMemory(leafValue);
-                    }
+                    Span<byte> buffer = stackalloc byte[AccountSpanBufferSize];
+                    int readSize = flatReader.GetAccount(fullPath, buffer);
+
+                    byte[] resultingValue = new byte[rocksDbSpan.Length + readSize];
+                    rocksDbSpan.CopyTo(resultingValue);
+                    buffer[..readSize].CopyTo(resultingValue.AsSpan(rocksDbSpan.Length));
+
+                    return resultingValue;
                 }
                 else
                 {
-                    var leafValue = GetStorageRawSpan(address, fullPath);
-                    try
-                    {
-                        byte[] resultingValue = new byte[rocksDbSpan.Length + leafValue.Length];
-                        rocksDbSpan.CopyTo(resultingValue);
-                        leafValue.CopyTo(resultingValue.AsSpan(rocksDbSpan.Length));
-                        return resultingValue;
-                    }
-                    finally
-                    {
-                        _storage.DangerousReleaseMemory(leafValue);
-                    }
+                    Span<byte> buffer = stackalloc byte[SlotSpanBufferSize];
+                    int readSize = flatReader.GetStorage(address, fullPath, buffer);
+
+                    byte[] resultingValue = new byte[rocksDbSpan.Length + readSize];
+                    rocksDbSpan.CopyTo(resultingValue);
+                    buffer[..readSize].CopyTo(resultingValue.AsSpan(rocksDbSpan.Length));
+
+                    return resultingValue;
                 }
 
                 /*
@@ -498,53 +310,19 @@ public class NoLeafValueRocksdbPersistence : IPersistence
         {
             if (address is null)
             {
-                if (path.Length <= StateNodesTopThreshold)
+                if (path.Length <= TriePersistence.StateNodesTopThreshold)
                 {
-                    return _stateTopNodes.GetSpan(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopKeyLength], in path));
+                    return _stateTopNodes.GetSpan(TriePersistence.EncodeStateTopNodeKey(stackalloc byte[TriePersistence.StateNodesTopKeyLength], in path));
                 }
                 else
                 {
-                    return _stateNodes.GetSpan(EncodeStateNodeKey(stackalloc byte[StateNodesKeyLength], in path));
+                    return _stateNodes.GetSpan(TriePersistence.EncodeStateNodeKey(stackalloc byte[TriePersistence.StateNodesKeyLength], in path));
                 }
             }
             else
             {
-                return _storageNodes.GetSpan(EncodeStorageNodeKey(stackalloc byte[StorageNodesKeyLength], address, in path));
+                return _storageNodes.GetSpan(TriePersistence.EncodeStorageNodeKey(stackalloc byte[TriePersistence.StorageNodesKeyLength], address, in path));
             }
-        }
-
-        public byte[]? GetAccountRaw(Hash256 addrHash)
-        {
-            return GetAccountRaw(addrHash.ValueHash256);
-        }
-
-        private byte[]? GetAccountRaw(in ValueHash256 accountHash)
-        {
-            return _state.Get(accountHash.Bytes[..StateKeyPrefixLength]);
-        }
-
-        private ReadOnlySpan<byte> GetAccountRawSpan(in ValueHash256 accountHash)
-        {
-            return _state.GetSpan(accountHash.Bytes[..StateKeyPrefixLength]);
-        }
-
-        public byte[]? GetStorageRaw(Hash256 addrHash, Hash256 slotHash)
-        {
-            return GetStorageRaw(addrHash, slotHash.ValueHash256);
-        }
-
-        private byte[]? GetStorageRaw(Hash256 addrHash, ValueHash256 slotHash)
-        {
-            Span<byte> keySpan = stackalloc byte[StorageKeyLength];
-            ReadOnlySpan<byte> storageKey = _mainDb.EncodeStorageKeyHashed(keySpan, addrHash.ValueHash256, slotHash);
-            return _storage.Get(storageKey);
-        }
-
-        private ReadOnlySpan<byte> GetStorageRawSpan(Hash256 addrHash, ValueHash256 slotHash)
-        {
-            Span<byte> keySpan = stackalloc byte[StorageKeyLength];
-            ReadOnlySpan<byte> storageKey = _mainDb.EncodeStorageKeyHashed(keySpan, addrHash.ValueHash256, slotHash);
-            return _storage.GetSpan(storageKey);
         }
     }
 }
