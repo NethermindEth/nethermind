@@ -150,7 +150,7 @@ public class LMDBPersistence : IPersistence
         );
 
         var trieWriteBatch = new BaseTriePersistence.WriteBatch(
-            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
             batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
             batch.GetColumnBatch(FlatDbColumns.StateNodes),
             batch.GetColumnBatch(FlatDbColumns.StorageNodes),

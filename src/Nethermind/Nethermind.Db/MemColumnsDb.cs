@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core;
 
 namespace Nethermind.Db
 {

@@ -79,7 +79,7 @@ public static class BaseFlatPersistence
         public int SelfDestruct(in ValueHash256 accountPath)
         {
             Span<byte> firstKey = stackalloc byte[StorageHashPrefixLength]; // Because slot 0 is a thing, its just the address prefix.
-            Span<byte> lastKey = stackalloc byte[StorageKeyLength];
+            Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1]; // The +1 is because upper bound is exclusive
             firstKey.Fill(0x00);
             lastKey.Fill(0xff);
             accountPath.Bytes[..StorageHashPrefixLength].CopyTo(firstKey);

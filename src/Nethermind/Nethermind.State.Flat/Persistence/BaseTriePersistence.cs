@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -54,8 +53,8 @@ public static class BaseTriePersistence
 
         public void SelfDestruct(in ValueHash256 accountPath)
         {
-            Span<byte> firstKey = stackalloc byte[StorageHashPrefixLength]; // Because slot 0 is a thing, its just the address prefix.
-            Span<byte> lastKey = stackalloc byte[StorageNodesKeyLength];
+            Span<byte> firstKey = stackalloc byte[StorageHashPrefixLength];
+            Span<byte> lastKey = stackalloc byte[StorageNodesKeyLength + 1];
             firstKey.Fill(0x00);
             lastKey.Fill(0xff);
             accountPath.Bytes[..StorageHashPrefixLength].CopyTo(firstKey);

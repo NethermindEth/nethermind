@@ -136,7 +136,7 @@ public class PreimageRocksdbPersistence : IPersistence
         );
 
         var trieWriteBatch = new BaseTriePersistence.WriteBatch(
-            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
             batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
             batch.GetColumnBatch(FlatDbColumns.StateNodes),
             batch.GetColumnBatch(FlatDbColumns.StorageNodes),
@@ -309,7 +309,7 @@ public class PreimageRocksdbPersistence : IPersistence
             if (responseSize == 0)
             {
                 acc = null;
-                return false;
+                return true;
             }
 
             var ctx = new Rlp.ValueDecoderContext(valueBuffer[..responseSize]);
@@ -330,7 +330,7 @@ public class PreimageRocksdbPersistence : IPersistence
             if (responseSize == 0)
             {
                 valueBytes = null;
-                return false;
+                return true;
             }
 
             valueBytes = valueBuffer[..responseSize].ToArray();
