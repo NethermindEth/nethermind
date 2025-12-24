@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -21,7 +22,7 @@ public class OptimismTransactionProcessor(
     ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper,
     ICodeInfoRepository? codeInfoRepository
-    ) : TransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     private UInt256? _currentTxL1Cost;
 
@@ -172,7 +173,7 @@ public class OptimismTransactionProcessor(
     }
 
     protected override GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
+        in TransactionSubstate substate, in EthereumGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, EthereumGasPolicy floorGas)
     {
         // if deposit: skip refunds, skip tipping coinbase
         // Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.

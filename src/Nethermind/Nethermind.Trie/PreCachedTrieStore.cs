@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -10,18 +9,17 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
-public class PreCachedTrieStore : ITrieStore
+public sealed class PreCachedTrieStore : ITrieStore
 {
     private readonly ITrieStore _inner;
-    private readonly ConcurrentDictionary<NodeKey, byte[]?> _preBlockCache;
+    private readonly NodeStorageCache _preBlockCache;
     private readonly Func<NodeKey, byte[]> _loadRlp;
     private readonly Func<NodeKey, byte[]> _tryLoadRlp;
 
-    public PreCachedTrieStore(ITrieStore inner,
-        ConcurrentDictionary<NodeKey, byte[]?> preBlockCache)
+    public PreCachedTrieStore(ITrieStore inner, NodeStorageCache cache)
     {
         _inner = inner;
-        _preBlockCache = preBlockCache;
+        _preBlockCache = cache;
 
         // Capture the delegate once for default path to avoid the allocation of the lambda per call
         _loadRlp = (NodeKey key) => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);

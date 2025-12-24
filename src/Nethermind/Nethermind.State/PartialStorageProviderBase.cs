@@ -144,16 +144,8 @@ namespace Nethermind.State
         /// <summary>
         /// Commit persistent storage
         /// </summary>
-        public void Commit(bool commitRoots = true)
-        {
-            Commit(NullStateTracer.Instance, commitRoots);
-        }
-
-        /// <summary>
-        /// Commit persistent storage
-        /// </summary>
         /// <param name="stateTracer">State tracer</param>
-        public void Commit(IStorageTracer tracer, bool commitRoots = true)
+        public void Commit(IStorageTracer tracer)
         {
             if (_changes.Count == 0)
             {
@@ -163,16 +155,6 @@ namespace Nethermind.State
             {
                 CommitCore(tracer);
             }
-
-            if (commitRoots)
-            {
-                CommitStorageRoots();
-            }
-        }
-
-        protected virtual void CommitStorageRoots()
-        {
-            // Commit storage roots
         }
 
         /// <summary>
