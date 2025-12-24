@@ -44,45 +44,4 @@ public readonly record struct BlockRange
     /// Gets the total number of blocks in this range.
     /// </summary>
     public long Count => EndBlock - StartBlock + 1;
-
-    /// <summary>
-    /// Determines whether the specified block number is within this range.
-    /// </summary>
-    /// <param name="blockNumber">The block number to check.</param>
-    /// <returns>True if the block number is within the range; otherwise, false.</returns>
-    public bool Contains(long blockNumber) => blockNumber >= StartBlock && blockNumber <= EndBlock;
-
-    /// <summary>
-    /// Splits this range into approximately equal sub-ranges.
-    /// </summary>
-    /// <param name="chunks">The number of chunks to split into.</param>
-    /// <returns>An array of block ranges.</returns>
-    /// <exception cref="ArgumentException">Thrown when chunks is less than or equal to zero.</exception>
-    public BlockRange[] Split(int chunks)
-    {
-        if (chunks <= 0)
-        {
-            throw new ArgumentException("Chunks must be positive", nameof(chunks));
-        }
-
-        if (chunks == 1)
-        {
-            return [this];
-        }
-
-        long blocksPerChunk = Count / chunks;
-        long remainder = Count % chunks;
-        var ranges = new BlockRange[chunks];
-
-        long currentStart = StartBlock;
-        for (int i = 0; i < chunks; i++)
-        {
-            long chunkSize = blocksPerChunk + (i < remainder ? 1 : 0);
-            long currentEnd = currentStart + chunkSize - 1;
-            ranges[i] = new BlockRange(currentStart, Math.Min(currentEnd, EndBlock));
-            currentStart = currentEnd + 1;
-        }
-
-        return ranges;
-    }
 }

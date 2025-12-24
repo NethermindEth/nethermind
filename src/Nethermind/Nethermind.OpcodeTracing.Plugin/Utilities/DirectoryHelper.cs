@@ -9,29 +9,6 @@ namespace Nethermind.OpcodeTracing.Plugin.Utilities;
 public static class DirectoryHelper
 {
     /// <summary>
-    /// Creates a directory if it doesn't exist.
-    /// </summary>
-    /// <param name="path">The directory path to create.</param>
-    /// <returns>True if the directory was created or already exists; otherwise, false.</returns>
-    public static bool CreateDirectory(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return false;
-        }
-
-        try
-        {
-            Directory.CreateDirectory(path);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
     /// Validates that a directory path is writable.
     /// </summary>
     /// <param name="path">The directory path to validate.</param>
