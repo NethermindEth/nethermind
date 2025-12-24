@@ -15,7 +15,7 @@
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
   </ItemGroup>
     <ItemGroup>
-      <EmbeddedResource Include="Flat\Persistence\zstddictionary.bin" />
+      <EmbeddedResource Include="Persistence\zstddictionary.bin" />
     </ItemGroup>
 
 </Project>

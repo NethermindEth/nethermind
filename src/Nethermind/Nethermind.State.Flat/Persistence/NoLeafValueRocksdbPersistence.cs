@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers.Binary;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -12,10 +10,6 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Org.BouncyCastle.Crmf;
-using Org.BouncyCastle.Utilities;
-using Prometheus;
-using Bytes = Nethermind.Core.Extensions.Bytes;
 
 namespace Nethermind.State.Flat.Persistence;
 
