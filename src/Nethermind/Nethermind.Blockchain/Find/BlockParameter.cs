@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Find
 
         public Hash256? BlockHash { get; }
 
-        public bool RequireCanonical { get; }
+        public bool RequireCanonical { get; set; }
 
         public BlockParameter(BlockParameterType type)
         {

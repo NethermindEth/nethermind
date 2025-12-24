@@ -63,9 +63,12 @@ namespace Nethermind.JsonRpc.Modules
             blockParameter ??= BlockParameter.Latest;
 
             Block block;
-            if (blockParameter.RequireCanonical)
+            if (blockParameter.RequireCanonical &&
+                (blockParameter.BlockHash is not null || blockParameter.BlockNumber is not null))
             {
-                block = blockFinder.FindBlock(blockParameter.BlockHash!, BlockTreeLookupOptions.RequireCanonical);
+                block = blockParameter.BlockNumber is not null
+                    ? blockFinder.FindBlock(blockParameter.BlockNumber.Value, BlockTreeLookupOptions.RequireCanonical)
+                    : blockFinder.FindBlock(blockParameter.BlockHash!, BlockTreeLookupOptions.RequireCanonical);
                 if (block is null && !allowNulls)
                 {
                     BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
