@@ -203,7 +203,7 @@ public class PreimageRocksdbPersistence : IPersistence
             _flatWriteBatch.SetAccount(fakeAddrHash, stream.AsSpan());
         }
 
-        public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
+        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
         {
             ValueHash256 fakeAddrHash = ValueKeccak.Zero;
             addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
@@ -220,24 +220,7 @@ public class PreimageRocksdbPersistence : IPersistence
             _flatWriteBatch.SetStorage(fakeAddrHash, fakeSlotHash, value);
         }
 
-        public void RemoveStorage(Address addr, UInt256 slot)
-        {
-            ValueHash256 fakeAddrHash = ValueKeccak.Zero;
-            addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
-
-            ValueHash256 fakeSlotHash = ValueKeccak.Zero;
-            slot.ToBigEndian(fakeSlotHash.BytesAsSpan);
-
-            ValueHash256 computed = addr.ToAccountPath;
-            preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], addr.Bytes);
-
-            StorageTree.ComputeKeyWithLookup(slot,  computed.BytesAsSpan);
-            preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], slot.ToBigEndian());
-
-            _flatWriteBatch.RemoveStorage(fakeAddrHash, fakeSlotHash);
-        }
-
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
+        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value)
         {
             try
             {

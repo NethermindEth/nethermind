@@ -42,15 +42,10 @@ public static class BloomFlatWrapper
             innerWriteBatch.SetAccount(in address, value);
         }
 
-        public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, ReadOnlySpan<byte> value)
+        public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, in SlotValue? value)
         {
             bloomFilter.Add(Mix(BinaryPrimitives.ReadUInt64LittleEndian(address.Bytes), BinaryPrimitives.ReadUInt64LittleEndian(slotHash.Bytes)));
             innerWriteBatch.SetStorage(in address, in slotHash, value);
-        }
-
-        public void RemoveStorage(in ValueHash256 address, in ValueHash256 slotHash)
-        {
-            innerWriteBatch.RemoveStorage(in address, in slotHash);
         }
     }
 

@@ -132,7 +132,7 @@ public class Importer(
                         toWrite = rlp.DecodeByteArray();
                     }
 
-                    writeBatch.SetStorageRaw(entry.address, fullPath.ToHash256(), toWrite);
+                    writeBatch.SetStorageRaw(entry.address, fullPath.ToHash256(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
                 }
             }
 
@@ -197,7 +197,7 @@ public class Importer(
                             toWrite = rlp.DecodeByteArray();
                         }
 
-                        writeBatch.SetStorageRaw(entry.address, fullPath.ToHash256(), toWrite);
+                        writeBatch.SetStorageRaw(entry.address, fullPath.ToHash256(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
                     }
                 }
 

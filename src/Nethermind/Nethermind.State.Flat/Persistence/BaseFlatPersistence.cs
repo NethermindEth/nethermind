@@ -111,10 +111,18 @@ public static class BaseFlatPersistence
             storage.Remove(theKey);
         }
 
-        public void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, ReadOnlySpan<byte> value)
+        public void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? slot)
         {
             ReadOnlySpan<byte> theKey = EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash, slotHash);
-            storage.PutSpan(theKey, value, flags);
+
+            if (slot.HasValue)
+            {
+                storage.PutSpan(theKey, slot.Value.AsSpan, flags);
+            }
+            else
+            {
+                storage.Remove(theKey);
+            }
         }
 
         public void SetAccount(in ValueHash256 addrHash, ReadOnlySpan<byte> account)

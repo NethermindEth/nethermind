@@ -193,15 +193,17 @@ public class LMDBPersistence : IPersistence
             _lmdbTx.Put(state, EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], address), value);
         }
 
-        public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, ReadOnlySpan<byte> value)
-        {
-            _lmdbTx.Put(storage, EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], address, slotHash), value);
-        }
-
-        public void RemoveStorage(in ValueHash256 address, in ValueHash256 slotHash)
+        public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, in SlotValue? value)
         {
             ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], address, slotHash);
-            _lmdbTx.Delete(storage, theKey);
+            if (value is null)
+            {
+                _lmdbTx.Delete(storage, theKey);
+            }
+            else
+            {
+                _lmdbTx.Put(storage, theKey, value.Value.AsSpan);
+            }
         }
 
         public int SelfDestruct(in ValueHash256 accountPath)

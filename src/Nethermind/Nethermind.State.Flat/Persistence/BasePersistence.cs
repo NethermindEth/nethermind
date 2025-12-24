@@ -38,9 +38,7 @@ public static class BasePersistence
 
         public void SetAccount(in ValueHash256 address, ReadOnlySpan<byte> value);
 
-        public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, ReadOnlySpan<byte> value);
-
-        public void RemoveStorage(in ValueHash256 address, in ValueHash256 slotHash);
+        public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, in SlotValue? value);
     }
 
     public interface IFlatReader
@@ -59,11 +57,9 @@ public static class BasePersistence
 
         public void SetAccount(Address addr, Account account);
 
-        public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value);
+        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
 
-        public void RemoveStorage(Address addr, UInt256 slot);
-
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value);
+        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value);
 
         public void SetAccountRaw(Hash256 addrHash, Account account);
     }
@@ -103,21 +99,14 @@ public static class BasePersistence
             flatWriteBatch.SetAccount(addr.ToAccountPath, stream.AsSpan());
         }
 
-        public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
+        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
         {
             ValueHash256 hashBuffer = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(slot, hashBuffer.BytesAsSpan);
             flatWriteBatch.SetStorage(addr.ToAccountPath, hashBuffer, value);
         }
 
-        public void RemoveStorage(Address addr, UInt256 slot)
-        {
-            ValueHash256 hashBuffer = ValueKeccak.Zero;
-            StorageTree.ComputeKeyWithLookup(slot, hashBuffer.BytesAsSpan);
-            flatWriteBatch.RemoveStorage(addr.ToAccountPath, hashBuffer);
-        }
-
-        public void SetStorageRaw(Hash256? addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
+        public void SetStorageRaw(Hash256? addrHash, Hash256 slotHash, in SlotValue? value)
         {
             flatWriteBatch.SetStorage(addrHash, slotHash, value);
         }
@@ -269,34 +258,17 @@ public static class BasePersistence
             _flatWriter.SetAccount(addr, account);
         }
 
-        public void SetStorage(Address addr, UInt256 slot, SlotValue? value)
-        {
-            if (value is {} notNullValue)
-            {
-                SetStorage(addr, slot, notNullValue.ToEvmBytes());
-            }
-            else
-            {
-                RemoveStorage(addr, slot);
-            }
-        }
-
-        public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
+        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
         {
             _flatWriter.SetStorage(addr, slot, value);
         }
 
-        public void RemoveStorage(Address addr, UInt256 slot)
-        {
-            _flatWriter.RemoveStorage(addr, slot);
-        }
-
-        public void SetTrieNodes(Hash256? address, TreePath path, TrieNode tnValue)
+        public void SetTrieNodes(Hash256? address, in TreePath path, TrieNode tnValue)
         {
             _trieWriteBatch.SetTrieNodes(address, path, tnValue);
         }
 
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
+        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value)
         {
             _flatWriter.SetStorageRaw(addrHash, slotHash, value);
         }
