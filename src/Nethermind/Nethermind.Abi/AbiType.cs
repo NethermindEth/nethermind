@@ -106,17 +106,19 @@ namespace Nethermind.Blockchain.Contracts.Json
                     switch (bracketContent.Length)
                     {
                         case > 0 when int.TryParse(bracketContent, out int length):
-                        {
-                            // Fixed-size array: type[N]
-                            AbiType elementType = ParseAbiType(elementTypeStr);
-                            return new AbiFixedLengthArray(elementType, length);
-                        }
+                            {
+                                // Fixed-size array: type[N]
+                                AbiType elementType = ParseAbiType(elementTypeStr);
+                                return new AbiFixedLengthArray(elementType, length);
+                            }
                         case 0:
-                        {
-                            // Dynamic array: type[]
-                            AbiType elementType = ParseAbiType(elementTypeStr);
-                            return new AbiArray(elementType);
-                        }
+                            {
+                                // Dynamic array: type[]
+                                AbiType elementType = ParseAbiType(elementTypeStr);
+                                return new AbiArray(elementType);
+                            }
+                        default:
+                            throw new ArgumentException($"Invalid array syntax in ABI type '{type}'.", nameof(type));
                     }
                 }
 

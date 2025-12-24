@@ -348,6 +348,14 @@ public class AbiTests
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiUInt(length));
     }
 
+    [TestCase("uint64[abc]")]
+    [TestCase("bytes32[xyz]")]
+    [TestCase("address[!@#]")]
+    public void Test_invalid_array_syntax_exception(string type)
+    {
+        Assert.Throws<ArgumentException>(() => System.Text.Json.JsonSerializer.Deserialize<AbiType>($"\"{type}\""));
+    }
+
     [TestCase(AbiEncodingStyle.IncludeSignature)]
     [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
     [TestCase(AbiEncodingStyle.Packed)]
