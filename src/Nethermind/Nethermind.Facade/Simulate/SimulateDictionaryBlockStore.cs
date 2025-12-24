@@ -57,9 +57,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     {
         if (_blockNumDict.TryGetValue(blockNumber, out Block block))
         {
-            using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
-            using var memoryManager = new CappedArrayMemoryManager(newRlp.Data);
-            return _blockDecoder.DecodeToReceiptRecoveryBlock(memoryManager, memoryManager.Memory, RlpBehaviors.None);
+            return new ReceiptRecoveryBlock(block);
         }
         return readonlyBaseBlockStore.GetReceiptRecoveryBlock(blockNumber, blockHash);
     }
