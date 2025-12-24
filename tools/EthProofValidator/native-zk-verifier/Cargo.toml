@@ -1,0 +1,33 @@
+[package]
+name = "native-zk-verifier"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"] 
+
+[dependencies]
+# Zisk / ZKCLoud
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.15.0" }
+# OpenVM
+verify-stark = { git = "https://github.com/openvm-org/openvm.git", branch = "feat/v1-verify-stark", package = "verify-stark" }
+# Pico
+pico-prism-vm = { git = "https://github.com/ethproofs/pico.git", package = "pico-vm", branch = "ethproofs-pico-prism" }
+# SP1
+sp1-verifier = { git = "https://github.com/succinctlabs/hypercube-verifier.git", branch = "ethproofs_demo" }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+bincode = "1.3"
+
+# Error handling
+anyhow = "1.0"
+
+# Serialization
+bitcode = { version = "0.6.5", default-features = false, features = ["serde"] }
+
+# Optimize for size in release builds
+[profile.release]
+opt-level = 3   # Max speed
+lto = true      # Link Time Optimization (makes code faster)
+strip = true    # Remove symbols to make the .dll smaller
+ 

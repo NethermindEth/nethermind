@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>EthProofValidator</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+  </ItemGroup>
+
+  <Target Name="BuildRustDependency" BeforeTargets="Build">
+    <Exec Command="cargo build --release" WorkingDirectory="native-zk-verifier" />
+    <ItemGroup>
+      <NativeLibs Include="native-zk-verifier/target/release/libnative_zk_verifier.so" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
+      <NativeLibs Include="native-zk-verifier/target/release/native_zk_verifier.dll" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
+      <NativeLibs Include="native-zk-verifier/target/release/libnative_zk_verifier.dylib" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
+    </ItemGroup>
+    <Copy SourceFiles="@(NativeLibs)" DestinationFolder="$(OutputPath)" />
+  </Target>
+
+</Project>
