@@ -45,4 +45,7 @@ public interface ISurgeConfig : IConfig
 
     [ConfigItem(Description = "Maximum time in seconds to use cached gas price estimates before forcing a refresh.", DefaultValue = "12")]
     int GasPriceRefreshTimeoutSeconds { get; set; }
+
+    [ConfigItem(Description = "Filter transactions exceeding the max allowed ratio of gas limit to the actual gas used. Set to 0 to disable.", DefaultValue = "0")]
+    int MaxGasLimitRatio { get; set; }
 }
