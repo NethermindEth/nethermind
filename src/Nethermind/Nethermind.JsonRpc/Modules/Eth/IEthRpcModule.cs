@@ -293,6 +293,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<AccountInfoForRpc?> eth_getAccountInfo([JsonRpcParameter(ExampleValue = "[\"0xaa00000000000000000000000000000000000000\", \"latest\"]")] Address accountAddress, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = true, Description = "Provides configuration data for the current and next fork or the full fork schedule", IsSharable = true)]
-        ResultWrapper<JsonNode> eth_config([JsonRpcParameter(Description = "[Nethermind only] Additionally returns every known forks when true", ExampleValue = "[true]")] bool showAllForks = false);
+        ResultWrapper<JsonNode> eth_config([JsonRpcParameter(Description = "[Nethermind only] Additionally returns all scheduled forks when true", ExampleValue = "[true]")] bool showAllForks = false);
     }
 }
