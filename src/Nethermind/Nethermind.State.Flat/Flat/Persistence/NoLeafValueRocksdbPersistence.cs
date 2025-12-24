@@ -57,7 +57,7 @@ public class NoLeafValueRocksdbPersistence : IPersistence
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
-        byte[] bytes = kv.Get(CurrentStateKey);
+        byte[]? bytes = kv.Get(CurrentStateKey);
         if (bytes is null || bytes.Length == 0)
         {
             return new StateId(-1, Keccak.EmptyTreeHash);
@@ -414,7 +414,7 @@ public class NoLeafValueRocksdbPersistence : IPersistence
             }
         }
 
-        public bool TryGetSlot(Address address, in UInt256 index, out byte[] valueBytes)
+        public bool TryGetSlot(Address address, in UInt256 index, out byte[]? valueBytes)
         {
             ReadOnlySpan<byte> theKey = _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], address, index);
             Span<byte> value = _storage.GetSpan(theKey);
@@ -534,19 +534,19 @@ public class NoLeafValueRocksdbPersistence : IPersistence
             return _state.GetSpan(accountHash.Bytes[..StateKeyPrefixLength]);
         }
 
-        public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash)
+        public byte[]? GetStorageRaw(Hash256 addrHash, Hash256 slotHash)
         {
             return GetStorageRaw(addrHash, slotHash.ValueHash256);
         }
 
-        private byte[]? GetStorageRaw(Hash256? addrHash, ValueHash256 slotHash)
+        private byte[]? GetStorageRaw(Hash256 addrHash, ValueHash256 slotHash)
         {
             Span<byte> keySpan = stackalloc byte[StorageKeyLength];
             ReadOnlySpan<byte> storageKey = _mainDb.EncodeStorageKeyHashed(keySpan, addrHash.ValueHash256, slotHash);
             return _storage.Get(storageKey);
         }
 
-        private ReadOnlySpan<byte> GetStorageRawSpan(Hash256? addrHash, ValueHash256 slotHash)
+        private ReadOnlySpan<byte> GetStorageRawSpan(Hash256 addrHash, ValueHash256 slotHash)
         {
             Span<byte> keySpan = stackalloc byte[StorageKeyLength];
             ReadOnlySpan<byte> storageKey = _mainDb.EncodeStorageKeyHashed(keySpan, addrHash.ValueHash256, slotHash);

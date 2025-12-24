@@ -21,7 +21,7 @@ public sealed class SegmentedBloom : IDisposable
 
     readonly List<BloomSegment> _segments = new();
     private volatile BloomSegment[] _snapshot = Array.Empty<BloomSegment>();
-    private volatile BloomSegment _current;
+    private volatile BloomSegment _current = null!;
 
     private static Gauge _bloomKeySize = Metrics.CreateGauge("segmented_bloom_counts", "", "type");
     private readonly Gauge.Child _total = _bloomKeySize.WithLabels("total");

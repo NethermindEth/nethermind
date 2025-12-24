@@ -1,13 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Threading;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -118,7 +113,7 @@ public class Importer(
                 ValueHash256 fullPath = entry.path.Append(node.Key).Path;
                 if (entry.address is null)
                 {
-                    Account acc = _accountDecoder.Decode(node.Value.Span);
+                    Account acc = _accountDecoder.Decode(node.Value.Span)!;
                     writeBatch.SetAccountRaw(fullPath.ToHash256(), acc);
                 }
                 else
@@ -183,7 +178,7 @@ public class Importer(
                     ValueHash256 fullPath = entry.path.Append(node.Key).Path;
                     if (entry.address is null)
                     {
-                        Account acc = _accountDecoder.Decode(node.Value.Span);
+                        Account acc = _accountDecoder.Decode(node.Value.Span)!;
                         writeBatch.SetAccountRaw(fullPath.ToHash256(), acc);
                     }
                     else

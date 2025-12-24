@@ -37,7 +37,7 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
         return _innerReader.TryGetAccount(address, out acc);
     }
 
-    public bool TryGetSlot(Address address, in UInt256 index, out byte[] value)
+    public bool TryGetSlot(Address address, in UInt256 index, out byte[]? value)
     {
         return _innerReader.TryGetSlot(address, in index, out value);
     }
@@ -49,12 +49,12 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
         return _innerReader.TryLoadRlp(address, in path, hash, flags);
     }
 
-    public byte[]? GetAccountRaw(Hash256? addrHash)
+    public byte[]? GetAccountRaw(Hash256 addrHash)
     {
         return _innerReader.GetAccountRaw(addrHash);
     }
 
-    public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash)
+    public byte[]? GetStorageRaw(Hash256 addrHash, Hash256 slotHash)
     {
         return _innerReader.GetStorageRaw(addrHash, slotHash);
     }

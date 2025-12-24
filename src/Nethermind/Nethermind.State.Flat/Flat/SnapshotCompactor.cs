@@ -166,8 +166,8 @@ public class SnapshotCompactor
         StateId from = snapshots[0].From;
 
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, IFlatDiffRepository.SnapshotBundleUsage.Compactor);
-        ConcurrentDictionary<AddressAsKey, Account> accounts = snapshot.Content.Accounts;
-        ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> storages = snapshot.Content.Storages;
+        ConcurrentDictionary<AddressAsKey, Account?> accounts = snapshot.Content.Accounts;
+        ConcurrentDictionary<(AddressAsKey, UInt256), byte[]?> storages = snapshot.Content.Storages;
         ConcurrentDictionary<AddressAsKey, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;
         ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = snapshot.Content.StorageNodes;
         ConcurrentDictionary<TreePath, TrieNode> stateNodes = snapshot.Content.StateNodes;

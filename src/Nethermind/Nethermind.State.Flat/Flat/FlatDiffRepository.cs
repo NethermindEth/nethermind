@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -231,7 +232,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         StateId? last = GetLastSnapshotId();
         if (last == null) return;
 
-        Snapshot lastSnapshot;
+        Snapshot? lastSnapshot;
         if (!TryLeaseState(last.Value, out lastSnapshot)) return;
 
         using var _ = lastSnapshot; // Dispose
@@ -250,7 +251,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         _resourcePool.ReturnCachedResource(IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing, cachedResource);
     }
 
-    public SnapshotBundle? GatherReaderAtBaseBlock(StateId baseBlock, IFlatDiffRepository.SnapshotBundleUsage usage)
+    public SnapshotBundle GatherReaderAtBaseBlock(StateId baseBlock, IFlatDiffRepository.SnapshotBundleUsage usage)
     {
         // TODO: Throw if not enough or return null
         return GatherSnapshotBundle(baseBlock, usage);
@@ -341,7 +342,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         return res;
     }
 
-    public bool TryLeaseCompactedState(StateId stateId, out Snapshot entry)
+    public bool TryLeaseCompactedState(StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
     {
         int attempt = 0;
         while (_compactedKnownStates.TryGetValue(stateId, out entry))
@@ -353,7 +354,7 @@ public class FlatDiffRepository : IFlatDiffRepository, IAsyncDisposable
         return false;
     }
 
-    public bool TryLeaseState(StateId stateId, out Snapshot entry)
+    public bool TryLeaseState(StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
     {
         int attempt = 0;
         while (_knownStates.TryGetValue(stateId, out entry))

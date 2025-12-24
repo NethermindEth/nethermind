@@ -201,7 +201,7 @@ public class PersistenceManager: IAsyncDisposable
 
             if (!forcedFinalizedState)
             {
-                Hash256 finalizedStateRootAtCompacted = _finalizedStateProvider.GetFinalizedStateRootAt(currentPersistedState.blockNumber + _compactSize);
+                Hash256? finalizedStateRootAtCompacted = _finalizedStateProvider.GetFinalizedStateRootAt(currentPersistedState.blockNumber + _compactSize);
                 using ArrayPoolList<StateId> compactedStates = _flatDiffRepository.GetStatesAtBlockNumber(currentPersistedState.blockNumber + _compactSize);
 
                 // Note: Need to verify that this is finalized
@@ -229,7 +229,7 @@ public class PersistenceManager: IAsyncDisposable
                 // Note: This assume there is always a snapshot right next to current persisted state.
                 if (snapshotToSave is null)
                 {
-                    Hash256 finalizedStateRootAtNextBlock = _finalizedStateProvider.GetFinalizedStateRootAt(currentPersistedState.blockNumber + 1);
+                    Hash256? finalizedStateRootAtNextBlock = _finalizedStateProvider.GetFinalizedStateRootAt(currentPersistedState.blockNumber + 1);
                     using ArrayPoolList<StateId> nextBlockStates = _flatDiffRepository.GetStatesAtBlockNumber(currentPersistedState.blockNumber + 1);
 
                     foreach (var stateId in nextBlockStates)
@@ -366,7 +366,7 @@ public class PersistenceManager: IAsyncDisposable
 
             foreach (var kv in snapshot.Accounts)
             {
-                (Address addr, Account? account) = kv;
+                (AddressAsKey addr, Account? account) = kv;
                 if (account is null)
                     batch.RemoveAccount(addr);
                 else
@@ -377,7 +377,7 @@ public class PersistenceManager: IAsyncDisposable
 
             foreach (var kv in snapshot.Storages)
             {
-                ((Address addr, UInt256 slot), byte[] value) = kv;
+                ((Address addr, UInt256 slot), byte[]? value) = kv;
 
                 if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
                 {
@@ -392,7 +392,7 @@ public class PersistenceManager: IAsyncDisposable
             sw = Stopwatch.GetTimestamp();
 
             _trieNodesSortBuffer.Clear();
-            _trieNodesSortBuffer.AddRange(snapshot.StateNodeKeys.Select<TreePath, (Hash256AsKey, TreePath)>((path) => (null, path)));
+            _trieNodesSortBuffer.AddRange(snapshot.StateNodeKeys.Select<TreePath, (Hash256AsKey, TreePath)>((path) => (null!, path)));
             _trieNodesSortBuffer.Sort();
             _flatdiffimes.WithLabels("persistence", "trienode_sort_state").Observe(Stopwatch.GetTimestamp() - sw);
             sw = Stopwatch.GetTimestamp();
@@ -402,9 +402,9 @@ public class PersistenceManager: IAsyncDisposable
             {
                 (_, TreePath path) = k;
 
-                snapshot.TryGetStateNode(path, out TrieNode node);
+                snapshot.TryGetStateNode(path, out TrieNode? node);
 
-                if (node.FullRlp.Length == 0)
+                if (node!.FullRlp.Length == 0)
                 {
                     // TODO: Need to double check this case. Does it need a rewrite or not?
                     if (node.NodeType == NodeType.Unknown)
@@ -431,9 +431,9 @@ public class PersistenceManager: IAsyncDisposable
             {
                 (Hash256AsKey address, TreePath path) = k;
 
-                snapshot.TryGetStorageNode(address, path, out TrieNode node);
+                snapshot.TryGetStorageNode(address, path, out TrieNode? node);
 
-                if (node.FullRlp.Length == 0)
+                if (node!.FullRlp.Length == 0)
                 {
                     // TODO: Need to double check this case. Does it need a rewrite or not?
                     if (node.NodeType == NodeType.Unknown)

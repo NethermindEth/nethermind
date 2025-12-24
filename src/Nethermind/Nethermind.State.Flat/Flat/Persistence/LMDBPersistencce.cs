@@ -69,7 +69,7 @@ public class LMDBPersistence : IPersistence
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
-        byte[] bytes = kv.Get(CurrentStateKey);
+        byte[]? bytes = kv.Get(CurrentStateKey);
         if (bytes is null || bytes.Length == 0)
         {
             return new StateId(-1, Keccak.EmptyTreeHash);
@@ -395,7 +395,7 @@ public class LMDBPersistence : IPersistence
             return true;
         }
 
-        public bool TryGetSlot(Address address, in UInt256 index, out byte[] valueBytes)
+        public bool TryGetSlot(Address address, in UInt256 index, out byte[]? valueBytes)
         {
             ReadOnlySpan<byte> theKey = _mainDb.EncodeStorageKey(stackalloc byte[StorageKeyLength], address, index);
             (MDBResultCode resultCode, MDBValue key, MDBValue valueMdb) = _lmdbTx.Get(_storage, theKey);
@@ -448,7 +448,7 @@ public class LMDBPersistence : IPersistence
             return valueMdb.CopyToNewArray();
         }
 
-        public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash)
+        public byte[]? GetStorageRaw(Hash256 addrHash, Hash256 slotHash)
         {
             Span<byte> keySpan = stackalloc byte[StorageKeyLength];
             ReadOnlySpan<byte> storageKey = _mainDb.EncodeStorageKeyHashed(keySpan, addrHash.ValueHash256, slotHash.ValueHash256);

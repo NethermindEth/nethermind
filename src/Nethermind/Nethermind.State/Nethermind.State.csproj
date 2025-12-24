@@ -20,6 +20,5 @@
   </ItemGroup>
   <ItemGroup>
     <None Remove="Flat\Persistence\flatdictionary.bin" />
-    <EmbeddedResource Include="Flat\Persistence\zstddictionary.bin" />
   </ItemGroup>
 </Project>

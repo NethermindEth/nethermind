@@ -26,6 +26,7 @@ internal class StateTrieStoreAdapter(
 
     public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
     {
+        if (address is null) return this;
         // Used in trie visitor and weird very edge case that cuts the whole thing to peaces
         return new StorageTrieStoreAdapter(bundle, concurrencyQuota, address, -1, isTrieWarmer);
     }

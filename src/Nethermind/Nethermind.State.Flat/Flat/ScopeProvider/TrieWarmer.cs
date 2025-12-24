@@ -82,7 +82,7 @@ public sealed class TrieWarmer : ITrieWarmer
         {
             if (scopeOrStorageTree is FlatWorldStateScope scope)
             {
-                if (scope.WarmUpStateTrie(address, sequenceId))
+                if (scope.WarmUpStateTrie(address!, sequenceId))
                 {
                     _trieWarmEr.WithLabels("state").Inc();
                 }
@@ -207,7 +207,7 @@ public sealed class TrieWarmer : ITrieWarmer
     private int _wakingUpWorker = 0;
     private void MaybeWakeOpOtherWorker()
     {
-        if (_jobBuffer.EstimatedJobCount > 0 && _awaitingWorkers.TryPop(out WarmerWorkers otherWorker))
+        if (_jobBuffer.EstimatedJobCount > 0 && _awaitingWorkers.TryPop(out WarmerWorkers? otherWorker))
         {
             otherWorker.WakeUpViaQueue();
         }

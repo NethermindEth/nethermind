@@ -17,12 +17,12 @@ public interface IPersistence
     public interface IPersistenceReader: IDisposable
     {
         bool TryGetAccount(Address address, out Account? acc);
-        bool TryGetSlot(Address address, in UInt256 index, out byte[] value);
+        bool TryGetSlot(Address address, in UInt256 index, out byte[]? value);
         StateId CurrentState { get; }
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags);
 
-        byte[]? GetAccountRaw(Hash256? addrHash);
-        byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash);
+        byte[]? GetAccountRaw(Hash256 addrHash);
+        byte[]? GetStorageRaw(Hash256 addrHash, Hash256 slotHash);
     }
 
     public interface IWriteBatch: IDisposable
@@ -34,8 +34,8 @@ public interface IPersistence
         void SetTrieNodes(Hash256? address, TreePath path, TrieNode tnValue);
         void RemoveStorage(Address addr, UInt256 slot);
 
-        void SetStorageRaw(Hash256? addrHash, Hash256 slotHash, ReadOnlySpan<byte> value);
-        void SetAccountRaw(Hash256? addrHash, Account account);
+        void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value);
+        void SetAccountRaw(Hash256 addrHash, Account account);
     }
 
     bool SupportConcurrentWrites => true;

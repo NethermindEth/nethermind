@@ -100,7 +100,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     public Account? Get(Address address)
     {
-        if (!_configuration.ReadWithTrie && _snapshotBundle.TryGetAccount(address, out Account account))
+        if (!_configuration.ReadWithTrie && _snapshotBundle.TryGetAccount(address, out Account? account))
         {
             HintGet(address, account);
 
@@ -168,10 +168,10 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     private FlatStorageTree CreateStorageTreeImpl(Address address)
     {
-        ref FlatStorageTree storage = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
+        ref FlatStorageTree? storage = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
         if (exists)
         {
-            return storage;
+            return storage!;
         }
 
         Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
@@ -217,7 +217,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
             {
                 commitTask.Add(Task.Factory.StartNew((ctx) =>
                 {
-                    FlatStorageTree st = (FlatStorageTree)ctx;
+                    FlatStorageTree st = (FlatStorageTree)ctx!;
                     st.CommitTree();
                     _concurrencyQuota.ReturnConcurrencyQuota();
                 }, storage.Value));
@@ -231,13 +231,13 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
 
-        (Snapshot newSnapshot, CachedResource cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);
+        (Snapshot? newSnapshot, CachedResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);
 
         if (shouldAddSnapshot)
         {
             if (_currentStateId != newStateId)
             {
-                _flatDiffRepository.AddSnapshot(newSnapshot, cachedResource);
+                _flatDiffRepository.AddSnapshot(newSnapshot!, cachedResource!);
             }
         }
 

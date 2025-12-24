@@ -309,7 +309,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         }
     }
 
-    internal class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb) : IWorldStateScopeProvider.ICodeDb
+    public class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb) : IWorldStateScopeProvider.ICodeDb
     {
         public byte[]? GetCode(in ValueHash256 codeHash)
         {

@@ -35,7 +35,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
         builder.AddSingleton<PruningTrieStateFactory>(_ => throw new Exception($"{nameof(PruningTrieStateFactory)} disabled."));
 
         builder
-            .AddSingleton<ICanonicalStateRootFinder, CanonicalStateRootFinder>()
             .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
             .AddSingleton<IFlatDiffRepository, FlatDiffRepository>()
             .AddSingleton<ResourcePool>()

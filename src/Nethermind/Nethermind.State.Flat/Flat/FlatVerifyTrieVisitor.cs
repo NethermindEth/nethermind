@@ -164,7 +164,7 @@ public class FlatVerifyTrieVisitor : ITreeVisitor<FlatVerifyTrieVisitor.Context>
                 nodeSlot = ctx.DecodeByteArray();
             }
 
-            byte[]? flatSlot = _persistenceReader.GetStorageRaw(nodeContext.Storage,  fullPath);
+            byte[]? flatSlot = _persistenceReader.GetStorageRaw(nodeContext.Storage!,  fullPath);
             if (!Bytes.AreEqual(flatSlot, nodeSlot))
             {
                 if (_logger.IsWarn) _logger.Warn($"Mismatched slot. AddressHash: {nodeContext.Storage}. SlotHash {fullPath}. Trie slot: {nodeSlot.ToHexString() ?? ""}, Flat slot; {flatSlot?.ToHexString()}");
@@ -202,11 +202,11 @@ public class FlatVerifyTrieVisitor : ITreeVisitor<FlatVerifyTrieVisitor.Context>
         bool codeExist = _existingCodeHash.TryGet(key, out int codeLength);
         if (!codeExist)
         {
-            byte[] code = _codeKeyValueStore[key.Bytes];
+            byte[]? code = _codeKeyValueStore[key.Bytes];
             codeExist = code is not null;
             if (codeExist)
             {
-                codeLength = code.Length;
+                codeLength = code!.Length;
                 _existingCodeHash.Set(key, codeLength);
             }
         }

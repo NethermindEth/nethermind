@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
@@ -46,7 +47,7 @@ public class Snapshot(
     public long DebugLease => _leases.Value;
     public SnapshotContent Content => content;
 
-    public bool TryGetAccount(AddressAsKey key, out Account acc)
+    public bool TryGetAccount(AddressAsKey key, out Account? acc)
     {
         return content.Accounts.TryGetValue(key, out acc);
     }
@@ -56,17 +57,17 @@ public class Snapshot(
         return content.SelfDestructedStorageAddresses.TryGetValue(address, out var _);
     }
 
-    public bool TryGetStorage(Address address, in UInt256 index, out byte[] value)
+    public bool TryGetStorage(Address address, in UInt256 index, out byte[]? value)
     {
         return content.Storages.TryGetValue((address, index), out value);
     }
 
-    public bool TryGetStateNode(in TreePath path, out TrieNode node)
+    public bool TryGetStateNode(in TreePath path, [NotNullWhen(true)] out TrieNode? node)
     {
         return content.StateNodes.TryGetValue(path, out node);
     }
 
-    public bool TryGetStorageNode(Hash256 address, in TreePath path, out TrieNode node)
+    public bool TryGetStorageNode(Hash256 address, in TreePath path, [NotNullWhen(true)] out TrieNode? node)
     {
         return content.StorageNodes.TryGetValue((address, path), out node);
     }

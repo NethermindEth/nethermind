@@ -50,7 +50,7 @@ public class ReadonlyReaderRepository: IAsyncDisposable
 
         foreach (var stateId in toRemoves)
         {
-            if (_sharedReader.TryRemove(stateId, out RefCountingDisposableBox<SnapshotBundle> snapshotBundle))
+            if (_sharedReader.TryRemove(stateId, out RefCountingDisposableBox<SnapshotBundle>? snapshotBundle))
             {
                 snapshotBundle.Dispose();
             }

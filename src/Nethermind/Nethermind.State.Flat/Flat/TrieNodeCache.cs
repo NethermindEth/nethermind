@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -20,7 +21,7 @@ public class TrieNodeCache
 
     // You *could* use a single large bucket and just let them replace each other. However, clearing by treepath
     // is more efficent block cache wise.
-    private TrieNode[][] _cacheShards;
+    private TrieNode?[][] _cacheShards;
 
     private long[] _shardMemoryUsages;
     private long _estimatedMemoryUsage = 0;
@@ -60,11 +61,11 @@ public class TrieNodeCache
         return (shardIdx, bucketIdx);
     }
 
-    public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, out TrieNode node)
+    public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         (int shardIdx, int bucketIdx) = GetShardAndBucketIdx(address, path);
         TrieNode? maybeNode = _cacheShards[shardIdx][bucketIdx];
-        if (maybeNode != null && maybeNode.Keccak == hash)
+        if (maybeNode is not null && maybeNode.Keccak == hash)
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             node = maybeNode;

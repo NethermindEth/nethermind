@@ -15,9 +15,9 @@ public class BaseRocksdbPersistence
     public interface IFlatReader
     {
         public bool TryGetAccount(Address address, out Account? acc);
-        public bool TryGetSlot(Address address, in UInt256 index, out byte[] valueBytes);
+        public bool TryGetSlot(Address address, in UInt256 index, out byte[]? valueBytes);
         public byte[]? GetAccountRaw(Hash256 addrHash);
-        public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash);
+        public byte[]? GetStorageRaw(Hash256 addrHash, Hash256 slotHash);
     }
 
     public interface IHashedFlatReader
@@ -172,7 +172,7 @@ public class BaseRocksdbPersistence
             _flatWriteBatch.RemoveStorage(addr.ToAccountPath, hashBuffer);
         }
 
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
+        public void SetStorageRaw(Hash256? addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
         {
             _flatWriteBatch.SetStorage(addrHash, slotHash, value);
         }
@@ -208,7 +208,7 @@ public class BaseRocksdbPersistence
             return true;
         }
 
-        public bool TryGetSlot(Address address, in UInt256 index, out byte[] valueBytes)
+        public bool TryGetSlot(Address address, in UInt256 index, out byte[]? valueBytes)
         {
             ValueHash256 slotHash = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(index, slotHash.BytesAsSpan);
@@ -233,7 +233,7 @@ public class BaseRocksdbPersistence
             return valueBuffer[..responseSize].ToArray();
         }
 
-        public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash)
+        public byte[]? GetStorageRaw(Hash256 addrHash, Hash256 slotHash)
         {
             Span<byte> valueBuffer = stackalloc byte[_slotSpanBufferSize];
             int responseSize = flatReader.GetStorage(addrHash.ValueHash256, slotHash.ValueHash256, valueBuffer);
@@ -272,7 +272,7 @@ public class BaseRocksdbPersistence
             return _flatReader.TryGetAccount(address, out acc);
         }
 
-        public bool TryGetSlot(Address address, in UInt256 index, out byte[] valueBytes)
+        public bool TryGetSlot(Address address, in UInt256 index, out byte[]? valueBytes)
         {
             return _flatReader.TryGetSlot(address, in index, out valueBytes);
         }
@@ -287,7 +287,7 @@ public class BaseRocksdbPersistence
             return _flatReader.GetAccountRaw(addrHash);
         }
 
-        public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash)
+        public byte[]? GetStorageRaw(Hash256 addrHash, Hash256 slotHash)
         {
             return _flatReader.GetStorageRaw(addrHash, slotHash);
         }

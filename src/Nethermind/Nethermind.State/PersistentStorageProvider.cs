@@ -21,8 +21,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
-using Nethermind.State.Flat.ScopeProvider;
-using Nethermind.Trie;
 
 namespace Nethermind.State;
 
@@ -404,11 +402,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     public override void ClearStorage(Address address)
     {
         base.ClearStorage(address);
-
-        if (address == FlatWorldStateScope.DebugAddress)
-        {
-            Console.Error.WriteLine($"Clear on world state for debug address {address}");
-        }
 
         _toUpdateRoots.TryAdd(address, true);
 

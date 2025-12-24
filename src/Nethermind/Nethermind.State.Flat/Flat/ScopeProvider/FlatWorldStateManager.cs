@@ -100,6 +100,11 @@ public class FlatWorldStateManager : IWorldStateManager
         // Just a bit hacky due to mistmatch with best persisted state and actually persisted state.
         StateId? stateId = _flatDiffRepository.FindLatestAvailableState();
 
+        if (stateId is null)
+        {
+            return true;
+        }
+
         // StateId? stateId = _flatDiffRepository.FindStateIdForStateRoot(stateAtBlock.StateRoot);
         _flatStateReader.RunTreeVisitor(trieVisitor, stateId.Value.stateRoot.ToHash256(), new VisitingOptions()
         {

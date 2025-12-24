@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -21,17 +22,17 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public class SnapshotBundle : IDisposable
 {
-    private SnapshotContent _currentPooledContent;
+    private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
-    private ConcurrentDictionary<AddressAsKey, Account?> _changedAccounts;
-    private ConcurrentDictionary<TreePath, TrieNode> _changedStateNodes; // Bulkset can get nodes concurrently
-    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes; // Bulkset can get nodes concurrently
-    private ConcurrentDictionary<(AddressAsKey, UInt256), byte[]> _changedSlots; // Bulkset can get nodes concurrently
-    private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses;
+    private ConcurrentDictionary<AddressAsKey, Account?> _changedAccounts = null!;
+    private ConcurrentDictionary<TreePath, TrieNode> _changedStateNodes = null!; // Bulkset can get nodes concurrently
+    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes = null!; // Bulkset can get nodes concurrently
+    private ConcurrentDictionary<(AddressAsKey, UInt256), byte[]?> _changedSlots = null!; // Bulkset can get nodes concurrently
+    private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses = null!;
 
     // The cached resource holds some items that is pooled.
     // Notably it holds loaded caches from trie warmer.
-    private CachedResource _cachedResource;
+    private CachedResource _cachedResource = null!;
 
     private readonly bool _forStateReader;
 
@@ -47,42 +48,42 @@ public class SnapshotBundle : IDisposable
     private static Gauge _activeSnapshotBundle = DevMetric.Factory.CreateGauge("snapshot_bundle_active", "active", "usage");
     private static Counter _creeatedSnapshotBundle = DevMetric.Factory.CreateCounter("snapshot_bundle_created", "created", "usage");
     private static Counter _snapshotBundleEvents = DevMetric.Factory.CreateCounter("snapshot_bundle_evens", "event", "type", "is_prewarmer");
-    private Counter.Child _nodeGetChanged;
-    private Counter.Child _nodeGetSnapshots;
-    private Counter.Child _nodeGetTrieCache;
-    private Counter.Child _nodeGetMiss;
-    private Counter.Child _nodeGetSelfDestruct;
+    private Counter.Child _nodeGetChanged = null!;
+    private Counter.Child _nodeGetSnapshots = null!;
+    private Counter.Child _nodeGetTrieCache = null!;
+    private Counter.Child _nodeGetMiss = null!;
+    private Counter.Child _nodeGetSelfDestruct = null!;
 
     private static Histogram _snapshotBundleTimes = DevMetric.Factory.CreateHistogram("snapshot_bundle_times", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "type", "is_prewarmer" },
         Buckets = Histogram.PowersOfTenDividedBuckets(1, 12, 5)
     });
-    private Histogram.Child _accountPersistenceRead;
-    private Histogram.Child _slotPersistenceRead;
-    private Histogram.Child _accountPersistenceEmptyRead;
-    private Histogram.Child _slotPersistenceEmptyRead;
-    private Histogram.Child _loadRlpRead;
-    private Histogram.Child _loadRlpReadTrieWarmer;
-    private Histogram.Child _loadStorageRlpRead;
-    private Histogram.Child _loadStorageRlpReadTrieWarmer;
-    private Histogram.Child _findStateNode;
-    private Histogram.Child _findStorageNodeLoadedNodes;
-    private Histogram.Child _findStorageNodeChangedNodes;
-    private Histogram.Child _findStorageNodeSnapshots;
-    private Histogram.Child _findStorageNodeNodeCache;
-    private Histogram.Child _findStateNodeTrieWarmer;
-    private Histogram.Child _findStorageNode;
-    private Histogram.Child _findStorageNodeInitializer;
-    private Histogram.Child _findStorageNodeTrieWarmer;
-    private Histogram.Child _setStateNodesTime;
-    private Histogram.Child _setStorageNodesTime;
-    private Histogram.Child _setSlotTime;
-    private Histogram.Child _setSlotToZeroTime;
-    private Histogram.Child _setAccountTime;
+    private Histogram.Child _accountPersistenceRead = null!;
+    private Histogram.Child _slotPersistenceRead = null!;
+    private Histogram.Child _accountPersistenceEmptyRead = null!;
+    private Histogram.Child _slotPersistenceEmptyRead = null!;
+    private Histogram.Child _loadRlpRead = null!;
+    private Histogram.Child _loadRlpReadTrieWarmer = null!;
+    private Histogram.Child _loadStorageRlpRead = null!;
+    private Histogram.Child _loadStorageRlpReadTrieWarmer = null!;
+    private Histogram.Child _findStateNode = null!;
+    private Histogram.Child _findStorageNodeLoadedNodes = null!;
+    private Histogram.Child _findStorageNodeChangedNodes = null!;
+    private Histogram.Child _findStorageNodeSnapshots = null!;
+    private Histogram.Child _findStorageNodeNodeCache = null!;
+    private Histogram.Child _findStateNodeTrieWarmer = null!;
+    private Histogram.Child _findStorageNode = null!;
+    private Histogram.Child _findStorageNodeInitializer = null!;
+    private Histogram.Child _findStorageNodeTrieWarmer = null!;
+    private Histogram.Child _setStateNodesTime = null!;
+    private Histogram.Child _setStorageNodesTime = null!;
+    private Histogram.Child _setSlotTime = null!;
+    private Histogram.Child _setSlotToZeroTime = null!;
+    private Histogram.Child _setAccountTime = null!;
 
-    private Counter.Child _accountGet;
-    private Counter.Child _slotGet;
+    private Counter.Child _accountGet = null!;
+    private Counter.Child _slotGet = null!;
 
     internal IFlatDiffRepository.SnapshotBundleUsage _usage;
 
@@ -230,7 +231,7 @@ public class SnapshotBundle : IDisposable
         return -1;
     }
 
-    public bool TryGetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out byte[] value)
+    public bool TryGetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out byte[]? value)
     {
         if (_isDisposed)
         {
@@ -301,7 +302,7 @@ public class SnapshotBundle : IDisposable
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash, bool isTrieWarmer)
     {
-        TrieNode node;
+        TrieNode? node;
         if (_forStateReader)
         {
             if (DoFindStateNodeExternal(path, hash, out node))
@@ -359,7 +360,7 @@ public class SnapshotBundle : IDisposable
         return node;
     }
 
-    private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, out TrieNode node)
+    private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         if (_isDisposed)
         {
@@ -420,12 +421,12 @@ public class SnapshotBundle : IDisposable
             return new TrieNode(NodeType.Unknown, hash);
         }
 
-        TrieNode node;
+        TrieNode? node;
         long sw = Stopwatch.GetTimestamp();
 
         if (_forStateReader)
         {
-            if (DoTryFindStorageNodeExternal(address, path, hash, selfDestructStateIdx, isTrieWarmer, sw, out node))
+            if (DoTryFindStorageNodeExternal(address, path, hash, selfDestructStateIdx, isTrieWarmer, sw, out node) && node is not null)
             {
                 return node;
             }
@@ -450,7 +451,7 @@ public class SnapshotBundle : IDisposable
             return node;
         }
 
-        if (!DoTryFindStorageNodeExternal(address, path, hash, selfDestructStateIdx, isTrieWarmer, sw, out node))
+        if (!DoTryFindStorageNodeExternal(address, path, hash, selfDestructStateIdx, isTrieWarmer, sw, out node) || node is null)
         {
             node = _cachedResource.LoadedStorageNodes.GetOrAdd((address, path), new TrieNode(NodeType.Unknown, hash));
         }
@@ -465,7 +466,7 @@ public class SnapshotBundle : IDisposable
         return node;
     }
 
-    private bool DoTryFindStorageNodeExternal(Hash256AsKey address, in TreePath path, Hash256 hash, int selfDestructStateIdx, bool isTrieWarmer, long sw, out TrieNode node)
+    private bool DoTryFindStorageNodeExternal(Hash256AsKey address, in TreePath path, Hash256 hash, int selfDestructStateIdx, bool isTrieWarmer, long sw, out TrieNode? node)
     {
         if (selfDestructStateIdx == -1)
         {
@@ -577,7 +578,7 @@ public class SnapshotBundle : IDisposable
         return _cachedResource.PrewarmedAddresses.TryAdd((address, slot), true);
     }
 
-    public (Snapshot, CachedResource) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
+    public (Snapshot?, CachedResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
     {
         if (_forStateReader) throw new InvalidOperationException("Read only snapshot bundle");
 
@@ -625,11 +626,11 @@ public class SnapshotBundle : IDisposable
         }
 
         // Null them in case unexpected mutation from trie warmer
-        _snapshots = null;
-        _changedSlots = null;
-        _changedAccounts = null;
-        _changedStorageNodes = null;
-        _selfDestructedAccountAddresses = null;
+        _snapshots = null!;
+        _changedSlots = null!;
+        _changedAccounts = null!;
+        _changedStorageNodes = null!;
+        _selfDestructedAccountAddresses = null!;
 
         _persistenceReader.Dispose();
 
@@ -672,7 +673,7 @@ public class SnapshotBundle : IDisposable
             {
                 if (kv.Key.Item1.Value == addressHash)
                 {
-                    _changedStorageNodes.TryRemove(kv.Key, out TrieNode _);
+                    _changedStorageNodes.TryRemove(kv.Key, out TrieNode? _);
                 }
             }
 
@@ -680,7 +681,7 @@ public class SnapshotBundle : IDisposable
             {
                 if (kv.Key.Item1.Value == address)
                 {
-                    _changedSlots.TryRemove(kv.Key, out byte[] _);
+                    _changedSlots.TryRemove(kv.Key, out byte[]? _);
                 }
             }
         }

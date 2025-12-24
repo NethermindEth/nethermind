@@ -35,7 +35,7 @@ public class RocksdbPersistence : IPersistence
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
-        byte[] bytes = kv.Get(CurrentStateKey);
+        byte[]? bytes = kv.Get(CurrentStateKey);
         if (bytes is null || bytes.Length == 0)
         {
             return new StateId(-1, Keccak.EmptyTreeHash);

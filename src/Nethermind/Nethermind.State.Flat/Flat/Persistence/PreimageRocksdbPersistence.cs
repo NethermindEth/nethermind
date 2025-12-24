@@ -49,7 +49,7 @@ public class PreimageRocksdbPersistence : IPersistence
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
-        byte[] bytes = kv.Get(CurrentStateKey);
+        byte[]? bytes = kv.Get(CurrentStateKey);
         if (bytes is null || bytes.Length == 0)
         {
             return new StateId(-1, Keccak.EmptyTreeHash);
@@ -317,7 +317,7 @@ public class PreimageRocksdbPersistence : IPersistence
             return true;
         }
 
-        public bool TryGetSlot(Address address, in UInt256 index, out byte[] valueBytes)
+        public bool TryGetSlot(Address address, in UInt256 index, out byte[]? valueBytes)
         {
             ValueHash256 fakeHash = ValueKeccak.Zero;
             address.Bytes.CopyTo(fakeHash.BytesAsSpan);

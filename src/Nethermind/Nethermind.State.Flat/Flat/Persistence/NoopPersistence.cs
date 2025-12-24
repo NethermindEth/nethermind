@@ -20,7 +20,7 @@ public class NoopPersistenceReader: IPersistence.IPersistenceReader
         return false;
     }
 
-    public bool TryGetSlot(Address address, in UInt256 index, out byte[] value)
+    public bool TryGetSlot(Address address, in UInt256 index, out byte[]? value)
     {
         value = null;
         return false;

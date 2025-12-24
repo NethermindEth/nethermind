@@ -1751,6 +1751,17 @@
           "prometheus-net": "[8.2.1, )"
         }
       },
+      "nethermind.state.flat": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[1.37.0-unstable, )",
+          "Nethermind.Db": "[1.37.0-unstable, )",
+          "Nethermind.Evm": "[1.37.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
+          "Nethermind.State": "[1.37.0-unstable, )",
+          "Nethermind.Trie": "[1.37.0-unstable, )"
+        }
+      },
       "nethermind.synchronization": {
         "type": "Project",
         "dependencies": {
