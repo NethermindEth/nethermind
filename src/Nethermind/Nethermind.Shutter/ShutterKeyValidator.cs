@@ -84,7 +84,7 @@ public class ShutterKeyValidator(
 
         if (decryptionKeys.Keys.Count == 0)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Invalid Shutter decryption keys received: expected placeholder key.");
+            if (_logger.IsDebug) _logger.Debug("Invalid Shutter decryption keys received: expected placeholder key.");
             return false;
         }
 
@@ -102,7 +102,7 @@ public class ShutterKeyValidator(
             }
             catch (Bls.BlsException e)
             {
-                if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Invalid Shutter decryption keys received.", e);
+                if (_logger.IsDebug) _logger.Debug("Invalid Shutter decryption keys received.", e);
                 return false;
             }
 
