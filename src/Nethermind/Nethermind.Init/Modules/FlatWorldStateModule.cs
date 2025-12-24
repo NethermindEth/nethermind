@@ -24,6 +24,7 @@ using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
+using ZstdSharp.Unsafe;
 
 namespace Nethermind.Init.Modules;
 
@@ -137,6 +138,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
 
             .AddSingleton<LMDBPersistence>()
             .AddSingleton<LightningEnvironment>(ConfigureLightningEnv)
+            .OnActivate<IWorldStateManager>((worldStateManager, ctx) =>
+            {
+                new TrieStoreBoundaryWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
+            })
             ;
 
 

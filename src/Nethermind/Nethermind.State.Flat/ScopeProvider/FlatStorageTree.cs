@@ -66,28 +66,31 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
     public Hash256 RootHash => _tree.RootHash;
     public byte[] Get(in UInt256 index)
     {
-        if (!_config.ReadWithTrie && TryGet(index, out var value))
+        byte[]? value;
+        if (_config.ReadWithTrie)
         {
-            if (value == null) value = State.StorageTree.ZeroBytes;
-
-            if (_config.VerifyWithTrie)
-            {
-                var treeValue = _tree.Get(index);
-                if (!Bytes.AreEqual(treeValue, value))
-                {
-                    throw new Exception($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
-                }
-            }
-
-            HintGet(index, value);
-            return value;
+            value = _tree.Get(index);
         }
         else
         {
-            value = _tree.Get(index);
-            HintGet(index, value);
-            return value;
+            if (!TryGet(index, out value))
+            {
+                value = StorageTree.ZeroBytes;
+            }
         }
+
+        if (_config.VerifyWithTrie)
+        {
+            var treeValue = _tree.Get(index);
+            if (!Bytes.AreEqual(treeValue, value))
+            {
+                throw new Exception($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
+            }
+        }
+
+        HintGet(index, value);
+
+        return value!;
     }
 
     public void HintGet(in UInt256 index, byte[]? value)

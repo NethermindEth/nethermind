@@ -100,33 +100,30 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     public Account? Get(Address address)
     {
-        if (!_configuration.ReadWithTrie && _snapshotBundle.TryGetAccount(address, out Account? account))
+        Account? account;
+        if (_configuration.ReadWithTrie)
         {
-            HintGet(address, account);
-
-            if (address == DebugAddress)
-            {
-                Account? accTrie = _stateTree.Get(address);
-                Console.Error.WriteLine($"Address Get {account}. Tree {accTrie}");
-            }
-
-            if (_configuration.VerifyWithTrie)
-            {
-                Account? accTrie = _stateTree.Get(address);
-                if (accTrie != account)
-                {
-                    throw new Exception($"Incorrect account {address}, account hash {address.ToAccountPath}, trie: {accTrie} vs flat: {account}");
-                }
-            }
-
-            return account;
+            account = _stateTree.Get(address);
         }
         else
         {
-            account = _stateTree.Get(address);
-            HintGet(address, account);
-            return account;
+            if (!_snapshotBundle.TryGetAccount(address, out account))
+            {
+            }
         }
+
+        HintGet(address, account);
+
+        if (_configuration.VerifyWithTrie)
+        {
+            Account? accTrie = _stateTree.Get(address);
+            if (accTrie != account)
+            {
+                throw new Exception($"Incorrect account {address}, account hash {address.ToAccountPath}, trie: {accTrie} vs flat: {account}");
+            }
+        }
+
+        return account;
     }
 
     public void HintGet(Address address, Account? account)
@@ -136,7 +133,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     public void HintSet(Address address)
     {
-        _warmer.PushJob(this, address, null, null, _hintSequenceId);
+        // _warmer.PushJob(this, address, null, null, _hintSequenceId);
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
