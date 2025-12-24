@@ -88,15 +88,10 @@ public class XdcModule : Module
         IWorldStateManager worldStateManager,
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory)
     {
-        Address contractAddress = specProvider.GenesisSpec.DepositContractAddress;
-        if (contractAddress == null || contractAddress == Address.Zero)
-        {
-            throw new InvalidOperationException("depositContractAddress must be set in chain spec parameters");
-        }
-
-        IWorldState worldState = worldStateManager.CreateResettableWorldState();
+        var xdcSpec = specProvider.GenesisSpec as IXdcReleaseSpec;
+        IWorldState worldState = worldStateManager.GlobalWorldState;
         IReadOnlyTxProcessorSource readOnlyTxProcessorSource = readOnlyTxProcessingEnvFactory.Create();
-        return new MasternodeVotingContract(worldState, abiEncoder, contractAddress, readOnlyTxProcessorSource);
+        return new MasternodeVotingContract(worldState, abiEncoder, xdcSpec.MasternodeVotingContract, readOnlyTxProcessorSource);
     }
 
 }

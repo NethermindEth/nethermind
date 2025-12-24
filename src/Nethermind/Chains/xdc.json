@@ -60,7 +60,9 @@
             "TimeoutPeriod":        10,
             "MinePeriod":           2
           }
-        ]
+        ],
+        "masternodeVotingContract": "0x0000000000000000000000000000000000000088",
+        "blockSignerContract": "0x0000000000000000000000000000000000000089"
       }
     }
   },
@@ -71,10 +73,7 @@
     "eip150Hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "eip155Block": 3,
     "eip158Block": 3,
-    "byzantiumBlock": 4,
-    "eip6110TransitionTimestamp": 0,
-    "depositContractAddress": "0x0000000000000000000000000000000000000088",
-    "blockSignerContract": "0x0000000000000000000000000000000000000089"
+    "byzantiumBlock": 4
   },
   "genesis": {
     "nonce": "0x0",
