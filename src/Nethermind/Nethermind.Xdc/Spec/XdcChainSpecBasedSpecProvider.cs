@@ -37,8 +37,7 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         }
         else
         {
-            //TODO set from field
-            releaseSpec.GenesisMasterNodes = Array.Empty<Address>();
+            releaseSpec.GenesisMasterNodes = chainSpecEngineParameters.GenesisMasternodes;
         }
 
         return releaseSpec;
