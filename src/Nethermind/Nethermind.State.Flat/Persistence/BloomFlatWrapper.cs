@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat.Persistence.BloomFilter;
+using Prometheus;
 
 namespace Nethermind.State.Flat.Persistence;
 
@@ -22,8 +23,8 @@ public static class BloomFlatWrapper
     public readonly struct BloomWriter<TInnerWriteBatch>(
         TInnerWriteBatch innerWriteBatch,
         SegmentedBloom bloomFilter
-    ) : BaseRocksdbPersistence.IHashedFlatWriteBatch
-        where TInnerWriteBatch: struct, BaseRocksdbPersistence.IHashedFlatWriteBatch
+    ) : BasePersistence.IHashedFlatWriteBatch
+        where TInnerWriteBatch: struct, BasePersistence.IHashedFlatWriteBatch
     {
         public int SelfDestruct(in ValueHash256 address)
         {
@@ -57,9 +58,14 @@ public static class BloomFlatWrapper
         TFlatReader baseFlatReader,
         SegmentedBloom bloomFilter
     )
-        : BaseRocksdbPersistence.IHashedFlatReader
-        where TFlatReader: struct, BaseRocksdbPersistence.IHashedFlatReader
+        : BasePersistence.IHashedFlatReader
+        where TFlatReader: struct, BasePersistence.IHashedFlatReader
     {
+        private static Counter _slotBloomHit = Metrics.CreateCounter("rocksdb_slot_bloom", "slot_blom", "hitmiss");
+        private static Counter.Child _slotBloomHitHit = _slotBloomHit.WithLabels("true_positive");
+        private static Counter.Child _slotBloomHitMiss = _slotBloomHit.WithLabels("false_positive");
+
+
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
         {
             if (!bloomFilter.MightContain(BinaryPrimitives.ReadUInt64LittleEndian(address.BytesAsSpan)))
@@ -77,7 +83,18 @@ public static class BloomFlatWrapper
                 return 0;
             }
 
-            return baseFlatReader.GetStorage(in address, in slotHash, outBuffer);
+            int value = baseFlatReader.GetStorage(in address, in slotHash, outBuffer);
+
+            if (value > 0)
+            {
+                _slotBloomHitHit.Inc();
+            }
+            else
+            {
+                _slotBloomHitMiss.Inc();
+            }
+
+            return value;
         }
     }
 

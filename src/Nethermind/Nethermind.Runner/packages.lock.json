@@ -1512,7 +1512,8 @@
           "Nethermind.Network.Discovery": "[1.37.0-unstable, )",
           "Nethermind.Network.Dns": "[1.37.0-unstable, )",
           "Nethermind.Network.Enr": "[1.37.0-unstable, )",
-          "Nethermind.Specs": "[1.37.0-unstable, )"
+          "Nethermind.Specs": "[1.37.0-unstable, )",
+          "Nethermind.State.Flat": "[1.37.0-unstable, )"
         }
       },
       "nethermind.init.snapshot": {

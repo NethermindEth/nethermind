@@ -58,7 +58,7 @@ public class RocksdbPersistence : IPersistence
     public IPersistence.IPersistenceReader CreateReader()
     {
         var snapshot = _db.CreateSnapshot();
-        var trieReader = new TriePersistence.Reader(
+        var trieReader = new BaseTriePersistence.Reader(
             snapshot.GetColumn(FlatDbColumns.StateTopNodes),
             snapshot.GetColumn(FlatDbColumns.StateNodes),
             snapshot.GetColumn(FlatDbColumns.StorageNodes)
@@ -79,9 +79,9 @@ public class RocksdbPersistence : IPersistence
             storage = snapshot.GetColumn(FlatDbColumns.Storage);
         }
 
-        var flatReader = new BaseRocksdbPersistence.ToHashedFlatReader<BloomFlatWrapper.BloomInterceptor<RocksDbFlatPersistence.Reader>>(
-            new BloomFlatWrapper.BloomInterceptor<RocksDbFlatPersistence.Reader>(
-                new RocksDbFlatPersistence.Reader(
+        var flatReader = new BasePersistence.ToHashedFlatReader<BloomFlatWrapper.BloomInterceptor<BaseFlatPersistence.Reader>>(
+            new BloomFlatWrapper.BloomInterceptor<BaseFlatPersistence.Reader>(
+                new BaseFlatPersistence.Reader(
                     state,
                     storage
                 ),
@@ -89,7 +89,7 @@ public class RocksdbPersistence : IPersistence
             )
         );
 
-        return new BaseRocksdbPersistence.PersistenceReader<BaseRocksdbPersistence.ToHashedFlatReader<BloomFlatWrapper.BloomInterceptor<RocksDbFlatPersistence.Reader>>, TriePersistence.Reader>(
+        return new BasePersistence.Reader<BasePersistence.ToHashedFlatReader<BloomFlatWrapper.BloomInterceptor<BaseFlatPersistence.Reader>>, BaseTriePersistence.Reader>(
             flatReader,
             trieReader,
             currentState,
@@ -125,9 +125,9 @@ public class RocksdbPersistence : IPersistence
             storage = batch.GetColumnBatch(FlatDbColumns.Storage);
         }
 
-        var flatWriter = new BaseRocksdbPersistence.ToHashedWriteBatch<BloomFlatWrapper.BloomWriter<RocksDbFlatPersistence.WriteBatch>>(
-            new BloomFlatWrapper.BloomWriter<RocksDbFlatPersistence.WriteBatch>(
-                new RocksDbFlatPersistence.WriteBatch(
+        var flatWriter = new BasePersistence.ToHashedWriteBatch<BloomFlatWrapper.BloomWriter<BaseFlatPersistence.WriteBatch>>(
+            new BloomFlatWrapper.BloomWriter<BaseFlatPersistence.WriteBatch>(
+                new BaseFlatPersistence.WriteBatch(
                     ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
                     state,
                     storage,
@@ -137,14 +137,14 @@ public class RocksdbPersistence : IPersistence
             )
         );
 
-        var trieWriteBatch = new TriePersistence.WriteBatch(
+        var trieWriteBatch = new BaseTriePersistence.WriteBatch(
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
             batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
             batch.GetColumnBatch(FlatDbColumns.StateNodes),
             batch.GetColumnBatch(FlatDbColumns.StorageNodes),
             flags);
 
-        return new BaseRocksdbPersistence.WriteBatch<BaseRocksdbPersistence.ToHashedWriteBatch<BloomFlatWrapper.BloomWriter<RocksDbFlatPersistence.WriteBatch>>, TriePersistence.WriteBatch>(
+        return new BasePersistence.WriteBatch<BasePersistence.ToHashedWriteBatch<BloomFlatWrapper.BloomWriter<BaseFlatPersistence.WriteBatch>>, BaseTriePersistence.WriteBatch>(
             flatWriter,
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>

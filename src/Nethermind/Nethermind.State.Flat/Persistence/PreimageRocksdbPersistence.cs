@@ -82,7 +82,7 @@ public class PreimageRocksdbPersistence : IPersistence
     public IPersistence.IPersistenceReader CreateReader()
     {
         var snapshot = _db.CreateSnapshot();
-        var trieReader = new TriePersistence.Reader(
+        var trieReader = new BaseTriePersistence.Reader(
             snapshot.GetColumn(FlatDbColumns.StateTopNodes),
             snapshot.GetColumn(FlatDbColumns.StateNodes),
             snapshot.GetColumn(FlatDbColumns.StorageNodes)
@@ -93,14 +93,14 @@ public class PreimageRocksdbPersistence : IPersistence
         IReadOnlyKeyValueStore state = snapshot.GetColumn(FlatDbColumns.Account);
         IReadOnlyKeyValueStore storage = snapshot.GetColumn(FlatDbColumns.Storage);
 
-        var flatReader = new FakeHashFlatReader<RocksDbFlatPersistence.Reader>(
-            new RocksDbFlatPersistence.Reader(
+        var flatReader = new FakeHashFlatReader<BaseFlatPersistence.Reader>(
+            new BaseFlatPersistence.Reader(
                 state,
                 storage
             )
         );
 
-        return new BaseRocksdbPersistence.PersistenceReader<FakeHashFlatReader<RocksDbFlatPersistence.Reader>, TriePersistence.Reader>(
+        return new BasePersistence.Reader<FakeHashFlatReader<BaseFlatPersistence.Reader>, BaseTriePersistence.Reader>(
             flatReader,
             trieReader,
             currentState,
@@ -124,8 +124,8 @@ public class PreimageRocksdbPersistence : IPersistence
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        var flatWriter = new FakeHashWriter<RocksDbFlatPersistence.WriteBatch>(
-            new RocksDbFlatPersistence.WriteBatch(
+        var flatWriter = new FakeHashWriter<BaseFlatPersistence.WriteBatch>(
+            new BaseFlatPersistence.WriteBatch(
                 ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
                 batch.GetColumnBatch(FlatDbColumns.Account),
                 batch.GetColumnBatch(FlatDbColumns.Storage),
@@ -135,14 +135,14 @@ public class PreimageRocksdbPersistence : IPersistence
             _preimageDb
         );
 
-        var trieWriteBatch = new TriePersistence.WriteBatch(
+        var trieWriteBatch = new BaseTriePersistence.WriteBatch(
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
             batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
             batch.GetColumnBatch(FlatDbColumns.StateNodes),
             batch.GetColumnBatch(FlatDbColumns.StorageNodes),
             flags);
 
-        return new BaseRocksdbPersistence.WriteBatch<FakeHashWriter<RocksDbFlatPersistence.WriteBatch>, TriePersistence.WriteBatch>(
+        return new BasePersistence.WriteBatch<FakeHashWriter<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
             flatWriter,
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
@@ -163,8 +163,8 @@ public class PreimageRocksdbPersistence : IPersistence
         TWriteBatch flatWriteBatch,
         IWriteBatch preimageWriteBatch,
         IKeyValueStore preimageDb
-    ) : BaseRocksdbPersistence.IFlatWriteBatch
-        where TWriteBatch : struct, BaseRocksdbPersistence.IHashedFlatWriteBatch
+    ) : BasePersistence.IFlatWriteBatch
+        where TWriteBatch : struct, BasePersistence.IHashedFlatWriteBatch
     {
         internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
         private TWriteBatch _flatWriteBatch = flatWriteBatch;
@@ -293,8 +293,8 @@ public class PreimageRocksdbPersistence : IPersistence
 
     public struct FakeHashFlatReader<TFlatReader>(
         TFlatReader flatReader
-    ) : BaseRocksdbPersistence.IFlatReader
-        where TFlatReader : struct, BaseRocksdbPersistence.IHashedFlatReader
+    ) : BasePersistence.IFlatReader
+        where TFlatReader : struct, BasePersistence.IHashedFlatReader
     {
         internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
         private int _accountSpanBufferSize = 256;

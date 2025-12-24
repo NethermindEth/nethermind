@@ -8,7 +8,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class TriePersistence
+public static class BaseTriePersistence
 {
     public const int StorageHashPrefixLength = 20; // Store prefix of the 32 byte of the storage. Reduces index size.
     private const int FullPathLength = 32;
@@ -43,13 +43,13 @@ public class TriePersistence
         return buffer[..StorageNodesKeyLength];
     }
 
-    public struct WriteBatch(
+    public readonly struct WriteBatch(
         ISortedKeyValueStore storageNodesSnap,
         IWriteOnlyKeyValueStore stateTopNodes,
         IWriteOnlyKeyValueStore stateNodes,
         IWriteOnlyKeyValueStore storageNodes,
         WriteFlags flags
-    ) : BaseRocksdbPersistence.ITrieWriteBatch
+    ) : BasePersistence.ITrieWriteBatch
     {
 
         public void SelfDestruct(in ValueHash256 accountPath)
@@ -94,11 +94,11 @@ public class TriePersistence
     }
 
 
-    public struct Reader(
+    public readonly struct Reader(
         IReadOnlyKeyValueStore stateTopNodes,
         IReadOnlyKeyValueStore stateNodes,
         IReadOnlyKeyValueStore storageNodes
-    ) : BaseRocksdbPersistence.ITrieReader
+    ) : BasePersistence.ITrieReader
     {
         public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
         {

@@ -84,7 +84,7 @@ public class LMDBPersistence : IPersistence
     {
         var lmdbTx = _lmdbEnv.BeginTransaction(TransactionBeginFlags.ReadOnly);
         var snapshot = _db.CreateSnapshot();
-        var trieReader = new TriePersistence.Reader(
+        var trieReader = new BaseTriePersistence.Reader(
             snapshot.GetColumn(FlatDbColumns.StateTopNodes),
             snapshot.GetColumn(FlatDbColumns.StateNodes),
             snapshot.GetColumn(FlatDbColumns.StorageNodes)
@@ -93,7 +93,7 @@ public class LMDBPersistence : IPersistence
         var state = lmdbTx.OpenDatabase(FlatDbColumns.Account.ToString());
         var storage = lmdbTx.OpenDatabase(FlatDbColumns.Storage.ToString());
 
-        var flatReader = new BaseRocksdbPersistence.ToHashedFlatReader<LMDBFlatReader>(
+        var flatReader = new BasePersistence.ToHashedFlatReader<LMDBFlatReader>(
             new LMDBFlatReader(
                 state,
                 storage,
@@ -102,7 +102,7 @@ public class LMDBPersistence : IPersistence
         );
 
         var currentState = ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
-        return new BaseRocksdbPersistence.PersistenceReader<BaseRocksdbPersistence.ToHashedFlatReader<LMDBFlatReader>, TriePersistence.Reader>(
+        return new BasePersistence.Reader<BasePersistence.ToHashedFlatReader<LMDBFlatReader>, BaseTriePersistence.Reader>(
             flatReader,
             trieReader,
             currentState,
@@ -141,7 +141,7 @@ public class LMDBPersistence : IPersistence
         var state = lmdbTx.OpenDatabase(FlatDbColumns.Account.ToString());
         var storage = lmdbTx.OpenDatabase(FlatDbColumns.Storage.ToString());
 
-        var flatWriter = new BaseRocksdbPersistence.ToHashedWriteBatch<LMDBFlatWriter>(
+        var flatWriter = new BasePersistence.ToHashedWriteBatch<LMDBFlatWriter>(
             new LMDBFlatWriter(
                 state,
                 storage,
@@ -149,14 +149,14 @@ public class LMDBPersistence : IPersistence
             )
         );
 
-        var trieWriteBatch = new TriePersistence.WriteBatch(
+        var trieWriteBatch = new BaseTriePersistence.WriteBatch(
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
             batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
             batch.GetColumnBatch(FlatDbColumns.StateNodes),
             batch.GetColumnBatch(FlatDbColumns.StorageNodes),
             flags);
 
-        return new BaseRocksdbPersistence.WriteBatch<BaseRocksdbPersistence.ToHashedWriteBatch<LMDBFlatWriter>, TriePersistence.WriteBatch>(
+        return new BasePersistence.WriteBatch<BasePersistence.ToHashedWriteBatch<LMDBFlatWriter>, BaseTriePersistence.WriteBatch>(
             flatWriter,
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
@@ -181,7 +181,7 @@ public class LMDBPersistence : IPersistence
         LightningDatabase state,
         LightningDatabase storage,
         LightningTransaction _lmdbTx
-    ) : BaseRocksdbPersistence.IHashedFlatWriteBatch
+    ) : BasePersistence.IHashedFlatWriteBatch
     {
         public void RemoveAccount(in ValueHash256 address)
         {
@@ -241,7 +241,7 @@ public class LMDBPersistence : IPersistence
         LightningDatabase state,
         LightningDatabase storage,
         LightningTransaction lmdbTx
-    ) : BaseRocksdbPersistence.IHashedFlatReader
+    ) : BasePersistence.IHashedFlatReader
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
         {

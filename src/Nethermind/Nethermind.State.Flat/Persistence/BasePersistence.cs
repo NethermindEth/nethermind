@@ -10,25 +10,45 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class BaseRocksdbPersistence
+/// <summary>
+/// A collection of classes to make combining persistence code easier.
+/// Implementation accept generic of dependencies and the dependencies must be struct. This allow better inlining and devirtualized calls.
+///
+/// <see cref="IPersistence"/> implementation is expected to create <see cref="Reader{TFlatReader,TTrieReader}"/> and
+/// <see cref="WriteBatch{TFlatWriteBatch,TTrieWriteBatch}"/> passing in the flat and trie implementations along with
+/// some dispose logic.
+///
+/// Flat implementation is largely expected to implement <see cref="IHashedFlatReader"/> and <see cref="IHashedFlatWriteBatch"/>
+/// which then get wrapped into <see cref="IFlatReader"/> and <see cref="IFlatWriteBatch"/> with <see cref="ToHashedFlatReader{TFlatReader}"/>
+/// and <see cref="ToHashedWriteBatch{TWriteBatch}"/>. This allow preimage variation which does not hash the keys.
+/// </summary>
+public static class BasePersistence
 {
-    public interface IFlatReader
-    {
-        public bool TryGetAccount(Address address, out Account? acc);
-        public bool TryGetSlot(Address address, in UInt256 index, out byte[]? valueBytes);
-        public byte[]? GetAccountRaw(Hash256 addrHash);
-        public byte[]? GetStorageRaw(Hash256 addrHash, Hash256 slotHash);
-    }
-
     public interface IHashedFlatReader
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
         public int GetStorage(in ValueHash256 address, in ValueHash256 slot, Span<byte> outBuffer);
     }
 
-    public interface ITrieReader
+    public interface IHashedFlatWriteBatch
     {
-        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags);
+        public int SelfDestruct(in ValueHash256 address);
+
+        public void RemoveAccount(in ValueHash256 address);
+
+        public void SetAccount(in ValueHash256 address, ReadOnlySpan<byte> value);
+
+        public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, ReadOnlySpan<byte> value);
+
+        public void RemoveStorage(in ValueHash256 address, in ValueHash256 slotHash);
+    }
+
+    public interface IFlatReader
+    {
+        public bool TryGetAccount(Address address, out Account? acc);
+        public bool TryGetSlot(Address address, in UInt256 index, out byte[]? valueBytes);
+        public byte[]? GetAccountRaw(Hash256 addrHash);
+        public byte[]? GetStorageRaw(Hash256 addrHash, Hash256 slotHash);
     }
 
     public interface IFlatWriteBatch
@@ -48,17 +68,9 @@ public class BaseRocksdbPersistence
         public void SetAccountRaw(Hash256 addrHash, Account account);
     }
 
-    public interface IHashedFlatWriteBatch
+    public interface ITrieReader
     {
-        public int SelfDestruct(in ValueHash256 address);
-
-        public void RemoveAccount(in ValueHash256 address);
-
-        public void SetAccount(in ValueHash256 address, ReadOnlySpan<byte> value);
-
-        public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, ReadOnlySpan<byte> value);
-
-        public void RemoveStorage(in ValueHash256 address, in ValueHash256 slotHash);
+        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags);
     }
 
     public interface ITrieWriteBatch
@@ -67,132 +79,65 @@ public class BaseRocksdbPersistence
         public void SetTrieNodes(Hash256? address, TreePath path, TrieNode tnValue);
     }
 
-    public class WriteBatch<TFlatWriteBatch, TTrieWriteBatch> : IPersistence.IWriteBatch
-        where TFlatWriteBatch : struct, IFlatWriteBatch
-        where TTrieWriteBatch : struct, ITrieWriteBatch
-    {
-        private TFlatWriteBatch _flatWriter;
-        private TTrieWriteBatch _trieWriteBatch;
-        private readonly IDisposable _disposer;
-
-        public WriteBatch(
-            TFlatWriteBatch flatWriteBatch,
-            TTrieWriteBatch trieWriteBatch,
-            IDisposable disposer)
-        {
-            _flatWriter = flatWriteBatch;
-            _trieWriteBatch = trieWriteBatch;
-            _disposer = disposer;
-        }
-
-        public void Dispose()
-        {
-            _disposer.Dispose();
-        }
-
-        public int SelfDestruct(Address addr)
-        {
-            int removed = _flatWriter.SelfDestruct(addr);
-            _trieWriteBatch.SelfDestruct(addr.ToAccountPath);
-            return removed;
-        }
-
-        public void RemoveAccount(Address addr)
-        {
-            _flatWriter.RemoveAccount(addr);
-        }
-
-        public void SetAccount(Address addr, Account account)
-        {
-            _flatWriter.SetAccount(addr, account);
-        }
-
-        public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
-        {
-            _flatWriter.SetStorage(addr, slot, value);
-        }
-
-        public void SetTrieNodes(Hash256? address, TreePath path, TrieNode tnValue)
-        {
-            _trieWriteBatch.SetTrieNodes(address, path, tnValue);
-        }
-
-        public void RemoveStorage(Address addr, UInt256 slot)
-        {
-            _flatWriter.RemoveStorage(addr, slot);
-        }
-
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
-        {
-            _flatWriter.SetStorageRaw(addrHash, slotHash, value);
-        }
-
-        public void SetAccountRaw(Hash256 addrHash, Account account)
-        {
-            _flatWriter.SetAccountRaw(addrHash, account);
-        }
-    }
-
-    public struct ToHashedWriteBatch<TWriteBatch>(
+    public readonly struct ToHashedWriteBatch<TWriteBatch>(
         TWriteBatch flatWriteBatch
     ) : IFlatWriteBatch
         where TWriteBatch : struct, IHashedFlatWriteBatch
     {
-        internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
-        private TWriteBatch _flatWriteBatch = flatWriteBatch;
+        private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
         public int SelfDestruct(Address addr)
         {
             ValueHash256 accountPath = addr.ToAccountPath;
-            return _flatWriteBatch.SelfDestruct(accountPath);
+            return flatWriteBatch.SelfDestruct(accountPath);
         }
 
         public void RemoveAccount(Address addr)
         {
-            _flatWriteBatch.RemoveAccount(addr.ToAccountPath);
+            flatWriteBatch.RemoveAccount(addr.ToAccountPath);
         }
 
         public void SetAccount(Address addr, Account account)
         {
             using var stream = _accountDecoder.EncodeToNewNettyStream(account);
-            _flatWriteBatch.SetAccount(addr.ToAccountPath, stream.AsSpan());
+            flatWriteBatch.SetAccount(addr.ToAccountPath, stream.AsSpan());
         }
 
         public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
         {
             ValueHash256 hashBuffer = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(slot, hashBuffer.BytesAsSpan);
-            _flatWriteBatch.SetStorage(addr.ToAccountPath, hashBuffer, value);
+            flatWriteBatch.SetStorage(addr.ToAccountPath, hashBuffer, value);
         }
 
         public void RemoveStorage(Address addr, UInt256 slot)
         {
             ValueHash256 hashBuffer = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(slot, hashBuffer.BytesAsSpan);
-            _flatWriteBatch.RemoveStorage(addr.ToAccountPath, hashBuffer);
+            flatWriteBatch.RemoveStorage(addr.ToAccountPath, hashBuffer);
         }
 
         public void SetStorageRaw(Hash256? addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
         {
-            _flatWriteBatch.SetStorage(addrHash, slotHash, value);
+            flatWriteBatch.SetStorage(addrHash, slotHash, value);
         }
 
         public void SetAccountRaw(Hash256 addrHash, Account account)
         {
             using var stream = _accountDecoder.EncodeToNewNettyStream(account);
 
-            _flatWriteBatch.SetAccount(addrHash, stream.AsSpan());
+            flatWriteBatch.SetAccount(addrHash, stream.AsSpan());
         }
     }
 
-    public struct ToHashedFlatReader<TFlatReader>(
+    public readonly struct ToHashedFlatReader<TFlatReader>(
         TFlatReader flatReader
     ) : IFlatReader
     where TFlatReader : struct, IHashedFlatReader
     {
-        internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
-        private int _accountSpanBufferSize = 256;
-        private int _slotSpanBufferSize = 40;
+        private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
+        private readonly int _accountSpanBufferSize = 256;
+        private readonly int _slotSpanBufferSize = 40;
         public bool TryGetAccount(Address address, out Account? acc)
         {
             Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
@@ -242,8 +187,7 @@ public class BaseRocksdbPersistence
         }
     }
 
-
-    public class PersistenceReader<TFlatReader, TTrieReader> : IPersistence.IPersistenceReader
+    public class Reader<TFlatReader, TTrieReader> : IPersistence.IPersistenceReader
         where TFlatReader : struct, IFlatReader
         where TTrieReader : struct, ITrieReader
     {
@@ -251,7 +195,7 @@ public class BaseRocksdbPersistence
         private readonly TFlatReader _flatReader;
         private readonly IDisposable _disposer;
 
-        public PersistenceReader(TFlatReader flatReader, TTrieReader trieReader, StateId currentState, IDisposable disposer)
+        public Reader(TFlatReader flatReader, TTrieReader trieReader, StateId currentState, IDisposable disposer)
         {
             _flatReader = flatReader;
             _trieReader = trieReader;
@@ -290,6 +234,65 @@ public class BaseRocksdbPersistence
         public byte[]? GetStorageRaw(Hash256 addrHash, Hash256 slotHash)
         {
             return _flatReader.GetStorageRaw(addrHash, slotHash);
+        }
+    }
+
+    public class WriteBatch<TFlatWriteBatch, TTrieWriteBatch>(
+        in TFlatWriteBatch flatWriteBatch,
+        TTrieWriteBatch trieWriteBatch,
+        IDisposable disposer)
+        : IPersistence.IWriteBatch
+        where TFlatWriteBatch : struct, IFlatWriteBatch
+        where TTrieWriteBatch : struct, ITrieWriteBatch
+    {
+        private readonly TFlatWriteBatch _flatWriter = flatWriteBatch;
+        private readonly TTrieWriteBatch _trieWriteBatch = trieWriteBatch;
+
+        public void Dispose()
+        {
+            disposer.Dispose();
+        }
+
+        public int SelfDestruct(Address addr)
+        {
+            int removed = _flatWriter.SelfDestruct(addr);
+            _trieWriteBatch.SelfDestruct(addr.ToAccountPath);
+            return removed;
+        }
+
+        public void RemoveAccount(Address addr)
+        {
+            _flatWriter.RemoveAccount(addr);
+        }
+
+        public void SetAccount(Address addr, Account account)
+        {
+            _flatWriter.SetAccount(addr, account);
+        }
+
+        public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
+        {
+            _flatWriter.SetStorage(addr, slot, value);
+        }
+
+        public void SetTrieNodes(Hash256? address, TreePath path, TrieNode tnValue)
+        {
+            _trieWriteBatch.SetTrieNodes(address, path, tnValue);
+        }
+
+        public void RemoveStorage(Address addr, UInt256 slot)
+        {
+            _flatWriter.RemoveStorage(addr, slot);
+        }
+
+        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
+        {
+            _flatWriter.SetStorageRaw(addrHash, slotHash, value);
+        }
+
+        public void SetAccountRaw(Hash256 addrHash, Account account)
+        {
+            _flatWriter.SetAccountRaw(addrHash, account);
         }
     }
 }

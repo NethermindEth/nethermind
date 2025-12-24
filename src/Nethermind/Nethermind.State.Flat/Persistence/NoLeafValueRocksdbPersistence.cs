@@ -53,11 +53,11 @@ public class NoLeafValueRocksdbPersistence : IPersistence
         IReadOnlyKeyValueStore state = snapshot.GetColumn(FlatDbColumns.Account);
         IReadOnlyKeyValueStore storage = snapshot.GetColumn(FlatDbColumns.Storage);
 
-        var hashedFlatReader = new RocksDbFlatPersistence.Reader(
+        var hashedFlatReader = new BaseFlatPersistence.Reader(
             state,
             storage
         );
-        var flatReader = new BaseRocksdbPersistence.ToHashedFlatReader<RocksDbFlatPersistence.Reader>(hashedFlatReader);
+        var flatReader = new BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>(hashedFlatReader);
 
         var trieReader = new TrieReader(
             snapshot.GetColumn(FlatDbColumns.StateTopNodes),
@@ -66,7 +66,7 @@ public class NoLeafValueRocksdbPersistence : IPersistence
             hashedFlatReader
         );
 
-        return new BaseRocksdbPersistence.PersistenceReader<BaseRocksdbPersistence.ToHashedFlatReader<RocksDbFlatPersistence.Reader>, TrieReader>(
+        return new BasePersistence.Reader<BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>, TrieReader>(
             flatReader,
             trieReader,
             currentState,
@@ -92,8 +92,8 @@ public class NoLeafValueRocksdbPersistence : IPersistence
         IWriteOnlyKeyValueStore state = batch.GetColumnBatch(FlatDbColumns.Account);
         IWriteOnlyKeyValueStore storage = batch.GetColumnBatch(FlatDbColumns.Storage);
 
-        var flatWriter = new BaseRocksdbPersistence.ToHashedWriteBatch<RocksDbFlatPersistence.WriteBatch>(
-            new RocksDbFlatPersistence.WriteBatch(
+        var flatWriter = new BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>(
+            new BaseFlatPersistence.WriteBatch(
                 ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
                 state,
                 storage,
@@ -108,7 +108,7 @@ public class NoLeafValueRocksdbPersistence : IPersistence
             batch.GetColumnBatch(FlatDbColumns.StorageNodes),
             flags);
 
-        return new BaseRocksdbPersistence.WriteBatch<BaseRocksdbPersistence.ToHashedWriteBatch<RocksDbFlatPersistence.WriteBatch>, TrieWriter>(
+        return new BasePersistence.WriteBatch<BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>, TrieWriter>(
             flatWriter,
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
@@ -126,16 +126,16 @@ public class NoLeafValueRocksdbPersistence : IPersistence
         IWriteOnlyKeyValueStore stateNodes,
         IWriteOnlyKeyValueStore storageNodes,
         WriteFlags flags
-        ) : BaseRocksdbPersistence.ITrieWriteBatch
+        ) : BasePersistence.ITrieWriteBatch
     {
         public void SelfDestruct(in ValueHash256 accountPath)
         {
-            Span<byte> firstKey = stackalloc byte[TriePersistence.StorageHashPrefixLength]; // Because slot 0 is a thing, its just the address prefix.
-            Span<byte> lastKey = stackalloc byte[TriePersistence.StorageNodesKeyLength];
+            Span<byte> firstKey = stackalloc byte[BaseTriePersistence.StorageHashPrefixLength]; // Because slot 0 is a thing, its just the address prefix.
+            Span<byte> lastKey = stackalloc byte[BaseTriePersistence.StorageNodesKeyLength];
             firstKey.Fill(0x00);
             lastKey.Fill(0xff);
-            accountPath.Bytes[..TriePersistence.StorageHashPrefixLength].CopyTo(firstKey);
-            accountPath.Bytes[..TriePersistence.StorageHashPrefixLength].CopyTo(lastKey);
+            accountPath.Bytes[..BaseTriePersistence.StorageHashPrefixLength].CopyTo(firstKey);
+            accountPath.Bytes[..BaseTriePersistence.StorageHashPrefixLength].CopyTo(lastKey);
 
             int removedEntry = 0;
             using (ISortedView storageNodeReader = storageNodesSnap.GetViewBetween(firstKey, lastKey))
@@ -222,18 +222,18 @@ public class NoLeafValueRocksdbPersistence : IPersistence
         {
             if (address is null)
             {
-                if (path.Length <= TriePersistence.StateNodesTopThreshold)
+                if (path.Length <= BaseTriePersistence.StateNodesTopThreshold)
                 {
-                    stateTopNodes.PutSpan(TriePersistence.EncodeStateTopNodeKey(stackalloc byte[TriePersistence.StateNodesTopKeyLength], path), rlpSpan, flags);
+                    stateTopNodes.PutSpan(BaseTriePersistence.EncodeStateTopNodeKey(stackalloc byte[BaseTriePersistence.StateNodesTopKeyLength], path), rlpSpan, flags);
                 }
                 else
                 {
-                    stateNodes.PutSpan(TriePersistence.EncodeStateNodeKey(stackalloc byte[TriePersistence.StateNodesKeyLength], path), rlpSpan, flags);
+                    stateNodes.PutSpan(BaseTriePersistence.EncodeStateNodeKey(stackalloc byte[BaseTriePersistence.StateNodesKeyLength], path), rlpSpan, flags);
                 }
             }
             else
             {
-                storageNodes.PutSpan(TriePersistence.EncodeStorageNodeKey(stackalloc byte[TriePersistence.StorageNodesKeyLength], address, path), rlpSpan, flags);
+                storageNodes.PutSpan(BaseTriePersistence.EncodeStorageNodeKey(stackalloc byte[BaseTriePersistence.StorageNodesKeyLength], address, path), rlpSpan, flags);
             }
         }
 
@@ -243,8 +243,8 @@ public class NoLeafValueRocksdbPersistence : IPersistence
         IReadOnlyKeyValueStore _stateNodes,
         IReadOnlyKeyValueStore _stateTopNodes,
         IReadOnlyKeyValueStore _storageNodes,
-        BaseRocksdbPersistence.IHashedFlatReader flatReader
-        ) : BaseRocksdbPersistence.ITrieReader
+        BasePersistence.IHashedFlatReader flatReader
+        ) : BasePersistence.ITrieReader
     {
         private const int AccountSpanBufferSize = 256;
         private const int SlotSpanBufferSize = 40;
@@ -310,18 +310,18 @@ public class NoLeafValueRocksdbPersistence : IPersistence
         {
             if (address is null)
             {
-                if (path.Length <= TriePersistence.StateNodesTopThreshold)
+                if (path.Length <= BaseTriePersistence.StateNodesTopThreshold)
                 {
-                    return _stateTopNodes.GetSpan(TriePersistence.EncodeStateTopNodeKey(stackalloc byte[TriePersistence.StateNodesTopKeyLength], in path));
+                    return _stateTopNodes.GetSpan(BaseTriePersistence.EncodeStateTopNodeKey(stackalloc byte[BaseTriePersistence.StateNodesTopKeyLength], in path));
                 }
                 else
                 {
-                    return _stateNodes.GetSpan(TriePersistence.EncodeStateNodeKey(stackalloc byte[TriePersistence.StateNodesKeyLength], in path));
+                    return _stateNodes.GetSpan(BaseTriePersistence.EncodeStateNodeKey(stackalloc byte[BaseTriePersistence.StateNodesKeyLength], in path));
                 }
             }
             else
             {
-                return _storageNodes.GetSpan(TriePersistence.EncodeStorageNodeKey(stackalloc byte[TriePersistence.StorageNodesKeyLength], address, in path));
+                return _storageNodes.GetSpan(BaseTriePersistence.EncodeStorageNodeKey(stackalloc byte[BaseTriePersistence.StorageNodesKeyLength], address, in path));
             }
         }
     }
