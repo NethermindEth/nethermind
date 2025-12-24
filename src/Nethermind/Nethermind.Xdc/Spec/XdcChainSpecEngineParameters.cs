@@ -20,7 +20,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public int Reward { get; set; }
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
-
+    public Address[] GenesisMasternodes { get; set; } = Array.Empty<Address>();
 
     private List<V2ConfigParams> _v2Configs = new();
     public List<V2ConfigParams> V2Configs

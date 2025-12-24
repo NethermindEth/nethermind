@@ -32,7 +32,7 @@ public class DbConfig : IDbConfig
         "memtable_whole_key_filtering=true;" +
         "memtable_prefix_bloom_size_ratio=0.02;" +
 
-        // Rocksdb turn this on by default a few release ago. But we dont want it yet, not sure the impact on read is
+        // Rocksdb turned this on by default a few releases ago, but we don't want it yet; the impact on reads is unclear
         // significant or not.
         "level_compaction_dynamic_level_bytes=false;" +
 
@@ -248,7 +248,7 @@ public class DbConfig : IDbConfig
         "max_bytes_for_level_multiplier=10;" +
         "max_bytes_for_level_base=350000000;" +
 
-        // Change back file size multiplier as we dont want ridiculous file size, making compaction uneven,
+        // Change back file size multiplier as we don't want ridiculous file sizes making compaction uneven,
         // but set high base size. This mean a lot of file, but you are using archive mode, so this should be expected.
         "target_file_size_multiplier=1;" +
         "target_file_size_base=256000000;" +

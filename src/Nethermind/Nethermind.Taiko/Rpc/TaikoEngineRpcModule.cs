@@ -11,7 +11,6 @@ using Microsoft.IO;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -46,7 +45,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
-        IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?> getBlobsHandlerV2,
+        IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> getBlobsHandlerV2,
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
@@ -111,7 +110,9 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     public ResultWrapper<PreBuiltTxList[]?> taikoAuth_txPoolContentWithMinTip(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit,
        ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists, ulong minTip)
     {
-        IEnumerable<KeyValuePair<AddressAsKey, Transaction[]>> pendingTxs = txPool.GetPendingTransactionsBySender();
+        // Fetch all the pending transactions except transactions from the GoldenTouchAccount
+        IEnumerable<KeyValuePair<AddressAsKey, Transaction[]>> pendingTxs = txPool.GetPendingTransactionsBySender()
+            .Where(txs => !txs.Key.Value.Equals(TaikoBlockValidator.GoldenTouchAccount));
 
         if (localAccounts is not null)
         {
@@ -344,6 +345,26 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     public ResultWrapper<L1Origin> taikoAuth_updateL1Origin(L1Origin l1Origin)
     {
         l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
+        return ResultWrapper<L1Origin>.Success(l1Origin);
+    }
+
+    public ResultWrapper<UInt256> taikoAuth_setBatchToLastBlock(UInt256 batchId, UInt256 blockId)
+    {
+        l1OriginStore.WriteBatchToLastBlockID(batchId, blockId);
+        return ResultWrapper<UInt256>.Success(batchId);
+    }
+
+    public ResultWrapper<L1Origin> taikoAuth_setL1OriginSignature(UInt256 blockId, int[] signature)
+    {
+        L1Origin? l1Origin = l1OriginStore.ReadL1Origin(blockId);
+        if (l1Origin is null)
+        {
+            return ResultWrapper<L1Origin>.Fail($"L1 origin not found for block ID {blockId}");
+        }
+
+        l1Origin.Signature = signature;
+        l1OriginStore.WriteL1Origin(blockId, l1Origin);
+
         return ResultWrapper<L1Origin>.Success(l1Origin);
     }
 }

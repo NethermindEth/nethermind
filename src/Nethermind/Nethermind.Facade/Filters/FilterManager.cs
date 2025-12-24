@@ -15,7 +15,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Filters
 {
-    public class FilterManager : IFilterManager
+    public sealed class FilterManager
     {
         private readonly ConcurrentDictionary<int, List<FilterLog>> _logs =
             new();
@@ -27,12 +27,12 @@ namespace Nethermind.Blockchain.Filters
             new();
 
         private Hash256? _lastBlockHash;
-        private readonly IFilterStore _filterStore;
+        private readonly FilterStore _filterStore;
         private readonly ILogger _logger;
         private long _logIndex;
 
         public FilterManager(
-            IFilterStore filterStore,
+            FilterStore filterStore,
             IMainProcessingContext mainProcessingContext,
             ITxPool txPool,
             ILogManager logManager)

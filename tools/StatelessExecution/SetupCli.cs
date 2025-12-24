@@ -110,10 +110,6 @@ internal static class SetupCli
             MixHash = suggestedBlockForRpc.MixHash,
             BaseFeePerGas = suggestedBlockForRpc.BaseFeePerGas!.Value,
             WithdrawalsRoot = suggestedBlockForRpc.WithdrawalsRoot,
-            ParentBeaconBlockRoot = suggestedBlockForRpc.ParentBeaconBlockRoot,
-            RequestsHash = suggestedBlockForRpc.RequestsHash,
-            BlobGasUsed = suggestedBlockForRpc.BlobGasUsed,
-            ExcessBlobGas = suggestedBlockForRpc.ExcessBlobGas,
             Hash = suggestedBlockForRpc.Hash,
         };
 

@@ -17,7 +17,7 @@ namespace Nethermind.Xdc.Test;
 internal class ProposedBlockTests
 {
     [Test]
-    public async Task TestShouldSendVoteMsgAndCommitGrandGrandParentBlockAsync()
+    public async Task TestShouldSendVoteMsgAndCommitGreatGrandparentBlockAsync()
     {
         var blockChain = await XdcTestBlockchain.Create(2, true);
 

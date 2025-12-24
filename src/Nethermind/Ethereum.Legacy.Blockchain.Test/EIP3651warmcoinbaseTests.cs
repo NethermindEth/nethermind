@@ -9,7 +9,7 @@ namespace Ethereum.Blockchain.Legacy.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class EIP3651warmcoinbaseTests : GeneralStateTestBase
+public class EIP3651WarmCoinbaseTests : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test)

@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using NSubstitute;
@@ -75,7 +76,7 @@ public class FilterStoreTests
         store.FilterRemoved += (s, e) => hasNotified = true;
         store.RemoveFilter(0);
 
-        Assert.That(hasNotified, Is.True, "notied");
+        Assert.That(hasNotified, Is.True, "notified");
         Assert.That(store.FilterExists(0), Is.False, "exists");
     }
 
@@ -102,14 +103,14 @@ public class FilterStoreTests
         get
         {
             yield return new TestCaseData(null, AddressFilter.AnyAddress);
-            yield return new TestCaseData(TestItem.AddressA.ToString(), new AddressFilter(TestItem.AddressA));
-            yield return new TestCaseData(new[] { TestItem.AddressA.ToString(), TestItem.AddressB.ToString() },
-                new AddressFilter(new HashSet<AddressAsKey>() { TestItem.AddressA, TestItem.AddressB }));
+            yield return new TestCaseData(new[] { new AddressAsKey(TestItem.AddressA) }, new AddressFilter(TestItem.AddressA));
+            yield return new TestCaseData(new[] { new AddressAsKey(TestItem.AddressA), new AddressAsKey(TestItem.AddressB) },
+                new AddressFilter([TestItem.AddressA, TestItem.AddressB]));
         }
     }
 
     [TestCaseSource(nameof(CorrectlyCreatesAddressFilterTestCases))]
-    public void Correctly_creates_address_filter(object address, AddressFilter expected)
+    public void Correctly_creates_address_filter(AddressAsKey[] address, AddressFilter expected)
     {
         BlockParameter from = new(100);
         BlockParameter to = new(BlockParameterType.Latest);
@@ -124,22 +125,25 @@ public class FilterStoreTests
         {
             yield return new TestCaseData(null, SequenceTopicsFilter.AnyTopic);
 
-            yield return new TestCaseData(new[] { TestItem.KeccakA.ToString() },
+            yield return new TestCaseData(new[] { new[] { TestItem.KeccakA } },
                 new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA)));
 
-            yield return new TestCaseData(new[] { TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString() },
+            yield return new TestCaseData(new[] { new[] { TestItem.KeccakA }, new[] { TestItem.KeccakB } },
                 new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB)));
 
-            yield return new TestCaseData(new[] { null, TestItem.KeccakB.ToString() },
+            yield return new TestCaseData(new[] { null, new[] { TestItem.KeccakB } },
                 new SequenceTopicsFilter(AnyTopic.Instance, new SpecificTopic(TestItem.KeccakB)));
 
-            yield return new TestCaseData(new object[] { new[] { TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString(), TestItem.KeccakC.ToString() }, TestItem.KeccakD.ToString() },
-                new SequenceTopicsFilter(new OrExpression(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB), new SpecificTopic(TestItem.KeccakC)), new SpecificTopic(TestItem.KeccakD)));
+            yield return new TestCaseData(
+                new[] { new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC }, new[] { TestItem.KeccakD } },
+                new SequenceTopicsFilter(
+                    new OrExpression(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB),
+                        new SpecificTopic(TestItem.KeccakC)), new SpecificTopic(TestItem.KeccakD)));
         }
     }
 
     [TestCaseSource(nameof(CorrectlyCreatesTopicsFilterTestCases))]
-    public void Correctly_creates_topics_filter(IEnumerable<object> topics, TopicsFilter expected)
+    public void Correctly_creates_topics_filter(Hash256[]?[]? topics, TopicsFilter expected)
     {
         BlockParameter from = new(100);
         BlockParameter to = new(BlockParameterType.Latest);
@@ -166,6 +170,7 @@ public class FilterStoreTests
         Assert.That(() => store.FilterExists(1), Is.False.After(30, 5), "filter 1 doesn't exist");
         Assert.That(() => store.FilterExists(2), Is.False.After(30, 5), "filter 2 doesn't exist");
         Assert.That(() => store.FilterExists(3), Is.False.After(30, 5), "filter 3 doesn't exist");
+        store.RefreshFilter(0);
         Assert.That(() => removedFilterIds, Is.EquivalentTo([1, 2, 3]).After(30, 5));
     }
 }
