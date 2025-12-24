@@ -18,12 +18,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Metrics = Nethermind.Db.Metrics;
 using static Nethermind.State.StateProvider;
 
@@ -43,46 +41,22 @@ namespace Nethermind.State
         private readonly ClockKeyCacheNonConcurrent<ValueHash256> _persistedCodeInsertFilter = new(1_024);
         private readonly ClockKeyCacheNonConcurrent<ValueHash256> _blockCodeInsertFilter = new(256);
         private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
-        private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
-        private readonly IKeyValueStoreWithBatching _codeDb;
         private Dictionary<Hash256AsKey, byte[]> _codeBatch;
         private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
 
         private readonly List<Change> _changes = new(Resettable.StartCapacity);
-        internal readonly StateTree _tree;
-        private readonly Func<AddressAsKey, Account> _getStateFromTrie;
+        internal IWorldStateScopeProvider.IScope? _tree;
 
-        private readonly bool _populatePreBlockCache;
         private bool _needsStateRootUpdate;
+        private IWorldStateScopeProvider.ICodeDb? _codeDb;
 
-        public StateProvider(IScopedTrieStore? trieStore,
-            IKeyValueStoreWithBatching codeDb,
-            ILogManager logManager,
-            StateTree? stateTree = null,
-            ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null,
-            bool populatePreBlockCache = true)
+        public StateProvider(
+            ILogManager logManager)
         {
-            _preBlockCache = preBlockCache;
-            _populatePreBlockCache = populatePreBlockCache;
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
-            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _tree = stateTree ?? new StateTree(trieStore, logManager);
-            _getStateFromTrie = address =>
-            {
-                Metrics.IncrementStateTreeReads();
-                return _tree.Get(address);
-            };
-        }
-
-        public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
-        {
-            ArgumentNullException.ThrowIfNull(visitor);
-            ArgumentNullException.ThrowIfNull(stateRoot);
-
-            _tree.Accept(visitor, stateRoot, visitingOptions);
         }
 
         public void RecalculateStateRoot()
@@ -101,7 +75,14 @@ namespace Nethermind.State
                 [DoesNotReturn, StackTraceHidden]
                 static void ThrowStateRootNeedsToBeUpdated() => throw new InvalidOperationException("State root needs to be updated");
             }
-            set => _tree.RootHash = value;
+        }
+
+        public int ChangedAccountCount => _blockChanges.Count;
+
+        public void SetScope(IWorldStateScopeProvider.IScope? scope)
+        {
+            _tree = scope;
+            _codeDb = scope?.CodeDb;
         }
 
         public bool IsContract(Address address)
@@ -129,16 +110,6 @@ namespace Nethermind.State
             return account?.Nonce ?? UInt256.Zero;
         }
 
-        public Hash256 GetStorageRoot(Address address)
-        {
-            Account? account = GetThroughCache(address);
-            return account is not null ? account.StorageRoot : ThrowIfNull(address);
-
-            [DoesNotReturn, StackTraceHidden]
-            static Hash256 ThrowIfNull(Address address)
-                => throw new InvalidOperationException($"Account {address} is null when accessing storage root");
-        }
-
         public ref readonly UInt256 GetBalance(Address address)
         {
             Account? account = GetThroughCache(address);
@@ -160,8 +131,8 @@ namespace Nethermind.State
                     _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
                 }
                 if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
-                        && codeArray.Offset == 0
-                        && codeArray.Count == code.Length)
+                    && codeArray.Offset == 0
+                    && codeArray.Count == code.Length)
                 {
                     _codeBatchAlternate[codeHash] = codeArray.Array;
                 }
@@ -283,32 +254,6 @@ namespace Nethermind.State
             SetNewBalance(address, balanceChange, releaseSpec, false);
         }
 
-        /// <summary>
-        /// This is a coupling point between storage provider and state provider.
-        /// This is pointing at the architectural change likely required where Storage and State Provider are represented by a single world state class.
-        /// </summary>
-        /// <param name="address"></param>
-        /// <param name="storageRoot"></param>
-        public void UpdateStorageRoot(Address address, Hash256 storageRoot)
-        {
-            _needsStateRootUpdate = true;
-            Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
-            if (account.StorageRoot != storageRoot)
-            {
-                if (_logger.IsTrace) Trace(address, storageRoot, account);
-                Account changedAccount = account.WithChangedStorageRoot(storageRoot);
-                PushUpdate(address, changedAccount);
-            }
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void Trace(Address address, Hash256 storageRoot, Account account)
-                => _logger.Trace($"Update {address} S {account.StorageRoot} -> {storageRoot}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static Account ThrowNullAccount(Address address)
-                => throw new InvalidOperationException($"Account {address} is null when updating storage hash");
-        }
-
         public void IncrementNonce(Address address, UInt256 delta)
         {
             _needsStateRootUpdate = true;
@@ -360,7 +305,7 @@ namespace Nethermind.State
 
             if (_codeBatch is null || !_codeBatchAlternate.TryGetValue(codeHash, out byte[]? code))
             {
-                code = _codeDb[codeHash.Bytes];
+                code = _codeDb.GetCode(codeHash);
             }
             return code ?? ThrowMissingCode(in codeHash);
 
@@ -533,24 +478,17 @@ namespace Nethermind.State
             }
         }
 
-        public void Commit(IReleaseSpec releaseSpec, bool commitRoots, bool isGenesis)
-            => Commit(releaseSpec, NullStateTracer.Instance, commitRoots, isGenesis);
-
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
         {
             Task codeFlushTask = !commitRoots || _codeBatch is null || _codeBatch.Count == 0
                 ? Task.CompletedTask
-                : CommitCodeAsync();
+                : CommitCodeAsync(_codeDb);
 
             bool isTracing = _logger.IsTrace;
             int stepsBack = _changes.Count - 1;
             if (stepsBack < 0)
             {
                 if (isTracing) TraceNoChanges();
-                if (commitRoots)
-                {
-                    FlushToTree();
-                }
 
                 codeFlushTask.GetAwaiter().GetResult();
                 return;
@@ -675,14 +613,9 @@ namespace Nethermind.State
             _nullAccountReads.Clear();
             _intraTxCache.ResetAndClear();
 
-            if (commitRoots)
-            {
-                FlushToTree();
-            }
-
             codeFlushTask.GetAwaiter().GetResult();
 
-            Task CommitCodeAsync()
+            Task CommitCodeAsync(IWorldStateScopeProvider.ICodeDb codeDb)
             {
                 Dictionary<Hash256AsKey, byte[]> dict = Interlocked.Exchange(ref _codeBatch, null);
                 if (dict is null) return Task.CompletedTask;
@@ -690,12 +623,12 @@ namespace Nethermind.State
 
                 return Task.Run(() =>
                 {
-                    using (var batch = _codeDb.StartWriteBatch())
+                    using (var batch = codeDb.BeginCodeWrite())
                     {
                         // Insert ordered for improved performance
                         foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
                         {
-                            batch.PutSpan(kvp.Key.Value.Bytes, kvp.Value);
+                            batch.Set(kvp.Key.Value, kvp.Value);
                         }
                     }
 
@@ -747,25 +680,18 @@ namespace Nethermind.State
                 => throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
         }
 
-        private void FlushToTree()
+        internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
         {
             int writes = 0;
             int skipped = 0;
 
-            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkWrite = new(_blockChanges.Count);
             foreach (AddressAsKey key in _blockChanges.Keys)
             {
                 ref ChangeTrace change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
                 if (change.Before != change.After)
                 {
                     change.Before = change.After;
-
-                    KeccakCache.ComputeTo(key.Value.Bytes, out ValueHash256 keccak);
-
-                    Account account = change.After;
-                    Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
-
-                    bulkWrite.Add(new PatriciaTree.BulkSetEntry(keccak, accountRlp?.Bytes));
+                    writeBatch.Set(key, change.After);
                     writes++;
                 }
                 else
@@ -773,8 +699,6 @@ namespace Nethermind.State
                     skipped++;
                 }
             }
-
-            _tree.BulkSet(bulkWrite);
 
             if (writes > 0)
                 Metrics.IncrementStateTreeWrites(writes);
@@ -791,9 +715,8 @@ namespace Nethermind.State
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
             if (!exists)
             {
-                Account? account = !_populatePreBlockCache ?
-                    GetStateReadPreWarmCache(addressAsKey) :
-                    GetStatePopulatePrewarmCache(addressAsKey);
+                Metrics.IncrementStateTreeReads();
+                Account? account = _tree.Get(address);
 
                 accountChanges = new(account, account);
             }
@@ -804,34 +727,7 @@ namespace Nethermind.State
             return accountChanges.After;
         }
 
-        private Account? GetStatePopulatePrewarmCache(AddressAsKey addressAsKey)
-        {
-            long priorReads = Metrics.ThreadLocalStateTreeReads;
-            Account? account = _preBlockCache is not null
-                ? _preBlockCache.GetOrAdd(addressAsKey, _getStateFromTrie)
-                : _getStateFromTrie(addressAsKey);
-
-            if (Metrics.ThreadLocalStateTreeReads == priorReads)
-            {
-                Metrics.IncrementStateTreeCacheHits();
-            }
-            return account;
-        }
-
-        private Account? GetStateReadPreWarmCache(AddressAsKey addressAsKey)
-        {
-            if (_preBlockCache?.TryGetValue(addressAsKey, out Account? account) ?? false)
-            {
-                Metrics.IncrementStateTreeCacheHits();
-            }
-            else
-            {
-                account = _getStateFromTrie(addressAsKey);
-            }
-            return account;
-        }
-
-        private void SetState(Address address, Account? account)
+        internal void SetState(Address address, Account? account)
         {
             ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
             accountChanges.After = account;
@@ -956,14 +852,12 @@ namespace Nethermind.State
             void Trace() => _logger.Trace("Clearing state provider caches");
         }
 
-        public void CommitTree()
+        public void UpdateStateRootIfNeeded()
         {
             if (_needsStateRootUpdate)
             {
                 RecalculateStateRoot();
             }
-
-            _tree.Commit();
         }
 
         // used in EthereumTests

@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing.State;
 
 namespace Nethermind.Evm.State;
 
@@ -15,5 +16,10 @@ public static class WorldStateExtensions
     {
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
         worldState.InsertCode(address, codeHash, code, spec, isGenesis);
+    }
+
+    public static void Commit(this IWorldState worldState, IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
+    {
+        worldState.Commit(releaseSpec, NullStateTracer.Instance, isGenesis, commitRoots);
     }
 }
