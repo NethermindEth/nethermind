@@ -280,7 +280,19 @@ public class NoLeafValueRocksdbPersistence : IPersistence
                 else
                 {
                     Span<byte> buffer = stackalloc byte[SlotSpanBufferSize];
-                    int readSize = flatReader.GetStorage(address, fullPath, buffer);
+                    int readSize = 0;
+                    SlotValue slotValue = new SlotValue();
+                    if (flatReader.TryGetStorage(address, fullPath, ref slotValue))
+                    {
+                        byte[] evmBytes = slotValue.ToEvmBytes();
+                        readSize = evmBytes.Length;
+                        evmBytes.CopyTo(buffer);
+                    }
+                    else
+                    {
+                        readSize = 1;
+                        StorageTree.ZeroBytes.CopyTo(buffer);
+                    }
 
                     byte[] resultingValue = new byte[rocksDbSpan.Length + readSize];
                     rocksDbSpan.CopyTo(resultingValue);

@@ -254,15 +254,15 @@ public class LMDBPersistence : IPersistence
             return valueMdb.AsSpan().Length;
         }
 
-        public int GetStorage(in ValueHash256 address, in ValueHash256 slot, Span<byte> outBuffer)
+        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue)
         {
             Span<byte> keySpan = stackalloc byte[StorageKeyLength];
             ReadOnlySpan<byte> storageKey = EncodeStorageKeyHashed(keySpan, address, slot);
             (MDBResultCode resultCode, MDBValue key, MDBValue valueMdb) = lmdbTx.Get(storage, storageKey);
-            if (resultCode == MDBResultCode.NotFound) return 0;
+            if (resultCode == MDBResultCode.NotFound) return false;
             if (resultCode != MDBResultCode.Success) throw new Exception($"Read storage raw failed with result code {resultCode}");
-            valueMdb.AsSpan().CopyTo(outBuffer);
-            return valueMdb.AsSpan().Length;
+            valueMdb.AsSpan().CopyTo(outValue.AsSpan);
+            return true;
         }
     }
 }

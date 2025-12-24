@@ -281,7 +281,6 @@ public class PreimageRocksdbPersistence : IPersistence
     {
         internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
         private int _accountSpanBufferSize = 256;
-        private int _slotSpanBufferSize = 40;
 
         public Account? GetAccount(Address address)
         {
@@ -307,21 +306,17 @@ public class PreimageRocksdbPersistence : IPersistence
             ValueHash256 fakeSlotHash = ValueKeccak.Zero;
             slot.ToBigEndian(fakeSlotHash.BytesAsSpan);
 
-            Span<byte> valueBuffer = stackalloc byte[_slotSpanBufferSize];
-            int responseSize = flatReader.GetStorage(fakeHash, fakeSlotHash, valueBuffer);
-            if (responseSize == 0)
-            {
-                return false;
-            }
-
-            int offset = SlotValue.ByteCount - responseSize;
-            valueBuffer[..responseSize].CopyTo(outValue.AsSpan[offset..]);
-            return true;
+            return TryGetSlotRaw(fakeHash, fakeSlotHash, ref outValue);
         }
 
         public byte[]? GetAccountRaw(Hash256 addrHash)
         {
             throw new InvalidOperationException("Raw operation not available in preimage mode");
+        }
+
+        public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue)
+        {
+            return flatReader.TryGetStorage(address, slotHash, ref outValue);
         }
 
         public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash)

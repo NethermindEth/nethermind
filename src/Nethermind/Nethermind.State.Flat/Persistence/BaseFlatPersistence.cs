@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -47,7 +50,7 @@ public static class BaseFlatPersistence
             }
         }
 
-        public int GetStorage(in ValueHash256 address, in ValueHash256 slot, Span<byte> outBuffer)
+        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue)
         {
             Span<byte> keySpan = stackalloc byte[StorageKeyLength];
             ReadOnlySpan<byte> storageKey = EncodeStorageKeyHashed(keySpan, address, slot);
@@ -56,11 +59,30 @@ public static class BaseFlatPersistence
             {
                 if (value.IsNullOrEmpty())
                 {
-                    return 0;
+                    return false;
                 }
 
-                value.CopyTo(outBuffer);
-                return value.Length;
+                // AI said: Use Unsafe to bypass the 'Slice' bounds check and property access
+                // This writes the variable-length DB value into the end of the 32-byte struct
+                unsafe
+                {
+                    int len = value.Length;
+                    if (len == SlotValue.ByteCount)
+                    {
+                        outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
+                    }
+                    else
+                    {
+                        ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValue);
+                        ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
+
+                        Unsafe.CopyBlockUnaligned(
+                            ref destPtr,
+                            ref MemoryMarshal.GetReference(value),
+                            (uint)len);
+                    }
+                }
+                return true;
             }
             finally
             {
@@ -105,19 +127,14 @@ public static class BaseFlatPersistence
             state.Remove(key);
         }
 
-        public void RemoveStorage(in ValueHash256 addrHash, in ValueHash256 slotHash)
-        {
-            ReadOnlySpan<byte> theKey = EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash, slotHash);
-            storage.Remove(theKey);
-        }
-
         public void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? slot)
         {
             ReadOnlySpan<byte> theKey = EncodeStorageKeyHashed(stackalloc byte[StorageKeyLength], addrHash, slotHash);
 
             if (slot.HasValue)
             {
-                storage.PutSpan(theKey, slot.Value.AsSpan, flags);
+                ReadOnlySpan<byte> withoutLeadingZeros = slot.Value.AsSpan.WithoutLeadingZeros();
+                storage.PutSpan(theKey, withoutLeadingZeros, flags);
             }
             else
             {

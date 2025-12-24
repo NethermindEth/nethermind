@@ -52,8 +52,7 @@ public static class BloomFlatWrapper
     public readonly struct BloomInterceptor<TFlatReader>(
         TFlatReader baseFlatReader,
         SegmentedBloom bloomFilter
-    )
-        : BasePersistence.IHashedFlatReader
+    ) : BasePersistence.IHashedFlatReader
         where TFlatReader: struct, BasePersistence.IHashedFlatReader
     {
         private static Counter _slotBloomHit = Metrics.CreateCounter("rocksdb_slot_bloom", "slot_blom", "hitmiss");
@@ -71,16 +70,16 @@ public static class BloomFlatWrapper
             return baseFlatReader.GetAccount(in address, outBuffer);
         }
 
-        public int GetStorage(in ValueHash256 address, in ValueHash256 slotHash, Span<byte> outBuffer)
+        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue)
         {
-            if (!bloomFilter.MightContain(Mix(BinaryPrimitives.ReadUInt64LittleEndian(address.Bytes), BinaryPrimitives.ReadUInt64LittleEndian(slotHash.Bytes))))
+            if (!bloomFilter.MightContain(Mix(BinaryPrimitives.ReadUInt64LittleEndian(address.Bytes), BinaryPrimitives.ReadUInt64LittleEndian(slot.Bytes))))
             {
-                return 0;
+                return false;
             }
 
-            int value = baseFlatReader.GetStorage(in address, in slotHash, outBuffer);
+            bool hit = baseFlatReader.TryGetStorage(in address, in slot, ref outValue);
 
-            if (value > 0)
+            if (hit)
             {
                 _slotBloomHitHit.Inc();
             }
@@ -89,7 +88,7 @@ public static class BloomFlatWrapper
                 _slotBloomHitMiss.Inc();
             }
 
-            return value;
+            return hit;
         }
     }
 
