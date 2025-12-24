@@ -44,7 +44,7 @@ public class ResourcePool
             _createdSnapshotContent.WithLabels(usage.ToString()).Inc();
             return new SnapshotContent(
                 Accounts: new ConcurrentDictionary<AddressAsKey, Account?>(),
-                Storages: new ConcurrentDictionary<(AddressAsKey, UInt256), byte[]?>(),
+                Storages: new ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?>(),
                 SelfDestructedStorageAddresses: new ConcurrentDictionary<AddressAsKey, bool>(),
                 StateNodes: new ConcurrentDictionary<TreePath, TrieNode>(),
                 StorageNodes: new ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode>()

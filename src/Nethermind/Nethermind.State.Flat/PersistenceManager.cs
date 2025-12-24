@@ -377,16 +377,9 @@ public class PersistenceManager: IAsyncDisposable
 
             foreach (var kv in snapshot.Storages)
             {
-                ((Address addr, UInt256 slot), byte[]? value) = kv;
+                ((Address addr, UInt256 slot), SlotValue? value) = kv;
 
-                if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
-                {
-                    batch.RemoveStorage(addr, slot);
-                }
-                else
-                {
-                    batch.SetStorage(addr, slot, value);
-                }
+                batch.SetStorage(addr, slot, value);
             }
             _flatdiffimes.WithLabels("persistence", "storages").Observe(Stopwatch.GetTimestamp() - sw);
             sw = Stopwatch.GetTimestamp();

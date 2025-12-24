@@ -36,7 +36,7 @@ public class Snapshot(
     public StateId To => to;
     public IEnumerable<KeyValuePair<AddressAsKey, Account?>> Accounts => content.Accounts;
     public IEnumerable<KeyValuePair<AddressAsKey, bool>> SelfDestructedStorageAddresses => content.SelfDestructedStorageAddresses;
-    public IEnumerable<KeyValuePair<(AddressAsKey, UInt256), byte[]?>> Storages => content.Storages;
+    public IEnumerable<KeyValuePair<(AddressAsKey, UInt256), SlotValue?>> Storages => content.Storages;
     public IEnumerable<KeyValuePair<(Hash256AsKey, TreePath), TrieNode>> StorageNodes => content.StorageNodes;
     public IEnumerable<(Hash256AsKey, TreePath)> StorageTrieNodeKeys => content.StorageNodes.Keys;
     public IEnumerable<KeyValuePair<TreePath, TrieNode>> StateNodes => content.StateNodes;
@@ -57,7 +57,7 @@ public class Snapshot(
         return content.SelfDestructedStorageAddresses.TryGetValue(address, out var _);
     }
 
-    public bool TryGetStorage(Address address, in UInt256 index, out byte[]? value)
+    public bool TryGetStorage(Address address, in UInt256 index, out SlotValue? value)
     {
         return content.Storages.TryGetValue((address, index), out value);
     }
@@ -95,7 +95,7 @@ public class Snapshot(
 public record SnapshotContent(
     // They dont actually need to be concurrent, but its makes commit fast by just passing the whole content.
     ConcurrentDictionary<AddressAsKey, Account?> Accounts,
-    ConcurrentDictionary<(AddressAsKey, UInt256), byte[]?> Storages,
+    ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> Storages,
 
     // Bool is true if this is a new account also
     ConcurrentDictionary<AddressAsKey, bool> SelfDestructedStorageAddresses,
@@ -120,7 +120,7 @@ public record SnapshotContent(
         Dictionary<MemoryType, long> result = new Dictionary<MemoryType, long>(){
             { MemoryType.Account, Accounts.Count },
             { MemoryType.Storage, Storages.Count },
-            { MemoryType.StorageBytes, Storages.Sum((kv) => kv.Value?.Length ?? 0) },
+            { MemoryType.StorageBytes, Storages.Count * 40 },
             { MemoryType.SelfDestructedAddress, SelfDestructedStorageAddresses.Count },
             { MemoryType.StateNodes, StateNodes.Count },
             { MemoryType.StateNodesBytes, StateNodes.Sum((kv) => kv.Value.GetMemorySize(false)) },

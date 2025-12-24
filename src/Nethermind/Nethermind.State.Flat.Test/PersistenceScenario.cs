@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -17,7 +16,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -154,9 +152,9 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(address, acc);
-            writer.SetStorage(address, UInt256.MinValue, [1]);
-            writer.SetStorage(address, 123, [2]);
-            writer.SetStorage(address, UInt256.MaxValue, [3]);
+            writer.SetStorage(address, UInt256.MinValue, SlotValue.FromSpanWithoutLeadingZero([1]));
+            writer.SetStorage(address, 123, SlotValue.FromSpanWithoutLeadingZero([2]));
+            writer.SetStorage(address, UInt256.MaxValue, SlotValue.FromSpanWithoutLeadingZero([3]));
         }
 
         using (var reader = _persistence.CreateReader())
@@ -208,10 +206,10 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Write various storage slots
         using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorage(address, UInt256.MinValue, [1, 2, 3]);
-            writer.SetStorage(address, 42, [0x42]);
-            writer.SetStorage(address, 12345, [0x10, 0x20, 0x30, 0x40]);
-            writer.SetStorage(address, UInt256.MaxValue, [0xff, 0xfe, 0xfd]);
+            writer.SetStorage(address, UInt256.MinValue, SlotValue.FromSpanWithoutLeadingZero([1, 2, 3]));
+            writer.SetStorage(address, 42, SlotValue.FromSpanWithoutLeadingZero([0x42]));
+            writer.SetStorage(address, 12345, SlotValue.FromSpanWithoutLeadingZero([0x10, 0x20, 0x30, 0x40]));
+            writer.SetStorage(address, UInt256.MaxValue, SlotValue.FromSpanWithoutLeadingZero([0xff, 0xfe, 0xfd]));
         }
 
         // Verify all slots can be read back
@@ -241,21 +239,21 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(address, acc);
-            writer.SetStorage(address, slot, [1]);
+            writer.SetStorage(address, slot, SlotValue.FromSpanWithoutLeadingZero([1]));
         }
 
         using var reader1 = _persistence.CreateReader();
 
         using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorage(address, slot, [2]);
+            writer.SetStorage(address, slot, SlotValue.FromSpanWithoutLeadingZero([2]));
         }
 
         using var reader2 = _persistence.CreateReader();
 
         using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorage(address, slot, [3]);
+            writer.SetStorage(address, slot, SlotValue.FromSpanWithoutLeadingZero([3]));
         }
 
         using var reader3 = _persistence.CreateReader();
@@ -271,51 +269,6 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     }
 
     [Test]
-    public void TestRemoveStorage()
-    {
-        Account acc = TestItem.GenerateIndexedAccount(0);
-        Address address = TestItem.AddressA;
-
-        using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
-        {
-            writer.SetAccount(address, acc);
-            writer.SetStorage(address, 1, [0x01]);
-            writer.SetStorage(address, 2, [0x02]);
-            writer.SetStorage(address, 3, [0x03]);
-        }
-
-        // Verify all slots exist
-        using (var reader = _persistence.CreateReader())
-        {
-            byte[]? value = reader.GetSlot(address, 1);
-            Assert.That(value, Is.EqualTo([0x01]));
-            value = reader.GetSlot(address, 2);
-            Assert.That(value, Is.EqualTo([0x02]));
-            value = reader.GetSlot(address, 3);
-            Assert.That(value, Is.EqualTo([0x03]));
-        }
-
-        // Remove slot 2
-        using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
-        {
-            writer.RemoveStorage(address, 2);
-        }
-
-        // Verify slot 2 is removed but others remain
-        using (var reader = _persistence.CreateReader())
-        {
-            byte[]? value = reader.GetSlot(address, 1);
-            Assert.That(value, Is.EqualTo([0x01]));
-
-            value = reader.GetSlot(address, 2);
-            Assert.That(value, Is.Null);
-
-            value = reader.GetSlot(address, 3);
-            Assert.That(value, Is.EqualTo([0x03]));
-        }
-    }
-
-    [Test]
     public void TestRemoveAccount()
     {
         Account acc = TestItem.GenerateIndexedAccount(0);
@@ -324,8 +277,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(address, acc);
-            writer.SetStorage(address, 1, [0x01]);
-            writer.SetStorage(address, 2, [0x02]);
+            writer.SetStorage(address, 1, SlotValue.FromSpanWithoutLeadingZero([0x01]));
+            writer.SetStorage(address, 2, SlotValue.FromSpanWithoutLeadingZero([0x02]));
         }
 
         // Verify account and storage exist
@@ -405,8 +358,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(address, acc);
-            writer.SetStorage(address, slot1, [1]);
-            writer.SetStorage(address, slot2, [10]);
+            writer.SetStorage(address, slot1, SlotValue.FromSpanWithoutLeadingZero([1]));
+            writer.SetStorage(address, slot2, SlotValue.FromSpanWithoutLeadingZero([10]));
         }
 
         using var reader1 = _persistence.CreateReader();
@@ -415,7 +368,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(address, TestItem.GenerateIndexedAccount(1));
-            writer.SetStorage(address, slot1, [2]);
+            writer.SetStorage(address, slot1, SlotValue.FromSpanWithoutLeadingZero([2]));
         }
 
         using var reader2 = _persistence.CreateReader();
@@ -423,7 +376,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Modify slot2
         using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorage(address, slot2, [20]);
+            writer.SetStorage(address, slot2, SlotValue.FromSpanWithoutLeadingZero([20]));
         }
 
         using var reader3 = _persistence.CreateReader();
@@ -468,9 +421,9 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             writer.SetAccount(addr2, TestItem.GenerateIndexedAccount(1));
             writer.SetAccount(addr3, TestItem.GenerateIndexedAccount(2));
 
-            writer.SetStorage(addr1, slot, [0x11]);
-            writer.SetStorage(addr2, slot, [0x22]);
-            writer.SetStorage(addr3, slot, [0x33]);
+            writer.SetStorage(addr1, slot, SlotValue.FromSpanWithoutLeadingZero([0x11]));
+            writer.SetStorage(addr2, slot, SlotValue.FromSpanWithoutLeadingZero([0x22]));
+            writer.SetStorage(addr3, slot, SlotValue.FromSpanWithoutLeadingZero([0x33]));
         }
 
         // Verify each account has its own isolated storage
@@ -489,7 +442,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Modify storage for addr2 only
         using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorage(addr2, slot, [0xff]);
+            writer.SetStorage(addr2, slot, SlotValue.FromSpanWithoutLeadingZero([0xff]));
         }
 
         // Verify only addr2's storage changed

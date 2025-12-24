@@ -27,7 +27,7 @@ public class SnapshotBundle : IDisposable
     private ConcurrentDictionary<AddressAsKey, Account?> _changedAccounts = null!;
     private ConcurrentDictionary<TreePath, TrieNode> _changedStateNodes = null!; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _changedStorageNodes = null!; // Bulkset can get nodes concurrently
-    private ConcurrentDictionary<(AddressAsKey, UInt256), byte[]?> _changedSlots = null!; // Bulkset can get nodes concurrently
+    private ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> _changedSlots = null!; // Bulkset can get nodes concurrently
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses = null!;
 
     // The cached resource holds some items that is pooled.
@@ -239,8 +239,16 @@ public class SnapshotBundle : IDisposable
 
         if (!_forStateReader)
         {
-            if (_changedSlots.TryGetValue((address, index), out value))
+            if (_changedSlots.TryGetValue((address, index), out SlotValue? slotValue))
             {
+                if (slotValue is null)
+                {
+                    value = null;
+                }
+                else
+                {
+                    value = slotValue.Value.ToEvmBytes();
+                }
                 return true;
             }
         }
@@ -254,7 +262,18 @@ public class SnapshotBundle : IDisposable
 
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
-            if (_snapshots[i].TryGetStorage(address, index, out value)) return true;
+            if (_snapshots[i].TryGetStorage(address, index, out SlotValue? slotValue))
+            {
+                if (slotValue is null)
+                {
+                    value = null;
+                }
+                else
+                {
+                    value = slotValue.Value.ToEvmBytes();
+                }
+                return true;
+            }
 
             if (i <= selfDestructStateIdx)
             {
@@ -281,7 +300,7 @@ public class SnapshotBundle : IDisposable
         if (_forStateReader) throw new InvalidOperationException("Read only snapshot bundle");
         long sw = Stopwatch.GetTimestamp();
         // Note: Hot path
-        _changedSlots[(address, index)] = value;
+        _changedSlots[(address, index)] = SlotValue.FromSpanWithoutLeadingZero(value);
         if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
         {
             _setSlotToZeroTime.Observe(Stopwatch.GetTimestamp() - sw);
@@ -673,7 +692,7 @@ public class SnapshotBundle : IDisposable
             {
                 if (kv.Key.Item1.Value == address)
                 {
-                    _changedSlots.TryRemove(kv.Key, out byte[]? _);
+                    _changedSlots.TryRemove(kv.Key, out _);
                 }
             }
         }

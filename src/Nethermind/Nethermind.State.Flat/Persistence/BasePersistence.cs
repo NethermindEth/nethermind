@@ -138,7 +138,7 @@ public static class BasePersistence
         private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
         private readonly int _accountSpanBufferSize = 256;
         private readonly int _slotSpanBufferSize = 40;
-        
+
         public Account? GetAccount(Address address)
         {
             Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
@@ -267,19 +267,31 @@ public static class BasePersistence
             _flatWriter.SetAccount(addr, account);
         }
 
+        public void SetStorage(Address addr, UInt256 slot, SlotValue? value)
+        {
+            if (value is {} notNullValue)
+            {
+                SetStorage(addr, slot, notNullValue.ToEvmBytes());
+            }
+            else
+            {
+                RemoveStorage(addr, slot);
+            }
+        }
+
         public void SetStorage(Address addr, UInt256 slot, ReadOnlySpan<byte> value)
         {
             _flatWriter.SetStorage(addr, slot, value);
         }
 
-        public void SetTrieNodes(Hash256? address, TreePath path, TrieNode tnValue)
-        {
-            _trieWriteBatch.SetTrieNodes(address, path, tnValue);
-        }
-
         public void RemoveStorage(Address addr, UInt256 slot)
         {
             _flatWriter.RemoveStorage(addr, slot);
+        }
+
+        public void SetTrieNodes(Hash256? address, TreePath path, TrieNode tnValue)
+        {
+            _trieWriteBatch.SetTrieNodes(address, path, tnValue);
         }
 
         public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, ReadOnlySpan<byte> value)
