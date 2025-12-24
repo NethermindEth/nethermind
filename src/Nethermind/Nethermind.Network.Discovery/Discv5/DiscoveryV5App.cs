@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
@@ -27,6 +27,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Stats.Model;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Discovery.Discv5;
 
@@ -35,6 +36,7 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly IDiscv5Protocol _discv5Protocol;
     private readonly Logging.ILogger _logger;
     private readonly IDb _discoveryDb;
+    private readonly IDb? _legacyDiscoveryDb;
     private readonly CancellationTokenSource _appShutdownSource = new();
     private readonly DiscoveryReport? _discoveryReport;
     private readonly IServiceProvider _serviceProvider;
@@ -45,13 +47,15 @@ public class DiscoveryV5App : IDiscoveryApp
         IIPResolver? ipResolver,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
-        [KeyFilter(DbNames.DiscoveryNodes)] IDb discoveryDb,
+        [KeyFilter(DbNames.DiscoveryV5Nodes)] IDb discoveryDb,
+        [KeyFilter(DbNames.DiscoveryNodes)] IDb? legacyDiscoveryDb,
         ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(ipResolver);
 
         _logger = logManager.GetClassLogger();
         _discoveryDb = discoveryDb;
+        _legacyDiscoveryDb = legacyDiscoveryDb;
 
         IdentityVerifierV4 identityVerifier = new();
 
@@ -72,25 +76,15 @@ public class DiscoveryV5App : IDiscoveryApp
 
         EnrFactory enrFactory = new(new EnrEntryRegistry());
 
+        (List<byte[]> v5StoredRecords, List<byte[]> legacyStoredRecords) = LoadStoredEnrs(enrFactory, identityVerifier);
+
         Lantern.Discv5.Enr.Enr[] bootstrapEnrs = [
             .. bootstrapNodes.Where(e => e.StartsWith("enode:"))
                 .Select(e => new Enode(e))
                 .Select(GetEnr),
             .. bootstrapNodes.Where(e => e.StartsWith("enr:")).Select(enr => enrFactory.CreateFromString(enr, identityVerifier)),
-            // TODO: Move to routing table's UpdateFromEnr
-            .. _discoveryDb.GetAllValues().Select(enr =>
-                {
-                    try
-                    {
-                        return enrFactory.CreateFromBytes(enr, identityVerifier);
-                    }
-                    catch (Exception e)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"unable to decode enr {e}");
-                        return null;
-                    }
-                })
-                .Where(enr => enr != null)!
+            .. DecodeEnrs(v5StoredRecords, enrFactory, identityVerifier),
+            .. DecodeEnrs(legacyStoredRecords, enrFactory, identityVerifier)
             ];
 
         EnrBuilder enrBuilder = new EnrBuilder()
@@ -188,6 +182,64 @@ public class DiscoveryV5App : IDiscoveryApp
         .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.Address.Port))
         .Build();
 
+    private static bool TryDecodeEnr(byte[] enrBytes, EnrFactory enrFactory, IdentityVerifierV4 verifier, [NotNullWhen(true)] out IEnr? enr)
+    {
+        try
+        {
+            enr = enrFactory.CreateFromBytes(enrBytes, verifier);
+            return true;
+        }
+        catch
+        {
+            enr = null;
+            return false;
+        }
+    }
+
+    private (List<byte[]> v5Records, List<byte[]> legacyRecords) LoadStoredEnrs(EnrFactory enrFactory, IdentityVerifierV4 identityVerifier)
+    {
+        List<byte[]> v5StoredRecords = _discoveryDb.GetAllValues().ToList();
+        List<byte[]> legacyStoredRecords = _legacyDiscoveryDb?.GetAllValues().ToList() ?? [];
+
+        // If migrating from legacy discv4 store, copy once into the discv5 store (non-destructive for v4).
+        if (v5StoredRecords.Count == 0 && legacyStoredRecords.Count > 0)
+        {
+            IWriteBatch? migrateBatch = null;
+            try
+            {
+                foreach (byte[] record in legacyStoredRecords)
+                {
+                    if (TryDecodeEnr(record, enrFactory, identityVerifier, out IEnr? enr))
+                    {
+                        migrateBatch ??= _discoveryDb.StartWriteBatch();
+                        migrateBatch[enr.NodeId] = record;
+                        v5StoredRecords.Add(record);
+                    }
+                }
+            }
+            finally
+            {
+                migrateBatch?.Dispose();
+            }
+        }
+
+        return (v5StoredRecords, legacyStoredRecords);
+    }
+
+    private IEnumerable<Lantern.Discv5.Enr.Enr> DecodeEnrs(IEnumerable<byte[]> enrBytes, EnrFactory enrFactory, IdentityVerifierV4 verifier)
+    {
+        foreach (byte[] record in enrBytes)
+        {
+            if (!TryDecodeEnr(record, enrFactory, verifier, out IEnr? enr))
+            {
+                if (_logger.IsDebug) _logger.Warn($"Unable to decode enr: {record.ToHexString()}");
+                continue;
+            }
+
+            yield return (Lantern.Discv5.Enr.Enr)enr;
+        }
+    }
+
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
 
     public void InitializeChannel(IChannel channel)
@@ -272,16 +324,15 @@ public class DiscoveryV5App : IDiscoveryApp
 
         Task discoverTask = Task.Run(async () =>
         {
-            byte[] randomNodeId = new byte[32];
             while (!token.IsCancellationRequested)
             {
                 try
                 {
-                    List<Task> discoverTasks = new List<Task>();
-                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId));
+                    List<Task> discoverTasks = [DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId)];
 
                     for (int i = 0; i < RandomNodesToLookupCount; i++)
                     {
+                        byte[] randomNodeId = new byte[32];
                         random.NextBytes(randomNodeId);
                         discoverTasks.Add(DiscoverAsync(GetStartingNodes(), randomNodeId));
                     }
@@ -293,7 +344,7 @@ public class DiscoveryV5App : IDiscoveryApp
                     if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
                 }
             }
-        });
+        }, token);
 
         try
         {
@@ -314,6 +365,7 @@ public class DiscoveryV5App : IDiscoveryApp
         _discoveryDb.Clear();
 
         IWriteBatch? batch = null;
+
         try
         {
             foreach (IEnr enr in activeNodeEnrs)
@@ -327,15 +379,15 @@ public class DiscoveryV5App : IDiscoveryApp
             batch?.Dispose();
         }
 
-
         try
         {
             await _discv5Protocol.StopAsync();
         }
         catch (Exception ex)
         {
-            if (_logger.IsWarn) _logger.Warn($"Err stopping discv5: {ex}");
+            if (_logger.IsWarn) _logger.Warn($"Error when attempting to stop discv5: {ex}");
         }
+
         await _appShutdownSource.CancelAsync();
     }
 
@@ -343,7 +395,7 @@ public class DiscoveryV5App : IDiscoveryApp
 
     public void AddNodeToDiscovery(Node node)
     {
-        var routingTable = _serviceProvider.GetRequiredService<IRoutingTable>();
+        IRoutingTable routingTable = _serviceProvider.GetRequiredService<IRoutingTable>();
         routingTable.UpdateFromEnr(GetEnr(node));
     }
 }
