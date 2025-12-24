@@ -283,7 +283,12 @@ public class SnapshotBundle : IDisposable
         }
 
         long sw = Stopwatch.GetTimestamp();
-        value = _persistenceReader.GetSlot(address, index);
+
+        SlotValue outSlotValue = new SlotValue();
+
+        bool _ = _persistenceReader.TryGetSlot(address, index, ref outSlotValue);
+        value = outSlotValue.ToEvmBytes();
+
         if (value is null || value.Length == 0 || Bytes.AreEqual(value, StorageTree.ZeroBytes))
         {
             _slotPersistenceEmptyRead.Observe(Stopwatch.GetTimestamp() - sw);
@@ -298,15 +303,20 @@ public class SnapshotBundle : IDisposable
     public void SetChangedSlot(AddressAsKey address, in UInt256 index, byte[] value)
     {
         if (_forStateReader) throw new InvalidOperationException("Read only snapshot bundle");
-        long sw = Stopwatch.GetTimestamp();
         // Note: Hot path
-        _changedSlots[(address, index)] = SlotValue.FromSpanWithoutLeadingZero(value);
+
+        // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
+        // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
+        // lower down.
+        long sw = Stopwatch.GetTimestamp();
         if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
         {
+            _changedSlots[(address, index)] = null;
             _setSlotToZeroTime.Observe(Stopwatch.GetTimestamp() - sw);
         }
         else
         {
+            _changedSlots[(address, index)] = SlotValue.FromSpanWithoutLeadingZero(value);
             _setSlotTime.Observe(Stopwatch.GetTimestamp() - sw);
         }
     }

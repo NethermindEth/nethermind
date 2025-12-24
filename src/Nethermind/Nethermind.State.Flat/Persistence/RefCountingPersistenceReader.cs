@@ -37,9 +37,9 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
         return _innerReader.GetAccount(address);
     }
 
-    public byte[]? GetSlot(Address address, in UInt256 slot)
+    public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
     {
-        return _innerReader.GetSlot(address, in slot);
+        return _innerReader.TryGetSlot(address, in slot, ref outValue);
     }
 
     public StateId CurrentState => _innerReader.CurrentState;

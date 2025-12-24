@@ -299,7 +299,7 @@ public class PreimageRocksdbPersistence : IPersistence
         internal AccountDecoder _accountDecoder = AccountDecoder.Instance;
         private int _accountSpanBufferSize = 256;
         private int _slotSpanBufferSize = 40;
-        
+
         public Account? GetAccount(Address address)
         {
             ValueHash256 fakeHash = ValueKeccak.Zero;
@@ -316,7 +316,7 @@ public class PreimageRocksdbPersistence : IPersistence
             return _accountDecoder.Decode(ref ctx);
         }
 
-        public byte[]? GetSlot(Address address, in UInt256 slot)
+        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
         {
             ValueHash256 fakeHash = ValueKeccak.Zero;
             address.Bytes.CopyTo(fakeHash.BytesAsSpan);
@@ -328,10 +328,12 @@ public class PreimageRocksdbPersistence : IPersistence
             int responseSize = flatReader.GetStorage(fakeHash, fakeSlotHash, valueBuffer);
             if (responseSize == 0)
             {
-                return null;
+                return false;
             }
 
-            return valueBuffer[..responseSize].ToArray();
+            int offset = SlotValue.ByteCount - responseSize;
+            valueBuffer[..responseSize].CopyTo(outValue.AsSpan[offset..]);
+            return true;
         }
 
         public byte[]? GetAccountRaw(Hash256 addrHash)

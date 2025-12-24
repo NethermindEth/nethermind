@@ -15,6 +15,7 @@ public struct SlotValue
     public readonly Vector256<byte> _bytes; // Use Vector256 as the internal storage field
     public readonly Span<byte> AsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
     public readonly ReadOnlySpan<byte> AsReadOnlySpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
+    public const int ByteCount = 32;
 
     public SlotValue(ReadOnlySpan<byte> data)
     {

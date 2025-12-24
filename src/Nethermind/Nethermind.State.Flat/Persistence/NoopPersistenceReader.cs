@@ -19,9 +19,9 @@ public class NoopPersistenceReader: IPersistence.IPersistenceReader
         return null;
     }
 
-    public byte[]? GetSlot(Address address, in UInt256 slot)
+    public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
     {
-        return null;
+        return false;
     }
 
     public StateId CurrentState => new StateId(0, Keccak.EmptyTreeHash);

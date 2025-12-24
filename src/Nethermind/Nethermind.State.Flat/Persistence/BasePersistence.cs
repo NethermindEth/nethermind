@@ -46,7 +46,7 @@ public static class BasePersistence
     public interface IFlatReader
     {
         public Account? GetAccount(Address address);
-        public byte[]? GetSlot(Address address, in UInt256 slot);
+        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
         public byte[]? GetAccountRaw(Hash256 addrHash);
         public byte[]? GetStorageRaw(Hash256 addrHash, Hash256 slotHash);
     }
@@ -152,7 +152,7 @@ public static class BasePersistence
             return _accountDecoder.Decode(ref ctx);
         }
 
-        public byte[]? GetSlot(Address address, in UInt256 slot)
+        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
         {
             ValueHash256 slotHash = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(slot, slotHash.BytesAsSpan);
@@ -161,10 +161,12 @@ public static class BasePersistence
             int responseSize = flatReader.GetStorage(address.ToAccountPath, slotHash, valueBuffer);
             if (responseSize == 0)
             {
-                return null;
+                return false;
             }
 
-            return valueBuffer[..responseSize].ToArray();
+            int offset = SlotValue.ByteCount - responseSize;
+            valueBuffer[..responseSize].CopyTo(outValue.AsSpan[offset..]);
+            return true;
         }
 
         public byte[]? GetAccountRaw(Hash256 addrHash)
@@ -213,9 +215,9 @@ public static class BasePersistence
             return _flatReader.GetAccount(address);
         }
 
-        public byte[]? GetSlot(Address address, in UInt256 slot)
+        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
         {
-            return _flatReader.GetSlot(address, in slot);
+            return _flatReader.TryGetSlot(address, in slot, ref outValue);
         }
 
         public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
