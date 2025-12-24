@@ -822,9 +822,9 @@ public partial class EthRpcModule(
 
         return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize(new ForkConfigSummary
         {
-            Current = forkConfigCache[forks.Current.Id],
-            Next = forks.Next is null ? null : forkConfigCache[forks.Next.Value.Id],
-            Last = forks.Last is null ? null : forkConfigCache[forks.Last.Value.Id],
+            Current = showAllForks ? null : forkConfigCache[forks.Current.Id],
+            Next = showAllForks || forks.Next is null ? null : forkConfigCache[forks.Next.Value.Id],
+            Last = showAllForks || forks.Last is null ? null : forkConfigCache[forks.Last.Value.Id],
             All = allForkConfigs
         }, UnchangedDictionaryKeyOptions)));
 
