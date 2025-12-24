@@ -78,6 +78,7 @@ public class XdcModule : Module
             //Network
             .AddSingleton<IProtocolValidator, XdcProtocolValidator>()
             .AddSingleton<IHeaderDecoder, XdcHeaderDecoder>()
+            .AddSingleton(new BlockDecoder(new XdcHeaderDecoder()))
             ;
     }
 

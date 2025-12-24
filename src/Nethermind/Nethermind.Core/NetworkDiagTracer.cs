@@ -29,7 +29,7 @@ namespace Nethermind.Core
             _logger = logManager.GetClassLogger();
             Timer timer = new()
             {
-                Interval = 10000
+                Interval = 60000
             };
             timer.Elapsed += static (_, _) => DumpEvents();
             timer.Start();
@@ -51,7 +51,7 @@ namespace Nethermind.Core
             _events.Clear();
 
             string contents = stringBuilder.ToString();
-            File.AppendAllText(NetworkDiagTracerPath, contents);
+            File.WriteAllText(NetworkDiagTracerPath, contents);
             if (_logger.IsInfo) _logger.Info(contents);
         }
 
