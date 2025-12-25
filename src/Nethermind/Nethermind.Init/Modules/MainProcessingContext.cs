@@ -36,7 +36,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         {
             builder
                 // These are main block processing specific
-                .AddSingleton<IWorldStateScopeProvider>(new WorldStateScopeOperationLogger(worldStateManager.GlobalWorldState, logManager))
+                // .AddSingleton<IWorldStateScopeProvider>(new WorldStateScopeOperationLogger(worldStateManager.GlobalWorldState, logManager))
+                .AddSingleton<IWorldStateScopeProvider>(worldStateManager.GlobalWorldState)
                 .AddModule(blockValidationModules)
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)

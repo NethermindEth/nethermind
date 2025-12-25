@@ -481,6 +481,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             get
             {
+                if (BlockChange.HasClear) return Keccak.EmptyTreeHash;
+
                 EnsureStorageTree();
                 return _backend.RootHash;
             }
