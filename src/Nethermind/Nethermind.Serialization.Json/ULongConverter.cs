@@ -78,10 +78,7 @@ namespace Nethermind.Serialization.Json
             }
         }
 
-        public override ulong Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
-            JsonSerializerOptions options)
+        internal static ulong ReadCore(ref Utf8JsonReader reader)
         {
             if (reader.TokenType == JsonTokenType.Number)
             {
@@ -100,6 +97,14 @@ namespace Nethermind.Serialization.Json
             }
 
             throw new JsonException();
+        }
+
+        public override ulong Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
+        {
+            return ReadCore(ref reader);
         }
     }
 }

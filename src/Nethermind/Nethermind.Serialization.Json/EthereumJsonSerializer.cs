@@ -94,8 +94,8 @@ namespace Nethermind.Serialization.Json
                     new BigIntegerConverter(),
                     new NullableBigIntegerConverter(),
                     new JavaScriptObjectConverter(),
-                    new PublicKeyConverter(),
                     new PublicKeyHashedConverter(),
+                    new PublicKeyConverter(),
                     new ValueHash256Converter(_strictHexFormat),
                     new Hash256Converter(_strictHexFormat),
                 }

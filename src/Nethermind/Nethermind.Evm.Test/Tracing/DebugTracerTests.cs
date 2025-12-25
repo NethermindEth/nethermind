@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #if DEBUG
+using System;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
 using System.Threading;
@@ -9,17 +10,31 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.Debugger;
 using Nethermind.Core;
+using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm.Test;
 
 public class DebugTracerTests : VirtualMachineTestsBase
 {
+    private static readonly TimeSpan ThreadJoinTimeout = TimeSpan.FromSeconds(5);
     private GethLikeTxMemoryTracer GethLikeTxTracer => new(Build.A.Transaction.TestObject, GethTraceOptions.Default);
 
     [SetUp]
     public override void Setup()
     {
         base.Setup();
+    }
+
+    private void ExecuteSafe(DebugTracer tracer, byte[] bytecode)
+    {
+        try
+        {
+            Execute(tracer, bytecode);
+        }
+        catch (ThreadInterruptedException)
+        {
+            // Expected when test aborts the thread
+        }
     }
 
     [TestCase("0x5b601760005600")]
@@ -39,7 +54,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         tracer.SetBreakPoint(JUMP_OPCODE_PTR_BREAK_POINT);
 
         // we set the break point to BREAK_POINT
-        Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         // we run the bytecode for <confidenceLevelDesired> iteration and check how many times we stopped at BREAK_POINT
@@ -69,6 +84,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
 
         }
 
+        vmThread.Join(ThreadJoinTimeout);
         Assert.That(TestFailed, Is.False);
     }
 
@@ -91,7 +107,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             return state.DataStackHead == 23;
         });
 
-        Thread vmThread = new(() => Execute(tracer, bytecode));
+        Thread vmThread = new(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         // we run the bytecode for <confidenceLevelDesired> iteration and check how many times we stopped at BREAK_POINT
@@ -121,6 +137,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             }
         }
 
+        vmThread.Join(ThreadJoinTimeout);
         Assert.That(TestFailed, Is.False);
     }
 
@@ -136,7 +153,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             IsStepByStepModeOn = true,
         };
 
-        Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         int countBreaks = 0;
@@ -152,6 +169,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             }
         }
 
+        vmThread.Join(ThreadJoinTimeout);
         countBreaks--; //Pre-run break
 
         // we check that it matches the number of opcodes in the bytecode
@@ -170,7 +188,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             IsStepByStepModeOn = true,
         };
 
-        Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         int countBreaks = 0;
@@ -185,6 +203,8 @@ public class DebugTracerTests : VirtualMachineTestsBase
                 tracer.MoveNext(executeOneStep: false);
             }
         }
+
+        vmThread.Join(ThreadJoinTimeout);
 
         // we check that it matches the number of opcodes in the bytecode
         Assert.That(countBreaks, Is.EqualTo(1));
@@ -205,7 +225,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
 
         tracer.SetBreakPoint(BREAKPOINT);
 
-        Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         int countBreaks = -1; // not counting the post-run stop
@@ -220,6 +240,8 @@ public class DebugTracerTests : VirtualMachineTestsBase
                 tracer.MoveNext(executeOneStep: true);
             }
         }
+
+        vmThread.Join(ThreadJoinTimeout);
 
         // we check that it matches the number of opcodes in the bytecode
         Assert.That(countBreaks, Is.EqualTo(bytecode.Length - BREAKPOINT.pc));
@@ -239,7 +261,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
 
         tracer.SetBreakPoint(JUMP_OPCODE_PTR_BREAK_POINT);
 
-        Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         while (vmThread.IsAlive)
@@ -250,6 +272,8 @@ public class DebugTracerTests : VirtualMachineTestsBase
                 tracer.MoveNext();
             }
         }
+
+        vmThread.Join(ThreadJoinTimeout);
 
         // we check if bytecode execution failed
         var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
@@ -270,7 +294,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
 
         tracer.SetBreakPoint(JUMP_OPCODE_PTR_BREAK_POINT);
 
-        Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         while (vmThread.IsAlive)
@@ -285,6 +309,8 @@ public class DebugTracerTests : VirtualMachineTestsBase
                 tracer.MoveNext();
             }
         }
+
+        vmThread.Join(ThreadJoinTimeout);
 
         // we check if bytecode execution failed
         var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
@@ -305,7 +331,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
 
         tracer.SetBreakPoint(MSTORE_OPCODE_PTR_BREAK_POINT);
 
-        Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         while (vmThread.IsAlive)
@@ -313,11 +339,13 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 // we alter the value stored in memory to force EQ check at the end to fail
-                tracer.CurrentState.Memory.SaveByte(31, 0x0A);
+                tracer.CurrentState.Memory.TrySaveByte(31, 0x0A);
 
                 tracer.MoveNext();
             }
         }
+
+        vmThread.Join(ThreadJoinTimeout);
 
         // we check if bytecode execution failed
         var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
@@ -344,7 +372,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         tracer.SetBreakPoint(MSTORE_OPCODE_PTR_BREAK_POINT);
         tracer.SetBreakPoint(POST_MSTORE_OPCODE_PTR_BREAK_POINT);
 
-        Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         long? gasAvailable_pre_MSTORE = null;
@@ -353,15 +381,17 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 // we alter the value stored in memory to force EQ check at the end to fail
-                if (gasAvailable_pre_MSTORE is null) gasAvailable_pre_MSTORE = tracer.CurrentState.GasAvailable;
+                if (gasAvailable_pre_MSTORE is null) gasAvailable_pre_MSTORE = EthereumGasPolicy.GetRemainingGas(tracer.CurrentState.Gas);
                 else
                 {
-                    long gasAvailable_post_MSTORE = tracer.CurrentState.GasAvailable;
+                    long gasAvailable_post_MSTORE = EthereumGasPolicy.GetRemainingGas(tracer.CurrentState.Gas);
                     Assert.That(gasAvailable_pre_MSTORE - gasAvailable_post_MSTORE, Is.EqualTo(GasCostOf.VeryLow));
                 }
                 tracer.MoveNext();
             }
         }
+
+        vmThread.Join(ThreadJoinTimeout);
     }
 
     [TestCase("ef601700")]
@@ -375,7 +405,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             IsStepByStepModeOn = true,
         };
 
-        Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         while (vmThread.IsAlive)
@@ -385,6 +415,8 @@ public class DebugTracerTests : VirtualMachineTestsBase
                 tracer.MoveNext();
             }
         }
+
+        vmThread.Join(ThreadJoinTimeout);
 
         // we check if bytecode execution failed
         var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
@@ -403,7 +435,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
 
         tracer.SetBreakPoint(TARGET_OPCODE_PTR_BREAK_POINT);
 
-        Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         bool stoppedAtCorrectBreakpoint = false;
@@ -423,6 +455,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             }
         }
 
+        vmThread.Join(ThreadJoinTimeout);
         Assert.That(stoppedAtCorrectBreakpoint, Is.True);
     }
 
@@ -437,7 +470,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
 
         tracer.SetCondition(state => state.DataStackHead == DATA_STACK_HEIGHT);
 
-        Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         bool stoppedAtLeastOneTime = false;
@@ -451,6 +484,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             }
         }
 
+        vmThread.Join(ThreadJoinTimeout);
         Assert.That(stoppedAtLeastOneTime, Is.True);
     }
 
@@ -464,7 +498,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
 
         tracer.SetBreakPoint(TARGET_OPCODE_PTR_BREAK_POINT);
 
-        Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+        Thread vmThread = new Thread(() => ExecuteSafe(tracer, bytecode));
         vmThread.Start();
 
         bool stoppedAtCorrectBreakpoint = false;
@@ -477,6 +511,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             }
         }
 
+        vmThread.Join(ThreadJoinTimeout);
         Assert.That(stoppedAtCorrectBreakpoint, Is.False);
     }
 }
