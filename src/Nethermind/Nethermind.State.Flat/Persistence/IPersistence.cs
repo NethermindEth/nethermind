@@ -28,8 +28,7 @@ public interface IPersistence
     public interface IWriteBatch: IDisposable
     {
         int SelfDestruct(Address addr);
-        void RemoveAccount(Address addr);
-        void SetAccount(Address addr, Account account);
+        void SetAccount(Address addr, Account? account);
         void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
         void SetTrieNodes(Hash256? address, in TreePath path, TrieNode tnValue);
 

@@ -306,7 +306,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Remove account
         using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.RemoveAccount(address);
+            writer.SetAccount(address, null);
         }
 
         // Verify account is removed (storage should remain unless explicitly removed)

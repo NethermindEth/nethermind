@@ -53,9 +53,7 @@ public static class BasePersistence
     {
         public int SelfDestruct(Address addr);
 
-        public void RemoveAccount(Address addr);
-
-        public void SetAccount(Address addr, Account account);
+        public void SetAccount(Address addr, Account? account);
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
 
@@ -88,13 +86,14 @@ public static class BasePersistence
             return flatWriteBatch.SelfDestruct(accountPath);
         }
 
-        public void RemoveAccount(Address addr)
+        public void SetAccount(Address addr, Account? account)
         {
-            flatWriteBatch.RemoveAccount(addr.ToAccountPath);
-        }
+            if (account is null)
+            {
+                flatWriteBatch.RemoveAccount(addr.ToAccountPath);
+                return;
+            }
 
-        public void SetAccount(Address addr, Account account)
-        {
             using var stream = _accountDecoder.EncodeToNewNettyStream(account);
             flatWriteBatch.SetAccount(addr.ToAccountPath, stream.AsSpan());
         }
@@ -237,12 +236,7 @@ public static class BasePersistence
             return removed;
         }
 
-        public void RemoveAccount(Address addr)
-        {
-            _flatWriter.RemoveAccount(addr);
-        }
-
-        public void SetAccount(Address addr, Account account)
+        public void SetAccount(Address addr, Account? account)
         {
             _flatWriter.SetAccount(addr, account);
         }

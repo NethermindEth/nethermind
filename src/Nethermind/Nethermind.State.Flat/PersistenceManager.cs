@@ -367,10 +367,7 @@ public class PersistenceManager: IAsyncDisposable
             foreach (var kv in snapshot.Accounts)
             {
                 (AddressAsKey addr, Account? account) = kv;
-                if (account is null)
-                    batch.RemoveAccount(addr);
-                else
-                    batch.SetAccount(addr, account);
+                batch.SetAccount(addr, account);
             }
             _flatdiffimes.WithLabels("persistence", "accounts").Observe(Stopwatch.GetTimestamp() - sw);
             sw = Stopwatch.GetTimestamp();
