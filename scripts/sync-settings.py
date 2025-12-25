@@ -140,7 +140,7 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
     with open(f'{CONFIGS_PATH}/{configuration}.json', 'r') as mainnetCfg:
         data = json.load(mainnetCfg)
 
-    data['Sync']['PivotNumber'] = baseBlock
+    data['Sync']['PivotNumber'] = int(baseBlock)
     data['Sync']['PivotHash'] = pivotHash
 
     if not isPoS:
