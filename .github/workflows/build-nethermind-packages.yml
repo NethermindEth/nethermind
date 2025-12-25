@@ -11,10 +11,9 @@ jobs:
       PACKAGE_DIR: pkg
       PACKAGE_RETENTION: 7
       PUB_DIR: pub
-      SCRIPTS_PATH: ${{ github.workspace }}/scripts/build
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Detect version
         id: version
@@ -22,23 +21,21 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install xmlstarlet -y --no-install-recommends
           version_prefix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" Directory.Build.props)
-          version_suffix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionSuffix" Directory.Build.props)
+          version_suffix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionSuffix" -n Directory.Build.props)
           version=$([[ -n "$version_suffix" ]] && echo "$version_prefix-$version_suffix" || echo "$version_prefix")
           echo "Detected version $version"
           echo "PACKAGE_PREFIX=nethermind-$version-${GITHUB_SHA:0:8}" >> $GITHUB_ENV
 
       - name: Build Nethermind.Runner
         run: |
-          mkdir $GITHUB_WORKSPACE/$PUB_DIR
-
-          docker build . -t nethermind-build -f $SCRIPTS_PATH/Dockerfile \
+          mkdir $PUB_DIR
+          docker build . -t nethermind-build -f scripts/build/Dockerfile \
             --build-arg COMMIT_HASH=$GITHUB_SHA \
             --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
-
-          docker run --rm --mount type=bind,source=$GITHUB_WORKSPACE/$PUB_DIR,target=/output nethermind-build
+          docker run --rm --mount type=bind,source=./$PUB_DIR,target=/output nethermind-build
 
       - name: Archive packages
-        run: $SCRIPTS_PATH/archive.sh
+        run: scripts/build/archive.sh
 
       - name: Upload Nethermind Linux arm64 package
         uses: actions/upload-artifact@v4

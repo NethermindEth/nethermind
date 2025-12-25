@@ -18,8 +18,14 @@ namespace Nethermind.Db
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
 
+#if ZK
+        private readonly Dictionary<byte[], byte[]?> _db;
+        private readonly Dictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
+#else
         private readonly ConcurrentDictionary<byte[], byte[]?> _db;
         private readonly ConcurrentDictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
+#endif
+
 
         public MemDb(string name)
             : this(0, 0)
@@ -46,11 +52,15 @@ namespace Nethermind.Db
         {
             _writeDelay = writeDelay;
             _readDelay = readDelay;
+#if ZK
+            _db = new Dictionary<byte[], byte[]>(Bytes.EqualityComparer);
+#else
             _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
+#endif
             _spanDb = _db.GetAlternateLookup<ReadOnlySpan<byte>>();
         }
 
-        public string Name { get; }
+        public string Name { get; } = nameof(MemDb);
 
         public virtual byte[]? this[ReadOnlySpan<byte> key]
         {
@@ -80,22 +90,18 @@ namespace Nethermind.Db
 
         public virtual void Remove(ReadOnlySpan<byte> key)
         {
+#if ZK
+            _spanDb.Remove(key);
+#else
             _spanDb.TryRemove(key, out _);
+#endif
         }
 
-        public bool KeyExists(ReadOnlySpan<byte> key)
-        {
-            return _spanDb.ContainsKey(key);
-        }
-
-        public IDb Innermost => this;
+        public bool KeyExists(ReadOnlySpan<byte> key) => _spanDb.ContainsKey(key);
 
         public virtual void Flush(bool onlyWal = false) { }
 
-        public void Clear()
-        {
-            _db.Clear();
-        }
+        public void Clear() => _db.Clear();
 
         public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => ordered ? OrderedDb : _db;
 
@@ -103,35 +109,20 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => ordered ? OrderedDb.Select(kvp => kvp.Value) : Values;
 
-        public virtual IWriteBatch StartWriteBatch()
-        {
-            return this.LikeABatch();
-        }
+        public virtual IWriteBatch StartWriteBatch() => this.LikeABatch();
 
         public ICollection<byte[]> Keys => _db.Keys;
         public ICollection<byte[]> Values => _db.Values;
 
         public int Count => _db.Count;
 
-        public static long GetSize() => 0;
-        public static long GetCacheSize(bool includeCacheSize) => 0;
-        public static long GetIndexSize() => 0;
-        public static long GetMemtableSize() => 0;
-
-        public void Dispose()
-        {
-        }
+        public void Dispose() { }
 
         public bool PreferWriteByArray => true;
 
-        public virtual Span<byte> GetSpan(ReadOnlySpan<byte> key)
-        {
-            return Get(key).AsSpan();
-        }
+        public virtual Span<byte> GetSpan(ReadOnlySpan<byte> key) => Get(key).AsSpan();
 
-        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
-        {
-        }
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
 
         public virtual byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
@@ -154,19 +145,13 @@ namespace Nethermind.Db
             WritesCount++;
             if (value is null)
             {
-                _spanDb.TryRemove(key, out _);
+                Remove(key);
                 return;
             }
             _spanDb[key] = value;
         }
 
-        public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false)
-        {
-            return new IDbMeta.DbMetric()
-            {
-                Size = Count
-            };
-        }
+        public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false) => new() { Size = Count };
 
         private IEnumerable<KeyValuePair<byte[], byte[]?>> OrderedDb => _db.OrderBy(kvp => kvp.Key, Bytes.Comparer);
     }

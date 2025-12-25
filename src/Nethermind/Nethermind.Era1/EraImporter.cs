@@ -18,6 +18,7 @@ using Nethermind.Logging;
 
 
 namespace Nethermind.Era1;
+
 public class EraImporter(
     IFileSystem fileSystem,
     IBlockTree blockTree,
@@ -48,7 +49,7 @@ public class EraImporter(
             trustedAccumulators = (await fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation)).Select(EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry).ToHashSet();
         }
 
-        IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators);
+        using IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators);
 
         long lastBlockInStore = eraStore.LastBlock;
         if (to == 0) to = long.MaxValue;

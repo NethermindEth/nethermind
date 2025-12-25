@@ -25,6 +25,7 @@ using NUnit.Framework;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Buffers;
@@ -44,22 +45,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof;
 // [TestFixture(true, true)] TODO fix or remove test?
 [TestFixture(true, false)]
 [TestFixture(false, false)]
-public class ProofRpcModuleTests
+public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice)
 {
-    private readonly bool _createSystemAccount;
-    private readonly bool _useNonZeroGasPrice;
     private IProofRpcModule _proofRpcModule = null!;
     private IBlockTree _blockTree = null!;
     private IDbProvider _dbProvider = null!;
     private TestSpecProvider _specProvider = null!;
     private WorldStateManager _worldStateManager = null!;
     private IContainer _container;
-
-    public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
-    {
-        _createSystemAccount = createSystemAccount;
-        _useNonZeroGasPrice = useNonZeroGasPrice;
-    }
 
     [SetUp]
     public async Task Setup()
@@ -68,7 +61,7 @@ public class ProofRpcModuleTests
         _worldStateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(_dbProvider, LimboLogs.Instance);
 
         Hash256 stateRoot;
-        IWorldState worldState = _worldStateManager.GlobalWorldState;
+        IWorldState worldState = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
         using (var _ = worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(TestItem.AddressA, 100000);
@@ -79,10 +72,10 @@ public class ProofRpcModuleTests
 
         InMemoryReceiptStorage receiptStorage = new();
         _specProvider = new TestSpecProvider(London.Instance);
-        _blockTree = Build.A.BlockTree(new Block(Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject, new BlockBody()), _specProvider)
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(new Block(Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject, new BlockBody()), _specProvider)
             .WithTransactions(receiptStorage)
-            .OfChainLength(10)
-            .TestObject;
+            .OfChainLength(10);
+        _blockTree = blockTreeBuilder.TestObject;
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))
@@ -90,6 +83,7 @@ public class ProofRpcModuleTests
             .AddSingleton<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), _specProvider, LimboLogs.Instance)))
             .AddSingleton<IBlockTree>(_blockTree)
             .AddSingleton<IDbProvider>(_dbProvider)
+            .AddSingleton<IHeaderFinder>(blockTreeBuilder.HeaderStore)
             .AddSingleton<IReceiptStorage>(receiptStorage)
             .AddSingleton<IWorldStateManager>(_worldStateManager)
             .Build();
@@ -176,14 +170,7 @@ public class ProofRpcModuleTests
         Assert.That(receiptWithProof.Receipt, Is.Not.Null);
         Assert.That(receiptWithProof.ReceiptProof.Length, Is.EqualTo(2));
 
-        if (withHeader)
-        {
-            Assert.That(receiptWithProof.BlockHeader, Is.Not.Null);
-        }
-        else
-        {
-            Assert.That(receiptWithProof.BlockHeader, Is.Null);
-        }
+        Assert.That(receiptWithProof.BlockHeader, withHeader ? Is.Not.Null : Is.Null);
 
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, withHeader);
         response.Should().Be(expectedResult);
@@ -274,7 +261,7 @@ public class ProofRpcModuleTests
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB,
-            GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
+            GasPrice = useNonZeroGasPrice ? 10.GWei() : 0
         };
 
         _proofRpcModule.proof_call(tx, new BlockParameter(block.Number));
@@ -297,7 +284,7 @@ public class ProofRpcModuleTests
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB,
-            GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
+            GasPrice = useNonZeroGasPrice ? 10.GWei() : 0
         };
         _proofRpcModule.proof_call(tx, new BlockParameter(block.Hash!));
 
@@ -320,14 +307,14 @@ public class ProofRpcModuleTests
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB,
-            GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
+            GasPrice = useNonZeroGasPrice ? 10.GWei() : 0
         };
 
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", tx, new { blockHash = block.Hash, requireCanonical = true });
         Assert.That(response.Contains("-32000"), Is.True);
 
         response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", tx, new { blockHash = TestItem.KeccakG, requireCanonical = true });
-        Assert.That(response.Contains("-32001"), Is.True);
+        Assert.That(response.Contains(ErrorCodes.ResourceNotFound.ToString()), Is.True);
     }
 
     [TestCase]
@@ -376,7 +363,7 @@ public class ProofRpcModuleTests
             .Done;
 
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(2));
     }
 
     [TestCase]
@@ -389,7 +376,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.SLOAD)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(2));
     }
 
     [TestCase]
@@ -402,7 +389,7 @@ public class ProofRpcModuleTests
             .Done;
 
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(2));
     }
 
     [TestCase]
@@ -416,17 +403,17 @@ public class ProofRpcModuleTests
             .Op(Instruction.EXTCODECOPY)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3));
     }
 
     [TestCase]
-    public async Task Can_call_with_extcodecopy_to_system_account()
+    public async Task Can_call_with_extcodecopy_to_zero_account()
     {
         byte[] code = Prepare.EvmCode
             .PushData("0x20")
             .PushData("0x00")
             .PushData("0x00")
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .Op(Instruction.EXTCODECOPY)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
@@ -441,14 +428,14 @@ public class ProofRpcModuleTests
             .Op(Instruction.EXTCODESIZE)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3));
     }
 
     [TestCase]
-    public async Task Can_call_with_extcodesize_to_system_account()
+    public async Task Can_call_with_extcodesize_to_zero_account()
     {
         byte[] code = Prepare.EvmCode
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .Op(Instruction.EXTCODESIZE)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
@@ -464,15 +451,15 @@ public class ProofRpcModuleTests
             .Op(Instruction.EXTCODEHASH)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3));
     }
 
     [TestCase]
-    public async Task Can_call_with_extcodehash_to_system_account()
+    public async Task Can_call_with_extcodehash_to_zero_account()
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .Op(Instruction.EXTCODEHASH)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
@@ -487,7 +474,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.STOP)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(2));
     }
 
     [TestCase]
@@ -500,7 +487,7 @@ public class ProofRpcModuleTests
             .Done;
 
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3 + (useNonZeroGasPrice ? 1 : 0)));
     }
 
     [TestCase]
@@ -512,15 +499,15 @@ public class ProofRpcModuleTests
             .Done;
 
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(2));
     }
 
     [TestCase]
-    public async Task Can_call_with_balance_of_system_account()
+    public async Task Can_call_with_balance_of_zero_account()
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .Op(Instruction.BALANCE)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
@@ -528,7 +515,7 @@ public class ProofRpcModuleTests
     }
 
     [TestCase]
-    public async Task Can_call_with_call_to_system_account_with_zero_value()
+    public async Task Can_call_with_call_to_zero_account_with_zero_value()
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
@@ -537,7 +524,7 @@ public class ProofRpcModuleTests
             .PushData(0)
             .PushData(0)
             .PushData(0)
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .PushData(1000000)
             .Op(Instruction.CALL)
             .Done;
@@ -546,7 +533,7 @@ public class ProofRpcModuleTests
     }
 
     [TestCase]
-    public async Task Can_call_with_static_call_to_system_account()
+    public async Task Can_call_with_static_call_to_zero_account()
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
@@ -554,7 +541,7 @@ public class ProofRpcModuleTests
             .PushData(0)
             .PushData(0)
             .PushData(0)
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .PushData(1000000)
             .Op(Instruction.STATICCALL)
             .Done;
@@ -563,7 +550,7 @@ public class ProofRpcModuleTests
     }
 
     [TestCase]
-    public async Task Can_call_with_delegate_call_to_system_account()
+    public async Task Can_call_with_delegate_call_to_zero_account()
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
@@ -571,7 +558,7 @@ public class ProofRpcModuleTests
             .PushData(0)
             .PushData(0)
             .PushData(0)
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .PushData(1000000)
             .Op(Instruction.DELEGATECALL)
             .Done;
@@ -580,7 +567,7 @@ public class ProofRpcModuleTests
     }
 
     [TestCase]
-    public async Task Can_call_with_call_to_system_account_with_non_zero_value()
+    public async Task Can_call_with_call_to_zero_account_with_non_zero_value()
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
@@ -589,7 +576,7 @@ public class ProofRpcModuleTests
             .PushData(0)
             .PushData(0)
             .PushData(1)
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .PushData(1000000)
             .Op(Instruction.CALL)
             .Done;
@@ -612,7 +599,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.CALL)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3));
     }
 
     [TestCase]
@@ -629,7 +616,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.STATICCALL)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3));
     }
 
     [TestCase]
@@ -646,7 +633,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.DELEGATECALL)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(_createSystemAccount && _useNonZeroGasPrice ? 3 : 2));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3));
     }
 
     [TestCase]
@@ -664,7 +651,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.CALL)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3 + (useNonZeroGasPrice ? 1 : 0)));
     }
 
     [TestCase]
@@ -677,15 +664,15 @@ public class ProofRpcModuleTests
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
 
-        Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(3 + (useNonZeroGasPrice ? 1 : 0)));
     }
 
     [TestCase]
-    public async Task Can_call_with_self_destruct_to_system_account()
+    public async Task Can_call_with_self_destruct_to_zero_account()
     {
         _specProvider.NextForkSpec = MuirGlacier.Instance;
         byte[] code = Prepare.EvmCode
-            .PushData(Address.SystemUser)
+            .PushData(Address.Zero)
             .Op(Instruction.SELFDESTRUCT)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
@@ -705,7 +692,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.SSTORE)
             .Done;
         CallResultWithProof result = await TestCallWithCode(code);
-        Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+        Assert.That(result.Accounts.Length, Is.EqualTo(2));
     }
 
     [TestCase]
@@ -755,7 +742,7 @@ public class ProofRpcModuleTests
             .Op(Instruction.SSTORE)
             .Done;
 
-        await TestCallWithStorageAndCode(code, _useNonZeroGasPrice ? 10.GWei() : 0);
+        await TestCallWithStorageAndCode(code, useNonZeroGasPrice ? 10.GWei() : 0);
     }
 
     [TestCase]
@@ -798,7 +785,7 @@ public class ProofRpcModuleTests
         {
             From = from,
             To = TestItem.AddressB,
-            GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
+            GasPrice = useNonZeroGasPrice ? 10.GWei() : 0
         };
 
         CallResultWithProof callResultWithProof = _proofRpcModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
@@ -846,7 +833,7 @@ public class ProofRpcModuleTests
 
         TransactionForRpc tx = new LegacyTransactionForRpc
         {
-            // we are testing system transaction here when From is null
+            // we are testing transaction from zero address here when From is null
             From = from,
             To = TestItem.AddressB,
             GasPrice = gasPrice,
@@ -897,7 +884,7 @@ public class ProofRpcModuleTests
 
     private (IWorldState, Hash256) CreateInitialState(byte[]? code)
     {
-        IWorldState stateProvider = _worldStateManager.GlobalWorldState;
+        IWorldState stateProvider = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
@@ -908,9 +895,9 @@ public class ProofRpcModuleTests
             AddCode(stateProvider, TestItem.AddressB, code);
         }
 
-        if (_createSystemAccount)
+        if (createZeroAccount)
         {
-            AddAccount(stateProvider, Address.SystemUser, 1.Ether());
+            AddAccount(stateProvider, Address.Zero, 1.Ether());
         }
 
         stateProvider.CommitTree(0);

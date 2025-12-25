@@ -149,4 +149,23 @@ public class BlockDecoderTests
         BlockDecoder decoder = new();
         Assert.That(decoder.GetLength(null, RlpBehaviors.None), Is.EqualTo(1));
     }
+
+    public static byte[][] MalformedInput =
+    [
+        [0xFF, 0xFF],  // Bug #001 original.
+        [0xF8, 0xFF],  // Long list prefix, no length.
+        [0xB8, 0xFF],  // Long string prefix, no length.
+        "\0\0"u8.ToArray() // Invalid prefix.
+    ];
+
+    /// <summary>
+    /// Fuzz-generated edge case: Very short truncated input.
+    /// </summary>
+    [TestCaseSource(nameof(MalformedInput))]
+    public void Rejects_malformed_input(byte[] input)
+    {
+        BlockDecoder decoder = new();
+        RlpStream rlpStream = new(input);
+        Assert.Throws<RlpException>(() => decoder.Decode(rlpStream));
+    }
 }

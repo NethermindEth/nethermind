@@ -14,44 +14,54 @@ namespace Nethermind.Core.Test;
 
 public static class TestWorldStateFactory
 {
-    public static IWorldState CreateForTest()
+    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null)
     {
-        return CreateForTest(TestMemDbProvider.Init(), LimboLogs.Instance);
-    }
-
-    public static IWorldState CreateForTest(IDbProvider dbProvider, ILogManager logManager)
-    {
-        IPruningTrieStore trieStore = new TrieStore(
+        PruningConfig pruningConfig = new PruningConfig();
+        TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
+        dbProvider ??= TestMemDbProvider.Init();
+        logManager ??= LimboLogs.Instance;
+        TrieStore trieStore = new TrieStore(
             new NodeStorage(dbProvider.StateDb),
             No.Pruning,
             Persist.EveryBlock,
-            new PruningConfig(),
+            finalizedStateProvider,
+            pruningConfig,
             LimboLogs.Instance);
-        return new WorldState(trieStore, dbProvider.CodeDb, logManager);
+        finalizedStateProvider.TrieStore = trieStore;
+        return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
     }
 
     public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)
     {
         if (dbProvider is null) dbProvider = TestMemDbProvider.Init();
         if (logManager is null) logManager = LimboLogs.Instance;
-        IPruningTrieStore trieStore = new TrieStore(
+
+        PruningConfig pruningConfig = new PruningConfig();
+        TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
+        TrieStore trieStore = new TrieStore(
             new NodeStorage(dbProvider.StateDb),
             No.Pruning,
             Persist.EveryBlock,
-            new PruningConfig(),
+            finalizedStateProvider,
+            pruningConfig,
             LimboLogs.Instance);
-        return (new WorldState(trieStore, dbProvider.CodeDb, logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
+        finalizedStateProvider.TrieStore = trieStore;
+        return (new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
     }
 
     public static WorldStateManager CreateWorldStateManagerForTest(IDbProvider dbProvider, ILogManager logManager)
     {
-        IPruningTrieStore trieStore = new TrieStore(
+        PruningConfig pruningConfig = new PruningConfig();
+        TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
+        TrieStore trieStore = new TrieStore(
             new NodeStorage(dbProvider.StateDb),
             No.Pruning,
             Persist.EveryBlock,
-            new PruningConfig(),
+            finalizedStateProvider,
+            pruningConfig,
             LimboLogs.Instance);
-        var worldState = new WorldState(trieStore, dbProvider.CodeDb, logManager);
+        finalizedStateProvider.TrieStore = trieStore;
+        var worldState = new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager);
 
         return new WorldStateManager(worldState, trieStore, dbProvider, logManager);
     }

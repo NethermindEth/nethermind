@@ -37,7 +37,7 @@ public abstract class VirtualMachineTestsBase
     private IDb _stateDb;
     private IDisposable _worldStateCloser;
 
-    protected VirtualMachine Machine { get; private set; }
+    protected EthereumVirtualMachine Machine { get; private set; }
     protected CodeInfoRepository CodeInfoRepository { get; private set; }
     protected IWorldState TestState { get; private set; }
     protected static Address Contract { get; } = new("0xd75a3a95360e44a3874e691fb48d77855f127069");
@@ -72,8 +72,8 @@ public abstract class VirtualMachineTestsBase
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         CodeInfoRepository = new EthereumCodeInfoRepository(TestState);
-        Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
-        _processor = new TransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
+        Machine = new EthereumVirtualMachine(blockhashProvider, SpecProvider, logManager);
+        _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }
 
     [TearDown]
@@ -118,14 +118,13 @@ public abstract class VirtualMachineTestsBase
     /// <summary>
     /// deprecated. Please use activation instead of blockNumber.
     /// </summary>
-    protected TestAllTracerWithOutput Execute(long blockNumber, params byte[] code)
-    {
-        return Execute((blockNumber, Timestamp), code);
-    }
+    protected TestAllTracerWithOutput Execute(long blockNumber, params byte[] code) => Execute((blockNumber, Timestamp), code);
 
-    protected TestAllTracerWithOutput Execute(ForkActivation activation, params byte[] code)
+    protected TestAllTracerWithOutput Execute(ForkActivation activation, params byte[] code) => Execute(activation, 100000, code);
+
+    protected TestAllTracerWithOutput Execute(ForkActivation activation, long gasLimit, params byte[] code)
     {
-        (Block block, Transaction transaction) = PrepareTx(activation, 100000, code);
+        (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code);
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
@@ -139,14 +138,9 @@ public abstract class VirtualMachineTestsBase
         return tracer;
     }
 
-    protected TestAllTracerWithOutput Execute(params byte[] code)
-    {
-        return Execute(Activation, code);
-    }
-    protected TestAllTracerWithOutput Execute(Transaction tx)
-    {
-        return Execute(Activation, tx);
-    }
+    protected TestAllTracerWithOutput Execute(params byte[] code) => Execute(Activation, code);
+
+    protected TestAllTracerWithOutput Execute(Transaction tx) => Execute(Activation, tx);
 
     protected virtual TestAllTracerWithOutput CreateTracer() => new();
 
@@ -203,9 +197,10 @@ public abstract class VirtualMachineTestsBase
         int value = 1,
         long blockGasLimit = DefaultBlockGasLimit,
         byte[][]? blobVersionedHashes = null,
-        ulong excessBlobGas = 0)
+        ulong excessBlobGas = 0,
+        ulong gasPrice = 1)
     {
-        return PrepareTx((blockNumber, Timestamp), gasLimit, code, senderRecipientAndMiner, value, blockGasLimit, blobVersionedHashes, excessBlobGas);
+        return PrepareTx((blockNumber, Timestamp), gasLimit, code, senderRecipientAndMiner, value, blockGasLimit, blobVersionedHashes, excessBlobGas, gasPrice: gasPrice);
     }
 
     protected (Block block, Transaction transaction) PrepareTx(
@@ -217,7 +212,8 @@ public abstract class VirtualMachineTestsBase
         long blockGasLimit = DefaultBlockGasLimit,
         byte[][]? blobVersionedHashes = null,
         ulong excessBlobGas = 0,
-        Transaction transaction = null)
+        Transaction transaction = null,
+        ulong gasPrice = 1)
     {
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
 
@@ -249,7 +245,7 @@ public abstract class VirtualMachineTestsBase
 
         transaction ??= Build.A.Transaction
             .WithGasLimit(gasLimit)
-            .WithGasPrice(1)
+            .WithGasPrice(gasPrice)
             .WithValue(value)
             .WithBlobVersionedHashes(blobVersionedHashes)
             .WithNonce(TestState.GetNonce(senderRecipientAndMiner.Sender))
@@ -267,7 +263,7 @@ public abstract class VirtualMachineTestsBase
     /// deprecated. Please use activation instead of blockNumber.
     /// </summary>
     protected (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code,
-        byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null)
+        byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null, ulong gasPrice = 1)
     {
         return PrepareTx((blockNumber, Timestamp), gasLimit, code, input, value, senderRecipientAndMiner);
     }

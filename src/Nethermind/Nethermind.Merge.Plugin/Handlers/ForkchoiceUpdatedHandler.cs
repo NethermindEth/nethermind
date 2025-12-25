@@ -284,6 +284,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             if (_logger.IsInfo) _logger.Info($"Synced Chain Head to {newHeadBlock.ToString(Block.Format.Short)}");
         }
 
+        _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
         return null;
     }
 
@@ -399,7 +400,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     }
 
 
-    private bool TryGetBranch(Block newHeadBlock, out Block[] blocks)
+    protected virtual bool TryGetBranch(Block newHeadBlock, out Block[] blocks)
     {
         List<Block> blocksList = new() { newHeadBlock };
         Block? predecessor = newHeadBlock;

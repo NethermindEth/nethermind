@@ -34,7 +34,7 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
         try
         {
             return inputData.Length >= 96
-                ? DataGasCostInternal(inputData.Span.Slice(0, 96), inputData, releaseSpec)
+                ? DataGasCostInternal(inputData.Span.Slice(0, 96), inputData)
                 : DataGasCostInternal(inputData, releaseSpec);
         }
         catch (OverflowException)
@@ -49,11 +49,10 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
         inputData[..Math.Min(96, inputData.Length)].Span
             .CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
 
-        return DataGasCostInternal(extendedInput, inputData, releaseSpec);
+        return DataGasCostInternal(extendedInput, inputData);
     }
 
-    private static long DataGasCostInternal(ReadOnlySpan<byte> extendedInput, ReadOnlyMemory<byte> inputData,
-        IReleaseSpec releaseSpec)
+    private static long DataGasCostInternal(ReadOnlySpan<byte> extendedInput, ReadOnlyMemory<byte> inputData)
     {
         UInt256 baseLength = new(extendedInput[..32], true);
         UInt256 expLength = new(extendedInput.Slice(32, 32), true);
@@ -70,7 +69,7 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
         return gas > long.MaxValue ? long.MaxValue : (long)gas;
     }
 
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.ModExpPrecompile++;
 
@@ -84,13 +83,13 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
 
         if (modulusInt.IsZero)
         {
-            return (new byte[modulusLength], true);
+            return new byte[modulusLength];
         }
 
         BigInteger baseInt = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength).ToUnsignedBigInteger();
         BigInteger expInt = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength)
             .ToUnsignedBigInteger();
-        return (BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength), true);
+        return BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength);
     }
 
     private static UInt256 MultComplexity(in UInt256 adjustedExponentLength)

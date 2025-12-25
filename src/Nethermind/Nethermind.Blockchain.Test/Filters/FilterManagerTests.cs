@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
@@ -11,6 +12,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Facade.Filters;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -21,7 +23,7 @@ namespace Nethermind.Blockchain.Test.Filters;
 
 public class FilterManagerTests
 {
-    private IFilterStore _filterStore = null!;
+    private FilterStore _filterStore = null!;
     private IBranchProcessor _branchProcessor = null!;
     private IMainProcessingContext _mainProcessingContext = null!;
     private ITxPool _txPool = null!;
@@ -34,7 +36,7 @@ public class FilterManagerTests
     public void Setup()
     {
         _currentFilterId = 0;
-        _filterStore = Substitute.For<IFilterStore>();
+        _filterStore = new FilterStore(new TimerFactory(), 20, 10);
         _branchProcessor = Substitute.For<IBranchProcessor>();
         _mainProcessingContext = Substitute.For<IMainProcessingContext>();
         _mainProcessingContext.BranchProcessor.Returns(_branchProcessor);
@@ -49,11 +51,11 @@ public class FilterManagerTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void removing_filter_removes_data()
+    public async Task removing_filter_removes_data()
     {
         LogsShouldNotBeEmpty(static _ => { }, static _ => { });
         _filterManager.GetLogs(0).Should().NotBeEmpty();
-        _filterStore.FilterRemoved += Raise.EventWith(new FilterEventArgs(0));
+        await Task.Delay(60);
         _filterManager.GetLogs(0).Should().BeEmpty();
     }
 
@@ -321,11 +323,11 @@ public class FilterManagerTests
 
         // adding always a simple block filter and test
         Block block = Build.A.Block.TestObject;
-        BlockFilter blockFilter = new(_currentFilterId++, 0);
+        BlockFilter blockFilter = new(_currentFilterId++);
         filters.Add(blockFilter);
 
-        _filterStore.GetFilters<LogFilter>().Returns(filters.OfType<LogFilter>().ToArray());
-        _filterStore.GetFilters<BlockFilter>().Returns(filters.OfType<BlockFilter>().ToArray());
+        _filterStore.SaveFilters(filters.OfType<LogFilter>());
+        _filterStore.SaveFilters(filters.OfType<BlockFilter>());
         _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _logManager);
 
         _branchProcessor.BlockProcessed += Raise.EventWith(_branchProcessor, new BlockProcessedEventArgs(block, []));
@@ -365,5 +367,17 @@ public class FilterManagerTests
         builder(builderInstance);
 
         return builderInstance.TestObject;
+    }
+}
+
+file static class FilterExtensions
+{
+    public static void SaveFilters<T>(this FilterStore store, IEnumerable<T> filters)
+        where T : FilterBase
+    {
+        foreach (T filter in filters)
+        {
+            store.SaveFilter(filter);
+        }
     }
 }

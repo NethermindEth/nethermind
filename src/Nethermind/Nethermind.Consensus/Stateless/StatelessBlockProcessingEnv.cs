@@ -4,24 +4,19 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -41,14 +36,13 @@ public class StatelessBlockProcessingEnv(
     public IWorldState WorldState
     {
         get => _worldState ??= new WorldState(
-            new TrieStore(witness.NodeStorage, NoPruning.Instance, NoPersistence.Instance, new PruningConfig(),
-                logManager),
-            witness.CodeDb, logManager);
+            new TrieStoreScopeProvider(new RawTrieStore(witness.NodeStorage),
+                witness.CodeDb, logManager), logManager);
     }
 
     private IBlockProcessor GetProcessor()
     {
-        IBlockTree statelessBlockTree = new StatelessBlockTree(witness.DecodedHeaders);
+        StatelessBlockTree statelessBlockTree = new(witness.DecodedHeaders);
         ITransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, statelessBlockTree);
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =
             new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -67,7 +61,7 @@ public class StatelessBlockProcessingEnv(
             WorldState,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(txProcessor, WorldState),
-            new BlockhashStore(specProvider, WorldState),
+            new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
             new ExecutionRequestsProcessor(txProcessor)
@@ -75,10 +69,10 @@ public class StatelessBlockProcessingEnv(
     }
 
 
-    private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockFinder blockFinder)
+    private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockhashCache blockhashCache)
     {
-        var blockhashProvider = new BlockhashProvider(blockFinder, specProvider, state, logManager);
-        var vm = new VirtualMachine(blockhashProvider, specProvider, logManager);
-        return new TransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
+        BlockhashProvider blockhashProvider = new(blockhashCache, state, logManager);
+        EthereumVirtualMachine vm = new(blockhashProvider, specProvider, logManager);
+        return new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
     }
 }

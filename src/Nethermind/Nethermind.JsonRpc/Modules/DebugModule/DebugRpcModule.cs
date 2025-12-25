@@ -372,7 +372,7 @@ public class DebugRpcModule(
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
         using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, encodingSettings);
-        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(false));
+        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
     }
 
     public ResultWrapper<byte[][]> debug_getRawReceipts(BlockParameter blockParameter)
@@ -415,9 +415,9 @@ public class DebugRpcModule(
         return ResultWrapper<byte[]>.Success(rlp.Bytes);
     }
 
-    public Task<ResultWrapper<SyncReportSymmary>> debug_getSyncStage()
+    public Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage()
     {
-        return ResultWrapper<SyncReportSymmary>.Success(debugBridge.GetCurrentSyncStage());
+        return ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());
     }
 
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
@@ -534,7 +534,7 @@ public class DebugRpcModule(
 
         if (simulationResult.ErrorCode != 0)
         {
-            string errorMessage = simulationResult.Result?.ToString() ?? $"Simulation failed with error code {simulationResult.ErrorCode}.";
+            string errorMessage = simulationResult.Result ? $"Simulation failed with error code {simulationResult.ErrorCode}." : simulationResult.Result.ToString();
             if (_logger.IsWarn) _logger.Warn($"debug_traceCallMany simulation failed: Code={simulationResult.ErrorCode}, Details={errorMessage}");
             return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(errorMessage, simulationResult.ErrorCode);
         }

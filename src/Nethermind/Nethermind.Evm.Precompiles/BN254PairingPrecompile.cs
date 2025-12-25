@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -26,25 +25,19 @@ public class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
         (releaseSpec.IsEip1108Enabled ? 34_000L : 80_000L) * (inputData.Length / BN254.PairSize);
 
-    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254PairingPrecompile++;
 
         if (releaseSpec.IsOpGraniteEnabled && inputData.Length > PairingMaxInputSizeGranite ||
             inputData.Length % BN254.PairSize > 0)
         {
-            return IPrecompile.Failure;
+            return Errors.InvalidInputLength;
         }
 
-        var input = ArrayPool<byte>.Shared.Rent(inputData.Length);
-        Span<byte> output = stackalloc byte[32];
+        byte[] output = new byte[32];
+        bool result = BN254.CheckPairing(output, inputData.Span);
 
-        inputData.CopyTo(input);
-
-        var result = BN254.CheckPairing(input.AsSpan(0, inputData.Length), output);
-
-        ArrayPool<byte>.Shared.Return(input);
-
-        return result ? (output.ToArray(), true) : IPrecompile.Failure;
+        return result ? output : Errors.Failed;
     }
 }

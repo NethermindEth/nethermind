@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,10 +7,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -18,7 +19,6 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
@@ -56,7 +56,6 @@ namespace Nethermind.Network
         private readonly ISyncPeerPool _syncPool;
         private readonly ISyncServer _syncServer;
         private readonly ITxPool _txPool;
-        private readonly IPooledTxsRequestor _pooledTxsRequestor;
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IMessageSerializationService _serializer;
         private readonly IRlpxHost _rlpxHost;
@@ -67,19 +66,19 @@ namespace Nethermind.Network
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ITxGossipPolicy _txGossipPolicy;
         private readonly ILogManager _logManager;
+        private readonly ITxPoolConfig _txPoolConfdig;
+        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
         private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
         private readonly ISnapServer? _snapServer;
-        private readonly IBlockFinder _blockFinder;
 
         public ProtocolsManager(
             ISyncPeerPool syncPeerPool,
             ISyncServer syncServer,
             IBackgroundTaskScheduler backgroundTaskScheduler,
             ITxPool txPool,
-            IPooledTxsRequestor pooledTxsRequestor,
             IDiscoveryApp discoveryApp,
             IMessageSerializationService serializationService,
             IRlpxHost rlpxHost,
@@ -89,15 +88,15 @@ namespace Nethermind.Network
             IForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
             IWorldStateManager worldStateManager,
-            IBlockFinder blockFinder,
             ILogManager logManager,
+            ITxPoolConfig txPoolConfdig,
+            ISpecProvider specProvider,
             ITxGossipPolicy? transactionsGossipPolicy = null)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _backgroundTaskScheduler = backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(backgroundTaskScheduler));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _pooledTxsRequestor = pooledTxsRequestor ?? throw new ArgumentNullException(nameof(pooledTxsRequestor));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
             _serializer = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
@@ -108,8 +107,9 @@ namespace Nethermind.Network
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _txPoolConfdig = txPoolConfdig;
+            _specProvider = specProvider;
             _snapServer = worldStateManager.SnapServer;
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _protocolFactories = GetProtocolFactories();
@@ -128,23 +128,36 @@ namespace Nethermind.Network
             ISession session = (ISession)sender;
             session.Initialized -= SessionInitialized;
             session.Disconnected -= SessionDisconnected;
+            _sessions.TryRemove(session.SessionId, out _);
 
-            if (_syncPeers.TryRemove(session.SessionId, out var removed))
+            if (_logger.IsDebug && session.BestStateReached == SessionState.Initialized)
             {
-                _syncPool.RemovePeer(removed);
-                _txPool.RemovePeer(removed.Node.Id);
-                if (session.BestStateReached == SessionState.Initialized)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
-                }
+                _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
             }
 
-            if (_hangingSatelliteProtocols.TryGetValue(session.Node, out var registrations))
+            if (session.Node is not null
+                && _hangingSatelliteProtocols.TryGetValue(session.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase>? registrations)
+                && registrations is not null)
             {
                 registrations.TryRemove(session.SessionId, out _);
             }
 
-            _sessions.TryRemove(session.SessionId, out session);
+            PublicKey? handlerKey = null;
+            if (_syncPeers.TryRemove(session.SessionId, out SyncPeerProtocolHandlerBase? removed) && removed is not null)
+            {
+                _syncPool.RemovePeer(removed);
+                if (removed.Node?.Id is not null)
+                {
+                    handlerKey = removed.Node.Id;
+                    _txPool.RemovePeer(handlerKey);
+                }
+            }
+
+            PublicKey sessionKey = session.Node?.Id;
+            if (sessionKey is not null && sessionKey != handlerKey)
+            {
+                _txPool.RemovePeer(session.Node.Id);
+            }
         }
 
         private void SessionInitialized(object sender, EventArgs e)
@@ -200,7 +213,7 @@ namespace Nethermind.Network
             {
                 [Protocol.P2P] = (session, _) =>
                 {
-                    P2PProtocolHandler handler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _logManager);
+                    P2PProtocolHandler handler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _backgroundTaskScheduler, _logManager);
                     session.PingSender = handler;
                     InitP2PProtocol(session, handler);
 
@@ -208,12 +221,12 @@ namespace Nethermind.Network
                 },
                 [Protocol.Eth] = (session, version) =>
                 {
-                    var ethHandler = version switch
+                    Eth66ProtocolHandler ethHandler = version switch
                     {
-                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        69 => new Eth69ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _blockFinder, _logManager, _txGossipPolicy),
+                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfdig, _specProvider, _txGossipPolicy),
+                        69 => new Eth69ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _gossipPolicy, _forkInfo, _logManager, _txPoolConfdig, _specProvider, _txGossipPolicy),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 
@@ -222,7 +235,7 @@ namespace Nethermind.Network
                 },
                 [Protocol.Snap] = (session, version) =>
                 {
-                    var handler = version switch
+                    SnapProtocolHandler handler = version switch
                     {
                         1 => new SnapProtocolHandler(session, _stats, _serializer, _backgroundTaskScheduler, _logManager, _snapServer),
                         _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
@@ -233,7 +246,7 @@ namespace Nethermind.Network
                 },
                 [Protocol.NodeData] = (session, version) =>
                 {
-                    var handler = version switch
+                    NodeDataProtocolHandler handler = version switch
                     {
                         1 => new NodeDataProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _logManager),
                         _ => throw new NotSupportedException($"{Protocol.NodeData}.{version} is not supported.")
@@ -419,22 +432,6 @@ namespace Nethermind.Network
             if (_capabilities.Remove(capability))
             {
                 if (_logger.IsTrace) _logger.Trace($"Removed supported capability: {capability}");
-            }
-        }
-
-        public void SendNewCapability(Capability capability)
-        {
-            AddCapabilityMessage message = new(capability);
-            foreach ((Guid _, ISession session) in _sessions)
-            {
-                if (!session.HasAgreedCapability(capability) && session.HasAvailableCapability(capability))
-                {
-                    session.DeliverMessage(message);
-                }
-                else
-                {
-                    message.Dispose();
-                }
             }
         }
 
