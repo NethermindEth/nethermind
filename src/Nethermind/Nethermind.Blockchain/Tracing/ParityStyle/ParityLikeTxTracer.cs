@@ -66,6 +66,19 @@ public class ParityLikeTxTracer : TxTracer
             IsTracingCode = true;
             IsTracingReceipt = true;
         }
+
+        IsTracing = IsTracingReceipt
+                    || IsTracingActions
+                    || IsTracingOpLevelStorage
+                    || IsTracingMemory
+                    || IsTracingInstructions
+                    || IsTracingRefunds
+                    || IsTracingCode
+                    || IsTracingStack
+                    || IsTracingBlockHash
+                    || IsTracingAccess
+                    || IsTracingFees
+                    || IsTracingLogs;
     }
 
     public sealed override bool IsTracingActions { get; protected set; }
