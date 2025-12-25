@@ -71,30 +71,6 @@ Retrospective mode analyzes transaction bytecode (input data) from historical bl
 
 **Note**: This mode counts opcodes found in transaction data bytes, which may be different from actual executed opcodes. For true execution tracing of historical blocks, you would need to replay transactions (not currently implemented).
 
-## Architecture
-
-### Core Components
-
-- **OpcodeTracingPlugin**: Plugin entry point implementing `INethermindPlugin`
-- **OpcodeTracingModule**: Autofac module for dependency injection
-- **IOpcodeTracingConfig / OpcodeTracingConfig**: Strongly-typed configuration
-- **OpcodeTraceRecorder**: Orchestrates tracing operations across block ranges
-- **OpcodeCounter**: Thread-safe opcode accumulator
-- **TraceOutputWriter**: Writes JSON output files
-
-### Tracing Pipeline
-
-- **OpcodeCountingTxTracer**: Per-transaction tracer capturing opcode execution
-- **OpcodeBlockTracer**: Per-block tracer aggregating transaction-level counts
-- **RealTimeTracer**: Hooks into live block processing
-- **RetrospectiveTracer**: Reads historical blocks from BlockTree
-
-### Utilities
-
-- **BlockRangeValidator**: Configuration validation with detailed error messages
-- **DirectoryHelper**: Output directory creation and write validation
-- **TracingProgress**: Progress tracking with periodic logging (every 1000 blocks)
-
 ## Building the Plugin
 
 ```bash
@@ -158,14 +134,14 @@ dotnet run --project Nethermind.Runner -- \\
 
 ## Output Format
 
-### File Namin
+### File Naming
 
 **Retrospective Mode**:
 
 ```
-opcode-trace-{startBlock}-{endBlock}-{timestamp}.json
+opcode-trace-{startBlock}-{endBlock}.json
 ```
-Example: `opcode-trace-18000000-18001000-20251204143045.json`
+Example: `opcode-trace-18000000-18001000.json`
 
 **RealTime Mode** (dual output):
 
@@ -296,25 +272,6 @@ If tracing is interrupted (Ctrl+C, crash, etc.):
 - `completionStatus` set to "partial"
 - `endBlock` reflects actual last processed block
 
-## Performance Characteristics
-
-### Real-Time Mode
-
-- **Requirement**: Node must be fully synced (SyncMode = WaitingForBlock)
-- **Overhead**: <5% impact on block processing
-- **Best for**: Continuous monitoring, new block analysis on synced nodes
-- **Processing**: ~10 minutes for 1000 blocks (varies by network)
-- **During sync**: No blocks will be traced (blocks are downloaded, not executed)
-
-### Retrospective Mode
-
-- **Parallel Processing**: Enabled by setting `MaxDegreeOfParallelism` to a value greater than 0
-- **Requirement**: Blocks must exist in the database
-- **Overhead**: No impact on live sync
-- **Best for**: Historical static analysis of transaction bytecode
-- **Processing**: Fast direct database access
-- **Limitation**: Counts opcodes in transaction data, not actual EVM execution
-
 ## Progress Tracking
 
 Progress is logged every 1000 blocks:
@@ -371,6 +328,3 @@ RealTime mode only captures opcodes from NEW blocks processed at the chain tip A
 
 - [Nethermind Plugin Documentation](https://docs.nethermind.io/developers/plugins/)
 
-## License
-
-LGPL-3.0-only - See SPDX headers in source files
