@@ -46,6 +46,19 @@ public sealed class SimulateTxTracer : TxTracer
         IsTracingLogs = true;
         IsTracingActions = true;
         _logs = new();
+
+        IsTracing = IsTracingReceipt
+                    || IsTracingActions
+                    || IsTracingOpLevelStorage
+                    || IsTracingMemory
+                    || IsTracingInstructions
+                    || IsTracingRefunds
+                    || IsTracingCode
+                    || IsTracingStack
+                    || IsTracingBlockHash
+                    || IsTracingAccess
+                    || IsTracingFees
+                    || IsTracingLogs;
     }
 
     public SimulateCallResult? TraceResult { get; set; }
