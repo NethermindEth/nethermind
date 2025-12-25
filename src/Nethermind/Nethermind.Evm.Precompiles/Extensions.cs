@@ -41,6 +41,7 @@ public static class Extensions
             AddPrecompile<PointEvaluationPrecompile>();
         }
 
+        /*
         if (spec.Bls381Enabled)
         {
             AddPrecompile<G1AddPrecompile>();
@@ -51,6 +52,7 @@ public static class Extensions
             AddPrecompile<MapFpToG1Precompile>();
             AddPrecompile<MapFp2ToG2Precompile>();
         }
+        */
 
         if (spec.IsEip7951Enabled)
         {
