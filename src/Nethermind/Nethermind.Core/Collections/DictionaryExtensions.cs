@@ -15,7 +15,12 @@ public static class DictionaryExtensions
         res++;
     }
 
+    public static ref TValue GetOrAdd<TKey, TValue>(this Dictionary<TKey, TValue> dictionary,
+        TKey key, Func<TKey, TValue> factory,
+        out bool exists)
+        where TKey : notnull
     {
+        ref TValue? existing = ref CollectionsMarshal.GetValueRefOrAddDefault(dictionary, key, out exists);
 
         if (!exists)
             existing = factory(key);
