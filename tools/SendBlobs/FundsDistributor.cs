@@ -51,11 +51,10 @@ internal class FundsDistributor
         string? gasPriceRes = await _rpcClient.Post<string>("eth_gasPrice") ?? "1";
         UInt256 gasPrice = HexConvert.ToUInt256(gasPriceRes);
 
-        string? maxPriorityFeePerGasRes;
         UInt256 maxPriorityFeePerGas = maxPriorityFee;
         if (maxPriorityFee == 0)
         {
-            maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
+            string maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
             maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
         }
 
