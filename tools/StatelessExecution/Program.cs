@@ -408,6 +408,8 @@ class Program
         StatelessBlockProcessingEnv blockProcessingEnv =
             new(witness, specProvider, Always.Valid, NullLogManager.Instance);
 
+        using var scope  = blockProcessingEnv.WorldState.BeginScope(baseBlock);
+
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 
         (Block processed, TxReceipt[] _) = blockProcessor.ProcessOne(suggestedBlock,
