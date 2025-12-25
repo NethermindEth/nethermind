@@ -15,7 +15,7 @@ run-docker:
 	docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk-test  /bin/bash
 
 build-zisk:
-		docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk-test2 bflat build --arch riscv64 --os linux -x --no-pthread --no-pie --libc zisk \
+		docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR)/System.Runtime.Numerics.dll:/share/bflat/lib/linux/riscv64/musl/System.Runtime.Numerics.dll -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk-test2 bflat build --arch riscv64 --os linux -x --no-pthread --no-pie --libc zisk \
     				-r /nethermind/Autofac.dll \
     				-r /nethermind/Autofac.Extensions.DependencyInjection.dll \
     				-r /nethermind/BouncyCastle.Cryptography.dll \
@@ -93,7 +93,7 @@ build-zisk:
     				--stdlib dotnet ./Program.cs
 
 build-zisk-sim:
-		docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk-test2 bflat build --arch riscv64 --os linux -x --no-pthread --no-pie --libc zisk_sim \
+		docker run -v $(ARTIFACTS_DIR):/nethermind -v $(ROOT_DIR)/System.Runtime.Numerics.dll:/share/bflat/lib/linux/riscv64/musl/System.Runtime.Numerics.dll -v $(ROOT_DIR):$(ROOT_DIR) -w $(ROOT_DIR) -it maximmenshikov/bflat-riscv64-zk-test2 bflat build --arch riscv64 --os linux -x --no-pthread --no-pie --libc zisk_sim \
     				-r /nethermind/Autofac.dll \
     				-r /nethermind/Autofac.Extensions.DependencyInjection.dll \
     				-r /nethermind/BouncyCastle.Cryptography.dll \
