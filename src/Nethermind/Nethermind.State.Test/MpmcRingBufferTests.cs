@@ -4,6 +4,7 @@
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.HighPerformance.Enumerables;
 using FluentAssertions;
 using Nethermind.State;
 using Nethermind.State.Flat;
@@ -11,12 +12,12 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
 
-public class SpmcRingBufferTests
+public class MpmcRingBufferTests
 {
     [Test]
     public void SmokeTest()
     {
-        SpmcRingBuffer<int> jobQueue = new SpmcRingBuffer<int>(16);
+        MpmcRingBuffer<int> jobQueue = new MpmcRingBuffer<int>(16);
 
         jobQueue.TryEnqueue(1);
         jobQueue.TryEnqueue(2);
@@ -39,7 +40,7 @@ public class SpmcRingBufferTests
     [Test]
     public void RollingSmokeTest()
     {
-        SpmcRingBuffer<int> jobQueue = new SpmcRingBuffer<int>(16);
+        MpmcRingBuffer<int> jobQueue = new MpmcRingBuffer<int>(16);
 
         jobQueue.TryEnqueue(1);
         jobQueue.TryEnqueue(2);
@@ -59,7 +60,7 @@ public class SpmcRingBufferTests
     [Test]
     public void SmokeTestFullAndRolling()
     {
-        SpmcRingBuffer<int> jobQueue = new SpmcRingBuffer<int>(16);
+        MpmcRingBuffer<int> jobQueue = new MpmcRingBuffer<int>(16);
 
         for (int i = 0; i < 16; i++)
         {
@@ -91,23 +92,31 @@ public class SpmcRingBufferTests
     {
         int Capacity = 1024;
         int ItemsToProduce = 1_000_000;
+        int ProducerCount = 4;
         int ConsumerCount = 4;
 
-        var buffer = new SpmcRingBuffer<int>(Capacity);
+        var buffer = new MpmcRingBuffer<int>(Capacity);
         int[] consumedCounts = new int[ItemsToProduce];
         long totalConsumed = 0;
 
         // Producer Task (Single Producer)
-        var producer = Task.Run(() =>
+        long itemLeftToProduce = ItemsToProduce;
+
+        // Producers Tasks (Multiple Producers)
+        var producers = Enumerable.Range(0, ProducerCount).Select(_ => Task.Run(() =>
         {
-            for (int i = 0; i < ItemsToProduce; i++)
+            while (true)
             {
-                while (!buffer.TryEnqueue(i))
+                long remaining = Interlocked.Read(ref itemLeftToProduce);
+                if (remaining == 0) break;
+                if (Interlocked.CompareExchange(ref itemLeftToProduce, remaining - 1, remaining) != remaining) continue;
+
+                while (!buffer.TryEnqueue((int)remaining - 1))
                 {
                     Thread.SpinWait(10); // Wait for space
                 }
             }
-        });
+        })).ToArray();
 
         // Consumer Tasks (Multiple Consumers)
         var consumers = Enumerable.Range(0, ConsumerCount).Select(_ => Task.Run(() =>
@@ -127,7 +136,7 @@ public class SpmcRingBufferTests
             }
         })).ToArray();
 
-        await Task.WhenAll(producer);
+        await Task.WhenAll(producers);
         await Task.WhenAll(consumers);
 
         // Assertions

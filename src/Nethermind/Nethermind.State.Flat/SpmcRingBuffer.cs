@@ -1,16 +1,17 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Runtime.CompilerServices;
-using System.Threading;
 
-namespace Nethermind.State;
+namespace Nethermind.State.Flat;
 
 /// <summary>
-/// ChatGPT generated single producer multiple consumer ring buffer
-/// TODO: Check if using full fledge LMAX Distruptor is worth it.
+/// AI generated single producer multiple consumer ring buffer. If called by multiple producer, it will hang.
+/// See <see cref="MpmcRingBuffer{T}"/> for multiple producer variant.
+/// The selection of <see cref="T"/> is important. Is should be ideally a struct of size no more than 64 byte
+/// or 32 byte if possible.
 /// </summary>
+/// <typeparam name="T"></typeparam>
 public sealed class SpmcRingBuffer<T>
 {
     private readonly T[] _entries;
@@ -23,10 +24,7 @@ public sealed class SpmcRingBuffer<T>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            // Single producer only ever increments _tail
             long tail = Volatile.Read(ref _tail);
-
-            // Multiple consumers only ever increment _head
             long head = Volatile.Read(ref _head);
 
             long count = tail - head;
@@ -46,31 +44,17 @@ public sealed class SpmcRingBuffer<T>
 
     public SpmcRingBuffer(int capacityPowerOfTwo)
     {
-        if (capacityPowerOfTwo <= 0)
-            throw new ArgumentOutOfRangeException(nameof(capacityPowerOfTwo));
-
-        // must be a power of two
-        if ((capacityPowerOfTwo & (capacityPowerOfTwo - 1)) != 0)
-            throw new ArgumentException("Capacity must be power of two.", nameof(capacityPowerOfTwo));
+        if (capacityPowerOfTwo <= 0 || (capacityPowerOfTwo & (capacityPowerOfTwo - 1)) != 0)
+            throw new ArgumentException("Capacity must be power of two.");
 
         _capacity = capacityPowerOfTwo;
         _mask = capacityPowerOfTwo - 1;
         _entries = new T[capacityPowerOfTwo];
         _sequences = new long[capacityPowerOfTwo];
 
-        // LMAX / Vyukov-style:
-        // initial state: seq[i] = i, head = 0, tail = 0
-        // - producer at tail = 0 expects seq[0] == 0 to claim
-        // - after publishing item 0: seq[0] = 1 (head+1)
         for (int i = 0; i < capacityPowerOfTwo; i++)
             _sequences[i] = i;
     }
-
-    /// <summary>
-    /// Approximate number of items in the buffer.
-    /// </summary>
-    public long EstimatedCount =>
-        Volatile.Read(ref _tail) - Volatile.Read(ref _head);
 
     /// <summary>
     /// Single producer: enqueue one item if there is space.
@@ -88,7 +72,6 @@ public sealed class SpmcRingBuffer<T>
         if (seq != tail)
             return false; // not yet consumed -> buffer full
 
-        // Write payload first.
         _entries[index] = item;
 
         // Publish:
@@ -97,16 +80,11 @@ public sealed class SpmcRingBuffer<T>
         // sees the payload after seeing seq.
         Volatile.Write(ref _sequences[index], tail + 1);
 
-        // Advance tail (only producer touches this).
         _tail = tail + 1;
 
         return true;
     }
 
-    /// <summary>
-    /// Multiple consumers: try to dequeue one item.
-    /// Returns false if buffer appears empty at time of check.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryDequeue(out T item)
     {
@@ -114,36 +92,29 @@ public sealed class SpmcRingBuffer<T>
         {
             long head = Volatile.Read(ref _head);
             int index = (int)(head & _mask);
-
             long seq = Volatile.Read(ref _sequences[index]);
             long expectedSeq = head + 1;
 
-            // Not yet published?
-            if (seq < expectedSeq)
+            // If seq == expectedSeq, the producer has finished writing
+            if (seq == expectedSeq)
             {
+                if (Interlocked.CompareExchange(ref _head, head + 1, head) == head)
+                {
+                    item = _entries[index];
+                    // Mark as ready for the producer's next lap (head + capacity)
+                    Volatile.Write(ref _sequences[index], head + _capacity);
+                    return true;
+                }
+            }
+            else if (seq < expectedSeq)
+            {
+                // Producer hasn't filled this slot yet
                 item = default!;
                 return false;
             }
 
-            // Slot is ready for this consumer, try to claim head.
-            if (seq == expectedSeq &&
-                Interlocked.CompareExchange(ref _head, head + 1, head) == head)
-            {
-                // We own this slot now.
-                item = _entries[index];
-
-                // Mark slot as free for the next wrap:
-                // when tail reaches head + _capacity, this slot
-                // will again have seq == tail.
-                Volatile.Write(
-                    ref _sequences[index],
-                    head + _capacity
-                );
-
-                return true;
-            }
-
-            // Lost race to another consumer, retry with updated head.
+            // If seq > expectedSeq, another consumer won the race; loop and retry
+            Thread.SpinWait(1);
         }
     }
 }
