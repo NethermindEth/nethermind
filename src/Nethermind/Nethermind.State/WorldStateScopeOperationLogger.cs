@@ -33,7 +33,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         public void Dispose()
         {
             innerScope.Dispose();
-            logger.Info($"{scopeId}: Disposed");
+            logger.Info($"{scopeId}: Scope disposed");
         }
 
         public Hash256 RootHash => innerScope.RootHash;
@@ -98,28 +98,46 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         }
     }
 
-    private class WriteBatchWrapper(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, long scopeId, ILogger logger) : IWorldStateScopeProvider.IWorldStateWriteBatch
+    private class WriteBatchWrapper : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
+        private readonly IWorldStateScopeProvider.IWorldStateWriteBatch _writeBatch;
+        private readonly long _scopeId;
+        private readonly ILogger _logger1;
+
+        public WriteBatchWrapper(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, long scopeId, ILogger logger)
+        {
+            _writeBatch = writeBatch;
+            _scopeId = scopeId;
+            _logger1 = logger;
+
+            _writeBatch.OnAccountUpdated += (sender, updated) =>
+            {
+                logger.Info($"{scopeId}: OnAccountUpdated callback. {updated.Address} -> {updated.Account}");
+            };
+        }
+
         public void Dispose()
         {
-            writeBatch.Dispose();
+            _writeBatch.Dispose();
+
+            _logger1.Info($"{_scopeId}: Write batch disposed");
         }
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
         {
-            add => writeBatch.OnAccountUpdated += value;
-            remove => writeBatch.OnAccountUpdated -= value;
+            add => _writeBatch.OnAccountUpdated += value;
+            remove => _writeBatch.OnAccountUpdated -= value;
         }
 
         public void Set(Address key, Account? account)
         {
-            writeBatch.Set(key, account);
-            logger.Info($"{scopeId}: Set account {key} to {account}");
+            _writeBatch.Set(key, account);
+            _logger1.Info($"{_scopeId}: Set account {key} to {account}");
         }
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
         {
-            return new StorageWriteBatchWrapper(writeBatch.CreateStorageWriteBatch(key, estimatedEntries), key, scopeId, logger);
+            return new StorageWriteBatchWrapper(_writeBatch.CreateStorageWriteBatch(key, estimatedEntries), key, _scopeId, _logger1);
         }
     }
 
