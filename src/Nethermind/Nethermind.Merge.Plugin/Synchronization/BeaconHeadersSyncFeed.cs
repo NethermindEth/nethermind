@@ -116,9 +116,12 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     protected override void PostFinishCleanUp()
     {
         HeadersSyncProgressLoggerReport.Update(TotalBlocks);
+        HeadersSyncProgressLoggerReport.CurrentQueued = 0;
         HeadersSyncProgressLoggerReport.MarkEnd();
         ClearDependencies(); // there may be some dependencies from wrong branches
+        _pending.DisposeItems();
         _pending.Clear(); // there may be pending wrong branches
+        _sent.DisposeItems();
         _sent.Clear(); // we my still be waiting for some bad branches
     }
 
