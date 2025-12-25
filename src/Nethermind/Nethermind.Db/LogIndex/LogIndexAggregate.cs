@@ -16,10 +16,10 @@ public struct LogIndexAggregate(int firstBlockNum, int lastBlockNum)
     public int FirstBlockNum { get; } = firstBlockNum;
     public int LastBlockNum { get; } = lastBlockNum;
 
-    public Dictionary<Address, IList<long>> Address => _address ??= new(FastHashEqualityComparer.Instance);
+    public Dictionary<Address, IList<long>> Address => _address ??= new();
 
     public Dictionary<Hash256, IList<long>>[] Topic => _topic ??= Enumerable.Range(0, LogIndexStorage.MaxTopics)
-        .Select(static _ => new Dictionary<Hash256, IList<long>>(FastHashEqualityComparer.Instance))
+        .Select(static _ => new Dictionary<Hash256, IList<long>>())
         .ToArray();
 
     public bool IsEmpty => (_address is null || _address.Count == 0) && (_topic is null || _topic[0].Count == 0);
