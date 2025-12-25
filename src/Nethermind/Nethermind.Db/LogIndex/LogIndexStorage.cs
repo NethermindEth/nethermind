@@ -644,6 +644,8 @@ namespace Nethermind.Db.LogIndex
             if (!IsBlockNewer(batch[^1].BlockNumber, isBackwardSync))
                 return new(batch);
 
+            Span<bool> isTopicBlockNewer = stackalloc bool[MaxTopics];
+
             var timestamp = Stopwatch.GetTimestamp();
 
             var aggregate = new LogIndexAggregate(batch);
@@ -651,6 +653,11 @@ namespace Nethermind.Db.LogIndex
             {
                 if (!IsBlockNewer(blockNumber, isBackwardSync))
                     continue;
+
+                // Skip already added keys (each column batch is committed independently)
+                var isAddressBlockNewer = IsAddressBlockNewer(blockNumber, isBackwardSync);
+                for(var i = 0; i < MaxTopics; i++)
+                    isTopicBlockNewer[i] = IsTopicBlockNewer(i, blockNumber, isBackwardSync);
 
                 stats?.IncrementBlocks();
                 stats?.IncrementTx(receipts.Length);
@@ -664,7 +671,7 @@ namespace Nethermind.Db.LogIndex
                     stats?.IncrementLogs();
                     LogPosition position = new(blockNumber, logIndex);
 
-                    if (IsAddressBlockNewer(blockNumber, isBackwardSync))
+                    if (isAddressBlockNewer)
                     {
                         IList<long> addressPositions = aggregate.Address
                             .GetOrAdd(log.Address, static _ => new List<long>(1));
@@ -676,7 +683,7 @@ namespace Nethermind.Db.LogIndex
                     var topicsLength = Math.Min(log.Topics.Length, MaxTopics);
                     for (byte topicIndex = 0; topicIndex < topicsLength; topicIndex++)
                     {
-                        if (IsTopicBlockNewer(topicIndex, blockNumber, isBackwardSync))
+                        if (isTopicBlockNewer[topicIndex])
                         {
                             stats?.IncrementTopics();
 
@@ -764,7 +771,7 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        // TODO: refactor compaction to explicitly compress full range for each involved key
+        // TODO: compaction that explicitly compress full range for each involved key
         public async Task CompactAsync(bool flush = false, int mergeIterations = 0, LogIndexUpdateStats? stats = null)
         {
             ThrowIfStopped();
