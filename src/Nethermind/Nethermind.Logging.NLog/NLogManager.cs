@@ -64,6 +64,50 @@ namespace Nethermind.Logging.NLog
             return logDirectory;
         }
 
+        private static string ExtractLoggerNameFromFilePath(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath))
+                return null;
+
+            // Extract filename without extension
+            string fileName = Path.GetFileNameWithoutExtension(filePath);
+            if (string.IsNullOrEmpty(fileName))
+                return null;
+
+            // Try to extract namespace from path structure
+            // Path format: .../src/Nethermind/Nethermind.Core/SomeClass.cs
+            // We want to extract something like "Nethermind.Core.SomeClass"
+            string directory = Path.GetDirectoryName(filePath);
+            if (string.IsNullOrEmpty(directory))
+                return fileName;
+
+            // Find "Nethermind" in the path to extract namespace
+            // Look for the last occurrence to handle paths like ".../Nethermind/Nethermind.Core/..."
+            int nethermindIndex = directory.LastIndexOf("Nethermind", StringComparison.Ordinal);
+            if (nethermindIndex >= 0)
+            {
+                // Extract the part starting from "Nethermind" and replace path separators with dots
+                string namespacePart = directory.Substring(nethermindIndex)
+                    .Replace(Path.DirectorySeparatorChar, '.')
+                    .Replace(Path.AltDirectorySeparatorChar, '.');
+
+                // Remove "Nethermind." prefix if present (GetTypeName will handle it, but cleaner this way)
+                if (namespacePart.StartsWith("Nethermind.", StringComparison.Ordinal))
+                {
+                    namespacePart = namespacePart.Substring("Nethermind.".Length);
+                }
+
+                // Combine namespace and class name
+                if (!string.IsNullOrEmpty(namespacePart))
+                {
+                    return $"{namespacePart}.{fileName}";
+                }
+            }
+
+            // Fallback to just filename if we can't extract namespace
+            return fileName;
+        }
+
         private static readonly ConcurrentDictionary<string, ILogger> s_namedLoggers = new();
         private static readonly Func<string, ILogger> s_namedLoggerBuilder = BuildNamedLogger;
         private static readonly Func<string, ILogger> s_classLoggerBuilder = BuildClassLogger;
@@ -74,7 +118,7 @@ namespace Nethermind.Logging.NLog
         private static ILogger BuildNamedLogger(string loggerName)
             => new(new NLogLogger(loggerName));
         private static ILogger BuildClassLogger(string filePath)
-            => new(new NLogLogger());
+            => new(new NLogLogger(ExtractLoggerNameFromFilePath(filePath)));
 
         public ILogger GetClassLogger<T>() => TypedLogger<T>.Logger;
 
