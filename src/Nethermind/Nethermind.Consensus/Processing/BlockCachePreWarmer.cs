@@ -25,30 +25,30 @@ using Nethermind.Trie;
 namespace Nethermind.Consensus.Processing;
 
 public sealed class BlockCachePreWarmer(
-    IReadOnlyTxProcessingEnvFactory envFactory,
-    IWorldState worldStateToWarmup,
+    PrewarmerEnvFactory envFactory,
     int concurrency,
-    ILogManager logManager,
-    PreBlockCaches? preBlockCaches = null
+    NodeStorageCache nodeStorageCache,
+    PreBlockCaches preBlockCaches,
+    ILogManager logManager
 ) : IBlockCachePreWarmer
 {
     private int _concurrencyLevel = (concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency);
-    private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, worldStateToWarmup), Environment.ProcessorCount * 2);
+    private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches), Environment.ProcessorCount * 2);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
     private BlockStateSource? _currentBlockState = null;
 
     public BlockCachePreWarmer(
-        IReadOnlyTxProcessingEnvFactory envFactory,
-        IWorldState worldStateToWarmup,
+        PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
-        ILogManager logManager,
-        PreBlockCaches? preBlockCaches = null
+        NodeStorageCache nodeStorageCache,
+        PreBlockCaches preBlockCaches,
+        ILogManager logManager
     ) : this(
         envFactory,
-        worldStateToWarmup,
         blocksConfig.PreWarmStateConcurrency,
-        logManager,
-        preBlockCaches)
+        nodeStorageCache,
+        preBlockCaches,
+        logManager)
     {
     }
 
@@ -58,6 +58,8 @@ public sealed class BlockCachePreWarmer(
         {
             _currentBlockState = new(this, suggestedBlock, parent, spec);
             CacheType result = preBlockCaches.ClearCaches();
+            result |= nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
+            nodeStorageCache.Enabled = true;
             if (result != default)
             {
                 if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
@@ -82,8 +84,10 @@ public sealed class BlockCachePreWarmer(
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CacheType cachesCleared = preBlockCaches?.ClearCaches() ?? default;
-        if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
 
+        nodeStorageCache.Enabled = false;
+        cachesCleared |= nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
+        if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
     }
 
@@ -373,9 +377,9 @@ public sealed class BlockCachePreWarmer(
         private static void DisposeThreadState(AddressWarmingState state) => state.Dispose();
     }
 
-    private class ReadOnlyTxProcessingEnvPooledObjectPolicy(IReadOnlyTxProcessingEnvFactory envFactory, IWorldState worldStateToWarmUp) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    private class ReadOnlyTxProcessingEnvPooledObjectPolicy(PrewarmerEnvFactory envFactory, PreBlockCaches preBlockCaches) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
-        public IReadOnlyTxProcessorSource Create() => envFactory.CreateForWarmingUp(worldStateToWarmUp);
+        public IReadOnlyTxProcessorSource Create() => envFactory.Create(preBlockCaches);
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
