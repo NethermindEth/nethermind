@@ -5,6 +5,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Org.BouncyCastle.Bcpg;
 using Prometheus;
@@ -21,6 +22,7 @@ public class FlatScopeProvider : IWorldStateScopeProvider
     private readonly ITrieWarmer _trieWarmer;
     private readonly ResourcePool _resourcePool;
     private readonly IFlatDiffRepository.SnapshotBundleUsage _usage;
+    private FlatWorldStateScope? _lastScope;
 
     public FlatScopeProvider(
         [KeyFilter(DbNames.Code)] IDb codeDb,
@@ -59,7 +61,7 @@ public class FlatScopeProvider : IWorldStateScopeProvider
             warmer = new NoopTrieWarmer();
         }
 
-        return new FlatWorldStateScope(
+        return _lastScope = new FlatWorldStateScope(
             currentState,
             snapshotBundle,
             _codeDb,
@@ -70,5 +72,10 @@ public class FlatScopeProvider : IWorldStateScopeProvider
             _logManager,
             _isReadOnly
         );
+    }
+
+    public void WarmUpOutOfScope(Address address, UInt256? slot)
+    {
+        _lastScope?.WarmUpOutOfScope(address, slot);
     }
 }

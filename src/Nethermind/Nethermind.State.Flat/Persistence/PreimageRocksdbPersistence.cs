@@ -180,7 +180,7 @@ public class PreimageRocksdbPersistence : IPersistence
             return _flatWriteBatch.SelfDestruct(fakeAddrHash);
         }
 
-        public void RemoveAccount(Address addr)
+        public void SetAccount(Address addr, Account? account)
         {
             ValueHash256 fakeAddrHash = ValueKeccak.Zero;
             addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
@@ -188,16 +188,11 @@ public class PreimageRocksdbPersistence : IPersistence
             ValueHash256 computed = addr.ToAccountPath;
             preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], addr.Bytes);
 
-            _flatWriteBatch.RemoveAccount(fakeAddrHash);
-        }
-
-        public void SetAccount(Address addr, Account account)
-        {
-            ValueHash256 fakeAddrHash = ValueKeccak.Zero;
-            addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
-
-            ValueHash256 computed = addr.ToAccountPath;
-            preimageWriteBatch.PutSpan(computed.BytesAsSpan[..PreimageLookupSize], addr.Bytes);
+            if (account is null)
+            {
+                _flatWriteBatch.RemoveAccount(fakeAddrHash);
+                return;
+            }
 
             using var stream = _accountDecoder.EncodeToNewNettyStream(account);
             _flatWriteBatch.SetAccount(fakeAddrHash, stream.AsSpan());

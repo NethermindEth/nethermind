@@ -504,6 +504,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             options.SetBlockBasedTableFactory(tableOptions);
         }
 
+        Console.Error.WriteLine($"Optioons {Name} is {dbConfig.RocksDbOptions}");
+
         IntPtr optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.RocksDbOptions);
         try
         {

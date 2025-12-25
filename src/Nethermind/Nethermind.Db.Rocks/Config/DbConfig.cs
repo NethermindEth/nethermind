@@ -22,19 +22,6 @@ public class DbConfig : IDbConfig
     public ulong? ReadAheadSize { get; set; } = (ulong)256.KiB();
 
 
-    private const string MinimumBasicOption =
-        "max_write_batch_group_size_bytes=4000000;" +
-        "target_file_size_base=64000000;" +
-        "max_bytes_for_level_base=256000000;" +
-        "write_buffer_size=250000000;" +
-        "min_write_buffer_number_to_merge=1;" +
-        "max_write_buffer_number=2;" +
-        "max_compaction_bytes=4000000000;" +
-        "memtable_whole_key_filtering=true;" +
-        "memtable_prefix_bloom_size_ratio=0.02;" +
-        "advise_random_on_open=true;" +
-        "";
-
     public string RocksDbOptions { get; set; } =
 
         // This section affect the write buffer, or memtable. Note, the size of write buffer affect the size of l0
@@ -300,8 +287,6 @@ public class DbConfig : IDbConfig
     public bool? FlatDbVerifyChecksum { get; set; } = false; // YOLO
     public bool FlatDbEnableFileWarmer { get; set; }
     public string FlatDbRocksDbOptions { get; set; } =
-        MinimumBasicOption +
-
         // This is basically useless on write only database. However, for halfpath with live pruning, flatdb, or
         // (maybe?) full sync where keys are deleted, replaced, or re-inserted, two memtable can merge together
         // resulting in a reduced total memtable size to be written. This does seems to reduce sync throughput though.
@@ -332,7 +317,6 @@ public class DbConfig : IDbConfig
     public string? FlatDbAdditionalRocksDbOptions { get; set; }
 
     public string? FlatMetadataDbRocksDbOptions { get; set; } =
-        MinimumBasicOption +
         // This adds a hashtable-like index per block (the 32kb block)
         // This reduce CPU and therefore latency under high block cache hit scenario.
         // It seems to increase disk space use by about 1 GB.
@@ -345,18 +329,15 @@ public class DbConfig : IDbConfig
     public string? FlatMetadataDbAdditionalRocksDbOptions { get; set; }
     public bool? FlatAccountDbVerifyChecksum { get; set; } = false; // YOLO
 
-
-    private const string FlatCommonConfigWithBlockBased =
-        MinimumBasicOption +
-
+    public string? FlatDbCommonFlatOptions { get; set; } =
         // Hard to decide. No compression is lower latency. But it means bigger db, which means worst cache is at os
         // level. TODO: Measure how much the db size change.
         // "compression=kNoCompression;" +
 
         "compression=kLZ4Compression;" +
+        "max_write_batch_group_size_bytes=4000000;" +
 
         "memtable=skiplist;" +
-        "max_write_buffer_number=4;" +
         "min_write_buffer_number_to_merge=2;" +
 
         // This used to be on trie, but its here now. Attempt to reduce LSM depth at cost of write amp.
@@ -364,13 +345,15 @@ public class DbConfig : IDbConfig
         "max_bytes_for_level_base=250000000;" +
 
         "block_based_table_factory.metadata_block_size=4096;" +
-        "block_based_table_factory.block_restart_interval=2;" + // really increase the uncompressed size at for latency
+        "block_based_table_factory.block_restart_interval=4;" + // really increase the uncompressed size at for latency
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
         "block_based_table_factory.data_block_hash_table_util_ratio=0.75;" +
         "block_based_table_factory.prepopulate_block_cache=kFlushOnly;" +
         "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;" +
         "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +
         "block_based_table_factory.whole_key_filtering=true;" + // should be default. Just in case.
+
+        "level_compaction_dynamic_level_bytes=false;" +
 
         // Important tunables
 
@@ -387,6 +370,7 @@ public class DbConfig : IDbConfig
         // "block_based_table_factory.index_type=kTwoLevelIndexSearch;" +
 
         // Complete bsearch index in memory
+        "block_based_table_factory.partition_filters=false;" +
         "block_based_table_factory.index_type=kBinarySearch;" +
 
         // This **should** help given prefix extractor. But further increase index size.
@@ -397,14 +381,12 @@ public class DbConfig : IDbConfig
         // "optimize_filters_for_hits=true;" +
         "";
 
-    public string? FlatDbCommonFlatOptions { get; set; } = FlatCommonConfigWithBlockBased;
-
 
     public bool FlatAccountDbEnableFileWarmer { get; set; } = false;
     public ulong FlatAccountDbWriteBufferSize { get; set; } = (ulong)32.MiB();
     public ulong FlatAccountDbRowCacheSize { get; set; } = 0;
     public ulong FlatAccountDbWriteBufferNumber { get; set; } = 4;
-    public bool FlatAccountDbSkipDefaultDbOptions { get; set; } = true;
+    public bool FlatAccountDbSkipDefaultDbOptions { get; set; } = false;
 
     // Account is too small so we make it so that the file and buffer is smaller so that it does not compact too much
     // at once
@@ -414,15 +396,21 @@ public class DbConfig : IDbConfig
         set { field = value ?? ""; }
     } =
         "target_file_size_base=32000000;" +
-        "target_file_size_multiplier=2;" +
+        "target_file_size_multiplier=3;" + // Make lower file size bigger which help with hash index.
         "max_bytes_for_level_base=128000000;" +
         "block_based_table_factory.block_size=4096;" +
         "block_based_table_factory.filter_policy=ribbonfilter:10:3;" +
+
+        "max_bytes_for_level_multiplier=15;" + // Reduce level count
+
+        // "block_based_table_factory.index_type=kHashSearch;" +
+        // "prefix_extractor=capped:4;" +
+
         "";
 
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
     public bool? FlatStorageDbVerifyChecksum { get; set; }
-    public bool FlatStorageDbSkipDefaultDbOptions { get; set; } = true;
+    public bool FlatStorageDbSkipDefaultDbOptions { get; set; } = false;
     public bool FlatStorageDbEnableFileWarmer { get; set; }
     public ulong FlatStorageDbRowCacheSize { get; set; } = 0;
     public ulong FlatStorageDbWriteBufferSize { get; set; }= (ulong)64.MiB();
@@ -451,13 +439,11 @@ public class DbConfig : IDbConfig
         // LZ4 seems to be slightly faster here
         "compression=kLZ4Compression;" +
 
-        // Default value is 16.
-        // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
-        // They key within the same restart is delta-encoded with the key before it. This mean a read will have to go
-        // through potentially "BlockRestartInterval" number of key, probably. That is my understanding.
-        // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
-        // cache utilization.
-        "block_based_table_factory.block_restart_interval=8;" +
+        // Better for writem amp
+        "level_compaction_dynamic_level_bytes=true;" +
+
+        // Back to 16
+        "block_based_table_factory.block_restart_interval=16;" +
 
         // This adds a hashtable-like index per block (the 32kb block)
         // This reduce CPU and therefore latency under high block cache hit scenario.

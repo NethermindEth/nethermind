@@ -1,19 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -53,6 +48,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     // tasks within the trie warmers's ring buffer.
     private int _hintSequenceId = 0;
     private StateId _currentStateId;
+    private bool _isCommitting = false;
     private readonly ResourcePool _resourcePool;
     private readonly string _isPrewarmerLabel;
 
@@ -94,7 +90,13 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         _isReadOnly = isReadOnly;
     }
 
-    public void Dispose() => _snapshotBundle.Dispose();
+    private bool _isDisposed = false;
+    public void Dispose()
+    {
+        _isDisposed = true;
+        _snapshotBundle.Dispose();
+    }
+
     public Hash256 RootHash => _stateTree.RootHash;
     public void UpdateRootHash() => _stateTree.UpdateRootHash();
 
@@ -128,12 +130,28 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     public void HintGet(Address address, Account? account)
     {
-        _warmer.PushJob(this, address, null, null, _hintSequenceId);
+        _warmer.PushAddressJob(this, address, _hintSequenceId);
     }
 
     public void HintSet(Address address)
     {
         // _warmer.PushJob(this, address, null, null, _hintSequenceId);
+    }
+
+    public void WarmUpOutOfScope(Address address, UInt256? slot)
+    {
+        if (_isCommitting) return;
+        if (_isDisposed) return;
+        /*
+        if (slot is null)
+        {
+            _warmer.PushJobMulti(this, address, null, null, _hintSequenceId);
+        }
+        else
+        {
+            CreateStorageTreeImpl(address).QueueOutOfScopeWarmup(slot.Value);
+        }
+        */
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
@@ -165,26 +183,29 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     private FlatStorageTree CreateStorageTreeImpl(Address address)
     {
-        ref FlatStorageTree? storage = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
-        if (exists)
+        lock (_storages)
         {
-            return storage!;
+            ref FlatStorageTree? storage = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
+            if (exists)
+            {
+                return storage!;
+            }
+
+            Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+            long sw = Stopwatch.GetTimestamp();
+            storage = new FlatStorageTree(
+                this,
+                _warmer,
+                _snapshotBundle,
+                _configuration,
+                _concurrencyQuota,
+                storageRoot,
+                address,
+                _logManager);
+            _storageTreeCreateTime.Observe(Stopwatch.GetTimestamp() - sw);
+
+            return storage;
         }
-
-        Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
-        long sw = Stopwatch.GetTimestamp();
-        storage = new FlatStorageTree(
-            this,
-            _warmer,
-            _snapshotBundle,
-            _configuration,
-            _concurrencyQuota,
-            storageRoot,
-            address,
-            _logManager);
-        _storageTreeCreateTime.Observe(Stopwatch.GetTimestamp() - sw);
-
-        return storage;
     }
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
@@ -195,6 +216,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     public void Commit(long blockNumber)
     {
+        _isCommitting = true;
         StateId newStateId = new StateId(blockNumber, RootHash);
         if (!_isReadOnly)
         {
@@ -210,14 +232,17 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
                 _flatScopeTime.WithLabels("statetree_commit", _isPrewarmerLabel).Observe(Stopwatch.GetTimestamp() - sw);
             }));
 
-            foreach (KeyValuePair<AddressAsKey, FlatStorageTree> storage in _storages)
+            lock (_storages)
             {
-                commitTask.Add(Task.Factory.StartNew((ctx) =>
+                foreach (KeyValuePair<AddressAsKey, FlatStorageTree> storage in _storages)
                 {
-                    FlatStorageTree st = (FlatStorageTree)ctx!;
-                    st.CommitTree();
-                    _concurrencyQuota.ReturnConcurrencyQuota();
-                }, storage.Value));
+                    commitTask.Add(Task.Factory.StartNew((ctx) =>
+                    {
+                        FlatStorageTree st = (FlatStorageTree)ctx!;
+                        st.CommitTree();
+                        _concurrencyQuota.ReturnConcurrencyQuota();
+                    }, storage.Value));
+                }
             }
 
             Task.WaitAll(commitTask.AsSpan());
@@ -239,6 +264,7 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         }
 
         _currentStateId = newStateId;
+        _isCommitting = false;
     }
 
     private class WriteBatch(

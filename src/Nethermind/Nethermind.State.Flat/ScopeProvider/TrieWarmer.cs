@@ -18,7 +18,10 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class TrieWarmer : ITrieWarmer
 {
-    private SpmcRingBuffer<Job> _jobBuffer = new SpmcRingBuffer<Job>(1024);
+    private const int BufferSize = 1024;
+    private MpmcRingBuffer<Job> _addressJob = new MpmcRingBuffer<Job>(BufferSize);
+    private MpmcRingBuffer<Job> _jobBuffer = new MpmcRingBuffer<Job>(BufferSize);
+    private MpmcRingBuffer<Job> _jobBufferMulti = new MpmcRingBuffer<Job>(BufferSize);
 
     // If path is not null, its an address warmup.
     // if storage tree is not null, its a storage warmup.
@@ -32,14 +35,21 @@ public sealed class TrieWarmer : ITrieWarmer
     Task? _warmerJob = null;
     private static Counter _trieWarmEr = DevMetric.Factory.CreateCounter("triestore_trie_warmer", "hit rate", "type");
     private static Counter.Child _bufferFull = _trieWarmEr.WithLabels("buffer_full");
+    private static Counter.Child _bufferFullNoMainWorker = _trieWarmEr.WithLabels("buffer_full_no_main_worker");
     private ConcurrentStack<WarmerWorkers> _awaitingWorkers = new ConcurrentStack<WarmerWorkers>();
     private WarmerWorkers? _mainWarmer = null;
     private int _activeWorkers = 0;
 
     private bool TryDequeue(out Job job)
     {
-        return _jobBuffer.TryDequeue(out job);
+        return _addressJob.TryDequeue(out job)
+               || _jobBuffer.TryDequeue(out job)
+               || _jobBufferMulti.TryDequeue(out job);
     }
+
+    private int EstimatedJobCount => (int)(_addressJob.EstimatedJobCount +
+                                           _jobBuffer.EstimatedJobCount +
+                                           _jobBufferMulti.EstimatedJobCount);
 
     private void IncrementActiveWorkers()
     {
@@ -138,7 +148,7 @@ public sealed class TrieWarmer : ITrieWarmer
                     if (mainWarmer.TryDequeue(out var job))
                     {
                         _spinWait.Reset();
-                        if (isMain && mainWarmer._jobBuffer.EstimatedCount > mainWarmer._wakingUpWorker) mainWarmer.MaybeWakeOpOtherWorker();
+                        if (isMain && mainWarmer.EstimatedJobCount > mainWarmer._wakingUpWorker) mainWarmer.MaybeWakeOpOtherWorker();
 
                         HandleJob(job, isMain);
                     }
@@ -156,6 +166,7 @@ public sealed class TrieWarmer : ITrieWarmer
                             }
                             else
                             {
+                                _trieWarmEr.WithLabels("wait_main").Inc();
                                 _resetEvent.Reset();
                                 mainWarmer.MainWarmerIdle(this);
 
@@ -226,12 +237,13 @@ public sealed class TrieWarmer : ITrieWarmer
         in UInt256? index,
         int sequenceId)
     {
+        bool bufferFull = false;
         if (storageTree is null)
         {
             if (!_jobBuffer.TryEnqueue(new Job(scope, path, index.GetValueOrDefault(), sequenceId)))
             {
                 _bufferFull.Inc();
-                return;
+                bufferFull = true;
             }
         }
         else
@@ -239,7 +251,7 @@ public sealed class TrieWarmer : ITrieWarmer
             if (!_jobBuffer.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId)))
             {
                 _bufferFull.Inc();
-                return;
+                bufferFull = true;
             }
         }
 
@@ -249,10 +261,83 @@ public sealed class TrieWarmer : ITrieWarmer
             mainWarmer.WakeUp();
             _mainWarmer = null;
         }
+        else
+        {
+            if (bufferFull)
+            {
+                _bufferFullNoMainWorker.Inc();
+            }
+        }
+    }
+
+    private void MaybeWakeupFast()
+    {
+        WarmerWorkers? mainWarmer = _mainWarmer;
+        if (mainWarmer is not null)
+        {
+            mainWarmer.WakeUp();
+            _mainWarmer = null;
+        }
+    }
+
+    public void PushAddressJob(FlatWorldStateScope scope, Address? path, int sequenceId)
+    {
+        if (!_addressJob.TryEnqueue(new Job(scope, path, default, sequenceId)))
+        {
+            _bufferFull.Inc();
+        }
+
+        MaybeWakeupFast();
+    }
+
+    public void PushSlotJob(FlatWorldStateScope scope, FlatStorageTree storageTree, Address path, in UInt256? index,
+        int sequenceId)
+    {
+        if (!_jobBuffer.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId)))
+        {
+            _bufferFull.Inc();
+        }
+
+        MaybeWakeupFast();
+    }
+
+    public void PushJobMulti(FlatWorldStateScope scope, Address? path, FlatStorageTree? storageTree, in UInt256? index,
+        int sequenceId)
+    {
+        if (storageTree is null)
+        {
+            if (!_jobBufferMulti.TryEnqueue(new Job(scope, path, index.GetValueOrDefault(), sequenceId)))
+            {
+                _bufferFull.Inc();
+            }
+        }
+        else
+        {
+            if (!_jobBufferMulti.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId)))
+            {
+                _bufferFull.Inc();
+            }
+        }
+
+        MaybeWakeupFast();
     }
 
     public void OnNewScope()
     {
+        // Drain any existing job
+        for (int i = 0; i < BufferSize; i++)
+        {
+            if (!_addressJob.TryDequeue(out Job _)) break;
+        }
+        for (int i = 0; i < BufferSize; i++)
+        {
+            if (!_jobBuffer.TryDequeue(out Job _)) break;
+        }
+        for (int i = 0; i < BufferSize; i++)
+        {
+            if (!_jobBufferMulti.TryDequeue(out Job _)) break;
+        }
+
         _mainWarmer?.WakeUp();
         _mainWarmer = null;
     }

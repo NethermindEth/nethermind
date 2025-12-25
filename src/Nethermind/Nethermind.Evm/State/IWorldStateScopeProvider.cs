@@ -17,6 +17,10 @@ public interface IWorldStateScopeProvider
     bool HasRoot(BlockHeader? baseBlock);
     IScope BeginScope(BlockHeader? baseBlock);
 
+    // Warm up out of scope the specific slot. If the slot is null, then warmup the account.
+    // This method may be called in concurrently.
+    void WarmUpOutOfScope(Address address, UInt256? slot) { }
+
     public interface IScope : IDisposable
     {
         Hash256 RootHash { get; }

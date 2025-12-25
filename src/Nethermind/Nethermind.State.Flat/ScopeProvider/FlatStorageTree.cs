@@ -1,15 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -77,6 +74,10 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
             {
                 value = StorageTree.ZeroBytes;
             }
+            else if (value is null || value!.Length == 0)
+            {
+                value = StorageTree.ZeroBytes;
+            }
         }
 
         if (_config.VerifyWithTrie)
@@ -111,7 +112,12 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
 
     private void WarmUpSlot(UInt256 index)
     {
-        _trieCacheWarmer.PushJob(_scope, _address, this, index, _scope.HintSequenceId);
+        _trieCacheWarmer.PushSlotJob(_scope, this, _address, index, _scope.HintSequenceId);
+    }
+
+    public void QueueOutOfScopeWarmup(UInt256 index)
+    {
+        _trieCacheWarmer.PushJobMulti(_scope, _address, this, index, _scope.HintSequenceId);
     }
 
     // Called by trie warmer.

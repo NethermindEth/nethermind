@@ -8,7 +8,19 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public interface ITrieWarmer
 {
-    public void PushJob(
+    public void PushSlotJob(
+        FlatWorldStateScope scope,
+        FlatStorageTree storageTree,
+        Address path,
+        in UInt256? index,
+        int sequenceId);
+
+    public void PushAddressJob(
+        FlatWorldStateScope scope,
+        Address? path,
+        int sequenceId);
+
+    public void PushJobMulti(
         FlatWorldStateScope scope,
         Address? path,
         FlatStorageTree? storageTree,
@@ -20,7 +32,17 @@ public interface ITrieWarmer
 
 public class NoopTrieWarmer : ITrieWarmer
 {
-    public void PushJob(FlatWorldStateScope sctruncated_leafope, Address? path, FlatStorageTree? storageTree, in UInt256? index, int sequenceId)
+    public void PushSlotJob(FlatWorldStateScope scope, FlatStorageTree storageTree, Address path, in UInt256? index,
+        int sequenceId)
+    {
+    }
+
+    public void PushAddressJob(FlatWorldStateScope scope, Address? path, int sequenceId)
+    {
+    }
+
+    public void PushJobMulti(FlatWorldStateScope scope, Address? path, FlatStorageTree? storageTree, in UInt256? index,
+        int sequenceId)
     {
     }
 

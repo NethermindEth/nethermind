@@ -43,6 +43,8 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
+
+                // This class create the block processing env with worldstate that populate the cache
                 .Add<PrewarmerEnvFactory>()
 
                 // These are the actual decorated component that provide cached result
@@ -51,6 +53,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     if (worldStateScopeProvider is PrewarmerScopeProvider) return worldStateScopeProvider; // Inner world state
                     var worldState = new PrewarmerScopeProvider(
                         worldStateScopeProvider,
+                        null,
                         ctx.Resolve<PreBlockCaches>(),
                         populatePreBlockCache: false
                     );

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Nethermind.Core;
@@ -15,6 +14,7 @@ namespace Nethermind.State;
 
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
+    IWorldStateScopeProvider? outerScopeProvider,
     PreBlockCaches preBlockCaches,
     bool populatePreBlockCache = true
 ) : IWorldStateScopeProvider, IPreBlockCaches
@@ -29,13 +29,22 @@ public class PrewarmerScopeProvider(
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+    {
+        return new ScopeWrapper(baseProvider.BeginScope(baseBlock), outerScopeProvider, preBlockCaches, populatePreBlockCache);
+    }
+
+    public void WarmUpOutOfScope(Address address, UInt256? slot)
+    {
+        baseProvider.WarmUpOutOfScope(address, slot);
+    }
 
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !populatePreBlockCache;
 
     private sealed class ScopeWrapper(
         IWorldStateScopeProvider.IScope baseScope,
+        IWorldStateScopeProvider? outerScopeProvider,
         PreBlockCaches preBlockCaches,
         bool populatePreBlockCache)
         : IWorldStateScopeProvider.IScope
@@ -61,6 +70,7 @@ public class PrewarmerScopeProvider(
         {
             return new StorageTreeWrapper(
                 baseScope.CreateStorageTree(address),
+                outerScopeProvider,
                 preBlockCaches.StorageCache,
                 address,
                 populatePreBlockCache);
@@ -89,6 +99,7 @@ public class PrewarmerScopeProvider(
                 long priorReads = Metrics.ThreadLocalStateTreeReads;
                 Account? account = preBlockCache.GetOrAdd(address, GetFromBaseTree);
 
+                outerScopeProvider.WarmUpOutOfScope(address, null);
                 if (Metrics.ThreadLocalStateTreeReads == priorReads)
                 {
                     _addressGetHit.Observe(Stopwatch.GetTimestamp() - sw);
@@ -141,6 +152,7 @@ public class PrewarmerScopeProvider(
 
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
+        IWorldStateScopeProvider? outerWorldStateScopeProvider,
         ConcurrentDictionary<StorageCell, byte[]> preBlockCache,
         Address address,
         bool populatePreBlockCache
@@ -161,6 +173,8 @@ public class PrewarmerScopeProvider(
                 long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
 
                 byte[] value = preBlockCache.GetOrAdd(storageCell, LoadFromTreeStorage);
+
+                outerWorldStateScopeProvider.WarmUpOutOfScope(storageCell.Address, storageCell.Index);
 
                 if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
                 {
