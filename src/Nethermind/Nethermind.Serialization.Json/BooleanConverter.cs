@@ -44,7 +44,7 @@ namespace Nethermind.Serialization.Json
                 }
             }
 
-            throw new InvalidOperationException();
+            throw new JsonException($"Cannot convert {reader.TokenType} to {nameof(Boolean)}");
         }
 
         [SkipLocalsInit]

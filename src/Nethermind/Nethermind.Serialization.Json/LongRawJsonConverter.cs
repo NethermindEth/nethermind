@@ -15,23 +15,7 @@ public class LongRawJsonConverter : JsonConverter<long>
         Type typeToConvert,
         JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonTokenType.Number)
-        {
-            return reader.GetInt64();
-        }
-        else if (reader.TokenType == JsonTokenType.String)
-        {
-            if (!reader.HasValueSequence)
-            {
-                return LongConverter.FromString(reader.ValueSpan);
-            }
-            else
-            {
-                return LongConverter.FromString(reader.ValueSequence.ToArray());
-            }
-        }
-
-        throw new JsonException();
+        return LongConverter.ReadCore(ref reader);
     }
 
     public override void Write(
