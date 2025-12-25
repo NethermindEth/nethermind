@@ -29,8 +29,6 @@ using static Nethermind.Db.LogIndex.LogIndexStorage;
 
 namespace Nethermind.Db.Test.LogIndex
 {
-    // TODO: run internal state verification for all/some tests
-    // TODO: test for saving intersecting block ranges
     // TODO: test for reorg out-of-order
     // TODO: test for concurrent reorg and backward sync
     // TODO: test for background job failure
@@ -151,6 +149,26 @@ namespace Nethermind.Db.Test.LogIndex
             var logIndexStorage = CreateLogIndexStorage(compactionDistance, ioParallelism);
 
             BlockReceipts[][] batches = isBackwardsSync ? Reverse(testData.Batches) : testData.Batches;
+            await SetReceiptsAsync(logIndexStorage, batches, isBackwardsSync);
+
+            if (compact)
+                await CompactAsync(logIndexStorage);
+
+            VerifyReceipts(logIndexStorage, testData);
+        }
+
+        [Combinatorial]
+        public async Task SetIntersecting_Get_Test(
+            [Values(100, 200, int.MaxValue)] int compactionDistance,
+            [Values(1, 8, 16)] byte ioParallelism,
+            [Values] bool isBackwardsSync,
+            [Values] bool compact
+        )
+        {
+            var logIndexStorage = CreateLogIndexStorage(compactionDistance, ioParallelism);
+
+            BlockReceipts[][] batches = isBackwardsSync ? Reverse(testData.Batches) : testData.Batches;
+            batches = Intersect(batches);
             await SetReceiptsAsync(logIndexStorage, batches, isBackwardsSync);
 
             if (compact)
@@ -451,7 +469,7 @@ namespace Nethermind.Db.Test.LogIndex
         [Repeat(RaceConditionTestRepeat)]
         [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
         public async Task Set_ConcurrentGet_Test(
-            [Values(100, int.MaxValue)] int compactionDistance,
+            [Values(1, 200, int.MaxValue)] int compactionDistance,
             [Values] bool isBackwardsSync
         )
         {
@@ -524,10 +542,11 @@ namespace Nethermind.Db.Test.LogIndex
         [Combinatorial]
         public async Task Set_AlgoChange_Test()
         {
-            if (CompressionAlgorithm.Supported.Count < 2) Assert.Ignore();
+            if (CompressionAlgorithm.Supported.Count < 2)
+                Assert.Ignore("Less than 2 supported compression algorithms");
 
-            await using (var logIndexStorage1 = CreateLogIndexStorage())
-                await SetReceiptsAsync(logIndexStorage1, [testData.Batches[0]]);
+            await using (var logIndexStorage = CreateLogIndexStorage())
+                await SetReceiptsAsync(logIndexStorage, [testData.Batches[0]]);
 
             var oldAlgo = testData.Compression ?? CompressionAlgorithm.Best.Key;
             var newAlgo = CompressionAlgorithm.Supported.First(c => c.Key != oldAlgo).Key;
@@ -568,7 +587,6 @@ namespace Nethermind.Db.Test.LogIndex
         private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
             Dictionary<Address, HashSet<int>>? excludedAddresses = null,
             Dictionary<int, Dictionary<Hash256, HashSet<int>>>? excludedTopics = null,
-            HashSet<int>? excludedBlockNums = null,
             Dictionary<Address, HashSet<int>>? addedAddresses = null,
             Dictionary<int, Dictionary<Hash256, HashSet<int>>>? addedTopics = null,
             int? minBlock = null, int? maxBlock = null,
@@ -593,9 +611,6 @@ namespace Nethermind.Db.Test.LogIndex
 
                 if (excludedAddresses != null && excludedAddresses.TryGetValue(address, out HashSet<int> addressExcludedBlocks))
                     expectedNums = expectedNums.Except(addressExcludedBlocks);
-
-                if (excludedBlockNums != null)
-                    expectedNums = expectedNums.Except(excludedBlockNums);
 
                 if (addedAddresses != null && addedAddresses.TryGetValue(address, out HashSet<int> addressAddedBlocks))
                     expectedNums = expectedNums.Concat(addressAddedBlocks);
@@ -628,9 +643,6 @@ namespace Nethermind.Db.Test.LogIndex
 
                     if (excludedTopics != null && excludedTopics[idx].TryGetValue(topic, out HashSet<int> topicExcludedBlocks))
                         expectedNums = expectedNums.Except(topicExcludedBlocks);
-
-                    if (excludedBlockNums != null)
-                        expectedNums = expectedNums.Except(excludedBlockNums);
 
                     if (addedTopics != null && addedTopics[idx].TryGetValue(topic, out HashSet<int> topicAddedBlocks))
                         expectedNums = expectedNums.Concat(topicAddedBlocks);
@@ -728,6 +740,23 @@ namespace Nethermind.Db.Test.LogIndex
             var index = 0;
             foreach (BlockReceipts[] batch in batches.Reverse())
                 result[index++] = batch.Reverse().ToArray();
+
+            return result;
+        }
+
+        private static BlockReceipts[][] Intersect(BlockReceipts[][] batches)
+        {
+            var result = new BlockReceipts[batches.Length + 1][];
+
+            for (var i = 0; i < result.Length; i++)
+            {
+                if (i == 0)
+                    result[i] = batches[i];
+                else if (i == batches.Length)
+                    result[i] = batches[^1].Skip(batches[^2].Length / 2).ToArray();
+                else
+                    result[i] = batches[i - 1].Skip(batches[i - 1].Length / 2).Concat(batches[i].Take(batches[i].Length / 2)).ToArray();
+            }
 
             return result;
         }

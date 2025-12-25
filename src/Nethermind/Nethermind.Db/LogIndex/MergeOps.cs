@@ -7,22 +7,22 @@ namespace Nethermind.Db.LogIndex;
 
 partial class LogIndexStorage
 {
-    private enum MergeOp : byte
+    public enum MergeOp : byte
     {
         /// <summary>
         /// Reorgs from the provided block number,
         /// removing any numbers starting from it.
         /// </summary>
-        ReorgOp = 1,
+        Reorg = 1,
 
         /// <summary>
         /// Truncates data up to the provided block number,
         /// removing it and anything coming before.
         /// </summary>
-        TruncateOp = 2
+        Truncate = 2
     }
 
-    private static class MergeOps
+    public static class MergeOps
     {
         public const int Size = BlockNumSize + 1;
 
@@ -44,8 +44,8 @@ partial class LogIndexStorage
         }
 
         public static bool IsAny(ReadOnlySpan<byte> operand) =>
-            Is(MergeOp.ReorgOp, operand, out _) ||
-            Is(MergeOp.TruncateOp, operand, out _);
+            Is(MergeOp.Reorg, operand, out _) ||
+            Is(MergeOp.Truncate, operand, out _);
 
         public static Span<byte> Create(MergeOp op, int fromBlock, Span<byte> buffer)
         {
@@ -67,14 +67,14 @@ partial class LogIndexStorage
             // In most cases the searched block will be near or at the end of the operand, if present there
             var i = LastBlockSearch(operand, block, isBackward);
 
-            if (op is MergeOp.ReorgOp)
+            if (op is MergeOp.Reorg)
             {
                 if (i < 0) return Span<byte>.Empty;
                 if (i >= operand.Length) return operand;
                 return operand[..i];
             }
 
-            if (op is MergeOp.TruncateOp)
+            if (op is MergeOp.Truncate)
             {
                 if (i < 0) return operand;
                 if (i >= operand.Length) return Span<byte>.Empty;

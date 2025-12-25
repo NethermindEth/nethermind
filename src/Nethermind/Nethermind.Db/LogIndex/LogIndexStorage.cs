@@ -37,7 +37,7 @@ namespace Nethermind.Db.LogIndex
                 .Concat(new byte[] { 3 }).ToArray();
         }
 
-        private static class SpecialPostfix
+        public static class SpecialPostfix
         {
             // Any ordered prefix seeking will start on it
             public static readonly byte[] BackwardMerge = Enumerable.Repeat((byte)0, BlockNumSize).ToArray();
@@ -100,7 +100,7 @@ namespace Nethermind.Db.LogIndex
 
         public bool Enabled { get; }
 
-        private const int BlockNumSize = sizeof(int);
+        public const int BlockNumSize = sizeof(int);
         private const int MaxKeyLength = Hash256.Size + 1; // Math.Max(Address.Size, Hash256.Size)
         private const int MaxDbKeyLength = MaxKeyLength + BlockNumSize;
 
@@ -603,6 +603,7 @@ namespace Nethermind.Db.LogIndex
             if (!IsBlockNewer(batch[^1].BlockNumber, isBackwardSync))
                 return new(batch);
 
+            Span<bool> isTopicBlockNewer = stackalloc bool[MaxTopics];
             var timestamp = Stopwatch.GetTimestamp();
 
             var aggregate = new LogIndexAggregate(batch);
@@ -611,12 +612,15 @@ namespace Nethermind.Db.LogIndex
                 if (!IsBlockNewer(blockNumber, isBackwardSync))
                     continue;
 
+                var isAddressBlockNewer = IsAddressBlockNewer(blockNumber, isBackwardSync);
+                for(var index = 0; index < isTopicBlockNewer.Length; index++)
+                    isTopicBlockNewer[index] = IsTopicBlockNewer(index, blockNumber, isBackwardSync);
+
                 stats?.IncrementBlocks();
+                stats?.IncrementTx(receipts.Length);
 
                 foreach (TxReceipt receipt in receipts)
                 {
-                    stats?.IncrementTx();
-
                     if (receipt.Logs == null)
                         continue;
 
@@ -624,7 +628,7 @@ namespace Nethermind.Db.LogIndex
                     {
                         stats?.IncrementLogs();
 
-                        if (IsAddressBlockNewer(blockNumber, isBackwardSync))
+                        if (isAddressBlockNewer)
                         {
                             List<int> addressNums = aggregate.Address.GetOrAdd(log.Address, static _ => new(1));
 
@@ -635,12 +639,11 @@ namespace Nethermind.Db.LogIndex
                         var topicsLength = Math.Min(log.Topics.Length, MaxTopics);
                         for (byte topicIndex = 0; topicIndex < topicsLength; topicIndex++)
                         {
-                            if (IsTopicBlockNewer(topicIndex, blockNumber, isBackwardSync))
+                            if (isTopicBlockNewer[topicIndex])
                             {
-
                                 stats?.IncrementTopics();
 
-                                var topicNums = aggregate.Topic[topicIndex].GetOrAdd(log.Topics[topicIndex], static _ => new(1));
+                                List<int> topicNums = aggregate.Topic[topicIndex].GetOrAdd(log.Topics[topicIndex], static _ => new(1));
 
                                 if (topicNums.Count == 0 || topicNums[^1] != blockNumber)
                                     topicNums.Add(blockNumber);
@@ -687,7 +690,7 @@ namespace Nethermind.Db.LogIndex
 
                 using var batches = new DbBatches(_addressDb, _topicDbs);
 
-                Span<byte> dbValue = MergeOps.Create(MergeOp.ReorgOp, block.BlockNumber, valueArray);
+                Span<byte> dbValue = MergeOps.Create(MergeOp.Reorg, block.BlockNumber, valueArray);
 
                 foreach (TxReceipt receipt in block.Receipts)
                 {

@@ -12,7 +12,7 @@ partial class LogIndexStorage
 {
     // TODO: check if success=false + paranoid_checks=true is better than throwing exception
     // TODO: tests for MergeOperator specifically
-    private class MergeOperator(LogIndexStorage storage, ICompressor compressor, int? topicIndex) : IMergeOperator
+    public class MergeOperator(ILogIndexStorage storage, ICompressor compressor, int? topicIndex) : IMergeOperator
     {
         private LogIndexUpdateStats _stats = new(storage);
         public LogIndexUpdateStats Stats => _stats;
@@ -79,7 +79,7 @@ partial class LogIndexStorage
                 result = new(resultLength);
 
                 // For truncate - just use max/min for all operands
-                var truncateAggregate = Aggregate(MergeOp.TruncateOp, enumerator, isBackwards);
+                var truncateAggregate = Aggregate(MergeOp.Truncate, enumerator, isBackwards);
 
                 var iReorg = 0;
                 for (var i = 0; i < enumerator.TotalCount; i++)
@@ -91,11 +91,11 @@ partial class LogIndexStorage
 
                     // For reorg - order matters, so we need to always traverse from the current position
                     iReorg = Math.Max(iReorg, i + 1);
-                    if (FindNext(MergeOp.ReorgOp, enumerator, ref iReorg) is { } reorgBlock)
-                        operand = MergeOps.ApplyTo(operand, MergeOp.ReorgOp, reorgBlock, isBackwards);
+                    if (FindNext(MergeOp.Reorg, enumerator, ref iReorg) is { } reorgBlock)
+                        operand = MergeOps.ApplyTo(operand, MergeOp.Reorg, reorgBlock, isBackwards);
 
                     if (truncateAggregate is { } truncateBlock)
-                        operand = MergeOps.ApplyTo(operand, MergeOp.TruncateOp, truncateBlock, isBackwards);
+                        operand = MergeOps.ApplyTo(operand, MergeOp.Truncate, truncateBlock, isBackwards);
 
                     AddEnsureSorted(key, result, operand, isBackwards);
                 }
@@ -110,7 +110,7 @@ partial class LogIndexStorage
             }
             catch (Exception exception)
             {
-                storage.OnBackgroundError<MergeOperator>(exception);
+                (storage as LogIndexStorage)?.OnBackgroundError<MergeOperator>(exception);
                 return null;
             }
             finally

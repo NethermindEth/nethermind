@@ -253,12 +253,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
     public override byte[] ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        byte[]? result = Convert(ref reader);
-
-        if (result is null)
-            ThrowInvalidOperationException();
-
-        return result;
+        return Convert(ref reader) ?? throw ThrowInvalidOperationException();
     }
 
     public override void WriteAsPropertyName(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)

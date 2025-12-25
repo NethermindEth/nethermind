@@ -69,7 +69,7 @@ public class LogIndexUpdateStats(ILogIndexStorage storage) : IFormattable
     }
 
     public void IncrementBlocks() => Interlocked.Increment(ref _blocksAdded);
-    public void IncrementTx() => Interlocked.Increment(ref _txAdded);
+    public void IncrementTx(int count = 1) => Interlocked.Add(ref _txAdded, count);
     public void IncrementLogs() => Interlocked.Increment(ref _logsAdded);
     public void IncrementTopics() => Interlocked.Increment(ref _topicsAdded);
 

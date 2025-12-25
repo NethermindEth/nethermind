@@ -50,8 +50,7 @@ public class LogIndexStorageFilterTests
             yield return new TestCaseData(
                 "AddressA", // name
 
-                FilterBuilder.New() // filter
-                    .FromBlock(LogIndexFrom).ToBlock(LogIndexTo)
+                BuildFilter() // filter
                     .WithAddress(TestItem.AddressA)
                     .Build(),
 
@@ -61,8 +60,7 @@ public class LogIndexStorageFilterTests
             yield return new TestCaseData(
                 "AddressA or AddressA",
 
-                FilterBuilder.New()
-                    .FromBlock(LogIndexFrom).ToBlock(LogIndexTo)
+                BuildFilter()
                     .WithAddresses(TestItem.AddressA, TestItem.AddressA)
                     .Build(),
 
@@ -72,8 +70,7 @@ public class LogIndexStorageFilterTests
             yield return new TestCaseData(
                 "AddressA or AddressB",
 
-                FilterBuilder.New()
-                    .FromBlock(LogIndexFrom).ToBlock(LogIndexTo)
+                BuildFilter()
                     .WithAddresses(TestItem.AddressA, TestItem.AddressB)
                     .Build(),
 
@@ -84,8 +81,7 @@ public class LogIndexStorageFilterTests
             yield return new TestCaseData(
                 "TopicA",
 
-                FilterBuilder.New()
-                    .FromBlock(LogIndexFrom).ToBlock(LogIndexTo)
+                BuildFilter()
                     .WithTopicExpressions(
                         TestTopicExpressions.Specific(TestItem.KeccakA)
                     ).Build(),
@@ -96,8 +92,7 @@ public class LogIndexStorageFilterTests
             yield return new TestCaseData(
                 "TopicA or TopicA",
 
-                FilterBuilder.New()
-                    .FromBlock(LogIndexFrom).ToBlock(LogIndexTo)
+                BuildFilter()
                     .WithTopicExpressions(
                         TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakA)
                     ).Build(),
@@ -108,8 +103,7 @@ public class LogIndexStorageFilterTests
             yield return new TestCaseData(
                 "TopicA or TopicB",
 
-                FilterBuilder.New()
-                    .FromBlock(LogIndexFrom).ToBlock(LogIndexTo)
+                BuildFilter()
                     .WithTopicExpressions(
                         TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB)
                     ).Build(),
@@ -121,8 +115,7 @@ public class LogIndexStorageFilterTests
             yield return new TestCaseData(
                 "TopicA, TopicB",
 
-                FilterBuilder.New()
-                    .FromBlock(LogIndexFrom).ToBlock(LogIndexTo)
+                BuildFilter()
                     .WithTopicExpressions(
                         TestTopicExpressions.Specific(TestItem.KeccakA),
                         TestTopicExpressions.Specific(TestItem.KeccakB)
@@ -136,8 +129,7 @@ public class LogIndexStorageFilterTests
             yield return new TestCaseData(
                 "TopicA, -, TopicA",
 
-                FilterBuilder.New()
-                    .FromBlock(LogIndexFrom).ToBlock(LogIndexTo)
+                BuildFilter()
                     .WithTopicExpressions(
                         TestTopicExpressions.Specific(TestItem.KeccakA),
                         TestTopicExpressions.Any,
@@ -152,8 +144,7 @@ public class LogIndexStorageFilterTests
             yield return new TestCaseData(
                 "TopicA, -, TopicB or TopicC",
 
-                FilterBuilder.New()
-                    .FromBlock(LogIndexFrom).ToBlock(LogIndexTo)
+                BuildFilter()
                     .WithTopicExpressions(
                         TestTopicExpressions.Specific(TestItem.KeccakA),
                         TestTopicExpressions.Any,
@@ -167,8 +158,7 @@ public class LogIndexStorageFilterTests
             yield return new TestCaseData(
                 "AddressA | TopicA or TopicB, TopicC",
 
-                FilterBuilder.New()
-                    .FromBlock(LogIndexFrom).ToBlock(LogIndexTo)
+                BuildFilter()
                     .WithAddress(TestItem.AddressA)
                     .WithTopicExpressions(
                         TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB),
@@ -184,8 +174,7 @@ public class LogIndexStorageFilterTests
             yield return new TestCaseData(
                 "AddressA or AddressB | TopicA or TopicB, -, TopicC, TopicD or TopicE",
 
-                FilterBuilder.New()
-                    .FromBlock(LogIndexFrom).ToBlock(LogIndexTo)
+                BuildFilter()
                     .WithAddresses(TestItem.AddressA, TestItem.AddressB)
                     .WithTopicExpressions(
                         TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB),
@@ -206,18 +195,20 @@ public class LogIndexStorageFilterTests
     [TestCaseSource(nameof(LogIndexTestsData))]
     public void calculates_correct_range_for_filter(string name, LogFilter filter, List<int> expected)
     {
-        Assert.That(expected, Is.Not.Empty, "Unreliable test: no block numbers are selected.");
-        Assert.That(expected, Has.Count.LessThan(LogIndexTo - LogIndexFrom + 1), "Unreliable test: all block numbers are selected.");
+        Assert.That(expected,
+            Has.Count.InRange(from: 1, to: ToBlock - FromBlock - 1),
+            "Unreliable test: none or all blocks are selected."
+        );
 
         MockLogIndex();
 
-        List<int> blockNums = _logIndexStorage.GetBlockNumbersFor(filter, LogIndexFrom, LogIndexTo, CancellationToken.None);
+        IList<int> blockNums = _logIndexStorage.GetBlockNumbersFor(filter, FromBlock, ToBlock, CancellationToken.None);
 
         Assert.That(blockNums, Is.EquivalentTo(expected));
     }
 
-    private const long LogIndexFrom = 0;
-    private const long LogIndexTo = 99;
+    private const long FromBlock = 0;
+    private const long ToBlock = 99;
 
     private static readonly Ranges LogIndexRanges = GenerateLogIndexRanges();
 
@@ -228,7 +219,7 @@ public class LogIndexStorageFilterTests
         var addressRanges = new Dictionary<Address, List<int>>();
         foreach (Address address in new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE })
         {
-            var range = Enumerable.Range((int)LogIndexFrom, (int)(LogIndexTo + 1)).Where(_ => random.NextDouble() < 0.3).ToList();
+            var range = Enumerable.Range((int)FromBlock, (int)(ToBlock + 1)).Where(_ => random.NextDouble() < 0.3).ToList();
             addressRanges.Add(address, range);
         }
 
@@ -240,7 +231,7 @@ public class LogIndexStorageFilterTests
         {
             foreach (Hash256 topic in new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD, TestItem.KeccakE })
             {
-                var range = Enumerable.Range((int)LogIndexFrom, (int)(LogIndexTo + 1)).Where(_ => random.NextDouble() < 0.2).ToList();
+                var range = Enumerable.Range((int)FromBlock, (int)(ToBlock + 1)).Where(_ => random.NextDouble() < 0.2).ToList();
                 ranges.Add(topic, range);
             }
         }
@@ -267,4 +258,8 @@ public class LogIndexStorageFilterTests
             }
         }
     }
+
+    private static FilterBuilder BuildFilter() => FilterBuilder.New()
+        .FromBlock(FromBlock)
+        .ToBlock(ToBlock);
 }

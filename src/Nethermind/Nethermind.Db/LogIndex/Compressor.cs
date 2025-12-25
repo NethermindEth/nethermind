@@ -17,7 +17,7 @@ partial class LogIndexStorage
     /// <summary>
     /// Does background compression for keys with the number of blocks above the threshold.
     /// </summary>
-    private interface ICompressor : IDisposable
+    public interface ICompressor : IDisposable
     {
         int MinLengthToCompress { get; }
         PostMergeProcessingStats GetAndResetStats();
@@ -133,7 +133,7 @@ partial class LogIndexStorage
                 using (IWriteBatch batch = db.StartWriteBatch())
                 {
                     Span<byte> truncateOp = MergeOps.Create(
-                        MergeOp.TruncateOp, truncateBlock, stackalloc byte[MergeOps.Size]
+                        MergeOp.Truncate, truncateBlock, stackalloc byte[MergeOps.Size]
                     );
 
                     batch.PutSpan(dbKeyComp, dbValue);
