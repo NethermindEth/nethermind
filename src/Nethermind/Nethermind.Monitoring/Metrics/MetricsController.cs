@@ -30,9 +30,10 @@ namespace Nethermind.Monitoring.Metrics
     {
         private readonly int _intervalMilliseconds;
         private Timer _timer = null!;
-        private static bool _staticLabelsInitialized = false;
+        private static int _staticLabelsInitialized = 0;
 
         private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = new();
+        private readonly object _cacheLock = new();
         private readonly HashSet<Type> _metricTypes = new();
 
         // Largely for testing reason
@@ -220,8 +221,18 @@ namespace Nethermind.Monitoring.Metrics
 
         private void EnsurePropertiesCached(Type type)
         {
-            if (!_metricUpdaters.ContainsKey(type))
+            if (_metricUpdaters.ContainsKey(type))
             {
+                return;
+            }
+
+            lock (_cacheLock)
+            {
+                if (_metricUpdaters.ContainsKey(type))
+                {
+                    return;
+                }
+
                 Meter? meter = null;
                 if (_useCounters)
                 {
@@ -324,9 +335,8 @@ namespace Nethermind.Monitoring.Metrics
 
         public MetricsController(IMetricsConfig metricsConfig)
         {
-            if (metricsConfig.InitializeStaticLabels && !_staticLabelsInitialized)
+            if (metricsConfig.InitializeStaticLabels && Interlocked.CompareExchange(ref _staticLabelsInitialized, 1, 0) == 0)
             {
-                _staticLabelsInitialized = true;
                 Prometheus.Metrics.DefaultRegistry.SetStaticLabels(_commonStaticTags);
             }
 
