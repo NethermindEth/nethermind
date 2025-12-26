@@ -33,7 +33,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         public void Dispose()
         {
             innerScope.Dispose();
-            logger.Info($"{scopeId}: Scope disposed");
+            logger.Trace($"{scopeId}: Scope disposed");
         }
 
         public Hash256 RootHash => innerScope.RootHash;
@@ -41,13 +41,13 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         public void UpdateRootHash()
         {
             innerScope.UpdateRootHash();
-            logger.Info($"{scopeId}: Update root hash");
+            logger.Trace($"{scopeId}: Update root hash");
         }
 
         public Account? Get(Address address)
         {
             Account? res = innerScope.Get(address);
-            logger.Info($"{scopeId}: Get account {address}, got {res}");
+            logger.Trace($"{scopeId}: Get account {address}, got {res}");
             return res;
         }
 
@@ -81,7 +81,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         public byte[] Get(in UInt256 index)
         {
             byte[]? bytes = storageTree.Get(in index);
-            logger.Info($"{scopeId}: S:{address} Get slot {index}, got {bytes?.ToHexString()}");
+            logger.Trace($"{scopeId}: S:{address} Get slot {index}, got {bytes?.ToHexString()}");
             return bytes;
         }
 
@@ -93,7 +93,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         public byte[] Get(in ValueHash256 hash)
         {
             byte[]? bytes = storageTree.Get(in hash);
-            logger.Info($"{scopeId}: S:{address} Get slot via hash {hash}, got {bytes?.ToHexString()}");
+            logger.Trace($"{scopeId}: S:{address} Get slot via hash {hash}, got {bytes?.ToHexString()}");
             return bytes;
         }
     }
@@ -112,7 +112,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
             _writeBatch.OnAccountUpdated += (sender, updated) =>
             {
-                logger.Info($"{scopeId}: OnAccountUpdated callback. {updated.Address} -> {updated.Account}");
+                logger.Trace($"{scopeId}: OnAccountUpdated callback. {updated.Address} -> {updated.Account}");
             };
         }
 
@@ -120,7 +120,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         {
             _writeBatch.Dispose();
 
-            _logger1.Info($"{_scopeId}: Write batch disposed");
+            _logger1.Trace($"{_scopeId}: Write batch disposed");
         }
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
@@ -132,7 +132,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         public void Set(Address key, Account? account)
         {
             _writeBatch.Set(key, account);
-            _logger1.Info($"{_scopeId}: Set account {key} to {account}");
+            _logger1.Trace($"{_scopeId}: Set account {key} to {account}");
         }
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
@@ -150,19 +150,19 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         public void Dispose()
         {
             writeBatch.Dispose();
-            logger.Info($"{scopeId}: {address}, Storage write batch disposed");
+            logger.Trace($"{scopeId}: {address}, Storage write batch disposed");
         }
 
         public void Set(in UInt256 index, byte[] value)
         {
             writeBatch.Set(in index, value);
-            logger.Info($"{scopeId}: {address}, Set {index} to {value?.ToHexString()}");
+            logger.Trace($"{scopeId}: {address}, Set {index} to {value?.ToHexString()}");
         }
 
         public void Clear()
         {
             writeBatch.Clear();
-            logger.Info($"{scopeId}: {address}, Clear");
+            logger.Trace($"{scopeId}: {address}, Clear");
         }
     }
 }
