@@ -90,7 +90,7 @@ public class DiscoveryV5App : IDiscoveryApp
                         return null;
                     }
                 })
-                .Where(enr => enr != null)!
+                .OfType<Lantern.Discv5.Enr.Enr>()
             ];
 
         EnrBuilder enrBuilder = new EnrBuilder()
