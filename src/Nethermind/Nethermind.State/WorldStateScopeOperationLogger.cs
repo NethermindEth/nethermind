@@ -107,7 +107,6 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         public void Dispose()
         {
             _writeBatch.Dispose();
-
             _logger1.Trace($"{_scopeId}: Write batch disposed");
         }
 
