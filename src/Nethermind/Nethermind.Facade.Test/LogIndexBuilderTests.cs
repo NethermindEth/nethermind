@@ -165,7 +165,6 @@ public class LogIndexBuilderTests
     }
 
     [Test]
-    [Combinatorial]
     [CancelAfter(60_000)]
     public async Task Should_SyncToBarrier(
         [Values(1, 10)] int minBarrier,

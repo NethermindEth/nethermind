@@ -108,9 +108,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             return;
         }
 
+        _processingQueues[isForward] = BuildQueue(isForward);
         _progressLoggers[isForward] = new(GetLogPrefix(isForward), _logManager);
 
-        _processingQueues[isForward] = BuildQueue(isForward);
         _tasks.AddRange(
             Task.Run(() => DoQueueBlocks(isForward), CancellationToken),
             _processingQueues[isForward].Completion

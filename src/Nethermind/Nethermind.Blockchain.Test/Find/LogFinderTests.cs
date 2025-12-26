@@ -413,6 +413,7 @@ public class LogFinderTests
         _logIndexStorage.Enabled.Returns(true);
         _logIndexStorage.GetMinBlockNumber().Returns(indexFrom);
         _logIndexStorage.GetMaxBlockNumber().Returns(indexTo);
+        _logIndexStorage.GetBlockNumbersFor(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>()).Returns([]);
 
         Address address = TestItem.AddressA;
         BlockHeader fromHeader = Build.A.BlockHeader.WithNumber(from).TestObject;
