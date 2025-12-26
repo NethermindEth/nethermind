@@ -1896,9 +1896,16 @@ namespace Nethermind.Serialization.Rlp
 
         public bool Equals(RlpDecoderKey other) => _type.Equals(other._type) && _key.Equals(other._key);
 
-        public override int GetHashCode() => (int)HashCode.Combine(
-            (uint)_type.GetHashCode(),
-            (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash());
+        public override int GetHashCode() => (int)
+#if ZKVM
+            HashCode.Combine
+#else
+            BitOperations.Crc32C
+#endif
+            (
+                (uint)_type.GetHashCode(),
+                (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash()
+            );
 
         public override bool Equals(object obj) => obj is RlpDecoderKey key && Equals(key);
 

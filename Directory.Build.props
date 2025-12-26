@@ -3,6 +3,7 @@
   <PropertyGroup>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <DefineConstants Condition="'$(EnableZkvm)' == 'true'">$(DefineConstants);ZKVM</DefineConstants>
     <InvariantGlobalization>true</InvariantGlobalization>
     <LangVersion>14.0</LangVersion>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>

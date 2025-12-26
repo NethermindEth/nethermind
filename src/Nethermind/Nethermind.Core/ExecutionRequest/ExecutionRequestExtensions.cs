@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.ExecutionRequest;
+
+using SHA256 =
+#if ZKVM
+    Nethermind.Core.Crypto.Sha2;
+#else
+    System.Security.Cryptography.SHA256;
+#endif
 
 public static class ExecutionRequestExtensions
 {
@@ -23,8 +27,6 @@ public static class ExecutionRequestExtensions
     public const int WithdrawalRequestsBytesSize = Address.Size + PublicKeySize /*validator_pubkey: Bytes48*/ + sizeof(ulong) /*amount: uint64*/;
     public const int ConsolidationRequestsBytesSize = Address.Size + PublicKeySize /*source_pubkey: Bytes48*/ + PublicKeySize /*target_pubkey: Bytes48*/;
     public const int MaxRequestsCount = 3;
-
-
 
     public static readonly byte[][] EmptyRequests = [];
     public static readonly Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
@@ -42,11 +44,11 @@ public static class ExecutionRequestExtensions
         foreach (byte[] requests in flatEncodedRequests)
         {
             if (requests.Length <= 1) continue;
-            concatenatedHashes.AddRange(Sha2.HashData(requests));
+            concatenatedHashes.AddRange(SHA256.HashData(requests));
         }
 
         // Compute sha256 of the concatenated hashes
-        return new Hash256(Sha2.HashData(concatenatedHashes.UnsafeGetInternalArray().AsSpan(0, concatenatedHashes.Count).ToArray()));
+        return new Hash256(SHA256.HashData(concatenatedHashes.UnsafeGetInternalArray().AsSpan(0, concatenatedHashes.Count)));
     }
 
 

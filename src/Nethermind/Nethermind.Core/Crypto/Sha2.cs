@@ -131,7 +131,7 @@ public class Sha2
         H[7] = h + H[7];
     }
 
-    public void AddData(byte[] data, uint offset, uint len)
+    public void AddData(Span<byte> data, uint offset, uint len)
     {
         if (closed)
             throw new InvalidOperationException("Adding data to a closed hasher.");
@@ -157,7 +157,7 @@ public class Sha2
                 amount_to_copy = 64 - pending_block_off;
             }
 
-            Array.Copy(data, offset, pending_block, pending_block_off, amount_to_copy);
+            data[(int)offset..].CopyTo(pending_block.AsSpan()[(int)pending_block_off..(int)(pending_block_off + amount_to_copy)]);
             len -= amount_to_copy;
             offset += amount_to_copy;
             pending_block_off += amount_to_copy;
@@ -176,7 +176,7 @@ public class Sha2
         return toByteArray(GetHashUInt32());
     }
 
-    public static ReadOnlySpan<byte> HashData(byte[] data)
+    public static ReadOnlySpan<byte> HashData(Span<byte> data)
     {
         Sha2 hash = new();
         hash.AddData(data, 0, (uint)data.Length);
