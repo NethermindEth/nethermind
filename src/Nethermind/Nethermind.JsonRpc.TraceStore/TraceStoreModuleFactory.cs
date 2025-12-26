@@ -4,7 +4,7 @@
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Db;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;

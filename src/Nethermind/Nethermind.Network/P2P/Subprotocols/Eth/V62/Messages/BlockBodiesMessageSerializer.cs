@@ -6,11 +6,13 @@ using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class BlockBodiesMessageSerializer : IZeroInnerMessageSerializer<BlockBodiesMessage>
     {
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockBodiesMessage>(NethermindSyncLimits.MaxBodyFetch, nameof(BlockBodiesMessage.Bodies));
         private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
 
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
@@ -34,11 +36,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int GetLength(BlockBodiesMessage message, out int contentLength)
         {
-            contentLength = message.Bodies.Bodies.Select(b => b is null
-                ? Rlp.OfEmptySequence.Length
-                : Rlp.LengthOfSequence(_blockBodyDecoder.GetBodyLength(b))
-            ).Sum();
-            return Rlp.LengthOfSequence(contentLength);
+            int length = 0;
+            foreach (BlockBody? body in message.Bodies.Bodies)
+            {
+                length += body switch
+                {
+                    null => Rlp.OfEmptySequence.Length,
+                    _ => Rlp.LengthOfSequence(_blockBodyDecoder.GetBodyLength(body))
+                };
+            }
+
+            contentLength = length;
+            return Rlp.LengthOfSequence(length);
         }
 
         public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
@@ -47,7 +56,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
             Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
             int startingPosition = ctx.Position;
-            BlockBody[]? bodies = ctx.DecodeArray(_blockBodyDecoder, false);
+            BlockBody[]? bodies = ctx.DecodeArray(_blockBodyDecoder, false, limit: RlpLimit);
             byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
 
             return new() { Bodies = new(bodies, memoryOwner) };

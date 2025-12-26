@@ -29,25 +29,5 @@ namespace Nethermind.Merge.AuRa
                 gasLimitCalculator)
         {
         }
-
-        public override PostMergeBlockProducer Create(
-            BlockProducerEnv producerEnv,
-            ITxSource? txSource = null)
-        {
-            TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator =
-                new(_specProvider, _blocksConfig);
-
-            return new PostMergeBlockProducer(
-                txSource ?? producerEnv.TxSource,
-                producerEnv.ChainProcessor,
-                producerEnv.BlockTree,
-                producerEnv.ReadOnlyStateProvider,
-                _gasLimitCalculator ?? targetAdjustedGasLimitCalculator,
-                _sealEngine,
-                _timestamper,
-                _specProvider,
-                _logManager,
-                _blocksConfig);
-        }
     }
 }

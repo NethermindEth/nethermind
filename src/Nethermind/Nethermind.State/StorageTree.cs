@@ -6,8 +6,11 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -16,7 +19,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class StorageTree : PatriciaTree
+    public class StorageTree : PatriciaTree, IWorldStateScopeProvider.IStorageTree
     {
         private const int LookupSize = 1024;
         private static readonly FrozenDictionary<UInt256, byte[]> Lookup = CreateLookup();
@@ -42,7 +45,7 @@ namespace Nethermind.State
         }
 
         public StorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager)
-            : base(trieStore, rootHash, false, true, logManager)
+            : base(trieStore, rootHash, true, logManager)
         {
             TrieType = TrieType.Storage;
         }
@@ -57,6 +60,39 @@ namespace Nethermind.State
             KeccakCache.ComputeTo(key, out ValueHash256 keyHash);
             // Which we can then directly assign to fast update the key
             Unsafe.As<byte, ValueHash256>(ref MemoryMarshal.GetReference(key)) = keyHash;
+        }
+
+        public static void ComputeKeyWithLookup(in UInt256 index, Span<byte> key)
+        {
+            if (index < LookupSize)
+            {
+                Lookup[index].CopyTo(key);
+            }
+
+            ComputeKey(index, key);
+        }
+
+        public static BulkSetEntry CreateBulkSetEntry(ValueHash256 key, byte[]? value)
+        {
+            byte[] encodedValue;
+            if (value.IsZero())
+            {
+                encodedValue = [];
+            }
+            else
+            {
+                Rlp rlpEncoded = Rlp.Encode(value);
+                if (rlpEncoded is null)
+                {
+                    encodedValue = [];
+                }
+                else
+                {
+                    encodedValue = rlpEncoded.Bytes;
+                }
+            }
+
+            return new BulkSetEntry(key, encodedValue);
         }
 
         [SkipLocalsInit]
@@ -89,6 +125,32 @@ namespace Nethermind.State
 
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
             return rlp.DecodeByteArray();
+        }
+
+        public void Commit()
+        {
+            Commit(false, WriteFlags.None);
+        }
+
+        public void Clear()
+        {
+            RootHash = EmptyTreeHash;
+        }
+
+        public bool WasEmptyTree => RootHash == EmptyTreeHash;
+
+        public byte[] Get(in UInt256 index)
+        {
+            return Get(index, null);
+        }
+
+        public void HintGet(in UInt256 index, byte[]? value)
+        {
+        }
+
+        public byte[] Get(in ValueHash256 hash)
+        {
+            return GetArray(hash.Bytes, null);
         }
 
         [SkipLocalsInit]

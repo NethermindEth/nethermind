@@ -11,7 +11,7 @@ namespace Nethermind.Network.Rlpx
     public interface IRlpxHost
     {
         Task Init();
-        Task ConnectAsync(Node node);
+        Task<bool> ConnectAsync(Node node);
         Task Shutdown();
         PublicKey LocalNodeId { get; }
         int LocalPort { get; }

@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.State;
@@ -14,6 +13,6 @@ namespace Nethermind.Consensus.Processing;
 
 public interface IBlockCachePreWarmer
 {
-    Task PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists);
+    Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists);
     CacheType ClearCaches();
 }

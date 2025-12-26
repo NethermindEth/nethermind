@@ -34,6 +34,14 @@ namespace Nethermind.Stats
         SnapRanges
     }
 
+    public enum RequestType
+    {
+        Headers,
+        Bodies,
+        Receipts,
+        SnapRanges
+    }
+
     public static class NodeStatsManagerExtension
     {
         public static void UpdateCurrentReputation(this INodeStatsManager nodeStatsManager, IEnumerable<Node> nodes)

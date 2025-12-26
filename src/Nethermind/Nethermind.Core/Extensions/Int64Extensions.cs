@@ -25,7 +25,7 @@ public static class Int64Extensions
     public static byte[] ToBigEndianByteArrayWithoutLeadingZeros(this long value)
         => value.ToBigEndianSpanWithoutLeadingZeros(out _).ToArray();
 
-    public static byte[] ToBigEndianByteArray(this long value)
+    public static byte[] ToBigEndianByteArray(this ulong value)
     {
         byte[] bytes = BitConverter.GetBytes(value);
         if (BitConverter.IsLittleEndian)
@@ -35,6 +35,10 @@ public static class Int64Extensions
 
         return bytes;
     }
+
+    public static byte[] ToBigEndianByteArray(this long value)
+        => ToBigEndianByteArray((ulong)value);
+
     public static void WriteBigEndian(this long value, Span<byte> output)
     {
         BinaryPrimitives.WriteInt64BigEndian(output, value);

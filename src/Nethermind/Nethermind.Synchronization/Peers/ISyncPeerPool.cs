@@ -9,7 +9,9 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Peers
@@ -29,6 +31,16 @@ namespace Nethermind.Synchronization.Peers
         void ReportBreachOfProtocol(PeerInfo peerInfo, DisconnectReason disconnectReason, string details);
 
         void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts allocationContexts);
+
+        /// <summary>
+        /// Estimate the request limit for a specific request type for the peer which get allocated next based
+        /// on the allocation strategy and context. May not be accurate as different peer may get allocated.
+        /// </summary>
+        Task<int?> EstimateRequestLimit(
+            RequestType requestType,
+            IPeerAllocationStrategy peerAllocationStrategy,
+            AllocationContexts contexts,
+            CancellationToken token);
 
         /// <summary>
         /// Wakes up all the sleeping peers.
@@ -94,8 +106,6 @@ namespace Nethermind.Synchronization.Peers
         PeerInfo? GetPeer(Node node);
 
         event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
-
-        event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed;
     }
 
     public static class SyncPeerPoolExtensions

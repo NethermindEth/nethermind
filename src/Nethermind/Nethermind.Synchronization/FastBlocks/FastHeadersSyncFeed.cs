@@ -19,11 +19,12 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SyncLimits;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
@@ -37,17 +38,16 @@ namespace Nethermind.Synchronization.FastBlocks
         protected readonly ISyncConfig _syncConfig;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly ITotalDifficultyStrategy _totalDifficultyStrategy;
+        private FastBlocksAllocationStrategy _approximateAllocationStrategy = new FastBlocksAllocationStrategy(TransferSpeedType.Headers, 0, false);
 
         private readonly Lock _handlerLock = new();
 
-        private readonly int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
         private readonly ulong _fastHeadersMemoryBudget;
         protected long _lowestRequestedHeaderNumber;
-
-        protected Hash256 _nextHeaderHash;
-        protected UInt256? _nextHeaderTotalDifficulty;
-
         protected long _pivotNumber;
+
+        protected record NextHeader(Hash256 Hash256, UInt256? TotalDifficulty);
+        protected NextHeader _expectedNextHeader;
 
         /// <summary>
         /// Requests awaiting to be sent - these are results of partial or invalid responses being queued again
@@ -88,6 +88,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected virtual long TotalBlocks => _blockTree.SyncPivot.BlockNumber;
 
         public override bool IsFinished => AllHeadersDownloaded;
+        public override string FeedName => nameof(HeadersSyncFeed);
         private bool AnyHeaderDownloaded => LowestInsertedBlockHeader is not null;
 
         private long HeadersInQueue
@@ -167,11 +168,6 @@ namespace Nethermind.Synchronization.FastBlocks
             _totalDifficultyStrategy = totalDifficultyStrategy ?? new CumulativeTotalDifficultyStrategy();
             _fastHeadersMemoryBudget = syncConfig.FastHeadersMemoryBudget;
 
-            if (!_syncConfig.UseGethLimitsInFastBlocks)
-            {
-                _headersRequestSize = NethermindSyncLimits.MaxHeaderFetch;
-            }
-
             if (!_syncConfig.FastSync && !alwaysStartHeaderSync)
             {
                 throw new InvalidOperationException("Entered fast headers mode without fast sync enabled in configuration.");
@@ -197,9 +193,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected virtual void ResetPivot()
         {
-            (_pivotNumber, _nextHeaderHash) = _blockTree.SyncPivot;
+            (_pivotNumber, Hash256 nextHeaderHash) = _blockTree.SyncPivot;
             _lowestRequestedHeaderNumber = _pivotNumber + 1; // Because we want the pivot to be requested
-            _nextHeaderTotalDifficulty = TryGetPivotTotalDifficulty();
+            _expectedNextHeader = new NextHeader(nextHeaderHash, TryGetPivotTotalDifficulty(nextHeaderHash));
 
             // Resume logic
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
@@ -227,20 +223,20 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private UInt256 TryGetPivotTotalDifficulty()
+        private UInt256 TryGetPivotTotalDifficulty(Hash256 headerHash)
         {
             if (_pivotNumber == LongConverter.FromString(_syncConfig.PivotNumber))
                 return _syncConfig.PivotTotalDifficultyParsed; // Pivot is the same as in config
 
             // Got from header
-            BlockHeader? pivotHeader = _blockTree.FindHeader(_nextHeaderHash, BlockTreeLookupOptions.RequireCanonical);
+            BlockHeader? pivotHeader = _blockTree.FindHeader(headerHash, BlockTreeLookupOptions.RequireCanonical);
             if (pivotHeader?.TotalDifficulty is not null) return pivotHeader.TotalDifficulty.Value;
 
             // Probably PoS
             if (_poSSwitcher.FinalTotalDifficulty is not null) return _poSSwitcher.FinalTotalDifficulty.Value;
 
             throw new InvalidOperationException(
-                $"Unable to determine final total difficulty of pivot ({_pivotNumber}, {_nextHeaderHash})");
+                $"Unable to determine final total difficulty of pivot ({_pivotNumber}, {headerHash})");
         }
 
         protected override SyncMode ActivationSyncModes { get; }
@@ -349,7 +345,13 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else if (ShouldBuildANewBatch())
                 {
-                    batch = ProcessPersistedHeadersOrBuildNewBatch(cancellationToken);
+                    // Set the request size depending on the approximate allocation strategy.
+                    // NOTE: Cannot await because of the lock.
+                    int requestSize =
+                        _syncPeerPool.EstimateRequestLimit(RequestType.Headers, _approximateAllocationStrategy, AllocationContexts.Headers, cancellationToken).Result
+                        ?? GethSyncLimits.MaxHeaderFetch;
+
+                    batch = ProcessPersistedHeadersOrBuildNewBatch(requestSize, cancellationToken);
                     if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
                 }
 
@@ -366,18 +368,23 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 return Task.FromResult(batch);
             }
+            catch (Exception ex)
+            {
+                // Explicitly wrap exception in Task
+                return Task.FromException<HeadersSyncBatch?>(ex);
+            }
             finally
             {
                 _resetLock.ExitReadLock();
             }
         }
 
-        private HeadersSyncBatch? ProcessPersistedHeadersOrBuildNewBatch(CancellationToken cancellationToken)
+        private HeadersSyncBatch? ProcessPersistedHeadersOrBuildNewBatch(int requestSize, CancellationToken cancellationToken)
         {
             HeadersSyncBatch? batch = null;
             do
             {
-                batch = BuildNewBatch();
+                batch = BuildNewBatch(requestSize);
                 batch = ProcessPersistedPortion(batch);
 
                 if (batch is null)
@@ -394,11 +401,11 @@ namespace Nethermind.Synchronization.FastBlocks
             return batch;
         }
 
-        private HeadersSyncBatch BuildNewBatch()
+        private HeadersSyncBatch BuildNewBatch(int requestSize)
         {
             HeadersSyncBatch batch = new();
-            batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - _headersRequestSize);
-            batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, _headersRequestSize);
+            batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - requestSize);
+            batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, requestSize);
             _lowestRequestedHeaderNumber = batch.StartNumber;
             return batch;
         }
@@ -600,6 +607,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             using ArrayPoolList<BlockHeader> headersToAdd = new ArrayPoolList<BlockHeader>(batch.Response.Count);
+            (Hash256 nextHeaderHash, UInt256? nextHeaderTotalDifficulty) = _expectedNextHeader;
 
             long addedLast = batch.StartNumber - 1;
             long addedEarliest = batch.EndNumber + 1;
@@ -652,9 +660,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 addedLast = Math.Max(addedLast, header.Number);
             }
 
-
-            UInt256? totalDifficulty = _nextHeaderTotalDifficulty;
-            foreach (var blockHeader in headersToAdd)
+            UInt256? totalDifficulty = nextHeaderTotalDifficulty;
+            foreach (var blockHeader in headersToAdd.AsSpan())
             {
                 blockHeader.TotalDifficulty = totalDifficulty;
                 totalDifficulty = DetermineParentTotalDifficulty(blockHeader);
@@ -749,7 +756,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
 
                 // response needs to be cached until predecessors arrive
-                if (header.Hash != _nextHeaderHash)
+                if (header.Hash != nextHeaderHash)
                 {
                     // If the header is at the exact block number, but the hash does not match, then its a different branch.
                     // However, if the header hash does match the parent of the LowestInsertedBlockHeader, then its just
@@ -757,7 +764,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     // We just let it go to the dependency graph.
                     if (header.Number == (LowestInsertedBlockHeader?.Number ?? _pivotNumber + 1) - 1 && header.Hash != LowestInsertedBlockHeader?.ParentHash)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {nextHeaderHash}");
                         if (batch.ResponseSourcePeer is not null)
                         {
                             _syncPeerPool.ReportBreachOfProtocol(
@@ -786,7 +793,14 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (_dependencies.ContainsKey(header.Number))
                     {
                         EnqueueBatch(batch, true);
-                        throw new InvalidOperationException($"Only one header dependency expected ({batch})");
+
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - Only one header dependency expected");
+                        _syncPeerPool.ReportBreachOfProtocol(
+                            batch.ResponseSourcePeer,
+                            DisconnectReason.MultipleHeaderDependencies,
+                            "headers - only one header dependency expected");
+
+                        return false;
                     }
                     long lastNumber = -1;
                     for (int j = 0; j < batch.Response.Count; j++)
@@ -836,8 +850,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected void SetExpectedNextHeaderToParent(BlockHeader header)
         {
-            _nextHeaderHash = header.ParentHash!;
-            _nextHeaderTotalDifficulty = DetermineParentTotalDifficulty(header);
+            _expectedNextHeader = new NextHeader(header.ParentHash, DetermineParentTotalDifficulty(header));
         }
 
         protected virtual UInt256? DetermineParentTotalDifficulty(BlockHeader header)

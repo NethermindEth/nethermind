@@ -6,9 +6,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-
+using System.Threading.Tasks;
 using FastEnumUtility;
+using Nethermind.Core;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Stats;
 
@@ -47,6 +49,47 @@ public class NodeStatsLight : INodeStats
     private static readonly Random Random = new();
 
     private static readonly int _statsLength = FastEnum.GetValues<NodeStatsEventType>().Length;
+
+    private readonly LatencyAndMessageSizeBasedRequestSizer _bodiesRequestSizer = new(
+        minRequestLimit: 1,
+        maxRequestLimit: 128,
+
+        // In addition to the byte limit, we also try to keep the latency of the get block bodies between these two
+        // watermark. This reduce timeout rate, and subsequently disconnection rate.
+        lowerLatencyWatermark: TimeSpan.FromMilliseconds(2000),
+        upperLatencyWatermark: TimeSpan.FromMilliseconds(3000),
+
+        // When the bodies message size exceed this, we try to reduce the maximum number of block for this peer.
+        // This is for BeSU and Reth which does not seems to use the 2MB soft limit, causing them to send 20MB of bodies
+        // or receipts. This is not great as large message size are harder for DotNetty to pool byte buffer, causing
+        // higher memory usage. Reducing this even further does seems to help with memory, but may reduce throughput.
+        maxResponseSize: 3_000_000,
+        initialRequestSize: 4
+    );
+
+    private readonly LatencyAndMessageSizeBasedRequestSizer _receiptsRequestSizer = new(
+        minRequestLimit: 1,
+        maxRequestLimit: 128,
+
+        // In addition to the byte limit, we also try to keep the latency of the get receipts between these two
+        // watermark. This reduce timeout rate, and subsequently disconnection rate.
+        lowerLatencyWatermark: TimeSpan.FromMilliseconds(2000),
+        upperLatencyWatermark: TimeSpan.FromMilliseconds(3000),
+
+        // When the receipts message size exceed this, we try to reduce the maximum number of block for this peer.
+        // This is for BeSU and Reth which does not seems to use the 2MB soft limit, causing them to send 20MB of bodies
+        // or receipts. This is not great as large message size are harder for DotNetty to pool byte buffer, causing
+        // higher memory usage. Reducing this even further does seems to help with memory, but may reduce throughput.
+        maxResponseSize: 3_000_000,
+        initialRequestSize: 8
+    );
+
+    private readonly LatencyBasedRequestSizer _snapRequestSizer = new(
+        minRequestLimit: 50000,
+        maxRequestLimit: 3_000_000,
+        lowerWatermark: TimeSpan.FromMilliseconds(2000),
+        upperWatermark: TimeSpan.FromMilliseconds(3500)
+    );
 
     public NodeStatsLight(Node node, decimal latestSpeedWeight = 0.25m)
     {
@@ -361,5 +404,40 @@ public class NodeStatsLight : INodeStats
         }
 
         return rlpxReputation;
+    }
+
+    public async Task<TResponse> RunSizeAndLatencyRequestSizer<TResponse, TRequest, TResponseItem>(RequestType requestType, IReadOnlyList<TRequest> request, Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func) where TResponse : IReadOnlyList<TResponseItem>
+    {
+        if (requestType == RequestType.Bodies) return await _bodiesRequestSizer.Run<TResponse, TRequest, TResponseItem>(request, func);
+        if (requestType == RequestType.Receipts) return await _receiptsRequestSizer.Run<TResponse, TRequest, TResponseItem>(request, func);
+
+        throw new ArgumentException($"Unsupported request type: {requestType}");
+    }
+
+    public async Task<TResponse> RunLatencyRequestSizer<TResponse>(RequestType requestType, Func<int, Task<TResponse>> func)
+    {
+        if (requestType == RequestType.SnapRanges) return await _snapRequestSizer.MeasureLatency(func);
+
+        throw new ArgumentException($"Unsupported request type: {requestType}");
+    }
+
+    public int GetCurrentRequestLimit(RequestType requestType)
+    {
+        if (requestType == RequestType.Bodies) return _bodiesRequestSizer.RequestSize;
+        if (requestType == RequestType.Receipts) return _receiptsRequestSizer.RequestSize;
+        if (requestType == RequestType.SnapRanges) return _snapRequestSizer.RequestSize;
+        if (requestType == RequestType.Headers)
+        {
+            return Node.ClientType switch
+            {
+                NodeClientType.Nethermind => Stats.SyncLimits.NethermindSyncLimits.MaxHeaderFetch,
+                NodeClientType.Geth => Stats.SyncLimits.GethSyncLimits.MaxHeaderFetch,
+                NodeClientType.Parity => Stats.SyncLimits.ParitySyncLimits.MaxHeaderFetch,
+                NodeClientType.Besu => Stats.SyncLimits.BeSuSyncLimits.MaxHeaderFetch,
+                _ => Stats.SyncLimits.GethSyncLimits.MaxHeaderFetch, // Default to Geth limits for unknown clients
+            };
+        }
+
+        throw new ArgumentException($"Unsupported request type: {requestType}");
     }
 }

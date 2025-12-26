@@ -6,6 +6,7 @@ using System.IO;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -34,6 +35,7 @@ public class ColumnsDbTests
                 DeleteOnStart = true,
             },
             new DbConfig(),
+            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance),
             LimboLogs.Instance,
             Enum.GetValues<ReceiptsColumns>()
         );

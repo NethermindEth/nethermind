@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "Valid": {
+      "commandName": "Project",
+      "commandLineArgs": "-i ef00010100040200010006040000000080000260006000fe00"
+    },
+    "Invalid": {
+      "commandName": "Project",
+      "commandLineArgs": "-i ef000101000402000100010400000000800000c0"
+    },
+    "Console": {
+      "commandName": "Project",
+      "commandLineArgs": "-x"
+    },
+    "no args": {
+      "commandName": "Project",
+      "commandLineArgs": ""
+    }
+  }
+}

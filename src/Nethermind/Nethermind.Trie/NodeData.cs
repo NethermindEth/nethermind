@@ -32,7 +32,9 @@ public class BranchData : INodeData
 
     private BranchArray _branches;
 
-    public BranchData() { }
+    public BranchData()
+    {
+    }
 
     private BranchData(in BranchArray branches) => _branches = branches;
 
@@ -52,14 +54,27 @@ public class BranchData : INodeData
 public class ExtensionData : INodeWithKey
 {
     public NodeType NodeType => NodeType.Extension;
+
     public int MemorySize => MemorySizes.RefSize + MemorySizes.RefSize +
-        (_key is not null ? (int)MemorySizes.Align(_key.Length + MemorySizes.ArrayOverhead) : 0);
+                             (_key is not null ? (int)MemorySizes.Align(_key.Length + MemorySizes.ArrayOverhead) : 0);
+
     public int Length => 2;
 
     public byte[]? _key;
     public object? _value;
-    public byte[] Key { get => _key; set => _key = value; }
-    public object? Value { get => _value; set => _value = value; }
+
+    public byte[] Key
+    {
+        get => _key;
+        set => _key = value;
+    }
+
+    public object? Value
+    {
+        get => _value;
+        set => _value = value;
+    }
+
     public ref object this[int index]
     {
         get
@@ -71,8 +86,7 @@ public class ExtensionData : INodeWithKey
 
             return ref _value;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowArgumentOutOfRangeException(int index)
             {
                 throw new ArgumentOutOfRangeException(nameof(index), index, $"{index} is not 0 or 1");
@@ -80,7 +94,9 @@ public class ExtensionData : INodeWithKey
         }
     }
 
-    public ExtensionData() { }
+    public ExtensionData()
+    {
+    }
 
     internal ExtensionData(byte[] key)
     {
@@ -106,32 +122,39 @@ public class LeafData : INodeWithKey
 {
     public NodeType NodeType => NodeType.Leaf;
     public int Length => 0;
-    public int MemorySize => MemorySizes.RefSize + MemorySizes.RefSize + MemorySizes.RefSize +
-         (Key is not null ? (int)MemorySizes.Align(Key.Length + MemorySizes.ArrayOverhead) : 0) +
-         (_value.IsNotNull ? (int)MemorySizes.Align(_value.Length + MemorySizes.ArrayOverhead) : 0);
 
-    private readonly CappedArray<byte> _value;
+    public int MemorySize => MemorySizes.RefSize + // StorageRoot
+                             MemorySizes.RefSize + // RefSize for Key, then the key itself
+                             (Key is not null ? (int)MemorySizes.Align(Key.Length + MemorySizes.ArrayOverhead) : 0) +
+                             _value.MemorySize; // value
+
+    private readonly SpanSource _value;
 
     public byte[] Key { get; set; }
-    public ref readonly CappedArray<byte> Value => ref _value;
+    public SpanSource Value => _value;
     public TrieNode? StorageRoot { get; set; }
 
-    public LeafData() { }
+    public LeafData()
+    {
+        _value = SpanSource.Empty;
+    }
 
-    internal LeafData(byte[] key, in CappedArray<byte> value)
+    internal LeafData(byte[] key, SpanSource value)
     {
         Key = key;
         _value = value;
     }
 
-    private LeafData(byte[] key, in CappedArray<byte> value, TrieNode? storageRoot)
+    private LeafData(byte[] key, SpanSource value, TrieNode? storageRoot)
     {
         Key = key;
         _value = value;
         StorageRoot = storageRoot;
     }
+
     public ref object this[int index] => throw new IndexOutOfRangeException();
 
-    INodeData INodeData.Clone() => new LeafData(Key, in _value);
-    public LeafData CloneWithNewValue(in CappedArray<byte> value) => new LeafData(Key, in value, StorageRoot);
+    INodeData INodeData.Clone() => new LeafData(Key, _value);
+
+    public LeafData CloneWithNewValue(SpanSource value) => new(Key, value, StorageRoot);
 }

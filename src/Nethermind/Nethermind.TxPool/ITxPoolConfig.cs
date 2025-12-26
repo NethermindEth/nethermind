@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 
@@ -51,7 +52,27 @@ public interface ITxPoolConfig : IConfig
         Description = "The max blob transaction size allowed, excluding blobs, in bytes.")]
     long? MaxBlobTxSize { get; set; }
 
+    [ConfigItem(DefaultValue = "true", Description = "Whether to require the max fee per blob gas to be greater than or equal to the current blob base fee when adding a blob transaction to the pool.")]
+    bool CurrentBlobBaseFeeRequired { get; set; }
+
+    [ConfigItem(DefaultValue = "false",
+        Description = "Enable transformation of blob txs with network wrapper in version 0x0 (blob proof) to version 0x1 (cell proofs)",
+        HiddenFromDocs = true)]
+    bool ProofsTranslationEnabled { get; set; }
+
     [ConfigItem(DefaultValue = "null",
         Description = "The current transaction pool state reporting interval, in minutes.")]
     int? ReportMinutes { get; set; }
+
+    [ConfigItem(DefaultValue = "false",
+        Description = "Accept transactions when not synced.")]
+    bool AcceptTxWhenNotSynced { get; set; }
+
+    [ConfigItem(DefaultValue = "true",
+        Description = "Add local transactions to persistent broadcast.")]
+    bool PersistentBroadcastEnabled { get; set; }
+
+    [ConfigItem(DefaultValue = "0",
+        Description = "The minimum priority fee in wei for blob transactions to be accepted into the transaction pool.")]
+    UInt256 MinBlobTxPriorityFee { get; set; }
 }

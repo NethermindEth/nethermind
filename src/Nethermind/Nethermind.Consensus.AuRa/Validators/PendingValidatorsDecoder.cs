@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    internal class PendingValidatorsDecoder : IRlpObjectDecoder<PendingValidators>, IRlpStreamDecoder<PendingValidators>
+    internal sealed class PendingValidatorsDecoder : RlpStreamDecoder<PendingValidators>, IRlpObjectDecoder<PendingValidators>
     {
-        public PendingValidators Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override PendingValidators DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -55,7 +54,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             return new Rlp(rlpStream.Data.ToArray());
         }
 
-        public void Encode(RlpStream rlpStream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream rlpStream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
             rlpStream.StartSequence(contentLength);
@@ -69,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             rlpStream.Encode(item.AreFinalized);
         }
 
-        public int GetLength(PendingValidators item, RlpBehaviors rlpBehaviors) =>
+        public override int GetLength(PendingValidators item, RlpBehaviors rlpBehaviors) =>
             item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
 
         private static (int Total, int Addresses) GetContentLength(PendingValidators item, RlpBehaviors rlpBehaviors)
@@ -84,6 +83,11 @@ namespace Nethermind.Consensus.AuRa.Validators
             return (contentLength, addressesLength);
         }
 
-        private static int GetAddressesLength(Address[] addresses) => addresses.Sum(Rlp.LengthOf);
+        private static int GetAddressesLength(Address[] addresses)
+        {
+            const int AddressLengthWithRlpLengthPrefix = 1 + 20;
+
+            return addresses.Length * AddressLengthWithRlpLengthPrefix;
+        }
     }
 }

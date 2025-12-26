@@ -16,24 +16,26 @@ namespace Nethermind.Core.Collections
 
         public static void AddRange<T>(this ICollection<T> list, IEnumerable<T> items)
         {
-            if (items is T[] array)
+            switch (items)
             {
-                list.AddRange(array);
-            }
-            else if (items is IList<T> listItems)
-            {
-                list.AddRange(listItems);
-            }
-            else if (items is IReadOnlyList<T> readOnlyList)
-            {
-                list.AddRange(readOnlyList);
-            }
-            else
-            {
-                foreach (T item in items)
-                {
-                    list.Add(item);
-                }
+                case T[] array:
+                    list.AddRange(array);
+                    break;
+                case IList<T> listItems:
+                    list.AddRange(listItems);
+                    break;
+                case IReadOnlyList<T> readOnlyList:
+                    list.AddRange(readOnlyList);
+                    break;
+                default:
+                    {
+                        foreach (T item in items)
+                        {
+                            list.Add(item);
+                        }
+
+                        break;
+                    }
             }
         }
 
@@ -125,7 +127,7 @@ namespace Nethermind.Core.Collections
                 var block = Expression.Block(clearBuckets, clearCountPerLock);
 
                 // Compile the expression into a lambda
-                return Expression.Lambda<Action<ConcurrentDictionary<TKey, TValue>>>(block, dictionaryParam).Compile();
+                return Expression.Lambda<Action<ConcurrentDictionary<TKey, TValue>>>(block, name: "ConcurrentDictionary_FastClear", new ParameterExpression[] { dictionaryParam }).Compile();
             }
         }
     }

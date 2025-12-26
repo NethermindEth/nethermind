@@ -38,7 +38,7 @@ public class BaseSyncPeerMock : ISyncPeer, ISnapSyncPeer
     public virtual Node Node { get; set; } = null!;
     public virtual string Name { get; } = null!;
     public Hash256 HeadHash { get; set; } = null!;
-    public virtual UInt256 TotalDifficulty { get; set; }
+    public virtual UInt256? TotalDifficulty { get; set; }
     public bool IsInitialized { get; set; }
     public bool IsPriority { get; set; }
     public virtual byte ProtocolVersion { get; }

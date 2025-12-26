@@ -16,10 +16,11 @@ namespace Ethereum.Blockchain.Block.Test
         [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {
-            bool isWindows = System.Runtime.InteropServices.RuntimeInformation
-            .IsOSPlatform(OSPlatform.Windows);
+            bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
             if (isWindows)
+            {
                 return;
+            }
 
             await RunTest(test);
         }
@@ -27,7 +28,7 @@ namespace Ethereum.Blockchain.Block.Test
         public static IEnumerable<BlockchainTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcForgedTest");
-            return (IEnumerable<BlockchainTest>)loader.LoadTests();
+            return loader.LoadTests<BlockchainTest>();
         }
     }
 }

@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Test.Runner
             List<EthereumTestResult> results = new List<EthereumTestResult>();
             Console.WriteLine("RUNNING tests");
             Stopwatch stopwatch = new Stopwatch();
-            IEnumerable<GeneralStateTest> tests = (IEnumerable<GeneralStateTest>)_testsSource.LoadTests();
+            IEnumerable<GeneralStateTest> tests = _testsSource.LoadTests<GeneralStateTest>();
             bool isNewLine = true;
             foreach (GeneralStateTest test in tests)
             {

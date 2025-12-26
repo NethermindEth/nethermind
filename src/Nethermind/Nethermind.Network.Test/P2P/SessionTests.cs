@@ -35,7 +35,7 @@ public class SessionTests
         _pipeline = Substitute.For<IChannelPipeline>();
         _channelHandlerContext.Channel.Returns(_channel);
         _channel.Pipeline.Returns(_pipeline);
-        _pipeline.Get<ZeroPacketSplitter>().Returns(new ZeroPacketSplitter(LimboLogs.Instance));
+        _pipeline.Get<ZeroPacketSplitter>().Returns(new ZeroPacketSplitter());
         _packetSender = Substitute.For<IPacketSender>();
     }
 
@@ -428,6 +428,7 @@ public class SessionTests
     private IProtocolHandler BuildHandler(string code, int spaceSize)
     {
         IProtocolHandler handler = Substitute.For<IProtocolHandler>();
+        handler.Name.Returns(code);
         handler.ProtocolCode.Returns(code);
         handler.MessageIdSpaceSize.Returns(spaceSize);
         return handler;

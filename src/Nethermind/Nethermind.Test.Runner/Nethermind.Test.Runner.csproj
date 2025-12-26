@@ -8,8 +8,8 @@
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
     <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
-    <InvariantGlobalization>true</InvariantGlobalization>
     <ServerGarbageCollection>true</ServerGarbageCollection>
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,6 +24,9 @@
     <None Remove="blockchainTest1.json" />
     <None Remove="statetest1.json" />
     <Content Include="blockchainTest1.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="eoftest1.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="statetest1.json">

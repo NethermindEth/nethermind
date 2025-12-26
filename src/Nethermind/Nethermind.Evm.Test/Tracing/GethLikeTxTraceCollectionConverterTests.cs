@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -32,7 +32,7 @@ public class GethLikeTxTraceCollectionConverterTests
         Assert.That(result, Is.EqualTo("[]"));
     }
 
-    [TestCaseSource(nameof(TracesAndJsonsSource))]
+    [TestCaseSource(nameof(TraceAndJsonSource))]
     public void Write_with_traces_with_tx_hash(GethLikeTxTrace trace, string json)
     {
         var expected = $"""[{json}]""";
@@ -65,7 +65,7 @@ public class GethLikeTxTraceCollectionConverterTests
     }
 
 
-    [TestCaseSource(nameof(TracesAndJsonsSource))]
+    [TestCaseSource(nameof(TraceAndJsonSource))]
     public void Read_with_traces(GethLikeTxTrace expectedTrace, string json)
     {
         var result = _serializer.Deserialize<GethLikeTxTraceCollection>($"""[{json}]""");
@@ -79,7 +79,7 @@ public class GethLikeTxTraceCollectionConverterTests
         });
     }
 
-    private static IEnumerable<object[]> TracesAndJsonsSource()
+    private static IEnumerable<object[]> TraceAndJsonSource()
     {
         yield return [
             new GethLikeTxTrace { Gas = 1, ReturnValue = [0x01], TxHash = null },

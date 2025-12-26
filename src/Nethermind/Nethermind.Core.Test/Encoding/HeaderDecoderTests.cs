@@ -220,6 +220,24 @@ public class HeaderDecoderTests
         _ = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
     }
 
+    [Test]
+    public void Can_encode_decode_with_zero_basefee_but_has_later_field()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(0)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(TestItem.KeccakB)
+            .WithRequestsHash(Keccak.Zero).TestObject;
+
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+
+        blockHeader.Should().BeEquivalentTo(header);
+    }
+
     public static IEnumerable<object?[]> CancunFieldsSource()
     {
         yield return new object?[] { null, null, null };

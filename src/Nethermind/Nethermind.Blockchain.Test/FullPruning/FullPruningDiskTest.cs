@@ -8,19 +8,19 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
+using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
-using Nethermind.Db.Rocks.Config;
-using Nethermind.Int256;
+using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -49,14 +49,9 @@ public class FullPruningDiskTest
             TempDirectory = TempPath.GetTempDirectory();
         }
 
-        protected override async Task<TestBlockchain> Build(
-            ISpecProvider? specProvider = null,
-            UInt256? initialValues = null,
-            bool addBlockOnStart = true,
-            long slotTime = 1
-        )
+        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? containerBuilder = null)
         {
-            TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart);
+            TestBlockchain chain = await base.Build(containerBuilder);
             PruningDb = (FullPruningDb)DbProvider.StateDb;
             DriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
             _chainEstimations.StateSize.Returns((long?)null);
@@ -74,20 +69,26 @@ public class FullPruningDiskTest
                 StateReader,
                 ProcessExitSource,
                 DriveInfo,
-                chain.TrieStore,
+                Container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore,
                 _chainEstimations,
                 LogManager);
             return chain;
         }
 
-        protected override async Task<IDbProvider> CreateDbProvider()
-        {
-            IDbProvider dbProvider = new DbProvider();
-            RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
-            StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
-            await standardDbInitializer.InitStandardDbsAsync(true);
-            return dbProvider;
-        }
+        protected override ContainerBuilder
+            ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
+            // Reenable rocksdb
+            base.ConfigureContainer(builder, configProvider)
+                .AddSingleton<IDbFactory, RocksDbFactory>()
+                .Intercept<IInitConfig>((initConfig) =>
+                {
+                    initConfig.BaseDbPath = TempDirectory.Path;
+                })
+                .Intercept<IPruningConfig>((pruningConfig) =>
+                {
+                    // Make test faster otherwise it may potentially buffer 128 block.
+                    pruningConfig.MaxBufferedCommitCount = 1;
+                });
 
         public override void Dispose()
         {
@@ -102,7 +103,7 @@ public class FullPruningDiskTest
             PruningTestBlockchain chain = new()
             {
                 PruningConfig = pruningConfig ?? new PruningConfig(),
-                TestTimout = testTimeoutMs,
+                TestTimeout = testTimeoutMs,
             };
             await chain.Build();
             return chain;

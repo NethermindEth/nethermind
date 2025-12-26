@@ -23,7 +23,7 @@ public abstract class PatriciaTrie<T> : PatriciaTree
     /// otherwise, <c>false</c>.
     /// </param>
     protected PatriciaTrie(ReadOnlySpan<T> list, bool canBuildProof, ICappedArrayPool? bufferPool = null)
-        : base(canBuildProof ? new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance, bufferPool: bufferPool)
+        : base(canBuildProof ? new MemDb() : NullDb.Instance, EmptyTreeHash, false, NullLogManager.Instance, bufferPool: bufferPool)
     {
         CanBuildProof = canBuildProof;
 

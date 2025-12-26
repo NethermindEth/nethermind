@@ -11,7 +11,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Serialization.Rlp
 {
     [Rlp.Decoder(RlpDecoderKey.LegacyStorage)]
-    public class ReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
+    public sealed class ReceiptStorageDecoder : RlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
     {
         private readonly bool _supportTxHash;
         private const byte MarkTxHashByte = 255;
@@ -26,7 +26,7 @@ namespace Nethermind.Serialization.Rlp
         {
         }
 
-        public TxReceipt? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override TxReceipt? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -100,7 +100,7 @@ namespace Nethermind.Serialization.Rlp
             return txReceipt;
         }
 
-        public TxReceipt? Decode(ref Rlp.ValueDecoderContext decoderContext,
+        protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
@@ -182,7 +182,7 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(rlpStream.Data.ToArray());
         }
 
-        public void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -319,7 +319,7 @@ namespace Nethermind.Serialization.Rlp
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-2718
         /// </summary>
-        public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             (int Total, _) = GetContentLength(item, rlpBehaviors);
             int receiptPayloadLength = Rlp.LengthOfSequence(Total);

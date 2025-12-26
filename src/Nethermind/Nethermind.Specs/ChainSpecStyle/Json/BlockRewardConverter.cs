@@ -43,7 +43,7 @@ public class BlockRewardConverter : JsonConverter<SortedDictionary<long, UInt256
                 }
 
                 var property =
-                    UInt256Converter.Read(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
+                    UInt256Converter.ReadHex(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
                 var key = (long)property;
                 reader.Read();
                 if (reader.TokenType != JsonTokenType.String)
@@ -52,7 +52,7 @@ public class BlockRewardConverter : JsonConverter<SortedDictionary<long, UInt256
                 }
 
                 var blockReward =
-                    UInt256Converter.Read(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
+                    UInt256Converter.ReadHex(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
                 value.Add(key, blockReward);
 
                 reader.Read();

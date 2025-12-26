@@ -34,8 +34,14 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The block time slot, in seconds.", DefaultValue = "12")]
     ulong SecondsPerSlot { get; set; }
 
+    [ConfigItem(Description = "The fraction of slot time that can be used for a single block improvement.", DefaultValue = "0.25", HiddenFromDocs = true)]
+    double SingleBlockImprovementOfSlot { get; set; }
+
     [ConfigItem(Description = "Whether to pre-warm the state when processing blocks. This can lead to an up to 2x speed-up in the main loop block processing.", DefaultValue = "True")]
     bool PreWarmStateOnBlockProcessing { get; set; }
+
+    [ConfigItem(Description = "Whether to cache precompile results when processing blocks.", DefaultValue = "True", HiddenFromDocs = true)]
+    bool CachePrecompilesOnBlockProcessing { get; set; }
 
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
@@ -46,8 +52,17 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The genesis block load timeout, in milliseconds.", DefaultValue = "40000")]
     int GenesisTimeoutMs { get; set; }
 
+    [ConfigItem(Description = "The max transaction bytes to add in block production, in kilobytes.", DefaultValue = "7936")]
+    long BlockProductionMaxTxKilobytes { get; set; }
+
     [ConfigItem(Description = "The ticker that gas rewards are denominated in for processing logs", DefaultValue = "ETH", HiddenFromDocs = true)]
     string GasToken { get; set; }
 
+    [ConfigItem(Description = "Builds blocks on main (non-readonly) state", DefaultValue = "false", HiddenFromDocs = true)]
+    bool BuildBlocksOnMainState { get; set; }
+
     byte[] GetExtraDataBytes();
+
+    [ConfigItem(Description = "The max blob count after which the block producer should stop adding blobs. Minimum value is `0`.", DefaultValue = "null")]
+    int? BlockProductionBlobLimit { get; set; }
 }

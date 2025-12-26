@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -18,18 +19,18 @@ namespace Nethermind.State
     {
         private readonly AccountDecoder _decoder = new();
 
-        private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
+        public static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)
-            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool: bufferPool)
+            : base(new MemDb(), Keccak.EmptyTreeHash, true, NullLogManager.Instance, bufferPool: bufferPool)
         {
             TrieType = TrieType.State;
         }
 
         [DebuggerStepThrough]
         public StateTree(IScopedTrieStore? store, ILogManager? logManager)
-            : base(store, Keccak.EmptyTreeHash, true, true, logManager)
+            : base(store, Keccak.EmptyTreeHash, true, logManager)
         {
             TrieType = TrieType.State;
         }
@@ -73,6 +74,32 @@ namespace Nethermind.State
             Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
 
+        public StateTreeBulkSetter BeginSet(int estimatedEntries)
+        {
+            return new StateTreeBulkSetter(estimatedEntries, this);
+        }
+
+        public class StateTreeBulkSetter(int estimatedEntries, StateTree tree) : IDisposable
+        {
+            ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
+
+            public void Set(Address key, Account account)
+            {
+                KeccakCache.ComputeTo(key.Bytes, out ValueHash256 keccak);
+
+                Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
+
+                _bulkWrite.Add(new BulkSetEntry(keccak, accountRlp?.Bytes));
+            }
+
+            public void Dispose()
+            {
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = new ArrayPoolListRef<BulkSetEntry>(_bulkWrite.AsSpan());
+                tree.BulkSet(asRef);
+                _bulkWrite.Dispose();
+            }
+        }
+
         [DebuggerStepThrough]
         public Rlp? Set(Hash256 keccak, Account? account)
         {
@@ -88,6 +115,21 @@ namespace Nethermind.State
 
             Set(keccak.Bytes, rlp);
             return rlp;
+        }
+
+        public Account? Get(Address address)
+        {
+            return Get(address, null);
+        }
+
+        public void UpdateRootHash()
+        {
+            UpdateRootHash(true);
+        }
+
+        public void Commit()
+        {
+            Commit(false, WriteFlags.None);
         }
     }
 }

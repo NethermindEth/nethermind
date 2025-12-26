@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using DotNetty.Buffers;
+using DotNetty.Common.Internal;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
@@ -12,6 +13,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init
@@ -236,10 +238,23 @@ namespace Nethermind.Init
 
             NettyMemory = estimate;
 
+            // Set PooledByteBufferAllocator.Default configuration.
+            // Set it to a fixed 1 MB, 1 arena. Code should prefer NethermindBuffers.Default instead as it is easier to override.
+            ConfigureDefaultPooledByteBufferAllocator(8, 1);
+
+            NethermindBuffers.Default = NethermindBuffers.CreateAllocator(networkConfig.NettyArenaOrder, arenaCount);
+            NethermindBuffers.RlpxAllocator = NethermindBuffers.CreateAllocator(networkConfig.NettyArenaOrder, arenaCount);
+
+            // 1 MB chunk independent of memory hint as discovery should be fairly small and does not do much.
+            NethermindBuffers.DiscoveryAllocator = NethermindBuffers.CreateAllocator(8, arenaCount);
+        }
+
+        private void ConfigureDefaultPooledByteBufferAllocator(int arenaOrder, uint arenaCount)
+        {
             // Need to set these early, or otherwise if the allocator is used ahead of these setting, these config
             // will not take affect
 
-            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", networkConfig.NettyArenaOrder.ToString());
+            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", arenaOrder.ToString());
 
             // Arena count is capped because if its too high, the memory budget per arena can get too low causing
             // a very small chunk size. Any allocation of size higher than a chunk will essentially be unpooled triggering LOH.
@@ -259,7 +274,6 @@ namespace Nethermind.Init
             // We never use any direct arena, but it does not take up memory because of that.
             Environment.SetEnvironmentVariable("io.netty.allocator.numHeapArenas", arenaCount.ToString());
             Environment.SetEnvironmentVariable("io.netty.allocator.numDirectArenas", arenaCount.ToString());
-
             if (PooledByteBufferAllocator.Default.Metric.HeapArenas().Count != arenaCount)
             {
                 _logger.Warn("unable to set netty pooled byte buffer config");

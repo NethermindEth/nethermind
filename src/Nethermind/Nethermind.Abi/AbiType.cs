@@ -59,8 +59,7 @@ namespace Nethermind.Abi
                 Throw();
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void Throw()
             {
                 throw new ArgumentOutOfRangeException(nameof(length), $"{nameof(length)} of {nameof(AbiUInt)} has to be a multiple of 8");

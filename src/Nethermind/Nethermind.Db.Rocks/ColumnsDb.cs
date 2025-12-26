@@ -17,12 +17,15 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 {
     private readonly IDictionary<T, ColumnDb> _columnDbs = new Dictionary<T, ColumnDb>();
 
-    public ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, ILogManager logManager, IReadOnlyList<T> keys, IntPtr? sharedCache = null)
-        : base(basePath, settings, dbConfig, logManager, GetEnumKeys(keys).Select(static (key) => key.ToString()).ToList(), sharedCache: sharedCache)
+    public ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, IReadOnlyList<T> keys, IntPtr? sharedCache = null)
+        : this(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, ResolveKeys(keys), sharedCache)
     {
-        keys = GetEnumKeys(keys);
+    }
 
-        foreach (T key in keys)
+    private ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, (IReadOnlyList<T> Keys, IList<string> ColumnNames) keyInfo, IntPtr? sharedCache)
+        : base(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, keyInfo.ColumnNames, sharedCache: sharedCache)
+    {
+        foreach (T key in keyInfo.Keys)
         {
             _columnDbs[key] = new ColumnDb(_db, this, key.ToString()!);
         }
@@ -61,9 +64,17 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         return keys;
     }
 
-    protected override void BuildOptions<O>(PerTableDbConfig dbConfig, Options<O> options, IntPtr? sharedCache)
+    private static (IReadOnlyList<T> Keys, IList<string> ColumnNames) ResolveKeys(IReadOnlyList<T> keys)
     {
-        base.BuildOptions(dbConfig, options, sharedCache);
+        IReadOnlyList<T> resolvedKeys = GetEnumKeys(keys);
+        IList<string> columnNames = resolvedKeys.Select(static key => key.ToString()).ToList();
+
+        return (resolvedKeys, columnNames);
+    }
+
+    protected override void BuildOptions<TOptions>(IRocksDbConfig dbConfig, Options<TOptions> options, IntPtr? sharedCache, IMergeOperator? mergeOperator)
+    {
+        base.BuildOptions(dbConfig, options, sharedCache, mergeOperator);
         options.SetCreateMissingColumnFamilies();
     }
 
@@ -130,9 +141,19 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             _writeBatch.Dispose();
         }
 
+        public void Clear()
+        {
+            _writeBatch._writeBatch.Clear();
+        }
+
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             _writeBatch._writeBatch.Set(key, value, _column._columnFamily, flags);
+        }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            _writeBatch._writeBatch.Merge(key, value, _column._columnFamily, flags);
         }
     }
 }

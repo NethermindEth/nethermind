@@ -53,8 +53,8 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
         byte[] buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
         try
         {
-            ReceiveResult? result = await _stream.ReceiveAsync(buffer, cancellationToken);
-            while (result?.Closed == false)
+            ReceiveResult result = await _stream.ReceiveAsync(buffer, cancellationToken);
+            while (!result.IsNull && result.Closed == false)
             {
                 currentMessageLength += result.Read;
 

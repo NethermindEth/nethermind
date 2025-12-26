@@ -9,20 +9,11 @@ namespace Nethermind.TxPool.Filters;
 /// <summary>
 /// Ignores blob transactions if sender already have pending transactions of other types; ignore other types if has already pending blobs
 /// </summary>
-public class TxTypeTxFilter : IIncomingTxFilter
+public class TxTypeTxFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs) : IIncomingTxFilter
 {
-    private readonly TxDistinctSortedPool _txs;
-    private readonly TxDistinctSortedPool _blobTxs;
-
-    public TxTypeTxFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs)
-    {
-        _txs = txs;
-        _blobTxs = blobTxs;
-    }
-
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        TxDistinctSortedPool otherTxTypePool = (tx.SupportsBlobs ? _txs : _blobTxs);
+        TxDistinctSortedPool otherTxTypePool = tx.SupportsBlobs ? txs : blobTxs;
         if (otherTxTypePool.ContainsBucket(tx.SenderAddress!)) // as unknownSenderFilter will run before this one
         {
             Metrics.PendingTransactionsConflictingTxType++;

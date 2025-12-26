@@ -17,17 +17,17 @@ namespace Nethermind.Crypto
         {
         }
 
-        public Signature Sign(PrivateKey privateKey, Hash256 message)
+        public Signature Sign(PrivateKey privateKey, in ValueHash256 message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public PublicKey RecoverPublicKey(Signature signature, Hash256 message)
+        public PublicKey RecoverPublicKey(Signature signature, in ValueHash256 message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public CompressedPublicKey RecoverCompressedPublicKey(Signature signature, Hash256 message)
+        public CompressedPublicKey RecoverCompressedPublicKey(Signature signature, in ValueHash256 message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
@@ -37,17 +37,12 @@ namespace Nethermind.Crypto
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public Address RecoverAddress(Signature signature, Hash256 message)
-        {
-            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
-        }
-
-        public Address RecoverAddress(Span<byte> signatureBytes, Hash256 message)
-        {
-            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
-        }
-
         public bool Verify(Address sender, Transaction tx)
+        {
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
+        }
+
+        public Address? RecoverAddress(Signature signature, in ValueHash256 message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }

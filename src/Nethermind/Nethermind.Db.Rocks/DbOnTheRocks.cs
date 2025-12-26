@@ -29,7 +29,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public partial class DbOnTheRocks : IDb, ITunableDb
+public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISortedKeyValueStore, IMergeableKeyValueStore
 {
     protected ILogger _logger;
 
@@ -54,6 +54,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
     internal ReadOptions? _readAheadReadOptions = null;
 
     internal DbOptions? DbOptions { get; private set; }
+    private readonly IRocksDbConfigFactory _rocksDbConfigFactory;
 
     public string Name { get; }
 
@@ -65,7 +66,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
     private readonly DbSettings _settings;
 
-    private readonly PerTableDbConfig _perTableDbConfig;
+    // Need to keep options from GC in case of merge operator applied, as they are used in callback
+    // ReSharper disable once CollectionNeverQueried.Local
+    private readonly List<OptionsHandle> _doNotGcOptions = [];
+
+    private readonly IRocksDbConfig _perTableDbConfig;
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
     private int _minWriteBufferToMerge;
@@ -92,6 +97,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         string basePath,
         DbSettings dbSettings,
         IDbConfig dbConfig,
+        IRocksDbConfigFactory rocksDbConfigFactory,
         ILogManager logManager,
         IList<string>? columnFamilies = null,
         RocksDbSharp.Native? rocksDbNative = null,
@@ -103,7 +109,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         Name = _settings.DbName;
         _fileSystem = fileSystem ?? new FileSystem();
         _rocksDbNative = rocksDbNative ?? RocksDbSharp.Native.Instance;
-        _perTableDbConfig = new PerTableDbConfig(dbConfig, _settings);
+        _rocksDbConfigFactory = rocksDbConfigFactory;
+        _perTableDbConfig = rocksDbConfigFactory.GetForDatabase(Name, null);
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
         _iteratorManager = new IteratorManager(_db, null, _readAheadReadOptions);
     }
@@ -140,7 +147,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             // ReSharper disable once VirtualMemberCallInConstructor
             if (_logger.IsDebug) _logger.Debug($"Building options for {Name} DB");
             DbOptions = new DbOptions();
-            BuildOptions(_perTableDbConfig, DbOptions, sharedCache);
+            BuildOptions(_perTableDbConfig, DbOptions, sharedCache, _settings.MergeOperator);
 
             ColumnFamilies? columnFamilies = null;
             if (columnNames is not null)
@@ -151,7 +158,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb
                     string columnFamily = enumColumnName;
 
                     ColumnFamilyOptions options = new();
-                    BuildOptions(new PerTableDbConfig(dbConfig, _settings, columnFamily), options, sharedCache);
+                    IRocksDbConfig columnConfig = _rocksDbConfigFactory.GetForDatabase(Name, columnFamily);
+                    IMergeOperator? mergeOperator = _settings.ColumnsMergeOperators?.GetValueOrDefault(enumColumnName);
+                    BuildOptions(columnConfig, options, sharedCache, mergeOperator);
 
                     // "default" is a special column name with rocksdb, which is what previously not specifying column goes to
                     if (columnFamily == "Default") columnFamily = "default";
@@ -290,6 +299,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         {
             if (_logger.IsWarn) _logger.Warn($"Corrupted DB detected on path {_fullPath}. Please restart Nethermind to attempt repair.");
             _fileSystem.File.WriteAllText(CorruptMarkerPath, "marker");
+
+            // Don't kill tests checking corruption response
+            if (!rocksDbException.Message.Equals("Corruption: test corruption", StringComparison.Ordinal))
+            {
+                _logger.Error($"Fast shutdown due to {Name} DB corruption. Please restart.");
+                Environment.Exit(ExitCodes.DbCorruption);
+            }
         }
     }
 
@@ -328,12 +344,24 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         return value;
     }
 
-    public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false)
+    public IDbMeta.DbMetric GatherMetric(bool isUsingSharedCache = false)
     {
+        if (_isDisposed)
+        {
+            return new IDbMeta.DbMetric()
+            {
+                Size = 0,
+                CacheSize = 0,
+                IndexSize = 0,
+                MemtableSize = 0,
+                TotalReads = _totalReads,
+                TotalWrites = _totalWrites,
+            };
+        }
         return new IDbMeta.DbMetric()
         {
             Size = GetSize(),
-            CacheSize = GetCacheSize(includeSharedCache),
+            CacheSize = GetCacheSize(isUsingSharedCache),
             IndexSize = GetIndexSize(),
             MemtableSize = GetMemtableSize(),
             TotalReads = _totalReads,
@@ -358,11 +386,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         return 0;
     }
 
-    private long GetCacheSize(bool includeSharedCache = false)
+    private long GetCacheSize(bool isUsingSharedCache = false)
     {
         try
         {
-            if (!includeSharedCache)
+            if (isUsingSharedCache)
             {
                 // returning 0 as we are using shared cache.
                 return 0;
@@ -424,7 +452,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         return asDict;
     }
 
-    protected virtual void BuildOptions<T>(PerTableDbConfig dbConfig, Options<T> options, IntPtr? sharedCache) where T : Options<T>
+    protected virtual void BuildOptions<T>(IRocksDbConfig dbConfig, Options<T> options, IntPtr? sharedCache, IMergeOperator? mergeOperator) where T : Options<T>
     {
         // This section is about the table factory.. and block cache apparently.
         // This effect the format of the SST files and usually require resync to take effect.
@@ -554,9 +582,17 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             }
         }
 
+        if (mergeOperator is not null)
+        {
+            options.SetMergeOperator(new MergeOperatorAdapter(mergeOperator));
+            lock (_doNotGcOptions)
+                _doNotGcOptions.Add(options);
+        }
+
         #endregion
 
         #region read-write options
+        // TODO: These are not applied to column family
         WriteOptions = CreateWriteOptions(dbConfig);
 
         _noWalWrite = CreateWriteOptions(dbConfig);
@@ -591,7 +627,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         #endregion
     }
 
-    private static WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig)
+    private static WriteOptions CreateWriteOptions(IRocksDbConfig dbConfig)
     {
         WriteOptions options = new();
         // potential fix for corruption on hard process termination, may cause performance degradation
@@ -696,8 +732,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             Native.Instance.rocksdb_pinnableslice_destroy(handle);
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static unsafe void ThrowRocksDbException(nint errPtr)
         {
             throw new RocksDbException(errPtr);
@@ -870,6 +905,40 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         SetWithColumnFamily(key, null, value, writeFlags);
     }
 
+    public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        UpdateWriteMetrics();
+
+        try
+        {
+            _db.Merge(key, value, null, WriteFlagsToWriteOptions(flags));
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
+    internal void MergeWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        UpdateWriteMetrics();
+
+        try
+        {
+            _db.Merge(key, value, cf, WriteFlagsToWriteOptions(flags));
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {
         if (!span.IsNullOrEmpty())
@@ -878,6 +947,62 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             GC.RemoveMemoryPressure(span.Length);
         }
         _db.DangerousReleaseMemory(span);
+    }
+
+    public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out IntPtr handle, ReadFlags flags)
+        => GetNativeSlice(key, null, out handle, flags);
+
+    public unsafe ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, out IntPtr handle, ReadFlags flags)
+    {
+        // TODO: update when merged upstream: https://github.com/curiosity-ai/rocksdb-sharp/pull/61
+        // return _db.Get(key, cf, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions);
+
+        handle = default;
+        nint db = _db.Handle;
+        nint read_options = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions).Handle;
+        UIntPtr skLength = (UIntPtr)key.Length;
+        IntPtr errPtr;
+        IntPtr slice;
+        fixed (byte* ptr = &MemoryMarshal.GetReference(key))
+        {
+            slice = cf is null
+                ? Native.Instance.rocksdb_get_pinned(db, read_options, ptr, skLength, out errPtr)
+                : Native.Instance.rocksdb_get_pinned_cf(db, read_options, cf.Handle, ptr, skLength, out errPtr);
+        }
+
+        if (errPtr != IntPtr.Zero) ThrowRocksDbException(errPtr);
+        if (slice == IntPtr.Zero) return null;
+
+        try
+        {
+            IntPtr valuePtr = Native.Instance.rocksdb_pinnableslice_value(slice, out UIntPtr valueLength);
+            if (valuePtr == IntPtr.Zero)
+            {
+                Native.Instance.rocksdb_pinnableslice_destroy(slice);
+                return null;
+            }
+
+            int length = (int)valueLength;
+            handle = slice;
+            return new ReadOnlySpan<byte>((void*)valuePtr, length);
+        }
+        catch
+        {
+            Native.Instance.rocksdb_pinnableslice_destroy(slice);
+            throw;
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        static unsafe void ThrowRocksDbException(nint errPtr)
+        {
+            throw new RocksDbException(errPtr);
+        }
+    }
+
+    public void DangerousReleaseHandle(IntPtr handle)
+    {
+        if (handle != default)
+            Native.Instance.rocksdb_pinnableslice_destroy(handle);
     }
 
     public void Remove(ReadOnlySpan<byte> key)
@@ -907,7 +1032,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb
     {
         ReadOptions readOptions = new();
         readOptions.SetTailing(!ordered);
+        return CreateIterator(readOptions, ch);
+    }
 
+    protected internal Iterator CreateIterator(ReadOptions readOptions, ColumnFamilyHandle? ch = null)
+    {
         try
         {
             return _db.NewIterator(ch, readOptions);
@@ -1139,6 +1268,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             _reusableWriteBatch = batch;
         }
 
+        public void Clear()
+        {
+            ObjectDisposedException.ThrowIf(_dbOnTheRocks._isDisposed, _dbOnTheRocks);
+
+            _rocksBatch.Clear();
+        }
+
         public void Dispose()
         {
             ObjectDisposedException.ThrowIf(_dbOnTheRocks._isDisposed, _dbOnTheRocks);
@@ -1197,6 +1333,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             Set(key, value, null, flags);
         }
 
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            Merge(key, value, null, flags);
+        }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
+        {
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
+
+            _rocksBatch.Merge(key, value, cf);
+            _writeFlags = flags;
+
+            if ((flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
+        }
+
         private void FlushOnTooManyWrites()
         {
             if (Interlocked.Increment(ref _writeCount) % MaxWritesOnNoWal != 0) return;
@@ -1223,6 +1374,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         InnerFlush(onlyWal);
     }
 
+    public void FlushWithColumnFamily(ColumnFamilyHandle familyHandle)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        InnerFlush(familyHandle);
+    }
+
     public virtual void Compact()
     {
         _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
@@ -1238,6 +1396,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             {
                 _rocksDbNative.rocksdb_flush(_db.Handle, FlushOptions.DefaultFlushOptions.Handle);
             }
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+        }
+    }
+
+    private void InnerFlush(ColumnFamilyHandle columnFamilyHandle)
+    {
+        try
+        {
+            _rocksDbNative.rocksdb_flush_cf(_db.Handle, FlushOptions.DefaultFlushOptions.Handle, columnFamilyHandle.Handle);
         }
         catch (RocksDbSharpException e)
         {
@@ -1693,10 +1863,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             public void ClearIterators()
             {
                 if (_disposed) return;
-                if (Values is null) return;
-                foreach (IteratorHolder iterator in Values)
+                if (Values is not { } values) return;
+                foreach (IteratorHolder iterator in values)
                 {
-                    iterator.Dispose();
+                    iterator?.Dispose();
                 }
             }
 
@@ -1726,5 +1896,49 @@ public partial class DbOnTheRocks : IDb, ITunableDb
                 Interlocked.Exchange(ref Iterator, null)?.Dispose();
             }
         }
+    }
+
+    public byte[]? FirstKey
+    {
+        get
+        {
+            using Iterator iterator = _db.NewIterator();
+            iterator.SeekToFirst();
+            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+        }
+    }
+
+    public byte[]? LastKey
+    {
+        get
+        {
+            using Iterator iterator = _db.NewIterator();
+            iterator.SeekToLast();
+            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
+        }
+    }
+
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
+    {
+        return GetViewBetween(firstKey, lastKey, null);
+    }
+
+    internal ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ColumnFamilyHandle? cf)
+    {
+        ReadOptions readOptions = new ReadOptions();
+
+        unsafe
+        {
+            IntPtr iterateLowerBound = Marshal.AllocHGlobal(firstKey.Length);
+            firstKey.CopyTo(new Span<byte>(iterateLowerBound.ToPointer(), firstKey.Length));
+            Native.Instance.rocksdb_readoptions_set_iterate_lower_bound(readOptions.Handle, iterateLowerBound, (UIntPtr)firstKey.Length);
+
+            IntPtr iterateUpperBound = Marshal.AllocHGlobal(lastKey.Length);
+            lastKey.CopyTo(new Span<byte>(iterateUpperBound.ToPointer(), lastKey.Length));
+            Native.Instance.rocksdb_readoptions_set_iterate_upper_bound(readOptions.Handle, iterateUpperBound, (UIntPtr)lastKey.Length);
+        }
+
+        Iterator iterator = CreateIterator(readOptions, cf);
+        return new RocksdbSortedView(iterator);
     }
 }

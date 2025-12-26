@@ -12,46 +12,7 @@ namespace Nethermind.Blockchain.Find
     {
         public static BlockHeader? FindParentHeader(this IBlockFinder finder, BlockHeader header, BlockTreeLookupOptions options)
         {
-            if (header.MaybeParent is null)
-            {
-                if (header.ParentHash is null)
-                {
-                    throw new InvalidOperationException(
-                        $"Cannot find parent when parent hash is null on block with hash {header.Hash}.");
-                }
-
-                BlockHeader parent = finder.FindHeader(header.ParentHash, options, blockNumber: header.Number - 1);
-                header.MaybeParent = new WeakReference<BlockHeader>(parent);
-                return parent;
-            }
-
-            header.MaybeParent.TryGetTarget(out BlockHeader maybeParent);
-            if (maybeParent is null)
-            {
-                if (header.ParentHash is null)
-                {
-                    throw new InvalidOperationException(
-                        $"Cannot find parent when parent hash is null on block with hash {header.Hash}.");
-                }
-
-                BlockHeader parent = finder.FindHeader(header.ParentHash, options, blockNumber: header.Number - 1);
-                header.MaybeParent.SetTarget(parent);
-                return parent;
-            }
-
-            if (maybeParent.TotalDifficulty is null && (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == 0)
-            {
-                if (header.ParentHash is null)
-                {
-                    throw new InvalidOperationException(
-                        $"Cannot find parent when parent hash is null on block with hash {header.Hash}.");
-                }
-
-                BlockHeader? fromDb = finder.FindHeader(header.ParentHash, options, blockNumber: header.Number - 1);
-                maybeParent.TotalDifficulty = fromDb?.TotalDifficulty;
-            }
-
-            return maybeParent;
+            return finder.FindHeader(header.ParentHash, options, blockNumber: header.Number - 1);
         }
 
         public static Block? FindParent(this IBlockFinder finder, Block block, BlockTreeLookupOptions options)

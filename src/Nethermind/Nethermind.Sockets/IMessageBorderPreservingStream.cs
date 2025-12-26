@@ -9,6 +9,6 @@ namespace Nethermind.Sockets;
 
 public interface IMessageBorderPreservingStream
 {
-    Task<ReceiveResult?> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken = default);
-    Task<int> WriteEndOfMessageAsync();
+    ValueTask<ReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken = default);
+    ValueTask<int> WriteEndOfMessageAsync();
 }

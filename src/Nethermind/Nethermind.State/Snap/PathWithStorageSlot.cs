@@ -7,10 +7,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Snap
 {
-    public readonly struct PathWithStorageSlot(ValueHash256 keyHash, byte[] slotRlpValue)
+    public readonly struct PathWithStorageSlot(in ValueHash256 keyHash, byte[] slotRlpValue)
         : IEquatable<PathWithStorageSlot>, IEqualityOperators<PathWithStorageSlot, PathWithStorageSlot, bool>
     {
-        public ValueHash256 Path { get; } = keyHash;
+        public readonly ValueHash256 Path = keyHash;
         public byte[] SlotRlpValue { get; } = slotRlpValue;
 
         public bool Equals(in PathWithStorageSlot other)

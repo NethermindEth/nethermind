@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../tests.props" />
+
+  <ItemGroup>
+    <Content Include="..\..\tests\LegacyTests\Cancun\BlockchainTests\TransitionTests\**\*.*">
+      <Link>Tests\%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
+  </ItemGroup>
+</Project>

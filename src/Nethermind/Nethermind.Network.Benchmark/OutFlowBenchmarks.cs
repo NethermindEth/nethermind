@@ -62,31 +62,23 @@ namespace Nethermind.Network.Benchmarks
 
             _newBlockMessage = new NewBlockMessage();
             _newBlockMessage.Block = _block;
-            _serializationService = new MessageSerializationService();
-            _serializationService.Register(_newBlockMessageSerializer);
+            _serializationService = new MessageSerializationService(
+                SerializerInfo.Create(_newBlockMessageSerializer)
+                );
             ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
         }
 
-        private class TestZeroEncoder : ZeroFrameEncoder
+        private class TestZeroEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
+            : ZeroFrameEncoder(frameCipher, frameMacProcessor)
         {
             public void Encode(IByteBuffer message, IByteBuffer buffer)
             {
                 base.Encode(null, message, buffer);
             }
-
-            public TestZeroEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
-                : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
-            {
-            }
         }
 
         private class TestZeroSplitter : ZeroPacketSplitter
         {
-            public TestZeroSplitter()
-                : base(LimboLogs.Instance)
-            {
-            }
-
             public void Encode(IByteBuffer input, IByteBuffer output)
             {
                 base.Encode(null, input, output);

@@ -10,9 +10,15 @@ namespace Nethermind.Serialization.Rlp
 {
     [Rlp.Decoder(RlpDecoderKey.Default)]
     [Rlp.Decoder(RlpDecoderKey.Trie)]
-    public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
+    public sealed class ReceiptMessageDecoder : RlpValueDecoder<TxReceipt>
     {
-        public TxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        private readonly bool _skipStateAndStatus;
+
+        public ReceiptMessageDecoder(bool skipStateAndStatus = false)
+        {
+            _skipStateAndStatus = skipStateAndStatus;
+        }
+        protected override TxReceipt DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             Span<byte> span = rlpStream.PeekNextItem();
             Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(span);
@@ -22,7 +28,7 @@ namespace Nethermind.Serialization.Rlp
             return response;
         }
 
-        public TxReceipt Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override TxReceipt DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (ctx.IsNextItemNull())
             {
@@ -47,7 +53,6 @@ namespace Nethermind.Serialization.Rlp
             else if (firstItem.Length is >= 1 and <= 4)
             {
                 txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
-                txReceipt.SkipStateAndStatusInRlp = true;
             }
             else
             {
@@ -67,10 +72,15 @@ namespace Nethermind.Serialization.Rlp
             }
             txReceipt.Logs = entries;
 
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            {
+                ctx.Check(lastCheck);
+            }
+
             return txReceipt;
         }
 
-        private static (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)
             {
@@ -86,7 +96,7 @@ namespace Nethermind.Serialization.Rlp
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
-            if (!item.SkipStateAndStatusInRlp)
+            if (!_skipStateAndStatus)
             {
                 contentLength += isEip658Receipts
                     ? Rlp.LengthOf(item.StatusCode)
@@ -110,7 +120,7 @@ namespace Nethermind.Serialization.Rlp
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-2718
         /// </summary>
-        public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             (int Total, _) = GetContentLength(item, rlpBehaviors);
             int receiptPayloadLength = Rlp.LengthOfSequence(Total);
@@ -137,7 +147,7 @@ namespace Nethermind.Serialization.Rlp
             return stream.Data.ToArray();
         }
 
-        public void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -161,7 +171,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             rlpStream.StartSequence(totalContentLength);
-            if (!item.SkipStateAndStatusInRlp)
+            if (!_skipStateAndStatus)
             {
                 if (isEip658Receipts)
                 {

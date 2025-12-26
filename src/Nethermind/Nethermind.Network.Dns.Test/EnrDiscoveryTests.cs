@@ -48,9 +48,9 @@ public class EnrDiscoveryTests
 
         NodeRecordSigner singer = new(new Ecdsa(), TestItem.PrivateKeyA);
         EnrRecordParser parser = new(singer);
-        EnrTreeCrawler crawler = new(new(Substitute.For<InterfaceLogger>()));
+        EnrTreeCrawler crawler = new(LimboTraceLogger.Instance);
         int verified = 0;
-        await foreach (string record in crawler.SearchTree("all.mainnet.ethdisco.net"))
+        await foreach (string record in crawler.SearchTree("all.mainnet.ethdisco.net", default))
         {
             NodeRecord nodeRecord = parser.ParseRecord(record);
             if (!nodeRecord.Snap)

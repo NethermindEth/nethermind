@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -88,7 +88,15 @@ namespace Nethermind.Evm
         public static ulong GetMaxBlobGasPerBlock(this IReleaseSpec spec) =>
             spec.MaxBlobCount * Eip4844Constants.GasPerBlob;
 
+        public static ulong GetMaxBlobGasPerTx(this IReleaseSpec spec) =>
+            spec.MaxBlobsPerTx * Eip4844Constants.GasPerBlob;
+
         public static ulong GetTargetBlobGasPerBlock(this IReleaseSpec spec) =>
             spec.TargetBlobCount * Eip4844Constants.GasPerBlob;
+
+        public static int MaxProductionBlobCount(this IReleaseSpec spec, int? blockProductionBlobLimit) =>
+            blockProductionBlobLimit >= 0
+                ? Math.Min(blockProductionBlobLimit.Value, (int)spec.MaxBlobCount)
+                : (int)spec.MaxBlobCount;
     }
 }

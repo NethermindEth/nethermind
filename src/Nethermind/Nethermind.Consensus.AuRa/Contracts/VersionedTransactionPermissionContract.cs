@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;

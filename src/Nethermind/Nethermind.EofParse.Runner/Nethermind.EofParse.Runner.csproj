@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>netheofparse</AssemblyName>
+    <Nullable>annotations</Nullable>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
+    <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj"/>
+    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj"/>
+  </ItemGroup>
+
+</Project>

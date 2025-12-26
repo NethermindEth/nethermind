@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.JsonRpc.Data;
@@ -104,7 +104,7 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<string> debug_getRawTransaction(Hash256 transactionHash);
 
     [JsonRpcMethod(Description = "Retrives Nethermind Sync Stage, With extra Metadata")]
-    Task<ResultWrapper<SyncReportSymmary>> debug_getSyncStage();
+    Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage();
 
     [JsonRpcMethod(Description = "Writes to a file the full stack trace of all invoked opcodes of the transaction specified (or all transactions if not specified) that was included in the block specified. The parent of the block must be present or it will fail.",
         IsImplemented = true, IsSharable = false)]
@@ -120,4 +120,7 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks")]
     ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
+
+    [JsonRpcMethod(Description = "Executes a list of bundles of transactions without creating transactions on the blockchain and returns their traces", IsImplemented = true, IsSharable = false)]
+    ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 }

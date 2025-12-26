@@ -19,12 +19,14 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SyncLimits;
+using Nethermind.Stats.SyncLimits;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -469,9 +471,9 @@ public class FastHeadersSyncTests
     [TestCase(190, 1, 1, true, true)]
     [TestCase(80, 1, 1, true, false)]
     [TestCase(80, 1, 1, true, true)]
-    //All empty reponse
+    // All empty response
     [TestCase(0, 192, 1, false, false)]
-    //All null reponse
+    // All null response
     [TestCase(0, 192, 1, false, true)]
     public async Task Can_insert_all_good_headers_from_dependent_batch_with_missing_or_null_headers(int nullIndex, int count, int increment, bool shouldReport, bool useNulls)
     {
@@ -516,13 +518,13 @@ public class FastHeadersSyncTests
         feed.HandleResponse(dependentBatch);
         feed.HandleResponse(firstBatch);
 
-        using HeadersSyncBatch? thirdbatch = await feed.PrepareRequest();
-        FillBatch(thirdbatch!, thirdbatch!.StartNumber, false);
-        feed.HandleResponse(thirdbatch);
-        using HeadersSyncBatch? fourthbatch = await feed.PrepareRequest();
-        FillBatch(fourthbatch!, fourthbatch!.StartNumber, false);
-        feed.HandleResponse(fourthbatch);
-        using HeadersSyncBatch? fifthbatch = await feed.PrepareRequest();
+        using HeadersSyncBatch? thirdBatch = await feed.PrepareRequest();
+        FillBatch(thirdBatch!, thirdBatch!.StartNumber, false);
+        feed.HandleResponse(thirdBatch);
+        using HeadersSyncBatch? fourthBatch = await feed.PrepareRequest();
+        FillBatch(fourthBatch!, fourthBatch!.StartNumber, false);
+        feed.HandleResponse(fourthBatch);
+        using HeadersSyncBatch? fifthBatch = await feed.PrepareRequest();
 
         Assert.That(localBlockTree.LowestInsertedHeader!.Number, Is.LessThanOrEqualTo(targetHeaderInDependentBatch));
         syncPeerPool.Received(shouldReport ? 1 : 0).ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
@@ -807,6 +809,35 @@ public class FastHeadersSyncTests
 
         Action act = () => feed.InitializeFeed();
         act.Should().Throw<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task Should_Limit_BatchSize_ToEstimate()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        using HeadersSyncFeed feed = new(
+            blockTree: blockTree,
+            syncPeerPool: syncPeerPool,
+            syncConfig: new TestSyncConfig
+            {
+                FastSync = true,
+                PivotNumber = "1000",
+                PivotHash = TestItem.KeccakA.ToString(),
+                PivotTotalDifficulty = "1000",
+            },
+            syncReport: new NullSyncReport(),
+            totalDifficultyStrategy: new CumulativeTotalDifficultyStrategy(),
+            poSSwitcher: Substitute.For<IPoSSwitcher>(),
+            logManager: LimboLogs.Instance);
+        blockTree.SyncPivot.Returns((1000, TestItem.KeccakB));
+
+        syncPeerPool.EstimateRequestLimit(RequestType.Headers, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Headers, default)
+            .Returns(Task.FromResult<int?>(5));
+
+        feed.InitializeFeed();
+        HeadersSyncBatch? req = await feed.PrepareRequest(default);
+        req!.RequestSize.Should().Be(5);
     }
 
     private class ResettableHeaderSyncFeed : HeadersSyncFeed

@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
@@ -13,22 +16,33 @@ using Nethermind.Logging;
 
 namespace Nethermind.Core.Authentication;
 
-public partial class JwtAuthentication : IRpcAuthentication
+public sealed partial class JwtAuthentication : IRpcAuthentication
 {
-    private readonly SecurityKey _securityKey;
-    private readonly ILogger _logger;
-    private readonly ITimestamper _timestamper;
     private const string JwtMessagePrefix = "Bearer ";
     private const int JwtTokenTtl = 60;
     private const int JwtSecretLength = 64;
 
+    private static readonly Task<bool> True = Task.FromResult(true);
+    private static readonly Task<bool> False = Task.FromResult(false);
+
+    private readonly JsonWebTokenHandler _handler = new();
+    private readonly SecurityKey _securityKey;
+    private readonly ILogger _logger;
+    private readonly ITimestamper _timestamper;
+    private readonly LifetimeValidator _lifetimeValidator;
+
+    // Single entry cache: last successfully validated token
+    private TokenCacheEntry? _lastToken;
+
     private JwtAuthentication(byte[] secret, ITimestamper timestamper, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(secret);
+        ArgumentNullException.ThrowIfNull(timestamper);
 
         _securityKey = new SymmetricSecurityKey(secret);
         _logger = logger;
-        _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+        _timestamper = timestamper;
+        _lifetimeValidator = LifetimeValidator;
     }
 
     public static JwtAuthentication FromSecret(string secret, ITimestamper timestamper, ILogger logger)
@@ -101,75 +115,112 @@ public partial class JwtAuthentication : IRpcAuthentication
         }
     }
 
-    public async Task<bool> Authenticate(string? token)
+    public Task<bool> Authenticate(string? token)
     {
         if (string.IsNullOrEmpty(token))
         {
-            if (_logger.IsWarn) _logger.Warn("Message authentication error: The token cannot be found.");
-            return false;
+            if (_logger.IsWarn) WarnTokenNotFound();
+            return False;
         }
 
         if (!token.StartsWith(JwtMessagePrefix, StringComparison.Ordinal))
         {
-            if (_logger.IsWarn) _logger.Warn($"Message authentication error: The token must start with '{JwtMessagePrefix}'.");
-            return false;
+            if (_logger.IsWarn) TokenMalformed();
+            return False;
         }
 
-        token = token.Remove(0, JwtMessagePrefix.Length);
-        TokenValidationParameters tokenValidationParameters = new()
+        // fast path - reuse last successful validation for the same token
+        // we keep it very cheap: one time read, one cache read, one string compare
+        long nowUnixSeconds = _timestamper.UtcNow.ToUnixTimeSeconds();
+        if (TryLastValidationFromCache(token, nowUnixSeconds))
         {
-            IssuerSigningKey = _securityKey,
-            RequireExpirationTime = false,
-            ValidateLifetime = true,
-            ValidateAudience = false,
-            ValidateIssuer = false,
-            LifetimeValidator = LifetimeValidator
-        };
+            return True;
+        }
 
+        return AuthenticateCore(token);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void WarnTokenNotFound() => _logger.Warn("Message authentication error: The token cannot be found.");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TokenMalformed() => _logger.Warn($"Message authentication error: The token must start with '{JwtMessagePrefix}'.");
+    }
+
+    private async Task<bool> AuthenticateCore(string token)
+    {
         try
         {
-            JsonWebTokenHandler handler = new();
-            JsonWebToken jwtToken = handler.ReadJsonWebToken(token);
-            TokenValidationResult result = await handler.ValidateTokenAsync(jwtToken, tokenValidationParameters);
+            TokenValidationParameters tokenValidationParameters = new()
+            {
+                IssuerSigningKey = _securityKey,
+                RequireExpirationTime = false,
+                ValidateLifetime = true,
+                ValidateAudience = false,
+                ValidateIssuer = false,
+                LifetimeValidator = _lifetimeValidator
+            };
+
+            ReadOnlyMemory<char> tokenSlice = token.AsMemory(JwtMessagePrefix.Length);
+            JsonWebToken jwtToken = _handler.ReadJsonWebToken(tokenSlice);
+            TokenValidationResult result = await _handler.ValidateTokenAsync(jwtToken, tokenValidationParameters);
 
             if (!result.IsValid)
             {
-                if (result.Exception is SecurityTokenDecryptionFailedException)
-                {
-                    if (_logger.IsWarn) _logger.Warn("Message authentication error: The token cannot be decrypted.");
-                    return false;
-                }
-                if (result.Exception is SecurityTokenReplayDetectedException)
-                {
-                    if (_logger.IsWarn) _logger.Warn("Message authentication error: The token has been used multiple times.");
-                    return false;
-                }
-                if (result.Exception is SecurityTokenInvalidSignatureException)
-                {
-                    if (_logger.IsWarn) _logger.Warn("Message authentication error: Invalid token signature.");
-                    return false;
-                }
-
-                if (_logger.IsWarn) _logger.Warn($"Message authentication error: {result.Exception?.Message}");
+                if (_logger.IsWarn) WarnInvalidResult(result.Exception);
                 return false;
             }
 
-            long iat = ((DateTimeOffset)jwtToken.IssuedAt).ToUnixTimeSeconds();
-            DateTimeOffset now = _timestamper.UtcNowOffset;
-            if (Math.Abs(iat - now.ToUnixTimeSeconds()) <= JwtTokenTtl)
+            DateTime now = _timestamper.UtcNow;
+            long issuedAtUnix = jwtToken.IssuedAt.ToUnixTimeSeconds();
+            if (Math.Abs(issuedAtUnix - now.ToUnixTimeSeconds()) <= JwtTokenTtl)
             {
-                if (_logger.IsTrace) _logger.Trace($"Message authenticated. Token: {token}, iat: {jwtToken.IssuedAt}, time: {now}");
+                // full validation succeeded and TTL check passed - cache as last valid token
+                CacheLastToken(token, issuedAtUnix);
+
+                if (_logger.IsTrace) Trace(jwtToken, now, tokenSlice);
                 return true;
             }
 
-            if (_logger.IsWarn) _logger.Warn($"Token expired. Now is {now}, token issued at {jwtToken.IssuedAt}");
+            if (_logger.IsWarn) WarnTokenExpired(jwtToken, now);
             return false;
         }
         catch (Exception ex)
         {
-            if (_logger.IsWarn) _logger.Warn($"Message authentication error: {ex.Message}");
+            if (_logger.IsWarn) WarnAuthenticationError(ex);
             return false;
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void WarnInvalidResult(Exception? ex)
+        {
+            if (ex is SecurityTokenDecryptionFailedException)
+            {
+                _logger.Warn("Message authentication error: The token cannot be decrypted.");
+            }
+            else if (ex is SecurityTokenReplayDetectedException)
+            {
+                _logger.Warn("Message authentication error: The token has been used multiple times.");
+            }
+            else if (ex is SecurityTokenInvalidSignatureException)
+            {
+                _logger.Warn("Message authentication error: Invalid token signature.");
+            }
+            else
+            {
+                WarnAuthenticationError(ex);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void WarnAuthenticationError(Exception? ex) => _logger.Warn($"Message authentication error: {ex?.Message}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void WarnTokenExpired(JsonWebToken jwtToken, DateTime now)
+            => _logger.Warn($"Token expired. Now is {now}, token issued at {jwtToken.IssuedAt}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void Trace(JsonWebToken jwtToken, DateTime now, ReadOnlyMemory<char> token)
+            => _logger.Trace($"Message authenticated. Token: {token}, iat: {jwtToken.IssuedAt}, time: {now}");
     }
 
     private bool LifetimeValidator(
@@ -179,10 +230,47 @@ public partial class JwtAuthentication : IRpcAuthentication
         TokenValidationParameters validationParameters)
     {
         if (!expires.HasValue) return true;
-        long exp = ((DateTimeOffset)expires).ToUnixTimeSeconds();
-        return _timestamper.UnixTime.SecondsLong < exp;
+        return _timestamper.UnixTime.SecondsLong < expires.Value.ToUnixTimeSeconds();
+    }
+
+    private void CacheLastToken(string token, long issuedAtUnixSeconds)
+    {
+        TokenCacheEntry entry = new(token, issuedAtUnixSeconds);
+        // last writer wins, atomic swap
+        Interlocked.Exchange(ref _lastToken, entry);
+    }
+
+    private bool TryLastValidationFromCache(string token, long nowUnixSeconds)
+    {
+        // Read the last validated token entry atomically
+        // this is a single entry cache because tokens tend to be reused
+        // for a handful of sequential requests before a fresh token is issued
+        TokenCacheEntry? entry = Volatile.Read(ref _lastToken);
+        if (entry is null)
+            return false;
+
+        // Only allow cache hit if the exact same token string is being reused
+        // different tokens bypass the cache and undergo full validation
+        if (!string.Equals(entry.Token, token, StringComparison.Ordinal))
+            return false;
+
+        // Token reuse is only allowed within the original JWT lifetime
+        // We never extend token validity beyond what the issuer intended
+        // - IssuedAtUnixSeconds ensures we don't accept a token older than TTL
+        if (Math.Abs(entry.IssuedAtUnixSeconds - nowUnixSeconds) > JwtTokenTtl)
+        {
+            // Token lifetime exceeded - drop the cached entry and force a fresh validation
+            Interlocked.CompareExchange(ref _lastToken, null, entry);
+            return false;
+        }
+
+        // Same token, within TTL, recently validated:
+        // Accept as valid without rerunning JWT parsing and crypto checks
+        return true;
     }
 
     [GeneratedRegex("^(0x)?[0-9a-fA-F]{64}$")]
     private static partial Regex SecretRegex();
+
+    private record TokenCacheEntry(string Token, long IssuedAtUnixSeconds);
 }

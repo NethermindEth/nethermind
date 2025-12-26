@@ -9,9 +9,12 @@ namespace Nethermind.Consensus.Processing
     {
         public TxReceipt TxReceipt { get; }
 
-        public TxProcessedEventArgs(int index, Transaction transaction, TxReceipt txReceipt) : base(index, transaction)
+        public BlockHeader BlockHeader { get; }
+
+        public TxProcessedEventArgs(int index, Transaction transaction, BlockHeader blockHeader, TxReceipt txReceipt) : base(index, transaction)
         {
             TxReceipt = txReceipt;
+            BlockHeader = blockHeader;
         }
     }
 }

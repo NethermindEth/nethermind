@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus.Transactions;
-
 namespace Nethermind.Consensus;
 
 public interface IBlockProducerFactory
@@ -14,5 +12,5 @@ public interface IBlockProducerFactory
     /// <remarks>
     /// Can be called many times, with different parameters, each time should create a new instance. Example usage in MEV plugin.
     /// </remarks>
-    IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null);
+    IBlockProducer InitBlockProducer();
 }

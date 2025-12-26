@@ -41,7 +41,7 @@ namespace Nethermind.Benchmarks.Core
         public void GlobalSetup()
         {
             _ethereumEcdsa = new(_specProvider.ChainId);
-            _sut = new(_ethereumEcdsa, NullTxPool.Instance, _specProvider, NullLogManager.Instance);
+            _sut = new(_ethereumEcdsa, _specProvider, NullLogManager.Instance);
 
             var rnd = new Random();
 
@@ -128,13 +128,10 @@ namespace Nethermind.Benchmarks.Core
 
             static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
             {
-                AuthorizationTupleDecoder decoder = new();
-                RlpStream rlp = decoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
-                Span<byte> code = stackalloc byte[rlp.Length + 1];
-                code[0] = Eip7702Constants.Magic;
-                rlp.Data.AsSpan().CopyTo(code.Slice(1));
-
-                Signature sig = _ethereumEcdsa.Sign(signer, Keccak.Compute(code));
+                KeccakRlpStream rlp = new();
+                rlp.WriteByte(Eip7702Constants.Magic);
+                AuthorizationTupleDecoder.EncodeWithoutSignature(rlp, chainId, codeAddress, nonce);
+                Signature sig = _ethereumEcdsa.Sign(signer, rlp.GetValueHash());
 
                 return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
             }
@@ -165,13 +162,13 @@ namespace Nethermind.Benchmarks.Core
         }
 
         [Benchmark]
-        public void Recover100TxSignatureswith100AuthoritySignatures()
+        public void Recover100TxSignaturesWith100AuthoritySignatures()
         {
             _sut.RecoverData(_block100TxWith100AuthSigs);
         }
 
         [Benchmark]
-        public void Recover100TxSignatureswith10AuthoritySignatures()
+        public void Recover100TxSignaturesWith10AuthoritySignatures()
         {
             _sut.RecoverData(_block100TxWith10AuthSigs);
         }

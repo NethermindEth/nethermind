@@ -43,6 +43,17 @@ public partial class ShardBlobTxDecoderTests
         decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
     }
 
+    [Test]
+    public void TestDecodeTamperedBlob()
+    {
+        var bytes = Bytes.FromHexString(
+            "b8aa03f8a7018001808252089400000000000000000000000000000000000000000180c001f841a00100000000000000000000000000000000000000000000000000000000000000a0010000000000000000000000000000000000000000000000000000000000000080a00fb9ad625df88e2fea9e088b69a31497f0d9b767067db8c03fd2453d7092e7bfa0086f2930db968d992d0fb06ddc903ca5522ba38bedc0530eb28b61082897efa1");
+        var stream = new RlpStream(bytes);
+
+        var tryDecode = () => _txDecoder.Decode(stream);
+        tryDecode.Should().Throw<RlpException>();
+    }
+
     [TestCaseSource(nameof(TestCaseSource))]
     public void Roundtrip_ValueDecoderContext_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)
     {
@@ -57,6 +68,46 @@ public partial class ShardBlobTxDecoderTests
             new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
         decoded.Hash = decoded.CalculateHash();
         decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
+    }
+
+    private static IEnumerable<Transaction> TamperedTestCaseSource()
+    {
+        yield return Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(2, false)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved()
+            .TestObject;
+        yield return Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(2, false)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithNonce(0)
+            .SignedAndResolved()
+            .TestObject;
+    }
+
+    [TestCaseSource(nameof(TamperedTestCaseSource))]
+    public void Tampered_Roundtrip_ExecutionPayloadForm_for_shard_blobs(Transaction tx)
+    {
+        var stream = new RlpStream(_txDecoder.GetLength(tx, RlpBehaviors.None));
+        _txDecoder.Encode(stream, tx);
+        // Tamper with sequence length
+        {
+            var itemsLength = 0;
+            foreach (var array in tx.BlobVersionedHashes!)
+            {
+                itemsLength += Rlp.LengthOf(array);
+            }
+
+            // Position where it starts encoding `BlobVersionedHashes`
+            stream.Position = 37;
+            // Accepts `itemsLength - 10` all the way to `itemsLength - 1`
+            stream.StartSequence(itemsLength - 1);
+        }
+        stream.Position = 0;
+
+        // Decoding should fail
+        var tryDecode = () => _txDecoder.Decode(stream);
+        tryDecode.Should().Throw<RlpException>();
     }
 
     [TestCaseSource(nameof(ShardBlobTxTests))]
@@ -82,10 +133,7 @@ public partial class ShardBlobTxDecoderTests
 
         if (decoded is { NetworkWrapper: ShardBlobNetworkWrapper wrapper })
         {
-            Assert.That(KzgPolynomialCommitments.AreProofsValid(
-                wrapper.Blobs,
-                wrapper.Commitments,
-                wrapper.Proofs));
+            Assert.That(IBlobProofsManager.For(wrapper.Version).ValidateProofs(wrapper));
         }
 
         Rlp encoded = _txDecoder.Encode(decoded!, rlpBehaviors);

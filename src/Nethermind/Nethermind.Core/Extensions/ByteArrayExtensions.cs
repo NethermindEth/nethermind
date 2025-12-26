@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -45,6 +45,7 @@ namespace Nethermind.Core.Extensions
         public static byte[] SliceWithZeroPaddingEmptyOnError(this byte[] bytes, int startIndex, int length)
         {
             int copiedFragmentLength = Math.Min(bytes.Length - startIndex, length);
+
             if (copiedFragmentLength <= 0)
             {
                 return [];
@@ -56,19 +57,47 @@ namespace Nethermind.Core.Extensions
             return slice;
         }
 
-        public static byte[] SliceWithZeroPaddingEmptyOnError(this ReadOnlySpan<byte> bytes, int startIndex, int length)
+        public static ReadOnlySpan<byte> SliceWithZeroPaddingEmptyOnError(this ReadOnlySpan<byte> bytes, int startIndex, int length)
         {
             int copiedFragmentLength = Math.Min(bytes.Length - startIndex, length);
+
             if (copiedFragmentLength <= 0)
             {
-                return [];
+                return default;
             }
 
-            byte[] slice = new byte[length];
-
-            bytes.Slice(startIndex, copiedFragmentLength).CopyTo(slice.AsSpan(0, copiedFragmentLength));
-            return slice;
+            return SafeSliceWithZeroPadding(bytes, startIndex, length, copiedFragmentLength);
         }
 
+        public static ReadOnlySpan<byte> SliceWithZeroPaddingEmptyOnError(this ReadOnlySpan<byte> bytes, uint startIndex, uint length)
+        {
+            if (bytes.Length < startIndex)
+            {
+                return default;
+            }
+
+            long copiedFragmentLength = Math.Min((uint)bytes.Length - startIndex, length);
+
+            if (bytes.Length < startIndex + copiedFragmentLength)
+            {
+                return default;
+            }
+
+            return SafeSliceWithZeroPadding(bytes, (int)startIndex, (int)length, (int)copiedFragmentLength);
+        }
+
+        private static ReadOnlySpan<byte> SafeSliceWithZeroPadding(ReadOnlySpan<byte> bytes, int startIndex, int length, int copiedFragmentLength)
+        {
+            ReadOnlySpan<byte> sliced = bytes.Slice(startIndex, copiedFragmentLength);
+
+            if (copiedFragmentLength < length)
+            {
+                byte[] extended = new byte[length];
+                sliced.CopyTo(extended);
+                return extended;
+            }
+
+            return sliced;
+        }
     }
 }

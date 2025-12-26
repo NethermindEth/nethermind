@@ -78,8 +78,7 @@ namespace Nethermind.Network.Test
             ctx.SetupPersistedPeers(1);
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
-            await Task.Delay(_travisDelay);
-            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1));
+            Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1).After(_travisDelay, 10));
         }
 
         [Test, Retry(3)]
@@ -120,31 +119,16 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Will_return_exception_in_port()
-        {
-            Assert.Throws<ArgumentException>(static delegate
-            {
-                Enode unused = new(enode3String);
-            });
-        }
+        public void Will_return_exception_in_port() =>
+            Assert.Throws<ArgumentException>(static () => new Enode(enode3String));
 
         [Test]
-        public void Will_return_exception_in_dns()
-        {
-            Assert.Throws<ArgumentException>(static delegate
-            {
-                Enode unused = new(enode4String);
-            });
-        }
+        public void Will_return_exception_in_dns() =>
+            Assert.Throws<ArgumentException>(static () => new Enode(enode4String));
 
         [Test]
-        public void Will_return_exception_when_there_is_no_port()
-        {
-            Assert.Throws<ArgumentException>(static delegate
-            {
-                Enode unused = new(enode5String);
-            });
-        }
+        public void Will_return_exception_when_there_is_no_port() =>
+            Assert.Throws<ArgumentException>(static () => new Enode(enode5String));
 
         [Test]
         public void Will_parse_ports_correctly_when_there_are_two_different_ports()
@@ -163,32 +147,16 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Will_return_exception_on_wrong_ports_part()
-        {
-            Assert.Throws<ArgumentException>(static delegate
-            {
-                Enode unused = new(enode8String);
-            });
-        }
+        public void Will_return_exception_on_wrong_ports_part() =>
+            Assert.Throws<ArgumentException>(static () => new Enode(enode8String));
 
         [Test]
-        public void Will_return_exception_on_duplicated_discovery_port_part()
-        {
-            Assert.Throws<ArgumentException>(static delegate
-            {
-                Enode unused = new(enode9String);
-            });
-        }
+        public void Will_return_exception_on_duplicated_discovery_port_part() =>
+            Assert.Throws<ArgumentException>(static () => new Enode(enode9String));
 
         [Test]
-        public void Will_return_exception_on_wrong_form_of_discovery_port_part()
-        {
-            Assert.Throws<ArgumentException>(static delegate
-            {
-                Enode unused = new(enode10String);
-            });
-        }
-
+        public void Will_return_exception_on_wrong_form_of_discovery_port_part() =>
+            Assert.Throws<ArgumentException>(static () => new Enode(enode10String));
         [Test]
         public async Task Will_accept_static_connection()
         {
@@ -245,7 +213,10 @@ namespace Nethermind.Network.Test
             if (firstDirection == ConnectionDirection.In)
             {
                 ctx.RlpxPeer.CreateIncoming(session1);
-                await ctx.RlpxPeer.ConnectAsync(session1.Node);
+                if (!await ctx.RlpxPeer.ConnectAsync(session1.Node))
+                {
+                    throw new NetworkingException($"Failed to connect to {session1.Node:s}", NetworkExceptionType.TargetUnreachable);
+                }
 
                 EnsureSession(ctx.PeerManager.ActivePeers.First().OutSession);
                 EnsureSession(ctx.PeerManager.ActivePeers.First().InSession);
@@ -256,7 +227,10 @@ namespace Nethermind.Network.Test
             else
             {
                 ctx.RlpxPeer.SessionCreated += HandshakeOnCreate;
-                await ctx.RlpxPeer.ConnectAsync(session1.Node);
+                if (!await ctx.RlpxPeer.ConnectAsync(session1.Node))
+                {
+                    throw new NetworkingException($"Failed to connect to {session1.Node:s}", NetworkExceptionType.TargetUnreachable);
+                }
                 ctx.RlpxPeer.SessionCreated -= HandshakeOnCreate;
                 ctx.RlpxPeer.CreateIncoming(session1);
 
@@ -299,8 +273,7 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
-            await Task.Delay(_travisDelay);
-            Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(0));
+            Assert.That(() => ctx.PeerManager.ActivePeers.Count, Is.EqualTo(0).After(_travisDelay, 10));
         }
 
         [Test, Retry(3)]
@@ -345,8 +318,7 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 ctx.DiscoverNew(25);
-                await Task.Delay(_travisDelay);
-                Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(25));
+                Assert.That(() => ctx.PeerManager.ActivePeers.Count, Is.EqualTo(25).After(_travisDelay, 10));
             }
         }
 
@@ -405,8 +377,7 @@ namespace Nethermind.Network.Test
 
             ctx.PeerPool.GetOrAdd(networkNode);
 
-            await Task.Delay(_travisDelay);
-            ctx.PeerPool.ActivePeers.Count.Should().Be(0);
+            Assert.That(() => ctx.PeerPool.ActivePeers.Count, Is.EqualTo(0).After(_travisDelay, 10));
         }
 
         private readonly int _travisDelay = 500;
@@ -426,8 +397,7 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 ctx.CreateNewIncomingSessions(25);
-                await Task.Delay(_travisDelay);
-                Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(25));
+                Assert.That(() => ctx.PeerManager.ActivePeers.Count, Is.EqualTo(25).After(_travisDelay, 10));
             }
         }
 
@@ -544,8 +514,7 @@ namespace Nethermind.Network.Test
                 ctx.TestNodeSource.AddNode(new Node(TestItem.PublicKeyA, node.Host, node.Port));
             }
 
-            await Task.Delay(_travisDelay);
-            ctx.PeerManager.ActivePeers.Count(static p => p.Node.IsStatic).Should().Be(nodesCount);
+            Assert.That(() => ctx.PeerManager.ActivePeers.Count(static p => p.Node.IsStatic), Is.EqualTo(nodesCount).After(_travisDelay, 10));
         }
 
         [Test, Retry(5)]
@@ -612,8 +581,7 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             var node = new NetworkNode(ctx.GenerateEnode());
-            await Task.Delay(_travisDelay);
-            ctx.PeerPool.TryRemove(node.NodeId, out _).Should().BeFalse();
+            Assert.That(() => ctx.PeerPool.TryRemove(node.NodeId, out _), Is.False.After(_travisDelay, 10));
         }
 
         private class Context : IAsyncDisposable
@@ -762,7 +730,7 @@ namespace Nethermind.Network.Test
                 return Task.CompletedTask;
             }
 
-            public Task ConnectAsync(Node node)
+            public Task<bool> ConnectAsync(Node node)
             {
                 lock (this)
                 {
@@ -771,7 +739,7 @@ namespace Nethermind.Network.Test
 
                 if (_isFailing)
                 {
-                    throw new InvalidOperationException("making it fail");
+                    return Task.FromResult(false);
                 }
 
                 var session = new Session(30313, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
@@ -782,7 +750,7 @@ namespace Nethermind.Network.Test
                 }
 
                 SessionCreated?.Invoke(this, new SessionEventArgs(session));
-                return Task.CompletedTask;
+                return Task.FromResult(true);
             }
 
             public void CreateRandomIncoming()

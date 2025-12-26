@@ -28,7 +28,7 @@ public class Eip152Tests : VirtualMachineTestsBase
     {
         _blockNumberAdjustment = -1;
         Address precompileAddress = Blake2FPrecompile.Address;
-        Assert.That(precompileAddress.IsPrecompile(Spec), Is.False);
+        Assert.That(Spec.IsPrecompile(precompileAddress), Is.False);
     }
 
     [Test]

@@ -4,7 +4,7 @@
 using System;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.SyncLimits;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Synchronization.Blocks
 {

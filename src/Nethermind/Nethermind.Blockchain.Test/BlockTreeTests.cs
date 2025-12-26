@@ -252,7 +252,7 @@ public class BlockTreeTests
             .TestObject;
 
         Assert.That(tree2.BestKnownNumber, Is.EqualTo(0L), "best known");
-        Assert.That(tree2.Head, Is.EqualTo(null), "head");
+        Assert.That(tree2.Head?.Number, Is.EqualTo(0), "head");
         Assert.That(tree2.BestSuggestedHeader!.Number, Is.EqualTo(0L), "suggested");
         Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 1");
         Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
@@ -297,7 +297,7 @@ public class BlockTreeTests
             .TestObject;
 
         Assert.That(tree2.BestKnownNumber, Is.EqualTo(3L), "best known");
-        Assert.That(tree2.Head, Is.EqualTo(null), "head");
+        Assert.That(tree2.Head?.Number, Is.EqualTo(0), "head");
         Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block3B.Hash), "suggested");
 
         blockStore.Get(block1.Number, block1.Hash!).Should().BeNull("block 1");
@@ -1881,7 +1881,7 @@ public class BlockTreeTests
         // First run
         {
             Hash256 uncleHash = new("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347");
-            BlockTree tree = Build.A.BlockTree(HoleskySpecProvider.Instance)
+            BlockTree tree = Build.A.BlockTree(HoodiSpecProvider.Instance)
                 .WithBlockStore(new BlockStore(blocksDb))
                 .WithBlocksNumberDb(blockNumberDb)
                 .WithHeadersDb(headersDb)
@@ -1947,7 +1947,7 @@ public class BlockTreeTests
 
         // Assume Nethermind got restarted
         {
-            BlockTree tree = Build.A.BlockTree(HoleskySpecProvider.Instance)
+            BlockTree tree = Build.A.BlockTree(HoodiSpecProvider.Instance)
                 .WithBlockStore(new BlockStore(blocksDb))
                 .WithBlocksNumberDb(blockNumberDb)
                 .WithHeadersDb(headersDb)

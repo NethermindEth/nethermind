@@ -33,7 +33,7 @@ public class FreeDiskSpaceCheckerTests
             GetDriveInfos(availableDiskSpacePercent),
             Core.Timers.TimerFactory.Default,
             exitSource,
-            LimboTraceLogger.Instance);
+            LimboLogs.Instance);
 
         freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default);
         exitSource.Received(exitExpected ? 1 : 0).Exit(ExitCodes.LowDiskSpace);
@@ -59,7 +59,7 @@ public class FreeDiskSpaceCheckerTests
             drives,
             Core.Timers.TimerFactory.Default,
             Substitute.For<IProcessExitSource>(),
-            LimboTraceLogger.Instance,
+            LimboLogs.Instance,
             ts.TotalMinutes);
 
         Task t = Task.Run(() => freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default));

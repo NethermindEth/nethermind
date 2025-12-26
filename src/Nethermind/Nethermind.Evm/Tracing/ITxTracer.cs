@@ -5,9 +5,9 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.State.Tracing;
 
 namespace Nethermind.Evm.Tracing;
 
@@ -179,8 +179,10 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="opcode"></param>
     /// <param name="gas"></param>
     /// <param name="env"></param>
+    /// <param name="codeSection"></param>
+    /// <param name="functionDepth"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env);
+    void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0);
 
     /// <summary>
     ///
@@ -429,7 +431,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="accessedAddresses">address</param>
     /// <param name="accessedStorageCells">cell</param>
     /// <remarks>Depends on <see cref="IsTracingAccess"/></remarks>
-    void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells);
+    void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells);
 
     /// <summary>
     /// Reports fees of a transaction

@@ -8,16 +8,13 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Abi;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Producers;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -249,12 +246,17 @@ namespace Nethermind.AuRa.Test.Contract
 
             public ContractDataStoreWithLocalData<Address> SendersWhitelist { get; private set; }
 
-            protected override TxPoolTxSource CreateTxPoolTxSource()
+            protected virtual ILocalDataSource<IEnumerable<Address>> GetWhitelistLocalDataStore() => new EmptyLocalDataSource<IEnumerable<Address>>();
+
+            protected virtual ILocalDataSource<IEnumerable<TxPriorityContract.Destination>> GetMinGasPricesLocalDataStore() => null;
+
+            protected virtual ILocalDataSource<IEnumerable<TxPriorityContract.Destination>> GetPrioritiesLocalDataStore() => null;
+
+            protected override Task AddBlocksOnStart()
             {
-                TxPoolTxSource txPoolTxSource = base.CreateTxPoolTxSource();
 
                 TxPriorityContract = new TxPriorityContract(AbiEncoder.Instance, TestItem.AddressA,
-                    new ReadOnlyTxProcessingEnv(WorldStateManager, BlockTree.AsReadOnly(), SpecProvider, LimboLogs.Instance));
+                    ReadOnlyTxProcessingEnvFactory.Create());
 
                 Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
@@ -278,23 +280,16 @@ namespace Nethermind.AuRa.Test.Contract
                     ReceiptStorage,
                     LimboLogs.Instance,
                     GetWhitelistLocalDataStore());
-
-                return txPoolTxSource;
+                return Task.CompletedTask;
             }
-
-            protected virtual ILocalDataSource<IEnumerable<Address>> GetWhitelistLocalDataStore() => new EmptyLocalDataSource<IEnumerable<Address>>();
-
-            protected virtual ILocalDataSource<IEnumerable<TxPriorityContract.Destination>> GetMinGasPricesLocalDataStore() => null;
-
-            protected virtual ILocalDataSource<IEnumerable<TxPriorityContract.Destination>> GetPrioritiesLocalDataStore() => null;
-
-            protected override Task AddBlocksOnStart() => Task.CompletedTask;
         }
 
         public class TxPermissionContractBlockchainWithBlocks : TxPermissionContractBlockchain
         {
             protected override async Task AddBlocksOnStart()
             {
+                await base.AddBlocksOnStart();
+
                 EthereumEcdsa ecdsa = new(ChainSpec.ChainId);
 
                 await AddBlock(
@@ -309,7 +304,7 @@ namespace Nethermind.AuRa.Test.Contract
                 );
 
                 await AddBlock(
-                    SignTransactions(ecdsa, TestItem.PrivateKeyA, StateReader.GetNonce(BlockTree.Head!.StateRoot!, TestItem.PrivateKeyA.Address),
+                    SignTransactions(ecdsa, TestItem.PrivateKeyA, StateReader.GetNonce(BlockTree.Head!.Header, TestItem.PrivateKeyA.Address),
                         // overrides for some of previous block values:
                         TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature, 3),
 
@@ -317,6 +312,15 @@ namespace Nethermind.AuRa.Test.Contract
 
                         TxPriorityContract.SetSendersWhitelist(TestItem.AddressA, TestItem.AddressC))
                 );
+            }
+
+            public override async Task<Block> AddBlock(params Transaction[] transactions)
+            {
+                var b = await base.AddBlock(transactions);
+
+                // ContractDataStore track item from block async.
+                await Task.Delay(100);
+                return b;
             }
 
             private Transaction[] SignTransactions(IEthereumEcdsa ecdsa, PrivateKey key, UInt256 baseNonce, params Transaction[] transactions)
@@ -354,7 +358,7 @@ namespace Nethermind.AuRa.Test.Contract
             protected override ILocalDataSource<IEnumerable<TxPriorityContract.Destination>> GetMinGasPricesLocalDataStore() =>
                 LocalDataSource.GetMinGasPricesLocalDataSource();
 
-            protected override Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, long slotTime = 1)
+            protected override Task<TestBlockchain> Build(Action<ContainerBuilder> configurer = null)
             {
                 TempFile = TempPath.GetTempFile();
                 LocalDataSource = new TxPriorityContract.LocalDataSource(TempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance, Interval);
@@ -363,22 +367,6 @@ namespace Nethermind.AuRa.Test.Contract
                 Semaphore = new SemaphoreSlim(0);
                 LocalDataSource.Changed += (o, e) => Semaphore.Release();
 
-                return base.Build(specProvider, initialValues, addBlockOnStart, slotTime);
-            }
-
-            public override void Dispose()
-            {
-                base.Dispose();
-                LocalDataSource?.Dispose();
-                TempFile?.Dispose();
-                Semaphore.Dispose();
-                FileSemaphore?.Dispose();
-            }
-
-            protected virtual bool FileFirst => false;
-
-            protected override TxPoolTxSource CreateTxPoolTxSource()
-            {
                 LocalData = new TxPriorityContract.LocalData()
                 {
                     Priorities = new[]
@@ -396,8 +384,19 @@ namespace Nethermind.AuRa.Test.Contract
                     Whitelist = new[] { TestItem.AddressD, TestItem.AddressB }
                 };
 
-                return base.CreateTxPoolTxSource();
+                return base.Build(configurer: configurer);
             }
+
+            public override void Dispose()
+            {
+                base.Dispose();
+                LocalDataSource?.Dispose();
+                TempFile?.Dispose();
+                Semaphore.Dispose();
+                FileSemaphore?.Dispose();
+            }
+
+            protected virtual bool FileFirst => false;
 
             private TxPriorityContract.LocalData LocalData { get; set; }
 

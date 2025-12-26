@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -32,6 +33,16 @@ namespace Nethermind.Synchronization.SnapSync
             // TODO: Check the accounts boundaries and sorting
             if (accounts.Count == 0)
                 throw new ArgumentException("Cannot be empty.", nameof(accounts));
+
+            // Validate sorting order
+            for (int i = 1; i < accounts.Count; i++)
+            {
+                if (accounts[i - 1].Path.CompareTo(accounts[i].Path) >= 0)
+                {
+                    return (AddRangeResult.InvalidOrder, true, null, null);
+                }
+            }
+
             ValueHash256 lastHash = accounts[^1].Path;
 
             (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) =
@@ -46,6 +57,7 @@ namespace Nethermind.Synchronization.SnapSync
             List<ValueHash256> codeHashes = new();
             bool hasExtraStorage = false;
 
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(accounts.Count);
             for (var index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
@@ -66,13 +78,16 @@ namespace Nethermind.Synchronization.SnapSync
                     codeHashes.Add(account.Account.CodeHash);
                 }
 
-                Rlp rlp = tree.Set(account.Path, account.Account);
-                if (rlp is not null)
+                var account_ = account.Account;
+                Rlp rlp = account_ is null ? null : account_.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account_);
+                entries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp?.Bytes));
+                if (account is not null)
                 {
                     Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
                 }
             }
 
+            tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
             tree.UpdateRootHash();
 
             if (tree.RootHash.ValueHash256 != expectedRootHash)
@@ -82,7 +97,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (hasExtraStorage)
             {
-                // The server will always give one node extra after limitpath if it can fit in the response.
+                // The server will always give one node extra after the limit path if it can fit in the response.
                 // When we have extra storage, the extra storage must not be re-stored as it may have already been set
                 // by another top level partition. If the sync pivot moved and the storage was modified, it must not be saved
                 // here along with updated ancestor so that healing can detect that the storage need to be healed.
@@ -119,7 +134,17 @@ namespace Nethermind.Synchronization.SnapSync
             IReadOnlyList<byte[]>? proofs = null
         )
         {
-            // TODO: Check the slots boundaries and sorting
+            if (slots.Count == 0)
+                return (AddRangeResult.EmptySlots, false);
+
+            // Validate sorting order
+            for (int i = 1; i < slots.Count; i++)
+            {
+                if (slots[i - 1].Path.CompareTo(slots[i].Path) >= 0)
+                {
+                    return (AddRangeResult.InvalidOrder, true);
+                }
+            }
 
             ValueHash256 lastHash = slots[^1].Path;
 
@@ -131,13 +156,15 @@ namespace Nethermind.Synchronization.SnapSync
                 return (result, true);
             }
 
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(slots.Count);
             for (var index = 0; index < slots.Count; index++)
             {
                 PathWithStorageSlot slot = slots[index];
                 Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
-                tree.Set(slot.Path, slot.SlotRlpValue, false);
+                entries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
             }
 
+            tree.BulkSet(entries, PatriciaTree.Flags.WasSorted);
             tree.UpdateRootHash();
 
             if (tree.RootHash.ValueHash256 != account.Account.StorageRoot)
@@ -145,9 +172,9 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.DifferentRootHash, true);
             }
 
-            // This will work if all StorageRange requests share the same AccountWithPath object which seems to be the case.
-            // If this is not true, StorageRange request should be extended with a lock object.
-            // That lock object should be shared between all other StorageRange requests for same account.
+            // This will work if all StorageRange requests share the same AccountWithPath object, which seems to be the case.
+            // If this is not true, the StorageRange request should be extended with a lock object.
+            // That lock object should be shared between all other StorageRange requests for the same account.
             lock (account.Account)
             {
                 StitchBoundaries(sortedBoundaryList, tree.TrieStore);
@@ -182,6 +209,17 @@ namespace Nethermind.Synchronization.SnapSync
             if (!dict.TryGetValue(expectedRootHash, out TrieNode root))
             {
                 return (AddRangeResult.MissingRootHashInProofs, null, true);
+            }
+
+            if (dict.Count == 1 && root.IsLeaf)
+            {
+                // Special case with some server sending proof where the root is the same as the only path.
+                // Without this the proof's IsBoundaryNode flag will cause the key to not get saved.
+                var rootPath = TreePath.FromNibble(root.Key);
+                if (rootPath.Length == 64 && rootPath.Path.Equals(endHash))
+                {
+                    return (AddRangeResult.OK, null, false);
+                }
             }
 
             TreePath leftBoundaryPath = TreePath.FromPath(effectiveStartingHAsh.Bytes);
@@ -295,7 +333,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 TreePath emptyPath = TreePath.Empty;
                 node.ResolveNode(store, emptyPath);
-                node.ResolveKey(store, ref emptyPath, isRoot: i == 0);
+                node.ResolveKey(store, ref emptyPath);
 
                 dict[node.Keccak] = node;
             }

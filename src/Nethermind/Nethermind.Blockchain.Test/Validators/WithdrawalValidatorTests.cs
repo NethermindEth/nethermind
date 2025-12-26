@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State.Proofs;
@@ -21,7 +23,8 @@ public class WithdrawalValidatorTests
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, London.Instance));
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(new Withdrawal[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth }).TestObject);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithParent(parent).WithWithdrawals([TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth]).TestObject, parent, out _);
         Assert.That(isValid, Is.False);
     }
 
@@ -30,7 +33,8 @@ public class WithdrawalValidatorTests
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.TestObject);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithParent(parent).TestObject, parent, out _);
         Assert.That(isValid, Is.False);
     }
 
@@ -40,7 +44,8 @@ public class WithdrawalValidatorTests
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         Withdrawal[] withdrawals = [TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth];
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(TestItem.KeccakD).TestObject);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithParent(parent).WithWithdrawals(withdrawals).WithWithdrawalsRoot(TestItem.KeccakD).TestObject, parent, out _);
         Assert.That(isValid, Is.False);
     }
 
@@ -51,7 +56,8 @@ public class WithdrawalValidatorTests
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         Withdrawal[] withdrawals = [];
         Hash256 withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithParent(parent).WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject, parent, out _);
         Assert.That(isValid, Is.True);
     }
 
@@ -62,7 +68,8 @@ public class WithdrawalValidatorTests
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         Withdrawal[] withdrawals = [TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth];
         Hash256 withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithParent(parent).WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject, parent, out _);
         Assert.That(isValid, Is.True);
     }
 }

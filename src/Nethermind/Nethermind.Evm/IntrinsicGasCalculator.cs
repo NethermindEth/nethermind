@@ -9,28 +9,56 @@ using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
+/// <summary>
+/// Generic intrinsic gas result with TGasPolicy-typed Standard and FloorGas.
+/// </summary>
+public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGasPolicy FloorGas)
+    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+{
+    public TGasPolicy MinimalGas { get; } = TGasPolicy.Max(Standard, FloorGas);
+    public static explicit operator TGasPolicy(IntrinsicGas<TGasPolicy> gas) => gas.MinimalGas;
+}
 
-public readonly record struct IntrinsicGas(long Standard, long FloorGas)
+/// <summary>
+/// Non-generic intrinsic gas result for backward compatibility.
+/// </summary>
+public readonly record struct EthereumIntrinsicGas(long Standard, long FloorGas)
 {
     public long MinimalGas { get; } = Math.Max(Standard, FloorGas);
-    public static explicit operator long(IntrinsicGas gas) => gas.MinimalGas;
+    public static explicit operator long(EthereumIntrinsicGas gas) => gas.MinimalGas;
 }
 
 public static class IntrinsicGasCalculator
 {
-    public static IntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec)
+    /// <summary>
+    /// Calculates intrinsic gas with TGasPolicy type, allowing MultiGas breakdown for Arbitrum.
+    /// </summary>
+    public static IntrinsicGas<TGasPolicy> Calculate<TGasPolicy>(Transaction transaction, IReleaseSpec releaseSpec)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        var intrinsicGas = GasCostOf.Transaction
+        TGasPolicy standard = TGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec);
+        long floorCost = CalculateFloorCost(transaction, releaseSpec);
+        TGasPolicy floorGas = TGasPolicy.FromLong(floorCost);
+        return new IntrinsicGas<TGasPolicy>(standard, floorGas);
+    }
+
+    /// <summary>
+    /// Non-generic backward-compatible Calculate method.
+    /// </summary>
+    public static EthereumIntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        long intrinsicGas = GasCostOf.Transaction
                + DataCost(transaction, releaseSpec)
                + CreateCost(transaction, releaseSpec)
                + AccessListCost(transaction, releaseSpec)
                + AuthorizationListCost(transaction, releaseSpec);
-        var floorGas = CalculateFloorCost(transaction, releaseSpec);
-        return new IntrinsicGas(intrinsicGas, floorGas);
+        long floorGas = CalculateFloorCost(transaction, releaseSpec);
+        return new EthereumIntrinsicGas(intrinsicGas, floorGas);
     }
 
     private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec) =>
@@ -39,7 +67,7 @@ public static class IntrinsicGasCalculator
     private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
         long baseDataCost = transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
-            ? EvmPooledMemory.Div32Ceiling((UInt256)transaction.Data.GetValueOrDefault().Length) *
+            ? EvmCalculations.Div32Ceiling((UInt256)transaction.Data.Length) *
               GasCostOf.InitCodeWord
             : 0;
 
@@ -64,8 +92,7 @@ public static class IntrinsicGasCalculator
 
         return 0;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidDataException(IReleaseSpec releaseSpec)
         {
             throw new InvalidDataException($"Transaction with an access list received within the context of {releaseSpec.Name}. EIP-2930 is not enabled.");
@@ -88,8 +115,7 @@ public static class IntrinsicGasCalculator
 
         return 0;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidDataException(IReleaseSpec releaseSpec)
         {
             throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. EIP-7702 is not enabled.");
@@ -101,7 +127,7 @@ public static class IntrinsicGasCalculator
         long txDataNonZeroMultiplier = releaseSpec.IsEip2028Enabled
             ? GasCostOf.TxDataNonZeroMultiplierEip2028
             : GasCostOf.TxDataNonZeroMultiplier;
-        Span<byte> data = transaction.Data.GetValueOrDefault().Span;
+        ReadOnlySpan<byte> data = transaction.Data.Span;
 
         int totalZeros = data.CountZeros();
 

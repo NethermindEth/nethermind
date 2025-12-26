@@ -257,9 +257,21 @@ namespace Nethermind.Core
         [SkipLocalsInit]
         public ValueHash256 ToHash()
         {
-            Span<byte> addressBytes = stackalloc byte[Hash256.Size];
-            Bytes.CopyTo(addressBytes[(Hash256.Size - Address.Size)..]);
-            return new ValueHash256(addressBytes);
+            ref byte value = ref MemoryMarshal.GetArrayDataReference(Bytes);
+            // build the 4×8-byte lanes:
+            // - lane0 = 0UL
+            // - lane1 = first 4 bytes of 'value', shifted up into the high half
+            // - lane2 = bytes [4..11] of 'value'
+            // - lane3 = bytes [12..19] of 'value'
+            ulong lane1 = ((ulong)Unsafe.As<byte, uint>(ref value)) << 32;
+            ulong lane2 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 4));
+            ulong lane3 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 12));
+
+            Unsafe.SkipInit(out ValueHash256 result);
+            Unsafe.As<ValueHash256, Vector256<byte>>(ref result)
+                = Vector256.Create(default, lane1, lane2, lane3).AsByte();
+
+            return result;
         }
     }
 

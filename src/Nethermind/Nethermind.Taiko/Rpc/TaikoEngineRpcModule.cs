@@ -1,21 +1,25 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.IO;
+using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Evm;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -24,11 +28,8 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.TxPool;
-using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Processing;
-using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -36,6 +37,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IAsyncHandler<byte[], GetPayloadV2Result?> getPayloadHandlerV2,
         IAsyncHandler<byte[], GetPayloadV3Result?> getPayloadHandlerV3,
         IAsyncHandler<byte[], GetPayloadV4Result?> getPayloadHandlerV4,
+        IAsyncHandler<byte[], GetPayloadV5Result?> getPayloadHandlerV5,
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
         IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
@@ -43,17 +45,21 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
+        IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> getBlobsHandlerV2,
+        IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
-        IRlpStreamDecoder<Transaction> txDecoder) :
+        IShareableTxProcessorSource txProcessorSource,
+        IRlpStreamDecoder<Transaction> txDecoder,
+        IL1OriginStore l1OriginStore) :
             EngineRpcModule(getPayloadHandlerV1,
                 getPayloadHandlerV2,
                 getPayloadHandlerV3,
                 getPayloadHandlerV4,
+                getPayloadHandlerV5,
                 newPayloadV1Handler,
                 forkchoiceUpdatedV1Handler,
                 executionGetPayloadBodiesByHashV1Handler,
@@ -61,6 +67,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 transitionConfigurationHandler,
                 capabilitiesHandler,
                 getBlobsHandler,
+                getBlobsHandlerV2,
+                engineRequestsTracker,
                 specProvider,
                 gcKeeper,
                 logManager), ITaikoEngineRpcModule
@@ -102,7 +110,9 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     public ResultWrapper<PreBuiltTxList[]?> taikoAuth_txPoolContentWithMinTip(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit,
        ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists, ulong minTip)
     {
-        IEnumerable<KeyValuePair<AddressAsKey, Transaction[]>> pendingTxs = txPool.GetPendingTransactionsBySender();
+        // Fetch all the pending transactions except transactions from the GoldenTouchAccount
+        IEnumerable<KeyValuePair<AddressAsKey, Transaction[]>> pendingTxs = txPool.GetPendingTransactionsBySender()
+            .Where(txs => !txs.Key.Value.Equals(TaikoBlockValidator.GoldenTouchAccount));
 
         if (localAccounts is not null)
         {
@@ -111,7 +121,12 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         IEnumerable<Transaction> allTxs = pendingTxs.SelectMany(txs => txs.Value).Where(tx => !tx.SupportsBlobs && tx.CanPayBaseFee(baseFee));
 
-        Transaction[] txQueue = [.. minTip is 0 ? allTxs : allTxs.Where(tx => tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas) && premiumPerGas >= minTip)];
+        if (minTip is not 0)
+        {
+            allTxs = allTxs.Where(tx => tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas) && premiumPerGas >= minTip);
+        }
+
+        Transaction[] txQueue = allTxs.ToArray();
 
         BlockHeader? head = blockFinder.Head?.Header;
 
@@ -120,8 +135,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             return ResultWrapper<PreBuiltTxList[]?>.Success([]);
         }
 
-        IReadOnlyTxProcessorSource readonlyTxProcessingEnv = readOnlyTxProcessingEnvFactory.Create();
-        using IReadOnlyTxProcessingScope scope = readonlyTxProcessingEnv.Build(head.StateRoot);
+        using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(head);
 
         return ResultWrapper<PreBuiltTxList[]?>.Success(ProcessTransactions(scope.TransactionProcessor, scope.WorldState, new BlockHeader(
                 head.Hash!,
@@ -159,7 +173,6 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         }
 
         BlockExecutionContext blkCtx = new(blockHeader, _specProvider.GetSpec(blockHeader));
-        worldState.StateRoot = blockHeader.StateRoot;
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
 
@@ -212,19 +225,17 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                         while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
                         continue;
                     }
-                    else
+
+                    CommitAndDisposeBatch(batch);
+
+                    if (maxBatchCount == Batches.Count)
                     {
-                        CommitAndDisposeBatch(batch);
-
-                        if (maxBatchCount == Batches.Count)
-                        {
-                            return [.. Batches];
-                        }
-
-                        batch = new(maxBytesPerTxList, txSource.Length - i, txDecoder);
-
-                        continue;
+                        return [.. Batches];
                     }
+
+                    batch = new(maxBytesPerTxList, txSource.Length - i, txDecoder);
+
+                    continue;
                 }
 
                 i++;
@@ -248,7 +259,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         private readonly ulong _maxBytes = maxBytes;
         private ulong _length;
 
-        public ArrayPoolList<Transaction> Transactions { get; } = new ArrayPoolList<Transaction>(transactionsListCapacity);
+        public ArrayPoolList<Transaction> Transactions { get; } = new(transactionsListCapacity);
 
         public bool TryAddTx(Transaction tx)
         {
@@ -275,7 +286,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 RlpStream rlpStream = new(data);
 
                 rlpStream.StartSequence(contentLength);
-                foreach (Transaction tx in Transactions)
+                foreach (Transaction tx in Transactions.AsSpan())
                 {
                     txDecoder.Encode(rlpStream, tx);
                 }
@@ -323,5 +334,37 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         {
             Transactions.Dispose();
         }
+    }
+
+    public ResultWrapper<UInt256> taikoAuth_setHeadL1Origin(UInt256 blockId)
+    {
+        l1OriginStore.WriteHeadL1Origin(blockId);
+        return ResultWrapper<UInt256>.Success(blockId);
+    }
+
+    public ResultWrapper<L1Origin> taikoAuth_updateL1Origin(L1Origin l1Origin)
+    {
+        l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
+        return ResultWrapper<L1Origin>.Success(l1Origin);
+    }
+
+    public ResultWrapper<UInt256> taikoAuth_setBatchToLastBlock(UInt256 batchId, UInt256 blockId)
+    {
+        l1OriginStore.WriteBatchToLastBlockID(batchId, blockId);
+        return ResultWrapper<UInt256>.Success(batchId);
+    }
+
+    public ResultWrapper<L1Origin> taikoAuth_setL1OriginSignature(UInt256 blockId, int[] signature)
+    {
+        L1Origin? l1Origin = l1OriginStore.ReadL1Origin(blockId);
+        if (l1Origin is null)
+        {
+            return ResultWrapper<L1Origin>.Fail($"L1 origin not found for block ID {blockId}");
+        }
+
+        l1Origin.Signature = signature;
+        l1OriginStore.WriteL1Origin(blockId, l1Origin);
+
+        return ResultWrapper<L1Origin>.Success(l1Origin);
     }
 }

@@ -32,7 +32,7 @@ namespace Nethermind.Network.P2P
                 return 0;
             }
 
-            IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message);
+            IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator);
             int length = buffer.ReadableBytes;
 
             // Running in background

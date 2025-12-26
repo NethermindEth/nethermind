@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
@@ -18,14 +19,14 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
 
     private static IEnumerable<TestCaseData> TestSource()
     {
-        EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+        EthereumJsonSerializer serializer = new();
         foreach (string file in T.TestFiles())
         {
             string path = Path.Combine(TestFilesDirectory, file);
             string json = File.ReadAllText(path);
             foreach (TestCase test in serializer.Deserialize<TestCase[]>(json))
             {
-                yield return new TestCaseData(test) { TestName = test.Name };
+                yield return new TestCaseData(test) { TestName = EnsureSafeName(test.Name) };
             }
         }
     }
@@ -37,16 +38,13 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
 
         IPrecompile precompile = T.Precompile();
         long gas = precompile.BaseGasCost(Prague.Instance) + precompile.DataGasCost(testCase.Input, Prague.Instance);
-        (byte[] output, bool success) = precompile.Run(testCase.Input, Prague.Instance);
+        Result<byte[]> result = precompile.Run(testCase.Input, Prague.Instance);
+        (byte[]? output, bool success) = result;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(success, Is.EqualTo(testCase.ExpectedError is null));
-
-            if (testCase.Expected is not null)
-            {
-                Assert.That(output, Is.EquivalentTo(testCase.Expected));
-            }
+            Assert.That(output, Is.EquivalentTo(testCase.Expected ?? []));
 
             if (testCase.Gas is not null)
             {
@@ -54,4 +52,11 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
             }
         }
     }
+
+    private static string EnsureSafeName(string name) =>
+        name.Replace('(', '[')
+            .Replace(')', ']')
+            .Replace("!=", "_not_eq_")
+            .Replace("=", "_eq_")
+            .Replace(" ", string.Empty);
 }

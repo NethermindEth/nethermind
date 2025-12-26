@@ -62,13 +62,13 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Sign all the things!
-            Hash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
+            ValueHash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
             Signature signature;
             if (_signer is IHeaderSigner headerSigner)
             {
                 BlockHeader clone = header.Clone();
                 clone.ExtraData = SnapshotManager.SliceExtraSealFromExtraData(clone.ExtraData);
-                clone.Hash = headerHash;
+                clone.Hash = new Hash256(headerHash);
                 signature = headerSigner.Sign(clone);
             }
             else
@@ -99,15 +99,6 @@ namespace Nethermind.Consensus.Clique
             {
                 if (_logger.IsTrace) _logger.Trace("Not on the signers list");
                 return false;
-            }
-
-            if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _signer.Address))
-            {
-                if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _signer.Address))
-                {
-                    if (_logger.IsTrace) _logger.Trace("Signed recently");
-                    return false;
-                }
             }
 
             // If we're amongst the recent signers, wait for the next block

@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -79,8 +77,8 @@ public class StartupTreeFixerTests
         Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
         Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
-        tree.Head!.Header.Should().BeEquivalentTo(block2.Header, static options => options.Excluding(static t => t.MaybeParent));
-        tree.BestSuggestedHeader.Should().BeEquivalentTo(block2.Header, static options => options.Excluding(static t => t.MaybeParent));
+        tree.Head!.Header.Should().BeEquivalentTo(block2.Header);
+        tree.BestSuggestedHeader.Should().BeEquivalentTo(block2.Header);
         tree.BestSuggestedBody?.Body.Should().BeEquivalentTo(block2.Body);
         tree.BestKnownNumber.Should().Be(2);
     }
@@ -103,11 +101,7 @@ public class StartupTreeFixerTests
 
         SuggestNumberOfBlocks(tree, suggestedBlocksAmount);
 
-        // simulating restarts - we stopped the old blockchain processor and create the new one
-        BlockchainProcessor newBlockchainProcessor = new(tree, testRpc.BlockProcessor,
-            testRpc.BlockPreprocessorStep, testRpc.StateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
-        newBlockchainProcessor.Start();
-        testRpc.BlockchainProcessor = newBlockchainProcessor;
+        await testRpc.RestartBlockchainProcessor();
 
         Task waitTask = suggestedBlocksAmount != 0
             ? testRpc.WaitForNewHeadWhere(b => b.Number == startingBlockNumber + suggestedBlocksAmount)
@@ -137,11 +131,7 @@ public class StartupTreeFixerTests
 
         SuggestNumberOfBlocks(tree, suggestedBlocksAmount);
 
-        // simulating restarts - we stopped the old blockchain processor and create the new one
-        BlockchainProcessor newBlockchainProcessor = new(tree, testRpc.BlockProcessor,
-            testRpc.BlockPreprocessorStep, testRpc.StateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
-        newBlockchainProcessor.Start();
-        testRpc.BlockchainProcessor = newBlockchainProcessor;
+        await testRpc.RestartBlockchainProcessor();
 
         // we create a new empty db for stateDb so we shouldn't suggest new blocks
         IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, Substitute.For<IStateReader>(), LimboNoErrorLogger.Instance, 5);
@@ -159,11 +149,7 @@ public class StartupTreeFixerTests
 
         SuggestNumberOfBlocks(tree, 1);
 
-        // simulating restarts - we stopped the old blockchain processor and create the new one
-        BlockchainProcessor newBlockchainProcessor = new(tree, testRpc.BlockProcessor,
-            testRpc.BlockPreprocessorStep, testRpc.StateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
-        newBlockchainProcessor.Start();
-        testRpc.BlockchainProcessor = newBlockchainProcessor;
+        await testRpc.RestartBlockchainProcessor();
 
         IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.StateReader, LimboNoErrorLogger.Instance, 5);
         BlockVisitOutcome result = await fixer.VisitBlock(null!, CancellationToken.None);

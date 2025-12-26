@@ -44,8 +44,8 @@ public class BlockHeader
         ExcessBlobGas = excessBlobGas;
     }
 
-    public WeakReference<BlockHeader>? MaybeParent { get; set; }
-    public bool IsGenesis => Number == 0L;
+    public virtual long GenesisBlockNumber => 0;
+    public bool IsGenesis => Number == GenesisBlockNumber;
     public Hash256? ParentHash { get; set; }
     public Hash256? UnclesHash { get; set; }
     public Address? Author { get; set; }
@@ -55,7 +55,7 @@ public class BlockHeader
     public Hash256? TxRoot { get; set; }
     public Hash256? ReceiptsRoot { get; set; }
     public Bloom? Bloom { get; set; }
-    public UInt256 Difficulty { get; set; }
+    public UInt256 Difficulty;
     public long Number { get; set; }
     public long GasUsed { get; set; }
     public long GasLimit { get; set; }
@@ -69,7 +69,7 @@ public class BlockHeader
     public UInt256? TotalDifficulty { get; set; }
     public byte[]? AuRaSignature { get; set; }
     public long? AuRaStep { get; set; }
-    public UInt256 BaseFeePerGas { get; set; }
+    public UInt256 BaseFeePerGas;
     public Hash256? WithdrawalsRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
     public Hash256? RequestsHash { get; set; }
@@ -81,7 +81,6 @@ public class BlockHeader
 
     public bool HasTransactions => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash);
 
-    public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;
     public bool IsPostMerge { get; set; }
 
     public string ToString(string indent)

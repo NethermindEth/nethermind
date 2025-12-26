@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Threading;
 
 namespace Nethermind.Core.Threading;
+
 public class ZeroContentionCounter
 {
     private readonly ThreadLocal<BoxedLong> _threadLocal = new(static () => new BoxedLong(), trackAllValues: true);
@@ -92,7 +93,7 @@ public class ZeroContentionCounter
 
         // Lambda
         Expression<Func<ThreadLocal<BoxedLong>, long>> lambda =
-            Expression.Lambda<Func<ThreadLocal<BoxedLong>, long>>(block, threadLocalParam);
+            Expression.Lambda<Func<ThreadLocal<BoxedLong>, long>>(block, name: "Get_ThreadLocalValue_TotalValue", new ParameterExpression[] { threadLocalParam });
 
         return lambda.Compile();
     }

@@ -4,17 +4,21 @@
 using System.Collections.Concurrent;
 using System.IO.Abstractions;
 using Autofac.Features.AttributeFilters;
+using CommunityToolkit.HighPerformance;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Era1.Exceptions;
 using Nethermind.Logging;
 
+
 namespace Nethermind.Era1;
+
 public class EraImporter(
     IFileSystem fileSystem,
     IBlockTree blockTree,
@@ -42,10 +46,10 @@ public class EraImporter(
         HashSet<ValueHash256>? trustedAccumulators = null;
         if (accumulatorFile != null)
         {
-            trustedAccumulators = fileSystem.File.ReadAllLines(accumulatorFile).Select(s => new ValueHash256(s)).ToHashSet();
+            trustedAccumulators = (await fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation)).Select(EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry).ToHashSet();
         }
 
-        IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators);
+        using IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators);
 
         long lastBlockInStore = eraStore.LastBlock;
         if (to == 0) to = long.MaxValue;
@@ -69,6 +73,12 @@ public class EraImporter(
         }
         if (from > to && to != 0)
             throw new ArgumentException($"Start block ({from}) must not be after end block ({to})");
+
+        long headp1 = (blockTree.Head?.Number ?? 0) + 1;
+        if (from > headp1)
+        {
+            throw new ArgumentException($"Start block ({from}) must not be after block after head ({headp1})");
+        }
 
         receiptsDb.Tune(ITunableDb.TuneType.HeavyWrite);
         blocksDb.Tune(ITunableDb.TuneType.HeavyWrite);
@@ -98,7 +108,7 @@ public class EraImporter(
         progressLogger.Reset(0, to - from + 1);
         long blocksProcessed = 0;
 
-        using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(blockTree);
+        using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(blockTree, eraConfig.ImportBlocksBufferSize, eraConfig.ImportBlocksBufferSize - 1024);
         long blockNumber = from;
 
         long suggestFromBlock = (blockTree.Head?.Number ?? 0) + 1;
@@ -157,6 +167,7 @@ public class EraImporter(
 
         async Task ImportBlock(long blockNumber)
         {
+            if (_logger.IsTrace) _logger.Trace($"Importing block {blockNumber}");
             cancellation.ThrowIfCancellationRequested();
 
             (Block? block, TxReceipt[]? receipt) = await eraStore.FindBlockAndReceipts(blockNumber, cancellation: cancellation);
@@ -217,7 +228,7 @@ public class EraImporter(
         block.Header.TotalDifficulty = null;
 
         // Should this be in suggest instead?
-        if (!blockValidator.ValidateSuggestedBlock(block, out string? error))
+        if (!blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error))
         {
             throw new EraVerificationException($"Block validation failed: {error}");
         }

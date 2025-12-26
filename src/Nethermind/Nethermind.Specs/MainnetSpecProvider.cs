@@ -26,11 +26,12 @@ public class MainnetSpecProvider : ISpecProvider
     public const ulong BeaconChainGenesisTimestampConst = 0x5fc63057;
     public const ulong ShanghaiBlockTimestamp = 0x64373057;
     public const ulong CancunBlockTimestamp = 0x65F1B057;
-    //TODO correct this timestamp!
-    public const ulong PragueBlockTimestamp = ulong.MaxValue - 2;
-    public const ulong OsakaBlockTimestamp = ulong.MaxValue - 1;
+    public const ulong PragueBlockTimestamp = 0x681b3057;
+    public const ulong OsakaBlockTimestamp = 0x6930b057;
+    public const ulong BPO1BlockTimestamp = 0x69383057;
+    public const ulong BPO2BlockTimestamp = 0x695db057;
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
+    IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) =>
         forkActivation switch
         {
             { BlockNumber: < HomesteadBlockNumber } => Frontier.Instance,
@@ -49,7 +50,10 @@ public class MainnetSpecProvider : ISpecProvider
             { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => Paris.Instance,
             { Timestamp: < CancunBlockTimestamp } => Shanghai.Instance,
             { Timestamp: < PragueBlockTimestamp } => Cancun.Instance,
-            _ => Prague.Instance
+            { Timestamp: < OsakaBlockTimestamp } => Prague.Instance,
+            { Timestamp: < BPO1BlockTimestamp } => Osaka.Instance,
+            { Timestamp: < BPO2BlockTimestamp } => BPO1.Instance,
+            _ => BPO2.Instance
         };
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -61,18 +65,21 @@ public class MainnetSpecProvider : ISpecProvider
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
 
-    public ulong NetworkId { get; } = Core.BlockchainIds.Mainnet;
+    public ulong NetworkId => Core.BlockchainIds.Mainnet;
     public ulong ChainId => NetworkId;
     public long? DaoBlockNumber => DaoBlockNumberConst;
     public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public ForkActivation? MergeBlockNumber { get; private set; } = null;
-    public ulong TimestampFork { get; } = ShanghaiBlockTimestamp;
-    public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("58750000000000000000000");
+    public ulong TimestampFork => ShanghaiBlockTimestamp;
+    // 58750000000000000000000
+    public UInt256? TerminalTotalDifficulty { get; private set; } = new UInt256(15566869308787654656ul, 3184ul);
     public IReleaseSpec GenesisSpec => Frontier.Instance;
     public static ForkActivation ShanghaiActivation { get; } = (ParisBlockNumber + 1, ShanghaiBlockTimestamp);
     public static ForkActivation CancunActivation { get; } = (ParisBlockNumber + 2, CancunBlockTimestamp);
     public static ForkActivation PragueActivation { get; } = (ParisBlockNumber + 3, PragueBlockTimestamp);
     public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 4, OsakaBlockTimestamp);
+    public static ForkActivation BPO1Activation { get; } = (ParisBlockNumber + 5, BPO1BlockTimestamp);
+    public static ForkActivation BPO2Activation { get; } = (ParisBlockNumber + 6, BPO2BlockTimestamp);
     public ForkActivation[] TransitionActivations { get; } =
     {
         (ForkActivation)HomesteadBlockNumber,
@@ -90,7 +97,9 @@ public class MainnetSpecProvider : ISpecProvider
         ShanghaiActivation,
         CancunActivation,
         PragueActivation,
-        //OsakaActivation
+        OsakaActivation,
+        BPO1Activation,
+        BPO2Activation,
     };
 
     public static MainnetSpecProvider Instance { get; } = new();

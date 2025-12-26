@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -51,6 +52,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             PooledTransactionsMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, message, "f8d7820457f8d2f867088504a817c8088302e2489435353535353535353535353535353535353535358202008025a064b1702d9298fee62dfeccc57d322a463ad55ca201256d01f62b45b2e1c21c12a064b1702d9298fee62dfeccc57d322a463ad55ca201256d01f62b45b2e1c21c10f867098504a817c809830334509435353535353535353535353535353535353535358202d98025a052f8f61201b2b11a78d6e866abc9c3db2ae8631fa656bfe5cb53668255367afba052f8f61201b2b11a78d6e866abc9c3db2ae8631fa656bfe5cb53668255367afb");
+        }
+
+        // Generated during Hive devp2p
+        [TestCase(
+            "f8f78808a6f328496c6b92f8ecb87403f871f86c870c72dd9d5e883e800107830186a09400000000000000000000000000000000000000008080c001c001a00e0f68ba5a5f7820c9b47f4388b542f55849114944b6ac20d9f14cc2e3aa0368a00ad549ecdcc4756e5f05f6364ded164a1b7d69424d232ea8f29c35420efb39c4c0c0c0b87403f871f86c870c72dd9d5e883e010107830186a09400000000000000000000000000000000000000008080c001c080a0cd2109f56cec3c639c72e2d407e85eb2e54a2a6c4cd94cafe251b62ad1dbb723a068e1fee4a81ffccb9720b8a342f2cb6278570917132e9f639339b778f2da7169c0c0c0"
+        )]
+        public void Deserialize(string hex)
+        {
+            PooledTransactionsMessageSerializer serializer = new();
+
+            serializer.Deserialize(Convert.FromHexString(hex));
         }
     }
 }
