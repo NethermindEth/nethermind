@@ -105,24 +105,19 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
     private class RocksColumnsWriteBatch : IColumnsWriteBatch<T>
     {
-        internal RocksDbWriteBatch _writeBatch;
+        internal readonly RocksDbWriteBatch WriteBatch;
         private readonly ColumnsDb<T> _columnsDb;
 
         public RocksColumnsWriteBatch(ColumnsDb<T> columnsDb)
         {
-            _writeBatch = new RocksDbWriteBatch(columnsDb);
+            WriteBatch = new RocksDbWriteBatch(columnsDb);
             _columnsDb = columnsDb;
         }
 
-        public IWriteBatch GetColumnBatch(T key)
-        {
-            return new RocksColumnWriteBatch(_columnsDb._columnDbs[key], this);
-        }
+        public IWriteBatch GetColumnBatch(T key) => new RocksColumnWriteBatch(_columnsDb._columnDbs[key], this);
 
-        public void Dispose()
-        {
-            _writeBatch.Dispose();
-        }
+        public void Clear() => WriteBatch.Clear();
+        public void Dispose() => WriteBatch.Dispose();
     }
 
     private class RocksColumnWriteBatch : IWriteBatch
@@ -143,17 +138,17 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
         public void Clear()
         {
-            _writeBatch._writeBatch.Clear();
+            _writeBatch.WriteBatch.Clear();
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
-            _writeBatch._writeBatch.Set(key, value, _column._columnFamily, flags);
+            _writeBatch.WriteBatch.Set(key, value, _column._columnFamily, flags);
         }
 
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
         {
-            _writeBatch._writeBatch.Merge(key, value, _column._columnFamily, flags);
+            _writeBatch.WriteBatch.Merge(key, value, _column._columnFamily, flags);
         }
     }
 }
