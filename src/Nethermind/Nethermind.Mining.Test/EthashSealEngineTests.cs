@@ -55,10 +55,8 @@ public class EthashSealEngineTests
         Block block = new(header);
         EthashSealer ethashSealer = new(new Ethash(LimboLogs.Instance), NullSigner.Instance, LimboLogs.Instance);
         using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromMilliseconds(2000));
-        await ethashSealer.MineAsync(cancellationTokenSource.Token, block, badNonce).ContinueWith(static t =>
-        {
-            Assert.That(t.IsCanceled, Is.True);
-        });
+
+        Assert.ThrowsAsync<TaskCanceledException>(async () => await ethashSealer.MineAsync(cancellationTokenSource.Token, block, badNonce));
     }
 
     [Test]
