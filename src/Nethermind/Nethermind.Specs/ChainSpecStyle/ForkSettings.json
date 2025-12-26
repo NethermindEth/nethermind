@@ -1,0 +1,101 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/nethermind/refs/heads/master/src/Nethermind/Nethermind.Specs/ChainSpecStyle/fork-settings.schema.json",
+  "$comment": "Default fork settings for EIP-7949 genesis format. Defines which EIPs are activated at each fork, default blob schedules, and standard contract addresses.",
+  "defaults": {
+    "gasLimitBoundDivisor": 1024,
+    "maximumExtraDataSize": 32,
+    "minGasLimit": 5000,
+    "maxCodeSize": 24576,
+    "minHistoryRetentionEpochs": 82125,
+    "maxRlpBlockSize": 8388608
+  },
+  "contracts": {
+    "beaconRoots": "0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02",
+    "blockHashHistory": "0x0000F90827F1C53a10cb7A02335B175320002935",
+    "withdrawalRequest": "0x00000961Ef480Eb55e80D19ad83579A64c007002",
+    "consolidationRequest": "0x0000BBdDc7CE488642fb579F8B00f3a590007251",
+    "depositContract": "0x00000000219ab540356cBB839Cbe05303d7705Fa"
+  },
+  "forks": {
+    "homestead": {
+      "description": "First planned hard fork",
+      "eips": [2, 7, 8]
+    },
+    "tangerineWhistle": {
+      "description": "EIP-150 gas cost changes",
+      "eips": [150]
+    },
+    "spuriousDragon": {
+      "description": "State trie clearing and replay protection",
+      "eips": [155, 160, 161, 170]
+    },
+    "byzantium": {
+      "description": "Metropolis part 1",
+      "eips": [100, 140, 196, 197, 198, 211, 214, 649, 658]
+    },
+    "constantinople": {
+      "description": "Metropolis part 2",
+      "eips": [145, 1014, 1052, 1234, 1283]
+    },
+    "petersburg": {
+      "description": "Constantinople fix - removed EIP-1283",
+      "eips": []
+    },
+    "istanbul": {
+      "description": "Istanbul upgrade",
+      "eips": [152, 1108, 1344, 1884, 2028, 2200]
+    },
+    "berlin": {
+      "description": "Berlin upgrade",
+      "eips": [2565, 2929, 2718, 2930]
+    },
+    "london": {
+      "description": "London upgrade with EIP-1559",
+      "eips": [1559, 3198, 3529, 3541, 3607]
+    },
+    "shanghai": {
+      "description": "Shanghai upgrade - first post-merge fork",
+      "eips": [3651, 3855, 3860, 4895]
+    },
+    "cancun": {
+      "description": "Cancun upgrade with proto-danksharding",
+      "eips": [1153, 4788, 4844, 5656, 6780, 7516],
+      "blobSchedule": {
+        "target": 3,
+        "max": 6,
+        "baseFeeUpdateFraction": 3338477
+      }
+    },
+    "prague": {
+      "description": "Prague upgrade with Pectra",
+      "eips": [2537, 2935, 6110, 7002, 7251, 7623, 7685, 7702],
+      "blobSchedule": {
+        "target": 6,
+        "max": 9,
+        "baseFeeUpdateFraction": 5007716
+      }
+    },
+    "osaka": {
+      "description": "Osaka upgrade with EOF and PeerDAS",
+      "eips": [7594, 7823, 7825, 7883, 7907, 7918, 7934, 7939, 7951]
+    },
+    "bpo1": {
+      "description": "Blob Parameter Optimization 1",
+      "eips": [],
+      "blobSchedule": {
+        "target": 10,
+        "max": 15,
+        "baseFeeUpdateFraction": 8346193
+      }
+    },
+    "bpo2": {
+      "description": "Blob Parameter Optimization 2",
+      "eips": [],
+      "blobSchedule": {
+        "target": 14,
+        "max": 21,
+        "baseFeeUpdateFraction": 11684671
+      }
+    }
+  }
+}
