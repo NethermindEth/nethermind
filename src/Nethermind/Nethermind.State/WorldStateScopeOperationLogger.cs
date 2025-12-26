@@ -17,10 +17,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     private ILogger _logger = logManager.GetClassLogger<WorldStateScopeOperationLogger>();
     private long _currentScopeId = 0;
 
-    public bool HasRoot(BlockHeader? baseBlock)
-    {
-        return baseScopeProvider.HasRoot(baseBlock);
-    }
+    public bool HasRoot(BlockHeader? baseBlock) =>
+        baseScopeProvider.HasRoot(baseBlock);
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
