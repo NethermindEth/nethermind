@@ -656,7 +656,7 @@ namespace Nethermind.Db.LogIndex
 
                 // Skip already added keys (each column batch is committed independently)
                 var isAddressBlockNewer = IsAddressBlockNewer(blockNumber, isBackwardSync);
-                for(var i = 0; i < MaxTopics; i++)
+                for (var i = 0; i < MaxTopics; i++)
                     isTopicBlockNewer[i] = IsTopicBlockNewer(i, blockNumber, isBackwardSync);
 
                 stats?.IncrementBlocks();

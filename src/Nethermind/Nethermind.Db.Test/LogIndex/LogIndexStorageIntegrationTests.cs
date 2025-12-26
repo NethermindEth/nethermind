@@ -159,23 +159,23 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [Combinatorial]
-                public async Task Set_Get_Test(
+        public async Task Set_Get_Test(
                     [Values(100, 200, int.MaxValue)] int compactionDistance,
                     [Values(1, 8, 16)] byte ioParallelism,
                     [Values] bool isBackwardsSync,
                     [Values] bool compact
                 )
-                {
-                    var logIndexStorage = CreateLogIndexStorage(compactionDistance, ioParallelism);
+        {
+            var logIndexStorage = CreateLogIndexStorage(compactionDistance, ioParallelism);
 
-                    BlockReceipts[][] batches = isBackwardsSync ? Reverse(testData.Batches) : testData.Batches;
-                    await SetReceiptsAsync(logIndexStorage, batches, isBackwardsSync);
+            BlockReceipts[][] batches = isBackwardsSync ? Reverse(testData.Batches) : testData.Batches;
+            await SetReceiptsAsync(logIndexStorage, batches, isBackwardsSync);
 
-                    if (compact)
-                        await CompactAsync(logIndexStorage);
+            if (compact)
+                await CompactAsync(logIndexStorage);
 
-                    VerifyReceipts(logIndexStorage, testData);
-                }
+            VerifyReceipts(logIndexStorage, testData);
+        }
 
         [Combinatorial]
         public async Task BackwardsSet_Set_Get_Test(
