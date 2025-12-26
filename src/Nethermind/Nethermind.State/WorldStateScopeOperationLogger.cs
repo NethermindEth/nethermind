@@ -63,10 +63,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
             return new StorageTreeWrapper(innerScope.CreateStorageTree(address), address, scopeId, logger);
         }
 
-        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
-        {
-            return new WriteBatchWrapper(innerScope.StartWriteBatch(estimatedAccountNum), scopeId, logger);
-        }
+        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
+            new WriteBatchWrapper(innerScope.StartWriteBatch(estimatedAccountNum), scopeId, logger);
 
         public void Commit(long blockNumber)
         {
