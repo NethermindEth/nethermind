@@ -104,6 +104,8 @@ public interface IDbConfig : IConfig
 
     string LogIndexStorageDbRocksDbOptions { get; set; }
     string LogIndexStorageDbAdditionalRocksDbOptions { get; set; }
+    string LogIndexStorageMetaDbRocksDbOptions { get; set; }
+    string LogIndexStorageMetaDbAdditionalRocksDbOptions { get; set; }
     string LogIndexStorageAddressesDbRocksDbOptions { get; set; }
     string LogIndexStorageAddressesDbAdditionalRocksDbOptions { get; set; }
     string LogIndexStorageTopics0DbRocksDbOptions { get; set; }

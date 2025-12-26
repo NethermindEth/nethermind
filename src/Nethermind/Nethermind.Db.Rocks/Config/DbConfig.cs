@@ -273,6 +273,8 @@ public class DbConfig : IDbConfig
 
     public string LogIndexStorageDbRocksDbOptions { get; set; } = "";
     public string LogIndexStorageDbAdditionalRocksDbOptions { get; set; } = "";
+    public string LogIndexStorageMetaDbRocksDbOptions { get; set; } = "";
+    public string LogIndexStorageMetaDbAdditionalRocksDbOptions { get; set; } = "";
     public string LogIndexStorageAddressesDbRocksDbOptions { get; set; } = "";
     public string LogIndexStorageAddressesDbAdditionalRocksDbOptions { get; set; } = "";
     public string LogIndexStorageTopics0DbRocksDbOptions { get; set; } = "";
