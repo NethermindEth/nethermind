@@ -115,10 +115,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         return GetOrCreateStorage(address).StorageRoot;
     }
 
-    public bool IsStorageEmpty(Address address)
-    {
-        return GetOrCreateStorage(address).IsEmpty;
-    }
+    public bool IsStorageEmpty(Address address) =>
+        GetOrCreateStorage(address).IsEmpty;
 
     private HashSet<AddressAsKey>? _tempToUpdateRoots;
     /// <summary>
