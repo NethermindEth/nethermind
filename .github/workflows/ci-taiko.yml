@@ -1,0 +1,116 @@
+name: "Taiko Client CI Tests"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "src/Nethermind/Nethermind.Taiko/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration_tests:
+    if: >-
+      ${{ github.event.pull_request.draft == false
+      && !startsWith(github.head_ref, 'release-please') }}
+    name: Integration tests
+    runs-on: [ubuntu-latest]
+    timeout-minutes: 30
+    env:
+      OLD_FORK_TAIKO_MONO_DIR: old-fork-taiko-mono
+      TAIKO_MONO_MAIN_DIR: taiko-mono-main
+      PACAYA_FORK_TAIKO_MONO_DIR: pacaya-fork-taiko-mono
+      SHASTA_FORK_TAIKO_MONO_DIR: shasta-fork-taiko-mono
+
+    strategy:
+      matrix:
+        execution_node: [l2_geth]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/checkout@v6
+        with:
+          repository: surge-taiko-mono
+          path: ${{ env.TAIKO_MONO_MAIN_DIR }}
+          ref: jmadibekov/integration-tests
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: ${{ env.TAIKO_MONO_MAIN_DIR }}/go.mod
+          cache: true
+
+      - name: Set up Git to use HTTPS
+        shell: bash
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: ${{ env.TAIKO_MONO_MAIN_DIR }}/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: ${{ env.TAIKO_MONO_MAIN_DIR }}
+        shell: bash
+        run: pnpm install
+
+      - uses: actions/checkout@v6
+        with:
+          repository: taikoxyz/taiko-mono
+          path: >-
+            ${{ format('{0}/{1}', env.TAIKO_MONO_MAIN_DIR,
+            env.PACAYA_FORK_TAIKO_MONO_DIR) }}
+          ref: taiko-alethia-protocol-v2.3.0-devnet-shasta-test
+
+      - uses: actions/checkout@v6
+        with:
+          repository: taikoxyz/taiko-mono
+          path: >-
+            ${{ format('{0}/{1}', env.TAIKO_MONO_MAIN_DIR,
+            env.SHASTA_FORK_TAIKO_MONO_DIR) }}
+          ref: taiko-alethia-protocol-v3.0.0
+
+      - name: Install pnpm dependencies for pacaya fork taiko-mono
+        working-directory: >-
+          ${{ format('{0}/{1}', env.TAIKO_MONO_MAIN_DIR,
+          env.PACAYA_FORK_TAIKO_MONO_DIR) }}
+        run: cd ./packages/protocol && pnpm install
+
+      - name: Install pnpm dependencies for shasta fork taiko-mono
+        working-directory: >-
+          ${{ format('{0}/{1}', env.TAIKO_MONO_MAIN_DIR,
+          env.SHASTA_FORK_TAIKO_MONO_DIR) }}
+        run: cd ./packages/protocol && pnpm install
+
+      - name: Run Tests on ${{ matrix.execution_node }} execution engine
+        working-directory: >-
+          ${{ env.TAIKO_MONO_MAIN_DIR }}/packages/taiko-client
+        env:
+          L2_NODE: ${{ matrix.execution_node }}
+        run: >-
+          SHASTA_FORK_TAIKO_MONO=${GITHUB_WORKSPACE}/${{ format('{0}/{1}', env.TAIKO_MONO_MAIN_DIR, env.SHASTA_FORK_TAIKO_MONO_DIR) }}
+          PACAYA_FORK_TAIKO_MONO=${GITHUB_WORKSPACE}/${{ format('{0}/{1}', env.TAIKO_MONO_MAIN_DIR, env.PACAYA_FORK_TAIKO_MONO_DIR) }}
+          make test
+
+      - name: Codecov.io
+        uses: codecov/codecov-action@v5
+        with:
+          files: ${{ env.TAIKO_MONO_MAIN_DIR }}/packages/taiko-client/coverage.out
+          flags: taiko-client
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
