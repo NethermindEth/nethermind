@@ -12,7 +12,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State;
 
-public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopeProvider, ILogManager logManager): IWorldStateScopeProvider
+public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopeProvider, ILogManager logManager) : IWorldStateScopeProvider
 {
     private ILogger _logger = logManager.GetClassLogger<WorldStateScopeOperationLogger>();
     private long _currentScopeId = 0;
