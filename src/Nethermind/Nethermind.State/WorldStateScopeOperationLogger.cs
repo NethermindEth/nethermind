@@ -125,10 +125,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
             _logger1.Trace($"{_scopeId}: Set account {key} to {account}");
         }
 
-        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
-        {
-            return new StorageWriteBatchWrapper(_writeBatch.CreateStorageWriteBatch(key, estimatedEntries), key, _scopeId, _logger1);
-        }
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
+            new StorageWriteBatchWrapper(_writeBatch.CreateStorageWriteBatch(key, estimatedEntries), key, _scopeId, _logger1);
     }
 
     private class StorageWriteBatchWrapper(
