@@ -1,32 +1,32 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using Nethermind.EngineApiProxy.Models;
 using Nethermind.EngineApiProxy.Utilities;
 using Nethermind.Logging;
-using System;
-using System.Threading.Tasks;
 
-namespace Nethermind.EngineApiProxy.Handlers
+namespace Nethermind.EngineApiProxy.Handlers;
+
+public class DefaultRequestHandler(
+    RequestForwarder requestForwarder,
+    ILogManager logManager)
 {
-    public class DefaultRequestHandler(
-        RequestForwarder requestForwarder,
-        ILogManager logManager)
-    {
-        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly RequestForwarder _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
+    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly RequestForwarder _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
 
-        public async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
+    public async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)
+    {
+        _logger.Info($"Processing default request for method {request.Method}");
+
+        try
         {
-            _logger.Info($"Processing default request for method {request.Method}");
-            
-            try
-            {
-                // Forward the request directly to execution client
-                return await _requestForwarder.ForwardRequestToExecutionClient(request, false);
-            }
-            catch (Exception ex)
-            {
-                _logger.Error($"Error handling {request.Method}: {ex.Message}", ex);
-                return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling {request.Method}: {ex.Message}");
-            }
+            // Forward the request directly to execution client
+            return await _requestForwarder.ForwardRequestToExecutionClient(request, false);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Error handling {request.Method}: {ex.Message}", ex);
+            return JsonRpcResponse.CreateErrorResponse(request.Id, -32603, $"Proxy error handling {request.Method}: {ex.Message}");
         }
     }
-} 
+}
