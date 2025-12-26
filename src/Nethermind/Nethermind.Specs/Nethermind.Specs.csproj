@@ -14,4 +14,8 @@
     <PackageReference Include="ZstdSharp.Port" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="ChainSpecStyle\ForkSettings.json" />
+  </ItemGroup>
+
 </Project>

@@ -65,6 +65,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
     private static void LoadParameters(GethGenesisJson gethGenesis, ChainSpec chainSpec)
     {
         GethGenesisConfigJson config = gethGenesis.Config;
+        ForkSettings forkSettings = ForkSettings.Instance;
+        DefaultParametersJson defaults = forkSettings.Defaults;
 
         // Parse terminal total difficulty if present
         UInt256? terminalTotalDifficulty = null;
@@ -73,112 +75,238 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             terminalTotalDifficulty = ParseHexOrDecimal(config.TerminalTotalDifficulty);
         }
 
-        // Convert blob schedule from Geth format to Nethermind format
-        SortedSet<BlobScheduleSettings> blobSchedule = [];
-        if (config.BlobSchedule is not null)
+        // Build blob schedule from ForkSettings defaults, allowing chainspec overrides
+        SortedSet<BlobScheduleSettings> blobSchedule = BuildBlobSchedule(config, forkSettings);
+
+        // Build fork transition lookup tables
+        var blockForks = BuildBlockForkTransitions(config);
+        var timestampForks = BuildTimestampForkTransitions(config);
+
+        chainSpec.Parameters = new ChainParameters
         {
-            foreach (KeyValuePair<string, GethBlobScheduleEntry> entry in config.BlobSchedule)
+            // Default parameters from ForkSettings
+            GasLimitBoundDivisor = defaults.GasLimitBoundDivisor,
+            MaximumExtraDataSize = defaults.MaximumExtraDataSize,
+            MinGasLimit = defaults.MinGasLimit,
+            MinHistoryRetentionEpochs = defaults.MinHistoryRetentionEpochs,
+            MaxCodeSize = defaults.MaxCodeSize,
+            MaxCodeSizeTransition = config.Eip158Block ?? config.SpuriousDragonBlock ?? 0,
+
+            // Block-based EIP transitions - dynamically looks up which fork activates each EIP
+            Eip150Transition = GetBlockTransitionForEip(forkSettings, blockForks, 150),
+            Eip155Transition = GetBlockTransitionForEip(forkSettings, blockForks, 155),
+            Eip160Transition = GetBlockTransitionForEip(forkSettings, blockForks, 160),
+            Eip161abcTransition = GetBlockTransitionForEip(forkSettings, blockForks, 161),
+            Eip161dTransition = GetBlockTransitionForEip(forkSettings, blockForks, 161),
+            Eip140Transition = GetBlockTransitionForEip(forkSettings, blockForks, 140),
+            Eip211Transition = GetBlockTransitionForEip(forkSettings, blockForks, 211),
+            Eip214Transition = GetBlockTransitionForEip(forkSettings, blockForks, 214),
+            Eip658Transition = GetBlockTransitionForEip(forkSettings, blockForks, 658),
+            Eip145Transition = GetBlockTransitionForEip(forkSettings, blockForks, 145),
+            Eip1014Transition = GetBlockTransitionForEip(forkSettings, blockForks, 1014),
+            Eip1052Transition = GetBlockTransitionForEip(forkSettings, blockForks, 1052),
+            Eip1283Transition = GetBlockTransitionForEip(forkSettings, blockForks, 1283),
+            Eip1283DisableTransition = config.PetersburgBlock,
+            Eip152Transition = GetBlockTransitionForEip(forkSettings, blockForks, 152),
+            Eip1108Transition = GetBlockTransitionForEip(forkSettings, blockForks, 1108),
+            Eip1344Transition = GetBlockTransitionForEip(forkSettings, blockForks, 1344),
+            Eip1884Transition = GetBlockTransitionForEip(forkSettings, blockForks, 1884),
+            Eip2028Transition = GetBlockTransitionForEip(forkSettings, blockForks, 2028),
+            Eip2200Transition = GetBlockTransitionForEip(forkSettings, blockForks, 2200),
+            Eip2565Transition = GetBlockTransitionForEip(forkSettings, blockForks, 2565),
+            Eip2929Transition = GetBlockTransitionForEip(forkSettings, blockForks, 2929),
+            Eip2930Transition = GetBlockTransitionForEip(forkSettings, blockForks, 2930),
+            Eip1559Transition = GetBlockTransitionForEip(forkSettings, blockForks, 1559),
+            Eip3198Transition = GetBlockTransitionForEip(forkSettings, blockForks, 3198),
+            Eip3529Transition = GetBlockTransitionForEip(forkSettings, blockForks, 3529),
+            Eip3541Transition = GetBlockTransitionForEip(forkSettings, blockForks, 3541),
+            Eip3607Transition = GetBlockTransitionForEip(forkSettings, blockForks, 3607),
+
+            MergeForkIdTransition = config.MergeNetsplitBlock,
+            TerminalTotalDifficulty = terminalTotalDifficulty,
+
+            // Timestamp-based EIP transitions - dynamically looks up which fork activates each EIP
+            Eip3651TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 3651),
+            Eip3855TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 3855),
+            Eip3860TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 3860),
+            Eip4895TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 4895),
+            Eip1153TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 1153),
+            Eip4844TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 4844),
+            Eip4788TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 4788),
+            Eip5656TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 5656),
+            Eip6780TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 6780),
+            Eip2537TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 2537),
+            Eip2935TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 2935),
+            Eip6110TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 6110),
+            Eip7002TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 7002),
+            Eip7251TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 7251),
+            Eip7623TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 7623),
+            Eip7702TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 7702),
+            Eip7594TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 7594),
+            Eip7823TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 7823),
+            Eip7825TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 7825),
+            Eip7883TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 7883),
+            Eip7918TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 7918),
+            Eip7934TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 7934),
+            Eip7934MaxRlpBlockSize = defaults.MaxRlpBlockSize,
+            Eip7939TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 7939),
+            Eip7951TransitionTimestamp = GetTimestampTransitionForEip(forkSettings, timestampForks, 7951),
+
+            // Contract addresses from ForkSettings, allowing chainspec overrides
+            DepositContractAddress = config.DepositContractAddress ?? forkSettings.DepositContractAddress,
+            Eip4788ContractAddress = forkSettings.BeaconRootsAddress,
+            Eip2935ContractAddress = forkSettings.BlockHashHistoryAddress,
+            Eip7002ContractAddress = forkSettings.WithdrawalRequestAddress,
+            Eip7251ContractAddress = forkSettings.ConsolidationRequestAddress,
+            BlobSchedule = blobSchedule
+        };
+    }
+
+    /// <summary>
+    /// Builds a dictionary mapping block-based fork names to their transition block numbers.
+    /// </summary>
+    private static Dictionary<string, long?> BuildBlockForkTransitions(GethGenesisConfigJson config) =>
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["homestead"] = config.HomesteadBlock,
+            ["tangerineWhistle"] = config.Eip150Block ?? config.TangerineWhistleBlock,
+            ["spuriousDragon"] = config.Eip158Block ?? config.SpuriousDragonBlock,
+            ["byzantium"] = config.ByzantiumBlock,
+            ["constantinople"] = config.ConstantinopleBlock,
+            ["petersburg"] = config.PetersburgBlock,
+            ["istanbul"] = config.IstanbulBlock,
+            ["berlin"] = config.BerlinBlock,
+            ["london"] = config.LondonBlock
+        };
+
+    /// <summary>
+    /// Builds a dictionary mapping timestamp-based fork names to their transition timestamps.
+    /// </summary>
+    private static Dictionary<string, ulong?> BuildTimestampForkTransitions(GethGenesisConfigJson config) =>
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["shanghai"] = config.ShanghaiTime,
+            ["cancun"] = config.CancunTime,
+            ["prague"] = config.PragueTime,
+            ["osaka"] = config.OsakaTime
+        };
+
+    /// <summary>
+    /// Gets the block transition for an EIP by finding which fork first activates it.
+    /// </summary>
+    private static long? GetBlockTransitionForEip(
+        ForkSettings forkSettings,
+        Dictionary<string, long?> forkTransitions,
+        int eipNumber)
+    {
+        string? activatingFork = forkSettings.GetActivatingFork(eipNumber);
+        if (activatingFork is null)
+        {
+            return null;
+        }
+
+        return forkTransitions.GetValueOrDefault(activatingFork);
+    }
+
+    /// <summary>
+    /// Gets the timestamp transition for an EIP by finding which fork first activates it.
+    /// </summary>
+    private static ulong? GetTimestampTransitionForEip(
+        ForkSettings forkSettings,
+        Dictionary<string, ulong?> forkTransitions,
+        int eipNumber)
+    {
+        string? activatingFork = forkSettings.GetActivatingFork(eipNumber);
+        if (activatingFork is null)
+        {
+            return null;
+        }
+
+        return forkTransitions.GetValueOrDefault(activatingFork);
+    }
+
+    /// <summary>
+    /// Builds blob schedule from ForkSettings defaults, with chainspec overrides taking precedence.
+    /// </summary>
+    private static SortedSet<BlobScheduleSettings> BuildBlobSchedule(GethGenesisConfigJson config, ForkSettings forkSettings)
+    {
+        SortedSet<BlobScheduleSettings> blobSchedule = [];
+
+        // Define fork names and their corresponding timestamps
+        var forkTimestamps = new Dictionary<string, ulong?>
+        {
+            ["cancun"] = config.CancunTime,
+            ["prague"] = config.PragueTime,
+            ["osaka"] = config.OsakaTime,
+            ["bpo1"] = GetBpo1Timestamp(config),
+            ["bpo2"] = GetBpo2Timestamp(config)
+        };
+
+        foreach (var (forkName, timestamp) in forkTimestamps)
+        {
+            if (timestamp is null or 0)
             {
-                // First try explicit timestamp, then fall back to hardfork time lookup
-                ulong timestamp = entry.Value.Timestamp ?? GetHardforkTimestamp(config, entry.Key);
-                if (timestamp > 0)
+                continue;
+            }
+
+            // Check if chainspec has an override for this fork
+            if (config.BlobSchedule is not null &&
+                config.BlobSchedule.TryGetValue(forkName, out var chainspecEntry))
+            {
+                // Use chainspec values with explicit or looked-up timestamp
+                ulong effectiveTimestamp = chainspecEntry.Timestamp ?? timestamp.Value;
+                blobSchedule.Add(new BlobScheduleSettings
+                {
+                    Timestamp = effectiveTimestamp,
+                    Target = chainspecEntry.Target,
+                    Max = chainspecEntry.Max,
+                    BaseFeeUpdateFraction = chainspecEntry.BaseFeeUpdateFraction
+                });
+            }
+            else
+            {
+                // Use defaults from ForkSettings if this fork has blob schedule defined
+                var defaultSchedule = forkSettings.GetBlobSchedule(forkName);
+                if (defaultSchedule is not null)
                 {
                     blobSchedule.Add(new BlobScheduleSettings
                     {
-                        Timestamp = timestamp,
-                        Target = entry.Value.Target,
-                        Max = entry.Value.Max,
-                        BaseFeeUpdateFraction = entry.Value.BaseFeeUpdateFraction
+                        Timestamp = timestamp.Value,
+                        Target = (ulong)defaultSchedule.Target,
+                        Max = (ulong)defaultSchedule.Max,
+                        BaseFeeUpdateFraction = defaultSchedule.BaseFeeUpdateFraction
                     });
                 }
             }
         }
 
-        chainSpec.Parameters = new ChainParameters
-        {
-            GasLimitBoundDivisor = 0x400,
-            MaximumExtraDataSize = 32,
-            MinGasLimit = 5000,
-            MinHistoryRetentionEpochs = 82125,
-            // MaxCodeSize (EIP-170) is standard on all networks since Spurious Dragon
-            MaxCodeSize = 0x6000,
-            MaxCodeSizeTransition = config.Eip158Block ?? config.SpuriousDragonBlock ?? 0,
-            Eip150Transition = config.Eip150Block ?? config.TangerineWhistleBlock ?? 0,
-            Eip160Transition = config.Eip155Block ?? config.SpuriousDragonBlock ?? 0,
-            Eip161abcTransition = config.Eip158Block ?? config.SpuriousDragonBlock ?? 0,
-            Eip161dTransition = config.Eip158Block ?? config.SpuriousDragonBlock ?? 0,
-            Eip155Transition = config.Eip155Block ?? config.SpuriousDragonBlock ?? 0,
-            Eip140Transition = config.ByzantiumBlock,
-            Eip211Transition = config.ByzantiumBlock,
-            Eip214Transition = config.ByzantiumBlock,
-            Eip658Transition = config.ByzantiumBlock,
-            Eip145Transition = config.ConstantinopleBlock,
-            Eip1014Transition = config.ConstantinopleBlock,
-            Eip1052Transition = config.ConstantinopleBlock,
-            Eip1283Transition = config.ConstantinopleBlock,
-            Eip1283DisableTransition = config.PetersburgBlock,
-            Eip152Transition = config.IstanbulBlock,
-            Eip1108Transition = config.IstanbulBlock,
-            Eip1344Transition = config.IstanbulBlock,
-            Eip1884Transition = config.IstanbulBlock,
-            Eip2028Transition = config.IstanbulBlock,
-            Eip2200Transition = config.IstanbulBlock,
-            Eip2565Transition = config.BerlinBlock,
-            Eip2929Transition = config.BerlinBlock,
-            Eip2930Transition = config.BerlinBlock,
-            Eip1559Transition = config.LondonBlock,
-            Eip3198Transition = config.LondonBlock,
-            Eip3529Transition = config.LondonBlock,
-            Eip3541Transition = config.LondonBlock,
-            // EIP-3607 (reject txs from senders with deployed code) is default on since London
-            Eip3607Transition = config.LondonBlock,
-            MergeForkIdTransition = config.MergeNetsplitBlock,
-            TerminalTotalDifficulty = terminalTotalDifficulty,
-            Eip3651TransitionTimestamp = config.ShanghaiTime,
-            Eip3855TransitionTimestamp = config.ShanghaiTime,
-            Eip3860TransitionTimestamp = config.ShanghaiTime,
-            Eip4895TransitionTimestamp = config.ShanghaiTime,
-            Eip1153TransitionTimestamp = config.CancunTime,
-            Eip4844TransitionTimestamp = config.CancunTime,
-            Eip4788TransitionTimestamp = config.CancunTime,
-            Eip5656TransitionTimestamp = config.CancunTime,
-            Eip6780TransitionTimestamp = config.CancunTime,
-            Eip2537TransitionTimestamp = config.PragueTime,
-            Eip2935TransitionTimestamp = config.PragueTime,
-            Eip6110TransitionTimestamp = config.PragueTime,
-            Eip7002TransitionTimestamp = config.PragueTime,
-            Eip7251TransitionTimestamp = config.PragueTime,
-            Eip7623TransitionTimestamp = config.PragueTime,
-            Eip7702TransitionTimestamp = config.PragueTime,
-            // Osaka EIPs
-            Eip7594TransitionTimestamp = config.OsakaTime,
-            Eip7823TransitionTimestamp = config.OsakaTime,
-            Eip7825TransitionTimestamp = config.OsakaTime,
-            Eip7883TransitionTimestamp = config.OsakaTime,
-            Eip7918TransitionTimestamp = config.OsakaTime,
-            Eip7934TransitionTimestamp = config.OsakaTime,
-            Eip7934MaxRlpBlockSize = Eip7934Constants.DefaultMaxRlpBlockSize,
-            Eip7939TransitionTimestamp = config.OsakaTime,
-            Eip7951TransitionTimestamp = config.OsakaTime,
-            DepositContractAddress = config.DepositContractAddress,
-            // Standard EIP contract addresses
-            Eip4788ContractAddress = Eip4788Constants.BeaconRootsAddress,
-            Eip2935ContractAddress = Eip2935Constants.BlockHashHistoryAddress,
-            Eip7002ContractAddress = Eip7002Constants.WithdrawalRequestPredeployAddress,
-            Eip7251ContractAddress = Eip7251Constants.ConsolidationRequestPredeployAddress,
-            BlobSchedule = blobSchedule
-        };
+        return blobSchedule;
     }
 
-    private static ulong GetHardforkTimestamp(GethGenesisConfigJson config, string hardforkName)
+    /// <summary>
+    /// Gets BPO1 timestamp from config, looking in blobSchedule if not directly specified.
+    /// </summary>
+    private static ulong? GetBpo1Timestamp(GethGenesisConfigJson config)
     {
-        return hardforkName.ToLowerInvariant() switch
+        if (config.BlobSchedule?.TryGetValue("bpo1", out var entry) == true && entry.Timestamp.HasValue)
         {
-            "cancun" => config.CancunTime ?? 0,
-            "prague" => config.PragueTime ?? 0,
-            "osaka" => config.OsakaTime ?? 0,
-            _ => 0
-        };
+            return entry.Timestamp.Value;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets BPO2 timestamp from config, looking in blobSchedule if not directly specified.
+    /// </summary>
+    private static ulong? GetBpo2Timestamp(GethGenesisConfigJson config)
+    {
+        if (config.BlobSchedule?.TryGetValue("bpo2", out var entry) == true && entry.Timestamp.HasValue)
+        {
+            return entry.Timestamp.Value;
+        }
+
+        return null;
     }
 
     private static void LoadGenesis(GethGenesisJson gethGenesis, ChainSpec chainSpec)
