@@ -416,8 +416,8 @@ namespace Nethermind.Db.LogIndex
 
         private static int SaveRangeBound(IWriteOnlyKeyValueStore dbBatch, byte[] key, int value)
         {
-            var bufferArr = Pool.Rent(BlockNumberSize);
-            Span<byte> buffer = bufferArr.AsSpan(..BlockNumberSize);
+            var bufferArr = Pool.Rent(ValueSize);
+            Span<byte> buffer = bufferArr.AsSpan(..ValueSize);
 
             try
             {
