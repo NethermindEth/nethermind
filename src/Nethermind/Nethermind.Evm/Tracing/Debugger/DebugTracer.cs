@@ -242,7 +242,10 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
         => InnerTracer.ReportActionError(evmExceptionType);
 
     public void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
-        => InnerTracer.ReportActionRevert(gas, output);
+        => InnerTracer.ReportActionRevert(checked((long)gas), output);
+
+    public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
+        => InnerTracer.ReportActionRevert(gasLeft, output);
 
     public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         => InnerTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
