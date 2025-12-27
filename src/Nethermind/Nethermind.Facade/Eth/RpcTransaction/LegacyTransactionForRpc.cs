@@ -65,7 +65,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         Nonce = transaction.Nonce;
         To = transaction.To;
         From = transaction.SenderAddress;
-        Gas = transaction.GasLimit;
+        Gas = checked((ulong)transaction.GasLimit);
         Value = transaction.Value;
         Input = transaction.Data.AsArray();
         GasPrice = transaction.GasPrice;
@@ -91,7 +91,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     {
         var tx = base.ToTransaction();
 
-        tx.Nonce = Nonce ?? 0; // TODO: Should we pick the last nonce?
+        tx.Nonce = Nonce?.ToUInt64(null) ?? 0; // TODO: Should we pick the last nonce?
         tx.To = To;
         tx.GasLimit = Gas ?? 90_000;
         tx.Value = Value ?? 0;
@@ -123,12 +123,13 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
 
     public override void EnsureDefaults(long? gasCap)
     {
-        if (gasCap is null || gasCap == 0)
-            gasCap = long.MaxValue;
+        ulong cap = gasCap is null || gasCap.Value <= 0
+            ? ulong.MaxValue
+            : checked((ulong)gasCap.Value);
 
         Gas = Gas is null || Gas == 0
-            ? gasCap
-            : Math.Min(gasCap.Value, Gas.Value);
+            ? cap
+            : (Gas.Value > cap ? cap : Gas.Value);
 
         From ??= Address.Zero;
     }

@@ -55,7 +55,7 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         To = transaction.To;
         Mint = transaction.Mint;
         Value = transaction.Value;
-        Gas = transaction.GasLimit;
+        Gas = checked((ulong)transaction.GasLimit);
         IsSystemTx = transaction.IsOPSystemTransaction;
         Input = transaction.Data.ToArray();
         Nonce = receipt?.DepositNonce ?? 0;
@@ -72,7 +72,7 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         tx.To = To;
         tx.Mint = Mint ?? 0;
         tx.Value = Value ?? throw new ArgumentNullException(nameof(Value));
-        tx.GasLimit = Gas ?? throw new ArgumentNullException(nameof(Gas));
+        tx.GasLimit = Gas is null ? throw new ArgumentNullException(nameof(Gas)) : Gas.Value;
         tx.IsOPSystemTransaction = IsSystemTx ?? false;
         tx.Data = Input ?? throw new ArgumentNullException(nameof(Input));
 
@@ -83,10 +83,17 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
     {
         if (Gas is not null && gasCap is not null)
         {
-            Gas = Math.Min(Gas.Value, gasCap.Value);
+            ulong cap = checked((ulong)gasCap.Value);
+            if (Gas.Value > cap)
+            {
+                Gas = cap;
+            }
         }
 
-        Gas ??= gasCap;
+        if (Gas is null && gasCap is not null)
+        {
+            Gas = checked((ulong)gasCap.Value);
+        }
     }
 
     public override bool ShouldSetBaseFee() => false;

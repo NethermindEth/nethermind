@@ -147,7 +147,7 @@ public class EthSimulateTestsBlocksAndTransactions
         {
             Type = type,
             Value = amount,
-            Nonce = nonce,
+            Nonce = checked(nonce.ToUInt64(null)),
             GasLimit = 50_000,
             SenderAddress = from.Address,
             To = to,

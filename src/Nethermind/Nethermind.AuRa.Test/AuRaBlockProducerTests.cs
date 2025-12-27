@@ -69,7 +69,7 @@ namespace Nethermind.AuRa.Test
                 BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns(returnThis: c =>
                 {
                     Block block = c.Arg<Block>();
-                    block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, block.GasLimit).ToArray());
+                    block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, checked((long)block.Header.GasLimit)).ToArray());
                     return block;
                 });
                 StateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(x => true);

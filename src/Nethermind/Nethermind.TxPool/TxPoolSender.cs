@@ -49,7 +49,7 @@ namespace Nethermind.TxPool
         {
             using NonceLocker locker = _nonceManager.ReserveNonce(tx.SenderAddress!, out UInt256 reservedNonce);
             txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
-            tx.Nonce = reservedNonce;
+            tx.Nonce = (ulong)reservedNonce;
             return SubmitTx(locker, tx, txHandlingOptions);
         }
 

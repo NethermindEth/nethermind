@@ -13,7 +13,8 @@ public class BlockMetadata
 {
     public required Address Beneficiary { get; set; }
 
-    public required long GasLimit { get; set; }
+    [JsonPropertyName("gasLimit")]
+    public required ulong GasLimit { get; set; }
     public required ulong Timestamp { get; set; }
 
     public required Hash256 MixHash { get; set; }

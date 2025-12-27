@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -59,8 +60,17 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage) txReceipt.Sender = rlpStream.DecodeAddress();
             if (isStorage) txReceipt.Recipient = rlpStream.DecodeAddress();
             if (isStorage) txReceipt.ContractAddress = rlpStream.DecodeAddress();
-            if (isStorage) txReceipt.GasUsed = (long)rlpStream.DecodeUBigInt();
-            txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
+            if (isStorage)
+            {
+                BigInteger big = rlpStream.DecodeUBigInt();
+                if (big > ulong.MaxValue || big < 0) throw new OverflowException("GasUsed overflow");
+                txReceipt.GasUsed = (ulong)big;
+            }
+            {
+                BigInteger big = rlpStream.DecodeUBigInt();
+                if (big > ulong.MaxValue || big < 0) throw new OverflowException("GasUsedTotal overflow");
+                txReceipt.GasUsedTotal = (ulong)big;
+            }
             txReceipt.Bloom = rlpStream.DecodeBloom();
 
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
@@ -134,8 +144,17 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage) txReceipt.Sender = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.Recipient = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.ContractAddress = decoderContext.DecodeAddress();
-            if (isStorage) txReceipt.GasUsed = (long)decoderContext.DecodeUBigInt();
-            txReceipt.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+            if (isStorage)
+            {
+                BigInteger big = decoderContext.DecodeUBigInt();
+                if (big > ulong.MaxValue || big < 0) throw new OverflowException("GasUsed overflow");
+                txReceipt.GasUsed = (ulong)big;
+            }
+            {
+                BigInteger big = decoderContext.DecodeUBigInt();
+                if (big > ulong.MaxValue || big < 0) throw new OverflowException("GasUsedTotal overflow");
+                txReceipt.GasUsedTotal = (ulong)big;
+            }
             txReceipt.Bloom = decoderContext.DecodeBloom();
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
@@ -371,9 +390,17 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.DecodeAddressStructRef(out item.Sender);
                 decoderContext.DecodeAddressStructRef(out item.Recipient);
                 decoderContext.DecodeAddressStructRef(out item.ContractAddress);
-                item.GasUsed = (long)decoderContext.DecodeUBigInt();
+                {
+                    BigInteger big = decoderContext.DecodeUBigInt();
+                    if (big > ulong.MaxValue || big < 0) throw new OverflowException("GasUsed overflow");
+                    item.GasUsed = (ulong)big;
+                }
             }
-            item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+            {
+                BigInteger big = decoderContext.DecodeUBigInt();
+                if (big > ulong.MaxValue || big < 0) throw new OverflowException("GasUsedTotal overflow");
+                item.GasUsedTotal = (ulong)big;
+            }
             decoderContext.DecodeBloomStructRef(out item.Bloom);
 
             (int PrefixLength, int ContentLength) =

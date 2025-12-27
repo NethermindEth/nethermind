@@ -21,7 +21,14 @@ public class GethTxTraceEntry
     public string? Opcode { get; set; }
 
     [JsonConverter(typeof(LongRawJsonConverter))]
-    public long Gas { get; set; }
+    public long gas { get; set; }
+
+    [JsonIgnore]
+    public long Gas
+    {
+        get => gas;
+        set => gas = value;
+    }
 
     [JsonConverter(typeof(LongRawJsonConverter))]
     public long GasCost { get; set; }

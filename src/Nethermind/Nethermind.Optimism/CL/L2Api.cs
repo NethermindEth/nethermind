@@ -69,7 +69,7 @@ public class L2Api(
             l1BlockInfo =
                 L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(txs[0].Data.Span, block.ExtraData);
             systemConfig =
-                systemConfigDeriver.SystemConfigFromL2BlockInfo(txs[0].Data.Span, block.ExtraData, (ulong)block.GasLimit);
+                systemConfigDeriver.SystemConfigFromL2BlockInfo(txs[0].Data.Span, block.ExtraData, block.GasLimit);
         }
         else
         {

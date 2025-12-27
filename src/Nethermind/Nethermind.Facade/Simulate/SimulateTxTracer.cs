@@ -50,7 +50,7 @@ public sealed class SimulateTxTracer : TxTracer
 
     public SimulateCallResult? TraceResult { get; set; }
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         if (!_isTracingTransfers) return;
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);

@@ -66,9 +66,11 @@ public class GasEstimator(
         long leftBound = gasTracer.GasSpent != 0 && gasTracer.GasSpent >= lowerBound
             ? gasTracer.GasSpent - 1
             : lowerBound - 1;
-        long rightBound = tx.GasLimit != 0 && tx.GasLimit >= lowerBound
-            ? tx.GasLimit
-            : header.GasLimit;
+        long txGasLimit = tx.GasLimit == 0 ? 0 : checked((long)tx.GasLimit);
+        long headerGasLimit = checked((long)header.GasLimit);
+        long rightBound = txGasLimit != 0 && txGasLimit >= lowerBound
+            ? txGasLimit
+            : headerGasLimit;
         rightBound = Math.Min(rightBound, releaseSpec.GetTxGasLimitCap());
 
         if (leftBound > rightBound)
@@ -149,7 +151,7 @@ public class GasEstimator(
     {
         Transaction txClone = new Transaction();
         transaction.CopyTo(txClone);
-        txClone.GasLimit = gasLimit;
+        txClone.GasLimit = checked((ulong)gasLimit);
 
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block, specProvider.GetSpec(block)));
         TransactionResult result = transactionProcessor.CallAndRestore(txClone, gasTracer.WithCancellation(token));

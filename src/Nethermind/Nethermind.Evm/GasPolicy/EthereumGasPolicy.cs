@@ -180,8 +180,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EthereumGasPolicy CreateAvailableFromIntrinsic(long gasLimit, in EthereumGasPolicy intrinsicGas)
-        => new() { Value = gasLimit - intrinsicGas.Value };
+    public static EthereumGasPolicy CreateAvailableFromIntrinsic(ulong gasLimit, in EthereumGasPolicy intrinsicGas)
+    {
+        long gasLimitLong = (long)gasLimit;
+        long available = gasLimitLong - intrinsicGas.Value;
+        return new() { Value = available };
+    }
 
     private static long CreateCost(Transaction tx, IReleaseSpec spec) =>
         tx.IsContractCreation && spec.IsEip2Enabled ? GasCostOf.TxCreate : 0;

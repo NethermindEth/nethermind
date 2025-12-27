@@ -129,7 +129,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     b.GasUsed / (double)b.GasLimit,
                     blobGasUsedRatio,
                     b.ParentHash,
-                    b.GasUsed,
+                    checked((long)b.GasUsed),
                     b.Transactions.Length,
                     GetRewardsInBlock(b));
             }
@@ -249,7 +249,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 long previousGasUsedTotal = 0;
                 foreach (TxReceipt receipt in txReceipts)
                 {
-                    long gasUsedTotal = receipt.GasUsedTotal;
+                    long gasUsedTotal = checked((long)receipt.GasUsedTotal);
                     yield return gasUsedTotal - previousGasUsedTotal;
                     previousGasUsedTotal = gasUsedTotal;
                 }
@@ -261,7 +261,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 ? CalculateGasUsed(receipts)
                 // If no receipts available, approximate on GasLimit
                 // We could just go with null here too and just don't return percentiles
-                : txs.Select(static tx => tx.GasLimit));
+                : txs.Select(static tx => checked((long)tx.GasLimit)));
 
             List<RewardInfo> rewardInfos = new(txs.Length);
             Span<long> gasUsedSpan = gasUsed.AsSpan();

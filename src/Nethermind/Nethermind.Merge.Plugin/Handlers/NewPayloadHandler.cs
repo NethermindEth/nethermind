@@ -57,7 +57,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly ConcurrentDictionary<Hash256, ValidationCompletion> _blockValidationTasks = new();
 
     private long _lastBlockNumber;
-    private long _lastBlockGasLimit;
+    private ulong _lastBlockGasLimit;
     private readonly bool _simulateBlockProduction;
 
     public NewPayloadHandler(
@@ -96,14 +96,19 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
     }
 
-    private string GetGasChange(long blockGasLimit)
+    private string GetGasChange(ulong blockGasLimit)
     {
-        return (blockGasLimit - _lastBlockGasLimit) switch
+        if (blockGasLimit > _lastBlockGasLimit)
         {
-            > 0 => "👆",
-            < 0 => "👇",
-            _ => "  "
-        };
+            return "👆";
+        }
+
+        if (blockGasLimit < _lastBlockGasLimit)
+        {
+            return "👇";
+        }
+
+        return "  ";
     }
 
     /// <summary>

@@ -16,9 +16,9 @@ public class TransactionProcessorTraceTest : VirtualMachineTestsBase
     protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
 
-    [TestCase(21000)]
-    [TestCase(50000)]
-    public void Trace_should_not_charge_gas(long gasLimit)
+    [TestCase(21000UL)]
+    [TestCase(50000UL)]
+    public void Trace_should_not_charge_gas(ulong gasLimit)
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, gasLimit, gasPrice: 0);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.All);

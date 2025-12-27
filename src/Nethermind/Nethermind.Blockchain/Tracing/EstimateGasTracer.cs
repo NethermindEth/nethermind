@@ -92,7 +92,8 @@ public class EstimateGasTracer : TxTracer
 
     internal long CalculateAdditionalGasRequired(Transaction tx, IReleaseSpec releaseSpec)
     {
-        long intrinsicGas = tx.GasLimit - IntrinsicGasAt;
+        long txGasLimit = checked((long)tx.GasLimit);
+        long intrinsicGas = txGasLimit - IntrinsicGasAt;
         return _currentGasAndNesting.Peek().AdditionalGasRequired +
                RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund,
                    releaseSpec);
@@ -104,20 +105,20 @@ public class EstimateGasTracer : TxTracer
 
     private readonly Stack<GasAndNesting> _currentGasAndNesting = new();
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall = false)
     {
         if (_currentNestingLevel == -1)
         {
             OutOfGas = false;
             TopLevelRevert = false;
-            IntrinsicGasAt = gas;
+            IntrinsicGasAt = checked((long)gas);
         }
 
         if (!isPrecompileCall)
         {
             _currentNestingLevel++;
-            _currentGasAndNesting.Push(new GasAndNesting(gas, _currentNestingLevel));
+            _currentGasAndNesting.Push(new GasAndNesting(checked((long)gas), _currentNestingLevel));
         }
         else
         {
@@ -125,14 +126,14 @@ public class EstimateGasTracer : TxTracer
         }
     }
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
-        UpdateAdditionalGas(gas);
+        UpdateAdditionalGas(checked((long)gas));
     }
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
-        UpdateAdditionalGas(gas);
+        UpdateAdditionalGas(checked((long)gas));
     }
 
     public override void ReportActionError(EvmExceptionType exceptionType)

@@ -93,7 +93,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
         byte[] code = prepare.Done;
 
         long startTime = Stopwatch.GetTimestamp();
-        TestAllTracerWithOutput result = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, Timestamp), blockGasLimit, code, blockGasLimit);
+        TestAllTracerWithOutput result = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, Timestamp), checked((ulong)blockGasLimit), code, blockGasLimit);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(Stopwatch.GetElapsedTime(startTime).TotalMilliseconds < 5000, Is.True);
     }

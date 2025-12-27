@@ -698,7 +698,7 @@ namespace Nethermind.TxPool
             if (transactions.Count != 0)
             {
                 UInt256 balance = account.Balance;
-                long currentNonce = (long)(account.Nonce);
+                ulong currentNonce = (ulong)account.Nonce;
 
                 UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx);
             }
@@ -706,7 +706,7 @@ namespace Nethermind.TxPool
 
         private void UpdateGasBottleneckAndMarkForEviction(
             EnhancedSortedSet<Transaction> transactions,
-            long currentNonce,
+            ulong currentNonce,
             UInt256 balance,
             Transaction? lastElement,
             UpdateTransactionDelegate updateTx)
@@ -746,7 +746,7 @@ namespace Nethermind.TxPool
                     {
                         gasBottleneck = UInt256.Zero;
                     }
-                    else if (tx.Nonce == currentNonce + i)
+                    else if (tx.Nonce == currentNonce + (ulong)i)
                     {
                         UInt256 effectiveGasPrice =
                             tx.CalculateEffectiveGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
@@ -800,7 +800,7 @@ namespace Nethermind.TxPool
             if (transactions.Count != 0)
             {
                 UInt256 balance = account.Balance;
-                long currentNonce = (long)(account.Nonce);
+                ulong currentNonce = (ulong)account.Nonce;
                 Transaction? tx = null;
                 foreach (Transaction txn in transactions)
                 {

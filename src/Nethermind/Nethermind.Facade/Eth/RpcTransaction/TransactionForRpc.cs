@@ -41,10 +41,10 @@ public abstract class TransactionForRpc
     public Hash256? BlockHash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public long? BlockNumber { get; set; }
+    public ulong? BlockNumber { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public long? Gas { get; set; }
+    public ulong? Gas { get; set; }
 
     [JsonConstructor]
     protected TransactionForRpc() { }
@@ -54,7 +54,7 @@ public abstract class TransactionForRpc
         Hash = transaction.Hash;
         TransactionIndex = txIndex;
         BlockHash = blockHash;
-        BlockNumber = blockNumber;
+        BlockNumber = blockNumber is null ? null : checked((ulong)blockNumber.Value);
     }
 
     public virtual Transaction ToTransaction()

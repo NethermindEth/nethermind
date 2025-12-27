@@ -15,7 +15,7 @@ public readonly struct BlockExecutionContext(BlockHeader blockHeader, IReleaseSp
     public readonly BlockHeader Header = blockHeader;
     public readonly Address Coinbase = blockHeader.GasBeneficiary ?? Address.Zero;
     public readonly ulong Number = (ulong)blockHeader.Number;
-    public readonly ulong GasLimit = (ulong)blockHeader.GasLimit;
+    public readonly ulong GasLimit = blockHeader.GasLimitAsULong;
     public readonly ValueHash256 BlobBaseFee = blobBaseFee.ToValueHash();
     public readonly IReleaseSpec Spec = spec;
 

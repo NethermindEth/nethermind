@@ -88,7 +88,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private Transaction CreateReportMaliciousTransactionCore(PersistentReport persistentReport)
         {
             var transaction = ValidatorContract.ReportMalicious(persistentReport.MaliciousValidator, persistentReport.BlockNumber, persistentReport.Proof);
-            transaction.Nonce = _stateProvider.GetNonce(ValidatorContract.NodeAddress);
+            transaction.Nonce = (ulong)_stateProvider.GetNonce(ValidatorContract.NodeAddress);
             return transaction;
         }
 

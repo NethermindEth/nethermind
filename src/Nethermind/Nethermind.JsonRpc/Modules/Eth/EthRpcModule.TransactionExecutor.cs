@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     searchResult ??= _blockFinder.SearchForHeader(blockParameter);
                     if (!searchResult.Value.IsError)
                     {
-                        transactionCall.Gas = searchResult.Value.Object.GasLimit;
+                        transactionCall.Gas = checked((ulong)searchResult.Value.Object.GasLimit);
                     }
                 }
 
@@ -153,7 +153,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 if (_rpcConfig.GasCap is not null)
                 {
-                    tx.GasLimit = long.Min(tx.GasLimit, _rpcConfig.GasCap.Value);
+                    long txGasLimit = checked((long)tx.GasLimit);
+                    txGasLimit = long.Min(txGasLimit, _rpcConfig.GasCap.Value);
+                    tx.GasLimit = checked((ulong)txGasLimit);
                 }
 
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
@@ -197,17 +199,21 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             private static UInt256 GetResultGas(Transaction transaction, CallOutput result)
             {
-                long gas = result.GasSpent;
+                long gas = checked((long)result.GasSpent);
                 long operationGas = result.OperationGas;
                 if (result.AccessList is not null)
                 {
-                    var oldIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
+                    long oldIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
                     transaction.AccessList = result.AccessList;
-                    var newIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
+                    long newIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
                     long updatedAccessListCost = newIntrinsicCost - oldIntrinsicCost;
                     if (gas > operationGas)
                     {
-                        if (gas - operationGas < updatedAccessListCost) gas = operationGas + updatedAccessListCost;
+                        long extra = gas - operationGas;
+                        if (extra < updatedAccessListCost)
+                        {
+                            gas = operationGas + updatedAccessListCost;
+                        }
                     }
                     else
                     {
@@ -215,7 +221,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     }
                 }
 
-                return (UInt256)gas;
+                return (UInt256)checked((ulong)gas);
             }
         }
     }

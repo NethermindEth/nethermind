@@ -38,7 +38,7 @@ public class Block
         new(
             null,
             null,
-            header.WithdrawalsRoot is null ? null : [])
+            header.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>())
     )
     { }
 
@@ -88,9 +88,9 @@ public class Block
 
     public Hash256? ReceiptsRoot => Header.ReceiptsRoot; // do not add setter here
 
-    public long GasLimit => Header.GasLimit; // do not add setter here
+    public ulong GasLimit => Header.GasLimit; // do not add setter here
 
-    public long GasUsed => Header.GasUsed; // do not add setter here
+    public ulong GasUsed => Header.GasUsed; // do not add setter here
 
     public ulong Timestamp => Header.Timestamp; // do not add setter here
 
@@ -158,20 +158,20 @@ public class Block
         builder.Append(Header.ToString("    "));
 
         builder.AppendLine("  Uncles:");
-        foreach (BlockHeader uncle in Body.Uncles ?? [])
+        foreach (BlockHeader uncle in Body.Uncles ?? Array.Empty<BlockHeader>())
         {
             builder.Append(uncle.ToString("    "));
         }
 
         builder.AppendLine("  Transactions:");
-        foreach (Transaction tx in Body?.Transactions ?? [])
+        foreach (Transaction tx in Body?.Transactions ?? Array.Empty<Transaction>())
         {
             builder.Append(tx.ToString("    "));
         }
 
         builder.AppendLine("  Withdrawals:");
 
-        foreach (Withdrawal w in Body?.Withdrawals ?? [])
+        foreach (Withdrawal w in Body?.Withdrawals ?? Array.Empty<Withdrawal>())
         {
             builder.Append(w.ToString("    "));
         }

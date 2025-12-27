@@ -85,7 +85,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayloadV1 = response.Data!;
         executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
         executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
-        executionPayloadV1.GasLimit.Should().Be(10_000_000L);
+        executionPayloadV1.GasLimit.Should().Be(10_000_000UL);
         executionPayloadV1.Should().BeEquivalentTo(sentItem!.Block, o => o.IgnoringCyclicReferences());
         sentItem.Profit.Should().Be(0);
     }
@@ -115,8 +115,8 @@ public partial class EngineModuleTests
         var expected_logsBloom = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
         var expected_prevRandao = "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760";
         var expected_blockNumber = 1;
-        var expected_gasLimit = 0x3d0900L;
-        var expected_gasUsed = 0;
+        var expected_gasLimit = 0x3d0900UL;
+        var expected_gasUsed = 0UL;
         var expected_timestamp = 0x3e9UL;
         var expected_extraData = "0x4e65746865726d696e64"; // Nethermind
         var expected_baseFeePerGas = (UInt256)0;
@@ -228,6 +228,6 @@ public partial class EngineModuleTests
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         ExecutionPayload executionPayloadV1 = response.Data!;
-        executionPayloadV1.GasLimit.Should().Be(4_000_000L);
+        executionPayloadV1.GasLimit.Should().Be(4_000_000UL);
     }
 }

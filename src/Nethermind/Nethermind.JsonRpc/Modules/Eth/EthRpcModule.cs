@@ -269,7 +269,7 @@ public partial class EthRpcModule(
             : ResultWrapper<byte[]>.Success(
                 _stateReader.TryGetAccount(header!, address, out AccountStruct account)
                     ? _stateReader.GetCode(account.CodeHash)
-                    : []);
+                    : Array.Empty<byte>());
     }
 
     public ResultWrapper<string> eth_sign(Address addressData, byte[] message)

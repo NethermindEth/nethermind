@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Test
         public void Is_bump_on_1559_eip_block()
         {
             int londonBlock = 5;
-            long gasLimit = 1000000000000000000;
+            ulong gasLimit = 1000000000000000000;
             OverridableReleaseSpec spec = new(London.Instance)
             {
                 Eip1559TransitionBlock = londonBlock
@@ -29,14 +29,15 @@ namespace Nethermind.Consensus.Test
             TargetAdjustedGasLimitCalculator targetedAdjustedGasLimitCalculator = new(specProvider, new BlocksConfig());
             BlockHeader header = Build.A.BlockHeader.WithNumber(londonBlock - 1).WithGasLimit(gasLimit).TestObject;
             long actualValue = targetedAdjustedGasLimitCalculator.GetGasLimit(header);
-            Assert.That(actualValue, Is.EqualTo(gasLimit * Eip1559Constants.DefaultElasticityMultiplier));
+            long expectedValue = checked((long)gasLimit) * Eip1559Constants.DefaultElasticityMultiplier;
+            Assert.That(actualValue, Is.EqualTo(expectedValue));
         }
 
         [TestCase(30_000_000, 100_000_000, 30029295)]
         public void Is_calculating_correct_gasLimit(long currentGasLimit, long targetGasLimit, long expectedGasLimit)
         {
             int blockNumber = 20_000_000;
-            long gasLimit = currentGasLimit;
+            ulong gasLimit = checked((ulong)currentGasLimit);
             TestSpecProvider specProvider = new(Prague.Instance);
             TargetAdjustedGasLimitCalculator targetedAdjustedGasLimitCalculator = new(specProvider,
                 new BlocksConfig()
@@ -52,7 +53,7 @@ namespace Nethermind.Consensus.Test
         public void DoesNot_go_below_minimum()
         {
             int londonBlock = 5;
-            long gasLimit = 5000;
+            ulong gasLimit = 5000;
             TestSpecProvider specProvider = new(London.Instance);
             TargetAdjustedGasLimitCalculator targetedAdjustedGasLimitCalculator = new(specProvider, new BlocksConfig() { TargetBlockGasLimit = 1 });
             BlockHeader header = Build.A.BlockHeader.WithNumber(londonBlock - 1).WithGasLimit(gasLimit).TestObject;

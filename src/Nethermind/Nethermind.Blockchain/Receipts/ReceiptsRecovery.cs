@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Receipts
             private readonly bool _forceRecoverSender;
             private readonly IEthereumEcdsa _ecdsa;
 
-            private long _gasUsedBefore = 0;
+            private ulong _gasUsedBefore = 0;
             private int _transactionIndex = 0;
 
             public RecoveryContext(IReleaseSpec releaseSpec, ReceiptRecoveryBlock block, bool forceRecoverSender, IEthereumEcdsa ecdsa)
@@ -152,7 +152,7 @@ namespace Nethermind.Blockchain.Receipts
                 IncrementContext(receipt.GasUsedTotal);
             }
 
-            private void IncrementContext(long gasUsedTotal)
+            private void IncrementContext(ulong gasUsedTotal)
             {
                 _transactionIndex++;
                 _gasUsedBefore = gasUsedTotal;

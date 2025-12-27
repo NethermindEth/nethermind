@@ -147,11 +147,11 @@ namespace Nethermind.Evm.Test.Tracing
         public void Handles_well_revert()
         {
             using TestEnvironment testEnvironment = new();
-            long gasLimit = 100_000_000;
+            ulong gasLimit = 100_000_000UL;
             Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-            long gasLeft = gasLimit - 22000;
+            ulong gasLeft = gasLimit - 22000UL;
             testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
             gasLeft = 63 * gasLeft / 64;
@@ -580,11 +580,11 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(err, Is.Null);
         }
 
-        [TestCase(50_000, false)]
-        [TestCase(500_000, false)]
-        [TestCase(1_000_000, false)]
-        [TestCase(1_100_000, true)]
-        public void Should_estimate_gas_for_explicit_gas_check_and_revert(long gasLimit, bool shouldSucceed)
+        [TestCase(50_000UL, false)]
+        [TestCase(500_000UL, false)]
+        [TestCase(1_000_000UL, false)]
+        [TestCase(1_100_000UL, true)]
+        public void Should_estimate_gas_for_explicit_gas_check_and_revert(ulong gasLimit, bool shouldSucceed)
         {
             TestEnvironment testEnvironment = new();
             Address contractAddress = TestItem.AddressB;
@@ -619,11 +619,11 @@ namespace Nethermind.Evm.Test.Tracing
         public void Should_succeed_with_internal_revert()
         {
             using TestEnvironment testEnvironment = new();
-            long gasLimit = 100_000;
+            ulong gasLimit = 100_000UL;
             Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-            long gasLeft = gasLimit - 22000;
+            ulong gasLeft = gasLimit - 22000UL;
             testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
 
@@ -652,11 +652,11 @@ namespace Nethermind.Evm.Test.Tracing
         public void Should_fail_with_top_level_revert()
         {
             using TestEnvironment testEnvironment = new();
-            long gasLimit = 100_000;
+            ulong gasLimit = 100_000UL;
             Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-            long gasLeft = gasLimit - 22000;
+            ulong gasLeft = gasLimit - 22000UL;
             testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
 

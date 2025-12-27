@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Contracts
                 Data = transactionData,
                 To = (contractAddress ?? ContractAddress) ?? throw new ArgumentNullException(nameof(contractAddress)),
                 SenderAddress = sender ?? Address.SystemUser,
-                GasLimit = gasLimit,
+                GasLimit = checked((ulong)gasLimit),
                 GasPrice = UInt256.Zero,
             };
 

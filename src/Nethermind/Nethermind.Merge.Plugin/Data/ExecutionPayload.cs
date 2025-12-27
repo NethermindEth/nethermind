@@ -35,9 +35,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public Address FeeRecipient { get; set; } = Address.Zero;
 
-    public long GasLimit { get; set; }
+    public ulong GasLimit { get; set; }
 
-    public long GasUsed { get; set; }
+    public ulong GasUsed { get; set; }
 
     public Bloom LogsBloom { get; set; } = Bloom.Empty;
 

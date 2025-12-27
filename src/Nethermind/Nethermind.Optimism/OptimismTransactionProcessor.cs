@@ -59,7 +59,7 @@ public class OptimismTransactionProcessor(
                 WorldState.IncrementNonce(tx.SenderAddress!);
             }
             header.GasUsed += tx.GasLimit;
-            tracer.MarkAsFailed(tx.To!, tx.GasLimit, [], $"failed deposit: {result.ErrorDescription}");
+            tracer.MarkAsFailed(tx.To!, new GasConsumed(checked((long)tx.GasLimit), 0), [], $"failed deposit: {result.ErrorDescription}");
             result = TransactionResult.Ok;
         }
 
@@ -98,7 +98,7 @@ public class OptimismTransactionProcessor(
             }
 
             UInt256 l1Cost = _currentTxL1Cost ??= costHelper.ComputeL1Cost(tx, header, WorldState);
-            UInt256 maxOperatorCost = costHelper.ComputeOperatorCost(tx.GasLimit, header, WorldState);
+            UInt256 maxOperatorCost = costHelper.ComputeOperatorCost(checked((ulong)tx.GasLimit), header, WorldState);
 
             if (UInt256.SubtractUnderflow(balanceLeft, l1Cost + maxOperatorCost, out balanceLeft))
             {
@@ -157,8 +157,8 @@ public class OptimismTransactionProcessor(
 
             if (opSpecHelper.IsIsthmus(header))
             {
-                UInt256 operatorCostMax = costHelper.ComputeOperatorCost(tx.GasLimit, header, WorldState);
-                UInt256 operatorCostUsed = costHelper.ComputeOperatorCost(spentGas, header, WorldState);
+                UInt256 operatorCostMax = costHelper.ComputeOperatorCost(checked((ulong)tx.GasLimit), header, WorldState);
+                UInt256 operatorCostUsed = costHelper.ComputeOperatorCost(checked((ulong)spentGas), header, WorldState);
 
                 if (operatorCostMax > operatorCostUsed)
                 {
@@ -181,8 +181,8 @@ public class OptimismTransactionProcessor(
         {
             // Record deposits as using all their gas
             // System Transactions are special & are not recorded as using any gas (anywhere)
-            var gas = tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
-            return gas;
+            long gas = tx.IsOPSystemTransaction ? 0 : checked((long)tx.GasLimit);
+            return new GasConsumed(gas, 0);
         }
 
         return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas);

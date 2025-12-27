@@ -1269,14 +1269,14 @@ public partial class EthRpcModuleTests
     }
 
     [TestCase(null)]
-    [TestCase(0)]
+    [TestCase(0L)]
     public static void Should_handle_gasCap_as_max_if_null_or_zero(long? gasCap)
     {
         LegacyTransactionForRpc rpcTx = new LegacyTransactionForRpc();
 
         rpcTx.EnsureDefaults(gasCap);
 
-        Assert.That(rpcTx.Gas, Is.EqualTo(long.MaxValue), "Gas must be set to max if gasCap is null or 0");
+        Assert.That(rpcTx.Gas, Is.EqualTo(ulong.MaxValue), "Gas must be set to max if gasCap is null or 0");
     }
 
     [Test]
@@ -1294,14 +1294,14 @@ public partial class EthRpcModuleTests
     [TestCase(0)]
     public static void ToTransactionWithDefaults_and_EnsureDefaults_same_GasLimit(long? gasCap)
     {
-        long toTransactionWitDefaultsGasLimit;
+        ulong toTransactionWitDefaultsGasLimit;
         {
             var rpcTx = new LegacyTransactionForRpc();
             Transaction tx = rpcTx.ToTransaction();
             toTransactionWitDefaultsGasLimit = tx.GasLimit;
         }
 
-        long ensureDefaultsGasLimit;
+        ulong ensureDefaultsGasLimit;
         {
             var rpcTx = new LegacyTransactionForRpc();
             rpcTx.EnsureDefaults(gasCap);

@@ -22,7 +22,7 @@ public class BlockHeader
         Address beneficiary,
         in UInt256 difficulty,
         long number,
-        long gasLimit,
+        ulong gasLimit,
         ulong timestamp,
         byte[] extraData,
         ulong? blobGasUsed = null,
@@ -57,11 +57,11 @@ public class BlockHeader
     public Bloom? Bloom { get; set; }
     public UInt256 Difficulty;
     public long Number { get; set; }
-    public long GasUsed { get; set; }
-    public long GasLimit { get; set; }
+    public ulong GasUsed { get; set; }
+    public ulong GasLimit { get; set; }
     public ulong Timestamp { get; set; }
     public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
-    public byte[] ExtraData { get; set; } = [];
+    public byte[] ExtraData { get; set; } = Array.Empty<byte>();
     public Hash256? MixHash { get; set; }
     public Hash256? Random => MixHash;
     public ulong Nonce { get; set; }
@@ -75,6 +75,12 @@ public class BlockHeader
     public Hash256? RequestsHash { get; set; }
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
+
+    public ulong GasLimitAsULong => GasLimit;
+    public ulong GasUsedAsULong => GasUsed;
+
+    public long GasLimitAsLong => checked((long)GasLimit);
+    public long GasUsedAsLong => checked((long)GasUsed);
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);

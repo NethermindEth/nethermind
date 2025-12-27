@@ -22,29 +22,32 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
         if (specFor1559.IsEip1559Enabled)
         {
             UInt256 parentBaseFee = parent.BaseFeePerGas;
-            long gasDelta;
+            ulong gasDelta;
             UInt256 feeDelta;
             bool isForkBlockNumber = specFor1559.Eip1559TransitionBlock == parent.Number + 1;
-            long parentGasTarget = parent.GasLimit / specFor1559.ElasticityMultiplier;
+            // parent.GasLimit/GasUsed are stored as signed long in header; cast to ulong for EIP-1559 math
+            ulong parentGasLimit = (ulong)parent.GasLimit;
+            ulong parentGasUsed = (ulong)parent.GasUsed;
+            ulong parentGasTarget = parentGasLimit / (ulong)specFor1559.ElasticityMultiplier;
             if (isForkBlockNumber)
-                parentGasTarget = parent.GasLimit;
+                parentGasTarget = parentGasLimit;
 
-            if (parent.GasUsed == parentGasTarget)
+            if (parentGasUsed == parentGasTarget)
             {
                 expectedBaseFee = parent.BaseFeePerGas;
             }
-            else if (parent.GasUsed > parentGasTarget)
+            else if (parentGasUsed > parentGasTarget)
             {
-                gasDelta = parent.GasUsed - parentGasTarget;
+                gasDelta = parentGasUsed - parentGasTarget;
                 feeDelta = UInt256.Max(
-                    parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / specFor1559.BaseFeeMaxChangeDenominator,
+                    parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / (UInt256)specFor1559.BaseFeeMaxChangeDenominator,
                     UInt256.One);
                 expectedBaseFee = parentBaseFee + feeDelta;
             }
             else
             {
-                gasDelta = parentGasTarget - parent.GasUsed;
-                feeDelta = parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / specFor1559.BaseFeeMaxChangeDenominator;
+                gasDelta = parentGasTarget - parentGasUsed;
+                feeDelta = parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / (UInt256)specFor1559.BaseFeeMaxChangeDenominator;
                 expectedBaseFee = UInt256.Max(parentBaseFee - feeDelta, 0);
             }
 

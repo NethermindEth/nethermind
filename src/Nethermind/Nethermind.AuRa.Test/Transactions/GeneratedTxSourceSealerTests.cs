@@ -54,12 +54,12 @@ namespace Nethermind.AuRa.Test.Transactions
             Transaction sealedTx2 = sealedTxs.Skip(1).First();
 
             sealedTx1.IsSigned.Should().BeTrue();
-            sealedTx1.Nonce.Should().Be(expectedNonce);
+            sealedTx1.Nonce.Should().Be(checked(expectedNonce.ToUInt64(null)));
             sealedTx1.Hash.Should().Be(tx1.CalculateHash());
             sealedTx1.Timestamp.Should().Be(expectedTimeStamp);
 
             sealedTx2.IsSigned.Should().BeTrue();
-            sealedTx2.Nonce.Should().Be(expectedNonce + 1);
+            sealedTx2.Nonce.Should().Be(checked((expectedNonce + 1).ToUInt64(null)));
             sealedTx2.Hash.Should().NotBe(tx1.CalculateHash());
             sealedTx2.Timestamp.Should().Be(expectedTimeStamp);
 

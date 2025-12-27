@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json.Serialization;
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core;
@@ -43,7 +44,14 @@ public record CallFrame
         }
     }
 
-    public long Gas { get; set; }
+    public long gas { get; set; }
+
+    [JsonIgnore]
+    public long Gas
+    {
+        get => gas;
+        set => gas = value;
+    }
 
     public UInt256? Value
     {
@@ -69,7 +77,7 @@ public record CallFrame
     public ITypedArray<byte> getFrom() => _fromConverted ??= From.Bytes.ToTypedScriptArray();
     public ITypedArray<byte> getTo() => _toConverted ??= To.Bytes.ToTypedScriptArray();
     public ITypedArray<byte> getInput() => _inputConverted ??= Input.ToTypedScriptArray();
-    public long getGas() => Gas;
+    public long getGas() => gas;
     public dynamic getValue() => (_valueConverted ??= Value?.ToBigInteger()) ?? Undefined.Value;
     // ReSharper restore InconsistentNaming
 }
