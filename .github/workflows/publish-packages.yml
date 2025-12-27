@@ -170,9 +170,11 @@ jobs:
 
       - name: Submit package
         working-directory: src/Nethermind/Nethermind.ReferenceAssemblies
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           dotnet pack -c release
-          dotnet nuget push ../artifacts/**/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json
+          dotnet nuget push ../artifacts/**/*.nupkg -k "$NUGET_API_KEY" -s https://api.nuget.org/v3/index.json
 
       - name: Create GitHub app token
         id: gh-app
