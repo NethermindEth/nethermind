@@ -34,6 +34,9 @@ namespace Nethermind.State
         private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = new();
         private readonly HashSet<AddressAsKey> _committedThisRound = new();
         private readonly HashSet<AddressAsKey> _nullAccountReads = new();
+        // Tracks accounts deleted during this block
+        // Used by CreateEmptyAccountIfDeletedOrNew to detect cross-transaction deletions
+        private readonly HashSet<AddressAsKey> _deletedThisBlock = new();
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
         // False negatives are fine as they will just result in a overwrite set
@@ -439,7 +442,7 @@ namespace Nethermind.State
             {
                 //we only want to persist empty accounts if they were deleted or created as empty
                 //we don't want to do it for account empty due to a change (e.g. changed balance to zero)
-                var lastChange = _changes[value.Peek()];
+                Change lastChange = _changes[value.Peek()];
                 if (lastChange.ChangeType == ChangeType.Delete ||
                     (lastChange.ChangeType is ChangeType.Touch or ChangeType.New && lastChange.Account.IsEmpty))
                 {
@@ -448,12 +451,30 @@ namespace Nethermind.State
 
                     Account account = Account.TotallyEmpty;
                     PushRecreateEmpty(address, account, value);
+                    return;
                 }
             }
+
+            // Check block-level deletions - handles accounts deleted in earlier transactions
+            if (!_deletedThisBlock.Contains(address)) return;
+            {
+                // Account was deleted earlier in this block
+                _needsStateRootUpdate = true;
+                if (_logger.IsTrace) TraceBlockLevel(address);
+
+                Account account = Account.TotallyEmpty;
+                StackList<int> stack = SetupCache(address);
+                PushRecreateEmpty(address, account, stack);
+            }
+            return;
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address)
                 => _logger.Trace($"Creating zombie account: {address}");
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceBlockLevel(Address address)
+                => _logger.Trace($"Creating zombie account (block-level deletion): {address}");
         }
 
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
@@ -549,6 +570,7 @@ namespace Nethermind.State
                                 if (isTracing) TraceRemoveEmpty(change);
                                 SetState(change.Address, null);
                                 trace?.AddToTrace(change.Address, null);
+                                _deletedThisBlock.Add(change.Address);
                             }
                             else
                             {
@@ -566,6 +588,11 @@ namespace Nethermind.State
                                 if (isTracing) TraceCreate(change);
                                 SetState(change.Address, change.Account);
                                 trace?.AddToTrace(change.Address, change.Account);
+                            }
+                            else
+                            {
+                                // Empty account implicitly deleted by EIP-158
+                                _deletedThisBlock.Add(change.Address);
                             }
 
                             break;
@@ -597,6 +624,9 @@ namespace Nethermind.State
                                 SetState(change.Address, null);
                                 trace?.AddToTrace(change.Address, null);
                             }
+
+                            // Track deletion regardless of whether it was created in same TX
+                            _deletedThisBlock.Add(change.Address);
 
                             break;
                         }
@@ -840,6 +870,7 @@ namespace Nethermind.State
             {
                 _blockCodeInsertFilter.Clear();
                 _blockChanges.Clear();
+                _deletedThisBlock.Clear();
                 _codeBatch?.Clear();
             }
             _intraTxCache.ResetAndClear();
