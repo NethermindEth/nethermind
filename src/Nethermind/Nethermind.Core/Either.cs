@@ -40,7 +40,7 @@ public readonly struct Either<T1, T2>
         return value2 is not null;
     }
 
-    public void To(out T1 val) => val = value1 ?? throw new ArgumentException(nameof(T1));
+    public void To(out T1 val) => val = value1 ?? throw new InvalidOperationException($"Either does not contain {nameof(T1)}");
 
-    public void To(out T2 val) => val = value2 ?? throw new ArgumentException(nameof(T2));
+    public void To(out T2 val) => val = value2 ?? throw new InvalidOperationException($"Either does not contain {nameof(T2)}");
 }
