@@ -76,7 +76,11 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        if (tx.GasLimit != (spec.IsPacayaEnabled || spec.IsShastaEnabled ? AnchorV3V4GasLimit : AnchorGasLimit))
+        ulong expectedGasLimit = spec.IsPacayaEnabled || spec.IsShastaEnabled
+            ? checked((ulong)AnchorV3V4GasLimit)
+            : checked((ulong)AnchorGasLimit);
+
+        if (tx.GasLimit != expectedGasLimit)
         {
             errorMessage = "Anchor transaction must have correct gas limit";
             return false;

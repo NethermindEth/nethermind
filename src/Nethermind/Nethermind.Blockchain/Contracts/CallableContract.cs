@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="gasLimit">Gas limit for generated transaction.</param>
         /// <param name="arguments">Arguments to the function.</param>
         /// <returns>Deserialized return value of the <see cref="functionName"/> based on its definition.</returns>
-        protected object[] Call(BlockHeader header, string functionName, Address sender, long gasLimit, params object[] arguments)
+        protected object[] Call(BlockHeader header, string functionName, Address sender, ulong gasLimit, params object[] arguments)
         {
             var function = AbiDefinition.GetFunction(functionName);
             var transaction = GenerateTransaction<SystemTransaction>(functionName, sender, gasLimit, header, arguments);
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="result">Deserialized return value of the <see cref="functionName"/> based on its definition.</param>
         /// <param name="arguments">Arguments to the function.</param>
         /// <returns>true if function was <see cref="StatusCode.Success"/> otherwise false.</returns>
-        protected bool TryCall(BlockHeader header, string functionName, Address sender, long gasLimit, out object[] result, params object[] arguments)
+        protected bool TryCall(BlockHeader header, string functionName, Address sender, ulong gasLimit, out object[] result, params object[] arguments)
         {
             var function = AbiDefinition.GetFunction(functionName);
             var transaction = GenerateTransaction<SystemTransaction>(functionName, sender, gasLimit, header, arguments);

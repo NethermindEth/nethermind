@@ -69,7 +69,7 @@ namespace Nethermind.Evm.Test
             TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
             TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
-            TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2300 - 800), Bytes.FromHexString(codeHex));
+            TestAllTracerWithOutput receipt = Execute(BlockNumber, checked((ulong)(21000 + gasUsed + (2300 - 800))), Bytes.FromHexString(codeHex));
             Assert.That(receipt.StatusCode, Is.EqualTo(outOfGasExpected ? 0 : 1));
         }
 
@@ -81,7 +81,7 @@ namespace Nethermind.Evm.Test
             TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
             TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
-            TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2301 - 800), Bytes.FromHexString(codeHex));
+            TestAllTracerWithOutput receipt = Execute(BlockNumber, checked((ulong)(21000 + gasUsed + (2301 - 800))), Bytes.FromHexString(codeHex));
             Assert.That(receipt.StatusCode, Is.EqualTo(1));
         }
 
@@ -93,7 +93,7 @@ namespace Nethermind.Evm.Test
             TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
             TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
-            TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2299 - 800), Bytes.FromHexString(codeHex));
+            TestAllTracerWithOutput receipt = Execute(BlockNumber, checked((ulong)(21000 + gasUsed + (2299 - 800))), Bytes.FromHexString(codeHex));
             Assert.That(receipt.StatusCode, Is.EqualTo(0));
         }
     }

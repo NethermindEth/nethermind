@@ -500,7 +500,7 @@ namespace Nethermind.State
                 ThrowStartOfCommitIsNull(stepsBack);
             }
 
-            Dictionary<AddressAsKey, ChangeTrace>? trace = !stateTracer.IsTracingState ? null : [];
+            Dictionary<AddressAsKey, ChangeTrace>? trace = !stateTracer.IsTracingState ? null : new Dictionary<AddressAsKey, ChangeTrace>();
 
             ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
             for (int i = 0; i <= stepsBack; i++)

@@ -76,7 +76,7 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare CallWithValue(Address address, long gasLimit)
+        public Prepare CallWithValue(Address address, ulong gasLimit)
         {
             PushData(0);
             PushData(0);
@@ -89,7 +89,7 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare Call(Address address, long gasLimit)
+        public Prepare Call(Address address, ulong gasLimit)
         {
             PushData(0);
             PushData(0);
@@ -102,12 +102,12 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare CallWithInput(Address address, long gasLimit, string input)
+        public Prepare CallWithInput(Address address, ulong gasLimit, string input)
         {
             return CallWithInput(address, gasLimit, Bytes.FromHexString(input));
         }
 
-        public Prepare CallWithInput(Address address, long gasLimit, byte[]? input = null)
+        public Prepare CallWithInput(Address address, ulong gasLimit, byte[]? input = null)
         {
             if (input is not null)
             {
@@ -129,7 +129,7 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare CallWithValue(Address address, long gasLimit, in UInt256 value)
+        public Prepare CallWithValue(Address address, ulong gasLimit, in UInt256 value)
         {
             PushData(0);
             PushData(0);
@@ -142,7 +142,7 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare DelegateCall(Address address, long gasLimit)
+        public Prepare DelegateCall(Address address, ulong gasLimit)
         {
             PushData(0);
             PushData(0);
@@ -154,7 +154,7 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare CallCode(Address address, long gasLimit, UInt256? transferValue = null, UInt256? dataOffset = null)
+        public Prepare CallCode(Address address, ulong gasLimit, UInt256? transferValue = null, UInt256? dataOffset = null)
         {
             PushData(0);
             PushData(0);
@@ -167,7 +167,7 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare StaticCall(Address address, long gasLimit)
+        public Prepare StaticCall(Address address, ulong gasLimit)
         {
             PushData(0);
             PushData(0);
@@ -188,7 +188,7 @@ namespace Nethermind.Evm
         /// <param name="input">Optional 32 byte input</param>
         /// <returns>Prepare with call bytecode</returns>
         /// <exception cref="Exception">Throws exception if callType is incorrect</exception>
-        public Prepare DynamicCallWithInput(Instruction callType, Address address, long gasLimit, byte[]? input = null)
+        public Prepare DynamicCallWithInput(Instruction callType, Address address, ulong gasLimit, byte[]? input = null)
         {
             if (callType != Instruction.CALL &&
                 callType != Instruction.STATICCALL &&

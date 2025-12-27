@@ -146,7 +146,7 @@ namespace Nethermind.Evm.Test
                 .Call(deploymentAddress, 100000)
                 .Op(Instruction.STOP).Done;
 
-            long gasLimit = 1000000;
+            ulong gasLimit = 1000000;
 
             EthereumEcdsa ecdsa = new(1);
             // deploy create 2

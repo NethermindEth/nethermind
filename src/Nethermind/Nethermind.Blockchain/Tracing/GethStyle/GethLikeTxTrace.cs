@@ -23,7 +23,14 @@ public class GethLikeTxTrace : IDisposable
 
     public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
 
-    public long Gas { get; set; }
+    public long gas { get; set; }
+
+    [JsonIgnore]
+    public long Gas
+    {
+        get => gas;
+        set => gas = value;
+    }
 
     public bool Failed { get; set; }
 

@@ -978,7 +978,7 @@ internal static partial class EvmInstructions
             {
                 ReadOnlyMemory<byte> memoryTrace = vm.VmState.Memory.Inspect(in dataOffset, 32);
                 txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
-                txTracer.ReportOperationRemainingGas(gasAvailable);
+                txTracer.ReportOperationRemainingGas((ulong)gasAvailable);
                 txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
                 txTracer.ReportGasUpdateForVmTrace(callGas, gasAvailable);
             }

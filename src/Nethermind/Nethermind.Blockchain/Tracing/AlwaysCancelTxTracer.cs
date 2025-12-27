@@ -50,11 +50,11 @@ public class AlwaysCancelTxTracer : ITxTracer
 
     public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0) => throw new OperationCanceledException(ErrorMessage);
+    public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportOperationError(EvmExceptionType error) => throw new OperationCanceledException(ErrorMessage);
 
-    public void ReportOperationRemainingGas(long gas) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportOperationRemainingGas(ulong gas) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportLog(LogEntry log) => throw new OperationCanceledException(ErrorMessage);
 
@@ -87,13 +87,14 @@ public class AlwaysCancelTxTracer : ITxTracer
 
     public void ReportStorageRead(in StorageCell storageCell) => throw new OperationCanceledException(ErrorMessage);
 
-    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) => throw new OperationCanceledException(ErrorMessage);
 
-    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => throw new OperationCanceledException(ErrorMessage);
     public void ReportActionError(EvmExceptionType exceptionType) => throw new OperationCanceledException(ErrorMessage);
-    public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output) => throw new OperationCanceledException(ErrorMessage);
 
-    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => throw new OperationCanceledException(ErrorMessage);
     public void ReportBlockHash(Hash256 blockHash) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportByteCode(ReadOnlyMemory<byte> byteCode) => throw new OperationCanceledException(ErrorMessage);

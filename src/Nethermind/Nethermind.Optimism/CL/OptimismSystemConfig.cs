@@ -11,6 +11,7 @@ public sealed record OptimismSystemConfig
     public required Address BatcherAddr { get; init; }
     public required byte[] Overhead { get; init; }
     public required byte[] Scalar { get; init; }
+    [JsonPropertyName("gasLimit")]
     public required ulong GasLimit { get; init; }
     [JsonPropertyName("eip1559Params")]
     public required byte[] EIP1559Params { get; init; }

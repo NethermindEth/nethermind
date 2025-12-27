@@ -80,7 +80,7 @@ public class TransactionExtensionsTests
         public UInt256 FeeCap { get; set; }
         public UInt256 GasPrice { get; set; }
         public TxType Type { get; set; }
-        public long GasLimit { get; set; }
+        public ulong GasLimit { get; set; }
         public UInt256 Value { get; set; }
         public bool IsEip1559Enabled { get; set; }
         public UInt256 ExpectedPotentialCostResult { get; set; }

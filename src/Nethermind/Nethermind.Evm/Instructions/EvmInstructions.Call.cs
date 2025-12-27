@@ -199,15 +199,15 @@ internal static partial class EvmInstructions
         // If gasLimit exceeds the host's representable range, treat as out-of-gas.
         if (gasLimit >= long.MaxValue) goto OutOfGas;
 
-        long gasLimitUl = (long)gasLimit;
-        if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
+        long gasLimitValue = (long)gasLimit;
+        if (!TGasPolicy.UpdateGas(ref gas, gasLimitValue)) goto OutOfGas;
 
         // Add call stipend if value is being transferred.
         if (!transferValue.IsZero)
         {
             if (vm.TxTracer.IsTracingRefunds)
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
-            gasLimitUl += GasCostOf.CallStipend;
+            gasLimitValue += GasCostOf.CallStipend;
         }
 
         // Check call depth and balance of the caller.
@@ -228,15 +228,15 @@ internal static partial class EvmInstructions
 
             if (TTracingInst.IsActive)
             {
-                vm.TxTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(in gas));
+                vm.TxTracer.ReportOperationRemainingGas((ulong)TGasPolicy.GetRemainingGas(in gas));
                 vm.TxTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
             }
 
             // Refund the remaining gas to the caller.
-            TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+            TGasPolicy.UpdateGasUp(ref gas, gasLimitValue);
             if (TTracingInst.IsActive)
             {
-                vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
+                vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitValue, TGasPolicy.GetRemainingGas(in gas));
             }
             return EvmExceptionType.None;
         }
@@ -251,7 +251,7 @@ internal static partial class EvmInstructions
         {
             vm.ReturnDataBuffer = default;
             stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
-            TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+            TGasPolicy.UpdateGasUp(ref gas, gasLimitValue);
             return FastCall(vm, spec, in transferValue, target);
         }
 
@@ -278,7 +278,7 @@ internal static partial class EvmInstructions
 
         // Rent a new call frame for executing the call.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
-            gas: TGasPolicy.FromLong(gasLimitUl),
+            gas: TGasPolicy.FromLong(gasLimitValue),
             outputDestination: outputOffset.ToLong(),
             outputLength: outputLength.ToLong(),
             executionType: TOpCall.ExecutionType,

@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core;
+using System.Numerics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using static Nethermind.Serialization.Rlp.Rlp;
@@ -43,7 +44,11 @@ namespace Nethermind.Serialization.Rlp
             }
 
             txReceipt.Sender = rlpStream.DecodeAddress();
-            txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
+            {
+                BigInteger big = rlpStream.DecodeUBigInt();
+                if (big > ulong.MaxValue || big < 0) throw new OverflowException("GasUsedTotal overflow");
+                txReceipt.GasUsedTotal = (ulong)big;
+            }
 
             int sequenceLength = rlpStream.ReadSequenceLength();
             int lastCheck = sequenceLength + rlpStream.Position;
@@ -90,7 +95,11 @@ namespace Nethermind.Serialization.Rlp
             }
 
             txReceipt.Sender = decoderContext.DecodeAddress();
-            txReceipt.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+            {
+                BigInteger big = decoderContext.DecodeUBigInt();
+                if (big > ulong.MaxValue || big < 0) throw new OverflowException("GasUsedTotal overflow");
+                txReceipt.GasUsedTotal = (ulong)big;
+            }
 
             int sequenceLength = decoderContext.ReadSequenceLength();
             int lastCheck = sequenceLength + decoderContext.Position;
@@ -141,7 +150,11 @@ namespace Nethermind.Serialization.Rlp
             }
 
             decoderContext.DecodeAddressStructRef(out item.Sender);
-            item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+            {
+                BigInteger big = decoderContext.DecodeUBigInt();
+                if (big > ulong.MaxValue || big < 0) throw new OverflowException("GasUsedTotal overflow");
+                item.GasUsedTotal = (ulong)big;
+            }
 
             (int PrefixLength, int ContentLength) =
                 decoderContext.PeekPrefixAndContentLength();
@@ -199,7 +212,7 @@ namespace Nethermind.Serialization.Rlp
 
             rlpStream.StartSequence(logsLength);
 
-            LogEntry[] logs = item.Logs ?? [];
+            LogEntry[] logs = item.Logs ?? Array.Empty<LogEntry>();
             for (int i = 0; i < logs.Length; i++)
             {
                 CompactLogEntryDecoder.Encode(rlpStream, logs[i]);
@@ -236,7 +249,7 @@ namespace Nethermind.Serialization.Rlp
         private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
-            LogEntry[] logs = item.Logs ?? [];
+            LogEntry[] logs = item.Logs ?? Array.Empty<LogEntry>();
             for (int i = 0; i < logs.Length; i++)
             {
                 logsLength += CompactLogEntryDecoder.Instance.GetLength(logs[i]);

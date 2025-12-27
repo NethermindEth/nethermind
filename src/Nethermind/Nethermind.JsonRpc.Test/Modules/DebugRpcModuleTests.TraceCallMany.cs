@@ -28,7 +28,7 @@ public partial class DebugRpcModuleTests
         Address? from = null,
         Address? to = null,
         UInt256? value = null,
-        long gas = GasCostOf.Transaction) =>
+        ulong gas = GasCostOf.Transaction) =>
         new()
         {
             From = from ?? TestItem.AddressD,

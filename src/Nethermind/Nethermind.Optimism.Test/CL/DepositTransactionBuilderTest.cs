@@ -261,7 +261,7 @@ public class DepositTransactionBuilderTest
             .WithSenderAddress(from)
             .WithTo(to)
             .WithValue(depositLogEventV0.Value)
-            .WithGasLimit((long)depositLogEventV0.Gas) // WARNING: dangerous cast
+            .WithGasLimit((ulong)depositLogEventV0.Gas) // WARNING: dangerous cast
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)
             .WithMaxFeePerGas(0)
@@ -325,7 +325,7 @@ public class DepositTransactionBuilderTest
             .WithSenderAddress(from)
             .WithTo(null)
             .WithValue(depositLogEventV0.Value)
-            .WithGasLimit((long)depositLogEventV0.Gas) // WARNING: dangerous cast
+            .WithGasLimit((ulong)depositLogEventV0.Gas) // WARNING: dangerous cast
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)
             .WithMaxFeePerGas(0)
@@ -413,7 +413,7 @@ public class DepositTransactionBuilderTest
             .WithSenderAddress(from)
             .WithTo(to)
             .WithValue(depositLogEventV0.Value)
-            .WithGasLimit((long)depositLogEventV0.Gas) // WARNING: dangerous cast
+            .WithGasLimit((ulong)depositLogEventV0.Gas) // WARNING: dangerous cast
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)
             .WithMaxFeePerGas(0)
@@ -502,7 +502,7 @@ public class DepositTransactionBuilderTest
             .WithSenderAddress(from)
             .WithTo(to)
             .WithValue(depositLogEventV0_0.Value)
-            .WithGasLimit((long)depositLogEventV0_0.Gas) // WARNING: dangerous cast
+            .WithGasLimit((ulong)depositLogEventV0_0.Gas) // WARNING: dangerous cast
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)
             .WithMaxFeePerGas(0)
@@ -516,7 +516,7 @@ public class DepositTransactionBuilderTest
             .WithSenderAddress(from)
             .WithTo(null)
             .WithValue(depositLogEventV0_1.Value)
-            .WithGasLimit((long)depositLogEventV0_1.Gas) // WARNING: dangerous cast
+            .WithGasLimit((ulong)depositLogEventV0_1.Gas) // WARNING: dangerous cast
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)
             .WithMaxFeePerGas(0)
@@ -690,7 +690,7 @@ public class DepositTransactionBuilderTest
             .WithSenderAddress(from_0)
             .WithTo(to_0)
             .WithValue(depositLogEventV0_0.Value)
-            .WithGasLimit((long)depositLogEventV0_0.Gas) // WARNING: dangerous cast
+            .WithGasLimit((ulong)depositLogEventV0_0.Gas) // WARNING: dangerous cast
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)
             .WithMaxFeePerGas(0)
@@ -704,7 +704,7 @@ public class DepositTransactionBuilderTest
             .WithSenderAddress(from_1)
             .WithTo(to_1)
             .WithValue(depositLogEventV0_1.Value)
-            .WithGasLimit((long)depositLogEventV0_1.Gas) // WARNING: dangerous cast
+            .WithGasLimit((ulong)depositLogEventV0_1.Gas) // WARNING: dangerous cast
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)
             .WithMaxFeePerGas(0)

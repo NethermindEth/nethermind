@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain
 
         public long HeadNumber { get; private set; }
 
-        public long? BlockGasLimit { get; internal set; }
+        public ulong? BlockGasLimit { get; internal set; }
 
         public UInt256 CurrentBaseFee { get; private set; }
 

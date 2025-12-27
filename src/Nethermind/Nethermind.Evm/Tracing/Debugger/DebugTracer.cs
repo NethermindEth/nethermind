@@ -196,13 +196,13 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
     public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string error, Hash256? stateRoot = null)
         => InnerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
         => InnerTracer.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
 
     public void ReportOperationError(EvmExceptionType error)
         => InnerTracer.ReportOperationError(error);
 
-    public void ReportOperationRemainingGas(long gas)
+    public void ReportOperationRemainingGas(ulong gas)
         => InnerTracer.ReportOperationRemainingGas(gas);
 
     public void ReportLog(LogEntry log)
@@ -232,19 +232,19 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         => InnerTracer.ReportSelfDestruct(address, balance, refundAddress);
 
-    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         => InnerTracer.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
-    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
         => InnerTracer.ReportActionEnd(gas, output);
 
     public void ReportActionError(EvmExceptionType evmExceptionType)
         => InnerTracer.ReportActionError(evmExceptionType);
 
-    public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
+    public void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
         => InnerTracer.ReportActionRevert(gas, output);
 
-    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         => InnerTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
 
     public void ReportBlockHash(Hash256 blockHash)

@@ -14,11 +14,13 @@ namespace Nethermind.TxPool.Filters
         : IIncomingTxFilter
     {
         private readonly ILogger _logger = logManager.GetClassLogger();
-        private readonly long _configuredGasLimit = txPoolConfig.GasLimit ?? long.MaxValue;
+        private readonly ulong _configuredGasLimit = txPoolConfig.GasLimit is null
+            ? ulong.MaxValue
+            : checked((ulong)txPoolConfig.GasLimit.Value);
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            long gasLimit = Math.Min(chainHeadInfoProvider.BlockGasLimit ?? long.MaxValue, _configuredGasLimit);
+            ulong gasLimit = Math.Min(chainHeadInfoProvider.BlockGasLimit ?? ulong.MaxValue, _configuredGasLimit);
             if (tx.GasLimit > gasLimit)
             {
                 Metrics.PendingTransactionsGasLimitTooHigh++;

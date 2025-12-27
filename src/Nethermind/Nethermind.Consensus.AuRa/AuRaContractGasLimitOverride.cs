@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.AuRa
                 _cache.GasLimitCache.Set(parentHeader.Hash, gasLimit);
                 if (gasLimit.HasValue)
                 {
-                    if (gasLimit.Value != parentHeader.GasLimit)
+                    if (gasLimit.Value != checked((long)parentHeader.GasLimit))
                     {
                         if (_logger.IsInfo)
                             _logger.Info($"Block gas limit was changed from {parentHeader.GasLimit} to {gasLimit.Value}.");

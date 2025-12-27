@@ -22,7 +22,14 @@ public class NativeCallTracerCallFrame : IDisposable
 
     public Address? From { get; set; }
 
-    public long Gas { get; set; }
+    public long gas { get; set; }
+
+    [JsonIgnore]
+    public long Gas
+    {
+        get => gas;
+        set => gas = value;
+    }
 
     public long GasUsed { get; set; }
 

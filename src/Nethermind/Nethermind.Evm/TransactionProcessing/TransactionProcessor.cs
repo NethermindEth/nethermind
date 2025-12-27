@@ -222,7 +222,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
-            tx.SpentGas = spentGas.SpentGas;
+            tx.SpentGas = checked((ulong)spentGas.SpentGas);
 
             // Finalize
             if (restore)
@@ -261,12 +261,12 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (statusCode == StatusCode.Failure)
                 {
-                    byte[] output = substate.ShouldRevert ? substate.Output.Bytes.ToArray() : [];
+                    byte[] output = substate.ShouldRevert ? substate.Output.Bytes.ToArray() : Array.Empty<byte>();
                     tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate.Error, stateRoot);
                 }
                 else
                 {
-                    LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : [];
+                    LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : Array.Empty<LogEntry>();
                     tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.Bytes.ToArray(), logs, stateRoot);
                 }
             }
@@ -278,7 +278,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual TransactionResult CalculateAvailableGas(Transaction tx, in IntrinsicGas<TGasPolicy> intrinsicGas, out TGasPolicy gasAvailable)
         {
-            gasAvailable = TGasPolicy.CreateAvailableFromIntrinsic(tx.GasLimit, intrinsicGas.Standard);
+            gasAvailable = TGasPolicy.CreateAvailableFromIntrinsic(tx.GasLimitAsULong, intrinsicGas.Standard);
             return TransactionResult.Ok;
         }
 
@@ -428,15 +428,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired)
         {
-            if (tx.GasLimit < minGasRequired)
+            ulong minGasRequiredU64 = checked((ulong)minGasRequired);
+            if (tx.GasLimit < minGasRequiredU64)
             {
-                TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
+                TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequiredU64}");
                 return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
-            if (tx.GasLimit > header.GasLimit - header.GasUsed)
+            if (tx.GasLimitAsULong > header.GasLimitAsULong - header.GasUsedAsULong)
             {
-                TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit} - {header.GasUsed}");
+                TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimitAsULong} > {header.GasLimitAsULong} - {header.GasUsedAsULong}");
                 return TransactionResult.BlockGasLimitExceeded;
             }
 
@@ -667,7 +668,7 @@ namespace Nethermind.Evm.TransactionProcessing
             where TTracingInst : struct, IFlag
         {
             substate = default;
-            gasConsumed = tx.GasLimit;
+            gasConsumed = checked((long)tx.GasLimit);
             byte statusCode = StatusCode.Failure;
 
             Snapshot snapshot = WorldState.TakeSnapshot();
@@ -693,7 +694,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 gasConsumed = minimalGasLong;
                 // If noValidation we didn't charge for gas, so do not refund; otherwise return unspent gas
                 if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - minimalGasLong) * VirtualMachine.TxExecutionContext.GasPrice, spec);
+                {
+                    UInt256 refundAmount = (UInt256)((ulong)tx.GasLimitAsULong - (ulong)minimalGasLong) * VirtualMachine.TxExecutionContext.GasPrice;
+                    WorldState.AddToBalance(tx.SenderAddress!, refundAmount, spec);
+                }
                 goto Complete;
             }
 
@@ -761,14 +765,14 @@ namespace Nethermind.Evm.TransactionProcessing
 
         Complete:
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                header.GasUsed += gasConsumed.SpentGas;
+                header.GasUsed += checked((ulong)gasConsumed.SpentGas);
 
             return statusCode;
         }
 
         protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts)
         {
-            return tx.GasLimit;
+            return checked((long)tx.GasLimit);
         }
 
         protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
@@ -907,7 +911,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
             in TransactionSubstate substate, in TGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, TGasPolicy floorGas)
         {
-            long spentGas = tx.GasLimit;
+            long spentGas = checked((long)tx.GasLimit);
             var codeInsertRefund = (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
 
             if (!substate.IsError)
@@ -935,7 +939,9 @@ namespace Nethermind.Evm.TransactionProcessing
             long operationGas = spentGas;
             spentGas = Math.Max(spentGas, TGasPolicy.GetRemainingGas(floorGas));
 
-            UInt256 refundAmount = (ulong)(tx.GasLimit - spentGas) * gasPrice;
+            ulong spentGasU64 = checked((ulong)spentGas);
+            ulong refundGas = tx.GasLimit > spentGasU64 ? tx.GasLimit - spentGasU64 : 0UL;
+            UInt256 refundAmount = refundGas * gasPrice;
             PayRefund(tx, refundAmount, spec);
 
             return new GasConsumed(spentGas, operationGas);

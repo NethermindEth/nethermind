@@ -483,7 +483,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         public async Task BuildBlockWithCode(byte[][] codes, CancellationToken cancellation)
         {
             // 1 000 000 000
-            long gasLimit = 100000;
+            ulong gasLimit = 100000;
 
             Hash256 stateRoot = blockTree.Head?.StateRoot!;
             nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);

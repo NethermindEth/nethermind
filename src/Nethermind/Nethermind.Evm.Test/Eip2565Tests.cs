@@ -51,7 +51,7 @@ namespace Nethermind.Evm.Test
             Prepare input = Prepare.EvmCode.FromCode(inputStr);
             Assert.DoesNotThrow(() => ModExpPrecompile.Instance.Run(input.Done.ToArray(), London.Instance));
             long gas = ModExpPrecompile.Instance.DataGasCost(input.Done, London.Instance);
-            gas.Should().Be(200);
+            gas.Should().Be(200L);
         }
 
         // empty base

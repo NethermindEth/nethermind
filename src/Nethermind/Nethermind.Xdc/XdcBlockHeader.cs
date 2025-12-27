@@ -23,7 +23,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         Address beneficiary,
         in UInt256 difficulty,
         long number,
-        long gasLimit,
+        ulong gasLimit,
         ulong timestamp,
         byte[] extraData)
         : base(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData)

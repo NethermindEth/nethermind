@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Test;
 
 public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompileTests
 {
-    public record TestCase(byte[] Input, byte[]? Expected, string Name, long? Gas, string? ExpectedError);
+    public record TestCase(byte[] Input, byte[]? Expected, string Name, ulong? Gas, string? ExpectedError);
     private const string TestFilesDirectory = "PrecompileVectors";
 
     private static IEnumerable<TestCaseData> TestSource()
@@ -37,7 +37,7 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
         if (this is not T) throw new InvalidOperationException($"Misconfigured tests! Type {GetType()} must be {typeof(T)}");
 
         IPrecompile precompile = T.Precompile();
-        long gas = precompile.BaseGasCost(Prague.Instance) + precompile.DataGasCost(testCase.Input, Prague.Instance);
+        ulong gas = checked((ulong)precompile.BaseGasCost(Prague.Instance)) + checked((ulong)precompile.DataGasCost(testCase.Input, Prague.Instance));
         Result<byte[]> result = precompile.Run(testCase.Input, Prague.Instance);
         (byte[]? output, bool success) = result;
 

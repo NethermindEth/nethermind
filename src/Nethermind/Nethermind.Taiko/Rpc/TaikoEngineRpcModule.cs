@@ -143,7 +143,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 beneficiary,
                 UInt256.Zero,
                 head!.Number + 1,
-                (long)blockMaxGasLimit,
+            blockMaxGasLimit,
                 head.Timestamp + 1,
                 [])
         {
@@ -166,7 +166,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         void CommitAndDisposeBatch(Batch batch)
         {
             Batches.Add(new PreBuiltTxList(batch.Transactions.Select(tx => TransactionForRpc.FromTransaction(tx)).ToArray(),
-                                            (ulong)blockHeader.GasUsed,
+                                            blockHeader.GasUsed,
                                             batch.GetCompressedTxsLength()));
             blockHeader.GasUsed = 0;
             batch.Dispose();

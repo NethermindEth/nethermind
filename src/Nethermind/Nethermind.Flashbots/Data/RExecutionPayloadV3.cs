@@ -37,8 +37,8 @@ public class RExecutionPayloadV3
         logs_bloom = executionPayloadV3.LogsBloom;
         prev_randao = executionPayloadV3.PrevRandao;
         block_number = executionPayloadV3.BlockNumber;
-        gas_limit = executionPayloadV3.GasLimit;
-        gas_used = executionPayloadV3.GasUsed;
+        gas_limit = checked((long)executionPayloadV3.GasLimit);
+        gas_used = checked((long)executionPayloadV3.GasUsed);
         timestamp = executionPayloadV3.Timestamp;
         extra_data = executionPayloadV3.ExtraData;
         base_fee_per_gas = executionPayloadV3.BaseFeePerGas;
@@ -59,8 +59,8 @@ public class RExecutionPayloadV3
             LogsBloom = logs_bloom,
             PrevRandao = prev_randao,
             BlockNumber = block_number,
-            GasLimit = gas_limit,
-            GasUsed = gas_used,
+            GasLimit = checked((ulong)gas_limit),
+            GasUsed = checked((ulong)gas_used),
             Timestamp = timestamp,
             ExtraData = extra_data,
             BaseFeePerGas = base_fee_per_gas,

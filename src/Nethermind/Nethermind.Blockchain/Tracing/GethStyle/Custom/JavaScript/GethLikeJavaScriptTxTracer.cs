@@ -71,7 +71,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         return result;
     }
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         _depth++;
 
@@ -94,11 +94,11 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
             _frame.To = to;
             _frame.Input = input;
             _frame.Value = callType == ExecutionType.STATICCALL ? null : value;
-            _frame.Gas = gas;
+            _frame.Gas = checked((long)gas);
             _frame.Type = callType.FastToString();
             _tracer.enter(_frame);
             _frameGas ??= new Stack<long>();
-            _frameGas.Push(gas);
+            _frameGas.Push(checked((long)gas));
         }
 
         _log.contract = callType == ExecutionType.DELEGATECALL
@@ -106,7 +106,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
             : new Log.Contract(from, to, value, isAnyCreate ? null : input);
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
         _log.pc = pc + env.CodeInfo.PcOffset();
         _log.op = new Log.Opcode(opcode);
@@ -118,9 +118,12 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         // skip functionDepth
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
-        _log.gasCost ??= _log.gas - gas;
+        if (_log.gasCost is null)
+        {
+            _log.gasCost = checked((long)(_log.gas - gas));
+        }
         if (_functions.HasFlag(TracerFunctions.postStep))
         {
             _tracer.postStep(_log, _db);
@@ -134,18 +137,18 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _tracer.fault(_log, _db);
     }
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         base.ReportActionEnd(gas, deploymentAddress, deployedCode);
 
         _ctx.To ??= deploymentAddress;
-        InvokeExit(gas, deployedCode);
+        InvokeExit(checked((long)gas), deployedCode);
     }
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         base.ReportActionEnd(gas, output);
-        InvokeExit(gas, output);
+        InvokeExit(checked((long)gas), output);
     }
 
     public override void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
@@ -157,10 +160,10 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        InvokeExit(0, Array.Empty<byte>(), evmExceptionType.GetEvmExceptionDescription());
+        InvokeExit(0L, Array.Empty<byte>(), evmExceptionType.GetEvmExceptionDescription());
     }
 
-    private void InvokeExit(long gas, ReadOnlyMemory<byte> output, string? error = null)
+    private void InvokeExit(long gasLeft, ReadOnlyMemory<byte> output, string? error = null)
     {
         if (_contracts?.TryPop(out Log.Contract contract) == true)
         {
@@ -169,7 +172,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
         if (_functions.HasFlag(TracerFunctions.exit) && _frameGas?.Count > 0)
         {
-            _result.GasUsed = _frameGas.Pop() - gas;
+            _result.GasUsed = _frameGas.Pop() - gasLeft;
             _result.Output = output.ToArray();
             _result.Error = error;
             _tracer.exit(_result);

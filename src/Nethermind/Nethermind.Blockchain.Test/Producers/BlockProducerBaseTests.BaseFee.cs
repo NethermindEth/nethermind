@@ -41,7 +41,7 @@ public partial class BlockProducerBaseTests
             private long _eip1559TransitionBlock;
             private bool _eip1559Enabled;
             private Task<ScenarioBuilder>? _antecedent;
-            private UInt256 _currentNonce = 1;
+            private ulong _currentNonce = 1;
 
             public ScenarioBuilder WithEip1559TransitionBlock(long transitionBlock)
             {
@@ -50,7 +50,7 @@ public partial class BlockProducerBaseTests
                 return this;
             }
 
-            private async Task<ScenarioBuilder> CreateTestBlockchainAsync(long gasLimit)
+            private async Task<ScenarioBuilder> CreateTestBlockchainAsync(ulong gasLimit)
             {
                 await ExecuteAntecedentIfNeeded();
                 TestSingleReleaseSpecProvider spec = new(
@@ -74,7 +74,7 @@ public partial class BlockProducerBaseTests
                 return this;
             }
 
-            public ScenarioBuilder CreateTestBlockchain(long gasLimit = 10000000000)
+            public ScenarioBuilder CreateTestBlockchain(ulong gasLimit = 10_000_000_000UL)
             {
                 _antecedent = CreateTestBlockchainAsync(gasLimit);
                 return this;
@@ -103,18 +103,18 @@ public partial class BlockProducerBaseTests
                 return this;
             }
 
-            public ScenarioBuilder SendEip1559Transaction(long gasLimit = 1000000, UInt256? gasPremium = null, UInt256? feeCap = null, bool serviceTransaction = false)
+            public ScenarioBuilder SendEip1559Transaction(ulong gasLimit = 1000000, UInt256? gasPremium = null, UInt256? feeCap = null, bool serviceTransaction = false)
             {
                 _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), feeCap ?? UInt256.Zero, serviceTransaction);
                 return this;
             }
 
-            public ScenarioBuilder SendLegacyTransaction(long gasLimit = 1000000, UInt256? gasPremium = null, bool serviceTransaction = false, UInt256? nonce = null)
+            public ScenarioBuilder SendLegacyTransaction(ulong gasLimit = 1000000, UInt256? gasPremium = null, bool serviceTransaction = false, ulong? nonce = null)
             {
                 _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), UInt256.Zero, serviceTransaction, nonce);
                 return this;
             }
-            private async Task<ScenarioBuilder> SendTransactionAsync(long gasLimit, UInt256 gasPrice, UInt256 feeCap, bool serviceTransaction, UInt256? nonce = null)
+            private async Task<ScenarioBuilder> SendTransactionAsync(ulong gasLimit, UInt256 gasPrice, UInt256 feeCap, bool serviceTransaction, ulong? nonce = null)
             {
                 await ExecuteAntecedentIfNeeded();
                 byte[] txData = _abiEncoder.Encode(
@@ -285,7 +285,7 @@ public partial class BlockProducerBaseTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task BaseFee_should_decrease_when_we_send_transactions_below_gas_target()
     {
-        long gasLimit = 3000000;
+        ulong gasLimit = 3000000;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithEip1559TransitionBlock(6)
             .CreateTestBlockchain(gasLimit)
@@ -303,7 +303,7 @@ public partial class BlockProducerBaseTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task BaseFee_should_not_change_when_we_send_transactions_equal_gas_target()
     {
-        long gasTarget = 3000000;
+        ulong gasTarget = 3_000_000UL;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithEip1559TransitionBlock(6)
             .CreateTestBlockchain(gasTarget)
@@ -321,7 +321,7 @@ public partial class BlockProducerBaseTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task BaseFee_should_increase_when_we_send_transactions_above_gas_target()
     {
-        long gasTarget = 3000000;
+        ulong gasTarget = 3_000_000UL;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithEip1559TransitionBlock(6)
             .CreateTestBlockchain(gasTarget)
@@ -340,13 +340,13 @@ public partial class BlockProducerBaseTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task When_base_fee_decreases_previously_fee_too_low_transaction_is_included()
     {
-        long gasTarget = 3000000;
+        ulong gasTarget = 3_000_000UL;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithEip1559TransitionBlock(6)
             .CreateTestBlockchain(gasTarget)
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
             .AssertNewBlock(Eip1559Constants.DefaultForkBaseFee)
-            .SendLegacyTransaction(gasTarget / 2, 7.GWei() / 10, nonce: UInt256.Zero)
+            .SendLegacyTransaction(gasTarget / 2, 7.GWei() / 10, nonce: 0UL)
             .AssertNewBlock(875000000)
             .AssertNewBlock(765625000)
             .AssertNewBlock(669921875) // added tx in 9th block

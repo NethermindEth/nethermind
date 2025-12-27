@@ -18,7 +18,14 @@ public class ParityTraceAction
     public string? CreationMethod { get; set; }
     public Address? From { get; set; }
     public Address? To { get; set; }
-    public long Gas { get; set; }
+    public long gas { get; set; }
+
+    [JsonIgnore]
+    public long Gas
+    {
+        get => gas;
+        set => gas = value;
+    }
     public UInt256 Value { get; set; }
     public byte[]? Input { get; set; }
 

@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
         public Contract contract { get; set; }
         public long pc { get; set; }
 
-        public long gas { get; set; }
+        public ulong gas { get; set; }
         public long? gasCost { get; set; }
         public int depth { get; set; }
         public long refund { get; set; }

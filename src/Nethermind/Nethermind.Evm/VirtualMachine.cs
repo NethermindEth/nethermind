@@ -336,6 +336,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         where TTracingInst : struct, IFlag
     {
         ZeroPaddedSpan previousCallOutput;
+        long remaining = TGasPolicy.GetRemainingGas(previousState.Gas);
         ReturnDataBuffer = callResult.Output.Bytes;
         _previousCallResult = previousState.ExecutionType.IsAnyCallEof() ? EofStatusCode.SuccessBytes :
             callResult.PrecompileSuccess.HasValue
@@ -354,7 +355,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         if (_txTracer.IsTracingActions)
         {
-            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), ReturnDataBuffer);
+            _txTracer.ReportActionEnd((ulong)remaining, ReturnDataBuffer);
         }
 
         return previousCallOutput;
@@ -413,7 +414,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
             if (_txTracer.IsTracingActions)
             {
-                _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, bytecodeResultArray);
+                long remaining = TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost;
+                _txTracer.ReportActionEnd((ulong)remaining, callCodeOwner, bytecodeResultArray);
             }
         }
         else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
@@ -435,7 +437,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
         else if (_txTracer.IsTracingActions)
         {
-            _txTracer.ReportActionEnd(0L, callCodeOwner, bytecodeResultArray);
+            _txTracer.ReportActionEnd(0UL, callCodeOwner, bytecodeResultArray);
         }
     }
 
@@ -492,7 +494,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // If tracing is enabled, report the successful code deposit operation.
             if (isTracing)
             {
-                _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
+                long remaining = TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost;
+                _txTracer.ReportActionEnd((ulong)remaining, callCodeOwner, callResult.Output.Bytes);
             }
         }
         // If the code deposit should fail due to out-of-gas or invalid code conditions...
@@ -526,7 +529,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // report the end of the action if tracing is enabled.
         else if (isTracing)
         {
-            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
+            long remaining = TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost;
+            _txTracer.ReportActionEnd((ulong)remaining, callCodeOwner, callResult.Output.Bytes);
         }
     }
 
@@ -635,7 +639,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // If the tracing instructions flag is active, report zero remaining gas and log the error.
         if (TTracingInst.IsActive)
         {
-            txTracer.ReportOperationRemainingGas(0);
+            txTracer.ReportOperationRemainingGas(0UL);
             txTracer.ReportOperationError(errorType);
         }
 
@@ -785,8 +789,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Report the precompile action if tracing is enabled.
         if (isTracingActions)
         {
+            long remaining = TGasPolicy.GetRemainingGas(currentState.Gas);
             _txTracer.ReportAction(
-                TGasPolicy.GetRemainingGas(currentState.Gas),
+                (ulong)remaining,
                 currentState.Env.Value,
                 currentState.From,
                 currentState.To,
@@ -834,7 +839,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     protected void TraceTransactionActionStart(VmState<TGasPolicy> currentState)
     {
-        _txTracer.ReportAction(TGasPolicy.GetRemainingGas(currentState.Gas),
+        long remainingStart = TGasPolicy.GetRemainingGas(currentState.Gas);
+        _txTracer.ReportAction((ulong)remainingStart,
             currentState.Env.Value,
             currentState.From,
             currentState.To,
@@ -942,7 +948,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 // Otherwise, report a successful action end with the remaining gas.
                 else
                 {
-                    _txTracer.ReportActionEnd(gasAvailable, currentState.To, outputBytes);
+                    _txTracer.ReportActionEnd((ulong)gasAvailable, currentState.To, outputBytes);
                 }
             }
             // If the generated code is invalid (e.g., violates EIP-3541 by starting with 0xEF), report an invalid code error.
@@ -953,13 +959,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // In the successful contract creation case, deduct the code deposit gas cost and report a normal action end.
             else
             {
-                _txTracer.ReportActionEnd(gasAvailable - codeDepositGasCost, currentState.To, outputBytes);
+                _txTracer.ReportActionEnd((ulong)(gasAvailable - codeDepositGasCost), currentState.To, outputBytes);
             }
         }
         // For non-creation calls, report the action end using the current available gas and the standard return data.
         else
         {
-            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(currentState.Gas), ReturnDataBuffer);
+            long remaining = TGasPolicy.GetRemainingGas(currentState.Gas);
+            _txTracer.ReportActionEnd((ulong)remaining, ReturnDataBuffer);
         }
     }
 
@@ -1006,7 +1013,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        if ((ulong)baseGasCost + (ulong)dataGasCost > (ulong)long.MaxValue ||
+        if (baseGasCost < 0 ||
+            dataGasCost < 0 ||
+            baseGasCost > long.MaxValue - dataGasCost ||
             !TGasPolicy.UpdateGas(ref gas, baseGasCost + dataGasCost))
         {
             return new(output: default, precompileSuccess: false, fromVersion: 0, shouldRevert: true, EvmExceptionType.OutOfGas);
@@ -1019,7 +1028,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             Result<byte[]> output = precompile.Run(callData, spec);
             bool success = output;
             return new(
-                success ? output.Data : [],
+                success ? output.Data : Array.Empty<byte>(),
                 precompileSuccess: success,
                 fromVersion: 0,
                 shouldRevert: !success,
@@ -1137,7 +1146,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Report the remaining gas if tracing instructions are enabled.
             if (TTracingInst.IsActive)
             {
-                _txTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(vmState.Gas));
+                _txTracer.ReportOperationRemainingGas((ulong)TGasPolicy.GetRemainingGas(vmState.Gas));
             }
         }
 
@@ -1148,7 +1157,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             UInt256 localPreviousDest = previousCallOutputDestination;
 
             // Attempt to update the memory cost; if insufficient gas is available, jump to the out-of-gas handler.
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (ulong)previousCallOutput.Length, vmState))
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (UInt256)previousCallOutput.Length, vmState))
             {
                 goto OutOfGas;
             }
@@ -1397,7 +1406,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         int sectionIndex = SectionIndex;
 
         bool isEofFrame = vmState.Env.CodeInfo.Version > 0;
-        _txTracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env,
+        _txTracer.StartOperation(programCounter, instruction, (ulong)gasAvailable, vmState.Env,
             isEofFrame ? sectionIndex : 0, isEofFrame ? vmState.ReturnStackHead + 1 : 0);
         if (_txTracer.IsTracingMemory)
         {
@@ -1443,13 +1452,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal void EndInstructionTrace(long gasAvailable)
     {
-        _txTracer.ReportOperationRemainingGas(gasAvailable);
+        _txTracer.ReportOperationRemainingGas((ulong)gasAvailable);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void EndInstructionTraceError(long gasAvailable, EvmExceptionType evmExceptionType)
     {
-        _txTracer.ReportOperationRemainingGas(gasAvailable);
+        _txTracer.ReportOperationRemainingGas((ulong)gasAvailable);
         _txTracer.ReportOperationError(evmExceptionType);
     }
 }

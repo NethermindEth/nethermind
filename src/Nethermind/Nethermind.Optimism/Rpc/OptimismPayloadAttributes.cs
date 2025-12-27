@@ -28,8 +28,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
         }
     }
     public bool NoTxPool { get; set; }
-    public long GasLimit { get; set; }
-    public override long? GetGasLimit() => GasLimit;
+    public ulong GasLimit { get; set; }
+    public override long? GetGasLimit() => checked((long)GasLimit);
 
     /// <remarks>
     /// See <see href="https://specs.optimism.io/protocol/holocene/exec-engine.html#eip-1559-parameters-in-payloadattributesv3"/>
@@ -93,7 +93,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
             }
         }
 
-        BinaryPrimitives.WriteInt64BigEndian(inputSpan.Slice(offset, sizeof(long)), GasLimit);
+        BinaryPrimitives.WriteInt64BigEndian(inputSpan.Slice(offset, sizeof(long)), checked((long)GasLimit));
         offset += sizeof(long);
 
         if (EIP1559Params is not null)

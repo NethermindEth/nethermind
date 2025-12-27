@@ -214,11 +214,11 @@ public class TxBroadcasterTests
         {
             bool isLarge = i % 10 == 0;
             transactions[i] = Build.A.Transaction
-                .WithType(TxType.EIP1559)
-                .WithGasPrice((addedTxsCount - i - 1).GWei())
-                .WithData(isLarge ? new byte[4 * 1024] : []) //some part of txs (10%) is large (>4KB)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
-                .TestObject;
+            .WithType(TxType.EIP1559)
+            .WithGasPrice((addedTxsCount - i - 1).GWei())
+            .WithData(isLarge ? new byte[4 * 1024] : Array.Empty<byte>()) //some part of txs (10%) is large (>4KB)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
+            .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
         });
@@ -695,7 +695,7 @@ public class TxBroadcasterTests
 
         for (int i = 0; i < pickedTxs.Length; i++)
         {
-            pickedTxs[i].Nonce.Should().Be((UInt256)i);
+            pickedTxs[i].Nonce.Should().Be((ulong)i);
         }
     }
 

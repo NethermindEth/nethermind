@@ -37,7 +37,11 @@ public class OptimismCompactReceiptStorageDecoder :
         }
 
         txReceipt.Sender = rlpStream.DecodeAddress();
-        txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
+        {
+            var gasUsedTotal = rlpStream.DecodeUBigInt();
+            if (gasUsedTotal > ulong.MaxValue) throw new OverflowException("GasUsedTotal overflow");
+            txReceipt.GasUsedTotal = (ulong)gasUsedTotal;
+        }
 
         int sequenceLength = rlpStream.ReadSequenceLength();
         int logEntriesCheck = sequenceLength + rlpStream.Position;
@@ -71,7 +75,6 @@ public class OptimismCompactReceiptStorageDecoder :
         }
 
         txReceipt.Bloom = new Bloom(txReceipt.Logs);
-
         return txReceipt;
     }
 
@@ -87,7 +90,7 @@ public class OptimismCompactReceiptStorageDecoder :
         OptimismTxReceipt txReceipt = new();
         int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
 
-        byte[] firstItem = decoderContext.DecodeByteArray();
+        ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan();
         if (firstItem.Length == 1)
         {
             txReceipt.StatusCode = firstItem[0];
@@ -98,12 +101,15 @@ public class OptimismCompactReceiptStorageDecoder :
         }
 
         txReceipt.Sender = decoderContext.DecodeAddress();
-        txReceipt.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+        {
+            var gasUsedTotal = decoderContext.DecodeUBigInt();
+            if (gasUsedTotal > ulong.MaxValue) throw new OverflowException("GasUsedTotal overflow");
+            txReceipt.GasUsedTotal = (ulong)gasUsedTotal;
+        }
 
         int sequenceLength = decoderContext.ReadSequenceLength();
         int logEntriesCheck = sequenceLength + decoderContext.Position;
 
-        // Don't know the size exactly, I'll just assume its just an address and add some margin
         using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / LengthOfAddressRlp);
         while (decoderContext.Position < logEntriesCheck)
         {
@@ -133,7 +139,6 @@ public class OptimismCompactReceiptStorageDecoder :
         }
 
         txReceipt.Bloom = new Bloom(txReceipt.Logs);
-
         return txReceipt;
     }
 
@@ -162,7 +167,11 @@ public class OptimismCompactReceiptStorageDecoder :
         }
 
         decoderContext.DecodeAddressStructRef(out item.Sender);
-        item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
+        {
+            var gasUsedTotal = decoderContext.DecodeUBigInt();
+            if (gasUsedTotal > ulong.MaxValue) throw new OverflowException("GasUsedTotal overflow");
+            item.GasUsedTotal = (ulong)gasUsedTotal;
+        }
 
         (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
         int logsBytes = contentLength + prefixLength;

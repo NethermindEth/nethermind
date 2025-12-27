@@ -207,15 +207,11 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateFieldLimit(BlockHeader blockHeader, ref string? error)
         {
-            // Note, these are out of spec. Technically, there could be a block with field with very high value that is
-            // valid when using ulong, but wrapped to negative value when using long. However, switching to ulong
-            // at this point can cause other unexpected error. So we just won't support it for now.
-
             error = blockHeader switch
             {
                 { Number: < 0 } => BlockErrorMessages.NegativeBlockNumber,
-                { GasLimit: < 0 } => BlockErrorMessages.NegativeGasLimit,
-                { GasUsed: < 0 } => BlockErrorMessages.NegativeGasUsed,
+                { GasLimit: > long.MaxValue } => BlockErrorMessages.InvalidGasLimit,
+                { GasUsed: > long.MaxValue } => BlockErrorMessages.ExceededGasLimit,
                 _ => null
             };
 
@@ -225,8 +221,8 @@ namespace Nethermind.Consensus.Validators
                 _logger.Warn($"Invalid block header ({blockHeader.Hash}) - {blockHeader switch
                 {
                     { Number: < 0 } => $"Block number is negative {blockHeader.Number}",
-                    { GasLimit: < 0 } => $"Block GasLimit is negative {blockHeader.GasLimit}",
-                    { GasUsed: < 0 } => $"Block GasUsed is negative {blockHeader.GasUsed}",
+                    { GasLimit: > long.MaxValue } => $"Block GasLimit is too large {blockHeader.GasLimit}",
+                    { GasUsed: > long.MaxValue } => $"Block GasUsed is too large {blockHeader.GasUsed}",
                     _ => error
                 }}");
 
@@ -253,7 +249,22 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
         {
-            long adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
+            if (parent.GasLimit > long.MaxValue)
+            {
+                error = BlockErrorMessages.InvalidGasLimit;
+                return false;
+            }
+
+            if (header.GasLimit > long.MaxValue)
+            {
+                error = BlockErrorMessages.InvalidGasLimit;
+                return false;
+            }
+
+            long parentGasLimit = (long)parent.GasLimit;
+            long headerGasLimit = (long)header.GasLimit;
+
+            long adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parentGasLimit, header.Number);
             long maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
 
             long maxNextGasLimit = adjustedParentGasLimit + maxGasLimitDifference;
@@ -262,7 +273,7 @@ namespace Nethermind.Consensus.Validators
             // we can check for long.MaxValue - maxGasLimitDifference < adjustedParentGasLimit to ensure that we are in range.
             // In hive we have tests that using long.MaxValue in the genesis block
             // Even if we add maxGasLimitDifference we don't get header.GasLimit higher than long.MaxValue
-            var gasLimitNotTooHigh = notToHighWithOverflow || header.GasLimit < maxNextGasLimit;
+            var gasLimitNotTooHigh = notToHighWithOverflow || headerGasLimit < maxNextGasLimit;
 
             if (!gasLimitNotTooHigh)
             {
@@ -270,8 +281,8 @@ namespace Nethermind.Consensus.Validators
                 error = BlockErrorMessages.InvalidGasLimit;
             }
 
-            bool gasLimitNotTooLow = header.GasLimit > adjustedParentGasLimit - maxGasLimitDifference &&
-                                     header.GasLimit >= spec.MinGasLimit;
+            bool gasLimitNotTooLow = headerGasLimit > adjustedParentGasLimit - maxGasLimitDifference &&
+                                     headerGasLimit >= spec.MinGasLimit;
             if (!gasLimitNotTooLow)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low. " +
@@ -325,7 +336,7 @@ namespace Nethermind.Consensus.Validators
 
         private bool ValidateGenesis(BlockHeader header) =>
             header.GasUsed < header.GasLimit &&
-            header.GasLimit > _specProvider.GenesisSpec.MinGasLimit &&
+            header.GasLimit > checked((ulong)_specProvider.GenesisSpec.MinGasLimit) &&
             header.Timestamp > 0 &&
             header.Number == 0 &&
             header.Bloom is not null &&

@@ -16,7 +16,7 @@ public class TaikoPayloadAttributes : PayloadAttributes
 
     public override long? GetGasLimit()
     {
-        return BlockMetadata!.GasLimit;
+        return checked((long)BlockMetadata!.GasLimit);
     }
 
     public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int apiVersion,

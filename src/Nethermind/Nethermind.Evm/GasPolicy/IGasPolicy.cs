@@ -204,5 +204,5 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="gasLimit">The transaction gas limit.</param>
     /// <param name="intrinsicGas">The intrinsic gas to subtract.</param>
     /// <returns>Available gas with preserved tracking data.</returns>
-    static abstract TSelf CreateAvailableFromIntrinsic(long gasLimit, in TSelf intrinsicGas);
+    static abstract TSelf CreateAvailableFromIntrinsic(ulong gasLimit, in TSelf intrinsicGas);
 }

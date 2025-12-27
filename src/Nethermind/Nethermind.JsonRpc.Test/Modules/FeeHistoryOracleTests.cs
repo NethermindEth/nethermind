@@ -116,16 +116,16 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
         }
 
-        [TestCase(3, 3, 5, 6)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1.5 * 5) / 8, 1) = 1 | Next Base Fee = 5 + 1 = 6
-        [TestCase(3, 3, 11, 13)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1.5) * 11) / 8, 1) = 2 | Next Base Fee = 11 + 2 = 13
-        [TestCase(100, 95, 20, 22)] //Target gas used: 100/2 = 50 | Actual Gas used = 95 | Base Fee Delta = Max((((95-50)/50) * 20) / 8, 1) = 2 | Next Base Fee = 20 + 2 = 22
-        [TestCase(100, 40, 20, 20)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 20) / 8 = 0 | Next Base Fee = 20 - 0 = 20
-        [TestCase(100, 40, 50, 49)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 50) / 8 = 1 | Next Base Fee = 50 - 1 = 49
-        public void GetFeeHistory_IfLondonEnabled_NextBaseFeePerGasCalculatedCorrectly(long gasLimit, long gasUsed, long baseFee, long expectedNextBaseFee)
+        [TestCase(3UL, 3UL, 5UL, 6UL)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1.5 * 5) / 8, 1) = 1 | Next Base Fee = 5 + 1 = 6
+        [TestCase(3UL, 3UL, 11UL, 13UL)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1.5) * 11) / 8, 1) = 2 | Next Base Fee = 11 + 2 = 13
+        [TestCase(100UL, 95UL, 20UL, 22UL)] //Target gas used: 100/2 = 50 | Actual Gas used = 95 | Base Fee Delta = Max((((95-50)/50) * 20) / 8, 1) = 2 | Next Base Fee = 20 + 2 = 22
+        [TestCase(100UL, 40UL, 20UL, 20UL)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 20) / 8 = 0 | Next Base Fee = 20 - 0 = 20
+        [TestCase(100UL, 40UL, 50UL, 49UL)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 50) / 8 = 1 | Next Base Fee = 50 - 1 = 49
+        public void GetFeeHistory_IfLondonEnabled_NextBaseFeePerGasCalculatedCorrectly(ulong gasLimit, ulong gasUsed, ulong baseFee, ulong expectedNextBaseFee)
         {
             int blockCount = 1;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            BlockHeader blockHeader = Build.A.BlockHeader.WithBaseFee((UInt256)baseFee).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
+            BlockHeader blockHeader = Build.A.BlockHeader.WithBaseFee((UInt256)baseFee).WithGasLimit(gasLimit).WithGasUsed(checked((long)gasUsed)).TestObject;
             BlockParameter newestBlock = new((long)0);
             Block headBlock = Build.A.Block.Genesis.WithHeader(blockHeader).TestObject;
             blockTree.FindBlock(newestBlock).Returns(headBlock);
@@ -143,12 +143,12 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         }
 
-        [TestCase(3, 3, 1)]
-        [TestCase(100, 95, 0.95)]
-        [TestCase(12, 3, 0.25)]
-        [TestCase(100, 40, 0.4)]
-        [TestCase(3, 1, 0.3333333333333333)]
-        public void GetFeeHistory_GasUsedRatioCalculatedCorrectly(long gasLimit, long gasUsed, double expectedGasUsedRatio)
+        [TestCase(3UL, 3, 1)]
+        [TestCase(100UL, 95, 0.95)]
+        [TestCase(12UL, 3, 0.25)]
+        [TestCase(100UL, 40, 0.4)]
+        [TestCase(3UL, 1, 0.3333333333333333)]
+        public void GetFeeHistory_GasUsedRatioCalculatedCorrectly(ulong gasLimit, long gasUsed, double expectedGasUsedRatio)
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             BlockHeader blockHeader = Build.A.BlockHeader.WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
@@ -365,12 +365,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
 
             var txReceiptsArray = new TxReceipt[gasUsedArray.Length];
-            txReceiptsArray[0] = new TxReceipt() { GasUsedTotal = gasUsedArray[0] };
+            txReceiptsArray[0] = new TxReceipt() { GasUsedTotal = checked((ulong)gasUsedArray[0]) };
             for (var i = 1; i < gasUsedArray.Length; i++)
             {
                 txReceiptsArray[i] = new TxReceipt()
                 {
-                    GasUsedTotal = txReceiptsArray[i - 1].GasUsedTotal + gasUsedArray[i]
+                    GasUsedTotal = txReceiptsArray[i - 1].GasUsedTotal + checked((ulong)gasUsedArray[i])
                 };
             }
             receiptStorage.Get(block).Returns(txReceiptsArray);

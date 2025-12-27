@@ -98,7 +98,7 @@ namespace Ethereum.Basic.Test
         {
             public string Key { get; set; }
             public long Nonce { get; set; }
-            public long GasPrice { get; set; }
+            public ulong GasPrice { get; set; }
             public long StartGas { get; set; }
             public string To { get; set; }
             public long Value { get; set; }

@@ -96,7 +96,7 @@ public partial class EngineModuleTests
                 feeRecipient,
                 UInt256.Zero,
                 1,
-                chain.BlockTree.Head!.GasLimit,
+                chain.BlockTree.Head!.Header.GasLimit,
                 timestamp,
                 Bytes.FromHexString("0x4e65746865726d696e64") // Nethermind
             )

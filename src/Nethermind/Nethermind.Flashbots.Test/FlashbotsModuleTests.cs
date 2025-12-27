@@ -42,14 +42,14 @@ public partial class FlashbotsModuleTests
                 TestKeysAndAddress.TestBuilderKey.PublicKey,
                 TestKeysAndAddress.TestValidatorKey.PublicKey,
                 TestKeysAndAddress.TestBuilderAddr,
-                block.Header.GasLimit,
-                block.Header.GasUsed,
+                block.GasLimit,
+                checked((long)block.Header.GasUsed),
                 new UInt256(132912184722469)
             ),
             new RExecutionPayloadV3(ExecutionPayloadV3.Create(block)),
             expectedPayload.BlobsBundle,
             [],
-            block.Header.GasLimit,
+            checked((long)block.Header.GasLimit),
             new Hash256("0x0000000000000000000000000000000000000000000000000000000000000042")
         );
 
@@ -101,7 +101,7 @@ public partial class FlashbotsModuleTests
                 TestKeysAndAddress.TestAddr,
                 UInt256.Zero,
                 1,
-                chain.BlockTree.Head!.GasLimit,
+                chain.BlockTree.Head!.Header.GasLimit,
                 currentHeader.Timestamp + 12,
                 Bytes.FromHexString("0x4e65746865726d696e64") // Nethermind
             )

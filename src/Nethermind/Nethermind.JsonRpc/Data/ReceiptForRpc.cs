@@ -43,8 +43,8 @@ namespace Nethermind.JsonRpc.Data
         public long TransactionIndex { get; set; }
         public Hash256? BlockHash { get; set; }
         public long BlockNumber { get; set; }
-        public long CumulativeGasUsed { get; set; }
-        public long GasUsed { get; set; }
+        public ulong CumulativeGasUsed { get; set; }
+        public ulong GasUsed { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ulong? BlobGasUsed { get; set; }

@@ -53,28 +53,28 @@ public class OptimismBaseFeeCalculatorTests
 
     private static class JovianTest
     {
-        public const long GasLimit = 30_000_000;
+        public const ulong GasLimit = 30_000_000;
         public const uint Denominator = 50;
         public const uint Elasticity = 3;
-        public const long GasTarget = GasLimit / Elasticity;
+        public const long GasTarget = (long)(GasLimit / Elasticity);
     }
 
     /// <remarks>
     /// Tests sourced from <see href="https://github.com/ethereum-optimism/op-geth/blob/6658a36c9862694c82eabd803ca885370667401f/consensus/misc/eip1559/eip1559_test.go#L235"/>
     /// </remarks>
-    [TestCase(1L, JovianTest.GasTarget - 1_000_000, 0L, Spec.HoloceneTimeStamp, 1_000_000_000, 1L)]
-    [TestCase(1L, JovianTest.GasTarget, 0L, Spec.JovianTimeStamp, 1_000_000_000, 1_000_000_000)]
-    [TestCase(1L, JovianTest.GasTarget + 1_000_000, 0L, Spec.JovianTimeStamp, 1_000_000_000, 1_000_000_000)]
-    [TestCase(2_000_000_000, JovianTest.GasTarget + 10_000_000, 0L, Spec.JovianTimeStamp, 1_000_000_000, 2_040_000_000)]
-    [TestCase(1, JovianTest.GasTarget - 1_000_000, 0L, Spec.JovianTimeStamp, 1_000_000_000, 1_000_000_000)]
-    [TestCase(2_097_152, JovianTest.GasTarget - 1_000_000, 0L, Spec.JovianTimeStamp, 2_000_000, 2_092_958)]
-    [TestCase(10_000, JovianTest.GasTarget - 1, 0L, Spec.JovianTimeStamp, 10_000, 10_000)]
-    [TestCase(10_000, JovianTest.GasTarget + 1, 0L, Spec.JovianTimeStamp, 10_000, 10_000 + 1)]
+    [TestCase(1L, JovianTest.GasTarget - 1_000_000, 0UL, Spec.HoloceneTimeStamp, 1_000_000_000, 1L)]
+    [TestCase(1L, JovianTest.GasTarget, 0UL, Spec.JovianTimeStamp, 1_000_000_000, 1_000_000_000)]
+    [TestCase(1L, JovianTest.GasTarget + 1_000_000, 0UL, Spec.JovianTimeStamp, 1_000_000_000, 1_000_000_000)]
+    [TestCase(2_000_000_000, JovianTest.GasTarget + 10_000_000, 0UL, Spec.JovianTimeStamp, 1_000_000_000, 2_040_000_000)]
+    [TestCase(1, JovianTest.GasTarget - 1_000_000, 0UL, Spec.JovianTimeStamp, 1_000_000_000, 1_000_000_000)]
+    [TestCase(2_097_152, JovianTest.GasTarget - 1_000_000, 0UL, Spec.JovianTimeStamp, 2_000_000, 2_092_958)]
+    [TestCase(10_000, JovianTest.GasTarget - 1, 0UL, Spec.JovianTimeStamp, 10_000, 10_000)]
+    [TestCase(10_000, JovianTest.GasTarget + 1, 0UL, Spec.JovianTimeStamp, 10_000, 10_000 + 1)]
     [TestCase(10_000, JovianTest.GasTarget, JovianTest.GasLimit, Spec.HoloceneTimeStamp, 1_000_000, 10_000)]
-    [TestCase(10_000, JovianTest.GasTarget, JovianTest.GasTarget + 1, Spec.JovianTimeStamp, 10_000, 10_000 + 1)]
-    [TestCase(2_000_000_000, JovianTest.GasTarget, JovianTest.GasTarget + 10_000_000, Spec.JovianTimeStamp, 1_000_000_000, 2_040_000_000)]
+    [TestCase(10_000, JovianTest.GasTarget, (ulong)(JovianTest.GasTarget + 1), Spec.JovianTimeStamp, 10_000, 10_000 + 1)]
+    [TestCase(2_000_000_000, JovianTest.GasTarget, (ulong)(JovianTest.GasTarget + 10_000_000), Spec.JovianTimeStamp, 1_000_000_000, 2_040_000_000)]
     public void CalculatesBaseFee_AfterJovian_Using(
-        long baseFee, long gasUsed, long blobGasUsed, ulong timestamp,
+        long baseFee, long gasUsed, ulong blobGasUsed, ulong timestamp,
         long minBaseFee, long expectedBaseFee
     )
     {
@@ -96,7 +96,7 @@ public class OptimismBaseFeeCalculatorTests
         BlockHeader blockHeader = Build.A.BlockHeader
             .WithGasLimit(JovianTest.GasLimit)
             .WithGasUsed(gasUsed)
-            .WithBlobGasUsed((ulong)blobGasUsed)
+            .WithBlobGasUsed(blobGasUsed)
             .WithBaseFee((UInt256)baseFee)
             .WithTimestamp((ulong)timestamp)
             .WithExtraData(extraData)

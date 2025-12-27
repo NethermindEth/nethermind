@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Producers
         new(
             null,
             null,
-            header.WithdrawalsRoot is null ? null : [])
+            header.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>())
         )
         { }
 

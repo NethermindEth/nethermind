@@ -50,7 +50,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         _trace.Result.GasUsed = gasSpent;
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
         _gasAlreadySetForCurrentOp = false;
         _traceEntry = new StateTestTxTraceEntry();
@@ -87,7 +87,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         };
     }
 
-    public void ReportOperationRemainingGas(long gas)
+    public void ReportOperationRemainingGas(ulong gas)
     {
         if (_traceEntry is null) return;
 
@@ -207,12 +207,12 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
-    public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public void ReportAction(ulong gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         throw new NotSupportedException();
     }
 
-    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         throw new NotSupportedException();
     }
@@ -222,12 +222,12 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         throw new NotSupportedException();
     }
 
-    public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
+    public void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
     {
         throw new NotSupportedException();
     }
 
-    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         throw new NotSupportedException();
     }

@@ -139,11 +139,23 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
 
     public BlockHeaderBuilder WithGasLimit(long gasLimit)
     {
+        TestObjectInternal.GasLimit = checked((ulong)gasLimit);
+        return this;
+    }
+
+    public BlockHeaderBuilder WithGasLimit(ulong gasLimit)
+    {
         TestObjectInternal.GasLimit = gasLimit;
         return this;
     }
 
     public BlockHeaderBuilder WithGasUsed(long gasUsed)
+    {
+        TestObjectInternal.GasUsed = checked((ulong)gasUsed);
+        return this;
+    }
+
+    public BlockHeaderBuilder WithGasUsed(ulong gasUsed)
     {
         TestObjectInternal.GasUsed = gasUsed;
         return this;
