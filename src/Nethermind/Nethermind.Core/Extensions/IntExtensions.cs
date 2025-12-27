@@ -49,4 +49,14 @@ public static class IntExtensions
 
     public static byte[] ToBigEndianByteArray(this int value)
         => ToBigEndianByteArray((uint)value);
+
+    public static byte[] ToLittleEndianByteArray(this uint value)
+    {
+        byte[] bytes = new byte[sizeof(uint)];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, value);
+        return bytes;
+    }
+
+    public static byte[] ToLittleEndianByteArray(this int value)
+        => ToLittleEndianByteArray((uint)value);
 }

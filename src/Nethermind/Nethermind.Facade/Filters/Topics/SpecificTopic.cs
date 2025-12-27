@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -36,6 +37,18 @@ namespace Nethermind.Blockchain.Filters.Topics
         public override bool Matches(Bloom bloom) => bloom.Matches(BloomExtract);
 
         public override bool Matches(ref BloomStructRef bloom) => bloom.Matches(BloomExtract);
+
+        public override bool AcceptsAnyBlock => false;
+
+        public override IEnumerable<Hash256> Topics
+        {
+            get { yield return _topic; }
+        }
+
+        public override List<int>? FilterBlockNumbers(IDictionary<Hash256, List<int>> byTopic)
+        {
+            return byTopic.TryGetValue(_topic, out List<int>? result) ? result : [];
+        }
 
         private bool Equals(SpecificTopic other) => _topic.Equals(other._topic);
 

@@ -21,6 +21,8 @@ public class Filter : IJsonRpcParam
 
     public IEnumerable<Hash256[]?>? Topics { get; set; }
 
+    public bool UseIndex { get; set; } = true;
+
     public void ReadJson(JsonElement filter, JsonSerializerOptions options)
     {
         JsonDocument doc = null;
@@ -64,6 +66,16 @@ public class Filter : IJsonRpcParam
             if (filter.TryGetProperty("topics"u8, out JsonElement topicsElement) && topicsElement.ValueKind == JsonValueKind.Array)
             {
                 Topics = GetTopics(topicsElement, options);
+            }
+
+            if (filter.TryGetProperty("useIndex"u8, out JsonElement useIndex))
+            {
+                UseIndex = useIndex.ValueKind switch
+                {
+                    JsonValueKind.False => false,
+                    JsonValueKind.True => true,
+                    _ => UseIndex
+                };
             }
         }
         finally
