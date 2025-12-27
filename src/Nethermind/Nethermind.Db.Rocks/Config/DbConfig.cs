@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.Rocks.Config;
@@ -334,6 +335,9 @@ public class DbConfig : IDbConfig
         // level. TODO: Measure how much the db size change.
         // "compression=kNoCompression;" +
 
+        // Make writes a tiny bit faster... please
+        // "wal_bytes_per_sync:10000000;" +
+
         "compression=kLZ4Compression;" +
         "max_write_batch_group_size_bytes=4000000;" +
 
@@ -395,18 +399,15 @@ public class DbConfig : IDbConfig
         get { return FlatDbCommonFlatOptions + field; }
         set { field = value ?? ""; }
     } =
+        "target_file_size_multiplier=3;" +
         "target_file_size_base=32000000;" +
-        "target_file_size_multiplier=3;" + // Make lower file size bigger which help with hash index.
+        "max_bytes_for_level_multiplier=15;" + // Reduce level count
         "max_bytes_for_level_base=128000000;" +
         "block_based_table_factory.block_size=4096;" +
         "block_based_table_factory.filter_policy=ribbonfilter:10:3;" +
 
-        "max_bytes_for_level_multiplier=15;" + // Reduce level count
-
-        // "block_based_table_factory.index_type=kHashSearch;" +
-        // "prefix_extractor=capped:4;" +
-
-        "";
+        "" + (Environment.GetEnvironmentVariable("EXTRA_ACCOUNT_ARGS") ?? "")
+        ;
 
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
     public bool? FlatStorageDbVerifyChecksum { get; set; }
@@ -436,6 +437,9 @@ public class DbConfig : IDbConfig
         // For trie which is heavy in compaction. Use direct io to prevent taking up space in os cache.
         // "use_direct_io_for_flush_and_compaction=true;" +
 
+        // Make writes a tiny bit faster... please
+        // "wal_bytes_per_sync:10000000;" +
+
         // LZ4 seems to be slightly faster here
         "compression=kLZ4Compression;" +
 
@@ -443,7 +447,7 @@ public class DbConfig : IDbConfig
         "level_compaction_dynamic_level_bytes=true;" +
 
         // Back to 16
-        "block_based_table_factory.block_restart_interval=16;" +
+        "block_based_table_factory.block_restart_interval=8;" +
 
         // This adds a hashtable-like index per block (the 32kb block)
         // This reduce CPU and therefore latency under high block cache hit scenario.
@@ -451,11 +455,13 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
         "block_based_table_factory.data_block_hash_table_util_ratio=0.75;" +
 
-        "block_based_table_factory.block_size=32000;" +
+        // 16k have slightly lower CPU than 32k, but have slightly lower block cache hit also.
+        "block_based_table_factory.block_size=16000;" +
         "block_based_table_factory.filter_policy=ribbonfilter:10:3;" +
 
         // Make it
         "optimize_filters_for_hits=true;" +
+        "" + (Environment.GetEnvironmentVariable("EXTRA_TRIE_ARGS") ?? "") +
         "";
 
     public string? FlatDbFlatInTrieOptions { get; set; } =

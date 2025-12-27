@@ -174,9 +174,15 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         {
             ReadOptions options = new ReadOptions();
             options.SetSnapshot(snapshot);
+
+            ReadOptions cachedOptions = new ReadOptions();
+            cachedOptions.SetSnapshot(snapshot);
+            cachedOptions.SetReadTier(1);
+
             return new DbOnTheRocks.DbSnapshot(
                 columnsDb,
                 options,
+                cachedOptions,
                 columnsDb._columnDbs[key]._columnFamily,
                 snapshot);
         }

@@ -1099,13 +1099,19 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public IDbSnapshot CreateSnapshot()
     {
-        ReadOptions readOptions = new();
         Snapshot snapshot = _db.CreateSnapshot();
+
+        ReadOptions readOptions = new();
         readOptions.SetSnapshot(snapshot);
+
+        ReadOptions readCachedOptions = new();
+        readCachedOptions.SetSnapshot(snapshot);
+        readCachedOptions.SetReadTier(1); // Cache tier
 
         return new DbSnapshot(
             this,
             readOptions,
+            readCachedOptions,
             null,
             snapshot);
     }
@@ -1991,9 +1997,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     public class DbSnapshot(
         DbOnTheRocks mainDb,
         ReadOptions options,
+        ReadOptions cachedOptions,
         ColumnFamilyHandle? columnFamily,
         Snapshot snapshot
-    ) : IDbSnapshot, ISortedKeyValueStore
+    ) : IDbSnapshot, ISortedKeyValueStore, ICacheOnlyReader
     {
 
         public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
@@ -2020,6 +2027,63 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
         {
             mainDb.DangerousReleaseMemory(span);
+        }
+
+        public (bool, int) TryGetSpanCached(scoped ReadOnlySpan<byte> key, Span<byte> outSpan)
+        {
+            return GetWithSpanOutput(key, outSpan, columnFamily, cachedOptions);
+        }
+
+        private unsafe (bool, int) GetWithSpanOutput(ReadOnlySpan<byte> key, Span<byte> output, ColumnFamilyHandle? cf, ReadOptions readOptions)
+        {
+            nint dbh = mainDb._db.Handle;
+            nint read_options = readOptions.Handle;
+            UIntPtr skLength = (UIntPtr)key.Length;
+            IntPtr handle;
+            IntPtr errPtr;
+            fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
+            {
+                handle = cf is null
+                    ? Native.Instance.rocksdb_get_pinned(dbh, read_options, keyPtr, skLength, out errPtr)
+                    : Native.Instance.rocksdb_get_pinned_cf(dbh, read_options, cf.Handle, keyPtr, skLength, out errPtr);
+            }
+
+            if (errPtr != IntPtr.Zero)
+            {
+                // Ugh.. string check!
+                string? err = Marshal.PtrToStringAnsi(errPtr);
+                if (err! == "Result incomplete: no blocking io" || err == "Result incomplete: Table not found in table_cache, no_io is set")
+                {
+                    return (false, 0);
+                }
+                ThrowRocksDbException(errPtr);
+            }
+            if (handle == IntPtr.Zero) return (false, 0);
+
+            try
+            {
+                IntPtr valuePtr = Native.Instance.rocksdb_pinnableslice_value(handle, out UIntPtr valueLength);
+                if (valuePtr == IntPtr.Zero)
+                {
+                    return (true, 0);
+                }
+
+                int length = (int)valueLength;
+                new ReadOnlySpan<byte>((void*)valuePtr, length).CopyTo(output);
+                return (true, length);
+            }
+            finally
+            {
+                Native.Instance.rocksdb_pinnableslice_destroy(handle);
+            }
+
+            [DoesNotReturn, StackTraceHidden]
+            static unsafe void ThrowRocksDbException(nint errPtr)
+            {
+                string? err = Marshal.PtrToStringAnsi(errPtr);
+                Console.Error.WriteLine($"The err is {err}");
+                throw new RocksDbException(errPtr);
+            }
         }
 
         public byte[]? FirstKey

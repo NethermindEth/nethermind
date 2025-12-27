@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO.Hashing;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -30,23 +31,102 @@ public static class BaseFlatPersistence
         return buffer[..StorageKeyLength];
     }
 
+    private static bool EnableReadCoalescing = Environment.GetEnvironmentVariable("ENABLE_READ_COALESCE") == "1";
+
+    private class ReadLocker()
+    {
+        public ulong _currentKey = 0;
+    }
+
+    private const int LockShardCount = 1024;
+    private static ReadLocker[] _locks = new ReadLocker[LockShardCount];
+    static BaseFlatPersistence()
+    {
+        for (int i = 0; i < LockShardCount; i++)
+        {
+            _locks[i] = new ReadLocker();
+        }
+    }
+
     public struct Reader(
-        IReadOnlyKeyValueStore state,
-        IReadOnlyKeyValueStore storage
+        ICacheOnlyReader state,
+        ICacheOnlyReader storage
     ) : BasePersistence.IHashedFlatReader
     {
+
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
         {
             ReadOnlySpan<byte> key = EncodeAccountKeyHashed(stackalloc byte[StateKeyPrefixLength], address);
-            ReadOnlySpan<byte> span = state.GetSpan(key);
-            try
+
+            if (!EnableReadCoalescing)
             {
-                span.CopyTo(outBuffer);
-                return span.Length;
+                return state.GetSpanCopy(key, outBuffer);
             }
-            finally
+
+            (bool ok, int outSize) = state.TryGetSpanCached(key, outBuffer);
+            if (ok) return outSize;
+
+            ulong h1 = XxHash3.HashToUInt64(key);
+            ReadLocker lockObj = _locks[(h1 % LockShardCount)];
+
+            bool isLeader = false;
+            bool keyMatch = true;
+
+            lock (lockObj)
             {
-                state.DangerousReleaseMemory(span);
+                if (lockObj._currentKey == 0)
+                {
+                    // Become the leader
+                    lockObj._currentKey = h1;
+                    isLeader = true;
+                }
+                else if (lockObj._currentKey != h1)
+                {
+                    // Shard collision with a different key
+                    keyMatch = false;
+                }
+            }
+
+            // 3. Handle Shard Collision (Different key using the same lock)
+            if (!keyMatch)
+            {
+                return state.GetSpanCopy(key, outBuffer);
+            }
+
+            if (isLeader)
+            {
+                try
+                {
+                    // 4. LEADER: Perform the expensive read
+                    // This presumably populates the cache internally
+                    return state.GetSpanCopy(key, outBuffer);
+                }
+                finally
+                {
+                    // 5. CRITICAL: Always reset state and pulse, even on exception
+                    lock (lockObj)
+                    {
+                        lockObj._currentKey = 0;
+                        Monitor.PulseAll(lockObj);
+                    }
+                }
+            }
+            else
+            {
+                // 6. FOLLOWER: Wait for leader
+                lock (lockObj)
+                {
+                    // CRITICAL FIX: Re-check condition!
+                    // If the leader finished while we were transitioning between locks,
+                    // _currentKey will already be 0. We must NOT Wait in that case.
+                    if (lockObj._currentKey == h1)
+                    {
+                        Monitor.Wait(lockObj);
+                    }
+                }
+
+                // Do a standard read, block should be cached
+                return state.GetSpanCopy(key, outBuffer);
             }
         }
 
@@ -54,39 +134,106 @@ public static class BaseFlatPersistence
         {
             Span<byte> keySpan = stackalloc byte[StorageKeyLength];
             ReadOnlySpan<byte> storageKey = EncodeStorageKeyHashed(keySpan, address, slot);
-            Span<byte> value = storage.GetSpan(storageKey);
-            try
+            Span<byte> buffer = stackalloc byte[40];
+            int resultSize = GetStorageBuffer(storageKey, buffer);
+            if (resultSize == 0) return false;
+
+            Span<byte> value = buffer[..resultSize];
+
+            // AI said: Use Unsafe to bypass the 'Slice' bounds check and property access
+            // This writes the variable-length DB value into the end of the 32-byte struct
+            unsafe
             {
-                if (value.IsNullOrEmpty())
+                int len = value.Length;
+                if (len == SlotValue.ByteCount)
                 {
-                    return false;
+                    outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
                 }
-
-                // AI said: Use Unsafe to bypass the 'Slice' bounds check and property access
-                // This writes the variable-length DB value into the end of the 32-byte struct
-                unsafe
+                else
                 {
-                    int len = value.Length;
-                    if (len == SlotValue.ByteCount)
-                    {
-                        outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
-                    }
-                    else
-                    {
-                        ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValue);
-                        ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
+                    ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValue);
+                    ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
 
-                        Unsafe.CopyBlockUnaligned(
-                            ref destPtr,
-                            ref MemoryMarshal.GetReference(value),
-                            (uint)len);
-                    }
+                    Unsafe.CopyBlockUnaligned(
+                        ref destPtr,
+                        ref MemoryMarshal.GetReference(value),
+                        (uint)len);
                 }
-                return true;
             }
-            finally
+            return true;
+        }
+
+        private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer)
+        {
+            if (!EnableReadCoalescing)
             {
-                storage.DangerousReleaseMemory(value);
+                return storage.GetSpanCopy(key, outBuffer);
+            }
+
+            (bool ok, int outSize) = storage.TryGetSpanCached(key, outBuffer);
+            if (ok) return outSize;
+
+            ulong h1 = XxHash3.HashToUInt64(key);
+            ReadLocker lockObj = _locks[(h1 % LockShardCount)];
+
+            bool isLeader = false;
+            bool keyMatch = true;
+
+            lock (lockObj)
+            {
+                if (lockObj._currentKey == 0)
+                {
+                    // Become the leader
+                    lockObj._currentKey = h1;
+                    isLeader = true;
+                }
+                else if (lockObj._currentKey != h1)
+                {
+                    // Shard collision with a different key
+                    keyMatch = false;
+                }
+            }
+
+            // 3. Handle Shard Collision (Different key using the same lock)
+            if (!keyMatch)
+            {
+                return storage.GetSpanCopy(key, outBuffer);
+            }
+
+            if (isLeader)
+            {
+                try
+                {
+                    // 4. LEADER: Perform the expensive read
+                    // This presumably populates the cache internally
+                    return storage.GetSpanCopy(key, outBuffer);
+                }
+                finally
+                {
+                    // 5. CRITICAL: Always reset state and pulse, even on exception
+                    lock (lockObj)
+                    {
+                        lockObj._currentKey = 0;
+                        Monitor.PulseAll(lockObj);
+                    }
+                }
+            }
+            else
+            {
+                // 6. FOLLOWER: Wait for leader
+                lock (lockObj)
+                {
+                    // CRITICAL FIX: Re-check condition!
+                    // If the leader finished while we were transitioning between locks,
+                    // _currentKey will already be 0. We must NOT Wait in that case.
+                    if (lockObj._currentKey == h1)
+                    {
+                        Monitor.Wait(lockObj);
+                    }
+                }
+
+                // Do a standard read, block should be cached
+                return storage.GetSpanCopy(key, outBuffer);
             }
         }
     }

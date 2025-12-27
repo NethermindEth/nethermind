@@ -95,8 +95,8 @@ public class PreimageRocksdbPersistence : IPersistence
 
         var flatReader = new FakeHashFlatReader<BaseFlatPersistence.Reader>(
             new BaseFlatPersistence.Reader(
-                state,
-                storage
+                (ICacheOnlyReader)state,
+                (ICacheOnlyReader)storage
             )
         );
 

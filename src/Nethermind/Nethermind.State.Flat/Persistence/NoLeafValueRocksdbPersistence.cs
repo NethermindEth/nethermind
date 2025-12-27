@@ -50,8 +50,8 @@ public class NoLeafValueRocksdbPersistence : IPersistence
         var snapshot = _db.CreateSnapshot();
         var currentState = ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
 
-        IReadOnlyKeyValueStore state = snapshot.GetColumn(FlatDbColumns.Account);
-        IReadOnlyKeyValueStore storage = snapshot.GetColumn(FlatDbColumns.Storage);
+        ICacheOnlyReader state = (ICacheOnlyReader) snapshot.GetColumn(FlatDbColumns.Account);
+        ICacheOnlyReader storage = (ICacheOnlyReader) snapshot.GetColumn(FlatDbColumns.Storage);
 
         var hashedFlatReader = new BaseFlatPersistence.Reader(
             state,

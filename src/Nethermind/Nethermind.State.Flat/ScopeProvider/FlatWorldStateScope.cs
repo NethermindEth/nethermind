@@ -142,7 +142,6 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     {
         if (_isCommitting) return;
         if (_isDisposed) return;
-        /*
         if (slot is null)
         {
             _warmer.PushJobMulti(this, address, null, null, _hintSequenceId);
@@ -151,7 +150,6 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         {
             CreateStorageTreeImpl(address).QueueOutOfScopeWarmup(slot.Value);
         }
-        */
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;

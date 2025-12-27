@@ -149,6 +149,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
         {
             builder.AddStep(typeof(ImportFlatDb));
         }
+        else
+        {
+            // Disable statedb so that it does not compact which mess with metrics.
+            builder.AddKeyedSingleton<IDb>(DbNames.State, new MemDb());
+        }
 
         if (flatDbConfig.GeneratePreimage)
         {
@@ -218,7 +223,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
         {
             _logger = logManager.GetClassLogger<FlatBlockCacheAdjuster>();
             _rocksDbConfigFactory = rocksDbConfigFactory;
-            _flatDbBlockCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr((uint)flatDbConfig.BlockCacheSizeBudget));
+            _flatDbBlockCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_hyper_clock(new UIntPtr((uint)flatDbConfig.BlockCacheSizeBudget), 0);
 
             FlatDbColumns[] columns;
 

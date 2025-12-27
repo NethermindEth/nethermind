@@ -82,8 +82,8 @@ public class RocksdbPersistence : IPersistence
         var flatReader = new BasePersistence.ToHashedFlatReader<BloomFlatWrapper.BloomInterceptor<BaseFlatPersistence.Reader>>(
             new BloomFlatWrapper.BloomInterceptor<BaseFlatPersistence.Reader>(
                 new BaseFlatPersistence.Reader(
-                    state,
-                    storage
+                    (ICacheOnlyReader) state,
+                    (ICacheOnlyReader) storage
                 ),
                 _bloomFilter
             )
