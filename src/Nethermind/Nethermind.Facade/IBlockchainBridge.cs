@@ -37,16 +37,16 @@ namespace Nethermind.Facade
 
         int NewBlockFilter();
         int NewPendingTransactionFilter();
-        int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, AddressAsKey[]? address = null, IEnumerable<Hash256[]?>? topics = null);
+        int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? address = null, IEnumerable<Hash256[]?>? topics = null);
         void UninstallFilter(int filterId);
         bool FilterExists(int filterId);
         Hash256[] GetBlockFilterChanges(int filterId);
         Hash256[] GetPendingTransactionFilterChanges(int filterId);
         FilterLog[] GetLogFilterChanges(int filterId);
         FilterType GetFilterType(int filterId);
-        LogFilter GetFilter(BlockParameter fromBlock, BlockParameter toBlock, AddressAsKey[]? addresses = null, IEnumerable<Hash256[]?>? topics = null);
+        LogFilter GetFilter(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? addresses = null, IEnumerable<Hash256[]?>? topics = null);
         IEnumerable<FilterLog> GetLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
-        IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, AddressAsKey[]? addresses = null, IEnumerable<Hash256[]?>? topics = null, CancellationToken cancellationToken = default);
+        IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? addresses = null, IEnumerable<Hash256[]?>? topics = null, CancellationToken cancellationToken = default);
 
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>;
