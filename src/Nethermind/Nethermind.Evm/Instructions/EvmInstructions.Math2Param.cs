@@ -269,16 +269,15 @@ internal static partial class EvmInstructions
         // Charge the fixed gas cost for exponentiation.
         TGasPolicy.Consume(ref gas, GasCostOf.Exp);
 
-        // Pop the base value from the stack.
-        if (!stack.PopUInt256(out UInt256 a))
+        // Pop the base value and exponent from the stack.
+        if (!stack.PopUInt256(out UInt256 a) ||
+            !stack.PopUInt256(out UInt256 exponent))
+        {
             goto StackUnderflow;
-
-        // Pop the exponent.
-        if (!stack.PopUInt256(out UInt256 exponent))
-            goto StackUnderflow;
+        }
 
         // Determine the effective byte-length of the exponent.
-        int leadingZeros = exponent.CountLeadingZeros();
+        int leadingZeros = exponent.CountLeadingZeros() >> 3;
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.
