@@ -273,11 +273,12 @@ internal static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 a))
             goto StackUnderflow;
 
-        // Pop the exponent as a 256-bit word.
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
+        // Pop the exponent.
+        if (!stack.PopUInt256(out UInt256 exponent))
+            goto StackUnderflow;
 
         // Determine the effective byte-length of the exponent.
-        int leadingZeros = bytes.LeadingZerosCount();
+        int leadingZeros = exponent.CountLeadingZeros();
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.
@@ -300,7 +301,7 @@ internal static partial class EvmInstructions
             else
             {
                 // Perform exponentiation and push the 256-bit result onto the stack.
-                UInt256.Exp(a, new UInt256(bytes, true), out UInt256 result);
+                UInt256.Exp(in a, in exponent, out UInt256 result);
                 stack.PushUInt256<TTracingInst>(in result);
             }
         }
