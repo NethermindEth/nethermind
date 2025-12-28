@@ -49,7 +49,6 @@ public abstract class BlockchainTestBase
     static BlockchainTestBase()
     {
         DifficultyCalculator = new DifficultyCalculatorWrapper();
-        _logManager ??= LimboLogs.Instance;
         _logger = _logManager.GetClassLogger();
     }
 
