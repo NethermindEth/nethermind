@@ -20,20 +20,30 @@ jobs:
       matrix:
         language: ['csharp', 'actions']
     steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: false
+          tool-cache: false
+
       - name: Check out repository
         uses: actions/checkout@v6
+
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           queries: security-and-quality
           packs: githubsecuritylab/codeql-csharp-queries
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+
       - name: Build Nethermind
         working-directory: src/Nethermind
         run: dotnet build Nethermind.slnx -c release
+
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: '/language:${{ matrix.language }}'
