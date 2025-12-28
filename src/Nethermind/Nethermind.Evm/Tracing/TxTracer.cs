@@ -13,23 +13,25 @@ namespace Nethermind.Evm.Tracing;
 
 public abstract class TxTracer : ITxTracer
 {
-    [SuppressMessage("ReSharper", "VirtualMemberCallInConstructor")]
-    protected TxTracer()
+    private bool? _isTracing;
+
+    public bool IsTracing
     {
-        IsTracing = IsTracingReceipt
-                    || IsTracingActions
-                    || IsTracingOpLevelStorage
-                    || IsTracingMemory
-                    || IsTracingInstructions
-                    || IsTracingRefunds
-                    || IsTracingCode
-                    || IsTracingStack
-                    || IsTracingBlockHash
-                    || IsTracingAccess
-                    || IsTracingFees
-                    || IsTracingLogs;
+        get => _isTracing ??= IsTracingReceipt
+                              || IsTracingActions
+                              || IsTracingOpLevelStorage
+                              || IsTracingMemory
+                              || IsTracingInstructions
+                              || IsTracingRefunds
+                              || IsTracingCode
+                              || IsTracingStack
+                              || IsTracingBlockHash
+                              || IsTracingAccess
+                              || IsTracingFees
+                              || IsTracingLogs;
+        protected set => _isTracing = value;
     }
-    public bool IsTracing { get; protected set; }
+
     public virtual bool IsTracingState { get; protected set; }
     public virtual bool IsTracingReceipt { get; protected set; }
     public virtual bool IsTracingActions { get; protected set; }
