@@ -8,10 +8,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RocksdbPersistence : IPersistence
+public class RocksdbPersistence : IPersistence, IPersistenceWithConcurrentTrie
 {
     private readonly IColumnsDb<FlatDbColumns> _db;
     private static byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
@@ -158,5 +159,33 @@ public class RocksdbPersistence : IPersistence
                 }
             })
         );
+    }
+
+    public IPersistenceWithConcurrentTrie.IWriteBatch CreateTrieWriteBatch(WriteFlags flags = WriteFlags.None)
+    {
+        var dbSnap = _db.CreateSnapshot();
+        IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch();
+        var trieWriteBatch = new BaseTriePersistence.WriteBatch(
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
+            batch.GetColumnBatch(FlatDbColumns.StateTopNodes),
+            batch.GetColumnBatch(FlatDbColumns.StateNodes),
+            batch.GetColumnBatch(FlatDbColumns.StorageNodes),
+            flags);
+
+        return new ConcurrentTrieWriter(trieWriteBatch, dbSnap, batch);
+    }
+
+    private class ConcurrentTrieWriter(BaseTriePersistence.WriteBatch trieWriteBatch, IColumnDbSnapshot<FlatDbColumns> dbSnap, IColumnsWriteBatch<FlatDbColumns> batch) : IPersistenceWithConcurrentTrie.IWriteBatch
+    {
+        public void Dispose()
+        {
+            dbSnap.Dispose();
+            batch.Dispose();
+        }
+
+        public void SetTrieNodes(Hash256? address, in TreePath path, TrieNode tnValue)
+        {
+            trieWriteBatch.SetTrieNodes(address, path, tnValue);
+        }
     }
 }

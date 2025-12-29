@@ -38,3 +38,16 @@ public interface IPersistence
 
     bool SupportConcurrentWrites => true;
 }
+
+/// <summary>
+/// Implementing this makes import fasteer
+/// </summary>
+public interface IPersistenceWithConcurrentTrie
+{
+    IWriteBatch CreateTrieWriteBatch(WriteFlags flags = WriteFlags.None);
+
+    public interface IWriteBatch: IDisposable
+    {
+        void SetTrieNodes(Hash256? address, in TreePath path, TrieNode tnValue);
+    }
+}

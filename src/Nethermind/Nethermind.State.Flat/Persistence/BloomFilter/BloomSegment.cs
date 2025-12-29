@@ -60,34 +60,17 @@ public sealed class BloomSegment : IDisposable
     private int _isDisposingOrDisposed;  // 0/1
 
     private readonly string _path;
-    private readonly string _walPath;
-
-    // ---- WAL (Write-Ahead Log) ----
-    private readonly double _walThresholdPercent;
-    private long _walThreshold; // Max entries before triggering MMAP flush
-    private FileStream? _walStream;
-    private readonly Lock _walLock = new();
-    private long _walEntryCount;
-
-    private Task? _backgroundFlushTask;
-    private readonly CancellationTokenSource _backgroundFlushCts = new();
-    private int _flushInProgress; // 0/1 gate
 
     public BloomSegment(
         string path,
         long capacity,
         int bitsPerKey,
-        bool createNew,
-        double walThresholdPercent = DefaultWalThresholdPercent)
+        bool createNew)
     {
         _path = path;
-        _walPath = path + ".wal";
         Capacity   = capacity;
         BitsPerKey = bitsPerKey;
         K = Math.Max(1, (int)Math.Round(bitsPerKey * Math.Log(2)));
-
-        _walThresholdPercent = walThresholdPercent;
-        _walThreshold = Math.Max(1, (long)(capacity * walThresholdPercent));
 
         long totalBits;
         long totalBytes;
@@ -127,75 +110,11 @@ public sealed class BloomSegment : IDisposable
             Volatile.Write(ref _count, 0);
             WriteHeader();
             _directAccessor.Flush();
-            InitializeWal(createNew: true);
         }
         else
         {
             ReadHeaderAndRebuildLayout();
-            ReplayWalIfExists();          // replays + updates count + deletes WAL to avoid re-inflation
-            InitializeWal(createNew: false);
         }
-    }
-
-    private void InitializeWal(bool createNew)
-    {
-        using var _ = _walLock.EnterScope();
-
-        if (createNew && File.Exists(_walPath))
-        {
-            File.Delete(_walPath);
-        }
-
-        _walStream = new FileStream(
-            _walPath,
-            FileMode.OpenOrCreate,
-            FileAccess.ReadWrite,
-            FileShare.None,
-            bufferSize: 4096,
-            FileOptions.WriteThrough);
-
-        _walEntryCount = _walStream.Length / WalEntrySize;
-    }
-
-    private void ReplayWalIfExists()
-    {
-        if (!File.Exists(_walPath))
-            return;
-
-        Console.Error.WriteLine($"Replaying WAL: {_walPath}");
-
-        long entriesReplayed = 0;
-
-        using (var walReader = new FileStream(
-                   _walPath,
-                   FileMode.Open,
-                   FileAccess.Read,
-                   FileShare.None))
-        {
-            Span<byte> buffer = stackalloc byte[WalEntrySize];
-
-            while (true)
-            {
-                int read = walReader.Read(buffer);
-                if (read == 0) break;
-                if (read != WalEntrySize)
-                    throw new InvalidDataException("Corrupted WAL (partial entry)");
-
-                ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(buffer);
-                AddToMmapDirectly(hash);
-                entriesReplayed++;
-            }
-        }
-
-        if (entriesReplayed > 0)
-            Interlocked.Add(ref _count, entriesReplayed);
-
-        FlushMMAPDurable();
-
-        // prevent re-inflation on next restart
-        File.Delete(_walPath);
-
-        Console.Error.WriteLine($"WAL replay complete: {entriesReplayed} entries");
     }
 
     private void FlushMMAPDurable()
@@ -334,16 +253,8 @@ public sealed class BloomSegment : IDisposable
 
             try
             {
-                // WAL FIRST (so crash recovery can always reconstruct if MMAP wasn't flushed)
-                WriteToWal(h1);
-
-                // THEN update MMAP
                 AddToMmapDirectly(h1);
-
                 Interlocked.Increment(ref _count);
-
-                if (Volatile.Read(ref _walEntryCount) >= _walThreshold)
-                    TriggerBackgroundFlushIfNeeded();
             }
             finally
             {
@@ -380,108 +291,6 @@ public sealed class BloomSegment : IDisposable
         }
     }
 
-    private void WriteToWal(ulong hash)
-    {
-        using var _ = _walLock.EnterScope();
-
-        if (_walStream == null)
-            return;
-
-        Span<byte> buffer = stackalloc byte[WalEntrySize];
-        BinaryPrimitives.WriteUInt64LittleEndian(buffer, hash);
-
-        _walStream.Write(buffer);
-        // still track with atomic because readers are outside wal lock (threshold check)
-        Interlocked.Increment(ref _walEntryCount);
-    }
-
-    private void TriggerBackgroundFlushIfNeeded()
-    {
-        if (Volatile.Read(ref _isDisposingOrDisposed) != 0)
-            return;
-
-        // Single-flight background flush
-        if (Interlocked.CompareExchange(ref _flushInProgress, 1, 0) != 0)
-            return;
-
-        _backgroundFlushTask = Task.Run(() =>
-        {
-            try
-            {
-                FlushMmapAndRotateWal();
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"Background MMAP flush error: {ex}");
-            }
-            finally
-            {
-                Volatile.Write(ref _flushInProgress, 0);
-            }
-        }, _backgroundFlushCts.Token);
-    }
-
-    private void FlushMmapAndRotateWal()
-    {
-        // Rare path: serialize with maintenance lock
-        using var _ = _maintenance.EnterScope();
-
-        // Block new writers
-        Volatile.Write(ref _stopWriters, 1);
-
-        // Wait for existing writers (safe: Add registers before barrier check)
-        WaitForWritersToDrain_NoLock();
-
-        try
-        {
-            if (Volatile.Read(ref _isDisposingOrDisposed) != 0)
-                return;
-
-            // Persist metadata BEFORE flushing pages
-            WriteHeader();
-
-            FlushMMAPDurable();
-
-            // Rotate WAL
-            using (var walLock = _walLock.EnterScope())
-            {
-                _walStream?.Flush(flushToDisk: true);
-                _walStream?.Dispose();
-                _walStream = null;
-
-                // Delete old WAL
-                if (File.Exists(_walPath))
-                    File.Delete(_walPath);
-
-                // Create new WAL (unless sealed/disposed)
-                if (Volatile.Read(ref _sealed) == 0 &&
-                    Volatile.Read(ref _isDisposingOrDisposed) == 0)
-                {
-                    _walStream = new FileStream(
-                        _walPath,
-                        FileMode.Create,
-                        FileAccess.ReadWrite,
-                        FileShare.None,
-                        bufferSize: 4096,
-                        FileOptions.WriteThrough);
-                }
-
-                Volatile.Write(ref _walEntryCount, 0);
-            }
-
-            Console.Error.WriteLine($"MMAP flushed and WAL rotated for: {_path}");
-        }
-        finally
-        {
-            // Re-open for writers (if not sealed/disposed)
-            if (Volatile.Read(ref _sealed) == 0 &&
-                Volatile.Read(ref _isDisposingOrDisposed) == 0)
-            {
-                Volatile.Write(ref _stopWriters, 0);
-            }
-        }
-    }
-
     public bool IsFull => Count >= Capacity;
 
     public void Seal()
@@ -501,28 +310,11 @@ public sealed class BloomSegment : IDisposable
 
         using (var fs = new FileStream(_path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite))
             fs.Flush(flushToDisk: true);
-
-        // Sealed segment: delete WAL
-        using (var walLock = _walLock.EnterScope())
-        {
-            _walStream?.Flush(flushToDisk: true);
-            _walStream?.Dispose();
-            _walStream = null;
-
-            if (File.Exists(_walPath))
-                File.Delete(_walPath);
-
-            Volatile.Write(ref _walEntryCount, 0);
-        }
-
-        // Keep _stopWriters=1; sealed segment should not accept new writers anyway.
     }
 
     public void Flush()
     {
-        // Only flush WAL, not MMAP (per WAL pattern)
-        using var _ = _walLock.EnterScope();
-        _walStream?.Flush(flushToDisk: true);
+        FlushMMAPDurable();
     }
 
     private void WaitForBarrierToClearOrSealedOrDisposed()
@@ -644,8 +436,6 @@ public sealed class BloomSegment : IDisposable
             long totalBytes = AlignUp((totalBits + 7) / 8, CacheLineBytes);
             _numBlocks = totalBytes / CacheLineBytes;
         }
-
-        _walThreshold = Math.Max(1, (long)(Capacity * _walThresholdPercent));
     }
 
     // ---------------------------------------------------------------------
@@ -699,9 +489,6 @@ public sealed class BloomSegment : IDisposable
         // Make any would-be waiters fail quickly
         Volatile.Write(ref _stopWriters, 1);
 
-        // Wait flush
-        _backgroundFlushTask?.Wait();
-
         // Drain active writers & readers
         WaitForWritersToDrain_NoLock();
         WaitForOpsToDrain_NoLock();
@@ -716,30 +503,7 @@ public sealed class BloomSegment : IDisposable
 
         Volatile.Write(ref _sealed, 1);
 
-        // Flush & close WAL
-        using (var walLock = _walLock.EnterScope())
-        {
-            _walStream?.Flush(flushToDisk: true);
-            _walStream?.Dispose();
-            _walStream = null;
-
-            if (File.Exists(_walPath))
-                File.Delete(_walPath);
-        }
-
         _directAccessor.Dispose();
         _mmf.Dispose();
-
-        _backgroundFlushCts.Dispose();
-    }
-
-    /// <summary>
-    /// Used by unit test to start for
-    /// </summary>
-    public void CloseWal()
-    {
-        _walStream?.Flush(flushToDisk: true);
-        _walStream?.Dispose();
-        _walStream = null;
     }
 }
