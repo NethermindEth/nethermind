@@ -138,7 +138,7 @@ public class SegmentedBloomTests
 
         // Assert
         bloom.MightContain(hash).Should().BeTrue();
-        // Note: We can't directly verify skip count without exposing metrics, 
+        // Note: We can't directly verify skip count without exposing metrics,
         // but the MightContain check before Add should prevent the second add
     }
 
@@ -147,7 +147,7 @@ public class SegmentedBloomTests
     {
         // Arrange
         using var bloom = new SegmentedBloom(_testDirectory, segmentCapacity: 100, bitsPerKey: 10);
-        
+
         // Add items to trigger rotation
         for (ulong i = 0; i < 150; i++)
         {
@@ -228,7 +228,7 @@ public class SegmentedBloomTests
         {
             bloom.Add(i);
         }
-        
+
         var firstSegmentFile = Directory.GetFiles(_testDirectory, "*.bloom").OrderBy(f => File.GetCreationTime(f)).First();
 
         // Trigger rotation
@@ -238,7 +238,7 @@ public class SegmentedBloomTests
         // Assert - First segment should be sealed (we can't directly check, but it should be sealed)
         // Wait a bit for rotation to complete
         Thread.Sleep(100);
-        
+
         var segmentFiles = Directory.GetFiles(_testDirectory, "*.bloom");
         segmentFiles.Should().HaveCountGreaterThan(1);
     }
@@ -341,11 +341,22 @@ public class SegmentedBloomTests
         // Act - Some threads adding, others querying
         var writerTasks = Enumerable.Range(0, 3).Select(threadId => Task.Run(() =>
         {
-            ulong hash = (ulong)(threadId * 1000000);
-            while (!cts.Token.IsCancellationRequested)
+            try
             {
-                bloom.Add(hash++);
-                addedHashes.Add(hash);
+                ulong hash = (ulong)(threadId * 1000000);
+                int iteration = 0;
+                while (!cts.Token.IsCancellationRequested)
+                {
+                    bloom.Add(hash++);
+                    addedHashes.Add(hash);
+                    if (iteration % 1000 == 0) Task.Yield();
+                }
+                Console.Error.WriteLine("Writer done");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(ex.ToString());
+                throw;
             }
         })).ToArray();
 
@@ -357,6 +368,7 @@ public class SegmentedBloomTests
                 bloom.MightContain(hash++);
                 Thread.Yield();
             }
+            Console.Error.WriteLine("Reader done");
         })).ToArray();
 
         Task.WaitAll(writerTasks.Concat(readerTasks).ToArray());
@@ -371,7 +383,7 @@ public class SegmentedBloomTests
         // Arrange
         int segmentCapacity = 50;
         using var bloom = new SegmentedBloom(_testDirectory, segmentCapacity: segmentCapacity, bitsPerKey: 10);
-        
+
         // Pre-fill close to capacity
         for (ulong i = 0; i < (ulong)(segmentCapacity - 5); i++)
         {
@@ -408,7 +420,7 @@ public class SegmentedBloomTests
     {
         // Arrange
         ulong[] testHashes = { 1, 2, 3, 100, 200 };
-        
+
         using (var bloom = new SegmentedBloom(_testDirectory, segmentCapacity: 100, bitsPerKey: 10))
         {
             foreach (var hash in testHashes)
@@ -433,7 +445,7 @@ public class SegmentedBloomTests
     {
         // Arrange
         ulong[] testHashes = { 1, 2, 3, 100, 200 };
-        
+
         using (var bloom = new SegmentedBloom(_testDirectory, segmentCapacity: 100, bitsPerKey: 10))
         {
             foreach (var hash in testHashes)
@@ -459,7 +471,7 @@ public class SegmentedBloomTests
         // Arrange - Create multiple segments
         int segmentCapacity = 50;
         var allHashes = new List<ulong>();
-        
+
         using (var bloom = new SegmentedBloom(_testDirectory, segmentCapacity: segmentCapacity, bitsPerKey: 10))
         {
             for (ulong i = 0; i < (ulong)(segmentCapacity * 3); i++)
@@ -585,6 +597,122 @@ public class SegmentedBloomTests
         // Just verify it doesn't throw
         bool result = bloom.MightContain(99999);
         Assert.Pass("Query completed without exception");
+    }
+
+    #endregion
+
+    #region WAL Tests
+
+    private const string WalFileName = "segmented_bloom.wal";
+
+    private static void WriteWal(string walPath, params ulong[] values)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(walPath)!);
+
+        using var fs = new FileStream(walPath, FileMode.Create, FileAccess.Write, FileShare.Read);
+        Span<byte> buf = stackalloc byte[sizeof(ulong)];
+        foreach (ulong v in values)
+        {
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(buf, v);
+            fs.Write(buf);
+        }
+        fs.Flush(true);
+    }
+
+    [Test]
+    public void Wal_EnabledByDefault_ShouldCreateWalFile_AndAppendOnAdd()
+    {
+        // Arrange
+        using var bloom = new SegmentedBloom(_testDirectory, segmentCapacity: 100, bitsPerKey: 10);
+        string walPath = Path.Combine(_testDirectory, WalFileName);
+
+        // Assert: constructor opens/creates WAL (and checkpoints => empty)
+        File.Exists(walPath).Should().BeTrue("WAL should be created when enabled by default");
+        new FileInfo(walPath).Length.Should().Be(0, "constructor checkpoint should truncate WAL");
+
+        // Act
+        bloom.Add(12345UL);
+
+        // Assert: one record written (8 bytes)
+        new FileInfo(walPath).Length.Should().BeGreaterThanOrEqualTo(8, "Add should append to WAL when enabled");
+    }
+
+    [Test]
+    public void Wal_DisabledGlobally_ShouldNotCreateWalFile()
+    {
+        // Arrange & Act
+        using var bloom = new SegmentedBloom(_testDirectory, segmentCapacity: 100, bitsPerKey: 10, enabled: true, walEnabled: false);
+        string walPath = Path.Combine(_testDirectory, WalFileName);
+
+        // Assert
+        File.Exists(walPath).Should().BeFalse("WAL should not be created when globally disabled");
+
+        // Act (should still function normally)
+        bloom.Add(1);
+        bloom.MightContain(1).Should().BeTrue();
+        bloom.Flush();
+
+        // Assert again
+        File.Exists(walPath).Should().BeFalse("WAL should still not be created after operations when globally disabled");
+    }
+
+    [Test]
+    public void Wal_PerAddDisabled_ShouldNotAppend()
+    {
+        // Arrange
+        using var bloom = new SegmentedBloom(_testDirectory, segmentCapacity: 100, bitsPerKey: 10, enabled: true, walEnabled: true);
+        string walPath = Path.Combine(_testDirectory, WalFileName);
+
+        File.Exists(walPath).Should().BeTrue();
+        new FileInfo(walPath).Length.Should().Be(0);
+
+        // Act: add with WAL disabled for this call
+        bloom.Add(99999UL, writeWal: false);
+
+        // Assert: WAL remains empty
+        new FileInfo(walPath).Length.Should().Be(0, "per-add WAL disable should prevent appending records");
+
+        // sanity: bloom still got the value
+        bloom.MightContain(99999UL).Should().BeTrue();
+    }
+
+    [Test]
+    public void Wal_Replay_ShouldRestoreEntries_AndCheckpointTruncateWal()
+    {
+        // Arrange: prewrite a WAL with entries (no bloom segments created yet)
+        string walPath = Path.Combine(_testDirectory, WalFileName);
+        ulong[] hashes = { 1111UL, 2222UL, 3333UL };
+        WriteWal(walPath, hashes);
+
+        new FileInfo(walPath).Length.Should().Be(hashes.Length * sizeof(ulong));
+
+        // Act: opening with WAL enabled should replay then checkpoint (truncate)
+        using var bloom = new SegmentedBloom(_testDirectory, segmentCapacity: 100, bitsPerKey: 10, enabled: true, walEnabled: true);
+
+        // Assert: values are present after replay
+        foreach (ulong h in hashes)
+            bloom.MightContain(h).Should().BeTrue($"hash {h} should be restored from WAL replay");
+
+        // Assert: WAL truncated by checkpoint
+        File.Exists(walPath).Should().BeTrue();
+        new FileInfo(walPath).Length.Should().Be(0, "constructor checkpoint should truncate WAL after replay");
+    }
+
+    [Test]
+    public void Wal_Flush_ShouldCheckpointAndTruncateWal()
+    {
+        // Arrange
+        using var bloom = new SegmentedBloom(_testDirectory, segmentCapacity: 100, bitsPerKey: 10, enabled: true, walEnabled: true);
+        string walPath = Path.Combine(_testDirectory, WalFileName);
+
+        bloom.Add(424242UL);
+        new FileInfo(walPath).Length.Should().BeGreaterThanOrEqualTo(8);
+
+        // Act
+        bloom.Flush();
+
+        // Assert: WAL truncated
+        new FileInfo(walPath).Length.Should().Be(0, "Flush should checkpoint and truncate WAL when enabled");
     }
 
     #endregion

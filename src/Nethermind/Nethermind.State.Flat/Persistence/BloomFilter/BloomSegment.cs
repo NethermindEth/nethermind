@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.IO;
 using System.IO.MemoryMappedFiles;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
+using Microsoft.Win32.SafeHandles;
 using DotNext.IO.MemoryMappedFiles;
-using Nethermind.Core.Collections;
 
 namespace Nethermind.State.Flat.Persistence.BloomFilter;
 
@@ -20,20 +19,18 @@ public sealed class BloomSegment : IDisposable
     private const int CacheLineBytes = 64;      // 512 bits
     private const int CacheLineBits  = 512;
     private const int HeaderSize     = 128;
+    private const int PageSize       = 4096;    // Standard OS page size
+    private const int ShiftPerPage   = 12;      // 2^12 = 4096
+    private const ulong Magic        = 0x424C4F4F4DUL; // "BLOOM"
 
     // golden ratio for probe dispersion
     private const ulong ProbeDelta = 0x9E3779B97F4A7C15UL;
 
-    // ---- WAL constants ----
-    private const double DefaultWalThresholdPercent = 0.01; // 1% of capacity
-    private const int WalEntrySize = 8; // ulong hash
-
     // ---- persisted metadata ----
-    public long Capacity { get; set; }
-    public int BitsPerKey { get; set; }
-    public int K { get; set; }
+    public long Capacity { get; private set; }
+    public int BitsPerKey { get; private set; }
+    public int K { get; private set; }
 
-    // Count/IsSealed must be thread-safe
     private long _count;
     public long Count => Volatile.Read(ref _count);
 
@@ -42,149 +39,110 @@ public sealed class BloomSegment : IDisposable
 
     // ---- layout ----
     private readonly long _dataOffset;
-    private long _numBlocks;
+    private readonly long _numBlocks;
+    private readonly long _totalMappedSize;
 
-    // ---- mmap ----
-    private readonly MemoryMappedFile _mmf;
-    private MemoryMappedDirectAccessor _directAccessor;
-
-    // ---- concurrency barrier for flush/seal/dispose ----
-    private int _writersInFlight;
-    private int _stopWriters; // 0 = normal, 1 = block new writers
-    private readonly Lock _maintenance = new();
-
-    // ops barrier to prevent dispose use-after-free (covers reads too)
-    private int _opsInFlight;
-
-    // lifecycle
-    private int _isDisposingOrDisposed;  // 0/1
-
+    // ---- memory and persistence ----
     private readonly string _path;
+    private readonly SafeFileHandle _fileHandle;
+    private readonly MemoryMappedFile _mmf;
+    private readonly MemoryMappedDirectAccessor _accessor;
 
-    public BloomSegment(
+    // ---- manual dirty tracking ----
+    private readonly ulong[] _dirtyPages;
+
+    // ---- concurrency barrier ----
+    private int _writersInFlight;
+    private int _stopWriters;
+    private readonly Lock _maintenance = new();
+    private int _opsInFlight;
+    private int _isDisposingOrDisposed;
+
+    private BloomSegment(
         string path,
+        SafeFileHandle fileHandle,
         long capacity,
         int bitsPerKey,
-        bool createNew)
+        long count,
+        bool isSealed)
     {
         _path = path;
-        Capacity   = capacity;
+        _fileHandle = fileHandle;
+        Capacity = capacity;
         BitsPerKey = bitsPerKey;
+        _count = count;
+        _sealed = isSealed ? 1 : 0;
+        _stopWriters = isSealed ? 1 : 0;
+
         K = Math.Max(1, (int)Math.Round(bitsPerKey * Math.Log(2)));
 
-        long totalBits;
         long totalBytes;
-
         checked
         {
-            totalBits  = capacity * bitsPerKey;
-            totalBytes = AlignUp((totalBits + 7) / 8, CacheLineBytes);
+            totalBytes = AlignUp((capacity * bitsPerKey + 7) / 8, CacheLineBytes);
         }
 
-        _numBlocks  = totalBytes / CacheLineBytes;
+        _numBlocks = totalBytes / CacheLineBytes;
         _dataOffset = AlignUp(HeaderSize, CacheLineBytes);
-        long fileSize = _dataOffset + totalBytes;
+        _totalMappedSize = _dataOffset + totalBytes;
 
-        if (File.Exists(path))
-        {
-            fileSize = Math.Max(new FileInfo(path).Length, fileSize);
-            WarmupFileSequential(path);
-        }
+        // 1. Initialize Dirty Tracking Bitset
+        long pageCount = (_totalMappedSize + PageSize - 1) / PageSize;
+        _dirtyPages = new ulong[(pageCount + 63) / 64];
 
-        _mmf = MemoryMappedFile.CreateFromFile(
-            path,
-            createNew ? FileMode.Create : FileMode.Open,
-            null,
-            fileSize,
-            MemoryMappedFileAccess.ReadWrite);
+        // 2. Create Anonymous MMF (Backing memory only)
+        _mmf = MemoryMappedFile.CreateNew(null, _totalMappedSize, MemoryMappedFileAccess.ReadWrite);
+        _accessor = _mmf.CreateDirectAccessor(0, _totalMappedSize, MemoryMappedFileAccess.ReadWrite);
 
-        // DotNext: direct pointer + Span-based view (unsafe, no bounds checks)
-        _directAccessor = _mmf.CreateDirectAccessor(0, fileSize, MemoryMappedFileAccess.ReadWrite);
-
-        ApplyMadvise((IntPtr)_directAccessor.Pointer.Address, _directAccessor.Size);
-
-        if (createNew)
-        {
-            // start unsealed with count 0
-            Volatile.Write(ref _sealed, 0);
-            Volatile.Write(ref _count, 0);
-            WriteHeader();
-            _directAccessor.Flush();
-        }
-        else
-        {
-            ReadHeaderAndRebuildLayout();
-        }
+        ApplyLinuxOptimizations((IntPtr)_accessor.Pointer.Address, _totalMappedSize);
     }
 
-    private void FlushMMAPDurable()
+    public static BloomSegment CreateNew(string path, long capacity, int bitsPerKey)
     {
-        // Flush MMAP to disk
-        _directAccessor.Flush();
+        SafeFileHandle handle = File.OpenHandle(path, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite);
+        var segment = new BloomSegment(path, handle, capacity, bitsPerKey, 0, false);
 
-        // Fsync the underlying file
-        using (var fs = new FileStream(_path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite))
-            fs.Flush(flushToDisk: true);
+        segment.WriteHeader();
+        segment.MarkPageDirty(0);
+        return segment;
     }
 
-    private static void WarmupFileSequential(string path)
+    public static unsafe BloomSegment OpenExisting(string path)
     {
-        const int BufferSize = 4 * 1024 * 1024;      // 4 MB
-        const long LogEveryBytes = 10 * 1024 * 1024; // 10 MB
+        SafeFileHandle handle = File.OpenHandle(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite);
 
-        using FileStream fs = new FileStream(
-            path,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.ReadWrite,
-            BufferSize,
-            FileOptions.SequentialScan);
+        // Read header first to discover parameters
+        byte* headerBuffer = stackalloc byte[HeaderSize];
+        RandomAccess.Read(handle, new Span<byte>(headerBuffer, HeaderSize), 0);
 
-        byte[] buffer = new byte[BufferSize];
+        if (Unsafe.ReadUnaligned<ulong>(ref headerBuffer[0]) != Magic)
+            throw new InvalidDataException("Invalid bloom segment header");
 
-        long totalRead = 0;
-        long fileSize = fs.Length;
-        long nextLog = LogEveryBytes;
+        long capacity = Unsafe.ReadUnaligned<long>(ref headerBuffer[8]);
+        int bitsPerKey = Unsafe.ReadUnaligned<int>(ref headerBuffer[16]);
+        long count = Unsafe.ReadUnaligned<long>(ref headerBuffer[24]);
+        bool isSealed = Unsafe.ReadUnaligned<int>(ref headerBuffer[32]) != 0;
 
-        Console.Error.WriteLine($"Bloom warmup start: {fileSize / (1024 * 1024)} MB");
+        var segment = new BloomSegment(path, handle, capacity, bitsPerKey, count, isSealed);
 
-        while (true)
-        {
-            int read = fs.Read(buffer, 0, buffer.Length);
-            if (read <= 0)
-                break;
-
-            totalRead += read;
-
-            if (totalRead >= nextLog)
-            {
-                Console.Error.WriteLine(
-                    $"Bloom warmup {totalRead / (1024 * 1024)} MB / {fileSize / (1024 * 1024)} MB");
-                nextLog += LogEveryBytes;
-            }
-        }
-
-        Console.Error.WriteLine("Bloom warmup complete");
+        // Load the rest of the file into the anonymous memory
+        segment.LoadFromFile();
+        return segment;
     }
 
-    private const int MADV_RANDOM   = 1;
-    private const int MADV_HUGEPAGE = 14;
+    public bool IsFull => Count >= Capacity;
+    public string Path => _path;
 
-    [DllImport("libc", SetLastError = true)]
-    private static extern int madvise(IntPtr addr, UIntPtr length, int advice);
-
-    private static void ApplyMadvise(IntPtr address, long length)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void MarkPageDirty(long offset)
     {
-        if (!OperatingSystem.IsLinux())
-            return;
+        long pageIdx = offset >> ShiftPerPage;
+        int wordIdx = (int)(pageIdx >> 6);
+        ulong mask = 1UL << (int)(pageIdx & 63);
 
-        madvise(address, (UIntPtr)length, MADV_RANDOM);
-        madvise(address, (UIntPtr)length, MADV_HUGEPAGE);
+        ref long word = ref Unsafe.As<ulong, long>(ref _dirtyPages[wordIdx]);
+        Interlocked.Or(ref word, (long)mask);
     }
-
-    // ---------------------------------------------------------------------
-    // public API
-    // ---------------------------------------------------------------------
 
     public unsafe bool MightContain(ulong h1)
     {
@@ -192,68 +150,56 @@ public sealed class BloomSegment : IDisposable
             throw new ObjectDisposedException(nameof(BloomSegment));
 
         GetBlockAndHashes(h1, out ulong h2, out long baseOffset);
+        byte* blockPtr = (byte*)_accessor.Pointer.Address + baseOffset;
 
-        byte* blockPtr = (byte*)_directAccessor.Pointer.Address + baseOffset;
-
-        // Load the whole 64-byte block once (8 lanes)
-        ulong l0 = *(ulong*)(blockPtr + 0);
-        ulong l1 = *(ulong*)(blockPtr + 8);
-        ulong l2 = *(ulong*)(blockPtr + 16);
-        ulong l3 = *(ulong*)(blockPtr + 24);
-        ulong l4 = *(ulong*)(blockPtr + 32);
-        ulong l5 = *(ulong*)(blockPtr + 40);
-        ulong l6 = *(ulong*)(blockPtr + 48);
-        ulong l7 = *(ulong*)(blockPtr + 56);
+        ulong* l = (ulong*)blockPtr;
 
         for (int i = 0; i < K; i++)
         {
             GetLaneInBlock(h2, i, out int laneIndex, out ulong mask);
-
-            ulong laneVal = laneIndex switch
-            {
-                0 => l0, 1 => l1, 2 => l2, 3 => l3,
-                4 => l4, 5 => l5, 6 => l6, _ => l7
-            };
-
-            if ((laneVal & mask) == 0)
+            if ((l[laneIndex] & mask) == 0)
                 return false;
         }
-
         return true;
     }
 
-    // Concurrent-safe: atomic OR on 64-bit lanes + atomic count.
     public unsafe void Add(ulong h1)
     {
         if (Volatile.Read(ref _isDisposingOrDisposed) != 0)
             throw new ObjectDisposedException(nameof(BloomSegment));
 
-        // Fast fail
         if (Volatile.Read(ref _sealed) != 0)
             throw new InvalidOperationException("Segment is sealed");
 
         Interlocked.Increment(ref _opsInFlight);
         try
         {
-            // Admit protocol: register writer first, then validate barrier.
             while (true)
             {
                 Interlocked.Increment(ref _writersInFlight);
-
-                if (Volatile.Read(ref _stopWriters) == 0 &&
-                    Volatile.Read(ref _sealed) == 0 &&
-                    Volatile.Read(ref _isDisposingOrDisposed) == 0)
-                {
+                if (Volatile.Read(ref _stopWriters) == 0 && Volatile.Read(ref _sealed) == 0)
                     break;
-                }
 
                 Interlocked.Decrement(ref _writersInFlight);
-                WaitForBarrierToClearOrSealedOrDisposed();
+                WaitForBarrierToClear();
             }
 
             try
             {
-                AddToMmapDirectly(h1);
+                GetBlockAndHashes(h1, out ulong h2, out long baseOffset);
+                byte* blockPtr = (byte*)_accessor.Pointer.Address + baseOffset;
+
+                int start = (int)(h2 & (CacheLineBits - 1));
+                int step  = (int)(((h2 >> 9) & (CacheLineBits - 1)) | 1);
+
+                for (int i = 0; i < K; i++)
+                {
+                    int bit = (start + i * step) & (CacheLineBits - 1);
+                    ref long lane = ref *(long*)(blockPtr + ((bit >> 6) * 8));
+                    Interlocked.Or(ref lane, (long)(1UL << (bit & 63)));
+                }
+
+                MarkPageDirty(baseOffset);
                 Interlocked.Increment(ref _count);
             }
             finally
@@ -267,180 +213,80 @@ public sealed class BloomSegment : IDisposable
         }
     }
 
-    private unsafe void AddToMmapDirectly(ulong h1)
+    public void Flush()
     {
-        GetBlockAndHashes(h1, out ulong h2, out long baseOffset);
+        using var _ = _maintenance.EnterScope();
 
-        byte* blockPtr = (byte*)_directAccessor.Pointer.Address + baseOffset;
+        WriteHeader();
+        MarkPageDirty(0);
 
-        // compute once per key (fewer ops than calling GetLaneInBlock every time)
-        int start = (int)(h2 & (CacheLineBits - 1));
-        int step  = (int)(((h2 >> 9) & (CacheLineBits - 1)) | 1);
-
-        for (int i = 0; i < K; i++)
+        for (int i = 0; i < _dirtyPages.Length; i++)
         {
-            int bit = (start + i * step) & (CacheLineBits - 1);
-            int laneIndex = bit >> 6;
-            ulong mask = 1UL << (bit & 63);
+            ulong word = (ulong)Interlocked.Exchange(ref Unsafe.As<ulong, long>(ref _dirtyPages[i]), 0);
+            if (word == 0) continue;
 
-            // baseOffset is 64-byte aligned; laneIndex*8 is 8-byte aligned
-            ref long lane = ref *(long*)(blockPtr + (laneIndex * 8));
+            while (word != 0)
+            {
+                int b = BitOperations.TrailingZeroCount(word);
+                long pageIdx = (long)i * 64 + b;
+                long offset = pageIdx * PageSize;
+                long sizeToWrite = Math.Min(PageSize, _totalMappedSize - offset);
 
-            // atomic set of bits (prevents lost updates)
-            Interlocked.Or(ref lane, (long)mask);
+                if (sizeToWrite > 0)
+                {
+                    unsafe
+                    {
+                        ReadOnlySpan<byte> data = new((byte*)_accessor.Pointer.Address + offset, (int)sizeToWrite);
+                        RandomAccess.Write(_fileHandle, data, offset);
+                    }
+                }
+                word &= (word - 1);
+            }
         }
-    }
 
-    public bool IsFull => Count >= Capacity;
+        RandomAccess.FlushToDisk(_fileHandle);
+    }
 
     public void Seal()
     {
-        // Serialize seal/flush/header with a short critical section.
         using var _ = _maintenance.EnterScope();
-
-        // Block new writers, stop future Adds
         Volatile.Write(ref _stopWriters, 1);
         Volatile.Write(ref _sealed, 1);
 
-        WaitForWritersToDrain_NoLock();
-
-        // Persist metadata BEFORE flushing pages
-        WriteHeader();
-        _directAccessor.Flush();
-
-        using (var fs = new FileStream(_path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite))
-            fs.Flush(flushToDisk: true);
+        WaitForWritersToDrain();
+        Flush();
     }
 
-    public void Flush()
+    private unsafe void LoadFromFile()
     {
-        FlushMMAPDurable();
+        long fileSize = RandomAccess.GetLength(_fileHandle);
+        long toRead = Math.Min(fileSize, _totalMappedSize);
+        Span<byte> dest = new((byte*)_accessor.Pointer.Address, (int)toRead);
+        RandomAccess.Read(_fileHandle, dest, 0);
     }
 
-    private void WaitForBarrierToClearOrSealedOrDisposed()
+    private unsafe void WriteHeader()
     {
-        var sw = new SpinWait();
-        while (Volatile.Read(ref _stopWriters) != 0)
+        byte* p = (byte*)_accessor.Pointer.Address;
+        Unsafe.WriteUnaligned(ref p[0], Magic);
+        Unsafe.WriteUnaligned(ref p[8], Capacity);
+        Unsafe.WriteUnaligned(ref p[16], BitsPerKey);
+        Unsafe.WriteUnaligned(ref p[20], K);
+        Unsafe.WriteUnaligned(ref p[24], Count);
+        Unsafe.WriteUnaligned(ref p[32], IsSealed ? 1 : 0);
+    }
+
+    private static void ApplyLinuxOptimizations(IntPtr address, long length)
+    {
+        if (OperatingSystem.IsLinux())
         {
-            if (Volatile.Read(ref _sealed) != 0)
-                throw new InvalidOperationException("Segment is sealed");
-
-            if (Volatile.Read(ref _isDisposingOrDisposed) != 0)
-                throw new ObjectDisposedException(nameof(BloomSegment));
-
-            sw.SpinOnce();
+            madvise(address, (UIntPtr)length, 1);  // MADV_RANDOM
+            madvise(address, (UIntPtr)length, 14); // MADV_HUGEPAGE
         }
     }
 
-    private void WaitForWritersToDrain_NoLock()
-    {
-        var sw = new SpinWait();
-        while (Volatile.Read(ref _writersInFlight) != 0)
-            sw.SpinOnce();
-    }
-
-    private void WaitForOpsToDrain_NoLock()
-    {
-        var sw = new SpinWait();
-        while (Volatile.Read(ref _opsInFlight) != 0)
-            sw.SpinOnce();
-    }
-
-    // ---------------------------------------------------------------------
-    // header persistence (unaligned reads/writes via DotNext pointer)
-    // ---------------------------------------------------------------------
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private ulong ReadUInt64(long offset)
-    {
-        var p = _directAccessor.Pointer;
-        ref byte b = ref p[(nuint)offset];
-        return Unsafe.ReadUnaligned<ulong>(ref b);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private long ReadInt64(long offset)
-    {
-        var p = _directAccessor.Pointer;
-        ref byte b = ref p[(nuint)offset];
-        return Unsafe.ReadUnaligned<long>(ref b);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private int ReadInt32(long offset)
-    {
-        var p = _directAccessor.Pointer;
-        ref byte b = ref p[(nuint)offset];
-        return Unsafe.ReadUnaligned<int>(ref b);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void WriteUInt64(long offset, ulong value)
-    {
-        var p = _directAccessor.Pointer;
-        ref byte b = ref p[(nuint)offset];
-        Unsafe.WriteUnaligned(ref b, value);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void WriteInt64(long offset, long value)
-    {
-        var p = _directAccessor.Pointer;
-        ref byte b = ref p[(nuint)offset];
-        Unsafe.WriteUnaligned(ref b, value);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void WriteInt32(long offset, int value)
-    {
-        var p = _directAccessor.Pointer;
-        ref byte b = ref p[(nuint)offset];
-        Unsafe.WriteUnaligned(ref b, value);
-    }
-
-    private void WriteHeader()
-    {
-        WriteUInt64(0,  0x424C4F4F4DUL); // "BLOOM"
-        WriteInt64 (8,  Capacity);
-        WriteInt32 (16, BitsPerKey);
-        WriteInt32 (20, K);
-        WriteInt64 (24, Count);
-        WriteInt32 (32, IsSealed ? 1 : 0);
-    }
-
-    private void ReadHeaderAndRebuildLayout()
-    {
-        ulong magic = ReadUInt64(0);
-        if (magic != 0x424C4F4F4DUL) // "BLOOM"
-            throw new InvalidDataException("Invalid bloom segment header");
-
-        Capacity   = ReadInt64(8);
-        BitsPerKey = ReadInt32(16);
-        K          = ReadInt32(20);
-
-        long count = ReadInt64(24);
-        int sealedFlag = ReadInt32(32);
-
-        Volatile.Write(ref _count, count);
-        Volatile.Write(ref _sealed, sealedFlag != 0 ? 1 : 0);
-
-        // If sealed, keep writers blocked; otherwise allow.
-        Volatile.Write(ref _stopWriters, Volatile.Read(ref _sealed) != 0 ? 1 : 0);
-
-        if (Capacity <= 0 || BitsPerKey <= 0 || K <= 0)
-            throw new InvalidDataException("Corrupted bloom header");
-
-        checked
-        {
-            long totalBits  = Capacity * BitsPerKey;
-            long totalBytes = AlignUp((totalBits + 7) / 8, CacheLineBytes);
-            _numBlocks = totalBytes / CacheLineBytes;
-        }
-    }
-
-    // ---------------------------------------------------------------------
-    // helpers (tight, local, inlinable)
-    // ---------------------------------------------------------------------
+    [DllImport("libc", SetLastError = true)]
+    private static extern int madvise(IntPtr addr, UIntPtr length, int advice);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void GetBlockAndHashes(ulong h1, out ulong h2, out long baseOffset)
@@ -462,48 +308,35 @@ public sealed class BloomSegment : IDisposable
         return x;
     }
 
-    // 64-bit lane addressing within a 64-byte block (8 lanes)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void GetLaneInBlock(ulong h2, int probeIndex, out int laneIndex, out ulong mask)
     {
-        // 9-bit start (0..511)
         int start = (int)(h2 & (CacheLineBits - 1));
-
-        // per-key odd step in 1..511 (odd => cycles through all 512 positions)
         int step = (int)(((h2 >> 9) & (CacheLineBits - 1)) | 1);
-
         int bit = (start + probeIndex * step) & (CacheLineBits - 1);
         laneIndex = bit >> 6;
         mask = 1UL << (bit & 63);
     }
 
-    private static long AlignUp(long value, int alignment)
-        => (value + alignment - 1) & ~(alignment - 1);
+    private static long AlignUp(long value, int alignment) => (value + alignment - 1) & ~(alignment - 1);
+
+    private void WaitForBarrierToClear() { var sw = new SpinWait(); while (Volatile.Read(ref _stopWriters) != 0) sw.SpinOnce(); }
+    private void WaitForWritersToDrain() { var sw = new SpinWait(); while (Volatile.Read(ref _writersInFlight) != 0) sw.SpinOnce(); }
+    private void WaitForOpsToDrain() { var sw = new SpinWait(); while (Volatile.Read(ref _opsInFlight) != 0) sw.SpinOnce(); }
 
     public void Dispose()
     {
-        // One-way transition into disposing state
-        if (Interlocked.Exchange(ref _isDisposingOrDisposed, 1) != 0)
-            return;
-
-        // Make any would-be waiters fail quickly
+        if (Interlocked.Exchange(ref _isDisposingOrDisposed, 1) != 0) return;
         Volatile.Write(ref _stopWriters, 1);
 
-        // Drain active writers & readers
-        WaitForWritersToDrain_NoLock();
-        WaitForOpsToDrain_NoLock();
+        WaitForWritersToDrain();
+        WaitForOpsToDrain();
 
-        // Finalize under maintenance lock (rare path)
         using var _ = _maintenance.EnterScope();
+        Flush();
 
-        // Persist header then flush mmap
-        WriteHeader();
-
-        FlushMMAPDurable();
-
-        Volatile.Write(ref _sealed, 1);
-
-        _directAccessor.Dispose();
+        _accessor.Dispose();
         _mmf.Dispose();
+        _fileHandle.Dispose();
     }
 }

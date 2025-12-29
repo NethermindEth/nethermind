@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -15,11 +16,14 @@ public sealed class SegmentedBloom : IDisposable
     // Serializes rotation + segment list mutation + snapshot publishing
     private readonly Lock _segmentsLock = new();
 
-    readonly string _directory;
-    readonly long _segmentCapacity;
-    readonly int _bitsPerKey;
+    // Serializes WAL appends + coordinates checkpoints with concurrent Add()
+    private readonly Lock _walLock = new();
 
-    readonly List<BloomSegment> _segments = new();
+    private readonly string _directory;
+    private readonly long _segmentCapacity;
+    private readonly int _bitsPerKey;
+
+    private readonly List<BloomSegment> _segments = new();
     private volatile BloomSegment[] _snapshot = Array.Empty<BloomSegment>();
     private volatile BloomSegment _current = null!;
 
@@ -35,36 +39,70 @@ public sealed class SegmentedBloom : IDisposable
 
     private readonly Histogram.Child _bloomHitTime = _bloomTime.WithLabels("hit");
     private readonly Histogram.Child _bloomMissTime = _bloomTime.WithLabels("miss");
+
     private readonly bool _enabled;
 
-    public SegmentedBloom(string directory, long segmentCapacity, int bitsPerKey, bool enabled = true)
+    // --- WAL state ---
+    private readonly bool _walEnabled;
+    private readonly string _walPath;
+    private FileStream? _walStream;
+
+    // Flush WAL occasionally to reduce data loss window without fsync-ing every Add().
+    // Tune as needed.
+    private const int WalFlushThresholdBytes = 1 * 1024 * 1024; // 1 MiB
+    private int _walBytesSinceFlush;
+
+    // If you need stronger durability guarantees (at a performance cost), flip this to true.
+    // true => FileStream.Flush(flushToDisk: true) at threshold/checkpoint.
+    private const bool WalFlushToDisk = false;
+
+    public SegmentedBloom(
+        string directory,
+        long segmentCapacity,
+        int bitsPerKey,
+        bool enabled = true,
+        bool walEnabled = true)
     {
         _enabled = enabled;
+        _walEnabled = walEnabled;
         _directory = directory;
         _segmentCapacity = segmentCapacity;
         _bitsPerKey = bitsPerKey;
+
+        _walPath = Path.Combine(directory, "segmented_bloom.wal");
 
         if (!_enabled) return;
 
         Directory.CreateDirectory(directory);
 
-        using var _ = _segmentsLock.EnterScope();
-        foreach (var file in Directory.GetFiles(_directory, "*.bloom"))
+        // Load segments
+        using (var _ = _segmentsLock.EnterScope())
         {
-            var seg = new BloomSegment(file, capacity: 0, bitsPerKey: 0, createNew: false);
-            _total.Inc(seg.Count);
+            foreach (var file in Directory.GetFiles(_directory, "*.bloom"))
+            {
+                var seg = BloomSegment.OpenExisting(file);
+                _total.Inc(seg.Count);
 
-            _segments.Add(seg);
-            if (!seg.IsSealed)
-                _current = seg;
+                _segments.Add(seg);
+                if (!seg.IsSealed)
+                    _current = seg;
+            }
+
+            _segments.Sort((a, b) => b.Count.CompareTo(a.Count));
+
+            if (_current is null)
+                _current = CreateNewSegment_NoLock();
+
+            _snapshot = _segments.ToArray();
         }
 
-        _segments.Sort((a, b) => b.Count.CompareTo(a.Count));
-
-        if (_current is null)
-            _current = CreateNewSegment_NoLock();
-
-        _snapshot = _segments.ToArray();
+        // WAL (optional): open, replay pending adds, then checkpoint (flush segments + truncate WAL)
+        if (_walEnabled)
+        {
+            OpenWal();
+            ReplayWal();
+            Checkpoint(); // makes replay idempotent and keeps WAL bounded
+        }
     }
 
     public bool MightContain(ulong h1)
@@ -87,17 +125,35 @@ public sealed class SegmentedBloom : IDisposable
         return false;
     }
 
-    public void Add(ulong h1)
+    /// <summary>
+    /// Adds with WAL enabled (if globally enabled).
+    /// </summary>
+    public void Add(ulong h1) => Add(h1, writeWal: true);
+
+    /// <summary>
+    /// Adds with per-call control of WAL. If WAL is globally disabled, writeWal is ignored.
+    /// </summary>
+    public void Add(ulong h1, bool writeWal)
+    {
+        AddCore(h1, writeWal: writeWal && _walEnabled, recordMetrics: true);
+    }
+
+    private void AddCore(ulong h1, bool writeWal, bool recordMetrics)
     {
         if (!_enabled) return;
 
+        // Keep existing behavior: if it already "might" exist, skip the write.
         if (MightContain(h1))
         {
-            _skipped.Inc();
+            if (recordMetrics) _skipped.Inc();
             return;
         }
 
-        _total.Inc();
+        // WAL first (after deciding we intend to add), then apply to bloom.
+        if (writeWal)
+            AppendWal(h1);
+
+        if (recordMetrics) _total.Inc();
 
         const int maxAttemptCount = 3;
         for (int attempt = 0; attempt < maxAttemptCount; attempt++)
@@ -124,8 +180,7 @@ public sealed class SegmentedBloom : IDisposable
                 continue;
             }
 
-            if (seg.IsFull)
-                RotateIfNeeded(seg);
+            if (seg.IsFull) RotateIfNeeded(seg);
 
             return;
         }
@@ -140,11 +195,15 @@ public sealed class SegmentedBloom : IDisposable
 
         // Another thread may already have rotated.
         if (!ReferenceEquals(_current, observedCurrent))
+        {
             return;
+        }
 
         // Re-check under the rotation lock.
         if (observedCurrent.IsSealed)
+        {
             return;
+        }
 
         observedCurrent.Seal();
         _current = CreateNewSegment_NoLock();
@@ -154,16 +213,26 @@ public sealed class SegmentedBloom : IDisposable
     private BloomSegment CreateNewSegment_NoLock()
     {
         string path = Path.Combine(_directory, $"segment_{DateTime.UtcNow.Ticks}.bloom");
-        var seg = new BloomSegment(path, _segmentCapacity, _bitsPerKey, createNew: true);
+        var seg = BloomSegment.CreateNew(path, _segmentCapacity, _bitsPerKey);
         _segments.Insert(0, seg);
         return seg;
     }
 
+    /// <summary>
+    /// If WAL is enabled: flush segments and truncate WAL (checkpoint).
+    /// If WAL is disabled: flush segments only.
+    /// </summary>
     public void Flush()
     {
         if (!_enabled) return;
-        using var _s = _segmentsLock.EnterScope();
 
+        if (_walEnabled)
+        {
+            Checkpoint();
+            return;
+        }
+
+        using var _s = _segmentsLock.EnterScope();
         foreach (var seg in _snapshot)
             seg.Flush();
     }
@@ -171,9 +240,136 @@ public sealed class SegmentedBloom : IDisposable
     public void Dispose()
     {
         if (!_enabled) return;
+
+        // Best-effort final durability.
+        try
+        {
+            if (_walEnabled) Checkpoint();
+            else
+            {
+                using var _s = _segmentsLock.EnterScope();
+                foreach (var seg in _snapshot)
+                    seg.Flush();
+            }
+        }
+        catch { /* swallow on dispose */ }
+
+        using (var _s = _segmentsLock.EnterScope())
+        {
+            foreach (var seg in _snapshot)
+                seg.Dispose();
+        }
+
+        if (_walEnabled)
+        {
+            using var _w = _walLock.EnterScope();
+            _walStream?.Dispose();
+            _walStream = null;
+        }
+    }
+
+    // ---------------- WAL helpers ----------------
+
+    private void OpenWal()
+    {
+        _walStream = new FileStream(
+            _walPath,
+            FileMode.OpenOrCreate,
+            FileAccess.ReadWrite,
+            FileShare.Read,
+            bufferSize: 64 * 1024,
+            options: FileOptions.SequentialScan);
+    }
+
+    private void ReplayWal()
+    {
+        if (!_walEnabled || _walStream is null) return;
+
+        // No concurrency during ctor, but keep it disciplined.
+        using var _w = _walLock.EnterScope();
+
+        long len = _walStream.Length;
+        if (len <= 0)
+        {
+            _walStream.Position = len;
+            return;
+        }
+
+        // Records are fixed 8-byte ulongs. Ignore any trailing partial record.
+        long full = len - (len % sizeof(ulong));
+        if (full <= 0)
+        {
+            _walStream.Position = len;
+            return;
+        }
+
+        _walStream.Position = 0;
+
+        byte[] buffer = new byte[64 * 1024];
+        long remaining = full;
+
+        while (remaining > 0)
+        {
+            int toRead = (int)Math.Min(buffer.Length, remaining);
+            int read = _walStream.Read(buffer, 0, toRead);
+            if (read <= 0) break;
+
+            int usable = read - (read % sizeof(ulong));
+            for (int i = 0; i < usable; i += sizeof(ulong))
+            {
+                ulong h1 = BinaryPrimitives.ReadUInt64LittleEndian(buffer.AsSpan(i, sizeof(ulong)));
+                // Reapply without writing back to the WAL; don't distort metrics on recovery.
+                AddCore(h1, writeWal: false, recordMetrics: false);
+            }
+
+            remaining -= usable;
+
+            // If we read an odd chunk (shouldn't happen with FileStream), reposition to keep alignment.
+            if (usable != read)
+                _walStream.Position -= (read - usable);
+        }
+
+        // Set up for appends after replay.
+        _walStream.Position = len;
+        _walBytesSinceFlush = 0;
+    }
+
+    private void AppendWal(ulong h1)
+    {
+        if (!_walEnabled || _walStream is null) return;
+
+        using var _w = _walLock.EnterScope();
+
+        Span<byte> tmp = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64LittleEndian(tmp, h1);
+
+        _walStream.Write(tmp);
+        _walBytesSinceFlush += sizeof(ulong);
+
+        if (_walBytesSinceFlush >= WalFlushThresholdBytes)
+        {
+            _walStream.Flush(flushToDisk: WalFlushToDisk);
+            _walBytesSinceFlush = 0;
+        }
+    }
+
+    private void Checkpoint()
+    {
+        if (!_walEnabled) return;
+
+        // Lock ordering rule: WAL lock first, then segments lock.
+        using var _w = _walLock.EnterScope();
         using var _s = _segmentsLock.EnterScope();
 
+        // Flush segments first so WAL truncation doesn't lose data.
         foreach (var seg in _snapshot)
-            seg.Dispose();
+            seg.Flush();
+
+        if (_walStream is null) return;
+
+        _walStream.Flush(flushToDisk: WalFlushToDisk);
+        _walStream.SetLength(0);
+        _walStream.Position = 0;
+        _walBytesSinceFlush = 0;
     }
 }

@@ -54,7 +54,7 @@ public class BloomSegmentTests
         int bitsPerKey = 10;
 
         // Act
-        using var segment = new BloomSegment(path, capacity, bitsPerKey, createNew: true);
+        using var segment = BloomSegment.CreateNew(path, capacity, bitsPerKey);
 
         // Assert
         segment.Capacity.Should().Be(capacity);
@@ -76,7 +76,7 @@ public class BloomSegmentTests
         long expectedCount;
 
         // Act - Create and add items
-        using (var segment = new BloomSegment(path, capacity, bitsPerKey, createNew: true))
+        using (var segment = BloomSegment.CreateNew(path, capacity, bitsPerKey))
         {
             segment.Add(1);
             segment.Add(2);
@@ -85,7 +85,7 @@ public class BloomSegmentTests
         }
 
         // Act - Reopen
-        using var reopened = new BloomSegment(path, 0, 0, createNew: false);
+        using var reopened = BloomSegment.OpenExisting(path);
 
         // Assert
         reopened.Capacity.Should().Be(capacity);
@@ -104,7 +104,7 @@ public class BloomSegmentTests
         // Act & Assert
         Assert.Throws<InvalidDataException>(() =>
         {
-            using var segment = new BloomSegment(path, 0, 0, createNew: false);
+            using var segment = BloomSegment.OpenExisting(path);
         });
     }
 
@@ -117,7 +117,7 @@ public class BloomSegmentTests
     {
         // Arrange
         string path = GetTestFilePath();
-        using var segment = new BloomSegment(path, 1000, 10, createNew: true);
+        using var segment = BloomSegment.CreateNew(path, 1000, 10);
         ulong hash = 12345;
 
         // Act
@@ -133,7 +133,7 @@ public class BloomSegmentTests
     {
         // Arrange
         string path = GetTestFilePath();
-        using var segment = new BloomSegment(path, 1000, 10, createNew: true);
+        using var segment = BloomSegment.CreateNew(path, 1000, 10);
         ulong[] hashes = { 1, 2, 3, 100, 1000, 99999 };
 
         // Act
@@ -155,7 +155,7 @@ public class BloomSegmentTests
     {
         // Arrange
         string path = GetTestFilePath();
-        using var segment = new BloomSegment(path, 1000, 10, createNew: true);
+        using var segment = BloomSegment.CreateNew(path, 1000, 10);
         segment.Add(1);
         segment.Add(2);
 
@@ -173,7 +173,7 @@ public class BloomSegmentTests
         string path = GetTestFilePath();
         int capacity = 1000;
         int bitsPerKey = 10;
-        using var segment = new BloomSegment(path, capacity, bitsPerKey, createNew: true);
+        using var segment = BloomSegment.CreateNew(path, capacity, bitsPerKey);
 
         // Add half capacity
         for (ulong i = 0; i < (ulong)(capacity / 2); i++)
@@ -208,7 +208,7 @@ public class BloomSegmentTests
         // Arrange
         string path = GetTestFilePath();
         int capacity = 10;
-        using var segment = new BloomSegment(path, capacity, 10, createNew: true);
+        using var segment = BloomSegment.CreateNew(path, capacity, 10);
 
         // Act
         for (ulong i = 0; i < (ulong)capacity; i++)
@@ -227,7 +227,7 @@ public class BloomSegmentTests
         // Arrange
         string path = GetTestFilePath();
         int capacity = 5;
-        using var segment = new BloomSegment(path, capacity, 10, createNew: true);
+        using var segment = BloomSegment.CreateNew(path, capacity, 10);
 
         // Act - Add beyond capacity (not sealed, so should work)
         for (ulong i = 0; i < (ulong)(capacity + 5); i++)
@@ -249,7 +249,7 @@ public class BloomSegmentTests
     {
         // Arrange
         string path = GetTestFilePath();
-        using var segment = new BloomSegment(path, 1000, 10, createNew: true);
+        using var segment = BloomSegment.CreateNew(path, 1000, 10);
         segment.Add(1);
 
         // Act
@@ -265,7 +265,7 @@ public class BloomSegmentTests
     {
         // Arrange
         string path = GetTestFilePath();
-        using (var segment = new BloomSegment(path, 1000, 10, createNew: true))
+        using (var segment = BloomSegment.CreateNew(path, 1000, 10))
         {
             segment.Add(1);
             segment.Add(2);
@@ -273,7 +273,7 @@ public class BloomSegmentTests
         }
 
         // Act - Reopen
-        using var reopened = new BloomSegment(path, 0, 0, createNew: false);
+        using var reopened = BloomSegment.OpenExisting(path);
 
         // Assert
         reopened.IsSealed.Should().BeTrue();
@@ -288,14 +288,14 @@ public class BloomSegmentTests
         string path = GetTestFilePath();
         ulong testHash = 12345;
 
-        using (var segment = new BloomSegment(path, 1000, 10, createNew: true))
+        using (var segment = BloomSegment.CreateNew(path, 1000, 10))
         {
             segment.Add(testHash);
             segment.Flush();
         }
 
         // Act - Reopen without explicit flush before dispose
-        using var reopened = new BloomSegment(path, 0, 0, createNew: false);
+        using var reopened = BloomSegment.OpenExisting(path);
 
         // Assert
         reopened.MightContain(testHash).Should().BeTrue();
@@ -309,7 +309,7 @@ public class BloomSegmentTests
         string path = GetTestFilePath();
         long expectedCount;
 
-        using (var segment = new BloomSegment(path, 1000, 10, createNew: true))
+        using (var segment = BloomSegment.CreateNew(path, 1000, 10))
         {
             segment.Add(1);
             segment.Add(2);
@@ -318,7 +318,7 @@ public class BloomSegmentTests
         }
 
         // Act - Reopen
-        using var reopened = new BloomSegment(path, 0, 0, createNew: false);
+        using var reopened = BloomSegment.OpenExisting(path);
 
         // Assert
         reopened.Count.Should().Be(expectedCount);
@@ -335,7 +335,7 @@ public class BloomSegmentTests
         // Arrange
         string path = GetTestFilePath();
         int capacity = 10000;
-        using var segment = new BloomSegment(path, capacity, 10, createNew: true);
+        using var segment = BloomSegment.CreateNew(path, capacity, 10);
         int threadsCount = 10;
         int itemsPerThread = 100;
         var barrier = new Barrier(threadsCount);
@@ -372,7 +372,7 @@ public class BloomSegmentTests
     {
         // Arrange
         string path = GetTestFilePath();
-        using var segment = new BloomSegment(path, 10000, 10, createNew: true);
+        using var segment = BloomSegment.CreateNew(path, 10000, 10);
         int duration = 1000; // ms
         var cts = new CancellationTokenSource(duration);
         int addCount = 0;
@@ -409,7 +409,7 @@ public class BloomSegmentTests
     {
         // Arrange
         string path = GetTestFilePath();
-        using var segment = new BloomSegment(path, 100000, 10, createNew: true);
+        using var segment = BloomSegment.CreateNew(path, 100000, 10);
         var barrier = new Barrier(2);
         bool sealCompleted = false;
         var exceptions = new List<Exception>();
@@ -468,7 +468,7 @@ public class BloomSegmentTests
     {
         // Arrange
         string path = GetTestFilePath();
-        using var segment = new BloomSegment(path, 100000, 10, createNew: true);
+        using var segment = BloomSegment.CreateNew(path, 100000, 10);
         var barrier = new Barrier(2);
         long countBeforeFlush = 0;
 
@@ -502,7 +502,7 @@ public class BloomSegmentTests
     {
         // Arrange
         string path = GetTestFilePath();
-        using var segment = new BloomSegment(path, 10000, 10, createNew: true);
+        using var segment = BloomSegment.CreateNew(path, 10000, 10);
         ulong sameHash = 12345;
         int threadsCount = 10;
         var barrier = new Barrier(threadsCount);
@@ -532,7 +532,7 @@ public class BloomSegmentTests
         string path = GetTestFilePath();
 
         // Create a file with zero capacity in header
-        using (var segment = new BloomSegment(path, 1000, 10, createNew: true))
+        using (var segment = BloomSegment.CreateNew(path, 1000, 10))
         {
             // Manually corrupt by setting capacity to 0 would require direct file manipulation
         }
@@ -546,7 +546,7 @@ public class BloomSegmentTests
     {
         // Arrange
         string path = GetTestFilePath();
-        var segment = new BloomSegment(path, 1000, 10, createNew: true);
+        var segment = BloomSegment.CreateNew(path, 1000, 10);
 
         // Act & Assert
         segment.Dispose();
@@ -559,7 +559,7 @@ public class BloomSegmentTests
         // Arrange
         string path = GetTestFilePath();
         Console.Error.WriteLine("Create");
-        var segment = new BloomSegment(path, 1000, 10, createNew: true);
+        var segment = BloomSegment.CreateNew(path, 1000, 10);
         Console.Error.WriteLine("Dispose");
         segment.Dispose();
 
