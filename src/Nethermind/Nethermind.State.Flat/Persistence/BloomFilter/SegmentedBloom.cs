@@ -37,6 +37,8 @@ public sealed class SegmentedBloom : IDisposable
         Buckets = Histogram.PowersOfTenDividedBuckets(2, 9, 3),
     });
 
+    private readonly Gauge _unwrittenEntries = Metrics.CreateGauge("segmented_bloom_unwritten_entries", "");
+
     private readonly Histogram.Child _bloomHitTime = _bloomTime.WithLabels("hit");
     private readonly Histogram.Child _bloomMissTime = _bloomTime.WithLabels("miss");
 
@@ -50,7 +52,7 @@ public sealed class SegmentedBloom : IDisposable
     // Flush WAL occasionally to reduce data loss window without fsync-ing every Add().
     // Tune as needed.
     private readonly int _walFlushThresholdBytes;
-    private int _walBytesSinceFlush;
+    private int _walBytesSinceTruncate;
 
     // If you need stronger durability guarantees (at a performance cost), flip this to true.
     // true => FileStream.Flush(flushToDisk: true) at threshold/checkpoint.
@@ -61,7 +63,7 @@ public sealed class SegmentedBloom : IDisposable
         long segmentCapacity,
         int bitsPerKey,
         bool enabled = true,
-        int walFlushThresholdBytes = 1 * 1024 * 1024)
+        int walFlushThresholdBytes = 10 * 1024 * 1024)
     {
         _enabled = enabled;
         _walEnabled = walFlushThresholdBytes > 0;
@@ -231,13 +233,31 @@ public sealed class SegmentedBloom : IDisposable
 
         if (_walEnabled)
         {
-            FlushWalOnly();
+            if (_walBytesSinceTruncate > _walFlushThresholdBytes)
+            {
+                Console.Error.WriteLine($"Checkpoint");
+                long sw = Stopwatch.GetTimestamp();
+                Checkpoint();
+                Console.Error.WriteLine($"Checkpoint took {Stopwatch.GetElapsedTime(sw)}");
+            }
+            else
+            {
+                FlushWalOnly();
+            }
             return;
         }
 
         using var _s = _segmentsLock.EnterScope();
         foreach (var seg in _snapshot)
             seg.Flush();
+    }
+
+    private void FlushWalOnly()
+    {
+        using var _w = _walLock.EnterScope();
+        if (_walStream is null) return;
+
+        _walStream.Flush(flushToDisk: WalFlushToDisk);
     }
 
     /// <summary>
@@ -258,15 +278,6 @@ public sealed class SegmentedBloom : IDisposable
         using var _s = _segmentsLock.EnterScope();
         foreach (var seg in _snapshot)
             seg.Flush();
-    }
-
-    private void FlushWalOnly()
-    {
-        using var _w = _walLock.EnterScope();
-        if (_walStream is null) return;
-
-        _walStream.Flush(flushToDisk: WalFlushToDisk);
-        _walBytesSinceFlush = 0;
     }
 
     public void Dispose()
@@ -363,7 +374,7 @@ public sealed class SegmentedBloom : IDisposable
 
         // Set up for appends after replay.
         _walStream.Position = len;
-        _walBytesSinceFlush = 0;
+        _walBytesSinceTruncate = 0;
     }
 
     private void AppendWal(ulong h1)
@@ -376,13 +387,8 @@ public sealed class SegmentedBloom : IDisposable
         BinaryPrimitives.WriteUInt64LittleEndian(tmp, h1);
 
         _walStream.Write(tmp);
-        _walBytesSinceFlush += sizeof(ulong);
-
-        if (_walBytesSinceFlush >= _walFlushThresholdBytes)
-        {
-            _walStream.Flush(flushToDisk: WalFlushToDisk);
-            _walBytesSinceFlush = 0;
-        }
+        _walBytesSinceTruncate += sizeof(ulong);
+        _unwrittenEntries.Inc(sizeof(ulong));
     }
 
     private void Checkpoint()
@@ -402,6 +408,7 @@ public sealed class SegmentedBloom : IDisposable
         _walStream.Flush(flushToDisk: WalFlushToDisk);
         _walStream.SetLength(0);
         _walStream.Position = 0;
-        _walBytesSinceFlush = 0;
+        _walBytesSinceTruncate = 0;
+        _unwrittenEntries.Set(0);
     }
 }

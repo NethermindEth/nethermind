@@ -128,7 +128,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             {
                 IInitConfig initConfig = ctx.Resolve<IInitConfig>();
                 var bloomPath = initConfig.BaseDbPath + "/flatBloom/";
-                return new SegmentedBloom(bloomPath, 500_000_000, 10, enabled: false);
+                return new SegmentedBloom(bloomPath, 500_000_000, 10, enabled: Environment.GetEnvironmentVariable("FLAT_CUSTOM_BLOOM") == "1");
             })
 
             .AddSingleton<NoLeafValueRocksdbPersistence>()

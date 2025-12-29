@@ -721,22 +721,6 @@ public class SegmentedBloomTests
     }
 
     [Test]
-    public void Wal_AutoFlush_WhenExceedThreshold()
-    {
-        // Arrange
-        using var bloom = new SegmentedBloom(_testDirectory, segmentCapacity: 100, bitsPerKey: 10, enabled: true, walFlushThresholdBytes: 1024);
-        string walPath = Path.Combine(_testDirectory, WalFileName);
-
-        // WAL is not written in add
-        for (int i = 0; i < 1024 / 8; i++)
-        {
-            bloom.Add((ulong) i);
-        }
-        long lenBefore = new FileInfo(walPath).Length;
-        lenBefore.Should().BeGreaterOrEqualTo(1024);
-    }
-
-    [Test]
     public void Wal_FlushDurable_ShouldCheckpointAndTruncateWal()
     {
         // Arrange

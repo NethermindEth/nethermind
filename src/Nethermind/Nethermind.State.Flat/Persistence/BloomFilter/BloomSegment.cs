@@ -62,6 +62,8 @@ public sealed class BloomSegment : IDisposable
     private int _isDisposingOrDisposed;
     private bool _disposed;
 
+    private long _addedSinceLastFlush = 0;
+
     private BloomSegment(
         string path,
         SafeFileHandle fileHandle,
@@ -148,22 +150,32 @@ public sealed class BloomSegment : IDisposable
         Interlocked.Or(ref word, (long)mask);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public unsafe bool MightContain(ulong h1)
     {
         if (Volatile.Read(ref _isDisposingOrDisposed) != 0)
             throw new ObjectDisposedException(nameof(BloomSegment));
 
         GetBlockAndHashes(h1, out ulong h2, out long baseOffset);
-        byte* blockPtr = (byte*)_accessor.Pointer.Address + baseOffset;
 
-        ulong* l = (ulong*)blockPtr;
+        // Base pointer once
+        ulong* lanes = (ulong*)((byte*)_accessor.Pointer.Address + baseOffset);
 
-        for (int i = 0; i < K; i++)
+        // Precompute probe sequence once (same as GetLaneInBlock)
+        int start = (int)(h2 & (CacheLineBits - 1));
+        int step  = (int)(((h2 >> 9) & (CacheLineBits - 1)) | 1);
+
+        int k = K;
+        for (int i = 0; i < k; i++)
         {
-            GetLaneInBlock(h2, i, out int laneIndex, out ulong mask);
-            if ((l[laneIndex] & mask) == 0)
+            int bit = (start + i * step) & (CacheLineBits - 1);
+            int laneIndex = bit >> 6;
+            ulong mask = 1UL << (bit & 63);
+
+            if ((lanes[laneIndex] & mask) == 0)
                 return false;
         }
+
         return true;
     }
 
@@ -219,6 +231,7 @@ public sealed class BloomSegment : IDisposable
 
                 MarkPageDirty(baseOffset);
                 Interlocked.Increment(ref _count);
+                Interlocked.Increment(ref _addedSinceLastFlush);
                 return true;
             }
             finally
@@ -235,12 +248,21 @@ public sealed class BloomSegment : IDisposable
     public void Flush()
     {
         if (_disposed) throw new ObjectDisposedException(nameof(BloomSegment));
+        if (_sealed == 1) return; // Nothing to flush
 
+        DoFlush();
+    }
+
+    private void DoFlush()
+    {
         using var _ = _maintenance.EnterScope();
 
         WriteHeader();
         MarkPageDirty(0);
 
+        int writtenPage = 0;
+        long added = _addedSinceLastFlush;
+        _addedSinceLastFlush = 0;
         for (int i = 0; i < _dirtyPages.Length; i++)
         {
             ulong word = (ulong)Interlocked.Exchange(ref Unsafe.As<ulong, long>(ref _dirtyPages[i]), 0);
@@ -259,12 +281,15 @@ public sealed class BloomSegment : IDisposable
                     {
                         ReadOnlySpan<byte> data = new((byte*)_accessor.Pointer.Address + offset, (int)sizeToWrite);
                         RandomAccess.Write(_fileHandle, data, offset);
+                        writtenPage++;
                     }
                 }
 
                 word &= (word - 1);
             }
         }
+
+        Console.Error.WriteLine($"Wrote {writtenPage:N0} for {added:N0}, a total of {writtenPage * PageSize:N0} byes");
 
         RandomAccess.FlushToDisk(_fileHandle);
     }
@@ -276,7 +301,7 @@ public sealed class BloomSegment : IDisposable
         Volatile.Write(ref _sealed, 1);
 
         WaitForWritersToDrain();
-        Flush();
+        DoFlush();
     }
 
     private unsafe void LoadFromFile()
@@ -286,19 +311,6 @@ public sealed class BloomSegment : IDisposable
         Span<byte> dest = new((byte*)_accessor.Pointer.Address, (int)toRead);
         RandomAccess.Read(_fileHandle, dest, 0);
     }
-
-    /*
-    private unsafe void WriteHeader()
-    {
-        byte* p = (byte*)_accessor.Pointer.Address;
-        Unsafe.WriteUnaligned(ref p[0], Magic);
-        Unsafe.WriteUnaligned(ref p[8], Capacity);
-        Unsafe.WriteUnaligned(ref p[16], BitsPerKey);
-        Unsafe.WriteUnaligned(ref p[20], K);
-        Unsafe.WriteUnaligned(ref p[24], Count);
-        Unsafe.WriteUnaligned(ref p[32], IsSealed ? 1 : 0);
-    }
-    */
 
     private void WriteHeader()
     {
