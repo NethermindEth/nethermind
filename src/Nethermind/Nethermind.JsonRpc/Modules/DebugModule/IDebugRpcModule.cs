@@ -1,17 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Tracing.GethStyle;
-using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Crypto;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Synchronization.Reporting;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -124,7 +123,4 @@ public interface IDebugRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Executes a list of bundles of transactions without creating transactions on the blockchain and returns their traces", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
-
-    [JsonRpcMethod(Description = "TODO")]
-    ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter);
 }

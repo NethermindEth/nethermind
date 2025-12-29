@@ -1,30 +1,29 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Tracing.GethStyle;
-using Nethermind.Config;
-using Nethermind.Consensus.Stateless;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Facade;
-using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.Facade.Simulate;
-using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Synchronization.Reporting;
-using Nethermind.TxPool;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.JsonRpc.Data;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization.Reporting;
+using System.Collections.Generic;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Core.Specs;
+using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Config;
+using Nethermind.TxPool;
+using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Facade;
+using Nethermind.Facade.Simulate;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -640,22 +639,5 @@ public class DebugRpcModule(
 
         error = default!;
         return block;
-    }
-
-    public ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter)
-    {
-        Block? block = blockFinder.FindBlock(blockParameter);
-        if (block is null)
-        {
-            return ResultWrapper<Witness>.Fail($"Unable to find block {blockParameter}");
-        }
-
-        BlockHeader? parent = blockFinder.FindHeader(block.ParentHash);
-        if (parent is null)
-        {
-            return ResultWrapper<Witness>.Fail($"Unable to find parent for block {blockParameter}");
-        }
-        return ResultWrapper<Witness>.Success(
-            blockchainBridge.GenerateExecutionWitness(parent, block));
     }
 }
