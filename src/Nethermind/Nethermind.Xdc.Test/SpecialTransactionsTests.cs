@@ -6,6 +6,7 @@ using FluentAssertions;
 using FluentAssertions.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -28,6 +29,7 @@ using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -523,7 +525,7 @@ internal class SpecialTransactionsTests
         result.Value.Error.Should().NotBe(XdcTransactionResult.NonceTooLowError);
     }
 
-    public async Task Malformed_WrongBlockNumber_BlockLessThanCurrent_SpecialTx_Fails_Validation()
+    public async Task Malformed_WrongBlockNumber_BlockLessThanCurrent_SignTx_Fails_Validation()
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -555,7 +557,7 @@ internal class SpecialTransactionsTests
         result.Value.Error.Should().NotBe(TransactionResult.ErrorType.MalformedTransaction);
     }
 
-    public async Task Malformed_WrongBlockNumber_BlockEqualToCurrent_SpecialTx_Fails_Validation()
+    public async Task Malformed_WrongBlockNumber_BlockEqualToCurrent_SignTx_Fails_Validation()
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -586,7 +588,7 @@ internal class SpecialTransactionsTests
         result.Value.Error.Should().Be(TransactionResult.ErrorType.MalformedTransaction);
     }
 
-    public async Task Malformed_WrongBlockNumber_BlockBiggerThanCurrent_SpecialTx_Fails_Validation()
+    public async Task Malformed_WrongBlockNumber_BlockBiggerThanCurrent_SignTx_Fails_Validation()
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -615,5 +617,120 @@ internal class SpecialTransactionsTests
         TransactionResult? result = transactionProcessor.Execute(tx, NullTxTracer.Instance);
 
         result.Value.Error.Should().Be(TransactionResult.ErrorType.MalformedTransaction);
+    }
+
+    [Test]
+    public async Task SignTx_Increments_Nonce_And_Emits_Log()
+    {
+        var blockChain = await XdcTestBlockchain.Create(5, false);
+        blockChain.ChangeReleaseSpec((spec) =>
+        {
+            spec.IsEip1559Enabled = false;
+        });
+
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+
+
+        XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
+        XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
+
+        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+
+        moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
+
+        UInt256 initialNonce = blockChain.WorldStateManager.GlobalWorldState.GetNonce(blockChain.Signer.Address);
+        Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)head.Number - 1, head.ParentHash!, initialNonce, spec.BlockSignersAddress, blockChain.Signer.Address);
+
+        await blockChain.Signer.Sign(tx);
+
+        var receiptsTracer = new BlockReceiptsTracer();
+
+        var initialCountOfReceipts = receiptsTracer.TxReceipts.Length;
+
+        receiptsTracer.StartNewTxTrace(tx);
+        TransactionResult? result = transactionProcessor.Execute(tx, NullTxTracer.Instance);
+        receiptsTracer.EndTxTrace();
+
+        UInt256 finalNonce = blockChain.WorldStateManager.GlobalWorldState.GetNonce(blockChain.Signer.Address);
+
+        Assert.That(finalNonce, Is.EqualTo(initialNonce + 1));
+
+        var finalCountOfReceipts = receiptsTracer.TxReceipts.Length;
+
+        Assert.That(finalCountOfReceipts, Is.EqualTo(initialCountOfReceipts + 1));
+
+        var finalReceipt = receiptsTracer.TxReceipts[^1];
+
+        Assert.That(finalReceipt?.Logs?.Length, Is.EqualTo(1));
+
+        Assert.That(finalReceipt?.Logs?[0].Address, Is.EqualTo(spec.BlockSignersAddress));
+    }
+
+    [Test]
+    public async Task Valid_SpecialTx_NotSign_Call_EmptyTx_Handler()
+    {
+        var blockChain = await XdcTestBlockchain.Create(5, false);
+        blockChain.ChangeReleaseSpec((spec) =>
+        {
+            spec.IsEip1559Enabled = false;
+        });
+
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+
+
+        XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
+        XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
+
+        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+
+        moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
+
+        Address[] addresses = [
+            spec.TradingStateAddressBinary,
+            spec.XDCXLendingAddressBinary,
+            spec.XDCXAddressBinary,
+            spec.XDCXLendingFinalizedTradeAddressBinary,
+            ];
+
+        var receiptsTracer = new BlockReceiptsTracer();
+
+        foreach (var address in addresses)
+        {
+            UInt256 initialNonce = blockChain.WorldStateManager.GlobalWorldState.GetNonce(blockChain.Signer.Address);
+
+            Transaction? tx = Build.A.Transaction
+                .WithSenderAddress(blockChain.Signer.Address)
+                .WithTo(address).TestObject;
+
+            await blockChain.Signer.Sign(tx);
+
+            var initialCountOfReceipts = receiptsTracer.TxReceipts.Length;
+
+            receiptsTracer.StartNewTxTrace(tx);
+
+            TransactionResult? result = transactionProcessor.Execute(tx, receiptsTracer);
+
+            receiptsTracer.EndTxTrace();
+
+            UInt256 finalNonce = blockChain.WorldStateManager.GlobalWorldState.GetNonce(blockChain.Signer.Address);
+
+            Assert.That(finalNonce, Is.EqualTo(initialNonce), $"specialTx to {address} does not increment nonce, initialNonce: {initialNonce}, finalNonce: {finalNonce}");
+
+            var finalCountOfReceipts = receiptsTracer.TxReceipts.Length;
+
+            Assert.That(finalCountOfReceipts, Is.EqualTo(initialCountOfReceipts + 1));
+
+            var finalReceipt = receiptsTracer.TxReceipts[^1];
+
+            Assert.That(finalReceipt?.Logs?.Length, Is.EqualTo(1));
+
+            Assert.That(finalReceipt?.Logs?[0].Address, Is.EqualTo(address));
+        }
+
+        Assert.That(receiptsTracer.TxReceipts.Length, Is.EqualTo(addresses.Length));
     }
 }
