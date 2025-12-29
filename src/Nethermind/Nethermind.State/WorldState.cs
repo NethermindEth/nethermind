@@ -350,6 +350,9 @@ namespace Nethermind.State
 
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
         {
+            if (Out.IsTargetBlock)
+                Out.Log("state commit");
+
             DebugGuardInScope();
             _persistentStorageProvider.Commit(commitRoots);
             _transientStorageProvider.Commit(commitRoots);
