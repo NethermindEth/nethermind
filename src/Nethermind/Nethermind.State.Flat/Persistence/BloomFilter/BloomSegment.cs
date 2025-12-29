@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Autofac.Features.ResolveAnything;
 using Microsoft.Win32.SafeHandles;
 using DotNext.IO.MemoryMappedFiles;
+using Org.BouncyCastle.Bcpg.OpenPgp;
 
 namespace Nethermind.State.Flat.Persistence.BloomFilter;
 
@@ -57,6 +60,7 @@ public sealed class BloomSegment : IDisposable
     private readonly Lock _maintenance = new();
     private int _opsInFlight;
     private int _isDisposingOrDisposed;
+    private bool _disposed;
 
     private BloomSegment(
         string path,
@@ -163,13 +167,14 @@ public sealed class BloomSegment : IDisposable
         return true;
     }
 
-    public unsafe void Add(ulong h1)
+    public unsafe bool TryAdd(ulong h1)
     {
+        // "Try" semantics: no exceptions for normal terminal states
         if (Volatile.Read(ref _isDisposingOrDisposed) != 0)
-            throw new ObjectDisposedException(nameof(BloomSegment));
+            return false;
 
         if (Volatile.Read(ref _sealed) != 0)
-            throw new InvalidOperationException("Segment is sealed");
+            return false;
 
         Interlocked.Increment(ref _opsInFlight);
         try
@@ -177,11 +182,24 @@ public sealed class BloomSegment : IDisposable
             while (true)
             {
                 Interlocked.Increment(ref _writersInFlight);
-                if (Volatile.Read(ref _stopWriters) == 0 && Volatile.Read(ref _sealed) == 0)
+
+                // Fast path: writers allowed + not sealed/disposed
+                if (Volatile.Read(ref _stopWriters) == 0 &&
+                    Volatile.Read(ref _sealed) == 0 &&
+                    Volatile.Read(ref _isDisposingOrDisposed) == 0)
+                {
                     break;
+                }
 
                 Interlocked.Decrement(ref _writersInFlight);
-                WaitForBarrierToClear();
+
+                // If we're sealed/disposed, do NOT spin forever: just fail.
+                if (Volatile.Read(ref _sealed) != 0 || Volatile.Read(ref _isDisposingOrDisposed) != 0)
+                    return false;
+
+                // If stopWriters is used as a temporary barrier in the future, you can wait here.
+                // With current code, stopWriters becomes permanent for Seal/Dispose, so fail fast.
+                return false;
             }
 
             try
@@ -201,6 +219,7 @@ public sealed class BloomSegment : IDisposable
 
                 MarkPageDirty(baseOffset);
                 Interlocked.Increment(ref _count);
+                return true;
             }
             finally
             {
@@ -215,6 +234,8 @@ public sealed class BloomSegment : IDisposable
 
     public void Flush()
     {
+        if (_disposed) throw new ObjectDisposedException(nameof(BloomSegment));
+
         using var _ = _maintenance.EnterScope();
 
         WriteHeader();
@@ -240,6 +261,7 @@ public sealed class BloomSegment : IDisposable
                         RandomAccess.Write(_fileHandle, data, offset);
                     }
                 }
+
                 word &= (word - 1);
             }
         }
@@ -265,6 +287,7 @@ public sealed class BloomSegment : IDisposable
         RandomAccess.Read(_fileHandle, dest, 0);
     }
 
+    /*
     private unsafe void WriteHeader()
     {
         byte* p = (byte*)_accessor.Pointer.Address;
@@ -274,6 +297,23 @@ public sealed class BloomSegment : IDisposable
         Unsafe.WriteUnaligned(ref p[20], K);
         Unsafe.WriteUnaligned(ref p[24], Count);
         Unsafe.WriteUnaligned(ref p[32], IsSealed ? 1 : 0);
+    }
+    */
+
+    private void WriteHeader()
+    {
+        Span<byte> bytes = _accessor.Bytes;
+
+        if (bytes.Length < HeaderSize)
+            throw new InvalidOperationException(
+                $"BloomSegment header write out of range. Path='{_path}', BytesLength={bytes.Length}, HeaderSize={HeaderSize}");
+
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.Slice(0, 8), Magic);
+        BinaryPrimitives.WriteInt64LittleEndian(bytes.Slice(8, 8), Capacity);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.Slice(16, 4), BitsPerKey);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.Slice(20, 4), K);
+        BinaryPrimitives.WriteInt64LittleEndian(bytes.Slice(24, 8), Count);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.Slice(32, 4), IsSealed ? 1 : 0);
     }
 
     private static void ApplyLinuxOptimizations(IntPtr address, long length)
@@ -338,5 +378,6 @@ public sealed class BloomSegment : IDisposable
         _accessor.Dispose();
         _mmf.Dispose();
         _fileHandle.Dispose();
+        _disposed = true;
     }
 }

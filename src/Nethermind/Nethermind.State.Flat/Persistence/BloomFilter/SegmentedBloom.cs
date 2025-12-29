@@ -49,7 +49,7 @@ public sealed class SegmentedBloom : IDisposable
 
     // Flush WAL occasionally to reduce data loss window without fsync-ing every Add().
     // Tune as needed.
-    private const int WalFlushThresholdBytes = 1 * 1024 * 1024; // 1 MiB
+    private readonly int _walFlushThresholdBytes;
     private int _walBytesSinceFlush;
 
     // If you need stronger durability guarantees (at a performance cost), flip this to true.
@@ -61,10 +61,11 @@ public sealed class SegmentedBloom : IDisposable
         long segmentCapacity,
         int bitsPerKey,
         bool enabled = true,
-        bool walEnabled = true)
+        int walFlushThresholdBytes = 1 * 1024 * 1024)
     {
         _enabled = enabled;
-        _walEnabled = walEnabled;
+        _walEnabled = walFlushThresholdBytes > 0;
+        _walFlushThresholdBytes = walFlushThresholdBytes;
         _directory = directory;
         _segmentCapacity = segmentCapacity;
         _bitsPerKey = bitsPerKey;
@@ -169,15 +170,17 @@ public sealed class SegmentedBloom : IDisposable
                 seg = _current;
             }
 
-            try
+            if (!seg.TryAdd(h1))
             {
-                seg.Add(h1);
-            }
-            catch (InvalidOperationException) when (seg.IsSealed)
-            {
-                // Rotation raced us. Try again with the new current.
-                Thread.Sleep(1);
-                continue;
+                // Rotation raced us: old current is sealed.
+                if (seg.IsSealed)
+                {
+                    Thread.Sleep(1);
+                    continue;
+                }
+
+                // Anything else is unexpected in normal operation (disposed/barrier, etc.)
+                throw new InvalidOperationException("Failed to add to bloom segment.");
             }
 
             if (seg.IsFull) RotateIfNeeded(seg);
@@ -219,10 +222,30 @@ public sealed class SegmentedBloom : IDisposable
     }
 
     /// <summary>
-    /// If WAL is enabled: flush segments and truncate WAL (checkpoint).
-    /// If WAL is disabled: flush segments only.
+    /// If WAL is enabled: flush WAL only (keep segments in memory; no checkpoint).
+    /// If WAL is disabled: flush segments (best-effort durability).
     /// </summary>
     public void Flush()
+    {
+        if (!_enabled) return;
+
+        if (_walEnabled)
+        {
+            FlushWalOnly();
+            return;
+        }
+
+        using var _s = _segmentsLock.EnterScope();
+        foreach (var seg in _snapshot)
+            seg.Flush();
+    }
+
+    /// <summary>
+    /// Durable flush:
+    /// - WAL enabled: flush segments and checkpoint WAL (truncate).
+    /// - WAL disabled: flush segments.
+    /// </summary>
+    public void FlushDurable()
     {
         if (!_enabled) return;
 
@@ -235,6 +258,15 @@ public sealed class SegmentedBloom : IDisposable
         using var _s = _segmentsLock.EnterScope();
         foreach (var seg in _snapshot)
             seg.Flush();
+    }
+
+    private void FlushWalOnly()
+    {
+        using var _w = _walLock.EnterScope();
+        if (_walStream is null) return;
+
+        _walStream.Flush(flushToDisk: WalFlushToDisk);
+        _walBytesSinceFlush = 0;
     }
 
     public void Dispose()
@@ -346,7 +378,7 @@ public sealed class SegmentedBloom : IDisposable
         _walStream.Write(tmp);
         _walBytesSinceFlush += sizeof(ulong);
 
-        if (_walBytesSinceFlush >= WalFlushThresholdBytes)
+        if (_walBytesSinceFlush >= _walFlushThresholdBytes)
         {
             _walStream.Flush(flushToDisk: WalFlushToDisk);
             _walBytesSinceFlush = 0;

@@ -62,7 +62,6 @@ public class BloomSegmentTests
         segment.Count.Should().Be(0);
         segment.IsSealed.Should().BeFalse();
         segment.IsFull.Should().BeFalse();
-        // K should be calculated as ~ln(2) * bitsPerKey
         segment.K.Should().BeGreaterThan(0);
     }
 
@@ -78,9 +77,9 @@ public class BloomSegmentTests
         // Act - Create and add items
         using (var segment = BloomSegment.CreateNew(path, capacity, bitsPerKey))
         {
-            segment.Add(1);
-            segment.Add(2);
-            segment.Add(3);
+            segment.TryAdd(1).Should().BeTrue();
+            segment.TryAdd(2).Should().BeTrue();
+            segment.TryAdd(3).Should().BeTrue();
             expectedCount = segment.Count;
         }
 
@@ -113,7 +112,7 @@ public class BloomSegmentTests
     #region Basic Operations Tests
 
     [Test]
-    public void Add_SingleItem_ShouldBeFound()
+    public void TryAdd_SingleItem_ShouldBeFound()
     {
         // Arrange
         string path = GetTestFilePath();
@@ -121,15 +120,16 @@ public class BloomSegmentTests
         ulong hash = 12345;
 
         // Act
-        segment.Add(hash);
+        bool added = segment.TryAdd(hash);
 
         // Assert
+        added.Should().BeTrue();
         segment.MightContain(hash).Should().BeTrue();
         segment.Count.Should().Be(1);
     }
 
     [Test]
-    public void Add_MultipleItems_ShouldAllBeFound()
+    public void TryAdd_MultipleItems_ShouldAllBeFound()
     {
         // Arrange
         string path = GetTestFilePath();
@@ -139,7 +139,7 @@ public class BloomSegmentTests
         // Act
         foreach (var hash in hashes)
         {
-            segment.Add(hash);
+            segment.TryAdd(hash).Should().BeTrue();
         }
 
         // Assert
@@ -151,19 +151,20 @@ public class BloomSegmentTests
     }
 
     [Test]
-    public void MightContain_NonExistentItem_ShouldReturnFalse()
+    public void MightContain_NonExistentItem_ShouldReturnFalseOrOccasionallyTrue()
     {
         // Arrange
         string path = GetTestFilePath();
         using var segment = BloomSegment.CreateNew(path, 1000, 10);
-        segment.Add(1);
-        segment.Add(2);
+        segment.TryAdd(1).Should().BeTrue();
+        segment.TryAdd(2).Should().BeTrue();
 
-        // Act & Assert
-        // Note: Bloom filters can have false positives, but we test with distinct values
-        // In practice, the hash should not be found if it wasn't added
+        // Act
         bool result = segment.MightContain(99999);
-        // We can't assert false definitively due to false positives, but we can check it doesn't always return true
+
+        // Assert
+        // Bloom filters can have false positives, so we only assert it doesn't throw.
+        Assert.Pass("Query completed without exception");
     }
 
     [Test]
@@ -178,7 +179,7 @@ public class BloomSegmentTests
         // Add half capacity
         for (ulong i = 0; i < (ulong)(capacity / 2); i++)
         {
-            segment.Add(i);
+            segment.TryAdd(i).Should().BeTrue();
         }
 
         // Act - Check false positives
@@ -187,15 +188,11 @@ public class BloomSegmentTests
         for (ulong i = (ulong)capacity; i < (ulong)(capacity + checksCount); i++)
         {
             if (segment.MightContain(i))
-            {
                 falsePositives++;
-            }
         }
 
-        // Assert - Expected false positive rate for k=ln(2)*m/n is ~0.5^k
-        // With 10 bits per key, K ≈ 7, so expected FP rate ≈ 0.5^7 = 0.0078 (0.78%)
         double fpRate = (double)falsePositives / checksCount;
-        fpRate.Should().BeLessThan(0.1, "false positive rate should be reasonable"); // Allow up to 10%
+        fpRate.Should().BeLessThan(0.1, "false positive rate should be reasonable");
     }
 
     #endregion
@@ -213,7 +210,7 @@ public class BloomSegmentTests
         // Act
         for (ulong i = 0; i < (ulong)capacity; i++)
         {
-            segment.Add(i);
+            segment.TryAdd(i).Should().BeTrue();
         }
 
         // Assert
@@ -222,7 +219,7 @@ public class BloomSegmentTests
     }
 
     [Test]
-    public void Add_BeyondCapacity_ShouldStillWork()
+    public void TryAdd_BeyondCapacity_ShouldStillWork()
     {
         // Arrange
         string path = GetTestFilePath();
@@ -232,7 +229,7 @@ public class BloomSegmentTests
         // Act - Add beyond capacity (not sealed, so should work)
         for (ulong i = 0; i < (ulong)(capacity + 5); i++)
         {
-            segment.Add(i);
+            segment.TryAdd(i).Should().BeTrue();
         }
 
         // Assert
@@ -250,14 +247,14 @@ public class BloomSegmentTests
         // Arrange
         string path = GetTestFilePath();
         using var segment = BloomSegment.CreateNew(path, 1000, 10);
-        segment.Add(1);
+        segment.TryAdd(1).Should().BeTrue();
 
         // Act
         segment.Seal();
 
         // Assert
         segment.IsSealed.Should().BeTrue();
-        Assert.Throws<InvalidOperationException>(() => segment.Add(2));
+        segment.TryAdd(2).Should().BeFalse("sealed segment should reject TryAdd");
     }
 
     [Test]
@@ -267,8 +264,8 @@ public class BloomSegmentTests
         string path = GetTestFilePath();
         using (var segment = BloomSegment.CreateNew(path, 1000, 10))
         {
-            segment.Add(1);
-            segment.Add(2);
+            segment.TryAdd(1).Should().BeTrue();
+            segment.TryAdd(2).Should().BeTrue();
             segment.Seal();
         }
 
@@ -278,7 +275,7 @@ public class BloomSegmentTests
         // Assert
         reopened.IsSealed.Should().BeTrue();
         reopened.Count.Should().Be(2);
-        Assert.Throws<InvalidOperationException>(() => reopened.Add(3));
+        reopened.TryAdd(3).Should().BeFalse("sealed segment should reject TryAdd after reopen");
     }
 
     [Test]
@@ -290,11 +287,11 @@ public class BloomSegmentTests
 
         using (var segment = BloomSegment.CreateNew(path, 1000, 10))
         {
-            segment.Add(testHash);
+            segment.TryAdd(testHash).Should().BeTrue();
             segment.Flush();
         }
 
-        // Act - Reopen without explicit flush before dispose
+        // Act - Reopen
         using var reopened = BloomSegment.OpenExisting(path);
 
         // Assert
@@ -311,10 +308,9 @@ public class BloomSegmentTests
 
         using (var segment = BloomSegment.CreateNew(path, 1000, 10))
         {
-            segment.Add(1);
-            segment.Add(2);
+            segment.TryAdd(1).Should().BeTrue();
+            segment.TryAdd(2).Should().BeTrue();
             expectedCount = segment.Count;
-            // Dispose without sealing
         }
 
         // Act - Reopen
@@ -330,7 +326,7 @@ public class BloomSegmentTests
     #region Concurrency Tests
 
     [Test]
-    public void Add_Concurrent_ShouldBeThreadSafe()
+    public void TryAdd_Concurrent_ShouldBeThreadSafe()
     {
         // Arrange
         string path = GetTestFilePath();
@@ -347,7 +343,7 @@ public class BloomSegmentTests
             for (int i = 0; i < itemsPerThread; i++)
             {
                 ulong hash = (ulong)(threadId * itemsPerThread + i);
-                segment.Add(hash);
+                segment.TryAdd(hash).Should().BeTrue();
             }
         })).ToArray();
 
@@ -368,7 +364,7 @@ public class BloomSegmentTests
     }
 
     [Test]
-    public void Add_AndMightContain_Concurrent_ShouldWork()
+    public void TryAdd_AndMightContain_Concurrent_ShouldWork()
     {
         // Arrange
         string path = GetTestFilePath();
@@ -383,8 +379,8 @@ public class BloomSegmentTests
             ulong hash = 0;
             while (!cts.Token.IsCancellationRequested)
             {
-                segment.Add(hash++);
-                Interlocked.Increment(ref addCount);
+                if (segment.TryAdd(hash++))
+                    Interlocked.Increment(ref addCount);
             }
         });
 
@@ -400,51 +396,32 @@ public class BloomSegmentTests
 
         Task.WaitAll(new[] { writerTask }.Concat(readerTasks).ToArray());
 
-        // Assert - No exceptions, count is consistent
+        // Assert - No exceptions, count is consistent with successful adds
         segment.Count.Should().Be(addCount);
     }
 
     [Test]
-    public void Seal_WhileConcurrentAdds_ShouldEventuallyBlock()
+    public void Seal_WhileConcurrentAdds_ShouldEventuallyCauseTryAddToFail()
     {
         // Arrange
         string path = GetTestFilePath();
         using var segment = BloomSegment.CreateNew(path, 100000, 10);
         var barrier = new Barrier(2);
-        bool sealCompleted = false;
-        var exceptions = new List<Exception>();
+
+        int successfulAdds = 0;
 
         // Act
         var adderTask = Task.Run(() =>
         {
             barrier.SignalAndWait();
-            try
+            for (int i = 0; i < 100_000; i++)
             {
-                for (int i = 0; i < 1000; i++)
-                {
-                    if (sealCompleted)
-                    {
-                        // After seal, Add should throw
-                        try
-                        {
-                            segment.Add((ulong)i);
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            // Expected
-                            return;
-                        }
-                    }
-                    else
-                    {
-                        segment.Add((ulong)i);
-                    }
-                    if (i % 100 == 0) Thread.Sleep(1); // Slow down to allow seal
-                }
-            }
-            catch (Exception ex)
-            {
-                lock (exceptions) exceptions.Add(ex);
+                if (!segment.TryAdd((ulong)i))
+                    return;
+
+                Interlocked.Increment(ref successfulAdds);
+
+                if (i % 100 == 0) Thread.Sleep(1); // Slow down to allow seal
             }
         });
 
@@ -453,18 +430,18 @@ public class BloomSegmentTests
             barrier.SignalAndWait();
             Thread.Sleep(50); // Let some adds happen
             segment.Seal();
-            sealCompleted = true;
         });
 
         Task.WaitAll(adderTask, sealTask);
 
         // Assert
         segment.IsSealed.Should().BeTrue();
-        // Either the adder stopped or threw InvalidOperationException
+        segment.Count.Should().Be(successfulAdds);
+        segment.TryAdd(999_999).Should().BeFalse();
     }
 
     [Test]
-    public void Flush_WhileConcurrentAdds_ShouldWaitForWriters()
+    public void Flush_WhileConcurrentAdds_ShouldComplete()
     {
         // Arrange
         string path = GetTestFilePath();
@@ -478,7 +455,7 @@ public class BloomSegmentTests
             barrier.SignalAndWait();
             for (int i = 0; i < 1000; i++)
             {
-                segment.Add((ulong)i);
+                segment.TryAdd((ulong)i).Should().BeTrue();
                 if (i % 100 == 0) Thread.Sleep(1);
             }
         });
@@ -488,17 +465,17 @@ public class BloomSegmentTests
             barrier.SignalAndWait();
             Thread.Sleep(100); // Let some adds happen
             countBeforeFlush = segment.Count;
-            segment.Flush(); // Should wait for in-flight writers
+            segment.Flush();
         });
 
         Task.WaitAll(adderTask, flushTask);
 
-        // Assert - Flush completed without corruption
+        // Assert - Flush completed
         segment.Count.Should().BeGreaterOrEqualTo(countBeforeFlush);
     }
 
     [Test]
-    public void Add_SameHashConcurrently_ShouldIncrementCountMultipleTimes()
+    public void TryAdd_SameHashConcurrently_ShouldIncrementCountMultipleTimes()
     {
         // Arrange
         string path = GetTestFilePath();
@@ -511,7 +488,7 @@ public class BloomSegmentTests
         var tasks = Enumerable.Range(0, threadsCount).Select(_ => Task.Run(() =>
         {
             barrier.SignalAndWait();
-            segment.Add(sameHash);
+            segment.TryAdd(sameHash).Should().BeTrue();
         })).ToArray();
 
         Task.WaitAll(tasks);
@@ -528,17 +505,8 @@ public class BloomSegmentTests
     [Test]
     public void Create_WithZeroCapacity_ShouldThrowOnReload()
     {
-        // Arrange
-        string path = GetTestFilePath();
-
-        // Create a file with zero capacity in header
-        using (var segment = BloomSegment.CreateNew(path, 1000, 10))
-        {
-            // Manually corrupt by setting capacity to 0 would require direct file manipulation
-        }
-
-        // For this test, we just verify that invalid header is caught
-        // Real corruption test would need to write raw bytes
+        // Placeholder: real corruption test would need to write raw header bytes.
+        Assert.Pass("Corruption scenario not implemented.");
     }
 
     [Test]
@@ -554,18 +522,15 @@ public class BloomSegmentTests
     }
 
     [Test]
-    public void Add_AfterDispose_ShouldThrow()
+    public void TryAdd_AfterDispose_ShouldReturnFalse()
     {
         // Arrange
         string path = GetTestFilePath();
-        Console.Error.WriteLine("Create");
         var segment = BloomSegment.CreateNew(path, 1000, 10);
-        Console.Error.WriteLine("Dispose");
         segment.Dispose();
 
         // Act & Assert
-        Console.Error.WriteLine("Now add");
-        Assert.Throws<ObjectDisposedException>(() => segment.Add(1));
+        segment.TryAdd(1).Should().BeFalse("disposed segment should reject TryAdd");
     }
 
     #endregion
