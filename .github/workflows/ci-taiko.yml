@@ -1,4 +1,4 @@
-name: "Taiko Client CI Tests"
+name: "Nethermind/Ethereum Taiko Client CI Tests"
 
 on:
   pull_request:
@@ -26,14 +26,14 @@ jobs:
 
     strategy:
       matrix:
-        execution_node: [l2_geth]
+        execution_node: [l2_nmc]
 
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/checkout@v6
         with:
-          repository: surge-taiko-mono
+          repository: NethermindEth/surge-taiko-mono
           path: ${{ env.TAIKO_MONO_MAIN_DIR }}
           ref: jmadibekov/integration-tests
 
@@ -96,6 +96,62 @@ jobs:
           ${{ format('{0}/{1}', env.TAIKO_MONO_MAIN_DIR,
           env.SHASTA_FORK_TAIKO_MONO_DIR) }}
         run: cd ./packages/protocol && pnpm install
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker Build Nethermind Client
+        run: |
+          image_name="nethermindeth/nethermind"
+          image_tag="${GITHUB_SHA:0:8}"
+          full_image="${image_name}:${image_tag}"
+          
+          echo "Building Docker image: ${full_image}"
+          
+          docker buildx build . \
+            --platform linux/amd64 \
+            -f Dockerfile \
+            -t "${full_image}" \
+            --load \
+            --build-arg BUILD_CONFIG=release \
+            --build-arg CI=true \
+            --build-arg COMMIT_HASH=${{ github.sha }} \
+            --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          
+          echo "IMAGE_TAG=${full_image}" >> $GITHUB_ENV
+          
+          echo "Verifying image exists locally:"
+          docker images | grep "${image_name}" | grep "${image_tag}" || (echo "Error: Image not found locally" && exit 1)
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Update taiko-client docker-compose.yml with new image
+        working-directory: >-
+          ${{ env.TAIKO_MONO_MAIN_DIR }}/packages/taiko-client/internal/docker/nodes
+        run: |
+          docker_compose_file="docker-compose.yml"
+          if [ -f "$docker_compose_file" ]; then
+            echo "Current image in docker-compose.yml:"
+            yq eval '.services.l2_nmc.image' "$docker_compose_file"
+            
+            echo "Updating docker-compose.yml with image: ${IMAGE_TAG}"
+            yq eval '.services.l2_nmc.image = "'"${IMAGE_TAG}"'"' -i "$docker_compose_file"
+            
+            yq eval '.services.l2_nmc.pull_policy = "never"' -i "$docker_compose_file"
+            
+            echo "Updated image in docker-compose.yml:"
+            yq eval '.services.l2_nmc.image' "$docker_compose_file"
+            
+            echo "Pull policy set to:"
+            yq eval '.services.l2_nmc.pull_policy' "$docker_compose_file"
+          else
+            echo "Warning: docker-compose.yml not found at expected path"
+            exit 1
+          fi
 
       - name: Run Tests on ${{ matrix.execution_node }} execution engine
         working-directory: >-
