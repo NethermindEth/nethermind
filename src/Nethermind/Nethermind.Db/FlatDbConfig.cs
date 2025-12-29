@@ -55,6 +55,9 @@ public interface IFlatDbConfig: IConfig
 
     [ConfigItem(Description = "Max pruning boundary", DefaultValue = "false")]
     int MaxPruningBoundary { get; set; }
+
+    [ConfigItem(Description = "Use flat bloom", DefaultValue = "false")]
+    bool EnableFlatBloom { get; set; }
 }
 
 public enum FlatLayout
@@ -87,4 +90,5 @@ public class FlatDbConfig: IFlatDbConfig
     public bool ImportOnStateSyncFinished { get; set; } = false;
     public bool GeneratePreimage { get; set; } = false;
     public int MaxPruningBoundary { get; set; } = 1024;
+    public bool EnableFlatBloom { get; set; } = false;
 }

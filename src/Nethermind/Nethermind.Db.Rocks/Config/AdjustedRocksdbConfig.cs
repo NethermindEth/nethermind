@@ -9,7 +9,8 @@ public class AdjustedRocksdbConfig(
     IRocksDbConfig baseConfig,
     string additionalRocksDbOptions,
     ulong writeBufferSize,
-    IntPtr? blockCache = null
+    IntPtr? blockCache = null,
+    string? optionsOverride = null
 ) : IRocksDbConfig
 {
     public ulong? WriteBufferSize => writeBufferSize;
@@ -17,7 +18,7 @@ public class AdjustedRocksdbConfig(
     public ulong? WriteBufferNumber => baseConfig.WriteBufferNumber;
 
     // Note: not AdditionalRocksDbOptions so that user can still override option.
-    public string RocksDbOptions => baseConfig.RocksDbOptions + additionalRocksDbOptions;
+    public string RocksDbOptions => optionsOverride ?? (baseConfig.RocksDbOptions + additionalRocksDbOptions);
 
     public string AdditionalRocksDbOptions => baseConfig.AdditionalRocksDbOptions;
 

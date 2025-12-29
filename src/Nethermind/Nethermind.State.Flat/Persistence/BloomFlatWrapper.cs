@@ -22,7 +22,8 @@ public static class BloomFlatWrapper
 {
     public readonly struct BloomWriter<TInnerWriteBatch>(
         TInnerWriteBatch innerWriteBatch,
-        SegmentedBloom bloomFilter
+        SegmentedBloom bloomFilter,
+        bool noWal
     ) : BasePersistence.IHashedFlatWriteBatch
         where TInnerWriteBatch: struct, BasePersistence.IHashedFlatWriteBatch
     {
@@ -38,13 +39,13 @@ public static class BloomFlatWrapper
 
         public void SetAccount(in ValueHash256 address, ReadOnlySpan<byte> value)
         {
-            bloomFilter.Add(BinaryPrimitives.ReadUInt64LittleEndian(address.BytesAsSpan));
+            bloomFilter.Add(BinaryPrimitives.ReadUInt64LittleEndian(address.BytesAsSpan), writeWal: !noWal);
             innerWriteBatch.SetAccount(in address, value);
         }
 
         public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, in SlotValue? value)
         {
-            bloomFilter.Add(Mix(BinaryPrimitives.ReadUInt64LittleEndian(address.Bytes), BinaryPrimitives.ReadUInt64LittleEndian(slotHash.Bytes)));
+            bloomFilter.Add(Mix(BinaryPrimitives.ReadUInt64LittleEndian(address.Bytes), BinaryPrimitives.ReadUInt64LittleEndian(slotHash.Bytes)), writeWal: !noWal);
             innerWriteBatch.SetStorage(in address, in slotHash, value);
         }
     }

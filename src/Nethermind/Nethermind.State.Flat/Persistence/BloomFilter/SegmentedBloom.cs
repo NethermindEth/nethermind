@@ -1,12 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Threading;
 using Prometheus;
 
 namespace Nethermind.State.Flat.Persistence.BloomFilter;
@@ -63,9 +59,16 @@ public sealed class SegmentedBloom : IDisposable
         long segmentCapacity,
         int bitsPerKey,
         bool enabled = true,
-        int walFlushThresholdBytes = 10 * 1024 * 1024)
+        int walFlushThresholdBytes = -1)
     {
         _enabled = enabled;
+
+        if (walFlushThresholdBytes == -1)
+        {
+            walFlushThresholdBytes = (int)((segmentCapacity * 0.01) * sizeof(ulong));
+            Console.Error.WriteLine($"Wal flush is set to {walFlushThresholdBytes:N0}");
+        }
+
         _walEnabled = walFlushThresholdBytes > 0;
         _walFlushThresholdBytes = walFlushThresholdBytes;
         _directory = directory;
@@ -107,6 +110,8 @@ public sealed class SegmentedBloom : IDisposable
             Checkpoint(); // makes replay idempotent and keeps WAL bounded
         }
     }
+
+    public bool IsEnabled => _enabled;
 
     public bool MightContain(ulong h1)
     {

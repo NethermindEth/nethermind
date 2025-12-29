@@ -127,8 +127,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             .AddKeyedSingleton<SegmentedBloom>(DbNames.Flat, (ctx) =>
             {
                 IInitConfig initConfig = ctx.Resolve<IInitConfig>();
+                IFlatDbConfig flatDbConfig = ctx.Resolve<IFlatDbConfig>();
                 var bloomPath = initConfig.BaseDbPath + "/flatBloom/";
-                return new SegmentedBloom(bloomPath, 500_000_000, 10, enabled: Environment.GetEnvironmentVariable("FLAT_CUSTOM_BLOOM") == "1");
+                return new SegmentedBloom(bloomPath, 3_000_000_000, 10, enabled: flatDbConfig.EnableFlatBloom);
             })
 
             .AddSingleton<NoLeafValueRocksdbPersistence>()
@@ -218,11 +219,13 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
         private readonly IntPtr _flatDbBlockCache;
         private readonly HashSet<(string, string?)> _columnsWithBlockCache;
         private readonly ILogger _logger;
+        private readonly IFlatDbConfig _flatDbConfig;
 
         public FlatBlockCacheAdjuster(IRocksDbConfigFactory rocksDbConfigFactory, IFlatDbConfig flatDbConfig, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger<FlatBlockCacheAdjuster>();
             _rocksDbConfigFactory = rocksDbConfigFactory;
+            _flatDbConfig = flatDbConfig;
             _flatDbBlockCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_hyper_clock(new UIntPtr((uint)flatDbConfig.BlockCacheSizeBudget), 0);
 
             FlatDbColumns[] columns;
@@ -263,7 +266,18 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
             if (_columnsWithBlockCache.Contains((databaseName, columnName)))
             {
                 _logger.Warn($"Adjusting db {databaseName}, {columnName} with shared block cache");
-                config = new AdjustedRocksdbConfig(config, "", config.WriteBufferSize.GetValueOrDefault(), _flatDbBlockCache);
+
+                string? optionsOverride = null;
+
+                if (_flatDbConfig.EnableFlatBloom)
+                {
+                    optionsOverride = config.RocksDbOptions.Replace("optimize_filters_for_hits=false;",
+                        "optimize_filters_for_hits=true;");
+                }
+
+                config = new AdjustedRocksdbConfig(
+                    config, "", config.WriteBufferSize.GetValueOrDefault(), _flatDbBlockCache,
+                    optionsOverride: optionsOverride);
             }
 
             return config;
