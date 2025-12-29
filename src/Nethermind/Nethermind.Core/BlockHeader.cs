@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -31,6 +32,16 @@ public static class Out
     {
         CurrentBlockNumber = -1;
         CurrentTransactionIndex = -1;
+    }
+
+    public static void DumpEnvironmentVariables()
+    {
+        Console.WriteLine("Environment Variables:");
+        foreach (DictionaryEntry de in Environment.GetEnvironmentVariables())
+        {
+            if (de.Key.ToString()?.StartsWith("TRACE_") == true)
+                Console.WriteLine($"{de.Key} = {de.Value}");
+        }
     }
 
     public static void LogAlways(string log)
