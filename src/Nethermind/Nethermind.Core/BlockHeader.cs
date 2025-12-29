@@ -36,12 +36,12 @@ public static class Out
 
     public static void DumpEnvironmentVariables()
     {
-        Console.WriteLine("Environment Variables:");
-        foreach (DictionaryEntry de in Environment.GetEnvironmentVariables())
-        {
-            if (de.Key.ToString()?.StartsWith("TRACE_") == true)
-                Console.WriteLine($"{de.Key} = {de.Value}");
-        }
+        Console.WriteLine($"{nameof(TraceShowStackTrace)}: {TraceShowStackTrace}");
+        Console.WriteLine($"{nameof(TraceShowBurn)}: {TraceShowBurn}");
+        Console.WriteLine($"{nameof(TraceShowOpcodes)}: {TraceShowOpcodes}");
+        Console.WriteLine($"{nameof(TraceShowDeepstate)}: {TraceShowDeepstate}");
+        Console.WriteLine($"{nameof(TraceShowArbosRead)}: {TraceShowArbosRead}");
+        Console.WriteLine($"{nameof(TraceShowStateRootChange)}: {TraceShowStateRootChange}");
     }
 
     public static void LogAlways(string log)
