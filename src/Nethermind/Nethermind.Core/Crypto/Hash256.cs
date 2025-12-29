@@ -20,7 +20,7 @@ namespace Nethermind.Core.Crypto
         // the performance of the network as a whole.
         private static readonly uint s_instanceRandom =
 #if ZKVM
-        98316501; // TODO: remove ssl
+        98316501;
 #else
         (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
 #endif
