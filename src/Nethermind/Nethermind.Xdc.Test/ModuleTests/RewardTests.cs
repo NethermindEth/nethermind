@@ -24,6 +24,8 @@ namespace Nethermind.Xdc.Test.ModuleTests;
 
 public class RewardTests
 {
+    // Test ported from XDC reward_test :
+    // https://github.com/XinFinOrg/XDPoSChain/blob/af4178b2c7f9d668d8ba1f3a0244606a20ce303d/consensus/tests/engine_v2_tests/reward_test.go#L18
     [Test]
     public async Task TestHookRewardV2()
     {
@@ -122,6 +124,8 @@ public class RewardTests
         rewardsAt4500.Should().BeEmpty();
     }
 
+    // Test ported from XDC reward_test :
+    // https://github.com/XinFinOrg/XDPoSChain/blob/af4178b2c7f9d668d8ba1f3a0244606a20ce303d/consensus/tests/engine_v2_tests/reward_test.go#L99
     [Test]
     public async Task TestHookRewardV2SplitReward()
     {
@@ -216,6 +220,8 @@ public class RewardTests
         }
     }
 
+    // Test to check calculated rewards against precalculated values from :
+    // https://github.com/XinFinOrg/XDPoSChain/blob/af4178b2c7f9d668d8ba1f3a0244606a20ce303d/consensus/tests/engine_v2_tests/reward_test.go#L147
     [Test]
     public void RewardCalculator_SplitReward_MatchesRounding()
     {
