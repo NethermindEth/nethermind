@@ -1674,7 +1674,7 @@ public partial class EthRpcModuleTests
                     var cutBlock = blockNumber;
                     config.AncientBodiesBarrier = cutBlock;
                     config.AncientReceiptsBarrier = cutBlock;
-                    config.PivotNumber = cutBlock.ToString();
+                    config.PivotNumber = cutBlock;
                     config.SnapSync = true;
                     return config;
                 });
