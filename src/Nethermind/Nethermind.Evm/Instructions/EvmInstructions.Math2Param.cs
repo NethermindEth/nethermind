@@ -165,7 +165,17 @@ internal static partial class EvmInstructions
     {
         public static long GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-            => UInt256.Mod(in a, in b, out result);
+        {
+            if (b.IsZeroOrOne)
+            {
+                // Modulo with 0 or 1 yields zero.
+                result = default;
+            }
+            else
+            {
+                UInt256.Mod(in a, in b, out result);
+            }
+        }
     }
 
     /// <summary>
