@@ -23,15 +23,15 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
         // Arbitrum has it's own custom code for storing block hashes in state, so we skip EIP-2935 processing here.
         // See Precompiles.HistoryStorageCodeArbitrum
 
-        // if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
-        //
-        // Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-        // if (!worldState.IsContract(eip2935Account)) return;
-        //
-        // Hash256 parentBlockHash = blockHeader.ParentHash;
-        // UInt256 parentBlockIndex = new UInt256((ulong)((blockHeader.Number - 1) % spec.Eip2935RingBufferSize));
-        // StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
-        // worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
+        if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
+
+        Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+        if (!worldState.IsContract(eip2935Account)) return;
+
+        Hash256 parentBlockHash = blockHeader.ParentHash;
+        UInt256 parentBlockIndex = new UInt256((ulong)((blockHeader.Number - 1) % spec.Eip2935RingBufferSize));
+        StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
+        worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
     }
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber, IReleaseSpec spec)
