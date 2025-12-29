@@ -57,7 +57,7 @@ public class DataFeed
         CancellationToken lifetime)
     {
         ArgumentNullException.ThrowIfNull(txPool);
-        ArgumentNullException.ThrowIfNull(syncPeerPool);
+        ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(receiptFinder);
         ArgumentNullException.ThrowIfNull(blockTree);
         ArgumentNullException.ThrowIfNull(syncPeerPool);
