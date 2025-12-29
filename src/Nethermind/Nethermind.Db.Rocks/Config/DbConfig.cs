@@ -383,6 +383,7 @@ public class DbConfig : IDbConfig
         // So that last level bloom is kept. Should accelerate miss state check.
         "optimize_filters_for_hits=false;" +
         // "optimize_filters_for_hits=true;" +
+        "" + (Environment.GetEnvironmentVariable("EXTRA_FLAT_ARGS") ?? "") +
         "";
 
 
@@ -429,7 +430,8 @@ public class DbConfig : IDbConfig
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
 
     // Largely the same as statedb, but more write focused.
-    public string? FlatDbStandardTrieOptions { get; set; } =
+
+    public string? FlatDbCommonTrieOptions { get; set; } =
 
         // This is actually feasable. Use direct reads to prevent taking up os cache space from flat.
         // "use_direct_reads=true;" +
@@ -463,35 +465,6 @@ public class DbConfig : IDbConfig
         "optimize_filters_for_hits=true;" +
         "" + (Environment.GetEnvironmentVariable("EXTRA_TRIE_ARGS") ?? "") +
         "";
-
-    public string? FlatDbFlatInTrieOptions { get; set; } =
-        // LZ4 seems to be slightly faster here
-        "compression=kLZ4Compression;" +
-
-        // Default value is 16.
-        // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
-        // They key within the same restart is delta-encoded with the key before it. This mean a read will have to go
-        // through potentially "BlockRestartInterval" number of key, probably. That is my understanding.
-        // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
-        // cache utilization.
-        "block_based_table_factory.block_restart_interval=6;" +
-
-        // This adds a hashtable-like index per block (the 32kb block)
-        // This reduce CPU and therefore latency under high block cache hit scenario.
-        // It seems to increase disk space use by about 1 GB.
-        "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
-        "block_based_table_factory.data_block_hash_table_util_ratio=0.75;" +
-
-        "block_based_table_factory.block_size=32000;" +
-        "block_based_table_factory.filter_policy=ribbonfilter:10:3;" +
-
-        // very important for null check
-        "optimize_filters_for_hits=false;" +
-        "";
-
-    public bool IsFlatInTrie { get; set; }
-
-    public string? FlatDbCommonTrieOptions => IsFlatInTrie ? FlatDbFlatInTrieOptions: FlatDbStandardTrieOptions;
 
     // Only 1 gig in total, but almost 1/3rd of the writes.
     public ulong FlatStateTopNodesDbWriteBufferSize { get; set; } = (ulong)64.MiB();

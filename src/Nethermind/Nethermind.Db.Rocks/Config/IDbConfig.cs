@@ -104,10 +104,6 @@ public interface IDbConfig : IConfig
     string L1OriginDbRocksDbOptions { get; set; }
     string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 
-    string? FlatDbStandardTrieOptions { set; get; }
-    string? FlatDbFlatInTrieOptions { set; get; }
-    bool IsFlatInTrie { set; get; }
-
     ulong FlatDbWriteBufferSize { get; set; }
     ulong FlatDbWriteBufferNumber { get; set; }
     bool? FlatDbVerifyChecksum { get; set; }

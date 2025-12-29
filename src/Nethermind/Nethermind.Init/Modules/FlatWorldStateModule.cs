@@ -110,13 +110,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                 throw new Exception($"Unsupported layout {flatDbConfig.Layout}");
             })
 
-            .AddDecorator<IDbConfig>((ctx, dbConfig) =>
-            {
-                IFlatDbConfig flatConfig = ctx.Resolve<IFlatDbConfig>();
-                dbConfig.IsFlatInTrie = flatConfig.Layout == FlatLayout.FlatInTrie;
-                return dbConfig;
-            })
-
             .AddSingleton<PreimageRocksdbPersistence>()
 
             .AddSingleton<RocksdbPersistence>()
