@@ -69,14 +69,14 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
 
                 // Was in `UpdateDiscoveryConfig` step.
-                if (discoveryConfig.Bootnodes != string.Empty)
+                if (!string.IsNullOrEmpty(discoveryConfig.Bootnodes))
                 {
                     if (chainSpec.Bootnodes.Length != 0)
                     {
                         discoveryConfig.Bootnodes += "," + string.Join(",", chainSpec.Bootnodes.Select(static bn => bn.ToString()));
                     }
                 }
-                else if (chainSpec.Bootnodes is not null)
+                else if (chainSpec.Bootnodes.Length != 0)
                 {
                     discoveryConfig.Bootnodes = string.Join(",", chainSpec.Bootnodes.Select(static bn => bn.ToString()));
                 }
