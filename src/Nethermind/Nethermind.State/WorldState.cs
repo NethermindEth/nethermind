@@ -358,6 +358,9 @@ namespace Nethermind.State
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
+            if (Out.IsTargetBlock)
+                Out.Log("state commit");
+
             DebugGuardInScope();
             _persistentStorageProvider.Commit(tracer, commitRoots);
             _transientStorageProvider.Commit(tracer, commitRoots);
@@ -366,6 +369,9 @@ namespace Nethermind.State
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
         {
+            if (Out.IsTargetBlock)
+                Out.Log("state snapshot");
+
             DebugGuardInScope();
             int persistentSnapshot = _persistentStorageProvider.TakeSnapshot(newTransactionStart);
             int transientSnapshot = _transientStorageProvider.TakeSnapshot(newTransactionStart);
@@ -376,6 +382,9 @@ namespace Nethermind.State
 
         public void Restore(Snapshot snapshot)
         {
+            if (Out.IsTargetBlock)
+                Out.Log("state restore");
+
             DebugGuardInScope();
             _persistentStorageProvider.Restore(snapshot.StorageSnapshot.PersistentStorageSnapshot);
             _transientStorageProvider.Restore(snapshot.StorageSnapshot.TransientStorageSnapshot);
