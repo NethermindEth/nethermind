@@ -179,6 +179,7 @@ namespace Nethermind.Trie
                         {
                             if (_logger.IsTrace)
                             {
+                                path.SetLast(i);
                                 Trace(node, ref path, i);
                             }
                         }
@@ -224,6 +225,7 @@ namespace Nethermind.Trie
                         {
                             if (_logger.IsTrace)
                             {
+                                path.SetLast(i);
                                 Trace(node, ref path, i);
                             }
                         }
