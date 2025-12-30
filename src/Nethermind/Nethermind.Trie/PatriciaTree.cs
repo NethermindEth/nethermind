@@ -241,24 +241,31 @@ namespace Nethermind.Trie
             else if (node.NodeType == NodeType.Extension)
             {
                 int previousPathLength = node.AppendChildPath(ref path, 0);
-                TrieNode extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
-                if (extensionChild is null)
+                if (node.IsChildDirty(0))
                 {
-                    ThrowInvalidExtension();
-                }
+                    TrieNode extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                    if (extensionChild is null)
+                    {
+                        ThrowInvalidExtension();
+                    }
 
-                if (extensionChild.IsDirty)
-                {
                     TrieNode newExtensionChild = Commit(committer, ref path, extensionChild, maxLevelForConcurrentCommit);
                     if (!ReferenceEquals(newExtensionChild, extensionChild))
                     {
                         node[0] = newExtensionChild;
                     }
                 }
-                else
+                else if (_logger.IsTrace)
                 {
-                    if (_logger.IsTrace) TraceExtensionSkip(extensionChild);
+                    TrieNode extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                    if (extensionChild is null)
+                    {
+                        ThrowInvalidExtension();
+                    }
+
+                    TraceExtensionSkip(extensionChild);
                 }
+
                 path.TruncateMut(previousPathLength);
             }
 
