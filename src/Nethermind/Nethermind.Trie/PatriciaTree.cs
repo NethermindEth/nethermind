@@ -166,9 +166,9 @@ namespace Nethermind.Trie
                     path.AppendMut(0);
                     for (int i = 0; i < 16; i++)
                     {
-                        path.SetLast(i);
                         if (node.TryGetDirtyChild(i, out TrieNode? childNode))
                         {
+                            path.SetLast(i);
                             TrieNode newChildNode = Commit(committer, ref path, childNode, maxLevelForConcurrentCommit);
                             if (!ReferenceEquals(childNode, newChildNode))
                             {
