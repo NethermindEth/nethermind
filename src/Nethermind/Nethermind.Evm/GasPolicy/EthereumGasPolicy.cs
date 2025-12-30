@@ -166,6 +166,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool ConsumeCodeCopyGas(ref EthereumGasPolicy gas, bool isExternalCode, long baseCost, long wordCost)
+        => UpdateGas(ref gas, baseCost + wordCost);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy Max(in EthereumGasPolicy a, in EthereumGasPolicy b) =>
         a.Value >= b.Value ? a : b;
 
