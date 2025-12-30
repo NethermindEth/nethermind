@@ -163,27 +163,28 @@ namespace Nethermind.Trie
             {
                 if (path.Length > maxLevelForConcurrentCommit)
                 {
+                    path.AppendMut(0);
                     for (int i = 0; i < 16; i++)
                     {
-                        if (node.IsChildDirty(i))
+                        if (node.TryGetDirtyChild(i, out TrieNode? childNode))
                         {
-                            path.AppendMut(i);
-                            TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, i);
+                            path.SetLast(i);
                             TrieNode newChildNode = Commit(committer, ref path, childNode, maxLevelForConcurrentCommit);
                             if (!ReferenceEquals(childNode, newChildNode))
                             {
                                 node[i] = newChildNode;
                             }
-                            path.TruncateOne();
                         }
                         else
                         {
                             if (_logger.IsTrace)
                             {
+                                path.SetLast(i);
                                 Trace(node, ref path, i);
                             }
                         }
                     }
+                    path.TruncateOne();
                 }
                 else
                 {
@@ -199,37 +200,37 @@ namespace Nethermind.Trie
 
                     ArrayPoolList<Task>? childTasks = null;
 
+                    path.AppendMut(0);
                     for (int i = 0; i < 16; i++)
                     {
-                        if (node.IsChildDirty(i))
+                        if (node.TryGetDirtyChild(i, out TrieNode childNode))
                         {
+                            path.SetLast(i);
                             if (i < 15 && committer.TryRequestConcurrentQuota())
                             {
                                 childTasks ??= new ArrayPoolList<Task>(15);
-                                TreePath childPath = path.Append(i);
-                                TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref childPath, i);
-                                childTasks.Add(CreateTaskForPath(childPath, childNode, i));
+                                // path is copied here
+                                childTasks.Add(CreateTaskForPath(path, childNode, i));
                             }
                             else
                             {
-                                path.AppendMut(i);
-                                TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, i);
                                 TrieNode newChildNode = Commit(committer, ref path, childNode!, maxLevelForConcurrentCommit);
                                 if (!ReferenceEquals(childNode, newChildNode))
                                 {
                                     node[i] = newChildNode;
                                 }
-                                path.TruncateOne();
                             }
                         }
                         else
                         {
                             if (_logger.IsTrace)
                             {
+                                path.SetLast(i);
                                 Trace(node, ref path, i);
                             }
                         }
                     }
+                    path.TruncateOne();
 
                     if (childTasks is not null)
                     {
@@ -241,13 +242,7 @@ namespace Nethermind.Trie
             else if (node.NodeType == NodeType.Extension)
             {
                 int previousPathLength = node.AppendChildPath(ref path, 0);
-                TrieNode extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
-                if (extensionChild is null)
-                {
-                    ThrowInvalidExtension();
-                }
-
-                if (extensionChild.IsDirty)
+                if (node.TryGetDirtyChild(0, out TrieNode? extensionChild))
                 {
                     TrieNode newExtensionChild = Commit(committer, ref path, extensionChild, maxLevelForConcurrentCommit);
                     if (!ReferenceEquals(newExtensionChild, extensionChild))
@@ -255,9 +250,15 @@ namespace Nethermind.Trie
                         node[0] = newExtensionChild;
                     }
                 }
-                else
+                else if (_logger.IsTrace)
                 {
-                    if (_logger.IsTrace) TraceExtensionSkip(extensionChild);
+                    extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                    if (extensionChild is null)
+                    {
+                        ThrowInvalidExtension();
+                    }
+
+                    TraceExtensionSkip(extensionChild);
                 }
                 path.TruncateMut(previousPathLength);
             }
@@ -285,7 +286,7 @@ namespace Nethermind.Trie
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(TrieNode node, ref TreePath path, int i)
             {
-                TrieNode child = node.GetChild(TrieStore, ref path, i);
+                TrieNode child = node.GetChildWithChildPath(TrieStore, ref path, i);
                 if (child is not null)
                 {
                     _logger.Trace($"Skipping commit of {child}");
