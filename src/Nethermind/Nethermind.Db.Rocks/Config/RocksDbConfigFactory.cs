@@ -38,7 +38,6 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
                 dbConfig.MaxOpenFiles = perDbLimit;
             }
 
-            // Apply skip SST file size checks: use explicit config or default to true on macOS
             bool skipSstChecks = dbConfig.SkipCheckingSstFileSizesOnDbOpen ?? RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
             if (skipSstChecks)
             {
