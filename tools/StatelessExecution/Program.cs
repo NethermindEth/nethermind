@@ -408,7 +408,7 @@ class Program
         StatelessBlockProcessingEnv blockProcessingEnv =
             new(witness, specProvider, Always.Valid, NullLogManager.Instance);
 
-        using var scope  = blockProcessingEnv.WorldState.BeginScope(baseBlock);
+        using var scope = blockProcessingEnv.WorldState.BeginScope(baseBlock);
 
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 

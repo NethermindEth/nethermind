@@ -204,7 +204,7 @@ namespace Nethermind.Core.Extensions
         [SkipLocalsInit]
         public static int FastHash(this ReadOnlySpan<byte> input)
         {
-            #if ZKVM
+#if ZKVM
             if (input.Length == 0) return 0;
 
             unchecked
@@ -227,8 +227,7 @@ namespace Nethermind.Core.Extensions
                 return hash;
             }
 
-            #else
-
+#else
             // Very fast hardware accelerated non-cryptographic hash function
             var length = input.Length;
             if (length == 0) return 0;
@@ -299,7 +298,7 @@ namespace Nethermind.Core.Extensions
 
             return (int)BitOperations.Crc32C(hash, data);
 
-            #endif
+#endif
         }
     }
 }
