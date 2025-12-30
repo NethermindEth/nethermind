@@ -10,13 +10,13 @@ namespace Nethermind.Core.Test;
 
 public class RunImmediatelyScheduler : IBackgroundTaskScheduler
 {
-    public static RunImmediatelyScheduler Instance = new RunImmediatelyScheduler();
+    public static RunImmediatelyScheduler Instance = new();
 
     private RunImmediatelyScheduler()
     {
     }
 
-    public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+    public bool TryScheduleTask<TReq>(in TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null) where TReq : notnull
     {
         fulfillFunc(request, CancellationToken.None);
         return true;
