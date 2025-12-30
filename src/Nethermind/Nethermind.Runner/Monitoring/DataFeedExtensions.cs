@@ -36,6 +36,6 @@ public static class DataFeedExtensions
 
         _dataFeed = new DataFeed(txPool, specProvider, receiptFinder, blockTree, syncPeerPool, mainProcessingContext, logManager, lifetime.ApplicationStopped);
 
-        endpoints.MapGet("/data/events", _dataFeed.ProcessingFeedAsync);
+        endpoints.MapGet("data/events", _dataFeed.ProcessingFeedAsync);
     }
 }

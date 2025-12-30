@@ -31,7 +31,6 @@ public class PreBlockCaches
         [
             () => _storageCache.NoResizeClear() ? CacheType.Storage : CacheType.None,
             () => _stateCache.NoResizeClear() ? CacheType.State : CacheType.None,
-            () => _rlpCache.NoResizeClear() ? CacheType.Rlp : CacheType.None,
             () => _precompileCache.NoResizeClear() ? CacheType.Precompile : CacheType.None
         ];
     }
