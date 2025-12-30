@@ -364,8 +364,6 @@ public partial class EthRpcModule(
     public ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter,
         bool returnFullTransactionObjects)
     {
-        if (blockParameter.BlockNumber is not null)
-            blockParameter.RequireCanonical = true;
         return GetBlock(blockParameter, returnFullTransactionObjects);
     }
 
