@@ -21,6 +21,9 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
 
+    public Address MasternodeVotingContract { get; set; }
+    public Address BlockSignerContract { get; set; }
+
 
     private List<V2ConfigParams> _v2Configs = new();
     public List<V2ConfigParams> V2Configs
