@@ -74,6 +74,11 @@ public class Program
             description: "Timeout in seconds for HTTP requests to EL/CL clients",
             getDefaultValue: () => 60);
 
+        var getPayloadMethodOption = new Option<string>(
+            name: "--get-payload-method",
+            description: "Engine API method to use when getting payloads for validation (e.g., engine_getPayloadV3, engine_getPayloadV4)",
+            getDefaultValue: () => "engine_getPayloadV4");
+
         // Create root command with options
         var rootCommand = new RootCommand("Nethermind Engine API Proxy");
         rootCommand.AddOption(executionClientOption);
@@ -85,6 +90,7 @@ public class Program
         rootCommand.AddOption(feeRecipientOption);
         rootCommand.AddOption(validationModeOption);
         rootCommand.AddOption(requestTimeoutOption);
+        rootCommand.AddOption(getPayloadMethodOption);
 
         rootCommand.SetHandler(async (context) =>
         {
@@ -99,6 +105,7 @@ public class Program
                 var feeRecipient = context.ParseResult.GetValueForOption(feeRecipientOption) ?? "0x8943545177806ed17b9f23f0a21ee5948ecaa776";
                 var validationMode = context.ParseResult.GetValueForOption(validationModeOption);
                 var requestTimeout = context.ParseResult.GetValueForOption(requestTimeoutOption);
+                var getPayloadMethod = context.ParseResult.GetValueForOption(getPayloadMethodOption) ?? "engine_getPayloadV4";
 
                 // Configure logging
                 var logManager = new NLogManager();
@@ -149,7 +156,8 @@ public class Program
                     ValidateAllBlocks = validateAllBlocks,
                     DefaultFeeRecipient = feeRecipient,
                     ValidationMode = validationMode,
-                    RequestTimeoutSeconds = requestTimeout
+                    RequestTimeoutSeconds = requestTimeout,
+                    GetPayloadMethod = getPayloadMethod
                 };
 
                 logger.Info($"Starting Engine API Proxy with configuration: {config}");
@@ -246,16 +254,17 @@ public class Program
         Console.WriteLine("Usage: EngineApiProxy [options]");
         Console.WriteLine();
         Console.WriteLine("Options:");
-        Console.WriteLine("  -e, --ec-endpoint <url>     Execution client endpoint URL (required)");
-        Console.WriteLine("  -c, --cl-endpoint <url>     Consensus client endpoint URL (optional)");
-        Console.WriteLine("  -p, --listen-port <port>    Port to listen on (default: 8551)");
-        Console.WriteLine("  -l, --log-level <level>     Logging level (default: Info)");
-        Console.WriteLine("  -f, --log-file <path>       Log file path (default: console only)");
-        Console.WriteLine("  --validate-all-blocks       Validate all blocks, even without CL request");
-        Console.WriteLine("  --fee-recipient <address>   Default fee recipient address");
-        Console.WriteLine("  --validation-mode <mode>    Validation mode (Fcu, NewPayload, Merged, LH)");
-        Console.WriteLine("  --request-timeout <seconds> HTTP request timeout in seconds (default: 100)");
-        Console.WriteLine("  -h, --help                  Display this help message");
+        Console.WriteLine("  -e, --ec-endpoint <url>           Execution client endpoint URL (required)");
+        Console.WriteLine("  -c, --cl-endpoint <url>           Consensus client endpoint URL (optional)");
+        Console.WriteLine("  -p, --listen-port <port>          Port to listen on (default: 8551)");
+        Console.WriteLine("  -l, --log-level <level>           Logging level (default: Info)");
+        Console.WriteLine("  -f, --log-file <path>             Log file path (default: console only)");
+        Console.WriteLine("  --validate-all-blocks             Validate all blocks, even without CL request");
+        Console.WriteLine("  --fee-recipient <address>         Default fee recipient address");
+        Console.WriteLine("  --validation-mode <mode>          Validation mode (Fcu, NewPayload, Merged, LH)");
+        Console.WriteLine("  --request-timeout <seconds>       HTTP request timeout in seconds (default: 100)");
+        Console.WriteLine("  --get-payload-method <method>     Engine API method for getting payloads (default: engine_getPayloadV4)");
+        Console.WriteLine("  -h, --help                        Display this help message");
         return 0;
     }
 }

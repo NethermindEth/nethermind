@@ -255,11 +255,11 @@ public class RequestOrchestrator(
         }
         catch (Exception ex)
         {
-            // If engine_getPayloadV4 fails, log it but don't throw an exception
-            if (ex.ToString().Contains("The method 'engine_getPayloadV4' is not supported") ||
-                (ex.InnerException != null && ex.InnerException.ToString().Contains("The method 'engine_getPayloadV4' is not supported")))
+            // If the configured getPayload method fails, log it but don't throw an exception
+            if (ex.ToString().Contains($"The method '{_config.GetPayloadMethod}' is not supported") ||
+                (ex.InnerException != null && ex.InnerException.ToString().Contains($"The method '{_config.GetPayloadMethod}' is not supported")))
             {
-                _logger.Warn($"Execution client does not support engine_getPayloadV4. Skipping payload validation for payloadId: {payloadId}");
+                _logger.Warn($"Execution client does not support {_config.GetPayloadMethod}. Skipping payload validation for payloadId: {payloadId}");
                 return false;
             }
 
@@ -295,7 +295,7 @@ public class RequestOrchestrator(
 
             // Create getPayload request
             var getPayloadRequest = new JsonRpcRequest(
-                "engine_getPayloadV4",
+                _config.GetPayloadMethod,
                 new JArray(payloadId),
                 Guid.NewGuid().ToString());
 
@@ -323,7 +323,7 @@ public class RequestOrchestrator(
                 if (payloadResponse.Error.Code == -32601 ||
                     (payloadResponse.Error.Message?.Contains("not supported") == true))
                 {
-                    throw new InvalidOperationException($"Method engine_getPayloadV4 is not supported: {payloadResponse.Error.Message}");
+                    throw new InvalidOperationException($"Method {_config.GetPayloadMethod} is not supported: {payloadResponse.Error.Message}");
                 }
 
                 throw new InvalidOperationException($"Error getting payload: {payloadResponse.Error.Code} - {payloadResponse.Error.Message}");

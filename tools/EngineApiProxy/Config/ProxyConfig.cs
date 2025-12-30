@@ -68,8 +68,13 @@ public class ProxyConfig
     /// </summary>
     public ValidationMode ValidationMode { get; set; } = ValidationMode.LH;
 
+    /// <summary>
+    /// Engine API method to use when getting payloads for validation
+    /// </summary>
+    public string GetPayloadMethod { get; set; } = "engine_getPayloadV4";
+
     public override string ToString()
     {
-        return $"EC Endpoint: {ExecutionClientEndpoint}, CL Endpoint: {ConsensusClientEndpoint ?? "not set"}, Listen Port: {ListenPort}, Log Level: {LogLevel}, LogFile: {LogFile ?? "console only"}, ValidateAllBlocks: {ValidateAllBlocks}, ValidationMode: {ValidationMode}, RequestTimeout: {RequestTimeoutSeconds}s";
+        return $"EC Endpoint: {ExecutionClientEndpoint}, CL Endpoint: {ConsensusClientEndpoint ?? "not set"}, Listen Port: {ListenPort}, Log Level: {LogLevel}, LogFile: {LogFile ?? "console only"}, ValidateAllBlocks: {ValidateAllBlocks}, ValidationMode: {ValidationMode}, GetPayloadMethod: {GetPayloadMethod}, RequestTimeout: {RequestTimeoutSeconds}s";
     }
 }

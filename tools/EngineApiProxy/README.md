@@ -93,6 +93,7 @@ docker build -f tools/EngineApiProxy/Dockerfile -t nethermindeth/engine-api-prox
 - `--validate-all-blocks`: Enable validation for all blocks, even those where CL doesn't request validation
 - `--fee-recipient`: Default fee recipient address for generated payload attributes (default: 0x0000000000000000000000000000000000000000)
 - `--validation-mode`: Mode for block validation (Fcu or NewPayload) (default: NewPayload)
+- `--get-payload-method`: Engine API method to use when getting payloads for validation (default: engine_getPayloadV4)
 
 ### Examples
 
@@ -113,6 +114,9 @@ dotnet run -c Release -- -e http://localhost:8551 -p 9551 --validate-all-blocks
 
 # Using Fcu validation mode instead of NewPayload
 dotnet run -c Release -- -e http://localhost:8551 -p 9551 --validate-all-blocks --validation-mode Fcu
+
+# Using a specific engine_getPayload version
+dotnet run -c Release -- -e http://localhost:8551 -p 9551 --get-payload-method engine_getPayloadV3
 ```
 
 #### Running with Docker
@@ -126,6 +130,9 @@ docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://executio
 
 # Using Fcu validation mode
 docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://execution-client:8551 -p 9551 --validate-all-blocks --validation-mode Fcu
+
+# Using a specific engine_getPayload version
+docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://execution-client:8551 -p 9551 --get-payload-method engine_getPayloadV3
 ```
 
 ## Consensus Client Integration
