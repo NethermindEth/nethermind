@@ -174,6 +174,10 @@ public class RocksdbPersistence : IPersistence, IPersistenceWithConcurrentTrie
                     {
                         _bloomFilter.Flush();
                     }
+                    else
+                    {
+                        _db.Flush(onlyWal: true);
+                    }
                 })
             );
         }
@@ -196,6 +200,10 @@ public class RocksdbPersistence : IPersistence, IPersistenceWithConcurrentTrie
                 if (!flags.HasFlag(WriteFlags.DisableWAL))
                 {
                     _bloomFilter.Flush();
+                }
+                else
+                {
+                    _db.Flush(onlyWal: true);
                 }
             })
         );

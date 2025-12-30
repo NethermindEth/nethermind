@@ -441,6 +441,7 @@ public class DbConfig : IDbConfig
 
         // Make writes a tiny bit faster... please
         // "wal_bytes_per_sync:10000000;" +
+        "manual_wal_flush=true;" +
 
         // LZ4 seems to be slightly faster here
         "compression=kLZ4Compression;" +
@@ -486,12 +487,18 @@ public class DbConfig : IDbConfig
 
     public string? FlatStateNodesDbAdditionalRocksDbOptions { get; set; }
     public ulong FlatStorageNodesDbWriteBufferSize { get; set; } = (ulong)128.MiB();
-    public ulong FlatStorageNodesDbWriteBufferNumber { get; set; } = 4;
+    public ulong FlatStorageNodesDbWriteBufferNumber { get; set; } = 8;
+
     public string? FlatStorageNodesDbRocksDbOptions
     {
         get { return FlatDbCommonTrieOptions + field; }
         set { field = value ?? ""; }
-    } = "";
+    } = "" +
+        "max_bytes_for_level_base=350000000;" +
+        "compression=kNoCompression;bottommost_compression=kLZ4Compression;" +
+        "min_write_buffer_number_to_merge=2;" +
+        "";
+
     public string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
 
     public ulong FlatStorageTopNodesDbWriteBufferSize { get; set; } = (ulong)64.MiB();

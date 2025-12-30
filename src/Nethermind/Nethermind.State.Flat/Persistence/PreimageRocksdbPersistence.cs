@@ -162,6 +162,10 @@ public class PreimageRocksdbPersistence : IPersistence
                 {
                     _bloomFilter.Flush();
                 }
+                else
+                {
+                    _db.Flush(onlyWal: true);
+                }
             })
         );
     }

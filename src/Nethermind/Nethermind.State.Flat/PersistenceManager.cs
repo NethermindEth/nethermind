@@ -18,6 +18,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Prometheus;
+using Metrics = Prometheus.Metrics;
 
 namespace Nethermind.State.Flat;
 
@@ -26,6 +27,11 @@ public class PersistenceManager: IAsyncDisposable
     private readonly FlatDiffRepository _flatDiffRepository;
     private readonly ILogger _logger;
     private readonly Histogram _flatdiffimes;
+    private readonly Histogram _writesSize = Metrics.CreateHistogram("persistence_manager_writes", "writes", new HistogramConfiguration()
+    {
+        LabelNames = ["payload"],
+        Buckets = Histogram.PowersOfTenDividedBuckets(2, 8, 10)
+    });
     private readonly int _minimumPruningBoundary;
     private readonly int _forcedPruningBoundary;
     private readonly int _compactSize;
@@ -387,6 +393,7 @@ public class PersistenceManager: IAsyncDisposable
             _flatdiffimes.WithLabels("persistence", "trienode_sort_state").Observe(Stopwatch.GetTimestamp() - sw);
             sw = Stopwatch.GetTimestamp();
 
+            long stateNodesSize = 0;
             // foreach (var tn in snapshot.TrieNodes)
             foreach (var k in _trieNodesSortBuffer)
             {
@@ -403,6 +410,7 @@ public class PersistenceManager: IAsyncDisposable
                     }
                 }
 
+                stateNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
                 batch.SetTrieNodes(null, path, node);
 
@@ -410,12 +418,14 @@ public class PersistenceManager: IAsyncDisposable
             }
             _flatdiffimes.WithLabels("persistence", "trienodes").Observe(Stopwatch.GetTimestamp() - sw);
 
+            sw = Stopwatch.GetTimestamp();
             _trieNodesSortBuffer.Clear();
             _trieNodesSortBuffer.AddRange(snapshot.StorageTrieNodeKeys);
             _trieNodesSortBuffer.Sort();
             _flatdiffimes.WithLabels("persistence", "trienode_sort").Observe(Stopwatch.GetTimestamp() - sw);
             sw = Stopwatch.GetTimestamp();
 
+            long storageNodesSize = 0;
             // foreach (var tn in snapshot.TrieNodes)
             foreach (var k in _trieNodesSortBuffer)
             {
@@ -432,6 +442,7 @@ public class PersistenceManager: IAsyncDisposable
                     }
                 }
 
+                storageNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
                 batch.SetTrieNodes(address, path, node);
 
@@ -440,6 +451,9 @@ public class PersistenceManager: IAsyncDisposable
             _flatdiffimes.WithLabels("persistence", "trienodes").Observe(Stopwatch.GetTimestamp() - sw);
 
             sw = Stopwatch.GetTimestamp();
+
+            _writesSize.WithLabels("state_nodes").Observe(stateNodesSize);
+            _writesSize.WithLabels("storage_nodes").Observe(storageNodesSize);
         }
         _flatdiffimes.WithLabels("persistence", "dispose").Observe(Stopwatch.GetTimestamp() - sw);
     }
