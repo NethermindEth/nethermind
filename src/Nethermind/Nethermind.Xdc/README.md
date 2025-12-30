@@ -182,13 +182,14 @@ DateTime RoundStarted           // Round start time
 
 **3-Chain Finalization Rule**:
 ```
-Block N-2 (Finalized)  ←─  Block N-1  ←─  Block N (Current)
-    QC(N-2)                 QC(N-1)         QC(N)
+Block N-2 (Finalized)  ←─  Block N-1  ←─  Block N (Current)  ←─  Incoming QC
+                            QC(N-2)         QC(N-1)
     
 Finalization requires:
+- An incoming QC
 - 3 consecutive blocks
 - 3 consecutive rounds (no gaps)
-- Valid QC chain
+- Valid Block and QC chain
 ```
 
 ---
@@ -242,6 +243,7 @@ Can vote if ALL of:
 **Purpose**: Manage validator set transitions at epoch boundaries
 
 **Epoch Structure**:
+// This figure is not clear for me, let's add more explanation
 ```
 Epoch N                    Epoch N+1
 ├────────────────────┤     ├────────────────────┤
@@ -287,9 +289,9 @@ class Snapshot {
 ```
 Block Number           Snapshot                    Usage
 ─────────────────────────────────────────────────────────
-0 (Genesis)    →  GenesisMasterNodes      →  Epoch 0-899
-900-Gap=850    →  Candidates from block   →  Epoch 900-1799
-1800-Gap=1750  →  Candidates from block   →  Epoch 1800-2699
+0 (Genesis)    →  GenesisMasterNodes      →  Round 0-899
+900-Gap=450    →  Candidates from block   →  Round 900-1799
+1800-Gap=1350  →  Candidates from block   →  Round 1800-2699
 ...
 ```
 
@@ -404,7 +406,7 @@ Phase 4: QC AGGREGATION
 Phase 5: QC COMMITMENT
 ───────────────────────
 ┌────────────────────────────────┐
-│ CommitCertificate()            │
+│ ProcessQC()                    │ // I wouldn't call CommitCertificate() since commit usually means finalize
 │ 1. Update HighestQC            │
 │ 2. Check 3-chain rule          │
 │ 3. Finalize grandparent?       │
@@ -568,7 +570,7 @@ XdcBlockHeader {
     Hash256 ParentHash
     Address Beneficiary
     Hash256 StateRoot
-    long Number
+    long Number // in Golang, it's `*big.Int`. Is it okay to use `long` here?
     ulong Timestamp
     ...
     
@@ -707,14 +709,15 @@ Round   Leader Index    Leader
 Commit grandparent when three consecutive rounds exist:
 
 ```
-CommitBlock(proposedBlock, proposedRound, proposedQC):
+// proposedBlock corresponds to the ProposedBlockInfo in incomingQC
+CommitBlock(proposedBlock, proposedRound, proposedQC, incomingQC):
   1. parent = proposedBlock.parent
   2. grandparent = parent.parent
   
   3. Check conditions:
      ✓ proposedRound - 1 == parent.round
      ✓ proposedRound - 2 == grandparent.round
-     ✓ proposedRound > grandparent.round + 1
+     ✓ HighestCommitBlock.round < grandparent.round and HighestCommitBlock.number < grandparent.number
      
   4. If all pass:
      HighestCommitBlock = grandparent
@@ -727,12 +730,12 @@ Round N-2          Round N-1          Round N
    │                  │                  │
    ▼                  ▼                  ▼
 ┌────────┐        ┌────────┐        ┌────────┐
-│Block B │◀───────│Block C │◀───────│Block D │
+│Block B │◀───────│Block C │◀───────│Block D │◀───────QC(D)
 │QC(A)   │        │QC(B)   │        │QC(C)   │
 └────────┘        └────────┘        └────────┘
     ▲
     │
-    └─── FINALIZED when Block D commits
+    └─── FINALIZED when Block D and incomingQC calls CommitBlock()
 ```
 
 ---
@@ -742,12 +745,13 @@ Round N-2          Round N-1          Round N
 Prevent conflicting votes:
 
 ```
-VerifyVotingRules(block, round, parentQC):
+// QC is decoded from block's extraData
+VerifyVotingRules(block, round, QC):
   1. CurrentRound > HighestVotedRound?  ✓ No double voting
   2. block.round == CurrentRound?       ✓ Right round
   3. LockQC safety:
      IF LockQC exists:
-        - parentQC.round > LockQC.round  OR
+        - QC.round > LockQC.round  OR
         - block extends LockQC ancestor
      ELSE:
         - Always safe
@@ -776,7 +780,7 @@ Calculate next validator set:
 CalculateNextEpochMasternodes(blockNumber, parentHash):
   1. Load previous snapshot (gap block)
   2. Get candidates from snapshot
-  3. Calculate penalties (forensics)
+  3. Calculate penalties // forensics does not mean this, so remove the word "forensics"
   4. masterodes = candidates - penalties
   5. Enforce maximum: Take(MaxMasternodes)
   6. Return (masternodes, penalties)
@@ -786,9 +790,9 @@ CalculateNextEpochMasternodes(blockNumber, parentHash):
 ```
 Block Number        Action
 ─────────────────────────────────────────
-0-849              Normal blocks
-850 (Gap)          Store snapshot with candidates
-851-899            Normal blocks
+0-449              Normal blocks
+450 (Gap)          Store snapshot with candidates
+451-899            Normal blocks
 900 (Epoch switch) Apply new validators from snapshot
 901-1749           Use new validator set
 ```
@@ -814,6 +818,7 @@ Minimum: 2f + 1 = ⌈2N/3⌉
 ### 2. Fork Prevention
 
 ```
+// The Suggest() function is not familiar to me, can you provide the Golang code location?
 XdcBlockTree.Suggest():
   1. Check if new block builds on finalized chain
   2. Search up to MaxSearchDepth (1024 blocks)
@@ -899,7 +904,7 @@ Gap: 450                      // Snapshot before epoch end
 SwitchBlock: <configured>     // V2 activation block
 MaxMasternodes: 108          // Maximum validators
 CertThreshold: 0.67          // 2/3 quorum
-TimeoutPeriod: 4000ms        // Round timeout
+TimeoutPeriod: 10000ms        // Round timeout
 MinePeriod: 2000ms           // Minimum block time
 TimeoutSyncThreshold: 3      // SyncInfo after N timeouts
 ```
@@ -914,7 +919,7 @@ V2ConfigParams[] {
         SwitchRound: 0,
         MaxMasternodes: 108,
         CertThreshold: 0.67,
-        TimeoutPeriod: 4000,
+        TimeoutPeriod: 10000,
         MinePeriod: 2000
     },
     {
@@ -967,11 +972,11 @@ T+0.1s  XdcBlockProducer      Build block
 T+0.5s  XdcSealer             Sign block
 T+0.6s  XdcBlockTree          Suggest block
 T+0.7s  Validator Nodes       Receive block
-        └─▶ Validate          Check QC, seal
+        └─▶ Validate          Check QC
 T+0.9s  VotesManager          Cast votes
 T+1.5s  VotesManager          Threshold reached
         └─▶ Create QC         Aggregate signatures
-T+1.6s  QCManager             Commit QC
+T+1.6s  QCManager             Process QC
         ├─▶ Update HighestQC
         ├─▶ Check 3-chain
         └─▶ Finalize grandparent
@@ -984,16 +989,16 @@ T+1.7s  XdcConsensusContext   SetNewRound(N+1)
 Time    Component              Action
 ──────────────────────────────────────────────────
 T+0s    Round N starts
-T+4s    TimeoutTimer          Expires
+T+10s    TimeoutTimer          Expires
         └─▶ OnCountdownTimer
-T+4.1s  TCManager             SendTimeout
+T+10.1s  TCManager             SendTimeout
         └─▶ Sign timeout
-T+4.5s  TCManager             Collect TCs
-T+5s    TCManager             Threshold reached
+T+10.5s  TCManager             Collect TCs
+T+11s    TCManager             Threshold reached
         └─▶ Create TC
-T+5.1s  TCManager             ProcessTC
+T+11.1s  TCManager             ProcessTC
         └─▶ Update HighestTC
-T+5.2s  XdcConsensusContext   SetNewRound(N+1)
+T+11.2s  XdcConsensusContext   SetNewRound(N+1)
 ```
 
 ---
@@ -1044,7 +1049,7 @@ Test: Timeout & Recovery
 Setup: 5 validators, leader crashes
 Steps:
   1. Leader fails to propose
-  2. Nodes timeout after 4s
+  2. Nodes timeout after 10s
   3. Form TC with 2f+1 timeouts
   4. Advance round
   5. New leader proposes
@@ -1102,7 +1107,7 @@ public bool VerifyVotingRules(...) {
 **Solution**: Snapshot stored at Gap block before epoch end
 
 ```
-Block 850 (Gap):    Store snapshot with candidates
+Block 450 (Gap):    Store snapshot with candidates
 Block 900 (Switch): Load snapshot, calculate masternodes
                     masterodes = snapshot.candidates - penalties
 ```
