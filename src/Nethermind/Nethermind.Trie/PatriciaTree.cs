@@ -163,17 +163,17 @@ namespace Nethermind.Trie
             {
                 if (path.Length > maxLevelForConcurrentCommit)
                 {
+                    path.AppendMut(0);
                     for (int i = 0; i < 16; i++)
                     {
+                        path.SetLast(i);
                         if (node.TryGetDirtyChild(i, out TrieNode? childNode))
                         {
-                            path.AppendMut(i);
                             TrieNode newChildNode = Commit(committer, ref path, childNode, maxLevelForConcurrentCommit);
                             if (!ReferenceEquals(childNode, newChildNode))
                             {
                                 node[i] = newChildNode;
                             }
-                            path.TruncateOne();
                         }
                         else
                         {
@@ -183,6 +183,7 @@ namespace Nethermind.Trie
                             }
                         }
                     }
+                    path.TruncateOne();
                 }
                 else
                 {
@@ -198,25 +199,25 @@ namespace Nethermind.Trie
 
                     ArrayPoolList<Task>? childTasks = null;
 
+                    path.AppendMut(0);
                     for (int i = 0; i < 16; i++)
                     {
                         if (node.TryGetDirtyChild(i, out TrieNode childNode))
                         {
+                            path.SetLast(i);
                             if (i < 15 && committer.TryRequestConcurrentQuota())
                             {
                                 childTasks ??= new ArrayPoolList<Task>(15);
-                                TreePath childPath = path.Append(i);
-                                childTasks.Add(CreateTaskForPath(childPath, childNode, i));
+                                // path is copied here
+                                childTasks.Add(CreateTaskForPath(path, childNode, i));
                             }
                             else
                             {
-                                path.AppendMut(i);
                                 TrieNode newChildNode = Commit(committer, ref path, childNode!, maxLevelForConcurrentCommit);
                                 if (!ReferenceEquals(childNode, newChildNode))
                                 {
                                     node[i] = newChildNode;
                                 }
-                                path.TruncateOne();
                             }
                         }
                         else
@@ -227,6 +228,7 @@ namespace Nethermind.Trie
                             }
                         }
                     }
+                    path.TruncateOne();
 
                     if (childTasks is not null)
                     {
