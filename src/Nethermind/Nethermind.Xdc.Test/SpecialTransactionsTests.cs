@@ -242,15 +242,15 @@ internal class SpecialTransactionsTests
             spec.BlackListHFNumber = blackListingActivated ? 0 : long.MaxValue;
         });
 
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
-        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+        blockChain.MainWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
@@ -291,15 +291,15 @@ internal class SpecialTransactionsTests
             spec.IsEip1559Enabled = false;
             spec.BlackListHFNumber = blackListingActivated ? 0 : long.MaxValue;
         });
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
-        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+        blockChain.MainWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
@@ -337,14 +337,14 @@ internal class SpecialTransactionsTests
             spec.IsEip1559Enabled = false;
         });
 
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
-        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+        blockChain.MainWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
@@ -393,21 +393,21 @@ internal class SpecialTransactionsTests
             spec.IsEip1559Enabled = false;
         });
 
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
-        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+        blockChain.MainWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
 
-        blockChain.WorldStateManager.GlobalWorldState.IncrementNonce(blockChain.Signer.Address);
-        var nonce = blockChain.WorldStateManager.GlobalWorldState.GetNonce(blockChain.Signer.Address);
+        blockChain.MainWorldState.IncrementNonce(blockChain.Signer.Address);
+        var nonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
 
 
         Transaction txWithSmallerNonce = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, nonce - 1, spec.BlockSignersAddress, blockChain.Signer.Address);
@@ -439,21 +439,21 @@ internal class SpecialTransactionsTests
             spec.IsEip1559Enabled = false;
         });
 
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
-        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+        blockChain.MainWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
 
-        blockChain.WorldStateManager.GlobalWorldState.IncrementNonce(blockChain.Signer.Address);
-        var nonce = blockChain.WorldStateManager.GlobalWorldState.GetNonce(blockChain.Signer.Address);
+        blockChain.MainWorldState.IncrementNonce(blockChain.Signer.Address);
+        var nonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
 
 
         Transaction txWithBiggerNonce = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, nonce + 1, spec.BlockSignersAddress, blockChain.Signer.Address);
@@ -486,21 +486,21 @@ internal class SpecialTransactionsTests
             spec.IsEip1559Enabled = false;
         });
 
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
-        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+        blockChain.MainWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
 
-        blockChain.WorldStateManager.GlobalWorldState.IncrementNonce(blockChain.Signer.Address);
-        var nonce = blockChain.WorldStateManager.GlobalWorldState.GetNonce(blockChain.Signer.Address);
+        blockChain.MainWorldState.IncrementNonce(blockChain.Signer.Address);
+        var nonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
 
 
         Transaction validNonceTx = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, nonce, spec.BlockSignersAddress, blockChain.Signer.Address);
@@ -533,15 +533,15 @@ internal class SpecialTransactionsTests
             spec.IsEip1559Enabled = false;
         });
 
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
-        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+        blockChain.MainWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
@@ -565,15 +565,15 @@ internal class SpecialTransactionsTests
             spec.IsEip1559Enabled = false;
         });
 
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
-        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+        blockChain.MainWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
@@ -596,15 +596,15 @@ internal class SpecialTransactionsTests
             spec.IsEip1559Enabled = false;
         });
 
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
-        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+        blockChain.MainWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
@@ -628,19 +628,19 @@ internal class SpecialTransactionsTests
             spec.IsEip1559Enabled = false;
         });
 
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
-        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+        blockChain.MainWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
-        UInt256 initialNonce = blockChain.WorldStateManager.GlobalWorldState.GetNonce(blockChain.Signer.Address);
+        UInt256 initialNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
         Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)head.Number - 1, head.ParentHash!, initialNonce, spec.BlockSignersAddress, blockChain.Signer.Address);
 
         await blockChain.Signer.Sign(tx);
@@ -653,7 +653,7 @@ internal class SpecialTransactionsTests
         TransactionResult? result = transactionProcessor.Execute(tx, NullTxTracer.Instance);
         receiptsTracer.EndTxTrace();
 
-        UInt256 finalNonce = blockChain.WorldStateManager.GlobalWorldState.GetNonce(blockChain.Signer.Address);
+        UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
 
         Assert.That(finalNonce, Is.EqualTo(initialNonce + 1));
 
@@ -677,15 +677,15 @@ internal class SpecialTransactionsTests
             spec.IsEip1559Enabled = false;
         });
 
-        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.WorldStateManager.GlobalWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.WorldStateManager.GlobalWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
 
-        blockChain.WorldStateManager.GlobalWorldState.BeginScope(head);
+        blockChain.MainWorldState.BeginScope(head);
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
@@ -700,7 +700,7 @@ internal class SpecialTransactionsTests
 
         foreach (var address in addresses)
         {
-            UInt256 initialNonce = blockChain.WorldStateManager.GlobalWorldState.GetNonce(blockChain.Signer.Address);
+            UInt256 initialNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
 
             Transaction? tx = Build.A.Transaction
                 .WithSenderAddress(blockChain.Signer.Address)
@@ -716,7 +716,7 @@ internal class SpecialTransactionsTests
 
             receiptsTracer.EndTxTrace();
 
-            UInt256 finalNonce = blockChain.WorldStateManager.GlobalWorldState.GetNonce(blockChain.Signer.Address);
+            UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
 
             Assert.That(finalNonce, Is.EqualTo(initialNonce), $"specialTx to {address} does not increment nonce, initialNonce: {initialNonce}, finalNonce: {finalNonce}");
 

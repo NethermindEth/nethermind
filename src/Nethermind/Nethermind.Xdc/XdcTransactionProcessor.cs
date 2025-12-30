@@ -93,25 +93,33 @@ internal class XdcTransactionProcessor(
         return base.Execute(tx, tracer, opts);
     }
 
-    private TransactionResult ValidateNonce(Transaction tx, bool skipNonceValidation)
+    protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
-        if(skipNonceValidation)
+        var xdcSpec = (IXdcReleaseSpec)spec;
+        if (tx.RequiresSpecialHandling(xdcSpec))
         {
+            if(tx.IsSignTransaction(xdcSpec))
+            {
+                var nonce = WorldState.GetNonce(tx.SenderAddress);
+
+                if (nonce < tx.Nonce)
+                {
+                    return XdcTransactionResult.NonceTooHigh;
+                }
+                else if (nonce > tx.Nonce)
+                {
+                    return XdcTransactionResult.NonceTooLow;
+                }
+
+                WorldState.IncrementNonce(tx.SenderAddress);
+
+                return TransactionResult.Ok;
+            }
+
             return TransactionResult.Ok;
         }
 
-        var nonce = WorldState.GetNonce(tx.SenderAddress);
-
-        if (nonce < tx.Nonce)
-        {
-            return XdcTransactionResult.NonceTooHigh;
-        }
-        else if (nonce > tx.Nonce)
-        {
-            return XdcTransactionResult.NonceTooLow;
-        }
-
-        return TransactionResult.Ok;
+        return base.IncrementNonce(tx, header, spec, tracer, opts);
     }
 
     protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired)
@@ -136,7 +144,7 @@ internal class XdcTransactionProcessor(
         bool _ = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
         if (!(result = ValidateSender(tx, header, spec, tracer, opts))
-            || !(result = ValidateNonce(tx, tx.IsSkipNonceTransaction(spec)))
+            || !(result = IncrementNonce(tx, header, spec, tracer, opts))
             || !(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas)))
         {
             return result;
@@ -177,7 +185,6 @@ internal class XdcTransactionProcessor(
     {
         WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);
 
-        WorldState.IncrementNonce(tx.SenderAddress);
 
         if (tracer.IsTracingReceipt)
         {
