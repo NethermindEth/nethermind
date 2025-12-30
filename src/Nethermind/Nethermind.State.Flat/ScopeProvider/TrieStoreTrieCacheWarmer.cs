@@ -9,7 +9,6 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public interface ITrieWarmer
 {
     public void PushSlotJob(
-        FlatWorldStateScope scope,
         FlatStorageTree storageTree,
         Address path,
         in UInt256? index,
@@ -32,7 +31,7 @@ public interface ITrieWarmer
 
 public class NoopTrieWarmer : ITrieWarmer
 {
-    public void PushSlotJob(FlatWorldStateScope scope, FlatStorageTree storageTree, Address path, in UInt256? index,
+    public void PushSlotJob(FlatStorageTree storageTree, Address path, in UInt256? index,
         int sequenceId)
     {
     }

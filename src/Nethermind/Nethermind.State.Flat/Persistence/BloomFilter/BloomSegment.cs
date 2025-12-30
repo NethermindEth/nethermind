@@ -9,10 +9,8 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Autofac.Features.ResolveAnything;
 using Microsoft.Win32.SafeHandles;
 using DotNext.IO.MemoryMappedFiles;
-using Org.BouncyCastle.Bcpg.OpenPgp;
 
 namespace Nethermind.State.Flat.Persistence.BloomFilter;
 
@@ -59,10 +57,9 @@ public sealed class BloomSegment : IDisposable
     private int _stopWriters;
     private readonly Lock _maintenance = new();
     private int _opsInFlight;
-    private int _isDisposingOrDisposed;
-    private bool _disposed;
+    private int _isDisposingOrDisposed; // 0 active, 1 disposing/disposed
 
-    private long _addedSinceLastFlush = 0;
+    private long _addedSinceLastFlush;
 
     private BloomSegment(
         string path,
@@ -92,11 +89,11 @@ public sealed class BloomSegment : IDisposable
         _dataOffset = AlignUp(HeaderSize, CacheLineBytes);
         _totalMappedSize = _dataOffset + totalBytes;
 
-        // 1. Initialize Dirty Tracking Bitset
+        // Dirty tracking bitset
         long pageCount = (_totalMappedSize + PageSize - 1) / PageSize;
         _dirtyPages = new ulong[(pageCount + 63) / 64];
 
-        // 2. Create Anonymous MMF (Backing memory only)
+        // Anonymous MMF backing memory
         _mmf = MemoryMappedFile.CreateNew(null, _totalMappedSize, MemoryMappedFileAccess.ReadWrite);
         _accessor = _mmf.CreateDirectAccessor(0, _totalMappedSize, MemoryMappedFileAccess.ReadWrite);
 
@@ -108,7 +105,8 @@ public sealed class BloomSegment : IDisposable
         SafeFileHandle handle = File.OpenHandle(path, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite);
         var segment = new BloomSegment(path, handle, capacity, bitsPerKey, 0, false);
 
-        segment.WriteHeader();
+        // header is in mapped memory; mark page 0 dirty so it gets persisted by Flush
+        segment.WriteHeaderToMappedMemory();
         segment.MarkPageDirty(0);
         return segment;
     }
@@ -131,7 +129,7 @@ public sealed class BloomSegment : IDisposable
 
         var segment = new BloomSegment(path, handle, capacity, bitsPerKey, count, isSealed);
 
-        // Load the rest of the file into the anonymous memory
+        // Load file into anonymous mapping (chunked; safe for >2GB)
         segment.LoadFromFile();
         return segment;
     }
@@ -161,7 +159,7 @@ public sealed class BloomSegment : IDisposable
         // Base pointer once
         ulong* lanes = (ulong*)((byte*)_accessor.Pointer.Address + baseOffset);
 
-        // Precompute probe sequence once (same as GetLaneInBlock)
+        // Precompute probe sequence once
         int start = (int)(h2 & (CacheLineBits - 1));
         int step  = (int)(((h2 >> 9) & (CacheLineBits - 1)) | 1);
 
@@ -181,7 +179,6 @@ public sealed class BloomSegment : IDisposable
 
     public unsafe bool TryAdd(ulong h1)
     {
-        // "Try" semantics: no exceptions for normal terminal states
         if (Volatile.Read(ref _isDisposingOrDisposed) != 0)
             return false;
 
@@ -195,7 +192,6 @@ public sealed class BloomSegment : IDisposable
             {
                 Interlocked.Increment(ref _writersInFlight);
 
-                // Fast path: writers allowed + not sealed/disposed
                 if (Volatile.Read(ref _stopWriters) == 0 &&
                     Volatile.Read(ref _sealed) == 0 &&
                     Volatile.Read(ref _isDisposingOrDisposed) == 0)
@@ -205,12 +201,10 @@ public sealed class BloomSegment : IDisposable
 
                 Interlocked.Decrement(ref _writersInFlight);
 
-                // If we're sealed/disposed, do NOT spin forever: just fail.
+                // Permanent barriers: fail fast
                 if (Volatile.Read(ref _sealed) != 0 || Volatile.Read(ref _isDisposingOrDisposed) != 0)
                     return false;
 
-                // If stopWriters is used as a temporary barrier in the future, you can wait here.
-                // With current code, stopWriters becomes permanent for Seal/Dispose, so fail fast.
                 return false;
             }
 
@@ -222,7 +216,8 @@ public sealed class BloomSegment : IDisposable
                 int start = (int)(h2 & (CacheLineBits - 1));
                 int step  = (int)(((h2 >> 9) & (CacheLineBits - 1)) | 1);
 
-                for (int i = 0; i < K; i++)
+                int k = K;
+                for (int i = 0; i < k; i++)
                 {
                     int bit = (start + i * step) & (CacheLineBits - 1);
                     ref long lane = ref *(long*)(blockPtr + ((bit >> 6) * 8));
@@ -245,24 +240,26 @@ public sealed class BloomSegment : IDisposable
         }
     }
 
+    /// <summary>
+    /// Persist dirty pages to the segment file. Safe for mappings larger than 2GB.
+    /// </summary>
     public void Flush()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(BloomSegment));
-        if (_sealed == 1) return; // Nothing to flush
+        if (Volatile.Read(ref _isDisposingOrDisposed) != 0)
+            throw new ObjectDisposedException(nameof(BloomSegment));
 
-        DoFlush();
+        using var _ = _maintenance.EnterScope();
+        DoFlush_NoLock();
     }
 
-    private void DoFlush()
+    private unsafe void DoFlush_NoLock()
     {
-        using var _ = _maintenance.EnterScope();
-
-        WriteHeader();
+        // Update in-memory header then mark page 0 dirty so it is persisted.
+        WriteHeaderToMappedMemory();
         MarkPageDirty(0);
 
-        int writtenPage = 0;
-        long added = _addedSinceLastFlush;
-        _addedSinceLastFlush = 0;
+        long added = Interlocked.Exchange(ref _addedSinceLastFlush, 0);
+
         for (int i = 0; i < _dirtyPages.Length; i++)
         {
             ulong word = (ulong)Interlocked.Exchange(ref Unsafe.As<ulong, long>(ref _dirtyPages[i]), 0);
@@ -273,25 +270,28 @@ public sealed class BloomSegment : IDisposable
                 int b = BitOperations.TrailingZeroCount(word);
                 long pageIdx = (long)i * 64 + b;
                 long offset = pageIdx * PageSize;
-                long sizeToWrite = Math.Min(PageSize, _totalMappedSize - offset);
 
-                if (sizeToWrite > 0)
+                // Clamp to mapped size
+                long remaining = _totalMappedSize - offset;
+                if (remaining <= 0)
                 {
-                    unsafe
-                    {
-                        ReadOnlySpan<byte> data = new((byte*)_accessor.Pointer.Address + offset, (int)sizeToWrite);
-                        RandomAccess.Write(_fileHandle, data, offset);
-                        writtenPage++;
-                    }
+                    word &= (word - 1);
+                    continue;
                 }
+
+                int sizeToWrite = (int)Math.Min(PageSize, remaining); // <= 4096
+
+                ReadOnlySpan<byte> data = new((byte*)_accessor.Pointer.Address + offset, sizeToWrite);
+                RandomAccess.Write(_fileHandle, data, offset);
 
                 word &= (word - 1);
             }
         }
 
-        Console.Error.WriteLine($"Wrote {writtenPage:N0} for {added:N0}, a total of {writtenPage * PageSize:N0} byes");
-
+        // Make durable
         RandomAccess.FlushToDisk(_fileHandle);
+
+        _ = added; // keep for future logging/metrics if desired
     }
 
     public void Seal()
@@ -301,31 +301,49 @@ public sealed class BloomSegment : IDisposable
         Volatile.Write(ref _sealed, 1);
 
         WaitForWritersToDrain();
-        DoFlush();
+        DoFlush_NoLock(); // don't re-enter _maintenance
     }
 
     private unsafe void LoadFromFile()
     {
         long fileSize = RandomAccess.GetLength(_fileHandle);
-        long toRead = Math.Min(fileSize, _totalMappedSize);
-        Span<byte> dest = new((byte*)_accessor.Pointer.Address, (int)toRead);
-        RandomAccess.Read(_fileHandle, dest, 0);
+        long total = Math.Min(fileSize, _totalMappedSize);
+
+        byte* basePtr = (byte*)_accessor.Pointer.Address;
+
+        // Read directly into the mapping in reasonably sized chunks.
+        // Important: Span<byte> length must be int, so we chunk <= int.MaxValue (and much smaller in practice).
+        const int ChunkSize = 4 * 1024 * 1024; // 4 MiB
+
+        long offset = 0;
+        while (offset < total)
+        {
+            int chunk = (int)Math.Min(ChunkSize, total - offset);
+            Span<byte> dest = new(basePtr + offset, chunk);
+            int read = RandomAccess.Read(_fileHandle, dest, offset);
+            if (read <= 0) break;
+
+            // If short read, advance by actual bytes read.
+            offset += read;
+        }
     }
 
-    private void WriteHeader()
+    /// <summary>
+    /// Writes the 128B header into mapped memory using only tiny spans (safe for >2GB mappings).
+    /// Avoids using _accessor.Bytes which cannot represent spans > 2GB.
+    /// </summary>
+    private unsafe void WriteHeaderToMappedMemory()
     {
-        Span<byte> bytes = _accessor.Bytes;
+        byte* p = (byte*)_accessor.Pointer.Address;
 
-        if (bytes.Length < HeaderSize)
-            throw new InvalidOperationException(
-                $"BloomSegment header write out of range. Path='{_path}', BytesLength={bytes.Length}, HeaderSize={HeaderSize}");
+        BinaryPrimitives.WriteUInt64LittleEndian(new Span<byte>(p + 0, 8), Magic);
+        BinaryPrimitives.WriteInt64LittleEndian(new Span<byte>(p + 8, 8), Capacity);
+        BinaryPrimitives.WriteInt32LittleEndian(new Span<byte>(p + 16, 4), BitsPerKey);
+        BinaryPrimitives.WriteInt32LittleEndian(new Span<byte>(p + 20, 4), K);
+        BinaryPrimitives.WriteInt64LittleEndian(new Span<byte>(p + 24, 8), Count);
+        BinaryPrimitives.WriteInt32LittleEndian(new Span<byte>(p + 32, 4), IsSealed ? 1 : 0);
 
-        BinaryPrimitives.WriteUInt64LittleEndian(bytes.Slice(0, 8), Magic);
-        BinaryPrimitives.WriteInt64LittleEndian(bytes.Slice(8, 8), Capacity);
-        BinaryPrimitives.WriteInt32LittleEndian(bytes.Slice(16, 4), BitsPerKey);
-        BinaryPrimitives.WriteInt32LittleEndian(bytes.Slice(20, 4), K);
-        BinaryPrimitives.WriteInt64LittleEndian(bytes.Slice(24, 8), Count);
-        BinaryPrimitives.WriteInt32LittleEndian(bytes.Slice(32, 4), IsSealed ? 1 : 0);
+        // Remaining header bytes are reserved; no need to touch.
     }
 
     private static void ApplyLinuxOptimizations(IntPtr address, long length)
@@ -360,21 +378,19 @@ public sealed class BloomSegment : IDisposable
         return x;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void GetLaneInBlock(ulong h2, int probeIndex, out int laneIndex, out ulong mask)
-    {
-        int start = (int)(h2 & (CacheLineBits - 1));
-        int step = (int)(((h2 >> 9) & (CacheLineBits - 1)) | 1);
-        int bit = (start + probeIndex * step) & (CacheLineBits - 1);
-        laneIndex = bit >> 6;
-        mask = 1UL << (bit & 63);
-    }
-
     private static long AlignUp(long value, int alignment) => (value + alignment - 1) & ~(alignment - 1);
 
-    private void WaitForBarrierToClear() { var sw = new SpinWait(); while (Volatile.Read(ref _stopWriters) != 0) sw.SpinOnce(); }
-    private void WaitForWritersToDrain() { var sw = new SpinWait(); while (Volatile.Read(ref _writersInFlight) != 0) sw.SpinOnce(); }
-    private void WaitForOpsToDrain() { var sw = new SpinWait(); while (Volatile.Read(ref _opsInFlight) != 0) sw.SpinOnce(); }
+    private void WaitForWritersToDrain()
+    {
+        var sw = new SpinWait();
+        while (Volatile.Read(ref _writersInFlight) != 0) sw.SpinOnce();
+    }
+
+    private void WaitForOpsToDrain()
+    {
+        var sw = new SpinWait();
+        while (Volatile.Read(ref _opsInFlight) != 0) sw.SpinOnce();
+    }
 
     public void Dispose()
     {
@@ -384,12 +400,18 @@ public sealed class BloomSegment : IDisposable
         WaitForWritersToDrain();
         WaitForOpsToDrain();
 
-        using var _ = _maintenance.EnterScope();
-        Flush();
+        try
+        {
+            using var _ = _maintenance.EnterScope();
+            DoFlush_NoLock(); // don't call Flush() here (would throw / re-enter)
+        }
+        catch
+        {
+            // Best-effort on dispose: swallow.
+        }
 
         _accessor.Dispose();
         _mmf.Dispose();
         _fileHandle.Dispose();
-        _disposed = true;
     }
 }

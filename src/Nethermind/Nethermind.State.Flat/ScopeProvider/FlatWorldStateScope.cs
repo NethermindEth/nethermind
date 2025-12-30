@@ -130,12 +130,12 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     public void HintGet(Address address, Account? account)
     {
-        _warmer.PushAddressJob(this, address, _hintSequenceId);
+        // _warmer.PushAddressJob(this, address, _hintSequenceId);
     }
 
     public void HintSet(Address address)
     {
-        // _warmer.PushJob(this, address, null, null, _hintSequenceId);
+        _warmer.PushAddressJob(this, address, _hintSequenceId);
     }
 
     public void WarmUpOutOfScope(Address address, UInt256? slot)

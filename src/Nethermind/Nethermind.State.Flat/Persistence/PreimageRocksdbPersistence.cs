@@ -93,14 +93,17 @@ public class PreimageRocksdbPersistence : IPersistence
         IReadOnlyKeyValueStore state = snapshot.GetColumn(FlatDbColumns.Account);
         IReadOnlyKeyValueStore storage = snapshot.GetColumn(FlatDbColumns.Storage);
 
-        var flatReader = new FakeHashFlatReader<BaseFlatPersistence.Reader>(
-            new BaseFlatPersistence.Reader(
-                (ICacheOnlyReader)state,
-                (ICacheOnlyReader)storage
+        var flatReader = new FakeHashFlatReader<BloomFlatWrapper.BloomInterceptor<BaseFlatPersistence.Reader>>(
+            new BloomFlatWrapper.BloomInterceptor<BaseFlatPersistence.Reader>(
+                new BaseFlatPersistence.Reader(
+                    (ICacheOnlyReader)state,
+                    (ICacheOnlyReader)storage
+                ),
+                _bloomFilter
             )
         );
 
-        return new BasePersistence.Reader<FakeHashFlatReader<BaseFlatPersistence.Reader>, BaseTriePersistence.Reader>(
+        return new BasePersistence.Reader<FakeHashFlatReader<BloomFlatWrapper.BloomInterceptor<BaseFlatPersistence.Reader>>, BaseTriePersistence.Reader>(
             flatReader,
             trieReader,
             currentState,
@@ -124,12 +127,16 @@ public class PreimageRocksdbPersistence : IPersistence
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        var flatWriter = new FakeHashWriter<BaseFlatPersistence.WriteBatch>(
-            new BaseFlatPersistence.WriteBatch(
-                ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
-                batch.GetColumnBatch(FlatDbColumns.Account),
-                batch.GetColumnBatch(FlatDbColumns.Storage),
-                flags
+        var flatWriter = new FakeHashWriter<BloomFlatWrapper.BloomWriter<BaseFlatPersistence.WriteBatch>>(
+            new BloomFlatWrapper.BloomWriter<BaseFlatPersistence.WriteBatch>(
+                new BaseFlatPersistence.WriteBatch(
+                    ((ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage)),
+                    batch.GetColumnBatch(FlatDbColumns.Account),
+                    batch.GetColumnBatch(FlatDbColumns.Storage),
+                    flags
+                ),
+                _bloomFilter,
+                (flags & WriteFlags.DisableWAL) != 0
             ),
             preimageWriteBatch,
             _preimageDb
@@ -142,7 +149,7 @@ public class PreimageRocksdbPersistence : IPersistence
             batch.GetColumnBatch(FlatDbColumns.StorageNodes),
             flags);
 
-        return new BasePersistence.WriteBatch<FakeHashWriter<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
+        return new BasePersistence.WriteBatch<FakeHashWriter<BloomFlatWrapper.BloomWriter<BaseFlatPersistence.WriteBatch>>, BaseTriePersistence.WriteBatch>(
             flatWriter,
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>

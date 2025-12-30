@@ -18,9 +18,11 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class TrieWarmer : ITrieWarmer
 {
-    private const int BufferSize = 1024;
+    private const int BufferSize = 1024 * 16;
+    private const int SlotBufferSize = 1024;
+
     private MpmcRingBuffer<Job> _addressJob = new MpmcRingBuffer<Job>(BufferSize);
-    private MpmcRingBuffer<Job> _jobBuffer = new MpmcRingBuffer<Job>(BufferSize);
+    private SpmcRingBuffer<Job> _slotJobBuffer = new SpmcRingBuffer<Job>(SlotBufferSize);
     private MpmcRingBuffer<Job> _jobBufferMulti = new MpmcRingBuffer<Job>(BufferSize);
 
     // If path is not null, its an address warmup.
@@ -43,12 +45,12 @@ public sealed class TrieWarmer : ITrieWarmer
     private bool TryDequeue(out Job job)
     {
         return _addressJob.TryDequeue(out job)
-               || _jobBuffer.TryDequeue(out job)
+               || _slotJobBuffer.TryDequeue(out job)
                || _jobBufferMulti.TryDequeue(out job);
     }
 
     private int EstimatedJobCount => (int)(_addressJob.EstimatedJobCount +
-                                           _jobBuffer.EstimatedJobCount +
+                                           _slotJobBuffer.EstimatedJobCount +
                                            _jobBufferMulti.EstimatedJobCount);
 
     private void IncrementActiveWorkers()
@@ -218,7 +220,7 @@ public sealed class TrieWarmer : ITrieWarmer
     private int _wakingUpWorker = 0;
     private void MaybeWakeOpOtherWorker()
     {
-        if (_jobBuffer.EstimatedJobCount > 0 && _awaitingWorkers.TryPop(out WarmerWorkers? otherWorker))
+        if (EstimatedJobCount > 0 && _awaitingWorkers.TryPop(out WarmerWorkers? otherWorker))
         {
             otherWorker.WakeUpViaQueue();
         }
@@ -227,47 +229,6 @@ public sealed class TrieWarmer : ITrieWarmer
     private void QueueWorker(WarmerWorkers worker)
     {
         _awaitingWorkers.Push(worker);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushJob(
-        FlatWorldStateScope scope,
-        Address? path,
-        FlatStorageTree? storageTree,
-        in UInt256? index,
-        int sequenceId)
-    {
-        bool bufferFull = false;
-        if (storageTree is null)
-        {
-            if (!_jobBuffer.TryEnqueue(new Job(scope, path, index.GetValueOrDefault(), sequenceId)))
-            {
-                _bufferFull.Inc();
-                bufferFull = true;
-            }
-        }
-        else
-        {
-            if (!_jobBuffer.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId)))
-            {
-                _bufferFull.Inc();
-                bufferFull = true;
-            }
-        }
-
-        WarmerWorkers? mainWarmer = _mainWarmer;
-        if (mainWarmer is not null)
-        {
-            mainWarmer.WakeUp();
-            _mainWarmer = null;
-        }
-        else
-        {
-            if (bufferFull)
-            {
-                _bufferFullNoMainWorker.Inc();
-            }
-        }
     }
 
     private void MaybeWakeupFast()
@@ -280,6 +241,7 @@ public sealed class TrieWarmer : ITrieWarmer
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushAddressJob(FlatWorldStateScope scope, Address? path, int sequenceId)
     {
         if (!_addressJob.TryEnqueue(new Job(scope, path, default, sequenceId)))
@@ -290,10 +252,11 @@ public sealed class TrieWarmer : ITrieWarmer
         MaybeWakeupFast();
     }
 
-    public void PushSlotJob(FlatWorldStateScope scope, FlatStorageTree storageTree, Address path, in UInt256? index,
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void PushSlotJob(FlatStorageTree storageTree, Address path, in UInt256? index,
         int sequenceId)
     {
-        if (!_jobBuffer.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId)))
+        if (!_slotJobBuffer.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId)))
         {
             _bufferFull.Inc();
         }
@@ -329,9 +292,9 @@ public sealed class TrieWarmer : ITrieWarmer
         {
             if (!_addressJob.TryDequeue(out Job _)) break;
         }
-        for (int i = 0; i < BufferSize; i++)
+        for (int i = 0; i < SlotBufferSize; i++)
         {
-            if (!_jobBuffer.TryDequeue(out Job _)) break;
+            if (!_slotJobBuffer.TryDequeue(out Job _)) break;
         }
         for (int i = 0; i < BufferSize; i++)
         {

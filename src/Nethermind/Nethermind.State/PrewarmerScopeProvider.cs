@@ -218,6 +218,7 @@ public class PrewarmerScopeProvider(
         {
             long sw = Stopwatch.GetTimestamp();
             baseStorageTree.HintSet(in index);
+            outerWorldStateScopeProvider?.WarmUpOutOfScope(address, index);
             _slotSetHint.Observe(Stopwatch.GetTimestamp() - sw);
         }
 
