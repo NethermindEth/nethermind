@@ -18,7 +18,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.LogIndex
 {
-    // TODO: test on big-endian system
+    // TODO: test on big-endian system?
+    // TODO!: use uint for block number
+    // TODO!: remove or simplify non-enumerator read methods
     public partial class LogIndexStorage : ILogIndexStorage
     {
         private static class SpecialKey
@@ -462,6 +464,7 @@ namespace Nethermind.Db.LogIndex
         private List<int> GetBlockNumbersFor(int? topicIndex, byte[] key, int from, int to)
         {
             // TODO: use ArrayPoolList?
+            var timestamp = Stopwatch.GetTimestamp();
             var result = new List<int>(Math.Max(1, _compressionDistance));
 
             IterateBlockNumbersFor(topicIndex, key, from, to, view =>
@@ -478,7 +481,28 @@ namespace Nethermind.Db.LogIndex
                 return true;
             });
 
+            if (_logger.IsTrace)
+                _logger.Trace($"{nameof(IterateBlockNumbersFor)}({topicIndex}, {Convert.ToHexString(key)}, {from}, {to}) in {Stopwatch.GetElapsedTime(timestamp)}");
+
             return result;
+        }
+
+        public IEnumerator<int> GetBlockNumbersEnumerator(Address address, int from, int to)
+        {
+            IDb db = GetDb(null);
+            ISortedKeyValueStore? sortedDb = db as ISortedKeyValueStore
+                ?? throw new NotSupportedException($"{db.GetType().Name} DB does not support sorted lookups.");
+
+            return new LogIndexEnumerator(this, sortedDb, address.Bytes, from, to);
+        }
+
+        public IEnumerator<int> GetBlockNumbersEnumerator(int index, Hash256 topic, int from, int to)
+        {
+            IDb db = GetDb(index);
+            ISortedKeyValueStore? sortedDb = db as ISortedKeyValueStore
+                ?? throw new NotSupportedException($"{db.GetType().Name} DB does not support sorted lookups.");
+
+            return new LogIndexEnumerator(this, sortedDb, topic.BytesToArray(), from, to);
         }
 
         private void IterateBlockNumbersFor(
@@ -486,38 +510,28 @@ namespace Nethermind.Db.LogIndex
             Func<ISortedView, bool> callback
         )
         {
-            var timestamp = Stopwatch.GetTimestamp();
+            // Adjust parameters to avoid composing invalid lookup keys
+            if (from < 0) from = 0;
+            if (to < from) return;
 
-            try
+            IDb db = GetDb(topicIndex);
+            ISortedKeyValueStore? sortedDb = db as ISortedKeyValueStore
+                ?? throw new NotSupportedException($"{db.GetType().Name} DB does not support sorted lookups.");
+
+            ReadOnlySpan<byte> startKey = CreateDbKey(key, from, stackalloc byte[MaxDbKeyLength]);
+            ReadOnlySpan<byte> fromKey = CreateDbKey(key, SpecialPostfix.BackwardMerge, stackalloc byte[MaxDbKeyLength]);
+            ReadOnlySpan<byte> toKey = CreateDbKey(key, SpecialPostfix.UpperBound, stackalloc byte[MaxDbKeyLength]);
+
+            using ISortedView view = sortedDb.GetViewBetween(fromKey, toKey);
+
+            var isValid = view.StartBefore(startKey) || view.MoveNext();
+
+            while (isValid)
             {
-                // Adjust parameters to avoid composing invalid lookup keys
-                if (from < 0) from = 0;
-                if (to < from) return;
+                if (!callback(view))
+                    return;
 
-                IDb db = GetDb(topicIndex);
-                ISortedKeyValueStore? sortedDb = db as ISortedKeyValueStore
-                    ?? throw new NotSupportedException($"{db.GetType().Name} DB does not support sorted lookups.");
-
-                ReadOnlySpan<byte> startKey = CreateDbKey(key, from, stackalloc byte[MaxDbKeyLength]);
-                ReadOnlySpan<byte> fromKey = CreateDbKey(key, SpecialPostfix.BackwardMerge, stackalloc byte[MaxDbKeyLength]);
-                ReadOnlySpan<byte> toKey = CreateDbKey(key, SpecialPostfix.UpperBound, stackalloc byte[MaxDbKeyLength]);
-
-                using ISortedView view = sortedDb.GetViewBetween(fromKey, toKey);
-
-                var isValid = view.StartBefore(startKey) || view.MoveNext();
-
-                while (isValid)
-                {
-                    if (!callback(view))
-                        return;
-
-                    isValid = view.MoveNext() && view.CurrentKey.StartsWith(key);
-                }
-            }
-            finally
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"{nameof(IterateBlockNumbersFor)}({Convert.ToHexString(key)}, {from}, {to}) in {Stopwatch.GetElapsedTime(timestamp)}");
+                isValid = view.MoveNext() && view.CurrentKey.StartsWith(key);
             }
         }
 

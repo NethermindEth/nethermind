@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
@@ -192,6 +191,7 @@ public class LogIndexStorageFilterTests
         }
     }
 
+    // TODO!: move to LogIndexFilterVisitorTests
     [TestCaseSource(nameof(LogIndexTestsData))]
     public void calculates_correct_range_for_filter(string name, LogFilter filter, List<int> expected)
     {
@@ -202,7 +202,7 @@ public class LogIndexStorageFilterTests
 
         MockLogIndex();
 
-        IList<int> blockNums = _logIndexStorage.GetBlockNumbersFor(filter, FromBlock, ToBlock, CancellationToken.None);
+        IEnumerable<int> blockNums = _logIndexStorage.EnumerateBlockNumbersFor(filter, FromBlock, ToBlock).ToArray();
 
         Assert.That(blockNums, Is.EquivalentTo(expected));
     }
@@ -246,6 +246,10 @@ public class LogIndexStorageFilterTests
             _logIndexStorage
                 .GetBlockNumbersFor(address, Arg.Any<int>(), Arg.Any<int>())
                 .Returns(info => range.SkipWhile(x => x < info.ArgAt<int>(1)).TakeWhile(x => x <= info.ArgAt<int>(2)).ToList());
+
+            _logIndexStorage
+                .GetBlockNumbersEnumerator(address, Arg.Any<int>(), Arg.Any<int>())
+                .Returns(info => range.SkipWhile(x => x < info.ArgAt<int>(1)).TakeWhile(x => x <= info.ArgAt<int>(2)).GetEnumerator());
         }
 
         for (var i = 0; i < LogIndexRanges.Topic.Length; i++)
@@ -255,6 +259,10 @@ public class LogIndexStorageFilterTests
                 _logIndexStorage
                     .GetBlockNumbersFor(Arg.Is(i), topic, Arg.Any<int>(), Arg.Any<int>())
                     .Returns(info => range.SkipWhile(x => x < info.ArgAt<int>(2)).TakeWhile(x => x <= info.ArgAt<int>(3)).ToList());
+
+                _logIndexStorage
+                    .GetBlockNumbersEnumerator(Arg.Is(i), topic, Arg.Any<int>(), Arg.Any<int>())
+                    .Returns(info => range.SkipWhile(x => x < info.ArgAt<int>(2)).TakeWhile(x => x <= info.ArgAt<int>(3)).GetEnumerator());
             }
         }
     }

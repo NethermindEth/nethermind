@@ -255,7 +255,7 @@ namespace Nethermind.Facade.Find
             {
                 try
                 {
-                    foreach (var blockNumber in _logIndexStorage!.GetBlockNumbersFor(f, from, to, token))
+                    foreach (var blockNumber in _logIndexStorage!.EnumerateBlockNumbersFor(f, from, to))
                     {
                         token.ThrowIfCancellationRequested();
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Db.LogIndex;
@@ -18,7 +19,7 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
         LogFilter logFilter = blockchainBridge.GetFilter(filter.FromBlock!, filter.ToBlock!, filter.Address, filter.Topics);
 
         return ResultWrapper<int[]>.Success(
-            storage.GetBlockNumbersFor(logFilter, GetBlockNumber(logFilter.FromBlock), GetBlockNumber(logFilter.ToBlock)).ToArray()
+            storage.EnumerateBlockNumbersFor(logFilter, GetBlockNumber(logFilter.FromBlock), GetBlockNumber(logFilter.ToBlock)).ToArray()
         );
     }
 

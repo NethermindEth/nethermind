@@ -57,6 +57,12 @@ public class LogIndexBuilderTests
         public List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to) =>
             throw new NotImplementedException();
 
+        public IEnumerator<int> GetBlockNumbersEnumerator(Address address, int from, int to) =>
+            throw new NotImplementedException();
+
+        public IEnumerator<int> GetBlockNumbersEnumerator(int index, Hash256 topic, int from, int to) =>
+            throw new NotImplementedException();
+
         public string GetDbSize() => 0L.SizeToString();
 
         public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>

@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db.LogIndex;
 
@@ -15,44 +14,206 @@ namespace Nethermind.Facade.Find;
 
 public static class LogIndexStorageRpcExtensions
 {
-    // Done sequentially, as with a single address/topic fetching averaging at 0.01s,
-    // using parallelization here introduces more problems than it solves.
-    public static List<int> GetBlockNumbersFor(this ILogIndexStorage storage,
-        LogFilter filter, long fromBlock, long toBlock,
-        CancellationToken cancellationToken = default)
+    // TODO!: inline
+    // TODO!: verify enumerator disposal when not all blocks are enumerated
+    public static IEnumerable<int> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, long fromBlock, long toBlock)
     {
-        (int from, int to) = ((int)fromBlock, (int)toBlock);
+        return new LogIndexFilterVisitor(storage, filter, (int) fromBlock, (int) toBlock);
+    }
+}
 
-        List<int>? addressNumbers = null;
-        if (filter.AddressFilter.Addresses is { Count: > 0 } addresses)
-            addressNumbers = AscListHelper.UnionAll(addresses.Select(a => storage.GetBlockNumbersFor(a, from, to)));
-
-        // TODO: consider passing storage directly to keep abstractions
-        var topicIndex = 0;
-        Dictionary<Hash256, List<int>>[]? byTopic = null;
-        foreach (TopicExpression expression in filter.TopicsFilter.Expressions)
+// TODO: separate file
+public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, int fromBlock, int toBlock): IEnumerable<int>
+{
+    public sealed class IntersectEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
+    {
+        public bool MoveNext()
         {
-            byTopic ??= new Dictionary<Hash256, List<int>>[LogIndexStorage.MaxTopics];
-            byTopic[topicIndex] = new();
+            bool has1 = e1.MoveNext();
+            bool has2 = e2.MoveNext();
 
-            foreach (Hash256 topic in expression.Topics)
+            while (has1 && has2)
             {
-                var i = topicIndex;
-                byTopic[topicIndex].GetOrAdd(topic, _ => storage.GetBlockNumbersFor(i, topic, from, to));
+                var (c1, c2) = (e1.Current, e2.Current);
+                if (c1 == c2)
+                {
+                    Current = c1;
+                    return true;
+                }
+
+                if (c1 < c2) has1 = e1.MoveNext();
+                else has2 = e2.MoveNext();
             }
 
-            topicIndex++;
+            return false;
         }
 
-        if (byTopic is null)
-            return addressNumbers ?? [];
+        public void Reset()
+        {
+            e1.Reset();
+            e2.Reset();
+        }
 
-        // ReSharper disable once CoVariantArrayConversion
-        List<int> topicNumbers = filter.TopicsFilter.FilterBlockNumbers(byTopic);
+        public int Current { get; private set; }
 
-        if (addressNumbers is null)
-            return topicNumbers;
+        object? IEnumerator.Current => Current;
 
-        return AscListHelper.Intersect(addressNumbers, topicNumbers);
+        public void Dispose()
+        {
+            e1.Dispose();
+            e2.Dispose();
+        }
     }
+
+    public sealed class UnionEnumerator(IEnumerator<int> e1, IEnumerator<int> e2) : IEnumerator<int>
+    {
+        // TODO: reduce number of fields?
+        private bool _has1;
+        private bool _has2;
+        private bool _initialized;
+
+        public bool MoveNext()
+        {
+            if (!_initialized)
+            {
+                _has1 = e1.MoveNext();
+                _has2 = e2.MoveNext();
+                _initialized = true;
+            }
+
+            switch (_has1, _has2)
+            {
+                case (false, false):
+                    return false;
+                case (false, true):
+                    Current = e2.Current;
+                    _has2 = e2.MoveNext();
+                    return true;
+                case (true, false):
+                    Current = e1.Current;
+                    _has1 = e1.MoveNext();
+                    return true;
+            }
+
+            var (c1, c2) = (e1.Current, e2.Current);
+            switch (c1.CompareTo(c2))
+            {
+                case <0:
+                    Current = c1;
+                    _has1 = e1.MoveNext();
+                    return true;
+                case > 0:
+                    Current = c2;
+                    _has2 = e2.MoveNext();
+                    return true;
+                case 0:
+                    Current = c1;
+                    (_has1, _has2) = (e1.MoveNext(), e2.MoveNext());
+                    return true;
+            }
+        }
+
+        public void Reset()
+        {
+            e1.Reset();
+            e2.Reset();
+
+            _has1 = false;
+            _has2 = false;
+            _initialized = false;
+        }
+
+        public int Current { get; private set; }
+
+        object? IEnumerator.Current => Current;
+
+        public void Dispose()
+        {
+            e1.Dispose();
+            e2.Dispose();
+        }
+    }
+
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    public IEnumerator<int> GetEnumerator()
+    {
+        IEnumerator<int>? addressEnumerator = Visit(filter.AddressFilter);
+        IEnumerator<int>? topicEnumerator = Visit(filter.TopicsFilter);
+
+        if (addressEnumerator is null) return topicEnumerator!;
+        if (topicEnumerator is null) return addressEnumerator!;
+
+        return new IntersectEnumerator(addressEnumerator, topicEnumerator);
+    }
+
+    private IEnumerator<int>? Visit(AddressFilter addressFilter)
+    {
+        IEnumerator<int>? result = null;
+
+        foreach (AddressAsKey address in addressFilter.Addresses)
+        {
+            IEnumerator<int> next = Visit(address);
+            result = result is null ? next : new UnionEnumerator(result, next);
+        }
+
+        return result;
+    }
+
+    private IEnumerator<int>? Visit(TopicsFilter topicsFilter)
+    {
+        IEnumerator<int> result = null;
+
+        for (var topicIndex = 0; topicIndex < topicsFilter.Expressions.Count; topicIndex++)
+        {
+            TopicExpression expression = topicsFilter.Expressions[topicIndex];
+
+            if (Visit(topicIndex, expression) is not { } next)
+                continue;
+
+            result = result is null ? next : new IntersectEnumerator(result, next);
+        }
+
+        return result;
+    }
+
+    private IEnumerator<int>? Visit(int topicIndex, TopicExpression expression) => expression switch
+    {
+        AnyTopic anyTopic => null,
+        OrExpression orExpression => Visit(topicIndex, orExpression),
+        SpecificTopic specificTopic => Visit(topicIndex, specificTopic),
+        _ => throw new ArgumentOutOfRangeException($"Unknown topic expression type: {expression.GetType().Name}.")
+    };
+
+    private IEnumerator<int>? Visit(int topicIndex, OrExpression orExpression)
+    {
+        IEnumerator<int>? result = null;
+
+        foreach (Hash256 topic in orExpression.Topics)
+        {
+            IEnumerator<int> next = Visit(topicIndex, topic);
+            result = result is null ? next : new UnionEnumerator(result, next);
+        }
+
+        return result;
+    }
+
+    private IEnumerator<int>? Visit(int topicIndex, SpecificTopic specificTopic)
+    {
+        IEnumerator<int>? result = null;
+
+        foreach (Hash256 topic in specificTopic.Topics)
+        {
+            IEnumerator<int> next = Visit(topicIndex, topic);
+            result = result is null ? next : new IntersectEnumerator(result, next);
+        }
+
+        return result;
+    }
+
+    private IEnumerator<int> Visit(Address address) =>
+        storage.GetBlockNumbersEnumerator(address, fromBlock, toBlock);
+
+    private IEnumerator<int> Visit(int topicIndex, Hash256 topic) =>
+        storage.GetBlockNumbersEnumerator(topicIndex, topic, fromBlock, toBlock);
 }

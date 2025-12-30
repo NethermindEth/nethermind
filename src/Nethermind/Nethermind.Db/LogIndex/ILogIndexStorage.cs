@@ -20,6 +20,9 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     List<int> GetBlockNumbersFor(Address address, int from, int to);
     List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to);
 
+    IEnumerator<int> GetBlockNumbersEnumerator(Address address, int from, int to);
+    IEnumerator<int> GetBlockNumbersEnumerator(int index, Hash256 topic, int from, int to);
+
     string GetDbSize();
 
     LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null);
