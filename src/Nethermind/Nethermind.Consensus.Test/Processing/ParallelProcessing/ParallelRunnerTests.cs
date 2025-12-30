@@ -195,7 +195,7 @@ public class ParallelRunnerTests
         private readonly HashSet<Read<int>>[] _readSets = Enumerable.Range(0, blockSize).Select(_ => new HashSet<Read<int>>()).ToArray();
         private readonly Dictionary<int, byte[]>[] _writeSets = Enumerable.Range(0, blockSize).Select(_ => new Dictionary<int, byte[]>()).ToArray();
 
-        public Status TryExecute(Version version, out Version? blockingTx, out HashSet<Read<int>> readSet, out Dictionary<int, byte[]> writeSet)
+        public Status TryExecute(Version version, out int? blockingTx, out HashSet<Read<int>> readSet, out Dictionary<int, byte[]> writeSet)
         {
             int txIndex = version.TxIndex;
             readSet = _readSets[txIndex];
@@ -225,7 +225,7 @@ public class ParallelRunnerTests
                                         readSet.Add(new Read<int>(operation.Location, v));
                                         break;
                                     case Status.ReadError:
-                                        blockingTx = v;
+                                        blockingTx = v.TxIndex;
                                         return Status.ReadError;
                                 }
                             }

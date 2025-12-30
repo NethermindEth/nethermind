@@ -14,6 +14,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing.ParallelProcessing;
@@ -82,7 +83,7 @@ public class ParallelTransactionProcessor(
     private readonly ObjectPool<BlockReceiptsTracer> _tracers = new DefaultObjectPool<BlockReceiptsTracer>(new DefaultPooledObjectPolicy<BlockReceiptsTracer>());
     private readonly BlockExecutionContext _blockExecutionContext = blockExecutionContext;
 
-    public Status TryExecute(Version version, out Version? blockingTx, out HashSet<Read<StorageCell>> readSet, out Dictionary<StorageCell, object> writeSet)
+    public Status TryExecute(Version version, out int? blockingTx, out HashSet<Read<StorageCell>> readSet, out Dictionary<StorageCell, object> writeSet)
     {
         int txIndex = version.TxIndex;
         blockingTx = null;
@@ -99,7 +100,23 @@ public class ParallelTransactionProcessor(
             TransactionResult result = transactionProcessor.Execute(transaction, tracer);
             if (!result)
             {
-                // TODO: What about static checks like nonce?
+                if (result.Error == TransactionResult.ErrorType.WrongTransactionNonce)
+                {
+                    for (int i = txIndex - 1; i >= 0; i--)
+                    {
+                        if (block.Transactions[i].SenderAddress == transaction.SenderAddress)
+                        {
+                            blockingTx = i;
+                            break;
+                        }
+                    }
+
+                    if (blockingTx is not null)
+                    {
+                        return Status.ReadError;
+                    }
+                }
+
                 InvalidTransactionException.ThrowInvalidTransactionException(result, block.Header, transaction, txIndex);
             }
 
@@ -110,7 +127,7 @@ public class ParallelTransactionProcessor(
         }
         catch (AbortParallelExecutionException e)
         {
-            blockingTx = e.BlockingRead;
+            blockingTx = e.BlockingRead.TxIndex;
             return Status.ReadError;
         }
         finally

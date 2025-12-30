@@ -105,8 +105,8 @@ public class ParallelRunner<TLocation, TData, TLogger>(
     /// Scheduler may return a validation task for this transaction as it will be the next high-priority.
     /// </remarks>
     private TxTask TryExecute(TxTask task) =>
-        parallelTransactionProcessor.TryExecute(task.Version, out Version? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, TData> writeSet) == Status.ReadError
-            ? !scheduler.AbortExecution(task.Version.TxIndex, blockingTx!.Value.TxIndex) ? task : TxTask.Empty
+        parallelTransactionProcessor.TryExecute(task.Version, out int? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, TData> writeSet) == Status.ReadError
+            ? !scheduler.AbortExecution(task.Version.TxIndex, blockingTx ?? throw new InvalidOperationException("Blocking transaction index cannot be null")) ? task : TxTask.Empty
             : scheduler.FinishExecution(task.Version, memory.Record(task.Version, readSet, writeSet));
 
 
@@ -153,5 +153,5 @@ public interface IParallelTransactionProcessor<TLocation, TData> where TLocation
     /// <param name="readSet">All locations read by the transaction</param>
     /// <param name="writeSet">All locations and values written by the transaction</param>
     /// <returns><see cref="Status.Ok"/> if no dependency detected, <see cref="Status.ReadError"/> if transaction is blocked by other</returns>
-    public Status TryExecute(Version version, out Version? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, TData> writeSet);
+    public Status TryExecute(Version version, out int? blockingTx, out HashSet<Read<TLocation>> readSet, out Dictionary<TLocation, TData> writeSet);
 }
