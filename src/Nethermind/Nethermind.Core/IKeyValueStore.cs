@@ -28,6 +28,20 @@ namespace Nethermind.Core
         /// <returns>Can return null or empty Span on missing key</returns>
         Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
 
+        int GetSpanCopy(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags = ReadFlags.None)
+        {
+            Span<byte> span = GetSpan(key, flags);
+            try
+            {
+                span.CopyTo(output);
+                return span.Length;
+            }
+            finally
+            {
+                DangerousReleaseMemory(span);
+            }
+        }
+
         bool KeyExists(ReadOnlySpan<byte> key)
         {
             Span<byte> span = GetSpan(key);
@@ -37,6 +51,11 @@ namespace Nethermind.Core
         }
 
         void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
+    }
+
+    public interface ICacheOnlyReader: IReadOnlyKeyValueStore
+    {
+        (bool, int) TryGetSpanCached(scoped ReadOnlySpan<byte> key, Span<byte> outSpan);
     }
 
     public interface IReadOnlyNativeKeyValueStore
@@ -74,12 +93,12 @@ namespace Nethermind.Core
         void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None);
     }
 
-    public interface ISortedKeyValueStore : IKeyValueStore
+    public interface ISortedKeyValueStore : IReadOnlyKeyValueStore
     {
         byte[]? FirstKey { get; }
         byte[]? LastKey { get; }
 
-        ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey);
+        ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKeyExclusive);
     }
 
     /// <summary>

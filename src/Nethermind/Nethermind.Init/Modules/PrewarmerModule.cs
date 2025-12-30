@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -42,17 +43,21 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
+
+                // This class create the block processing env with worldstate that populate the cache
                 .Add<PrewarmerEnvFactory>()
 
                 // These are the actual decorated component that provide cached result
                 .AddDecorator<IWorldStateScopeProvider>((ctx, worldStateScopeProvider) =>
                 {
                     if (worldStateScopeProvider is PrewarmerScopeProvider) return worldStateScopeProvider; // Inner world state
-                    return new PrewarmerScopeProvider(
+                    var worldState = new PrewarmerScopeProvider(
                         worldStateScopeProvider,
+                        null,
                         ctx.Resolve<PreBlockCaches>(),
                         populatePreBlockCache: false
                     );
+                    return worldState;
                 })
                 .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
                 {

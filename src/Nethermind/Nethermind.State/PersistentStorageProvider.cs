@@ -21,7 +21,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
-using Nethermind.Trie;
 
 namespace Nethermind.State;
 
@@ -109,6 +108,18 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         return value;
     }
+
+    public override bool Set(in StorageCell storageCell, byte[] newValue)
+    {
+        if (base.Set(storageCell, newValue))
+        {
+            GetOrCreateStorage(storageCell.Address).HintSet(storageCell);
+            return true;
+        }
+
+        return false;
+    }
+
 
     public Hash256 GetStorageRoot(Address address)
     {
@@ -287,6 +298,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)
                 ))
                 .ToPooledList(_storages.Count);
+            // Sort by decreasing changes. Slightly better parallelism.
+            storages.Sort((it1, it2) => it1.ContractState.EstimatedChanges.CompareTo(it2.ContractState.EstimatedChanges) * -1);
 
             ParallelUnbalancedWork.For(
                 0,
@@ -348,6 +361,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     public void WarmUp(in StorageCell storageCell, bool isEmpty)
     {
+        GetOrCreateStorage(storageCell.Address).HintSet(storageCell);
         if (isEmpty)
         {
         }
@@ -619,6 +633,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         public void RemoveStorageTree()
         {
             _backend = null;
+        }
+
+        public void HintSet(in StorageCell storageCell)
+        {
+            EnsureStorageTree();
+            _backend.HintSet(storageCell.Index);
         }
 
         internal static PerContractState Rent(Address address, PersistentStorageProvider persistentStorageProvider)
