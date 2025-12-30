@@ -472,10 +472,10 @@ public class RequestOrchestrator(
                 new JArray()               // Fourth parameter: execution_payload_preparation_info
             };
 
-            _logger.Debug($"Created engine_newPayloadV4 request with {blobVersionedHashes.Count} blobVersionedHashes, parentBeaconBlockRoot: {parentBeaconBlockRoot}");
+            _logger.Debug($"Created {_config.NewPayloadMethod} request with {blobVersionedHashes.Count} blobVersionedHashes, parentBeaconBlockRoot: {parentBeaconBlockRoot}");
 
             return new JsonRpcRequest(
-                "engine_newPayloadV4",
+                _config.NewPayloadMethod,
                 parameters,
                 Guid.NewGuid().ToString()
             );

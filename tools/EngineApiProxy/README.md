@@ -94,6 +94,7 @@ docker build -f tools/EngineApiProxy/Dockerfile -t nethermindeth/engine-api-prox
 - `--fee-recipient`: Default fee recipient address for generated payload attributes (default: 0x0000000000000000000000000000000000000000)
 - `--validation-mode`: Mode for block validation (Fcu or NewPayload) (default: NewPayload)
 - `--get-payload-method`: Engine API method to use when getting payloads for validation (default: engine_getPayloadV4)
+- `--new-payload-method`: Engine API method to use when sending new payloads for validation (default: engine_newPayloadV4)
 
 ### Examples
 
@@ -117,6 +118,9 @@ dotnet run -c Release -- -e http://localhost:8551 -p 9551 --validate-all-blocks 
 
 # Using a specific engine_getPayload version
 dotnet run -c Release -- -e http://localhost:8551 -p 9551 --get-payload-method engine_getPayloadV3
+
+# Using specific payload method versions
+dotnet run -c Release -- -e http://localhost:8551 -p 9551 --get-payload-method engine_getPayloadV3 --new-payload-method engine_newPayloadV3
 ```
 
 #### Running with Docker
@@ -133,6 +137,9 @@ docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://executio
 
 # Using a specific engine_getPayload version
 docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://execution-client:8551 -p 9551 --get-payload-method engine_getPayloadV3
+
+# Using specific payload method versions
+docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://execution-client:8551 -p 9551 --get-payload-method engine_getPayloadV3 --new-payload-method engine_newPayloadV3
 ```
 
 ## Consensus Client Integration

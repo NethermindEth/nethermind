@@ -79,6 +79,11 @@ public class Program
             description: "Engine API method to use when getting payloads for validation (e.g., engine_getPayloadV3, engine_getPayloadV4)",
             getDefaultValue: () => "engine_getPayloadV4");
 
+        var newPayloadMethodOption = new Option<string>(
+            name: "--new-payload-method",
+            description: "Engine API method to use when sending new payloads for validation (e.g., engine_newPayloadV3, engine_newPayloadV4)",
+            getDefaultValue: () => "engine_newPayloadV4");
+
         // Create root command with options
         var rootCommand = new RootCommand("Nethermind Engine API Proxy");
         rootCommand.AddOption(executionClientOption);
@@ -91,6 +96,7 @@ public class Program
         rootCommand.AddOption(validationModeOption);
         rootCommand.AddOption(requestTimeoutOption);
         rootCommand.AddOption(getPayloadMethodOption);
+        rootCommand.AddOption(newPayloadMethodOption);
 
         rootCommand.SetHandler(async (context) =>
         {
@@ -106,6 +112,7 @@ public class Program
                 var validationMode = context.ParseResult.GetValueForOption(validationModeOption);
                 var requestTimeout = context.ParseResult.GetValueForOption(requestTimeoutOption);
                 var getPayloadMethod = context.ParseResult.GetValueForOption(getPayloadMethodOption) ?? "engine_getPayloadV4";
+                var newPayloadMethod = context.ParseResult.GetValueForOption(newPayloadMethodOption) ?? "engine_newPayloadV4";
 
                 // Configure logging
                 var logManager = new NLogManager();
@@ -157,7 +164,8 @@ public class Program
                     DefaultFeeRecipient = feeRecipient,
                     ValidationMode = validationMode,
                     RequestTimeoutSeconds = requestTimeout,
-                    GetPayloadMethod = getPayloadMethod
+                    GetPayloadMethod = getPayloadMethod,
+                    NewPayloadMethod = newPayloadMethod
                 };
 
                 logger.Info($"Starting Engine API Proxy with configuration: {config}");
@@ -264,6 +272,7 @@ public class Program
         Console.WriteLine("  --validation-mode <mode>          Validation mode (Fcu, NewPayload, Merged, LH)");
         Console.WriteLine("  --request-timeout <seconds>       HTTP request timeout in seconds (default: 100)");
         Console.WriteLine("  --get-payload-method <method>     Engine API method for getting payloads (default: engine_getPayloadV4)");
+        Console.WriteLine("  --new-payload-method <method>     Engine API method for sending new payloads (default: engine_newPayloadV4)");
         Console.WriteLine("  -h, --help                        Display this help message");
         return 0;
     }
