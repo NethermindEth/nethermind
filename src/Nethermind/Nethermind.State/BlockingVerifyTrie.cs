@@ -47,8 +47,7 @@ public class BlockingVerifyTrie
         // This is to block processing as with halfpath old nodes will be removed
         using IDisposable _ = _trieStore.BeginScope(stateAtBlock);
 
-        Hash256 rootNode = stateAtBlock.StateRoot;
-        TrieStats stats = _stateReader.CollectStats(rootNode, _codeDb, _logManager, cancellationToken);
+        TrieStats stats = _stateReader.CollectStats(stateAtBlock, _codeDb, _logManager, cancellationToken);
         if (stats.MissingNodes > 0)
         {
             if (_logger.IsError) _logger.Error($"Missing node found!");
