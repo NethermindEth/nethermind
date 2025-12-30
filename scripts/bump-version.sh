@@ -5,15 +5,42 @@
 # Function to extract and validate version
 get_version() {
     local file_path=$1
-    grep -o '<VersionPrefix>.*</VersionPrefix>' "$file_path" | sed 's/<VersionPrefix>\(.*\)<\/VersionPrefix>/\1/'
+    if command -v xmlstarlet &> /dev/null; then
+        xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" "$file_path" 2>/dev/null | head -n1
+    else
+        # Fallback to grep/sed, but check for multiple occurrences
+        local matches=$(grep -o '<VersionPrefix>.*</VersionPrefix>' "$file_path" | wc -l)
+        if [ "$matches" -gt 1 ]; then
+            echo "error: Multiple VersionPrefix entries found. xmlstarlet is recommended for proper XML parsing." >&2
+            return 1
+        fi
+        grep -o '<VersionPrefix>.*</VersionPrefix>' "$file_path" | sed 's/<VersionPrefix>\(.*\)<\/VersionPrefix>/\1/' | head -n1
+    fi
 }
 
 # Function to update version in file
 update_version() {
     local file_path=$1
     local new_version=$2
-    sed -i.bak "s/<VersionPrefix>.*<\/VersionPrefix>/<VersionPrefix>$new_version<\/VersionPrefix>/" "$file_path"
-    rm -f "${file_path}.bak"
+    if command -v xmlstarlet &> /dev/null; then
+        local temp_file=$(mktemp)
+        xmlstarlet ed -u "//Project/PropertyGroup/VersionPrefix" -v "$new_version" "$file_path" > "$temp_file" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            mv "$temp_file" "$file_path"
+        else
+            rm -f "$temp_file"
+            return 1
+        fi
+    else
+        # Fallback to sed, but check for multiple occurrences first
+        local matches=$(grep -o '<VersionPrefix>.*</VersionPrefix>' "$file_path" | wc -l)
+        if [ "$matches" -gt 1 ]; then
+            echo "error: Multiple VersionPrefix entries found. xmlstarlet is required to update all occurrences." >&2
+            return 1
+        fi
+        sed -i.bak "s/<VersionPrefix>.*<\/VersionPrefix>/<VersionPrefix>$new_version<\/VersionPrefix>/" "$file_path"
+        rm -f "${file_path}.bak"
+    fi
 }
 
 # Create a temporary Directory.Build.props for testing
@@ -38,16 +65,16 @@ run_test() {
     local current_version=$3
     local expected_version=$4
     local should_succeed=${5:-true}
-    
+
     echo "🧪 Testing: $test_name"
     echo "Branch: $branch_name"
     echo "Current version: $current_version"
     echo "Expected version: $expected_version"
     echo "Should succeed: $should_succeed"
-    
+
     # Create test file
     local test_file=$(create_test_file "$current_version")
-    
+
     # Run bump_version and capture output
     if output=$(bump_version "$branch_name" "$test_file" 2>&1); then
         if [ "$should_succeed" = true ]; then
@@ -69,12 +96,12 @@ run_test() {
             return 1
         fi
     fi
-    
+
     # Verify the results
     if [ "$should_succeed" = true ]; then
         # Get final version from file
         local final_version=$(get_version "$test_file")
-        
+
         if [ "$final_version" = "$expected_version" ]; then
             echo "✅ Version updated correctly"
         else
@@ -83,7 +110,7 @@ run_test() {
             return 1
         fi
     fi
-    
+
     rm -f "$test_file"
     echo "-------------------"
     return 0
@@ -137,38 +164,38 @@ run_tests() {
 bump_version() {
     local branch_name=$1
     local props_path=$2
-    
+
     # Validate inputs
     if [ -z "$branch_name" ] || [ -z "$props_path" ]; then
         echo "Usage: $0 <branch-name> <props-path>"
         echo "Example: $0 refs/heads/release/1.40.0 src/Nethermind/Directory.Build.props"
         return 1
     fi
-    
+
     if [[ ! $branch_name =~ ^refs/heads/release/[0-9]+\.[0-9]+\.0$ ]]; then
         echo "error: Invalid branch name format. Expected: refs/heads/release/X.Y.0" >&2
         return 1
     fi
-    
+
     if [ ! -f "$props_path" ]; then
         echo "error: Directory.Build.props not found at $props_path" >&2
         return 1
     fi
-    
+
     # Extract release version from branch name
     local release_version=$(echo "$branch_name" | sed 's/.*release\///')
-    
+
     # Extract version components
     local major=$(echo $release_version | cut -d. -f1)
     local minor=$(echo $release_version | cut -d. -f2)
-    
+
     # Calculate new version
     local new_minor=$((minor + 1))
     local new_version="$major.$new_minor.0"
-    
+
     # Get current version from the file
     local current_version=$(get_version "$props_path")
-    
+
     # Check if update is needed
     if [ "$current_version" = "$new_version" ]; then
         echo "Version $new_version is already set in $props_path"
@@ -177,10 +204,10 @@ bump_version() {
         echo "new_version=$new_version"
         return 0
     fi
-    
+
     # Update the file
     update_version "$props_path" "$new_version"
-    
+
     echo "Updated version from $current_version to $new_version"
     echo "needs_update=true"
     echo "current_version=$current_version"
