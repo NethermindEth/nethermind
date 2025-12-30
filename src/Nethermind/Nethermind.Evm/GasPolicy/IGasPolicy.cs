@@ -205,4 +205,15 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="intrinsicGas">The intrinsic gas to subtract.</param>
     /// <returns>Available gas with preserved tracking data.</returns>
     static abstract TSelf CreateAvailableFromIntrinsic(long gasLimit, in TSelf intrinsicGas);
+
+    /// <summary>
+    /// Consumes gas for code copy operations (CODECOPY, CALLDATACOPY, EXTCODECOPY, etc.).
+    /// Allows policies to categorize external code copy differently (state trie access).
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="isExternalCode">True for EXTCODECOPY (external account code).</param>
+    /// <param name="baseCost">Fixed opcode cost.</param>
+    /// <param name="wordCost">Per-word copy cost.</param>
+    /// <returns>True if sufficient gas available.</returns>
+    static abstract bool ConsumeCodeCopyGas(ref TSelf gas, bool isExternalCode, long baseCost, long wordCost);
 }
