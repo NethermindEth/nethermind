@@ -16,6 +16,7 @@ public class PayloadTracker(ILogManager logManager)
     private readonly ConcurrentDictionary<Hash256, string> _headBlockToPayloadId = new();
     private readonly ConcurrentDictionary<string, Hash256> _payloadIdToHeadBlock = new();
     private readonly ConcurrentDictionary<Hash256, string> _headBlockToParentBeaconBlockRoot = new();
+    private readonly ConcurrentDictionary<Hash256, string[]> _headBlockToBlobVersionedHashes = new();
 
     /// <summary>
     /// Gets the most recently tracked payload ID
@@ -35,6 +36,18 @@ public class PayloadTracker(ILogManager logManager)
     /// <param name="parentBeaconBlockRoot">Optional parent beacon block root to store with this head block</param>
     public void TrackPayload(Hash256 headBlockHash, string payloadId, string? parentBeaconBlockRoot = null)
     {
+        TrackPayload(headBlockHash, payloadId, parentBeaconBlockRoot, null);
+    }
+
+    /// <summary>
+    /// Stores a mapping between a head block hash and a Payload ID with blob versioned hashes
+    /// </summary>
+    /// <param name="headBlockHash">The hash of the head block from forkChoiceUpdated</param>
+    /// <param name="payloadId">The Payload ID returned from the execution client</param>
+    /// <param name="parentBeaconBlockRoot">Optional parent beacon block root to store with this head block</param>
+    /// <param name="blobVersionedHashes">Optional blob versioned hashes to store with this head block</param>
+    public void TrackPayload(Hash256 headBlockHash, string payloadId, string? parentBeaconBlockRoot, string[]? blobVersionedHashes)
+    {
         if (headBlockHash is null || string.IsNullOrEmpty(payloadId))
         {
             _logger.Error($"Cannot track null payload or hash. Hash: {headBlockHash}, PayloadId: {payloadId}");
@@ -49,6 +62,13 @@ public class PayloadTracker(ILogManager logManager)
         {
             _headBlockToParentBeaconBlockRoot[headBlockHash] = parentBeaconBlockRoot;
             _logger.Debug($"Tracking parentBeaconBlockRoot {parentBeaconBlockRoot} for head block {headBlockHash}");
+        }
+
+        // Store the blob versioned hashes if provided
+        if (blobVersionedHashes is not null && blobVersionedHashes.Length > 0)
+        {
+            _headBlockToBlobVersionedHashes[headBlockHash] = blobVersionedHashes;
+            _logger.Debug($"Tracking {blobVersionedHashes.Length} blobVersionedHashes for head block {headBlockHash}");
         }
 
         LastTrackedPayloadId = payloadId;
@@ -129,6 +149,9 @@ public class PayloadTracker(ILogManager logManager)
             // Also remove from parent beacon block root mapping
             _headBlockToParentBeaconBlockRoot.TryRemove(headBlockHash, out _);
 
+            // Also remove from blob versioned hashes mapping
+            _headBlockToBlobVersionedHashes.TryRemove(headBlockHash, out _);
+
             _logger.Debug($"Removed tracking for head block {headBlockHash}");
         }
     }
@@ -141,6 +164,7 @@ public class PayloadTracker(ILogManager logManager)
         _headBlockToPayloadId.Clear();
         _payloadIdToHeadBlock.Clear();
         _headBlockToParentBeaconBlockRoot.Clear();
+        _headBlockToBlobVersionedHashes.Clear();
         _logger.Debug("Cleared all payload tracking");
     }
 
@@ -225,5 +249,61 @@ public class PayloadTracker(ILogManager logManager)
             return false;
         }
         return _headBlockToParentBeaconBlockRoot.TryGetValue(headBlockHash, out parentBeaconBlockRoot);
+    }
+
+    /// <summary>
+    /// Gets the blob versioned hashes associated with a head block hash
+    /// </summary>
+    /// <param name="headBlockHash">The hash of the head block</param>
+    /// <returns>The associated blob versioned hashes or null if not found</returns>
+    public string[]? GetBlobVersionedHashes(Hash256 headBlockHash)
+    {
+        if (_headBlockToBlobVersionedHashes.TryGetValue(headBlockHash, out var blobVersionedHashes))
+        {
+            return blobVersionedHashes;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Tries to get the blob versioned hashes associated with a head block hash
+    /// </summary>
+    /// <param name="headBlockHash">The hash of the head block</param>
+    /// <param name="blobVersionedHashes">The associated blob versioned hashes if found</param>
+    /// <returns>True if blob versioned hashes were found, false otherwise</returns>
+    public bool TryGetBlobVersionedHashes(Hash256 headBlockHash, out string[]? blobVersionedHashes)
+    {
+        if (headBlockHash is null)
+        {
+            blobVersionedHashes = default;
+            return false;
+        }
+        return _headBlockToBlobVersionedHashes.TryGetValue(headBlockHash, out blobVersionedHashes);
+    }
+
+    /// <summary>
+    /// Associates blob versioned hashes with a head block hash
+    /// </summary>
+    /// <param name="headBlockHash">The hash of the head block</param>
+    /// <param name="blobVersionedHashes">The blob versioned hashes to associate</param>
+    /// <returns>True if the association was successful, false otherwise</returns>
+    public bool AssociateBlobVersionedHashes(Hash256 headBlockHash, string[] blobVersionedHashes)
+    {
+        if (headBlockHash is null)
+        {
+            _logger.Error("Cannot associate blob versioned hashes with null head block hash");
+            return false;
+        }
+
+        if (blobVersionedHashes is null || blobVersionedHashes.Length == 0)
+        {
+            _logger.Debug($"Empty or null blobVersionedHashes provided for head block {headBlockHash}, skipping association");
+            return false;
+        }
+
+        _headBlockToBlobVersionedHashes[headBlockHash] = blobVersionedHashes;
+        _logger.Debug($"Associated {blobVersionedHashes.Length} blobVersionedHashes with head block {headBlockHash}");
+        return true;
     }
 }

@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.EngineApiProxy.Config;
 using Nethermind.EngineApiProxy.Models;
+using Nethermind.EngineApiProxy.Utilities;
 using Nethermind.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -31,6 +32,7 @@ public class RequestOrchestrator(
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     private readonly ProxyConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+    private readonly BlobHashComputer _blobHashComputer = new(logManager);
 
     /// <summary>
     /// Handles the fork choice updated validation flow
@@ -293,7 +295,7 @@ public class RequestOrchestrator(
 
             // Create getPayload request
             var getPayloadRequest = new JsonRpcRequest(
-                "engine_getPayloadV5",
+                "engine_getPayloadV4",
                 new JArray(payloadId),
                 Guid.NewGuid().ToString());
 
@@ -331,9 +333,21 @@ public class RequestOrchestrator(
             {
                 try
                 {
+                    // Extract blobsBundle and compute versioned hashes
+                    var blobsBundle = payload["blobsBundle"] as JObject;
+                    JArray blobVersionedHashes = _blobHashComputer.ComputeVersionedHashes(blobsBundle);
+
+                    // Store blob versioned hashes in tracker for this head block
+                    if (blobVersionedHashes.Count > 0)
+                    {
+                        string[] hashArray = BlobHashComputer.ToStringArray(blobVersionedHashes);
+                        _payloadTracker.AssociateBlobVersionedHashes(headBlock, hashArray);
+                        _logger.Debug($"Stored {hashArray.Length} blobVersionedHashes for head block {headBlock}");
+                    }
+
                     // Create newPayload request from the payload
                     _logger.Info($"Creating newPayload request from payload with parentBeaconBlockRoot: {parentBeaconBlockRoot}");
-                    var newPayloadRequest = CreateNewPayloadRequest(payload, parentBeaconBlockRoot);
+                    var newPayloadRequest = CreateNewPayloadRequest(payload, parentBeaconBlockRoot, blobVersionedHashes);
 
                     // Copy auth headers to new request too
                     if (_httpClient.DefaultRequestHeaders.Contains("Authorization"))
@@ -393,16 +407,18 @@ public class RequestOrchestrator(
     /// </summary>
     /// <param name="payload">The payload from getPayload</param>
     /// <param name="parentBeaconBlockRoot">The parent beacon block root extracted from block data</param>
+    /// <param name="blobVersionedHashes">The blob versioned hashes computed from blobsBundle</param>
     /// <returns>A newPayload request</returns>
-    private JsonRpcRequest CreateNewPayloadRequest(JObject payload, string? parentBeaconBlockRoot = null)
+    private JsonRpcRequest CreateNewPayloadRequest(JObject payload, string? parentBeaconBlockRoot = null, JArray? blobVersionedHashes = null)
     {
         try
         {
             // Extract the executionPayload from the response
             var executionPayload = payload["executionPayload"] ?? payload;
 
-            // Create an empty array for blobVersionedHashes (second parameter)
-            var blobVersionedHashes = new JArray();
+            // Use provided blobVersionedHashes or empty array
+            blobVersionedHashes ??= new JArray();
+            _logger.Debug($"CreateNewPayloadRequest: Including {blobVersionedHashes.Count} blobVersionedHashes in synthetic newPayload");
 
             // Check if parentBeaconBlockRoot is provided
             if (string.IsNullOrEmpty(parentBeaconBlockRoot))
@@ -456,7 +472,7 @@ public class RequestOrchestrator(
                 new JArray()               // Fourth parameter: execution_payload_preparation_info
             };
 
-            _logger.Debug($"Created engine_newPayloadV4 request with parameters structure: executionPayload, blobVersionedHashes, parentBeaconBlockRoot: {parentBeaconBlockRoot}, empty preparation info");
+            _logger.Debug($"Created engine_newPayloadV4 request with {blobVersionedHashes.Count} blobVersionedHashes, parentBeaconBlockRoot: {parentBeaconBlockRoot}");
 
             return new JsonRpcRequest(
                 "engine_newPayloadV4",

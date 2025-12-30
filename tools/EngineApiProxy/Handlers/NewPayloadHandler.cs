@@ -108,6 +108,16 @@ public class NewPayloadHandler(
                     blockHash = parentHash;
                 }
 
+                // Extract blobVersionedHashes from incoming request (params[1]) and store them
+                var parentHashObj = new Hash256(Bytes.FromHexString(parentHash));
+                var incomingBlobHashes = BlobHashComputer.ExtractBlobVersionedHashes(request.Params);
+                if (incomingBlobHashes.Count > 0)
+                {
+                    string[] hashArray = BlobHashComputer.ToStringArray(incomingBlobHashes);
+                    _payloadTracker.AssociateBlobVersionedHashes(parentHashObj, hashArray);
+                    _logger.Info($"Stored {hashArray.Length} blobVersionedHashes from incoming newPayload request for parent hash {parentHash}");
+                }
+
                 // Generate a synthetic FCU request
                 _logger.Debug($"Generating synthetic FCU request using parentHash: {parentHash}");
                 JsonRpcRequest fcuRequest = GenerateSyntheticFcuRequest(request, parentHash);
@@ -175,6 +185,16 @@ public class NewPayloadHandler(
             {
                 // Convert parentHash to Hash256 to look up in the payload tracker
                 var parentHashObj = new Hash256(Bytes.FromHexString(parentHash));
+
+                // Extract blobVersionedHashes from incoming request (params[1])
+                var incomingBlobHashes = BlobHashComputer.ExtractBlobVersionedHashes(request.Params);
+                if (incomingBlobHashes.Count > 0)
+                {
+                    // Store the blob versioned hashes for this block for later retrieval
+                    string[] hashArray = BlobHashComputer.ToStringArray(incomingBlobHashes);
+                    _payloadTracker.AssociateBlobVersionedHashes(parentHashObj, hashArray);
+                    _logger.Info($"Stored {hashArray.Length} blobVersionedHashes from incoming newPayload request for parent hash {parentHash}");
+                }
 
                 // Try to get payloadId associated with this parent hash
                 if (_payloadTracker.TryGetPayloadId(parentHashObj, out var payloadId) && !string.IsNullOrEmpty(payloadId))
