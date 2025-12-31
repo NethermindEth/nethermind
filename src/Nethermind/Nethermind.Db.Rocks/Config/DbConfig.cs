@@ -18,6 +18,7 @@ public class DbConfig : IDbConfig
     public uint StatsDumpPeriodSec { get; set; } = 600;
 
     public int? MaxOpenFiles { get; set; }
+    public bool? SkipCheckingSstFileSizesOnDbOpen { get; set; }
     public ulong? ReadAheadSize { get; set; } = (ulong)256.KiB();
 
     public string RocksDbOptions { get; set; } =
