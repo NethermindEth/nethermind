@@ -8,8 +8,10 @@ using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
 using Prometheus;
 
@@ -26,12 +28,12 @@ public class ResourcePool
         { IFlatDiffRepository.SnapshotBundleUsage.Compactor , new DefaultObjectPool<SnapshotContent>(new SnapshotContentPolicy(IFlatDiffRepository.SnapshotBundleUsage.Compactor)) },
     };
 
-    private Dictionary<IFlatDiffRepository.SnapshotBundleUsage, ObjectPool<CachedResource>> _cachedResourcePools = new()
+    private Dictionary<IFlatDiffRepository.SnapshotBundleUsage, ConcurrentQueue<CachedResource>> _cachedResourcePools = new()
     {
-        { IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing , new DefaultObjectPool<CachedResource>(new CachedResourcePolicy()) },
-        { IFlatDiffRepository.SnapshotBundleUsage.ReadOnlyProcessingEnv , new DefaultObjectPool<CachedResource>(new CachedResourcePolicy()) },
-        { IFlatDiffRepository.SnapshotBundleUsage.StateReader , new DefaultObjectPool<CachedResource>(new CachedResourcePolicy()) },
-        { IFlatDiffRepository.SnapshotBundleUsage.Compactor , new DefaultObjectPool<CachedResource>(new CachedResourcePolicy()) }
+        { IFlatDiffRepository.SnapshotBundleUsage.MainBlockProcessing , new ConcurrentQueue<CachedResource>() },
+        { IFlatDiffRepository.SnapshotBundleUsage.ReadOnlyProcessingEnv , new ConcurrentQueue<CachedResource>() },
+        { IFlatDiffRepository.SnapshotBundleUsage.StateReader , new ConcurrentQueue<CachedResource>() },
+        { IFlatDiffRepository.SnapshotBundleUsage.Compactor , new ConcurrentQueue<CachedResource>() }
     };
 
     private static Counter _createdSnapshotContent = DevMetric.Factory.CreateCounter("resourcepool_created_snapshot_content", "created snapshot content", "compacted");
@@ -58,24 +60,6 @@ public class ResourcePool
         }
     }
 
-    private class CachedResourcePolicy() : IPooledObjectPolicy<CachedResource>
-    {
-        public CachedResource Create()
-        {
-            return new CachedResource(
-                new ConcurrentDictionary<TreePath, TrieNode>(),
-                new ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode>(),
-                new ConcurrentDictionary<(AddressAsKey, UInt256?), bool>()
-            );
-        }
-
-        public bool Return(CachedResource obj)
-        {
-            obj.Clear();
-            return true;
-        }
-    }
-
     public SnapshotContent GetSnapshotContent(IFlatDiffRepository.SnapshotBundleUsage usage)
     {
         _activeSnapshotContent.WithLabels(usage.ToString()).Inc();
@@ -95,13 +79,35 @@ public class ResourcePool
 
     public CachedResource GetCachedResource(IFlatDiffRepository.SnapshotBundleUsage usage)
     {
-        return _cachedResourcePools[usage].Get();
+        var queue = _cachedResourcePools[usage];
+
+        if (queue.TryDequeue(out var cachedResource))
+        {
+            return cachedResource;
+        }
+
+        return new CachedResource(
+            new ConcurrentDictionary<TreePath, TrieNode>(),
+            new ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode>()
+        );
     }
 
     public void ReturnCachedResource(IFlatDiffRepository.SnapshotBundleUsage usage, CachedResource cachedResource)
     {
-        _cachedResourcePools[usage].Return(cachedResource);
+        var queue = _cachedResourcePools[usage];
+
+        if (queue.Count > MaxCachedResourceQueueSize)
+        {
+            cachedResource.Dispose();
+        }
+        else
+        {
+            cachedResource.Clear();
+            queue.Enqueue(cachedResource);
+        }
     }
+
+    private const int MaxCachedResourceQueueSize = 16;
 
     public Snapshot CreateSnapshot(StateId from, StateId to, IFlatDiffRepository.SnapshotBundleUsage usage)
     {

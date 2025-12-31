@@ -10,18 +10,25 @@ namespace Nethermind.State.Flat.Persistence.BloomFilter;
 
 /// <summary>
 /// Pure in-memory cache-local (64B / 512-bit) Bloom filter.
-/// Owns its memory (64-byte aligned) and supports atomic adds + AVX2-optimized queries.
+/// Owns its memory and supports atomic adds + AVX2-optimized queries.
+/// Optimized for Linux Transparent Huge Pages (THP).
 /// </summary>
 public sealed unsafe class BloomFilter : IDisposable
 {
     // ---- constants ----
-    private const int CacheLineBytes = 64;     // 512 bits
-    private const int CacheLineBits  = 512;
+    private const int CacheLineBytes = 64;      // 512 bits
     private const ulong ProbeDelta   = 0x9E3779B97F4A7C15UL;
 
     // RocksDB golden ratio constants
     private const uint Mul32 = 0x9E3779B9u;
     private const uint Mul8  = 0xAB25F4C1u;
+
+    // Linux THP constants
+    private const int MADV_HUGEPAGE = 14;
+    private const nuint HugePageSize = 2 * 1024 * 1024; // 2MB
+
+    [DllImport("libc", EntryPoint = "madvise", SetLastError = true)]
+    private static extern int Madvise(void* addr, nuint length, int advice);
 
     public long Capacity { get; }
     public double BitsPerKey { get; }
@@ -57,10 +64,32 @@ public sealed unsafe class BloomFilter : IDisposable
         NumBlocks = totalBytes / CacheLineBytes;
 
         _dataSize = checked((nuint)totalBytes);
-        _data = (byte*)NativeMemory.AlignedAlloc(_dataSize, CacheLineBytes);
+
+        // Determine alignment:
+        // On Linux, if the size is large enough (>2MB), we align to 2MB boundaries.
+        // This allows the OS to back the allocation with Transparent Huge Pages (THP),
+        // significantly reducing TLB misses for large Bloom Filters.
+        nuint alignment = CacheLineBytes;
+        bool useHugePages = false;
+
+        if (OperatingSystem.IsLinux() && _dataSize >= HugePageSize)
+        {
+            alignment = HugePageSize;
+            useHugePages = true;
+        }
+
+        _data = (byte*)NativeMemory.AlignedAlloc(_dataSize, alignment);
         if (_data == null) throw new OutOfMemoryException();
 
+        // Hint the kernel to use huge pages BEFORE we touch the memory (Clear).
+        // This ensures that when Clear() triggers page faults, the kernel allocates 2MB physical pages immediately.
+        if (useHugePages)
+        {
+            Madvise(_data, _dataSize, MADV_HUGEPAGE);
+        }
+
         // zero init
+        // Note: For huge allocations, this loop will trigger the actual physical memory allocation.
         new Span<byte>(_data, checked((int)Math.Min(totalBytes, int.MaxValue))).Clear();
         if (totalBytes > int.MaxValue)
         {
@@ -285,4 +314,3 @@ public sealed unsafe class BloomFilter : IDisposable
 
     private static long AlignUp(long value, int alignment) => (value + alignment - 1) & ~(alignment - 1);
 }
-

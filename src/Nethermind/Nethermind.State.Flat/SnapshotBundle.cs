@@ -607,7 +607,7 @@ public class SnapshotBundle : IDisposable
     public bool ShouldPrewarm(Address address, UInt256? slot)
     {
         long sw = Stopwatch.GetTimestamp();
-        bool res = _cachedResource.PrewarmedAddresses.TryAdd((address, slot), true);
+        bool res = _cachedResource.ShouldPrewarm(address, slot);
         if (res)
         {
             _shouldPrewarmHit.Observe(Stopwatch.GetTimestamp() - sw);
