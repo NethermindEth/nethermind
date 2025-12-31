@@ -64,7 +64,7 @@ public static class BasePersistence
 
     public interface ITrieReader
     {
-        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags);
+        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, ReadFlags flags);
     }
 
     public interface ITrieWriteBatch
@@ -195,9 +195,9 @@ public static class BasePersistence
             return _flatReader.TryGetSlot(address, in slot, ref outValue);
         }
 
-        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
+        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, ReadFlags flags)
         {
-            return _trieReader.TryLoadRlp(address, path, hash, flags);
+            return _trieReader.TryLoadRlp(address, path, flags);
         }
 
         public byte[]? GetAccountRaw(Hash256 addrHash)

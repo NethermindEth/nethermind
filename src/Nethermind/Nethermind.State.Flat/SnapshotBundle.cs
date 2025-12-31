@@ -535,7 +535,7 @@ public class SnapshotBundle : IDisposable
         if (_isDisposed) return null;
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = Stopwatch.GetTimestamp();
-        var res = _persistenceReader.TryLoadRlp(address, path, hash, flags);
+        var res = _persistenceReader.TryLoadRlp(address, path, flags);
         if (isTrieWarmer)
         {
             if (address is null)

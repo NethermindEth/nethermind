@@ -44,9 +44,9 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
 
     public StateId CurrentState => _innerReader.CurrentState;
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, ReadFlags flags)
     {
-        return _innerReader.TryLoadRlp(address, in path, hash, flags);
+        return _innerReader.TryLoadRlp(address, in path, flags);
     }
 
     public byte[]? GetAccountRaw(Hash256 addrHash)

@@ -249,9 +249,9 @@ public class NoLeafValueRocksdbPersistence : IPersistence
         private const int AccountSpanBufferSize = 256;
         private const int SlotSpanBufferSize = 40;
 
-        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
+        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, ReadFlags flags)
         {
-            ReadOnlySpan<byte> rocksDbSpan = DoTryLoadRlp(address, path, hash, flags);
+            ReadOnlySpan<byte> rocksDbSpan = DoTryLoadRlp(address, path, flags);
             try
             {
                 if (rocksDbSpan.IsNullOrEmpty()) return null;
@@ -318,7 +318,7 @@ public class NoLeafValueRocksdbPersistence : IPersistence
             }
         }
 
-        private ReadOnlySpan<byte> DoTryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
+        private ReadOnlySpan<byte> DoTryLoadRlp(Hash256? address, in TreePath path, ReadFlags flags)
         {
             if (address is null)
             {

@@ -99,7 +99,7 @@ public static class BaseTriePersistence
         IReadOnlyKeyValueStore storageNodes
     ) : BasePersistence.ITrieReader
     {
-        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
+        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, ReadFlags flags)
         {
             if (address is null)
             {

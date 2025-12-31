@@ -19,7 +19,7 @@ public interface IPersistence
         Account? GetAccount(Address address);
         bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
         StateId CurrentState { get; }
-        byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags);
+        byte[]? TryLoadRlp(Hash256? address, in TreePath path, ReadFlags flags);
 
         byte[]? GetAccountRaw(Hash256 addrHash);
         byte[]? GetStorageRaw(Hash256 addrHash, Hash256 slotHash);
