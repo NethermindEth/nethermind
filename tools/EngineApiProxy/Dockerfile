@@ -10,6 +10,10 @@ COPY Directory.Build.props Directory.Build.props
 COPY Directory.Packages.props Directory.Packages.props
 COPY global.json global.json
 
+# Copy tools-level build configuration
+COPY tools/Directory.Build.props tools/Directory.Build.props
+COPY tools/EngineApiProxy/Directory.Packages.props tools/EngineApiProxy/Directory.Packages.props
+
 COPY src/Nethermind src/Nethermind
 COPY tools/EngineApiProxy tools/EngineApiProxy
 
