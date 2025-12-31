@@ -110,11 +110,9 @@ public class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
         WarmUpSlot(index);
     }
 
-    private static bool SkipInlineSlotWarmep = Environment.GetEnvironmentVariable("SKIP_SLOT_WARMUP") == "1";
-
     private void WarmUpSlot(UInt256 index)
     {
-        if (SkipInlineSlotWarmep) return;
+        if (_scope._disableLocalSlotTriewarmerQueue) return;
         _trieCacheWarmer.PushSlotJob(this, _address, index, _scope.HintSequenceId);
     }
 

@@ -43,6 +43,8 @@ public class Snapshot(
     public IEnumerable<TreePath> StateNodeKeys => content.StateNodes.Keys;
     public int AccountsCount => content.Accounts.Count;
     public int StoragesCount => content.Storages.Count;
+    public int StateNodesCount => content.StateNodes.Count;
+    public int StorageNodesCount => content.StorageNodes.Count;
     public int TrieNodesCount => content.StorageNodes.Count;
     public long DebugLease => _leases.Value;
     public SnapshotContent Content => content;

@@ -48,6 +48,12 @@ public sealed class TrieWarmer : ITrieWarmer
         Buckets = Histogram.PowersOfTenDividedBuckets(2, 10, 10)
     });
 
+    private static Histogram _workTime = DevMetric.Factory.CreateHistogram("trie_warmer_work_time_elapsed", "time elapsed", new HistogramConfiguration()
+    {
+        LabelNames = ["is_main", "category"],
+        Buckets = Histogram.PowersOfTenDividedBuckets(2, 10, 10)
+    });
+
     private long _slots = 0;
     private Semaphore _executionSlots;
     private WarmerWorkers? _mainWarmer = null;
@@ -103,30 +109,35 @@ public sealed class TrieWarmer : ITrieWarmer
             int sequenceId,
             long startTime) = job;
 
+        long sw = Stopwatch.GetTimestamp();
         try
         {
             if (scopeOrStorageTree is FlatWorldStateScope scope)
             {
-                _serviceTimeHistogram.WithLabels(isMain.ToString(), "state").Observe(Stopwatch.GetTimestamp() - startTime);
+                _serviceTimeHistogram.WithLabels(isMain.ToString(), "state").Observe(sw - startTime);
                 if (scope.WarmUpStateTrie(address!, sequenceId))
                 {
+                    _workTime.WithLabels(isMain.ToString(), "state").Observe(Stopwatch.GetTimestamp() - sw);
                     _trieWarmEr.WithLabels("state").Inc();
                 }
                 else
                 {
+                    _workTime.WithLabels(isMain.ToString(), "state_skip").Observe(Stopwatch.GetTimestamp() - sw);
                     _trieWarmEr.WithLabels("state_skip").Inc();
                 }
             }
             else
             {
-                _serviceTimeHistogram.WithLabels(isMain.ToString(), "storage").Observe(Stopwatch.GetTimestamp() - startTime);
+                _serviceTimeHistogram.WithLabels(isMain.ToString(), "storage").Observe(sw - startTime);
                 FlatStorageTree storageTree = (FlatStorageTree)scopeOrStorageTree;
                 if (storageTree.WarUpStorageTrie(index, sequenceId))
                 {
+                    _workTime.WithLabels(isMain.ToString(), "storage").Observe(Stopwatch.GetTimestamp() - sw);
                     _trieWarmEr.WithLabels("storage").Inc();
                 }
                 else
                 {
+                    _workTime.WithLabels(isMain.ToString(), "storage_skip").Observe(Stopwatch.GetTimestamp() - sw);
                     _trieWarmEr.WithLabels("storage_skip").Inc();
                 }
             }

@@ -42,6 +42,8 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly bool _isReadOnly;
     private readonly FlatDiffRepository.Configuration _configuration;
     private readonly ConcurrencyQuota _concurrencyQuota;
+    private readonly bool _disableLocalAddressTriewarmerQueue;
+    internal readonly bool _disableLocalSlotTriewarmerQueue;
     private readonly ITrieWarmer _warmer;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -88,6 +90,8 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         _storageTreeCreateTime = _flatScopeTime.WithLabels("storage_create", _isPrewarmerLabel);
         _warmer.OnNewScope();
         _isReadOnly = isReadOnly;
+        _disableLocalAddressTriewarmerQueue = true;
+        _disableLocalSlotTriewarmerQueue = false;
     }
 
     private bool _isDisposed = false;
@@ -130,12 +134,12 @@ public class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     public void HintGet(Address address, Account? account)
     {
-        _warmer.PushAddressJob(this, address, _hintSequenceId);
+        if (!_disableLocalAddressTriewarmerQueue) _warmer.PushAddressJob(this, address, _hintSequenceId);
     }
 
     public void HintSet(Address address)
     {
-        _warmer.PushAddressJob(this, address, _hintSequenceId);
+        if (!_disableLocalAddressTriewarmerQueue) _warmer.PushAddressJob(this, address, _hintSequenceId);
     }
 
     public void WarmUpOutOfScope(Address address, UInt256? slot)

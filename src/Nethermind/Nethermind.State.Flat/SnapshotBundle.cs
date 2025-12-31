@@ -54,6 +54,12 @@ public class SnapshotBundle : IDisposable
     private Counter.Child _nodeGetMiss = null!;
     private Counter.Child _nodeGetSelfDestruct = null!;
 
+    private static Histogram _snapshotBundleResultSize = DevMetric.Factory.CreateHistogram("snapshot_bundle_result_size", "aha", new HistogramConfiguration()
+    {
+        LabelNames = new[] { "type" },
+        Buckets = Histogram.PowersOfTenDividedBuckets(1, 9, 10)
+    });
+
     private static Histogram _snapshotBundleTimes = DevMetric.Factory.CreateHistogram("snapshot_bundle_times", "aha", new HistogramConfiguration()
     {
         LabelNames = new[] { "type", "is_prewarmer" },
@@ -81,6 +87,8 @@ public class SnapshotBundle : IDisposable
     private Histogram.Child _setSlotTime = null!;
     private Histogram.Child _setSlotToZeroTime = null!;
     private Histogram.Child _setAccountTime = null!;
+    private Histogram.Child _shouldPrewarmHit = null!;
+    private Histogram.Child _shouldPrewarmMiss = null!;
 
     private Counter.Child _accountGet = null!;
     private Counter.Child _slotGet = null!;
@@ -162,6 +170,8 @@ public class SnapshotBundle : IDisposable
         _setSlotTime = _snapshotBundleTimes.WithLabels("set_slot", _isPrewarmer.ToString());
         _setSlotToZeroTime = _snapshotBundleTimes.WithLabels("set_slot_zero", _isPrewarmer.ToString());
         _setAccountTime = _snapshotBundleTimes.WithLabels("set_account", _isPrewarmer.ToString());
+        _shouldPrewarmHit = _snapshotBundleTimes.WithLabels("should_prewarm_hit", _isPrewarmer.ToString());
+        _shouldPrewarmMiss = _snapshotBundleTimes.WithLabels("should_prewarm_miss", _isPrewarmer.ToString());
 
         _setStateNodesTime = _snapshotBundleTimes.WithLabels("set_state_nodes", _isPrewarmer.ToString());
         _setStorageNodesTime = _snapshotBundleTimes.WithLabels("set_storage_nodes", _isPrewarmer.ToString());
@@ -596,7 +606,17 @@ public class SnapshotBundle : IDisposable
 
     public bool ShouldPrewarm(Address address, UInt256? slot)
     {
-        return _cachedResource.PrewarmedAddresses.TryAdd((address, slot), true);
+        long sw = Stopwatch.GetTimestamp();
+        bool res = _cachedResource.PrewarmedAddresses.TryAdd((address, slot), true);
+        if (res)
+        {
+            _shouldPrewarmHit.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+        else
+        {
+            _shouldPrewarmMiss.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+        return res;
     }
 
     public (Snapshot?, CachedResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
@@ -623,6 +643,14 @@ public class SnapshotBundle : IDisposable
             // Make and apply new snapshot content.
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
+
+            _snapshotBundleResultSize.WithLabels("cached_state_trie").Observe(cachedResource.TrieWarmerLoadedNodes.Count);
+            _snapshotBundleResultSize.WithLabels("cached_storage_trie").Observe(cachedResource.LoadedStorageNodes.Count);
+            _snapshotBundleResultSize.WithLabels("maybe_warmup_dict").Observe(cachedResource.PrewarmedAddresses.Count);
+            _snapshotBundleResultSize.WithLabels("account").Observe(snapshot.AccountsCount);
+            _snapshotBundleResultSize.WithLabels("storage").Observe(snapshot.StoragesCount);
+            _snapshotBundleResultSize.WithLabels("state_node").Observe(snapshot.StateNodesCount);
+            _snapshotBundleResultSize.WithLabels("storage_node").Observe(snapshot.StorageNodesCount);
 
             return (snapshot, cachedResource);
         }
