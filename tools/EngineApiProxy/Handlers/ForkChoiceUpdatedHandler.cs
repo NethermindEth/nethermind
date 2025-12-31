@@ -88,7 +88,6 @@ public class ForkChoiceUpdatedHandler : IDisposable
             try
             {
                 // Check if we should validate this block
-                // TODO: Fix ShouldValidateBlock for LH mode
                 bool shouldValidate = ShouldValidateBlock(request);
                 _logger.Info($"---------------(LH flow - FCU processing - Validation: {!shouldValidate})-----------------");
 
@@ -122,7 +121,6 @@ public class ForkChoiceUpdatedHandler : IDisposable
             }
 
             // Forward the request to EC without modification if not validating
-            // TODO: Add empty payloadID for merged mode?
             return await ProcessWithoutValidation(request);
         }
         catch (Exception ex)

@@ -2,62 +2,6 @@
 
 A proxy server that sits between Consensus Layer (CL) and Execution Layer (EL) clients to intercept and enhance Engine API messages.
 
-## Architecture
-
-The proxy is built with a modular, maintainable architecture:
-
-### Core Components
-
-1. **ProxyServer**: Main entry point and HTTP server for handling JSON-RPC requests
-2. **MessageQueue**: Manages request sequencing and pausing/resuming processing
-3. **PayloadTracker**: Tracks payload IDs and their associated block hashes
-4. **RequestOrchestrator**: Coordinates the validation flow between components
-
-### Request Handlers
-
-1. **ForkChoiceUpdatedHandler**: Processes engine_forkchoiceUpdated* requests
-2. **NewPayloadHandler**: Processes engine_newPayload* requests  
-3. **GetPayloadHandler**: Processes engine_getPayload* requests
-4. **DefaultRequestHandler**: Processes all other request types
-
-### Utilities
-
-1. **RequestForwarder**: Handles forwarding requests to the execution client
-2. **BlockDataFetcher**: Retrieves block data from the execution client
-3. **PayloadAttributesGenerator**: Generates payload attributes for validation
-
-## Validation Flows
-
-The proxy supports two validation modes:
-
-1. **FCU Mode**: Validates through the ForkChoiceUpdated pipeline
-2. **NewPayload Mode**: Validates through the NewPayload pipeline
-
-Both modes intercept requests, perform validation, and ensure proper execution client responses.
-
-## Configuration
-
-Key configuration options:
-
-- **ValidationMode**: FCU or NewPayload
-- **ValidateAllBlocks**: Whether to validate all blocks or only specific ones
-- **ExecutionClientEndpoint**: The URL of the execution client
-- **ListenPort**: The port on which the proxy listens for requests
-
-## Usage
-
-```bash
-dotnet run --project tools/EngineApiProxy -- --ec.url=http://localhost:8545 --listen.port=8551
-```
-
-## Design Principles
-
-1. **Single Responsibility**: Each class has a well-defined responsibility
-2. **Dependency Injection**: Services are injected where needed
-3. **Error Handling**: Comprehensive try/catch with proper logging
-4. **Testability**: Components are designed to be testable in isolation
-5. **Logging**: Detailed logging at appropriate levels throughout the code
-
 ## Overview
 
 The Engine API Proxy sits between the Consensus Client (CC) and Execution Client (EC), intercepting Engine API calls. It implements a specific workflow for `engine_forkchoiceUpdated`, `engine_newPayload`, and `engine_getPayload` messages to ensure optimized processing sequence.
@@ -80,6 +24,37 @@ dotnet build -c Release
 ```bash
 # Build the Docker image
 docker build -f tools/EngineApiProxy/Dockerfile -t nethermindeth/engine-api-proxy:latest .
+```
+
+## Validation Flows
+
+The proxy supports four validation modes:
+
+1. **FCU Mode**: Validates through the ForkChoiceUpdated pipeline
+2. **NewPayload Mode**: Validates through the NewPayload pipeline
+3. **Merged Mode**: Validates through the ForkChoiceUpdated pipeline and stores PayloadID without validation, and validation happens at next new_payload request
+4. **LH Mode**: Similar to Merged, but intercepts PayloadAttributes from existing FCU requests instead of generating them
+
+Note: for LH mode we should use Lighthouse consensus client with `--always-prepare-payload` flag enabled. At the moment LH mode is the most accurate validation mode.
+
+## Configuration
+
+Key configuration options:
+
+- **ValidationMode**: FCU, NewPayload, Merged, LH
+- **ValidateAllBlocks**: Whether to validate all blocks or only specific ones
+- **DefaultFeeRecipient**: The default fee recipient address to use when generating payload attributes
+- **TimestampOffsetSeconds**: The time offset in seconds for block timestamp calculation
+- **RequestTimeoutSeconds**: The timeout in seconds for HTTP requests to EL/CL clients
+- **ExecutionClientEndpoint**: The URL of the execution client
+- **ListenPort**: The port on which the proxy listens for requests
+- **GetPayloadMethod**: The method to use when getting payloads for validation
+- **NewPayloadMethod**: The method to use when sending new payloads for validation
+
+## Usage
+
+```bash
+dotnet run --project tools/EngineApiProxy -- --ec-endpoint http://localhost:8551 --listen-port 9551
 ```
 
 ## Running
@@ -127,33 +102,18 @@ dotnet run -c Release -- -e http://localhost:8551 -p 9551 --get-payload-method e
 
 ```bash
 # Basic usage
-docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://execution-client:8551 -p 9551
+docker run -p 9551:9551 --network=sedge-network nethermindeth/engine-api-proxy:latest -e http://execution-client:8551 -p 9551
 
 # With auto-validation of all blocks enabled
 docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://execution-client:8551 -p 9551 --validate-all-blocks
 
-# Using Fcu validation mode
-docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://execution-client:8551 -p 9551 --validate-all-blocks --validation-mode Fcu
-
-# Using a specific engine_getPayload version
-docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://execution-client:8551 -p 9551 --get-payload-method engine_getPayloadV3
-
-# Using specific payload method versions
+# Using specific payload method versions and a specific engine_getPayload version
 docker run -p 9551:9551 nethermindeth/engine-api-proxy:latest -e http://execution-client:8551 -p 9551 --get-payload-method engine_getPayloadV3 --new-payload-method engine_newPayloadV3
 ```
 
 ## Consensus Client Integration
 
 When a consensus client endpoint is configured using the `--cl-endpoint` or `-c` parameter, the proxy can directly fetch data from the consensus client. This enables additional features and provides access to beacon chain data.
-
-### Data Retrieval
-
-The BlockDataFetcher service uses the following Beacon API endpoints to communicate with the consensus client:
-
-- `/eth/v1/beacon/headers/head`: Used to get the current head beacon block header
-- `/eth/v1/beacon/blocks/{block_id}`: Used to fetch full block data for a specific block
-
-This is useful for internal processing within the proxy, such as tracking beacon chain state or building enhanced functionality.
 
 ## Configuration with Clients
 
@@ -164,25 +124,11 @@ Configure your Consensus Client to connect to the proxy instead of directly to t
 ```
 # Example Lighthouse configuration
 --execution-endpoint http://localhost:9551
-
-# Example Prysm configuration
---execution-endpoint=http://localhost:9551
 ```
 
 ### Execution Client Configuration
 
 No special configuration is needed for the Execution Client. The proxy will forward requests to the standard Engine API endpoint.
-
-## Development
-
-The project consists of several key components:
-
-- `ProxyServer.cs`: Main HTTP server and request router
-- `MessageQueue.cs`: Handles message queueing and processing
-- `PayloadTracker.cs`: Tracks relationships between payloads and head blocks
-- `BlockDataFetcher.cs`: Fetches block data from the execution client
-- `PayloadAttributesGenerator.cs`: Generates valid payload attributes
-- `RequestOrchestrator.cs`: Orchestrates the validation flow
 
 ## Auto-Validation Feature
 
@@ -194,7 +140,7 @@ Validation flow allows to generate validation events (FCU -> GetPayload -> NewPa
 
 It might be useful in the following cases:
 
-1. To make sure that your execution client can build a valid block that another consensus client already validated
+1. To make sure that execution client is able to build a valid block that another consensus client already validated
 2. Catch and log bad blocks as soon as possible
 3. Testing consensus implementations
 4. Debug issues with block validation logic (TBD)
@@ -208,9 +154,9 @@ When enabled with `--validate-all-blocks`, the proxy will:
 
 The tool did not modify existing blockchain and can be safely used in the production environment. But it is highly recommend to use `--validate-all-blocks` flag to enable the validation only on nodes that are not validator ones.
 
-There are 2 flows of validation:
+There are 4 flows of validation:
 
-1. Validation after `engine_newPayload` request (`--validation-mode=NewPayload`)
+1. Validation after `engine_newPayload` request (`--validation-mode=NewPayload` or `--validation-mode=Merged`)
 
 In this flow CL sends `engine_newPayload` request to the proxy, proxy generates payload attributes based on the payload and sends `engine_forkChoiceUpdated` request to the execution client with payload attributes. Then EL will return PayloadID and proxy will use it to send `engine_getPayload` request to the execution client. After that proxy will generate synthetic `engine_newPayload` request and send it to the execution client.
 
@@ -263,11 +209,13 @@ sequenceDiagram
 
 ```
 
-2.Validation of payloads based on `engine_forkchoiceUpdated` request (`--validation-mode=Fcu`)
+2.Validation of payloads based on `engine_forkchoiceUpdated` request (`--validation-mode=Fcu` or `--validation-mode=LH`)
 
 The difference between this flow is that we are not waiting for `engine_newPayload` request from CL, but only for `engine_forkchoiceUpdated` with null payload attributes. The validation payload should be very close to the original one (since we are using the same `forkchoiceState`), but with different `blockHash` and `blockNumber`.
 
 The flow may be safely used with both validator and non-validator nodes, since we are ignoring FCU requests when payload attributes are not null.
+
+With LH mode we are not generating PayloadAttributes, but intercepting them from the existing FCU request.
 
 #### FCU Flow
 
@@ -282,9 +230,9 @@ sequenceDiagram
     Note over P: Intercept & delay engine_forkchoiceUpdated
     
     %% Step 1.1: based on request (1) PR generates PayloadAttributes
-    alt Validation enabled && PayloadAttributes null
+    alt Validation enabled && PayloadAttributes null (FCU flow) || PayloadAttributes not null (LH flow)
     
-    P->>P: (1.1) generate PayloadAttributes (based on the current head block)
+    P->>P: (1.1) generate or intercept PayloadAttributes (based on the current head block or existing FCU request for LH flow)
     Note over P: Append PayloadAttributes to FCU
     
     %% Step 2: PR sends generated request (1.1) to EL
@@ -327,7 +275,7 @@ sequenceDiagram
 - in FCU flow `engine_forkchoiceUpdatedV3` will be generated using `latestValidHash` from the current `engine_newPayload` request (because EL already has this block), in NewPayload flow we will use `latestValidHash` from the previous block (since current block is not exist in EL DB yet)
 - thus, we may have different payloads in FCU and NewPayload flows, but FCU one will be more close to the original one
 - in FCU we start validation only if we have null payload attributes, in NewPayload we will validate every payload (since there is no way to know if the payload was already validated by another CL before `engine_newPayload` request was sent)
-
+- in LH mode we are not generating PayloadAttributes, but intercepting them from the existing FCU request.
 
 ## Testing with Kurtosis
 
@@ -357,13 +305,24 @@ participants:
     # el_proxy_enabled: true
   - el_type: nethermind
     cl_type: lighthouse
-    validator_count: 0
+    validator_count: 2
     use_separate_vc: true
     snooper_enabled: false
     el_proxy_enabled: true
+    blobber_enabled: true
+    blobber_extra_params:
+      - --proposal-action-frequency=1
+      - "--proposal-action={\"name\": \"blob_gossip_delay\", \"delay_milliseconds\": 3000}"
+
+# Global settings - default for participants without explicit el_proxy_enabled
+snooper_enabled: false
+el_proxy_enabled: false
+
+additional_services:
+  - spamoor
 ```
 
-Note: there should be at least 2 nodes with one validator. `el_proxy_enabled: true` should be set for one of them (not validator one) and `snooper_enabled` should be set to `false` for it.
+Note: there should be at least 2 nodes with one validator. `el_proxy_enabled: true` should be set for one of them (not validator one) and `snooper_enabled` should be set to `false` for it. LH mode is used by default (`--always-prepare-payload` flag enabled in Lighthouse consensus client). To test blob transactions, you need to set `blobber_enabled: true`, `blobber_extra_params` to the correct values and use `spamoor` service.
 
 5.Run kurtosis stack
 
@@ -371,63 +330,8 @@ Note: there should be at least 2 nodes with one validator. `el_proxy_enabled: tr
 kurtosis run . --args-file .github/tests/el-proxy.yaml --enclave testnet
 ```
 
-6.Using hte script find out IP addresses and ids of cl, el and proxy containers 
-
-```bash
-python3 tools/EngineApiProxy/Scripts/inspect_containers.py 
-```
-
-You will get output like this:
-
-```
-Container Name: vc-1-nethermind-lighthouse--f65236fe1ca847219d06743d1b27b254
-Container ID: 0ad50ac1ddd8
-IP Address: 172.16.0.14
-Beacon Nodes: http://172.16.0.12:4000
-----------------------------------------
-Container Name: cl-2-lighthouse-nethermind--c30ffb94d23b491cb74937b55098d3a2
-Container ID: aad9e7a6f2c2
-IP Address: 172.16.0.13
-Execution Endpoints: http://172.16.0.11:9551
-----------------------------------------
-Container Name: cl-1-lighthouse-nethermind--22f7e291c6cb42ecaee2b288ae51ce04
-Container ID: e86a6dd5b8e3
-IP Address: 172.16.0.12
-Execution Endpoints: http://172.16.0.9:8551
-----------------------------------------
-Container Name: el-proxy-2-nethermind--40c3d946b41f4b14ab4f34569d17a3cc
-Container ID: 00cf58fd8a86
-IP Address: 172.16.0.11
-Transformed Args:
-  EC_ENDPOINT: http://172.16.0.10:8551
-  PORT: 9551
-  VALIDATE_ALL_BLOCKS: None
-  LOG_LEVEL: Info
-----------------------------------------
-Container Name: el-2-nethermind-lighthouse--f7905805d6804fee83796f14c9c228a4
-Container ID: 1f4a966091ad
-IP Address: 172.16.0.10
-----------------------------------------
-Container Name: el-1-nethermind-lighthouse--c43ec163f1b04c569d9bf4e49995ce32
-Container ID: d43416e2d209
-IP Address: 172.16.0.9
-```
-
-7.Check logs of proxy container
-
-```bash
-docker logs el-proxy-2-nethermind--40c3d946b41f4b14ab4f34569d17a3cc > proxy.txt
-```
-
-8.Check logs of consensus client
-
-```bash
-docker logs cl-1-lighthouse-nethermind--22f7e291c6cb42ecaee2b288ae51ce04 > consensus.txt
-```
-
 ## Issues and Limitations
 
-- "Blob versioned hashes do not match" error may happen on EC. Currently proxy doesn't support blob transactions. All such blocks will be skipped during the validation.
 - Following message in EL logs:
   ```txt
   sedge-execution-client  | 10 Apr 16:05:25 | Non consecutive block commit. This is likely a reorg. Last block commit: 158346. New block commit: 158346.
@@ -440,8 +344,8 @@ docker logs cl-1-lighthouse-nethermind--22f7e291c6cb42ecaee2b288ae51ce04 > conse
 - Verify connectivity to both the Consensus Client and Execution Client
 - Ensure the execution client endpoint URL is correctly formatted and accessible
 - If using auto-validation, check that block data is being fetched successfully
-- Using `tools/EngineApiProxy/Scripts/inspect_containers.py` script you can find out IP addresses and configuration of the proxy container
 - "2025-04-11 14:56:38.2485|WARN|Validation flow failed, payloadId is empty. Seems like the node is not synced yet. " - this is expected and happens when CL is not synced yet. To check sync status do:
+
   ```
   curl -X GET "http://localhost:4000/eth/v1/node/syncing" -H "Accept: application/json"
   ```
