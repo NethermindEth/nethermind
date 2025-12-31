@@ -19,9 +19,9 @@ public sealed class SegmentedBloom : IDisposable
     private readonly long _segmentCapacity;
     private readonly int _bitsPerKey;
 
-    private readonly List<BloomSegment> _segments = new();
-    private volatile BloomSegment[] _snapshot = Array.Empty<BloomSegment>();
-    private volatile BloomSegment _current = null!;
+    private readonly List<PersistedBloomFilter> _segments = new();
+    private volatile PersistedBloomFilter[] _snapshot = Array.Empty<PersistedBloomFilter>();
+    private volatile PersistedBloomFilter _current = null!;
 
     private static Gauge _bloomKeySize = Metrics.CreateGauge("segmented_bloom_counts", "", "type");
     private readonly Gauge.Child _total = _bloomKeySize.WithLabels("total");
@@ -86,7 +86,7 @@ public sealed class SegmentedBloom : IDisposable
         {
             foreach (var file in Directory.GetFiles(_directory, "*.bloom"))
             {
-                var seg = BloomSegment.OpenExisting(file);
+                var seg = PersistedBloomFilter.OpenExisting(file);
                 _total.Inc(seg.Count);
 
                 _segments.Add(seg);
@@ -166,7 +166,7 @@ public sealed class SegmentedBloom : IDisposable
         const int maxAttemptCount = 3;
         for (int attempt = 0; attempt < maxAttemptCount; attempt++)
         {
-            BloomSegment seg;
+            PersistedBloomFilter seg;
             if (attempt == maxAttemptCount - 1)
             {
                 using var _r = _segmentsLock.EnterScope();
@@ -199,7 +199,7 @@ public sealed class SegmentedBloom : IDisposable
         throw new InvalidOperationException("Failed to add after repeated concurrent rotations.");
     }
 
-    private void RotateIfNeeded(BloomSegment observedCurrent)
+    private void RotateIfNeeded(PersistedBloomFilter observedCurrent)
     {
         using var _r = _segmentsLock.EnterScope();
 
@@ -220,10 +220,10 @@ public sealed class SegmentedBloom : IDisposable
         _snapshot = _segments.ToArray();
     }
 
-    private BloomSegment CreateNewSegment_NoLock()
+    private PersistedBloomFilter CreateNewSegment_NoLock()
     {
         string path = Path.Combine(_directory, $"segment_{DateTime.UtcNow.Ticks}.bloom");
-        var seg = BloomSegment.CreateNew(path, _segmentCapacity, _bitsPerKey);
+        var seg = PersistedBloomFilter.CreateNew(path, _segmentCapacity, _bitsPerKey);
         _segments.Insert(0, seg);
         return seg;
     }
