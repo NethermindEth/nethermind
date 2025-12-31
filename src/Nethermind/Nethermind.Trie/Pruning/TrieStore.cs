@@ -230,6 +230,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 node = _commitBuffer.SaveOrReplaceInDirtyNodesCache(address, ref path, node, blockNumber);
             else
                 node = SaveOrReplaceInDirtyNodesCache(address, ref path, node, blockNumber);
+            node.PrunePersistedRecursively(1);
 
             IncrementCommittedNodesCount();
         }
