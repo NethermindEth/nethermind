@@ -39,5 +39,5 @@ public interface ITaikoExtendedEthRpcModule : IRpcModule
         Description = "Returns the ID of the last block for the given batch.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<UInt256?>> taiko_lastBlockIDByBatchID(UInt256 batchId);
+    Task<ResultWrapper<BlockId?>> taiko_lastBlockIDByBatchID(UInt256 batchId);
 }

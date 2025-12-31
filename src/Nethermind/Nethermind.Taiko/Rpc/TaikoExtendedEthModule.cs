@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
@@ -12,13 +13,27 @@ using static Nethermind.Taiko.TaikoBlockValidator;
 
 namespace Nethermind.Taiko.Rpc;
 
+/// <summary>
+/// Block ID that serializes as raw decimal (e.g. 2) not hex string (e.g. "0x2") for Go compatibility.
+/// </summary>
+[JsonConverter(typeof(BlockIdConverter))]
+public readonly record struct BlockId(long Value);
+
+public class BlockIdConverter : JsonConverter<BlockId>
+{
+    public override BlockId Read(ref System.Text.Json.Utf8JsonReader reader, Type t, System.Text.Json.JsonSerializerOptions o)
+        => new(reader.TokenType == System.Text.Json.JsonTokenType.Number ? reader.GetInt64() : long.Parse(reader.GetString()!));
+    public override void Write(System.Text.Json.Utf8JsonWriter writer, BlockId value, System.Text.Json.JsonSerializerOptions o)
+        => writer.WriteNumberValue(value.Value);
+}
+
 public class TaikoExtendedEthModule(
     ISyncConfig syncConfig,
     IL1OriginStore l1OriginStore,
     IBlockFinder blockFinder) : ITaikoExtendedEthRpcModule
 {
     private static readonly ResultWrapper<L1Origin?> L1OriginNotFound = ResultWrapper<L1Origin?>.Fail("not found");
-    private static readonly ResultWrapper<UInt256?> BlockIdNotFound = ResultWrapper<UInt256?>.Fail("not found");
+    private static readonly ResultWrapper<BlockId?> BlockIdNotFound = ResultWrapper<BlockId?>.Fail("not found");
 
     public Task<ResultWrapper<string>> taiko_getSyncMode() => ResultWrapper<string>.Success(syncConfig switch
     {
@@ -63,7 +78,7 @@ public class TaikoExtendedEthModule(
         return origin is null ? L1OriginNotFound : ResultWrapper<L1Origin?>.Success(origin);
     }
 
-    public Task<ResultWrapper<UInt256?>> taiko_lastBlockIDByBatchID(UInt256 batchId)
+    public Task<ResultWrapper<BlockId?>> taiko_lastBlockIDByBatchID(UInt256 batchId)
     {
         UInt256? blockId = l1OriginStore.ReadBatchToLastBlockID(batchId);
         if (blockId is null)
@@ -75,7 +90,7 @@ public class TaikoExtendedEthModule(
             }
         }
 
-        return ResultWrapper<UInt256?>.Success(blockId);
+        return ResultWrapper<BlockId?>.Success(new BlockId((long)blockId.Value));
     }
 
     /// <summary>

@@ -113,4 +113,26 @@ public class TaikoExtendedEthModuleTests
         l1BlockHashString.Should().NotBeNull();
         l1BlockHashString!.Length.Should().Be(expectedLengthInChars);
     }
+
+    [Test]
+    public void TestLastBlockIDByBatchID_ReturnsRawDecimal()
+    {
+        // This test verifies that taiko_lastBlockIDByBatchID:
+        // 1. Returns the correct block ID value
+        // 2. Serializes as a raw decimal number (e.g., 42) not hex string ("0x2a")
+        //    which is required for Go big.Int compatibility in taiko-client
+        IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
+        TaikoExtendedEthModule rpc = new TaikoExtendedEthModule(new SyncConfig(), originStore, Substitute.For<IBlockFinder>());
+
+        originStore.ReadBatchToLastBlockID((UInt256)1).Returns((UInt256)42);
+
+        var result = rpc.taiko_lastBlockIDByBatchID(1).Result;
+        result.Data.Should().NotBeNull();
+        result.Data!.Value.Value.Should().Be(42);
+
+        // Serialize and verify it's a raw decimal number, not hex
+        var serializer = new Serialization.Json.EthereumJsonSerializer();
+        var json = serializer.Serialize(result.Data);
+        json.Should().Be("42");
+    }
 }
