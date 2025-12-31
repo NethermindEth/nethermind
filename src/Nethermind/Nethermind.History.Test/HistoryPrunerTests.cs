@@ -39,7 +39,7 @@ public class HistoryPrunerTests
     {
         AncientBodiesBarrier = BeaconGenesisBlockNumber,
         AncientReceiptsBarrier = BeaconGenesisBlockNumber,
-        PivotNumber = "100",
+        PivotNumber = 100,
         SnapSync = true
     };
 
