@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
@@ -9,6 +10,7 @@ using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -20,6 +22,11 @@ using Nethermind.Init.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Contracts;
+using Nethermind.Abi;
+using Nethermind.Evm.State;
+using Nethermind.State;
+using Nethermind.Logging;
 
 namespace Nethermind.Xdc;
 
@@ -53,6 +60,8 @@ public class XdcModule : Module
             // penalty handler
 
             // reward handler
+            .AddSingleton<IRewardCalculator, XdcRewardCalculator>()
+            .AddSingleton<IMasternodeVotingContract, ISpecProvider, IAbiEncoder, IWorldStateManager, IReadOnlyTxProcessingEnvFactory, ILogManager>(CreateMasternodeVotingContract)
 
             // forensics handler
 
@@ -90,6 +99,20 @@ public class XdcModule : Module
     private ISignTransactionManager CreateSignTransactionManager([KeyFilter(SignTxRandomizeDbName)] IDb db, ISigner signer, ITxPool txPool)
     {
         return new SignTransactionManager(db, signer, txPool);
+    }
+
+    private IMasternodeVotingContract CreateMasternodeVotingContract(
+        ISpecProvider specProvider,
+        IAbiEncoder abiEncoder,
+        IWorldStateManager worldStateManager,
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
+        ILogManager logManager)
+    {
+        var xdcSpec = specProvider.GenesisSpec as IXdcReleaseSpec;
+        IWorldStateScopeProvider scopeProvider = worldStateManager.CreateResettableWorldState();
+        IWorldState worldState = new WorldState(scopeProvider, logManager);
+        IReadOnlyTxProcessorSource readOnlyTxProcessorSource = readOnlyTxProcessingEnvFactory.Create();
+        return new MasternodeVotingContract(worldState, abiEncoder, xdcSpec.MasternodeVotingContract, readOnlyTxProcessorSource);
     }
 
 }

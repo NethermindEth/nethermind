@@ -33,7 +33,7 @@ internal class SignTransactionManager(IDb stateDb, ISigner signer, ITxPool txPoo
     public async Task CreateTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         UInt256 nonce = txPool.GetLatestPendingNonce(signer.Address);
-        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash, nonce, spec.BlockSignersAddress, signer.Address);
+        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash, nonce, spec.BlockSignerContract, signer.Address);
 
         await signer.Sign(transaction);
 

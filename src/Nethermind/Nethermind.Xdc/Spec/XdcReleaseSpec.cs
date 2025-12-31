@@ -12,6 +12,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
 {
     public int EpochLength { get; set; }
     public int Gap { get; set; }
+    public long Reward { get; set; }
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
     public int MaxMasternodes { get; set; }              // v2 max masternodes
@@ -38,12 +39,14 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public long TIP2019Block { get; set; }
     public Address[] BlackListedAddresses { get; set; }
     public long EpochBlockSecret { get; set; }
-    public Address BlockSignersAddress { get; set; }
+    public Address BlockSignerContract { get; set; }
     public Address RandomizeSMCBinary { get; set; }
     public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
     public Address XDCXLendingAddressBinary { get; set; }
     public Address XDCXAddressBinary { get; set; }
     public Address TradingStateAddressBinary { get; set; }
+    public Address FoundationWallet { get; set; }
+    public Address MasternodeVotingContract { get; set; }
 
     public void ApplyV2Config(ulong round)
     {
@@ -92,6 +95,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
 {
     public int EpochLength { get; }
     public int Gap { get; }
+    public long Reward { get; }
     public int SwitchEpoch { get; set; }
     public long SwitchBlock { get; set; }
     public int MaxMasternodes { get; set; }          // v2 max masternodes
@@ -116,7 +120,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     long MergeSignRange { get; set; }
     long TIP2019Block { get; set; }
 
-    public Address BlockSignersAddress { get; set; }
+    public Address BlockSignerContract { get; set; }
     public Address RandomizeSMCBinary { get; set; }
     public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
     public Address XDCXLendingAddressBinary { get; set; }
@@ -125,6 +129,9 @@ public interface IXdcReleaseSpec : IReleaseSpec
 
     Address[] BlackListedAddresses { get; set; }
     long EpochBlockSecret { get; set; }
+
+    Address FoundationWallet { get; set; }
+    Address MasternodeVotingContract { get; set; }
 
     public void ApplyV2Config(ulong round);
 }

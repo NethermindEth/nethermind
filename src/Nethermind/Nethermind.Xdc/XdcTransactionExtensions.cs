@@ -12,14 +12,14 @@ namespace Nethermind.Xdc;
 internal static partial class XdcExtensions
 {
     public static bool IsSpecialTransaction(this Transaction currentTx, IXdcReleaseSpec spec)
-        => currentTx.To is not null && ((currentTx.To == spec.BlockSignersAddress) || (currentTx.To == spec.RandomizeSMCBinary));
+        => currentTx.To is not null && ((currentTx.To == spec.BlockSignerContract) || (currentTx.To == spec.RandomizeSMCBinary));
     public static bool RequiresSpecialHandling(this Transaction currentTx, IXdcReleaseSpec spec)
             => IsSignTransaction(currentTx, spec)
             || IsLendingTransaction(currentTx, spec)
             || IsTradingTransaction(currentTx, spec)
             || IsLendingFinalizedTradeTransaction(currentTx, spec)
             || IsTradingStateTransaction(currentTx, spec);
-    public static bool IsSignTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.BlockSignersAddress;
+    public static bool IsSignTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.BlockSignerContract;
     public static bool IsTradingTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXAddressBinary;
     public static bool IsLendingTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXLendingAddressBinary;
     public static bool IsLendingFinalizedTradeTransaction(this Transaction currentTx, IXdcReleaseSpec spec) => currentTx.To is not null && currentTx.To == spec.XDCXLendingFinalizedTradeAddressBinary;
