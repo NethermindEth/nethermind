@@ -633,12 +633,12 @@ internal class SpecialTransactionsTests
         var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
 
 
-        XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
-        XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
+        Block head = (Block)blockChain.BlockTree.Head!;
+        XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec((XdcBlockHeader)head.Header);
 
-        blockChain.MainWorldState.BeginScope(head);
+        blockChain.MainWorldState.BeginScope(head.Header);
 
-        moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
+        moqVm.SetBlockExecutionContext(new BlockExecutionContext(head.Header, spec));
 
         UInt256 initialNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
         Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)head.Number - 1, head.ParentHash!, initialNonce, spec.BlockSignersAddress, blockChain.Signer.Address);
@@ -649,9 +649,13 @@ internal class SpecialTransactionsTests
 
         var initialCountOfReceipts = receiptsTracer.TxReceipts.Length;
 
+        receiptsTracer.StartNewBlockTrace(head);
         receiptsTracer.StartNewTxTrace(tx);
-        TransactionResult? result = transactionProcessor.Execute(tx, NullTxTracer.Instance);
+
+        TransactionResult? result = transactionProcessor.Execute(tx, receiptsTracer);
+
         receiptsTracer.EndTxTrace();
+        receiptsTracer.EndBlockTrace();
 
         UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
 
@@ -675,6 +679,11 @@ internal class SpecialTransactionsTests
         blockChain.ChangeReleaseSpec((spec) =>
         {
             spec.IsEip1559Enabled = false;
+
+            spec.TradingStateAddressBinary = new Address("0x00000000000000000000000000000000b000091");
+            spec.XDCXAddressBinary = new Address("0x00000000000000000000000000000000b000092");
+            spec.XDCXLendingAddressBinary = new Address("0x00000000000000000000000000000000b000093");
+            spec.XDCXLendingFinalizedTradeAddressBinary = new Address("0x00000000000000000000000000000000b000094");
         });
 
         var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
@@ -682,12 +691,12 @@ internal class SpecialTransactionsTests
         var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, NSubstitute.Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance);
 
 
-        XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
-        XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
+        Block head = (Block)blockChain.BlockTree.Head!;
+        XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec((XdcBlockHeader)head.Header);
 
-        blockChain.MainWorldState.BeginScope(head);
+        blockChain.MainWorldState.BeginScope(head.Header);
 
-        moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
+        moqVm.SetBlockExecutionContext(new BlockExecutionContext(head.Header, spec));
 
         Address[] addresses = [
             spec.TradingStateAddressBinary,
@@ -698,11 +707,13 @@ internal class SpecialTransactionsTests
 
         var receiptsTracer = new BlockReceiptsTracer();
 
+        receiptsTracer.StartNewBlockTrace(head);
         foreach (var address in addresses)
         {
             UInt256 initialNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
 
             Transaction? tx = Build.A.Transaction
+                .WithType(TxType.Legacy)
                 .WithSenderAddress(blockChain.Signer.Address)
                 .WithTo(address).TestObject;
 
@@ -730,6 +741,7 @@ internal class SpecialTransactionsTests
 
             Assert.That(finalReceipt?.Logs?[0].Address, Is.EqualTo(address));
         }
+        receiptsTracer.EndBlockTrace();
 
         Assert.That(receiptsTracer.TxReceipts.Length, Is.EqualTo(addresses.Length));
     }
