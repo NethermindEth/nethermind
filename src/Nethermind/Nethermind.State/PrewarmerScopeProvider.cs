@@ -141,6 +141,7 @@ public class PrewarmerScopeProvider(
         {
             long sw = Stopwatch.GetTimestamp();
             baseScope.HintSet(address);
+            outerScopeProvider?.WarmUpOutOfScope(address, null);
             _addressSetHint.Observe(Stopwatch.GetTimestamp() - sw);
         }
 

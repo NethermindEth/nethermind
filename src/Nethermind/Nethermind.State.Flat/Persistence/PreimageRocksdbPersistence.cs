@@ -324,10 +324,5 @@ public class PreimageRocksdbPersistence : IPersistence
         {
             return flatReader.TryGetStorage(address, slotHash, ref outValue);
         }
-
-        public byte[]? GetStorageRaw(Hash256? addrHash, Hash256 slotHash)
-        {
-            throw new InvalidOperationException("Raw operation not available in preimage mode");
-        }
     }
 }

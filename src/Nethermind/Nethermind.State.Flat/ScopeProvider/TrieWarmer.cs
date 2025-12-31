@@ -3,12 +3,14 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -32,15 +34,23 @@ public sealed class TrieWarmer : ITrieWarmer
         object scopeOrStorageTree,
         Address? path,
         UInt256 index,
-        int sequenceId);
+        int sequenceId,
+        long startTime);
 
     Task? _warmerJob = null;
     private static Counter _trieWarmEr = DevMetric.Factory.CreateCounter("triestore_trie_warmer", "hit rate", "type");
     private static Counter.Child _bufferFull = _trieWarmEr.WithLabels("buffer_full");
     private static Counter.Child _bufferFullNoMainWorker = _trieWarmEr.WithLabels("buffer_full_no_main_worker");
-    private ConcurrentStack<WarmerWorkers> _awaitingWorkers = new ConcurrentStack<WarmerWorkers>();
+
+    private static Histogram _serviceTimeHistogram = DevMetric.Factory.CreateHistogram("trie_warmer_service_time_elapsed", "time elapsed", new HistogramConfiguration()
+    {
+        LabelNames = ["is_main", "category"],
+        Buckets = Histogram.PowersOfTenDividedBuckets(2, 10, 10)
+    });
+
+    private long _slots = 0;
+    private Semaphore _executionSlots;
     private WarmerWorkers? _mainWarmer = null;
-    private int _activeWorkers = 0;
 
     private bool TryDequeue(out Job job)
     {
@@ -53,33 +63,35 @@ public sealed class TrieWarmer : ITrieWarmer
                                            _slotJobBuffer.EstimatedJobCount +
                                            _jobBufferMulti.EstimatedJobCount);
 
-    private void IncrementActiveWorkers()
-    {
-        Interlocked.Increment(ref _activeWorkers);
-    }
-
-    private void DecrementActiveWorkers()
-    {
-        Interlocked.Decrement(ref _activeWorkers);
-    }
-
+    private readonly int _workerCount;
     public TrieWarmer(IProcessExitSource processExitSource, ILogManager logManager)
     {
         int processorCount = Environment.ProcessorCount;
-        _warmerJob = Task.Run<Task>(async () =>
+        _workerCount = processorCount;
+        _executionSlots = new Semaphore(0, _workerCount);
+        _slots = 0;
+        _warmerJob = Task.Run(() =>
         {
-            using ArrayPoolList<Task> tasks = new ArrayPoolList<Task>(processorCount);
-            for (int i = 0; i < processorCount; i++)
+            using ArrayPoolList<Thread> tasks = new ArrayPoolList<Thread>(_workerCount);
+            for (int i = 0; i < _workerCount; i++)
             {
                 bool isMain = i == 0;
                 var worker = new WarmerWorkers(this, isMain);
-                tasks.Add(Task.Factory.StartNew(() =>
+
+                Thread t = new Thread(() =>
                 {
                     worker.Run(processExitSource.Token);
-                }, TaskCreationOptions.LongRunning));
+                });
+                t.IsBackground = true;
+                t.Priority = ThreadPriority.Lowest;
+                t.Start();
+                tasks.Add(t);
             }
 
-            await Task.WhenAll(tasks);;
+            foreach (Thread thread in tasks)
+            {
+                thread.Join();
+            }
         });
     }
 
@@ -88,12 +100,14 @@ public sealed class TrieWarmer : ITrieWarmer
         (object scopeOrStorageTree,
             Address? address,
             UInt256 index,
-            int sequenceId) = job;
+            int sequenceId,
+            long startTime) = job;
 
         try
         {
             if (scopeOrStorageTree is FlatWorldStateScope scope)
             {
+                _serviceTimeHistogram.WithLabels(isMain.ToString(), "state").Observe(Stopwatch.GetTimestamp() - startTime);
                 if (scope.WarmUpStateTrie(address!, sequenceId))
                 {
                     _trieWarmEr.WithLabels("state").Inc();
@@ -105,6 +119,7 @@ public sealed class TrieWarmer : ITrieWarmer
             }
             else
             {
+                _serviceTimeHistogram.WithLabels(isMain.ToString(), "storage").Observe(Stopwatch.GetTimestamp() - startTime);
                 FlatStorageTree storageTree = (FlatStorageTree)scopeOrStorageTree;
                 if (storageTree.WarUpStorageTrie(index, sequenceId))
                 {
@@ -137,7 +152,6 @@ public sealed class TrieWarmer : ITrieWarmer
     {
         private ManualResetEventSlim _resetEvent = new ManualResetEventSlim();
         private SpinWait _spinWait = new SpinWait();
-        private bool _wakeUpViaQueue;
 
         public void Run(CancellationToken cancellationToken)
         {
@@ -150,23 +164,21 @@ public sealed class TrieWarmer : ITrieWarmer
                     if (mainWarmer.TryDequeue(out var job))
                     {
                         _spinWait.Reset();
-                        if (isMain && mainWarmer.EstimatedJobCount > mainWarmer._wakingUpWorker) mainWarmer.MaybeWakeOpOtherWorker();
+                        if (isMain) mainWarmer.MaybeWakeOpOtherWorker();
 
                         HandleJob(job, isMain);
                     }
                     else
                     {
-                        if (_spinWait.NextSpinWillYield)
+                        if (!isMain)
                         {
-                            if (!isMain)
-                            {
-                                _trieWarmEr.WithLabels("wait_not_main").Inc();
-                                _resetEvent.Reset();
-                                mainWarmer.QueueWorker(this);
-
-                                _resetEvent.Wait(1, cancellationToken);
-                            }
-                            else
+                            _trieWarmEr.WithLabels("wait_not_main").Inc();
+                            mainWarmer.WaitForExecutionSlot();
+                            Interlocked.Decrement(ref mainWarmer._slots);
+                        }
+                        else
+                        {
+                            if (_spinWait.NextSpinWillYield)
                             {
                                 _trieWarmEr.WithLabels("wait_main").Inc();
                                 _resetEvent.Reset();
@@ -174,20 +186,12 @@ public sealed class TrieWarmer : ITrieWarmer
 
                                 _resetEvent.Wait(1, cancellationToken);
                             }
-                            _spinWait.Reset();
-                        }
-                        else
-                        {
-                            _spinWait.SpinOnce();
+                            else
+                            {
+                                _spinWait.SpinOnce();
+                            }
                         }
                     }
-
-                    if (_wakeUpViaQueue)
-                    {
-                        Interlocked.Decrement(ref mainWarmer._wakingUpWorker);
-                        _wakeUpViaQueue = false;
-                    }
-
                 }
             }
             catch (OperationCanceledException)
@@ -199,17 +203,15 @@ public sealed class TrieWarmer : ITrieWarmer
             }
         }
 
-        public void WakeUpViaQueue()
-        {
-            Interlocked.Increment(ref mainWarmer._wakingUpWorker);
-            _wakeUpViaQueue = true;
-            _resetEvent.Set();
-        }
-
         public void WakeUp()
         {
             _resetEvent.Set();
         }
+    }
+
+    private void WaitForExecutionSlot()
+    {
+        _executionSlots.WaitOne();
     }
 
     private void MainWarmerIdle(WarmerWorkers warmerWorkers)
@@ -217,18 +219,19 @@ public sealed class TrieWarmer : ITrieWarmer
         _mainWarmer =  warmerWorkers;
     }
 
-    private int _wakingUpWorker = 0;
     private void MaybeWakeOpOtherWorker()
     {
-        if (EstimatedJobCount > 0 && _awaitingWorkers.TryPop(out WarmerWorkers? otherWorker))
+        if (EstimatedJobCount > 0 && _slots < Math.Min(EstimatedJobCount, _workerCount))
         {
-            otherWorker.WakeUpViaQueue();
+            try
+            {
+                Interlocked.Increment(ref _slots);
+                _executionSlots.Release();
+            }
+            catch (SemaphoreFullException)
+            {
+            }
         }
-    }
-
-    private void QueueWorker(WarmerWorkers worker)
-    {
-        _awaitingWorkers.Push(worker);
     }
 
     private void MaybeWakeupFast()
@@ -244,7 +247,7 @@ public sealed class TrieWarmer : ITrieWarmer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushAddressJob(FlatWorldStateScope scope, Address? path, int sequenceId)
     {
-        if (!_addressJob.TryEnqueue(new Job(scope, path, default, sequenceId)))
+        if (!_addressJob.TryEnqueue(new Job(scope, path, default, sequenceId, Stopwatch.GetTimestamp())))
         {
             _bufferFull.Inc();
         }
@@ -256,7 +259,7 @@ public sealed class TrieWarmer : ITrieWarmer
     public void PushSlotJob(FlatStorageTree storageTree, Address path, in UInt256? index,
         int sequenceId)
     {
-        if (!_slotJobBuffer.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId)))
+        if (!_slotJobBuffer.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId, Stopwatch.GetTimestamp())))
         {
             _bufferFull.Inc();
         }
@@ -269,20 +272,21 @@ public sealed class TrieWarmer : ITrieWarmer
     {
         if (storageTree is null)
         {
-            if (!_jobBufferMulti.TryEnqueue(new Job(scope, path, index.GetValueOrDefault(), sequenceId)))
+            if (!_addressJob.TryEnqueue(new Job(scope, path, index.GetValueOrDefault(), sequenceId, Stopwatch.GetTimestamp())))
             {
                 _bufferFull.Inc();
             }
         }
         else
         {
-            if (!_jobBufferMulti.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId)))
+            if (!_jobBufferMulti.TryEnqueue(new Job(storageTree, path, index.GetValueOrDefault(), sequenceId, Stopwatch.GetTimestamp())))
             {
                 _bufferFull.Inc();
             }
         }
 
         MaybeWakeupFast();
+        MaybeWakeOpOtherWorker(); // Multi does not block main block processing, so we can do slow things here.
     }
 
     public void OnNewScope()
