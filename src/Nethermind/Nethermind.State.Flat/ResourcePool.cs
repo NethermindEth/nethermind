@@ -86,10 +86,7 @@ public class ResourcePool
             return cachedResource;
         }
 
-        return new CachedResource(
-            new ConcurrentDictionary<TreePath, TrieNode>(),
-            new ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode>()
-        );
+        return new CachedResource();
     }
 
     public void ReturnCachedResource(IFlatDiffRepository.SnapshotBundleUsage usage, CachedResource cachedResource)

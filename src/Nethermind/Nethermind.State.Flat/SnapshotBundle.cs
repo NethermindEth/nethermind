@@ -356,7 +356,7 @@ public class SnapshotBundle : IDisposable
             }
         }
 
-        if (_cachedResource.TrieWarmerLoadedNodes.TryGetValue(path, out node) && node.Keccak == hash)
+        if (_cachedResource.TryGetStateNode(path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
 
@@ -369,14 +369,11 @@ public class SnapshotBundle : IDisposable
         {
             // The map to holds the unknown nodes is different for trie warmer and the main tries. This prevent
             // random invalid block.
-            node = _cachedResource.TrieWarmerLoadedNodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, hash));
+            node = _cachedResource.GetOrAddStateNode(path, new TrieNode(NodeType.Unknown, hash));
         }
         else
         {
-            _cachedResource.TrieWarmerLoadedNodes.AddOrUpdate(path,
-                static (path, trieNode) => trieNode,
-                static (treePath, trieNode, newNode) => newNode,
-                node);
+            _cachedResource.UpdateStateNode(path, node);
         }
 
         if (isTrieWarmer)
@@ -474,7 +471,7 @@ public class SnapshotBundle : IDisposable
             }
         }
 
-        if (_cachedResource.LoadedStorageNodes.TryGetValue((address, path), out node) && node.Keccak == hash)
+        if (_cachedResource.TryGetStorageNode(address, path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             if (!isTrieWarmer) _findStorageNodeLoadedNodes.Observe(Stopwatch.GetTimestamp() - sw);
@@ -484,14 +481,11 @@ public class SnapshotBundle : IDisposable
 
         if (!DoTryFindStorageNodeExternal(address, path, hash, selfDestructStateIdx, isTrieWarmer, sw, out node) || node is null)
         {
-            node = _cachedResource.LoadedStorageNodes.GetOrAdd((address, path), new TrieNode(NodeType.Unknown, hash));
+            node = _cachedResource.GetOrAddStorageNode(address, path, new TrieNode(NodeType.Unknown, hash));
         }
         else
         {
-            _cachedResource.LoadedStorageNodes.AddOrUpdate((address, path),
-                static (key, param) => param,
-                static (key, originalValue, param) => param,
-                node);
+            _cachedResource.UpdateStorageNode(address, path, node);
         }
 
         return node;
@@ -644,8 +638,7 @@ public class SnapshotBundle : IDisposable
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
 
-            _snapshotBundleResultSize.WithLabels("cached_state_trie").Observe(cachedResource.TrieWarmerLoadedNodes.Count);
-            _snapshotBundleResultSize.WithLabels("cached_storage_trie").Observe(cachedResource.LoadedStorageNodes.Count);
+            _snapshotBundleResultSize.WithLabels("cached_nodes").Observe(cachedResource.CachedNodes);
             _snapshotBundleResultSize.WithLabels("maybe_warmup_dict").Observe(cachedResource.PrewarmedAddresses.Count);
             _snapshotBundleResultSize.WithLabels("account").Observe(snapshot.AccountsCount);
             _snapshotBundleResultSize.WithLabels("storage").Observe(snapshot.StoragesCount);

@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
-using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Hashing;
 using System.Numerics;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence.BloomFilter;
@@ -14,17 +12,15 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
 
-public record CachedResource(
-    ConcurrentDictionary<TreePath, TrieNode> TrieWarmerLoadedNodes,
-    ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> LoadedStorageNodes
-): IDisposable
+public record CachedResource(): IDisposable
 {
     public BloomFilter PrewarmedAddresses = new BloomFilter(1_024, 12);
+    public TrieNodeCache.ChildCache Nodes = new TrieNodeCache.ChildCache(1000);
+    public int CachedNodes => Nodes.Count;
 
     public void Clear()
     {
-        TrieWarmerLoadedNodes.NoResizeClear();
-        LoadedStorageNodes.NoResizeClear();
+        Nodes.Reset();
 
         if (PrewarmedAddresses.Count > PrewarmedAddresses.Capacity)
         {
@@ -61,5 +57,35 @@ public record CachedResource(
     public void Dispose()
     {
         PrewarmedAddresses.Dispose();
+    }
+
+    public bool TryGetStateNode(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
+        return Nodes.TryGet(null, path, hash, out node);
+    }
+
+    public TrieNode GetOrAddStateNode(in TreePath path, TrieNode trieNode)
+    {
+        return Nodes.GetOrAdd(null, path, trieNode);
+    }
+
+    public void UpdateStateNode(in TreePath path, TrieNode node)
+    {
+        Nodes.Set(null, path, node);
+    }
+
+    public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
+        return Nodes.TryGet(address, path, hash, out node);
+    }
+
+    public TrieNode GetOrAddStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode)
+    {
+        return Nodes.GetOrAdd(address, path, trieNode);
+    }
+
+    public void UpdateStorageNode(Hash256AsKey address, in TreePath path, TrieNode node)
+    {
+        Nodes.Set(address, path, node);
     }
 }
