@@ -400,6 +400,7 @@ public class DbConfig : IDbConfig
         get { return FlatDbCommonFlatOptions + field; }
         set { field = value ?? ""; }
     } =
+        "compression=kNoCompression;" + // The account db is small. So disabling commpression does not lose uch.
         "target_file_size_multiplier=3;" +
         "target_file_size_base=32000000;" +
         "max_bytes_for_level_multiplier=15;" + // Reduce level count
