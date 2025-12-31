@@ -69,6 +69,14 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
         return true;
     }
 
+    protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+    {
+        //We ignore gas limit validation for genesis block
+        if (parent.Number == 0)
+            return true; 
+        return base.ValidateGasLimitRange(header, parent, spec, ref error);
+    }
+
     protected override bool ValidateSeal(BlockHeader header, BlockHeader parent, bool isUncle, ref string? error)
     {
         if (!_sealValidator.ValidateSeal(header, false))
