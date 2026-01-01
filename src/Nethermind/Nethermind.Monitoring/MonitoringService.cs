@@ -25,8 +25,10 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
     private readonly bool _pushEnabled;
     private readonly string _pushGatewayUrl;
     private readonly int _intervalSeconds;
-    private Task _monitoringTimerTask = Task.CompletedTask;
     private readonly CancellationTokenSource _timerCancellationSource;
+
+    private Task _monitoringTimerTask = Task.CompletedTask;
+    private int _isDisposed = 0;
 
     public MonitoringService(
         IMetricsController metricsController,
@@ -134,6 +136,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.CompareExchange(ref _isDisposed, 1, 0) != 0) return;
         await _timerCancellationSource.CancelAsync();
         await _monitoringTimerTask;
         _timerCancellationSource.Dispose();

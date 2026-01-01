@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
-using System.Threading;
 using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
@@ -18,7 +16,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Era1;
-using Nethermind.History;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
