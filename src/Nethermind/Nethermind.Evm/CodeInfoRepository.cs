@@ -15,10 +15,11 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
-/// <summary>
-/// Same implementation as CodeInfoRepository but without cache so that it always goes through
+/// <remarks>
+/// Implementation without any cache so that it always goes through
 /// the world state, which captures touched bytecodes.
-/// </summary>
+/// Relevant for witness generation (and therefore stateless reprocessing).
+/// </remarks>
 public class CodeInfoRepository : ICodeInfoRepository
 {
     private readonly FrozenDictionary<AddressAsKey, PrecompileInfo> _localPrecompiles;

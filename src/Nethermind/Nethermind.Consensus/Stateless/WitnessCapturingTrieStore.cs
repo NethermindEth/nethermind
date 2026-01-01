@@ -11,12 +11,10 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
-/// <summary>
-/// WitnessCapturingTrieStore works by reading and writing to the passed in keyValueStore first as if it is an archive node.
-/// If a node is missing, then it will try to find from the base store.
-/// On reset the base db provider is expected to clear any diff which causes this overlay trie store to no longer
-/// see overlayed keys.
-/// </summary>
+/// <remarks>
+/// Works like the OverlayTriestore but add logic for capturing trie nodes accessed during
+/// execution as well as during state root recomputation.
+/// </remarks>
 public class WitnessCapturingTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnlyTrieStore baseStore) : ITrieStore
 {
     private readonly INodeStorage _nodeStorage = new NodeStorage(keyValueStore);
