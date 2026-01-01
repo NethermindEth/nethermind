@@ -40,7 +40,7 @@ public class WitnessGeneratingBlockProcessingEnv(
     {
         BlockhashProvider blockhashProvider = new(new BlockhashCache(witnessGeneratingHeaderFinder, logManager), state, logManager);
         VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
-        ICodeInfoRepository codeInfoRepository = new NoCacheCodeInfoRepository(state, new EthereumPrecompileProvider());
+        ICodeInfoRepository codeInfoRepository = new CodeInfoRepository(state, new EthereumPrecompileProvider());
         return new TransactionProcessor(new BlobBaseFeeCalculator(), specProvider, state, vm, codeInfoRepository, logManager);
     }
 

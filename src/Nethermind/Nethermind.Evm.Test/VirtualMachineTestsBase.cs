@@ -38,7 +38,7 @@ public abstract class VirtualMachineTestsBase
     private IDisposable _worldStateCloser;
 
     protected VirtualMachine Machine { get; private set; }
-    protected CodeInfoRepository CodeInfoRepository { get; private set; }
+    protected CacheCodeInfoRepository CodeInfoRepository { get; private set; }
     protected IWorldState TestState { get; private set; }
     protected static Address Contract { get; } = new("0xd75a3a95360e44a3874e691fb48d77855f127069");
     protected static Address Sender { get; } = TestItem.AddressA;
