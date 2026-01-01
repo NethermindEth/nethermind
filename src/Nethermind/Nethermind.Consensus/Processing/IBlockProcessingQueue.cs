@@ -26,6 +26,7 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         event EventHandler ProcessingQueueEmpty;
 
+        event EventHandler<BlockAddedEventArgs> BlockAdded;
         event EventHandler<BlockRemovedEventArgs> BlockRemoved;
 
         /// <summary>

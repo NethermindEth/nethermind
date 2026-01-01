@@ -25,7 +25,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
     private readonly bool _pushEnabled;
     private readonly string _pushGatewayUrl;
     private readonly int _intervalSeconds;
-    private Task _monitoringTimerTask;
+    private Task _monitoringTimerTask = Task.CompletedTask;
     private readonly CancellationTokenSource _timerCancellationSource;
 
     public MonitoringService(

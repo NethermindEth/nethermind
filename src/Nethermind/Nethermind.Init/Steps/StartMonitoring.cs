@@ -10,7 +10,7 @@ using Nethermind.Monitoring.Config;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeBlockchain))]
+[RunnerStepDependencies()]
 public class StartMonitoring(
     IMonitoringService monitoringService,
     ILogManager logManager,

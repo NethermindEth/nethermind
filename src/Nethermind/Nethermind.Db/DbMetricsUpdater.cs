@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.ResolveAnything;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
@@ -15,13 +16,14 @@ namespace Nethermind.Db;
 public class DbMetricsUpdater
 {
     private readonly ConcurrentDictionary<string, IDbMeta> _createdDbs = new ConcurrentDictionary<string, IDbMeta>();
-    private bool _isUpdatingDbMetrics = false;
+    private readonly int _intervalSec;
     private long _lastDbMetricsUpdate = 0;
 
     private ILogger _logger;
 
     public DbMetricsUpdater(IMonitoringService monitoringService, IMetricsConfig metricsConfig, ILogManager logManager)
     {
+        _intervalSec = metricsConfig.DbMetricIntervalSeconds;
         _logger = logManager.GetClassLogger<DbMetricsUpdater>();
 
         if (metricsConfig.EnableDbSizeMetrics)
@@ -40,47 +42,36 @@ public class DbMetricsUpdater
         return _createdDbs;
     }
 
+    public bool Paused { get; set; } = false;
+
     private void UpdateDbMetrics()
     {
-        if (!Interlocked.Exchange(ref _isUpdatingDbMetrics, true))
+        try
         {
-            try
-            {
-                if (Environment.TickCount64 - _lastDbMetricsUpdate < 60_000)
-                {
-                    // Update max every minute
-                    return;
-                }
-                /*
-                 Great
-                if (chainHeadInfoProvider.IsProcessingBlock)
-                {
-                    // Do not update db metrics while processing a block
-                    return;
-                }
-                */
+            if (Paused) return;
 
-                foreach (KeyValuePair<string, IDbMeta> kv in GetAllDbMeta())
-                {
-                    // Note: At the moment, the metric for a columns db is combined across column.
-                    IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric(includeSharedCache: kv.Key == DbNames.State); // Only include shared cache if state db
-                    Db.Metrics.DbSize[kv.Key] = dbMetric.Size;
-                    Db.Metrics.DbBlockCacheSize[kv.Key] = dbMetric.CacheSize;
-                    Db.Metrics.DbMemtableSize[kv.Key] = dbMetric.MemtableSize;
-                    Db.Metrics.DbIndexFilterSize[kv.Key] = dbMetric.IndexSize;
-                    Db.Metrics.DbReads[kv.Key] = dbMetric.TotalReads;
-                    Db.Metrics.DbWrites[kv.Key] = dbMetric.TotalWrites;
-                }
-                _lastDbMetricsUpdate = Environment.TickCount64;
-            }
-            catch (Exception e)
+            if (Environment.TickCount64 - _lastDbMetricsUpdate < _intervalSec * 1000)
             {
-                if (_logger.IsError) _logger.Error("Error during updating db metrics", e);
+                // Update max every minute
+                return;
             }
-            finally
+
+            foreach (KeyValuePair<string, IDbMeta> kv in GetAllDbMeta())
             {
-                Volatile.Write(ref _isUpdatingDbMetrics, false);
+                // Note: At the moment, the metric for a columns db is combined across column.
+                IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric(includeSharedCache: kv.Key == DbNames.State); // Only include shared cache if state db
+                Db.Metrics.DbSize[kv.Key] = dbMetric.Size;
+                Db.Metrics.DbBlockCacheSize[kv.Key] = dbMetric.CacheSize;
+                Db.Metrics.DbMemtableSize[kv.Key] = dbMetric.MemtableSize;
+                Db.Metrics.DbIndexFilterSize[kv.Key] = dbMetric.IndexSize;
+                Db.Metrics.DbReads[kv.Key] = dbMetric.TotalReads;
+                Db.Metrics.DbWrites[kv.Key] = dbMetric.TotalWrites;
             }
+            _lastDbMetricsUpdate = Environment.TickCount64;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Error during updating db metrics", e);
         }
     }
 

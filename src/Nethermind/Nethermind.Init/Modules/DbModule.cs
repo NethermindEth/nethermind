@@ -6,6 +6,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
@@ -13,6 +14,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Init.Modules;
@@ -81,7 +83,21 @@ public class DbModule(
             // making them not lazy.
             builder
                 .AddSingleton<DbMetricsUpdater>()
-                .AddDecorator<IDbFactory, DbMetricsUpdater.DbFactoryInterceptor>();
+                .AddDecorator<IDbFactory, DbMetricsUpdater.DbFactoryInterceptor>()
+
+                // Intercept block processing by checking the queue and pausing the metrics when that happen.
+                // Dont use constructor injection because this would prevent the metric from being updated before
+                // the block processing chain is constructed, eg: verifytrie or import jobs.
+                .Intercept<IBlockProcessingQueue>((processingQueue, ctx) =>
+                {
+                    if (!ctx.Resolve<IMetricsConfig>().PauseDbMetricDuringBlockProcessing) return;
+
+                    // Do not update db metrics while processing a block
+                    DbMetricsUpdater updater = ctx.Resolve<DbMetricsUpdater>();
+                    processingQueue.BlockAdded += (sender, args) => updater.Paused = !processingQueue.IsEmpty;
+                    processingQueue.BlockRemoved += (sender, args) => updater.Paused = !processingQueue.IsEmpty;
+                })
+                ;
         }
 
         switch (initConfig.DiagnosticMode)

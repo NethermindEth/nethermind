@@ -258,6 +258,10 @@ namespace Nethermind.Init.Steps
                 {
                     sb.AppendLine($" (depends on {string.Join(", ", deps)})");
                 }
+                else
+                {
+                    sb.AppendLine();
+                }
             }
 
             return sb.ToString();

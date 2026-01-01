@@ -8,6 +8,7 @@ using Autofac;
 using DotNetty.Buffers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.Logging;
@@ -26,9 +27,10 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
         {
             builder
                 .AddSingleton<IMonitoringService, MonitoringService>()
-                .AddSingleton<IMetricsController, IMetricsConfig, ISyncConfig, IPruningConfig>(
+                .AddSingleton<IMetricsController, IMetricsConfig, ISyncConfig, IPruningConfig, ISpecProvider>(
                     PrepareProductInfoMetrics)
 
+                .AddSingleton<AllocatorMetricsUpdater>()
                 .Intercept<IMonitoringService>(ConfigureDefaultMetrics)
 
                 .Intercept<IEthSyncingInfo>((syncInfo, ctx) =>
@@ -47,8 +49,11 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
         }
     }
 
-    private IMetricsController PrepareProductInfoMetrics(IMetricsConfig metricsConfig, ISyncConfig syncConfig, IPruningConfig pruningConfig)
+    private IMetricsController PrepareProductInfoMetrics(IMetricsConfig metricsConfig, ISyncConfig syncConfig, IPruningConfig pruningConfig, ISpecProvider specProvider)
     {
+        // Need to be set here, or we cant start before blocktree, which is the one that set this normally.
+        ProductInfo.Network = $"{(specProvider.ChainId == specProvider.NetworkId ? BlockchainIds.GetBlockchainName(specProvider.NetworkId) : specProvider.ChainId)}";
+
         ProductInfo.Instance = metricsConfig.NodeName;
 
         if (syncConfig.SnapSync)
