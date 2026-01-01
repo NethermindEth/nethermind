@@ -30,7 +30,8 @@ namespace Nethermind.Init.Modules;
 public class DbModule(
     IInitConfig initConfig,
     IReceiptConfig receiptConfig,
-    ISyncConfig syncConfig
+    ISyncConfig syncConfig,
+    bool dontConfigureMetric = false
 ) : Module
 {
     protected override void Load(ContainerBuilder builder)
@@ -57,10 +58,6 @@ public class DbModule(
                 return sortedKeyValue;
             })
 
-            // Monitoring use these to track active db. We intercept db factory to keep them lazy. Does not
-            // track db that is not created by db factory though...
-            .AddSingleton<DbTracker>()
-            .AddDecorator<IDbFactory, DbTracker.DbFactoryInterceptor>()
 
             .AddDatabase(DbNames.State)
             .AddDatabase(DbNames.Code)
@@ -76,6 +73,16 @@ public class DbModule(
             .AddColumnDatabase<ReceiptsColumns>(DbNames.Receipts)
             .AddColumnDatabase<BlobTxsColumns>(DbNames.BlobTransactions)
             ;
+
+        if (!dontConfigureMetric)
+        {
+            // Intercept created db to publish metric.
+            // Dont use constructor injection to get all db because that would resolve all db
+            // making them not lazy.
+            builder
+                .AddSingleton<DbMetricUpdater>()
+                .AddDecorator<IDbFactory, DbMetricUpdater.DbFactoryInterceptor>();
+        }
 
         switch (initConfig.DiagnosticMode)
         {

@@ -90,7 +90,7 @@ namespace Nethermind.Db.Test
                 }, new SyncConfig()
                 {
                     DownloadReceiptsInFastSync = useReceipts
-                }))
+                }, dontConfigureMetric: true))
                 .AddModule(new WorldStateModule(initConfig)) // For the full pruning db
                 .AddSingleton<IPruningConfig>(new PruningConfig())
                 .AddSingleton<IDbConfig>(new DbConfig())

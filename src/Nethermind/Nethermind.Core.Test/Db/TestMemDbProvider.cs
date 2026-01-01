@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
+using Nethermind.Monitoring;
 
 namespace Nethermind.Core.Test.Db
 {
@@ -23,7 +24,12 @@ namespace Nethermind.Core.Test.Db
         public static IDbProvider Init()
         {
             return new ContainerBuilder()
-                .AddModule(new DbModule(new InitConfig() { DiagnosticMode = DiagnosticMode.MemDb }, new ReceiptConfig(), new SyncConfig()))
+                .AddModule(new DbModule(
+                    new InitConfig() { DiagnosticMode = DiagnosticMode.MemDb },
+                    new ReceiptConfig(),
+                    new SyncConfig(),
+                    dontConfigureMetric: true
+                ))
                 .AddSingleton<IDbProvider, ContainerOwningDbProvider>()
                 .Build()
                 .Resolve<IDbProvider>();

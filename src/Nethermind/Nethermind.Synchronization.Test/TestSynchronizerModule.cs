@@ -25,7 +25,7 @@ public class TestSynchronizerModule(ISyncConfig syncConfig) : Module
 
         builder
             .AddModule(new SynchronizerModule(syncConfig))
-            .AddModule(new DbModule(new InitConfig(), new ReceiptConfig(), syncConfig))
+            .AddModule(new DbModule(new InitConfig(), new ReceiptConfig(), syncConfig, dontConfigureMetric: true))
             .AddSingleton<IDbFactory>((_) => new MemDbFactory())
             .Map<INodeStorage, IDbProvider>(dbProvider => new NodeStorage(dbProvider.StateDb))
             .AddSingleton<IBlockTree>(Substitute.For<IBlockTree>())

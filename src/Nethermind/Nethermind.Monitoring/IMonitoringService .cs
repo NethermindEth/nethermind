@@ -3,13 +3,13 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Core.ServiceStopper;
 
 namespace Nethermind.Monitoring
 {
-    public interface IMonitoringService
+    public interface IMonitoringService: IStoppableService
     {
         Task StartAsync();
-        Task StopAsync();
         void AddMetricsUpdateAction(Action callback);
     }
 }
