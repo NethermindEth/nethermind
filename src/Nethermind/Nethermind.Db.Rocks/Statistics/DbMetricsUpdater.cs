@@ -12,7 +12,7 @@ using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks.Statistics;
 
-public partial class RocksDbMetricsUpdater<T>(string dbName, Options<T> dbOptions, RocksDb db, ColumnFamilyHandle? cf, IDbConfig dbConfig, ILogger logger)
+public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, RocksDb db, ColumnFamilyHandle? cf, IDbConfig dbConfig, ILogger logger)
     : IDisposable
     where T : Options<T>
 {

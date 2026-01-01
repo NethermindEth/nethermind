@@ -174,7 +174,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
             if (dbConfig.EnableMetricsUpdater)
             {
-                RocksDbMetricsUpdater<DbOptions> metricUpdater = new RocksDbMetricsUpdater<DbOptions>(Name, DbOptions, db, null, dbConfig, _logger);
+                DbMetricsUpdater<DbOptions> metricUpdater = new DbMetricsUpdater<DbOptions>(Name, DbOptions, db, null, dbConfig, _logger);
                 metricUpdater.StartUpdating();
                 _metricsUpdaters.Add(metricUpdater);
 
@@ -185,7 +185,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                         if (columnFamily.Name == "default") continue;
                         if (db.TryGetColumnFamily(columnFamily.Name, out ColumnFamilyHandle handle))
                         {
-                            RocksDbMetricsUpdater<ColumnFamilyOptions> columnMetricUpdater = new RocksDbMetricsUpdater<ColumnFamilyOptions>(
+                            DbMetricsUpdater<ColumnFamilyOptions> columnMetricUpdater = new DbMetricsUpdater<ColumnFamilyOptions>(
                                 Name + "_" + columnFamily.Name, columnFamily.Options, db, handle, dbConfig, _logger);
                             columnMetricUpdater.StartUpdating();
                             _metricsUpdaters.Add(columnMetricUpdater);

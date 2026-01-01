@@ -82,8 +82,8 @@ public class DbModule(
             // Dont use constructor injection to get all db because that would resolve all db
             // making them not lazy.
             builder
-                .AddSingleton<DbMetricsUpdater>()
-                .AddDecorator<IDbFactory, DbMetricsUpdater.DbFactoryInterceptor>()
+                .AddSingleton<DbTracker>()
+                .AddDecorator<IDbFactory, DbTracker.DbFactoryInterceptor>()
 
                 // Intercept block processing by checking the queue and pausing the metrics when that happen.
                 // Dont use constructor injection because this would prevent the metric from being updated before
@@ -93,7 +93,7 @@ public class DbModule(
                     if (!ctx.Resolve<IMetricsConfig>().PauseDbMetricDuringBlockProcessing) return;
 
                     // Do not update db metrics while processing a block
-                    DbMetricsUpdater updater = ctx.Resolve<DbMetricsUpdater>();
+                    DbTracker updater = ctx.Resolve<DbTracker>();
                     processingQueue.BlockAdded += (sender, args) => updater.Paused = !processingQueue.IsEmpty;
                     processingQueue.BlockRemoved += (sender, args) => updater.Paused = !processingQueue.IsEmpty;
                 })
