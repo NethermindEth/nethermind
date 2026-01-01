@@ -15,7 +15,7 @@ namespace Nethermind.State.Flat.Persistence;
 /// This persistence used LMDB for the flat portion and rocksdb for the trie portion in hope that LMDB faster readonly
 /// will make things faster. No WAL is implemented to sync the two db, so it is crash prone.
 /// </summary>
-public class LMDBPersistence : IPersistence, IPersistenceWithConcurrentTrie
+public class SmallKeyLMDBPersistence : IPersistence, IPersistenceWithConcurrentTrie
 {
     public bool SupportConcurrentWrites => false;
 
@@ -24,16 +24,15 @@ public class LMDBPersistence : IPersistence, IPersistenceWithConcurrentTrie
 
     private const int StateKeyPrefixLength = 20;
 
-    private const int StorageHashPrefixLength = 20; // Store prefix of the 32 byte of the storage. Reduces index size.
-    private const int StorageSlotKeySize = 32;
-    private const int StorageKeyLength = StorageHashPrefixLength + StorageSlotKeySize;
-    private const int FullPathLength = 32;
-    private const int PathLengthLength = 1;
-    private const int StorageNodesKeyLength = StorageHashPrefixLength + FullPathLength + PathLengthLength;
+    private const int LMDBStoragePrefixLength = 4; // The address have a lookup on a separate db
+    private const int StorageSlotKeySize = 20; // Just use part of the hash
+    private const int StorageKeyLength = LMDBStoragePrefixLength + StorageSlotKeySize;
+
+    public const string AddressLookupTableName = "address_lookup";
 
     private readonly LightningEnvironment _lmdbEnv;
 
-    public LMDBPersistence(IColumnsDb<FlatDbColumns> db, LightningEnvironment lmdbEnv)
+    public SmallKeyLMDBPersistence(IColumnsDb<FlatDbColumns> db, LightningEnvironment lmdbEnv)
     {
         _db = db;
         _lmdbEnv = lmdbEnv;
@@ -63,22 +62,14 @@ public class LMDBPersistence : IPersistence, IPersistenceWithConcurrentTrie
 
     private static ReadOnlySpan<byte> EncodeAccountKey(Span<byte> buffer, in ValueHash256 addr)
     {
-        addr.BytesAsSpan[..StateKeyPrefixLength].CopyTo(buffer);
-        return buffer[..StateKeyPrefixLength];
+        return addr.BytesAsSpan[..StateKeyPrefixLength];
     }
 
-    internal static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, in ValueHash256 addr, in ValueHash256 slot)
+    internal static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, MDBValue addr, in ValueHash256 slot)
     {
-        addr.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
-        slot.BytesAsSpan.CopyTo(buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]);
+        addr.AsSpan().CopyTo(buffer);
+        slot.BytesAsSpan[..StorageSlotKeySize].CopyTo(buffer[LMDBStoragePrefixLength..]);
 
-        return buffer[..StorageKeyLength];
-    }
-
-    internal static ReadOnlySpan<byte> EncodeStorageKeyHashed(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash)
-    {
-        addrHash.Bytes[..StorageHashPrefixLength].CopyTo(buffer);
-        slotHash.Bytes.CopyTo(buffer[StorageHashPrefixLength..(StorageHashPrefixLength + StorageSlotKeySize)]);
         return buffer[..StorageKeyLength];
     }
 
@@ -92,11 +83,13 @@ public class LMDBPersistence : IPersistence, IPersistenceWithConcurrentTrie
             snapshot.GetColumn(FlatDbColumns.StorageNodes)
         );
 
+        var addressLookup = lmdbTx.OpenDatabase(AddressLookupTableName);
         var storage = lmdbTx.OpenDatabase(FlatDbColumns.Storage.ToString());
 
         var flatReader = new BasePersistence.ToHashedFlatReader<LMDBFlatReader>(
             new LMDBFlatReader(
                 snapshot.GetColumn(FlatDbColumns.Account),
+                addressLookup,
                 storage,
                 lmdbTx
             )
@@ -138,13 +131,15 @@ public class LMDBPersistence : IPersistence, IPersistenceWithConcurrentTrie
         }
 
         var batch = _db.StartWriteBatch();
-        var lmdbTx = _lmdbEnv.BeginTransaction((flags & WriteFlags.DisableWAL) != 0 ? TransactionBeginFlags.NoSync : TransactionBeginFlags.None);
+        var lmdbTx = _lmdbEnv.BeginTransaction((flags & WriteFlags.DisableWAL) != 0 ? TransactionBeginFlags.NoSync : TransactionBeginFlags.NoSync);
         var state = batch.GetColumnBatch(FlatDbColumns.Account);
+        var addressLookup = lmdbTx.OpenDatabase(AddressLookupTableName);
         var storage = lmdbTx.OpenDatabase(FlatDbColumns.Storage.ToString());
 
         var flatWriter = new BasePersistence.ToHashedWriteBatch<LMDBFlatWriter>(
             new LMDBFlatWriter(
                 state,
+                addressLookup,
                 storage,
                 lmdbTx
             )
@@ -169,10 +164,7 @@ public class LMDBPersistence : IPersistence, IPersistenceWithConcurrentTrie
                 lmdbTx.Commit();
                 lmdbTx.Dispose();
 
-                if (!flags.HasFlag(WriteFlags.DisableWAL))
-                {
-                    MarkWriteBatchComplete();
-                }
+                MarkWriteBatchComplete();
             })
         );
 
@@ -180,10 +172,15 @@ public class LMDBPersistence : IPersistence, IPersistenceWithConcurrentTrie
 
     private readonly struct LMDBFlatWriter(
         IWriteBatch state,
+        LightningDatabase addressLookup,
         LightningDatabase storage,
         LightningTransaction _lmdbTx
     ) : BasePersistence.IHashedFlatWriteBatch
     {
+        // 20 byte
+        private static byte[] nextAddressKey =
+            Bytes.FromHexString("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+
         public void RemoveAccount(in ValueHash256 address)
         {
             state.Remove(EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], address));
@@ -194,9 +191,59 @@ public class LMDBPersistence : IPersistence, IPersistenceWithConcurrentTrie
             state.PutSpan(EncodeAccountKey(stackalloc byte[StateKeyPrefixLength], address), value);
         }
 
+        public uint GetNextAddress()
+        {
+            (MDBResultCode resultCode, MDBValue key, MDBValue value) = _lmdbTx.Get(addressLookup, nextAddressKey);
+            uint existing = 0;
+            if (resultCode == MDBResultCode.Success)
+            {
+                existing = BinaryPrimitives.ReadUInt32LittleEndian(value.AsSpan());
+            }
+
+            Span<byte> buffer = stackalloc byte[4];
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer, existing + 1);
+            resultCode = _lmdbTx.Put(addressLookup, nextAddressKey, buffer);
+            if (resultCode != MDBResultCode.Success)
+            {
+                throw new InvalidOperationException($"Unable to increment address {resultCode}");
+            }
+
+            return existing + 1;
+        }
+
+        public MDBValue GetOrAllocateAddress(in ValueHash256 address)
+        {
+            (MDBResultCode resultCode, MDBValue key, MDBValue value) = _lmdbTx.Get(addressLookup, address.Bytes[..20]);
+            if (resultCode == MDBResultCode.Success)
+            {
+                return value;
+            }
+
+            if (resultCode == MDBResultCode.NotFound)
+            {
+                uint nextAddr = GetNextAddress();
+                Span<byte> buffer = stackalloc byte[4];
+                BinaryPrimitives.WriteUInt32LittleEndian(buffer, nextAddr);
+                resultCode = _lmdbTx.Put(addressLookup, address.Bytes[..20], buffer);
+                if (resultCode != MDBResultCode.Success)
+                {
+                    throw new InvalidOperationException($"Unable to set address");
+                }
+            }
+
+            (resultCode, key, value) = _lmdbTx.Get(addressLookup, address.Bytes[..20]);
+            if (resultCode != MDBResultCode.Success)
+            {
+                throw new Exception("Unable to set address");
+            }
+
+            return value;
+        }
+
         public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, in SlotValue? value)
         {
-            ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], address, slotHash);
+            MDBValue addr = GetOrAllocateAddress(address);
+            ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addr, slotHash);
             if (value is null)
             {
                 _lmdbTx.Delete(storage, theKey);
@@ -209,14 +256,16 @@ public class LMDBPersistence : IPersistence, IPersistenceWithConcurrentTrie
 
         public int SelfDestruct(in ValueHash256 accountPath)
         {
-            Span<byte> firstKey = stackalloc byte[StorageHashPrefixLength]; // Because slot 0 is a thing, its just the address prefix.
-            Span<byte> lastKey = stackalloc byte[StorageNodesKeyLength];
+            Span<byte> firstKey = stackalloc byte[LMDBStoragePrefixLength]; // Because slot 0 is a thing, its just the address prefix.
+            Span<byte> lastKey = stackalloc byte[StorageKeyLength];
 
             // for storage the prefix might change depending on the encoding
             firstKey.Fill(0x00);
             lastKey.Fill(0xff);
-            EncodeAccountKey(firstKey, accountPath);
-            EncodeAccountKey(lastKey, accountPath);
+
+            MDBValue addr = GetOrAllocateAddress(accountPath);
+            addr.AsSpan().CopyTo(firstKey);
+            addr.AsSpan().CopyTo(lastKey);
 
             using var storageCursor = _lmdbTx.CreateCursor(storage);
             storageCursor.SetRange(firstKey);
@@ -243,6 +292,7 @@ public class LMDBPersistence : IPersistence, IPersistenceWithConcurrentTrie
 
     private readonly struct LMDBFlatReader(
         IReadOnlyKeyValueStore state,
+        LightningDatabase addressLookup,
         LightningDatabase storage,
         LightningTransaction lmdbTx
     ) : BasePersistence.IHashedFlatReader
@@ -255,9 +305,20 @@ public class LMDBPersistence : IPersistence, IPersistenceWithConcurrentTrie
 
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue)
         {
+            (MDBResultCode resultCode, MDBValue key, MDBValue value) = lmdbTx.Get(addressLookup, address.Bytes[..20]);
+            if (resultCode == MDBResultCode.NotFound)
+            {
+                return false;
+            }
+
+            if (resultCode != MDBResultCode.Success)
+            {
+                throw new Exception($"Unable to know address key. {resultCode}");
+            }
+
             Span<byte> keySpan = stackalloc byte[StorageKeyLength];
-            ReadOnlySpan<byte> storageKey = EncodeStorageKeyHashed(keySpan, address, slot);
-            (MDBResultCode resultCode, MDBValue key, MDBValue valueMdb) = lmdbTx.Get(storage, storageKey);
+            ReadOnlySpan<byte> storageKey = EncodeStorageKey(keySpan, value, slot);
+            (resultCode, key, MDBValue valueMdb) = lmdbTx.Get(storage, storageKey);
             if (resultCode == MDBResultCode.NotFound) return false;
             if (resultCode != MDBResultCode.Success) throw new Exception($"Read storage raw failed with result code {resultCode}");
             valueMdb.AsSpan().CopyTo(outValue.AsSpan);

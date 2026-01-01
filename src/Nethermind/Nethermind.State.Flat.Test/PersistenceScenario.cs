@@ -67,6 +67,11 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             Enabled = true,
             Layout = FlatLayout.LMDBFlat
         }, "LMDBFlat");
+        yield return new TestConfiguration(new FlatDbConfig()
+        {
+            Enabled = true,
+            Layout = FlatLayout.SmallKeyLMDBFlat
+        }, "SmallKeyLMDBFlat");
     }
 
 
@@ -159,6 +164,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     [Test]
     public void TestSelfDestructAccount()
     {
+        // TODO: Check other contract are not deleted
         Account acc = TestItem.GenerateIndexedAccount(0);
         Address address = TestItem.AddressA;
 

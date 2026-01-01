@@ -204,7 +204,6 @@ public class PersistenceManager: IAsyncDisposable
                 break;
             }
 
-
             if (!forcedFinalizedState)
             {
                 Hash256? finalizedStateRootAtCompacted = _finalizedStateProvider.GetFinalizedStateRootAt(currentPersistedState.blockNumber + _compactSize);

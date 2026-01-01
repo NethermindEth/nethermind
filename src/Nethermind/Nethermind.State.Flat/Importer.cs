@@ -102,7 +102,8 @@ public class Importer(
             {
                 try
                 {
-                    await IngestLogicFlat(from, flatChannel.Reader);
+                    await IngestLogicFlatLMDB(from, flatChannel.Reader);
+                    // await IngestLogicFlat(from, flatChannel.Reader);
                 }
                 catch (Exception e)
                 {
@@ -230,7 +231,7 @@ public class Importer(
 
     private async Task IngestLogicTrie(StateId from, ChannelReader<Entry> channelReader, ChannelWriter<Entry> flatWriter)
     {
-        _logger.Info($"Ingest thread started");
+        _logger.Info($"Ingest thread started trie");
 
         int currentItemSize = 0;
         bool isFlush = false;
@@ -288,6 +289,89 @@ public class Importer(
         }
 
         writeBatch.Dispose();
+    }
+
+    private async Task IngestLogicFlatLMDB(StateId from, ChannelReader<Entry> channelReader)
+    {
+        _logger.Info($"Ingest thread started flat");
+
+        long totalFlat = 0;
+        int currentItemSize = 0;
+        using ArrayPoolList<Entry> entryBuffer = new ArrayPoolList<Entry>(0);
+
+        void FlushBuffer(bool reallyFlush)
+        {
+            var writeBatch = persistence.CreateWriteBatch(from, from, reallyFlush ? WriteFlags.None : WriteFlags.DisableWAL); // It writes form initial state to initial state.
+
+            foreach(var entry in entryBuffer)
+            {
+                TrieNode node = entry.node;
+                long isw = Stopwatch.GetTimestamp();
+                ValueHash256 fullPath = entry.path.Append(node.Key).Path;
+                if (entry.address is null)
+                {
+                    Account acc = _accountDecoder.Decode(node.Value.Span)!;
+                    writeBatch.SetAccountRaw(fullPath.ToHash256(), acc);
+                }
+                else
+                {
+
+                    ReadOnlySpan<byte> value = node.Value.Span;
+                    byte[] toWrite;
+
+                    if (value.IsEmpty)
+                    {
+                        toWrite = StorageTree.ZeroBytes;
+                    }
+                    else
+                    {
+                        Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
+                        toWrite = rlp.DecodeByteArray();
+                    }
+
+                    writeBatch.SetStorageRaw(entry.address, fullPath.ToHash256(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
+                }
+                _importerTime.WithLabels("flat_set").Observe(Stopwatch.GetTimestamp() - isw);
+            }
+            entryBuffer.Clear();
+
+            long sw = Stopwatch.GetTimestamp();
+            Console.Error.WriteLine("Flush");
+            writeBatch.Dispose();
+            if (reallyFlush)
+            {
+                _importerTime.WithLabels("flush_really_flat").Observe(Stopwatch.GetTimestamp() - sw);
+            }
+            else
+            {
+                _importerTime.WithLabels("flush_flat").Observe(Stopwatch.GetTimestamp() - sw);
+            }
+        }
+
+        await foreach (var entry in channelReader.ReadAllAsync())
+        {
+            // Write it
+            _entriesCountFlat.Inc();
+
+            entryBuffer.Add(entry);
+
+            long theTotalNode = Interlocked.Increment(ref totalFlat);
+            if (theTotalNode % flushInterval == 0)
+            {
+                _logger.Info("Flushing next");
+                currentItemSize = 0;
+                FlushBuffer(true);
+            }
+
+            currentItemSize++;
+            if (currentItemSize > this.batchSize)
+            {
+                FlushBuffer(false);
+                currentItemSize = 0;
+            }
+        }
+
+        FlushBuffer(true);
     }
 
     private async Task IngestLogicFlat(StateId from, ChannelReader<Entry> channelReader)
@@ -366,80 +450,6 @@ public class Importer(
         }
 
         writeBatch.Dispose();
-    }
-
-    private async Task IngestLogicSingle(StateId from, ChannelReader<Entry> channelReader)
-    {
-        _logger.Info($"Ingest thread started");
-
-        ArrayPoolList<Entry> entries = new ArrayPoolList<Entry>(batchSize);
-
-        // LMDB cannot write across thread, so need to buffer the whole thing
-        void FlushEntries(ArrayPoolList<Entry> entries)
-        {
-            long sw = Stopwatch.GetTimestamp();
-            using var writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes form initial state to initial state.
-            foreach (Entry entry in entries)
-            {
-
-                TrieNode node = entry.node;
-                writeBatch.SetTrieNodes(entry.address, entry.path, node);
-                if (node.IsLeaf)
-                {
-                    ValueHash256 fullPath = entry.path.Append(node.Key).Path;
-                    if (entry.address is null)
-                    {
-                        Account acc = _accountDecoder.Decode(node.Value.Span)!;
-                        writeBatch.SetAccountRaw(fullPath.ToHash256(), acc);
-                    }
-                    else
-                    {
-
-                        ReadOnlySpan<byte> value = node.Value.Span;
-                        byte[] toWrite;
-
-                        if (value.IsEmpty)
-                        {
-                            toWrite = StorageTree.ZeroBytes;
-                        }
-                        else
-                        {
-                            Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
-                            toWrite = rlp.DecodeByteArray();
-                        }
-
-                        writeBatch.SetStorageRaw(entry.address, fullPath.ToHash256(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
-                    }
-                }
-
-                long theTotalNode = Interlocked.Increment(ref totalNodes);
-                if (theTotalNode % logInterval == 0)
-                {
-                    _logger.Info($"Wrote {theTotalNode:N} nodes.");
-                }
-            }
-            _importerTime.WithLabels("flush_set").Observe(Stopwatch.GetTimestamp() - sw);
-
-            entries.Clear();
-        }
-
-        await foreach (var asyncEntry in channelReader.ReadAllAsync())
-        {
-            // Write it
-            _entriesCount.Inc();
-
-            entries.Add(asyncEntry);
-            if (entries.Count < batchSize)
-            {
-                continue;
-            }
-
-            long sw = Stopwatch.GetTimestamp();
-            FlushEntries(entries);
-            _importerTime.WithLabels("flush").Observe(Stopwatch.GetTimestamp() - sw);
-        }
-
-        FlushEntries(entries);
     }
 
     private class Visitor(ChannelWriter<Entry> channelWriter) : ITreeVisitor<TreePathContextWithStorage>

@@ -67,6 +67,7 @@ public enum FlatLayout
     FlatInTrie,
     PreimageFlat,
     LMDBFlat,
+    SmallKeyLMDBFlat,
     FlatTruncatedLeaf,
 }
 
