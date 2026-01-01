@@ -230,6 +230,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 node = _commitBuffer.SaveOrReplaceInDirtyNodesCache(address, ref path, node, blockNumber);
             else
                 node = SaveOrReplaceInDirtyNodesCache(address, ref path, node, blockNumber);
+            node.PrunePersistedRecursively(1);
 
             IncrementCommittedNodesCount();
         }
@@ -785,7 +786,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             {
                 // This is a hang. It should recover itself as new finalized block is set. But it will hang if we for some reason
                 // does not process in the finalized branch at all.
-                if (_logger.IsWarn) _logger.Warn($"Unable to determine finalized state root at block {effectiveFinalizedBlockNumber}. Available state roots {string.Join(", ", commitSetsAtFinalizedBlock.Select(c => c.StateRoot.ToString()).ToArray())}");
+                if (_logger.IsWarn)
+                {
+                    using ArrayPoolListRef<string> roots = commitSetsAtFinalizedBlock.Select(c => c.StateRoot.ToString());
+                    _logger.Warn($"Unable to determine finalized state root at block {effectiveFinalizedBlockNumber}. Available state roots {string.Join(", ", roots.AsSpan())}");
+                }
                 return (candidateSets, null);
             }
 

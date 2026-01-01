@@ -36,8 +36,8 @@ public class StatelessBlockProcessingEnv(
     public IWorldState WorldState
     {
         get => _worldState ??= new WorldState(
-            new RawTrieStore(witness.NodeStorage),
-            witness.CodeDb, logManager);
+            new TrieStoreScopeProvider(new RawTrieStore(witness.NodeStorage),
+                witness.CodeDb, logManager), logManager);
     }
 
     private IBlockProcessor GetProcessor()
@@ -72,7 +72,7 @@ public class StatelessBlockProcessingEnv(
     private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockhashCache blockhashCache)
     {
         BlockhashProvider blockhashProvider = new(blockhashCache, state, logManager);
-        VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
-        return new TransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
+        EthereumVirtualMachine vm = new(blockhashProvider, specProvider, logManager);
+        return new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
     }
 }

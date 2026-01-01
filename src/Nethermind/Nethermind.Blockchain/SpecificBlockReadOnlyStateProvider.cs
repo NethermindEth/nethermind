@@ -31,17 +31,7 @@ namespace Nethermind.Blockchain
 
         public byte[]? GetCode(in ValueHash256 codeHash) => _stateReader.GetCode(in codeHash);
 
-        public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions) where TCtx : struct, INodeContext<TCtx>
-        {
-            _stateReader.RunTreeVisitor(visitor, stateRoot, visitingOptions);
-        }
-
         public bool AccountExists(Address address) => _stateReader.TryGetAccount(BaseBlock, address, out _);
-
-        [SkipLocalsInit]
-        public bool IsEmptyAccount(Address address) => TryGetAccount(address, out AccountStruct account) && account.IsEmpty;
-
-        public bool HasStateForBlock(BlockHeader? header) => _stateReader.HasStateForBlock(header);
 
         [SkipLocalsInit]
         public bool IsDeadAccount(Address address) => !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;

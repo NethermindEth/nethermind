@@ -291,7 +291,7 @@ namespace Nethermind.Facade
         public IEnumerable<FilterLog> GetLogs(
             BlockParameter fromBlock,
             BlockParameter toBlock,
-            AddressAsKey[]? addresses = null,
+            HashSet<AddressAsKey>? addresses = null,
             IEnumerable<Hash256[]?>? topics = null,
             CancellationToken cancellationToken = default)
         {
@@ -302,7 +302,7 @@ namespace Nethermind.Facade
         public LogFilter GetFilter(
             BlockParameter fromBlock,
             BlockParameter toBlock,
-            AddressAsKey[]? addresses = null,
+            HashSet<AddressAsKey>? addresses = null,
             IEnumerable<Hash256[]?>? topics = null)
         {
             return filterStore.CreateLogFilter(fromBlock, toBlock, addresses, topics, false);
@@ -328,7 +328,7 @@ namespace Nethermind.Facade
         }
 
         public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock,
-            AddressAsKey[]? address = null, IEnumerable<Hash256[]?>? topics = null)
+            HashSet<AddressAsKey>? address = null, IEnumerable<Hash256[]?>? topics = null)
         {
             LogFilter filter = filterStore.CreateLogFilter(fromBlock, toBlock, address, topics);
             filterStore.SaveFilter(filter);
@@ -380,9 +380,9 @@ namespace Nethermind.Facade
 
         public Address? RecoverTxSender(Transaction tx) => ecdsa.RecoverAddress(tx);
 
-        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx>
         {
-            stateReader.RunTreeVisitor(treeVisitor, stateRoot);
+            stateReader.RunTreeVisitor(treeVisitor, baseBlock);
         }
 
         public bool HasStateForBlock(BlockHeader baseBlock)
