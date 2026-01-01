@@ -204,6 +204,30 @@ namespace Nethermind.Core.Extensions
         [SkipLocalsInit]
         public static int FastHash(this ReadOnlySpan<byte> input)
         {
+#if ZKVM
+            if (input.Length == 0) return 0;
+
+            unchecked
+            {
+                const int p = 16777619;
+                int hash = (int)2166136261;
+
+                foreach (byte b in input)
+                {
+                    hash = (hash ^ b) * p;
+                }
+
+                // Optional: a few extra mix steps for better distribution
+                hash += hash << 13;
+                hash ^= hash >> 7;
+                hash += hash << 3;
+                hash ^= hash >> 17;
+                hash += hash << 5;
+
+                return hash;
+            }
+
+#else
             // Very fast hardware accelerated non-cryptographic hash function
             var length = input.Length;
             if (length == 0) return 0;
@@ -237,8 +261,7 @@ namespace Nethermind.Core.Extensions
             // Length is fully aligned here and b is set in place
             while (length >= sizeof(ulong) * 3)
             {
-                // Crc32C is 3 cycle latency, 1 cycle throughput
-                // So we us same initial 3 times to not create a dependency chain
+                // Crc32C is 3 cycle latency, 1 cycle throughput, so we use the same initial 3 times to not create a dependency chain
                 uint hash0 = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref b));
                 uint hash1 = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong))));
                 uint hash2 = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, sizeof(ulong) * 2)));
@@ -274,6 +297,8 @@ namespace Nethermind.Core.Extensions
             }
 
             return (int)BitOperations.Crc32C(hash, data);
+
+#endif
         }
     }
 }

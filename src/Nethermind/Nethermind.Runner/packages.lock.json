@@ -722,7 +722,7 @@
           "Microsoft.IdentityModel.JsonWebTokens": "[8.15.0, )",
           "Nethermind.Crypto.SecP256k1": "[1.5.0, )",
           "Nethermind.Logging": "[1.37.0-unstable, )",
-          "Nethermind.Numerics.Int256": "[1.3.6, )",
+          "Nethermind.Numerics.Int256": "[1.3.6-zkvm.4, )",
           "NonBlocking": "[2.1.2, )",
           "TestableIO.System.IO.Abstractions.Wrappers": "[22.1.0, )"
         }
@@ -1489,9 +1489,9 @@
       },
       "Nethermind.Numerics.Int256": {
         "type": "CentralTransitive",
-        "requested": "[1.3.6, )",
-        "resolved": "1.3.6",
-        "contentHash": "Sk/CakMkQZuCUflJxYlj9gVTfxbTPJKsgDS5fsRWdzYA6hHVQipNJfyD6xnrF3u1X6XJadeyTTa3Rs80hJCMvQ=="
+        "requested": "[1.3.6-zkvm.4, )",
+        "resolved": "1.3.6-zkvm.4",
+        "contentHash": "CkoAZ5fCW677/xBBW2S9zo1dDnKRL9s9kBMsOJh4o4QC1NaVjbaZr5Z2/UjslsCVqAPf97/ST0Iz+ehuvOCG1A=="
       },
       "Nito.Collections.Deque": {
         "type": "CentralTransitive",
