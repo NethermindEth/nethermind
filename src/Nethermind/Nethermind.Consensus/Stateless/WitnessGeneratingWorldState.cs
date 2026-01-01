@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
@@ -25,17 +24,25 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
 
     public (byte[][] Codes, byte[][] Keys) GetWitness()
     {
+        int totalKeysCount = 0;
+        foreach (var kvp in _storageSlots)
+        {
+            totalKeysCount++;
+            totalKeysCount += kvp.Value.Count;
+        }
+
+        byte[][] keys = new byte[totalKeysCount][];
+        int i = 0;
+
         // Keys should be ordered like: <address1><address2><slot1-address2><slot2-address2><address3><slot1-address3>
-        List<byte[]> keys = _storageSlots
-            .SelectMany(kvp =>
-                new[] { kvp.Key.Bytes }
-                .Concat(kvp.Value.Select(slot => slot.ToBigEndian()))
-            )
-            .ToList();
+        foreach (var kvp in _storageSlots)
+        {
+            keys[i++] = kvp.Key.Bytes;
+            foreach (var slot in kvp.Value)
+                keys[i++] = slot.ToBigEndian();
+        }
 
-        HashSet<byte[]> codes = new(_bytecodes.Values, Bytes.EqualityComparer);
-
-        return (codes.ToArray(), keys.ToArray());
+        return (_bytecodes.Values.ToArray(), keys);
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);

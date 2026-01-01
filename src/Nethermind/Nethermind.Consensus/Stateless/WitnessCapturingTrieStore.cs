@@ -34,7 +34,7 @@ public class WitnessCapturingTrieStore(IKeyValueStoreWithBatching keyValueStore,
     {
         TrieNode node = baseStore.FindCachedOrUnknown(address, in path, hash);
         if (node.NodeType != NodeType.Unknown)
-            _rlpCollector.TryAdd(node.Keccak, node.FullRlp.Span.ToArray());
+            _rlpCollector.TryAdd(node.Keccak, node.FullRlp.ToArray());
         return node;
     }
 

@@ -1,11 +1,11 @@
 
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using  Nethermind.Core.Collections;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -26,7 +26,7 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
     public byte[][] GetWitnessHeaders(Hash256 parentHash)
     {
         HeaderDecoder decoder = new();
-        List<byte[]> headers = new();
+        using ArrayPoolListRef<byte[]> headers = new();
 
         Hash256 currentHash = parentHash;
         BlockHeader childHeader = inner.Get(currentHash) ?? throw new ArgumentException($"Parent {currentHash} is not found");
