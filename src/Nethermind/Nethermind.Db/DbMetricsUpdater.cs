@@ -12,7 +12,7 @@ using NonBlocking;
 
 namespace Nethermind.Db;
 
-public class DbMetricUpdater
+public class DbMetricsUpdater
 {
     private readonly ConcurrentDictionary<string, IDbMeta> _createdDbs = new ConcurrentDictionary<string, IDbMeta>();
     private bool _isUpdatingDbMetrics = false;
@@ -20,9 +20,9 @@ public class DbMetricUpdater
 
     private ILogger _logger;
 
-    public DbMetricUpdater(IMonitoringService monitoringService, IMetricsConfig metricsConfig, ILogManager logManager)
+    public DbMetricsUpdater(IMonitoringService monitoringService, IMetricsConfig metricsConfig, ILogManager logManager)
     {
-        _logger = logManager.GetClassLogger<DbMetricUpdater>();
+        _logger = logManager.GetClassLogger<DbMetricsUpdater>();
 
         if (metricsConfig.EnableDbSizeMetrics)
         {
@@ -84,14 +84,14 @@ public class DbMetricUpdater
         }
     }
 
-    public class DbFactoryInterceptor(DbMetricUpdater metricUpdater, IDbFactory baseFactory) : IDbFactory
+    public class DbFactoryInterceptor(DbMetricsUpdater metricsUpdater, IDbFactory baseFactory) : IDbFactory
     {
         public IDb CreateDb(DbSettings dbSettings)
         {
             IDb db = baseFactory.CreateDb(dbSettings);
             if (db is IDbMeta dbMeta)
             {
-                metricUpdater.AddDb(dbSettings.DbName, dbMeta);
+                metricsUpdater.AddDb(dbSettings.DbName, dbMeta);
             }
             return db;
         }
@@ -101,7 +101,7 @@ public class DbMetricUpdater
             IColumnsDb<T> db = baseFactory.CreateColumnsDb<T>(dbSettings);
             if (db is IDbMeta dbMeta)
             {
-                metricUpdater.AddDb(dbSettings.DbName, dbMeta);
+                metricsUpdater.AddDb(dbSettings.DbName, dbMeta);
             }
             return db;
         }

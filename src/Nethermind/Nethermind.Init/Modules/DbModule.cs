@@ -80,8 +80,8 @@ public class DbModule(
             // Dont use constructor injection to get all db because that would resolve all db
             // making them not lazy.
             builder
-                .AddSingleton<DbMetricUpdater>()
-                .AddDecorator<IDbFactory, DbMetricUpdater.DbFactoryInterceptor>();
+                .AddSingleton<DbMetricsUpdater>()
+                .AddDecorator<IDbFactory, DbMetricsUpdater.DbFactoryInterceptor>();
         }
 
         switch (initConfig.DiagnosticMode)
