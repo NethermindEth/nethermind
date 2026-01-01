@@ -23,7 +23,6 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         ReadOnlySpan<byte> headerRlp = decoderContext.PeekNextItem();
         int headerSequenceLength = decoderContext.ReadSequenceLength();
         int headerCheck = decoderContext.Position + headerSequenceLength;
-        var x = new BlockDecoder(new XdcHeaderDecoder());
         Hash256? parentHash = decoderContext.DecodeKeccak();
         Hash256? unclesHash = decoderContext.DecodeKeccak();
         Address? beneficiary = decoderContext.DecodeAddress();
@@ -32,7 +31,7 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         Hash256? receiptsRoot = decoderContext.DecodeKeccak();
         Bloom? bloom = decoderContext.DecodeBloom();
         UInt256 difficulty = decoderContext.DecodeUInt256();
-        long number = decoderContext.DecodeLong();
+        ulong number = decoderContext.DecodeULong();
         ulong gasLimit = decoderContext.DecodeULong();
         ulong gasUsed = decoderContext.DecodeULong();
         ulong timestamp = decoderContext.DecodeULong();
@@ -96,7 +95,7 @@ public sealed class XdcHeaderDecoder : IHeaderDecoder
         Hash256? receiptsRoot = rlpStream.DecodeKeccak();
         Bloom? bloom = rlpStream.DecodeBloom();
         UInt256 difficulty = rlpStream.DecodeUInt256();
-        long number = rlpStream.DecodeLong();
+        ulong number = rlpStream.DecodeULong();
         ulong gasLimit = rlpStream.DecodeULong();
         ulong gasUsed = rlpStream.DecodeULong();
         ulong timestamp = rlpStream.DecodeULong();

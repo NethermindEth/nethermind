@@ -315,7 +315,7 @@ public class ValidateSubmissionHandler
         long gasLimit = parentGasLimit;
 
         long? targetGasLimit = desiredGasLimit;
-        long newBlockNumber = parentHeader.Number + 1;
+        ulong newBlockNumber = parentHeader.Number + 1;
 
         if (targetGasLimit is not null)
         {

@@ -31,7 +31,14 @@ public class VoteTests
         var switchInfo = blockchain.EpochSwitchManager.GetEpochSwitchInfo(header)!;
         PrivateKey[] keys = blockchain.TakeRandomMasterNodes(releaseSpec, switchInfo);
         var blockInfo = new BlockRoundInfo(currentBlockHash, ctx.CurrentRound, freshBlock!.Number);
-        var gap = (ulong)Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % releaseSpec.EpochLength - releaseSpec.Gap);
+        ulong gap = 0ul;
+        if (switchInfo.EpochSwitchBlockInfo.BlockNumber != 0)
+        {
+            ulong epochLength = checked((ulong)releaseSpec.EpochLength);
+            ulong gapFromSpec = checked((ulong)releaseSpec.Gap);
+            ulong epochStart = switchInfo.EpochSwitchBlockInfo.BlockNumber - (switchInfo.EpochSwitchBlockInfo.BlockNumber % epochLength);
+            gap = epochStart > gapFromSpec ? epochStart - gapFromSpec : 0ul;
+        }
 
         // Initial values to check
         var initialLockQc = ctx.LockQC;

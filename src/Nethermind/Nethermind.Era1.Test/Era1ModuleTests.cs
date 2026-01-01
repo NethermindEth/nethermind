@@ -302,7 +302,7 @@ public class Era1ModuleTests
             .WithBlocks(outTree.FindBlock(0, BlockTreeLookupOptions.None)!)
             .TestObject;
 
-        Block headBlock = outTree.FindBlock(headBlockNumber)!;
+        Block headBlock = outTree.FindBlock(checked((ulong)headBlockNumber), BlockTreeLookupOptions.None)!;
         if (headBlockNumber != 0)
         {
             inTree.Insert(headBlock, BlockTreeInsertBlockOptions.SaveHeader);
@@ -331,8 +331,8 @@ public class Era1ModuleTests
         long maxSuggestedBlock = 0;
         inTree.NewBestSuggestedBlock += (sender, args) =>
         {
-            minSuggestedNumber ??= args.Block.Number;
-            maxSuggestedBlock = args.Block.Number;
+            minSuggestedNumber ??= checked((long)args.Block.Number);
+            maxSuggestedBlock = checked((long)args.Block.Number);
             inTree.UpdateMainChain([args.Block], true);
         };
 

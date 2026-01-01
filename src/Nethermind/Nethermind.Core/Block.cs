@@ -96,7 +96,7 @@ public class Block
 
     public DateTime TimestampDate => Header.TimestampDate; // do not add setter here
 
-    public long Number => Header.Number; // do not add setter here
+    public ulong Number => Header.Number; // do not add setter here
 
     public UInt256 Difficulty => Header.Difficulty; // do not add setter here
 

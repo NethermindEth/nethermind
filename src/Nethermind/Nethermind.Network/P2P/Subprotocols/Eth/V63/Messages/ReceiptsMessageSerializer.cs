@@ -35,8 +35,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(contentLength);
 
-            // Track the last ‐ seen block number & its RLP behavior
-            long lastBlockNumber = -1;
+            // Track the last-seen block number & its RLP behavior
+            ulong? lastBlockNumber = null;
             RlpBehaviors behaviors = RlpBehaviors.None;
 
             foreach (TxReceipt?[]? txReceipts in message.TxReceipts)
@@ -58,10 +58,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                     }
 
                     // Only fetch a new spec when the block number changes
-                    if (txReceipt.BlockNumber != lastBlockNumber)
+                    if (lastBlockNumber != txReceipt.BlockNumber)
                     {
                         lastBlockNumber = txReceipt.BlockNumber;
-                        behaviors = _specProvider.GetReceiptSpec(lastBlockNumber).IsEip658Enabled
+                        behaviors = _specProvider.GetReceiptSpec(lastBlockNumber.Value).IsEip658Enabled
                                     ? RlpBehaviors.Eip658Receipts
                                     : RlpBehaviors.None;
                     }
@@ -124,7 +124,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             int contentLength = 0;
 
             // Track the last‐seen block number and its spec
-            long lastBlockNumber = -1;
+            ulong? lastBlockNumber = null;
             RlpBehaviors behaviors = RlpBehaviors.None;
 
             for (int i = 0; i < txReceipts.Length; i++)
@@ -141,7 +141,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 if (lastBlockNumber != receipt.BlockNumber)
                 {
                     lastBlockNumber = receipt.BlockNumber;
-                    behaviors = _specProvider.GetSpec((ForkActivation)receipt.BlockNumber).IsEip658Enabled
+                    behaviors = _specProvider.GetReceiptSpec(lastBlockNumber.Value).IsEip658Enabled
                                 ? RlpBehaviors.Eip658Receipts
                                 : RlpBehaviors.None;
                 }

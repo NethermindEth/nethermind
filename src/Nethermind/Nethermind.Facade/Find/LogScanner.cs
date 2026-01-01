@@ -14,22 +14,25 @@ namespace Nethermind.Facade.Find
 {
     public abstract class LogScanner<T>(ILogFinder logFinder, AddressFilter addressFilter, TopicsFilter topicsFilter, ILogManager logManager)
     {
-        private const long LogScanChunkSize = 16;
+        private const ulong LogScanChunkSize = 16;
         private const int LogScanCutoffChunks = 128;
         private readonly ILogger _logger = logManager.GetClassLogger();
 
-        public IEnumerable<T> ScanLogs(long headBlockNumber, Predicate<T> shouldStopScanning)
+        public IEnumerable<T> ScanLogs(ulong headBlockNumber, Predicate<T> shouldStopScanning)
         {
             BlockParameter end = new(headBlockNumber);
 
             for (int i = 0; i < LogScanCutoffChunks; i++)
             {
                 bool atGenesis = false;
-                long startBlockNumber = end.BlockNumber!.Value - LogScanChunkSize;
-                if (startBlockNumber < 0)
+                ulong endBlockNumber = end.BlockNumber!.Value;
+                ulong startBlockNumber = endBlockNumber > LogScanChunkSize
+                    ? endBlockNumber - LogScanChunkSize
+                    : 0;
+
+                if (endBlockNumber <= LogScanChunkSize)
                 {
                     atGenesis = true;
-                    startBlockNumber = 0;
                 }
 
                 BlockParameter start = new(startBlockNumber);
@@ -61,7 +64,7 @@ namespace Nethermind.Facade.Find
             }
         }
 
-        public IEnumerable<T> ScanReceipts(long blockNumber, TxReceipt[] receipts)
+        public IEnumerable<T> ScanReceipts(ulong blockNumber, TxReceipt[] receipts)
         {
             int count = 0;
 

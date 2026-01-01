@@ -50,17 +50,17 @@ namespace Nethermind.Synchronization.ParallelSync
             _snapSyncFeed = snapSyncFeed;
         }
 
-        public long FindBestFullState()
+        public ulong FindBestFullState()
         {
             return _fullStateFinder.FindBestFullState();
         }
 
-        public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
-        public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
+        public ulong FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0UL;
+        public ulong FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0UL); // avoiding any potential concurrency issue
 
         public bool IsLoadingBlocksFromDb() => !_blockTree.CanAcceptNewBlocks;
 
-        public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
+        public ulong FindBestProcessedBlock() => _blockTree.Head?.Number ?? 0UL;
 
         public UInt256 ChainDifficulty => _blockTree.BestSuggestedBody?.TotalDifficulty ?? UInt256.Zero;
 
@@ -93,9 +93,9 @@ namespace Nethermind.Synchronization.ParallelSync
         public bool IsSnapGetRangesFinished() => _snapSyncFeed?.IsFinished ?? true;
 
         public void RecalculateProgressPointers() => _blockTree.RecalculateTreeLevels();
-        public (long BlockNumber, Hash256 BlockHash) SyncPivot => _blockTree.SyncPivot;
+        public (ulong BlockNumber, Hash256 BlockHash) SyncPivot => _blockTree.SyncPivot;
 
-        private bool IsFastBlocks() => _syncConfig.FastSync && _blockTree.SyncPivot.BlockNumber != 0L; // if pivot number is 0 then it is equivalent to fast blocks disabled
+        private bool IsFastBlocks() => _syncConfig.FastSync && _blockTree.SyncPivot.BlockNumber != 0UL; // if pivot number is 0 then it is equivalent to fast blocks disabled
 
 
     }

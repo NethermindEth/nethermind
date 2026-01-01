@@ -88,9 +88,9 @@ public class DebugBridge : IDebugBridge
 
     public byte[] GetDbValue(string dbName, byte[] key) => _dbMappings[dbName][key];
 
-    public ChainLevelInfo GetLevelInfo(long number) => _blockTree.FindLevel(number);
+    public ChainLevelInfo GetLevelInfo(long number) => _blockTree.FindLevel(checked((ulong)number));
 
-    public int DeleteChainSlice(long startNumber, bool force = false) => _blockTree.DeleteChainSlice(startNumber, force: force);
+    public int DeleteChainSlice(long startNumber, bool force = false) => _blockTree.DeleteChainSlice(checked((ulong)startNumber), force: force);
 
     public void UpdateHeadBlock(Hash256 blockHash) => _blockTree.UpdateHeadBlock(blockHash);
 
@@ -144,7 +144,7 @@ public class DebugBridge : IDebugBridge
     }
 
     public GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
-        _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+        _tracer.Trace(checked((ulong)blockNumber), index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
     public GethLikeTxTrace GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.Trace(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
@@ -169,7 +169,7 @@ public class DebugBridge : IDebugBridge
 
     public byte[]? GetBlockRlp(BlockParameter parameter)
     {
-        if (parameter.BlockNumber is long number)
+        if (parameter.BlockNumber is ulong number)
         {
             Hash256? hash = _blockTree.FindHash(number);
             if (hash is null) return null;

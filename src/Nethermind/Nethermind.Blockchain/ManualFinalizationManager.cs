@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain
         public void MarkFinalized(BlockHeader finalizingBlock, BlockHeader finalizedBlock)
         {
             LastFinalizedHash = finalizedBlock.Hash!;
-            LastFinalizedBlockLevel = Math.Max(LastFinalizedBlockLevel, finalizedBlock.Number);
+            LastFinalizedBlockLevel = Math.Max(LastFinalizedBlockLevel, checked((long)finalizedBlock.Number));
             BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlock));
         }
 

@@ -43,7 +43,7 @@ public partial class EthRpcModuleTests
         Block[] blocks = Enumerable.Range(0, excessBlobGas.Length)
          .Select((i) => Build.A.Block.WithHeader(
              Build.A.BlockHeader
-                 .WithNumber(i)
+                 .WithNumber(checked((ulong)i))
                  .WithParentHash(new Hash256(Math.Max(0, i - 1).ToString("X").PadLeft(64, '0')))
                  .WithExcessBlobGas(excessBlobGas[i])
                  .WithBlobGasUsed(blobGasUsed[i])
@@ -52,10 +52,10 @@ public partial class EthRpcModuleTests
 
 
         IBlockTree blockFinder = Substitute.For<IBlockTree>();
-        blockFinder.Head.Returns(Build.A.Block.WithNumber(excessBlobGas.Length - 1).TestObject);
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(checked((ulong)(excessBlobGas.Length - 1))).TestObject);
         blockFinder.FindBlock(Arg.Any<BlockParameter>(), Arg.Any<bool>())
             .Returns(ci => blocks[(int)(((BlockParameter)ci[0]).BlockNumber ?? 0)]);
-        blockFinder.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<long?>())
+        blockFinder.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
                   .Returns(ci => blocks[((Hash256)ci[0]).Bytes[^1]]);
 
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
@@ -63,7 +63,7 @@ public partial class EthRpcModuleTests
         FeeHistoryOracle oracle = new(blockFinder, receiptStorage, specProvider);
 
         using ResultWrapper<FeeHistoryResults> result = oracle
-            .GetFeeHistory(excessBlobGas.Length, new BlockParameter(blocks.Length - 1), [0.0, 1.0]);
+            .GetFeeHistory(excessBlobGas.Length, new BlockParameter(checked((ulong)(blocks.Length - 1))), [0.0, 1.0]);
 
         Assert.That(result.ErrorCode, Is.Zero);
         return (result.Data.BaseFeePerBlobGas.ToArray(), result.Data.BlobGasUsedRatio.ToArray());

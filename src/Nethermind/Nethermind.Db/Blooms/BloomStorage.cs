@@ -193,8 +193,10 @@ namespace Nethermind.Db.Blooms
             {
                 i++;
 
+                long blockNumber = checked((long)blockHeader.Number);
+
                 Bloom blockHeaderBloom = blockHeader.Bloom ?? Bloom.Empty;
-                lastLevel.Migrate(blockHeader.Number, blockHeaderBloom);
+                lastLevel.Migrate(blockNumber, blockHeaderBloom);
 
                 for (int index = 0; index < levelBlooms.Length; index++)
                 {
@@ -203,7 +205,7 @@ namespace Nethermind.Db.Blooms
 
                     if (i % level.LevelElementSize == 0)
                     {
-                        level.Migrate(blockHeader.Number, bloom);
+                        level.Migrate(blockNumber, bloom);
                         levelBlooms[index] = (level, new Bloom());
 
                         if (level.LevelElementSize == batchSize)
@@ -213,7 +215,7 @@ namespace Nethermind.Db.Blooms
                     }
                 }
 
-                lastBlockNumber = blockHeader.Number;
+                lastBlockNumber = blockNumber;
             }
 
             if (i % batchSize != 0)

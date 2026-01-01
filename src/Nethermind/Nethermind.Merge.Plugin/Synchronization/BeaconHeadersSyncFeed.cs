@@ -32,9 +32,9 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     private readonly ILogger _logger;
     private bool _chainMerged;
 
-    protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
+    protected override ulong HeadersDestinationNumber => _pivot.PivotDestinationNumber;
 
-    protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <=
+    protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? ulong.MaxValue) <=
                                                     _pivot.PivotDestinationNumber || _chainMerged;
 
     protected override BlockHeader? LowestInsertedBlockHeader
@@ -47,7 +47,16 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         }
     }
 
-    protected override long TotalBlocks => _pivotNumber - HeadersDestinationNumber + 1;
+    protected override ulong TotalBlocks
+    {
+        get
+        {
+            ulong headersDestinationNumber = HeadersDestinationNumber;
+            // Destination can move ahead during merge/beacon pivot changes. Guard unsigned subtraction to avoid wraparound.
+            ulong remaining = _pivotNumber >= headersDestinationNumber ? _pivotNumber - headersDestinationNumber : 0;
+            return SaturatingAddOne(remaining);
+        }
+    }
 
     protected override ProgressLogger HeadersSyncProgressLoggerReport => _syncReport.BeaconHeaders;
     public override string FeedName => nameof(BeaconHeadersSyncFeed);
@@ -76,8 +85,10 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     public override AllocationContexts Contexts => AllocationContexts.Headers;
 
-    private long ExpectedPivotNumber =>
-        _pivot.PivotParentHash is not null ? _pivot.PivotNumber - 1 : _pivot.PivotNumber;
+    private ulong ExpectedPivotNumber =>
+        _pivot.PivotParentHash is not null
+            ? (_pivot.PivotNumber > 0 ? _pivot.PivotNumber - 1 : 0)
+            : _pivot.PivotNumber;
 
     private Hash256 ExpectedPivotHash => _pivot.PivotParentHash ?? _pivot.PivotHash ?? Keccak.Zero;
 
@@ -89,13 +100,13 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         _pivotNumber = ExpectedPivotNumber;
         _expectedNextHeader = new NextHeader(ExpectedPivotHash, _poSSwitcher.FinalTotalDifficulty);
 
-        long startNumber = _pivotNumber;
+        ulong startNumber = _pivotNumber;
 
         // In case we already have beacon sync happened before
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
         if (lowestInserted is not null && lowestInserted.Number <= _pivotNumber)
         {
-            startNumber = lowestInserted.Number - 1;
+            startNumber = lowestInserted.Number > 0 ? lowestInserted.Number - 1 : 0;
             SetExpectedNextHeaderToParent(lowestInserted);
         }
 
@@ -111,6 +122,26 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         // make feed dormant as there may be more header syncs when there is a new beacon pivot
         FallAsleep();
         PostFinishCleanUp();
+    }
+
+    protected override void PostFinishCleanUp()
+    {
+        // Progress logger expects `long`; clamp to avoid `OverflowException` when TotalBlocks is large.
+        HeadersSyncProgressLoggerReport.Update(ClampToLong(TotalBlocks));
+        HeadersSyncProgressLoggerReport.MarkEnd();
+        ClearDependencies(); // there may be some dependencies from wrong branches
+        _pending.Clear(); // there may be pending wrong branches
+        _sent.Clear(); // we my still be waiting for some bad branches
+    }
+
+    private static long ClampToLong(ulong value)
+    {
+        return value > long.MaxValue ? long.MaxValue : (long)value;
+    }
+
+    private static ulong SaturatingAddOne(ulong value)
+    {
+        return value == ulong.MaxValue ? ulong.MaxValue : value + 1UL;
     }
     public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
     {

@@ -48,10 +48,10 @@ public class SyncServerTests
     public void When_finding_hash_it_does_not_load_headers()
     {
         Context ctx = new();
-        ctx.BlockTree.FindHash(123).Returns(TestItem.KeccakA);
+        ctx.BlockTree.FindHash(123ul).Returns(TestItem.KeccakA);
         Hash256 result = ctx.SyncServer.FindHash(123)!;
 
-        ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
+        ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>());
         ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
         ctx.BlockTree.DidNotReceive().FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
         Assert.That(result, Is.EqualTo(TestItem.KeccakA));
@@ -259,11 +259,11 @@ public class SyncServerTests
             testSpecProvider,
             LimboLogs.Instance);
 
-        Block? remoteBestBlock = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+        Block? remoteBestBlock = remoteBlockTree.FindBlock(9ul, BlockTreeLookupOptions.None);
 
         ctx.SyncServer.AddNewBlock(remoteBestBlock!, ctx.NodeWhoSentTheBlock);
         Assert.That(localBlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(newBestLocalBlock.Header.Hash));
-        Assert.That(localBlockTree.FindBlock(remoteBestBlock!.Hash, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(remoteBestBlock.Hash));
+        Assert.That(localBlockTree.FindBlock(remoteBestBlock!.Hash!, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(remoteBestBlock.Hash));
     }
 
     [TestCase(10000000)]
@@ -273,13 +273,13 @@ public class SyncServerTests
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
         Context ctx = CreateMergeContext(9, (UInt256)ttd);
 
-        Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
+        Block block = remoteBlockTree.FindBlock(9ul, BlockTreeLookupOptions.None)!;
         block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
 
         ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
         Assert.That(block.Header.Hash, Is.EqualTo(ctx.LocalBlockTree.BestSuggestedHeader!.Hash));
 
-        Block parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None)!;
+        Block parentBlock = remoteBlockTree.FindBlock(8ul, BlockTreeLookupOptions.None)!;
         Assert.That(ctx.LocalBlockTree.BestSuggestedHeader.TotalDifficulty, Is.EqualTo(parentBlock.TotalDifficulty + block.Difficulty));
     }
 
@@ -291,7 +291,7 @@ public class SyncServerTests
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
         Context ctx = CreateMergeContext(9, (UInt256)ttd);
 
-        Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
+        Block block = remoteBlockTree.FindBlock(9ul, BlockTreeLookupOptions.None)!;
         if (sendFakeTd)
         {
             block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
@@ -406,10 +406,10 @@ public class SyncServerTests
         Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
 
         ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-        Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(10));
+        Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(10ul));
         ctx.LocalBlockTree.FindBlock(poWBlockPostMerge.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull();
         ctx.LocalBlockTree.BestSuggestedHeader!.Hash.Should().Be(newPostMergeBlock.Hash!);
-        ctx.LocalBlockTree.FindCanonicalBlockInfo(poWBlockPostMerge.Number).BlockHash.Should().NotBe(poWBlockPostMerge.Hash!);
+        ctx.LocalBlockTree.FindCanonicalBlockInfo(poWBlockPostMerge.Number)!.BlockHash.Should().NotBe(poWBlockPostMerge.Hash!);
     }
 
 
@@ -712,14 +712,14 @@ public class SyncServerTests
         ctx.PeerPool.PeerCount.Returns(peers.Length);
 
         const int blocksCount = 100;
-        var startBlock = (int)localBlockTree.Head!.Number;
+        int startBlock = checked((int)localBlockTree.Head!.Number);
         localBlockTree.AddBranch(blocksCount / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount * 2 / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
 
-        (long earliest, int latest)[] expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
+        (ulong earliest, ulong latest)[] expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
             .Where(x => x % frequency == 0)
-            .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: x))
+            .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: (ulong)x))
             .ToArray()[^2..];
 
         foreach (PeerInfo peerInfo in peers)
@@ -781,7 +781,7 @@ public class SyncServerTests
     public void Correctly_clips_lowestBlock()
     {
         Context ctx = new();
-        ctx.BlockTree.GetLowestBlock().Returns(5);
+        ctx.BlockTree.GetLowestBlock().Returns(5ul);
         ctx.SyncServer.LowestBlock.Should().Be(0);
     }
 

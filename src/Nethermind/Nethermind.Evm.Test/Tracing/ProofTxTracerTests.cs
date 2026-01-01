@@ -282,7 +282,7 @@ public class ProofTxTracerTests : VirtualMachineTestsBase
 
     protected (ProofTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceProofCall(SenderRecipientAndMiner addresses, params byte[] code)
     {
-        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code, addresses);
         ProofTxTracer tracer = new(_treatSystemAccountDifferently);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return (tracer, block, transaction);

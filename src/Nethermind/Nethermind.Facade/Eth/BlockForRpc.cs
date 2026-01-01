@@ -71,7 +71,7 @@ public class BlockForRpc
             }
         }
 
-        Number = block.Number;
+        Number = checked((long)block.Number);
         ParentHash = block.ParentHash;
         ReceiptsRoot = block.ReceiptsRoot;
         Sha3Uncles = block.UnclesHash;
@@ -167,7 +167,7 @@ public class BlockForRpc
         TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
         for (var i = 0; i < transactions.Length; i++)
         {
-            txs[i] = TransactionForRpc.FromTransaction(transactions[i], block.Hash, block.Number, i, block.BaseFeePerGas, chainId);
+            txs[i] = TransactionForRpc.FromTransaction(transactions[i], block.Hash, checked((long)block.Number), i, block.BaseFeePerGas, chainId);
         }
         return txs;
     }

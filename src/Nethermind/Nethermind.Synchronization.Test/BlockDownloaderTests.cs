@@ -103,13 +103,14 @@ public partial class BlockDownloaderTests
         if (enableFastSync)
         {
             await ctx.FastSyncUntilNoRequest(peerInfo);
-            ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - fastSynclag)));
+            long expectedBestSuggestedHeaderNumber = Math.Max(0, Math.Min(headNumber, headNumber - fastSynclag));
+            ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be((ulong)expectedBestSuggestedHeaderNumber);
         }
 
         syncPeer.ExtendTree(chainLength * 2);
         await ctx.FullSyncUntilNoRequest(peerInfo);
 
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, peerInfo.HeadNumber));
+        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(peerInfo.HeadNumber);
         // full sync does not set main chain, but triggers it processing which eventually set main chain
         ctx.BlockTree.IsMainChain(ctx.BlockTree.BestSuggestedHeader!.Hash!).Should().Be(false);
 
@@ -147,13 +148,14 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
-        List<long> newHeadSequence = new List<long>();
+        List<ulong> newHeadSequence = new();
         ctx.BlockTree.BlockAddedToMain += (_, b) => newHeadSequence.Add(b.Block.Number);
 
         await ctx.FastSyncUntilNoRequest(peerInfo);
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - fastSyncLag)));
+        long expectedBestSuggestedHeaderNumber = Math.Max(0, Math.Min(headNumber, headNumber - fastSyncLag));
+        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be((ulong)expectedBestSuggestedHeaderNumber);
 
-        List<long> expectedNewHeadSequence = Enumerable.Range(1, (int)(chainLength - fastSyncLag - 1)).Select((i) => (long)i).ToList();
+        List<ulong> expectedNewHeadSequence = Enumerable.Range(1, (int)(chainLength - fastSyncLag - 1)).Select(static i => (ulong)i).ToList();
         newHeadSequence.Should().BeEquivalentTo(expectedNewHeadSequence);
     }
 
@@ -284,7 +286,7 @@ public partial class BlockDownloaderTests
 
         for (int i = 0; i < 1023; i++)
         {
-            Assert.That(syncPeer.BlockTree.FindBlock(i, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(ctx.BlockTree.FindBlock(i, BlockTreeLookupOptions.None)!.Hash), i.ToString());
+            Assert.That(syncPeer.BlockTree.FindBlock((ulong)i, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(ctx.BlockTree.FindBlock((ulong)i, BlockTreeLookupOptions.None)!.Hash), i.ToString());
         }
 
         await ctx.FullSyncUntilNoRequest(peerInfo);
@@ -308,7 +310,7 @@ public partial class BlockDownloaderTests
         ctx.ConfigureBestPeer(peerInfo);
         await ctx.FullSyncUntilNoRequest(peerInfo);
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(2048);
+        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(2048ul);
     }
 
     [TestCase(32, true)]
@@ -347,20 +349,20 @@ public partial class BlockDownloaderTests
             });
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(async ci => await ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(async ci => await ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.TimeoutOnFullBatch));
 
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.HeadNumber.Returns(FullBatch + ignoredBlocks + 20);
+        syncPeer.HeadNumber.Returns(checked((ulong)(FullBatch + ignoredBlocks + 20)));
 
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
-        await ctx.FullDispatcherSync(Math.Max(0, peerInfo.HeadNumber));
-        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(Math.Max(0, peerInfo.HeadNumber)));
+        await ctx.FullDispatcherSync(peerInfo.HeadNumber);
+        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(peerInfo.HeadNumber));
     }
 
     [TestCase(32, 32, 0, true)]
@@ -378,8 +380,8 @@ public partial class BlockDownloaderTests
 
         Response responseOptions = Response.AllCorrect | Response.WithTransactions & ~Response.AllKnown | Response.Consistent;
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(async ci => await ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), responseOptions));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(async ci => await ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), responseOptions));
 
         List<Hash256> requestedHashes = new();
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
@@ -391,7 +393,7 @@ public partial class BlockDownloaderTests
                     blockHashes = blockHashes.Where((hash) =>
                     {
                         BlockHeader? header = ctx.ResponseBuilder.GetHeader(hash);
-                        return header is not null && header.Number <= availableBlock;
+                        return header is not null && header.Number <= (ulong)availableBlock;
                     }).ToList();
                     requestedHashes.AddRange(blockHashes);
                 }
@@ -420,14 +422,14 @@ public partial class BlockDownloaderTests
             });
 
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.HeadNumber.Returns(blockCount);
+        syncPeer.HeadNumber.Returns((ulong)blockCount);
 
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
-        ctx.BlockTree.BestSuggestedBody!.Number.Should().Be(0);
-        await ctx.FullDispatcherSync(availableBlock, 10000);
-        ctx.BlockTree.BestSuggestedBody.Number.Should().Be(availableBlock);
+        ctx.BlockTree.BestSuggestedBody!.Number.Should().Be(0ul);
+        await ctx.FullDispatcherSync((ulong)availableBlock, 10000);
+        ctx.BlockTree.BestSuggestedBody.Number.Should().Be((ulong)availableBlock);
     }
 
     [Test]
@@ -437,16 +439,16 @@ public partial class BlockDownloaderTests
         Context ctx = node.Resolve<Context>();
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(_ => ctx.ResponseBuilder.BuildHeaderResponse(0, 1, Response.AllCorrect));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(_ => ctx.ResponseBuilder.BuildHeaderResponse(0ul, 1, Response.AllCorrect));
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.HeadNumber.Returns(1);
+        syncPeer.HeadNumber.Returns(1ul);
         ctx.ConfigureBestPeer(peerInfo);
 
         await ctx.FullSyncUntilNoRequest(peerInfo);
-        ctx.BlockTree.BestSuggestedBody!.Number.Should().Be(0);
+        ctx.BlockTree.BestSuggestedBody!.Number.Should().Be(0ul);
     }
 
     [TestCase(33L)]
@@ -458,20 +460,20 @@ public partial class BlockDownloaderTests
         Context ctx = node.Resolve<Context>();
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.NoBody));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.NoBody));
 
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.JustFirst));
 
         PeerInfo peerInfo = new(syncPeer);
-        syncPeer.HeadNumber.Returns(headNumber);
+        syncPeer.HeadNumber.Returns(checked((ulong)headNumber));
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
         ctx.ConfigureBestPeer(peerInfo);
 
         await ctx.FullSyncUntilNoRequest(peerInfo);
 
-        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(headNumber));
+        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(checked((ulong)headNumber)));
     }
 
     [Test]
@@ -480,12 +482,12 @@ public partial class BlockDownloaderTests
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect ^ Response.Consistent));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect ^ Response.Consistent));
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.HeadNumber.Returns(1024);
+        syncPeer.HeadNumber.Returns(1024ul);
         ctx.ConfigureBestPeer(peerInfo);
 
         await ctx.FullSyncUntilNoRequest(peerInfo);
@@ -500,11 +502,11 @@ public partial class BlockDownloaderTests
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
         PeerInfo peerInfo = new(syncPeer);
-        syncPeer.HeadNumber.Returns(1000);
+        syncPeer.HeadNumber.Returns(1000ul);
         ctx.ConfigureBestPeer(peerInfo);
 
         await ctx.Feed.PrepareRequest(default);
@@ -520,13 +522,13 @@ public partial class BlockDownloaderTests
         Response options = Response.AllCorrect | Response.Consistent;
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), options));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), options));
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), options | Response.JustFirst));
 
         PeerInfo peerInfo = new(syncPeer);
-        syncPeer.HeadNumber.Returns(1000);
+        syncPeer.HeadNumber.Returns(1000ul);
         ctx.ConfigureBestPeer(peerInfo);
 
         BlocksRequest blockRequest = await ctx.Feed.PrepareRequest(default);
@@ -582,9 +584,9 @@ public partial class BlockDownloaderTests
 
         Response responseOptions = Response.AllCorrect | Response.WithTransactions;
         SyncPeerMock syncPeer = new(chainLength, true, responseOptions);
-        syncPeer.HeadNumber = beaconPivotNumber; // For POW
+        syncPeer.HeadNumber = (ulong)beaconPivotNumber; // For POW
 
-        BlockHeader syncPivot = syncPeer.BlockTree.FindHeader(syncPivotNumber)!;
+        BlockHeader syncPivot = syncPeer.BlockTree.FindHeader((ulong)syncPivotNumber, BlockTreeLookupOptions.None)!;
         ISyncConfig syncConfig = new SyncConfig()
         {
             FastSync = true,
@@ -600,15 +602,15 @@ public partial class BlockDownloaderTests
         Context ctx = container.Resolve<Context>();
 
         // Simulate fast header
-        BlockHeader syncPivotHeader = syncPeer.BlockTree.FindHeader(syncPivotNumber)!;
+        BlockHeader syncPivotHeader = syncPeer.BlockTree.FindHeader((ulong)syncPivotNumber, BlockTreeLookupOptions.None)!;
         ctx.BlockTree.Insert(syncPivotHeader);
 
         if (isMerge)
         {
             var mergeContext = container.Resolve<PostMergeContext>();
-            mergeContext.BeaconPivot.EnsurePivot(syncPeer.BlockTree.FindHeader(beaconPivotNumber, BlockTreeLookupOptions.None));
+            mergeContext.BeaconPivot.EnsurePivot(syncPeer.BlockTree.FindHeader((ulong)beaconPivotNumber, BlockTreeLookupOptions.None));
             mergeContext.InsertBeaconHeaderFrom(syncPeer, beaconPivotNumber, syncPivotNumber);
-            mergeContext.BeaconPivot.ProcessDestination = syncPeer.BlockTree.FindHeader(beaconPivotNumber, BlockTreeLookupOptions.None);
+            mergeContext.BeaconPivot.ProcessDestination = syncPeer.BlockTree.FindHeader((ulong)beaconPivotNumber, BlockTreeLookupOptions.None);
         }
 
         PeerInfo peerInfo = new(syncPeer);
@@ -635,7 +637,7 @@ public partial class BlockDownloaderTests
 
         _ = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
 
-        ctx.ShouldFastSyncedUntil(beaconPivotNumber - fastSyncLag);
+        ctx.ShouldFastSyncedUntil((ulong)(beaconPivotNumber - fastSyncLag));
     }
 
 
@@ -662,8 +664,8 @@ public partial class BlockDownloaderTests
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
 
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException<OwnedBlockBodies>(new TimeoutException()));
@@ -672,7 +674,7 @@ public partial class BlockDownloaderTests
             .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
 
         PeerInfo peerInfo = new(syncPeer);
-        syncPeer.HeadNumber.Returns(1);
+        syncPeer.HeadNumber.Returns(1ul);
         ctx.ConfigureBestPeer(peerInfo);
         (await ctx.HandleOneRequest(peerInfo)).Should().Be(SyncResponseHandlingResult.LesserQuality);
     }
@@ -686,8 +688,8 @@ public partial class BlockDownloaderTests
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
 
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions | Response.AllKnown));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions | Response.AllKnown));
 
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
@@ -696,7 +698,7 @@ public partial class BlockDownloaderTests
             .Returns(Task.FromException<IOwnedReadOnlyList<TxReceipt[]?>>(new TimeoutException()));
 
         PeerInfo peerInfo = new(syncPeer);
-        syncPeer.HeadNumber.Returns(10);
+        syncPeer.HeadNumber.Returns(10ul);
         ctx.ConfigureBestPeer(peerInfo);
         (await ctx.HandleFastSyncOneRequest(peerInfo)).Should().Be(SyncResponseHandlingResult.OK);
         (await ctx.HandleFastSyncOneRequest(peerInfo)).Should().Be(SyncResponseHandlingResult.LesserQuality);
@@ -717,8 +719,8 @@ public partial class BlockDownloaderTests
         long chainLength = headNumber + 1;
         SyncPeerMock syncPeerInternal = new(chainLength, true, responseOptions);
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => syncPeerInternal.GetBlockHeaders(ci.ArgAt<long>(0), ci.ArgAt<int>(1), ci.ArgAt<int>(2), ci.ArgAt<CancellationToken>(3)));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => syncPeerInternal.GetBlockHeaders(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), ci.ArgAt<int>(2), ci.ArgAt<CancellationToken>(3)));
 
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => syncPeerInternal.GetBlockBodies(ci.ArgAt<IReadOnlyList<Hash256>>(0), ci.ArgAt<CancellationToken>(1)));
@@ -753,8 +755,8 @@ public partial class BlockDownloaderTests
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
 
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
@@ -764,7 +766,7 @@ public partial class BlockDownloaderTests
                 .Result.Select(r => r is null || r.Length == 0 ? r : r.Skip(1).ToArray()).ToPooledList(10));
 
         PeerInfo peerInfo = new(syncPeer);
-        syncPeer.HeadNumber.Returns(2);
+        syncPeer.HeadNumber.Returns(2ul);
         ctx.ConfigureBestPeer(peerInfo);
         (await ctx.HandleFastSyncOneRequest(peerInfo)).Should().Be(SyncResponseHandlingResult.OK);
         (await ctx.HandleFastSyncOneRequest(peerInfo)).Should().Be(SyncResponseHandlingResult.LesserQuality);
@@ -779,8 +781,8 @@ public partial class BlockDownloaderTests
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
 
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
 
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
@@ -789,7 +791,7 @@ public partial class BlockDownloaderTests
             .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions | Response.IncorrectReceiptRoot).Result);
 
         PeerInfo peerInfo = new(syncPeer);
-        syncPeer.HeadNumber.Returns(2);
+        syncPeer.HeadNumber.Returns(2ul);
         ctx.ConfigureBestPeer(peerInfo);
         (await ctx.HandleFastSyncOneRequest(peerInfo)).Should().Be(SyncResponseHandlingResult.OK);
         (await ctx.HandleFastSyncOneRequest(peerInfo)).Should().Be(SyncResponseHandlingResult.LesserQuality);
@@ -836,10 +838,10 @@ public partial class BlockDownloaderTests
                 return tree;
             })
 
-            .AddSingleton<Dictionary<long, Hash256>, IBlockTree>((blockTree) => new Dictionary<long, Hash256>()
+            .AddSingleton<Dictionary<ulong, Hash256>, IBlockTree>((blockTree) => new Dictionary<ulong, Hash256>()
             {
                 {
-                    0, blockTree.Genesis!.Hash!
+                    0ul, blockTree.Genesis!.Hash!
                 },
             })
             .AddSingleton<Context>();
@@ -934,7 +936,7 @@ public partial class BlockDownloaderTests
             _wasSuggested.TryGetValue(blockHash, out _).Should().BeTrue();
         }
 
-        public async Task FullDispatcherSync(long untilBestSuggestedHeaderIs, long timeoutMs = 10000)
+        public async Task FullDispatcherSync(ulong untilBestSuggestedHeaderIs, long timeoutMs = 10000)
         {
             using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(timeoutMs.Milliseconds());
 
@@ -981,7 +983,7 @@ public partial class BlockDownloaderTests
             return FastSyncFeedComponent.Feed.HandleResponse(blockRequest, peerInfo);
         }
 
-        public virtual void ShouldFastSyncedUntil(long blockNumber)
+        public virtual void ShouldFastSyncedUntil(ulong blockNumber)
         {
             BlockTree.BestSuggestedHeader!.Number.Should().Be(blockNumber);
         }
@@ -1061,7 +1063,7 @@ public partial class BlockDownloaderTests
         public string ProtocolCode { get; } = null!;
         public Hash256 HeadHash { get; set; } = null!;
         public PublicKey Id => Node.Id;
-        public long HeadNumber { get; set; }
+        public ulong HeadNumber { get; set; }
         public UInt256? TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
@@ -1080,7 +1082,7 @@ public partial class BlockDownloaderTests
             return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
         }
 
-        public async Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+        public async Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token)
         {
             bool justFirst = _flags.HasFlag(Response.JustFirst);
             bool timeoutOnFullBatch = _flags.HasFlag(Response.TimeoutOnFullBatch);
@@ -1093,7 +1095,7 @@ public partial class BlockDownloaderTests
             BlockHeader[] headers = new BlockHeader[maxBlocks];
             for (int i = 0; i < (justFirst ? 1 : maxBlocks); i++)
             {
-                headers[i] = BlockTree.FindHeader(number + i, BlockTreeLookupOptions.None)!;
+                headers[i] = BlockTree.FindHeader(number + (ulong)i, BlockTreeLookupOptions.None)!;
             }
 
             using BlockHeadersMessage message = new(headers.ToPooledList());
@@ -1161,15 +1163,15 @@ public partial class BlockDownloaderTests
     private class ResponseBuilder
     {
         private readonly IBlockTree _blockTree;
-        private readonly Dictionary<long, Hash256> _testHeaderMapping;
+        private readonly Dictionary<ulong, Hash256> _testHeaderMapping;
 
-        public ResponseBuilder(IBlockTree blockTree, Dictionary<long, Hash256> testHeaderMapping)
+        public ResponseBuilder(IBlockTree blockTree, Dictionary<ulong, Hash256> testHeaderMapping)
         {
             _blockTree = blockTree;
             _testHeaderMapping = testHeaderMapping;
         }
 
-        public async Task<IOwnedReadOnlyList<BlockHeader>?> BuildHeaderResponse(long startNumber, int number, Response flags)
+        public async Task<IOwnedReadOnlyList<BlockHeader>?> BuildHeaderResponse(ulong startNumber, int number, Response flags)
         {
             bool consistent = flags.HasFlag(Response.Consistent);
             bool justFirst = flags.HasFlag(Response.JustFirst);
@@ -1218,7 +1220,7 @@ public partial class BlockDownloaderTests
                         _blockTree.SuggestHeader(header);
                     }
 
-                    _testHeaderMapping[startNumber + i] = headers[i].Hash!;
+                    _testHeaderMapping[startNumber + (ulong)i] = headers[i].Hash!;
                 }
             }
 

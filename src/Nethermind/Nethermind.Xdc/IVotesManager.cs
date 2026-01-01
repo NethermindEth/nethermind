@@ -14,5 +14,5 @@ public interface IVotesManager
     Task OnReceiveVote(Vote vote);
     bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate certificate);
     bool VerifyVotingRules(XdcBlockHeader header);
-    bool VerifyVotingRules(Hash256 blockHash, long blockNumber, ulong roundNumber, QuorumCertificate qc);
+    bool VerifyVotingRules(Hash256 blockHash, ulong blockNumber, ulong roundNumber, QuorumCertificate qc);
 }

@@ -158,7 +158,7 @@ namespace Nethermind.AuRa.Test.Contract
                 new(TestItem.AddressB, FnSignature, 5, TxPriorityContract.DestinationSource.Local),
                 new(TestItem.AddressC, FnSignature, 1, TxPriorityContract.DestinationSource.Local),
                 new(TestItem.AddressB, FnSignature2, 1, TxPriorityContract.DestinationSource.Local),
-                new(TestItem.AddressA, TxPriorityContract.Destination.FnSignatureEmpty, UInt256.One, TxPriorityContract.DestinationSource.Contract, 1),
+                new(TestItem.AddressA, TxPriorityContract.Destination.FnSignatureEmpty, 1, TxPriorityContract.DestinationSource.Contract, 1),
             };
 
             SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data is not null ? 1 : 0);
@@ -294,7 +294,7 @@ namespace Nethermind.AuRa.Test.Contract
 
                 await AddBlock(
                     SignTransactions(ecdsa, TestItem.PrivateKeyA, 1,
-                        TxPriorityContract.SetPriority(TestItem.AddressA, FnSignature2, UInt256.One),
+                        TxPriorityContract.SetPriority(TestItem.AddressA, FnSignature2, 1),
                         TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature, 10),
                         TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature2, 4),
 
@@ -328,7 +328,7 @@ namespace Nethermind.AuRa.Test.Contract
                 for (int index = 0; index < transactions.Length; index++)
                 {
                     Transaction transaction = transactions[index];
-                    transaction.Nonce = checked(((UInt256)index + baseNonce).ToUInt64(null));
+                    transaction.Nonce = (baseNonce + (uint)index).ToUInt64(null);
                     ecdsa.Sign(key, transaction, true);
                     transaction.SenderAddress = key.Address;
                     transaction.Hash = transaction.CalculateHash();

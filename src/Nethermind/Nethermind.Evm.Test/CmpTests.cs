@@ -10,7 +10,7 @@ namespace Nethermind.Evm.Test
     [Parallelizable(ParallelScope.Self)]
     public class CmpTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
         [Test]
         public void Gt()

@@ -160,8 +160,8 @@ public class EraImporterTest
 
         ManualResetEventSlim reachedBlock11 = new();
         bool shouldUpdateMainChain = false;
-        long maxSuggestedBlocks = 0;
-        long expectedStopBlock = 10;
+        ulong maxSuggestedBlocks = 0;
+        ulong expectedStopBlock = 10;
         inTree.NewBestSuggestedBlock += (sender, args) =>
         {
             if (shouldUpdateMainChain) inTree.UpdateMainChain([args.Block], true);

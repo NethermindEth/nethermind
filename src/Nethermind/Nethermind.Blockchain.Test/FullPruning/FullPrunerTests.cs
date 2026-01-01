@@ -199,7 +199,7 @@ public class FullPrunerTests
     {
         private readonly bool _clearPrunedDb;
         private readonly Hash256 _stateRoot;
-        private long _head;
+        private ulong _head;
         public TestFullPruningDb FullPruningDb { get; }
         public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();
         public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
@@ -311,11 +311,11 @@ public class FullPrunerTests
         {
             for (int i = 0; i < count; i++)
             {
-                long number = _head + 1;
+                ulong number = _head + 1;
                 BlockTree.BestPersistedState.Returns(_head);
                 Block head = Build.A.Block.WithStateRoot(_stateRoot).WithNumber(number).TestObject;
                 BlockTree.Head.Returns(head);
-                BlockTree.FindHeader(number).Returns(head.Header);
+                BlockTree.FindHeader(number, BlockTreeLookupOptions.None).Returns(head.Header);
                 BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<Block>() { head }, true));
                 Thread.Sleep(1); // Need to add a little sleep as the wait for event in full pruner is async.
             }

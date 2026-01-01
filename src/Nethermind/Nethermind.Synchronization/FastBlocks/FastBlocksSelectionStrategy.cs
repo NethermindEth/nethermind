@@ -12,10 +12,10 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class FastBlocksAllocationStrategy : IPeerAllocationStrategy
     {
-        private readonly long? _minNumber;
+        private readonly ulong? _minNumber;
         private readonly bool _priority;
 
-        public FastBlocksAllocationStrategy(TransferSpeedType speedType, long? minNumber, bool priority)
+        public FastBlocksAllocationStrategy(TransferSpeedType speedType, ulong? minNumber, bool priority)
         {
             _minNumber = minNumber;
             _priority = priority;

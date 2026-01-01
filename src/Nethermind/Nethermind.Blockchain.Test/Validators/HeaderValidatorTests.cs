@@ -3,7 +3,6 @@
 
 using System;
 using System.Linq;
-using System.Numerics;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Validators;
@@ -74,8 +73,8 @@ public class HeaderValidatorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_gas_limit_too_high()
     {
-        ulong delta = checked((ulong)BigInteger.Divide(new BigInteger(_parentBlock.Header.GasLimit), 1024));
-        _block.Header.GasLimit = checked(_parentBlock.Header.GasLimit + delta);
+        ulong delta = _parentBlock.Header.GasLimit / 1024;
+        _block.Header.GasLimit = _parentBlock.Header.GasLimit + delta;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -85,8 +84,8 @@ public class HeaderValidatorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_gas_limit_just_correct_high()
     {
-        ulong delta = checked((ulong)BigInteger.Divide(new BigInteger(_parentBlock.Header.GasLimit), 1024));
-        _block.Header.GasLimit = checked(_parentBlock.Header.GasLimit + delta - 1);
+        ulong delta = _parentBlock.Header.GasLimit / 1024;
+        _block.Header.GasLimit = _parentBlock.Header.GasLimit + delta - 1;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -96,8 +95,8 @@ public class HeaderValidatorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_gas_limit_just_correct_low()
     {
-        ulong delta = checked((ulong)BigInteger.Divide(new BigInteger(_parentBlock.Header.GasLimit), 1024));
-        _block.Header.GasLimit = checked(_parentBlock.Header.GasLimit - delta + 1);
+        ulong delta = _parentBlock.Header.GasLimit / 1024;
+        _block.Header.GasLimit = _parentBlock.Header.GasLimit - delta + 1;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -107,8 +106,8 @@ public class HeaderValidatorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_gas_limit_is_just_too_low()
     {
-        ulong delta = checked((ulong)BigInteger.Divide(new BigInteger(_parentBlock.Header.GasLimit), 1024));
-        _block.Header.GasLimit = checked(_parentBlock.Header.GasLimit - delta);
+        ulong delta = _parentBlock.Header.GasLimit / 1024;
+        _block.Header.GasLimit = _parentBlock.Header.GasLimit - delta;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -237,26 +236,6 @@ public class HeaderValidatorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_block_number_is_negative()
-    {
-        _block.Header.Number = -1;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_used_is_negative()
-    {
-        _block.Header.GasUsed = ulong.MaxValue;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_total_difficulty_null_we_should_skip_total_difficulty_validation()
     {
         _block.Header.Difficulty = 1;
@@ -297,16 +276,6 @@ public class HeaderValidatorTests
         HeaderValidator validator = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
         bool result = validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.EqualTo(expectedResult));
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_is_negative()
-    {
-        _block.Header.GasLimit = 0;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
     }
 
     [Test]

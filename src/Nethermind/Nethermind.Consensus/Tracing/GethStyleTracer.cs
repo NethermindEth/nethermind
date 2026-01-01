@@ -90,15 +90,15 @@ public class GethStyleTracer(
         return TraceImpl(block, txHash, cancellationToken, traceOptions);
     }
 
-    public GethLikeTxTrace? Trace(long blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
+    public GethLikeTxTrace Trace(ulong blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
     {
         Block block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical) ?? throw new InvalidOperationException($"No historical block found for {blockNumber}");
         if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockNumber} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
 
-        return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options);
+        return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options) ?? throw new InvalidOperationException($"No trace result for {blockNumber}:{txIndex}");
     }
 
-    public GethLikeTxTrace? Trace(long blockNumber, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
+    public GethLikeTxTrace Trace(ulong blockNumber, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
     {
         Block block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical) ?? throw new InvalidOperationException($"No historical block found for {blockNumber}");
         if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
@@ -109,7 +109,7 @@ public class GethStyleTracer(
         try
         {
             scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken), cancellationToken);
-            return blockTracer.BuildResult().SingleOrDefault();
+            return blockTracer.BuildResult().SingleOrDefault() ?? throw new InvalidOperationException($"No trace result for tx {tx.Hash} at block {blockNumber}");
         }
         catch
         {

@@ -196,7 +196,7 @@ namespace Nethermind.EthStats.Integrations
         private Task SendBlockAsync(Block block)
             => _sender.SendAsync(_websocketClient!, new BlockMessage(
                 new Messages.Models.Block(
-                    block.Number,
+                    checked((long)block.Number),
                     (block.Hash ?? Keccak.Zero).ToString(),
                     (block.ParentHash ?? Keccak.Zero).ToString(),
                     (long)block.Timestamp,

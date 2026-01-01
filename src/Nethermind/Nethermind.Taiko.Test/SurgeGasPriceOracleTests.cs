@@ -267,9 +267,9 @@ public class SurgeGasPriceOracleTests
             _logManager);
 
         // Set up the block finder to return a valid block with gas usage for any block ID
-        _blockFinder.FindBlock(Arg.Any<long>(), Arg.Any<Blockchain.BlockTreeLookupOptions>())
+        _blockFinder.FindBlock(Arg.Any<ulong>(), Arg.Any<Blockchain.BlockTreeLookupOptions>())
             .Returns(callInfo => Build.A.Block
-                .WithNumber(callInfo.Arg<long>())
+            .WithNumber(callInfo.Arg<ulong>())
                 .WithGasUsed(1000000)
                 .TestObject);
 

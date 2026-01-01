@@ -37,9 +37,11 @@ namespace Nethermind.Init.Steps.Migrations
             ILogger logger = _api.LogManager.GetClassLogger();
             if (syncConfig.FixReceipts && _api.BlockTree is not null)
             {
+                ulong headNumber = _api.BlockTree.Head?.Number ?? 0;
+                long endLevel = checked((long)(headNumber > 2 ? headNumber - 2 : 0));
                 MissingReceiptsFixVisitor visitor = new(
                     syncConfig.AncientReceiptsBarrierCalc,
-                    _api.BlockTree.Head?.Number - 2 ?? 0,
+                    endLevel,
                     _api.ReceiptStorage!,
                     _api.LogManager,
                     _api.SyncPeerPool!,

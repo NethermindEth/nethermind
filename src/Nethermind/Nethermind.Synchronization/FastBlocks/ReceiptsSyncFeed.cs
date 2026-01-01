@@ -30,14 +30,14 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class ReceiptsSyncFeed : BarrierSyncFeed<ReceiptsSyncBatch?>
     {
-        protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedReceiptBlockNumber;
+        protected override ulong? LowestInsertedNumber => _syncPointers.LowestInsertedReceiptBlockNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.ReceiptsBarrierWhenStarted;
         protected override long SyncConfigBarrierCalc
         {
             get
             {
                 long? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
-                return cutoffBlockNumber is null ? _syncConfig.AncientBodiesBarrierCalc : long.Max(_syncConfig.AncientBodiesBarrierCalc, cutoffBlockNumber.Value);
+                return cutoffBlockNumber is null ? _syncConfig.AncientBodiesBarrierCalc : Math.Max(_syncConfig.AncientBodiesBarrierCalc, cutoffBlockNumber.Value);
             }
         }
         protected override Func<bool> HasPivot =>
@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private SyncStatusList _syncStatusList;
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllDownloaded;
-        private bool AllDownloaded => (_syncPointers.LowestInsertedReceiptBlockNumber ?? long.MaxValue) <= _barrier;
+        private bool AllDownloaded => (_syncPointers.LowestInsertedReceiptBlockNumber ?? ulong.MaxValue) <= _barrier;
 
         public override bool IsFinished => AllDownloaded;
         public override string FeedName => nameof(ReceiptsSyncFeed);
@@ -89,21 +89,26 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
             }
 
-            _pivotNumber = -1; // First reset in `InitializeFeed`.
+            _pivotNumber = ulong.MaxValue; // First reset in `InitializeFeed`.
         }
 
         public override void InitializeFeed()
         {
-            if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _syncConfig.AncientReceiptsBarrierCalc)
+            ulong barrierCalc = ToUlongOrZero(_syncConfig.AncientReceiptsBarrierCalc);
+            if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != barrierCalc)
             {
                 _pivotNumber = _blockTree.SyncPivot.BlockNumber;
-                _barrier = _syncConfig.AncientReceiptsBarrierCalc;
+                _barrier = barrierCalc;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in receipts sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
-            _syncReport.FastBlocksReceipts.Reset(0, _pivotNumber - _syncConfig.AncientReceiptsBarrierCalc);
+
+            // `_pivotNumber` and `barrierCalc` are `ulong`. If the barrier moves ahead (reorg/pruning/config),
+            // a raw subtraction would wrap around and later progress reporting would overflow.
+            ulong toDownload = _pivotNumber > barrierCalc ? _pivotNumber - barrierCalc : 0UL;
+            _syncReport.FastBlocksReceipts.Reset(0, ClampToLong(toDownload));
         }
 
         private void ResetSyncStatusList()
@@ -112,7 +117,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 _blockTree,
                 _pivotNumber,
                 _syncPointers.LowestInsertedReceiptBlockNumber,
-                _syncConfig.AncientReceiptsBarrier);
+                ToUlongOrZero(_syncConfig.AncientReceiptsBarrier));
         }
 
         protected override SyncMode ActivationSyncModes { get; }
@@ -136,9 +141,14 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void PostFinishCleanUp()
         {
-            _syncReport.FastBlocksReceipts.Update(_pivotNumber);
+            // Progress logger expects `long`; clamp to avoid `OverflowException` on very large pivots.
+            _syncReport.FastBlocksReceipts.Update(ClampToLong(_pivotNumber));
             _syncReport.FastBlocksReceipts.MarkEnd();
         }
+
+        private static long ClampToLong(ulong value) => value > long.MaxValue ? long.MaxValue : (long)value;
+
+        private static ulong ToUlongOrZero(long value) => value > 0 ? (ulong)value : 0UL;
 
         public override async Task<ReceiptsSyncBatch?> PrepareRequest(CancellationToken token = default)
         {
@@ -316,7 +326,10 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void UpdateSyncReport()
         {
-            _syncReport.FastBlocksReceipts.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
+            ulong behindPivot = _pivotNumber > _syncStatusList.LowestInsertWithoutGaps
+                ? _pivotNumber - _syncStatusList.LowestInsertWithoutGaps
+                : 0UL;
+            _syncReport.FastBlocksReceipts.Update(ClampToLong(behindPivot));
             _syncReport.FastBlocksReceipts.CurrentQueued = _syncStatusList.QueueSize;
         }
 
@@ -325,8 +338,10 @@ namespace Nethermind.Synchronization.FastBlocks
             public bool ShouldDownloadBlock(BlockInfo info)
             {
                 bool hasReceipt = receiptStorage.HasBlock(info.BlockNumber, info.BlockHash);
-                long? cutoff = historyPruner?.CutoffBlockNumber;
-                cutoff = cutoff is null ? null : long.Min(cutoff!.Value, blockTree.SyncPivot.BlockNumber);
+                long? cutoffLong = historyPruner?.CutoffBlockNumber;
+                ulong? cutoff = cutoffLong is null
+                    ? null
+                    : Math.Min(ToUlongOrZero(cutoffLong.Value), blockTree.SyncPivot.BlockNumber);
                 bool shouldDownload = !hasReceipt && (cutoff is null || info.BlockNumber >= cutoff);
                 if (!shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
                 return shouldDownload;

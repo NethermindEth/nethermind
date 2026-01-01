@@ -192,7 +192,13 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         }
 
         RecoverTxSenderIfNeeded(transaction);
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction: transaction, blockHash: receipt?.BlockHash, blockNumber: receipt?.BlockNumber, txIndex: receipt?.Index, baseFee: baseFee, chainId: _specProvider.ChainId);
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
+            transaction: transaction,
+            blockHash: receipt?.BlockHash,
+            blockNumber: receipt is null ? null : checked((long)receipt.BlockNumber),
+            txIndex: receipt?.Index,
+            baseFee: baseFee,
+            chainId: _specProvider.ChainId);
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
             depositTx.DepositReceiptVersion = (receipt as OptimismTxReceipt)?.DepositReceiptVersion;
@@ -222,7 +228,13 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
             .Get(block)
             .FirstOrDefault(r => r.TxHash == transaction.Hash);
 
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction: transaction, blockHash: receipt?.BlockHash, blockNumber: receipt?.BlockNumber, txIndex: receipt?.Index, baseFee: block.BaseFeePerGas, chainId: _specProvider.ChainId);
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
+            transaction: transaction,
+            blockHash: receipt?.BlockHash,
+            blockNumber: receipt is null ? null : checked((long)receipt.BlockNumber),
+            txIndex: receipt?.Index,
+            baseFee: block.BaseFeePerGas,
+            chainId: _specProvider.ChainId);
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
             depositTx.DepositReceiptVersion = (receipt as OptimismTxReceipt)?.DepositReceiptVersion;
@@ -266,7 +278,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
                     TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(
                         transaction: tx,
                         blockHash: block.Hash,
-                        blockNumber: block.Number,
+                          blockNumber: checked((long)block.Number),
                         txIndex: i);
 
                     if (rpcTx is DepositTransactionForRpc depositTx)

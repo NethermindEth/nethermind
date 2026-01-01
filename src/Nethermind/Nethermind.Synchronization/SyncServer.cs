@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization
 
         private readonly LruCache<ValueHash256, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
 
-        private readonly long _pivotNumber;
+        private readonly ulong _pivotNumber;
         private readonly Hash256 _pivotHash;
         private BlockHeader? _pivotHeader;
         private CancellationTokenSource _rangeBroadcastCts = new();
@@ -124,7 +124,16 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public long LowestBlock => Math.Min(Head?.Number ?? 0, _blockTree.GetLowestBlock());
+        public long LowestBlock
+        {
+            get
+            {
+                ulong headNumber = Head?.Number ?? 0;
+                ulong lowestBlock = _blockTree.GetLowestBlock();
+                ulong minimum = headNumber < lowestBlock ? headNumber : lowestBlock;
+                return checked((long)minimum);
+            }
+        }
 
         public int GetPeerCount() => _pool.PeerCount;
 
@@ -167,7 +176,11 @@ namespace Nethermind.Synchronization
             // it delivers information about the peer's chain.
 
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
-            bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
+
+            ulong headNumber = _blockTree.Head?.Number ?? 0;
+            ulong maxReorgLength = checked((ulong)Sync.MaxReorgLength);
+            ulong oldestAllowed = headNumber > maxReorgLength ? headNumber - maxReorgLength : 0;
+            bool isBlockOlderThanMaxReorgAllows = block.Number < oldestAllowed;
 
             // We skip blocks that are old
             if (isBlockBeforeTheSyncPivot || isBlockOlderThanMaxReorgAllows)
@@ -246,7 +259,12 @@ namespace Nethermind.Synchronization
             // It is important that we only do that here, after we ensured that the block is
             // in the range of [Head - MaxReorganizationLength, Head].
             // Otherwise we could hint incorrect ranges and cause expensive cache recalculations.
-            _sealValidator.HintValidationRange(_sealValidatorUserGuid, block.Number - 128, block.Number + 1024);
+            static long ClampToLongMax(ulong value) => value > (ulong)long.MaxValue ? long.MaxValue : checked((long)value);
+
+            ulong rangeStart = block.Number > 128 ? block.Number - 128 : 0;
+            ulong rangeEnd = block.Number + 1024;
+
+            _sealValidator.HintValidationRange(_sealValidatorUserGuid, ClampToLongMax(rangeStart), ClampToLongMax(rangeEnd));
             return _sealValidator.ValidateSeal(block.Header, true);
         }
 
@@ -355,13 +373,15 @@ namespace Nethermind.Synchronization
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
 
-            if (number > syncPeer.HeadNumber)
+            ulong numberU = checked((ulong)number);
+
+            if (numberU > syncPeer.HeadNumber)
             {
-                if (_logger.IsTrace) _logger.Trace($"HINT Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {number}");
-                syncPeer.HeadNumber = number;
+                if (_logger.IsTrace) _logger.Trace($"HINT Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {numberU}");
+                syncPeer.HeadNumber = numberU;
                 syncPeer.HeadHash = hash;
 
-                if (!_recentlySuggested.Contains(hash) && !_blockTree.IsKnownBlock(number, hash))
+                if (!_recentlySuggested.Contains(hash) && !_blockTree.IsKnownBlock(numberU, hash))
                 {
                     _pool.RefreshTotalDifficulty(syncPeer, hash);
                 }
@@ -416,7 +436,7 @@ namespace Nethermind.Synchronization
         {
             try
             {
-                Hash256? hash = _blockTree.FindHash(number);
+                Hash256? hash = _blockTree.FindHash(checked((ulong)number));
                 return hash;
             }
             catch (Exception)

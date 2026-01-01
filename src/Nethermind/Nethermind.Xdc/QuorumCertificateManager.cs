@@ -90,7 +90,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
         //Can only commit a QC if the proposed block is at least 2 blocks after the switch block, since we want to check grandparent of proposed QC
 
-        if ((proposedBlockHeader.Number - 2) <= spec.SwitchBlock)
+        if (proposedBlockHeader.Number <= spec.SwitchBlock + 2UL)
         {
             error = $"Proposed block ({proposedBlockHeader.Number}) is too close or before genesis block ({spec.SwitchBlock})";
             return false;
@@ -186,13 +186,14 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-        long gapNumber = epochSwitchNumber - (epochSwitchNumber % (long)spec.EpochLength) - (long)spec.Gap;
+        ulong epochLength = (ulong)spec.EpochLength;
+        ulong gap = (ulong)spec.Gap;
 
-        if (epochSwitchNumber - (epochSwitchNumber % (long)spec.EpochLength) < (long)spec.Gap)
-            gapNumber = 0;
+        ulong epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+        ulong epochStart = epochSwitchNumber - (epochSwitchNumber % epochLength);
+        ulong gapNumber = epochStart > gap ? epochStart - gap : 0UL;
 
-        if (gapNumber != (long)qc.GapNumber)
+        if (gapNumber != qc.GapNumber)
         {
             error = $"Gap number mismatch between QC Gap {qc.GapNumber} and {gapNumber}";
             return false;
@@ -230,7 +231,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         if (current.Number == spec.SwitchBlock)
         {
             latestQc = new QuorumCertificate(new BlockRoundInfo(current.Hash, 0, current.Number), Array.Empty<Signature>(),
-                    (ulong)Math.Max(0, current.Number - spec.Gap));
+                    current.Number > (ulong)spec.Gap ? current.Number - (ulong)spec.Gap : 0UL);
             _context.HighestQC = latestQc;
             _context.SetNewRound(1);
         }

@@ -55,6 +55,12 @@ namespace Nethermind.Core.Test.Builders
 
         public ReceiptBuilder WithBlockNumber(long number)
         {
+            TestObject.BlockNumber = checked((ulong)number);
+            return this;
+        }
+
+        public ReceiptBuilder WithBlockNumber(ulong number)
+        {
             TestObject.BlockNumber = number;
             return this;
         }

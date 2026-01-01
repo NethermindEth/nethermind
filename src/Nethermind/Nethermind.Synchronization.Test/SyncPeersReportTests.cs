@@ -120,7 +120,7 @@ namespace Nethermind.Synchronization.Test
             ISyncServer syncServer = Substitute.For<ISyncServer>();
             StubSyncPeer syncPeer = new StubSyncPeer(initialized, protocolVersion, session, serializer, nodeStatsManager, syncServer);
 
-            syncPeer.HeadNumber = head;
+            syncPeer.HeadNumber = checked((ulong)head);
 
             PeerInfo peer = new(syncPeer);
             return (peer, syncPeer);

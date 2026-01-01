@@ -94,7 +94,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
 
         if (call.BlockStateCalls is not null)
         {
-            long lastBlockNumber = header.Number;
+            ulong lastBlockNumber = header.Number;
             ulong lastBlockTime = header.Timestamp;
 
             using ArrayPoolListRef<BlockStateCall<TransactionForRpc>> completeBlockStateCalls = new(call.BlockStateCalls.Count);
@@ -102,23 +102,23 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
             foreach (BlockStateCall<TransactionForRpc>? blockToSimulate in call.BlockStateCalls)
             {
                 blockToSimulate.BlockOverrides ??= new BlockOverride();
-                ulong givenNumber = blockToSimulate.BlockOverrides.Number ?? (ulong)lastBlockNumber + 1;
+                ulong givenNumber = blockToSimulate.BlockOverrides.Number ?? lastBlockNumber + 1;
 
                 if (givenNumber > long.MaxValue)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                         $"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
 
-                if (givenNumber <= (ulong)lastBlockNumber)
+                if (givenNumber <= lastBlockNumber)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                         $"Block number out of order {givenNumber} is <= than previous block number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
 
                 // if the no. of filler blocks are greater than maximum simulate blocks cap
-                if (givenNumber - (ulong)lastBlockNumber > (ulong)_blocksLimit)
+                if (givenNumber - lastBlockNumber > (ulong)_blocksLimit)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                         $"too many blocks",
                         ErrorCodes.ClientLimitExceededError);
 
-                for (ulong fillBlockNumber = (ulong)lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
+                for (ulong fillBlockNumber = lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
                 {
                     ulong fillBlockTime = lastBlockTime + _secondsPerSlot;
                     completeBlockStateCalls.Add(new BlockStateCall<TransactionForRpc>
@@ -139,14 +139,14 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                         return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                             $"Block timestamp out of order {blockToSimulate.BlockOverrides.Time} is <= than given base timestamp of {lastBlockTime}!", ErrorCodes.BlockTimestampNotIncreased);
                     }
-                    lastBlockTime = (ulong)blockToSimulate.BlockOverrides.Time;
+                    lastBlockTime = blockToSimulate.BlockOverrides.Time.Value;
                 }
                 else
                 {
                     blockToSimulate.BlockOverrides.Time = lastBlockTime + _secondsPerSlot;
-                    lastBlockTime = (ulong)blockToSimulate.BlockOverrides.Time;
+                    lastBlockTime = blockToSimulate.BlockOverrides.Time.Value;
                 }
-                lastBlockNumber = (long)givenNumber;
+                lastBlockNumber = givenNumber;
 
                 completeBlockStateCalls.Add(blockToSimulate);
             }

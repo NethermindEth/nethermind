@@ -52,7 +52,7 @@ public class BlockhashProviderTests
         BlockTree tree = blockTreeBuilder.TestObject;
 
         BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
-        BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+        BlockHeader? head = tree.FindHeader(checked((ulong)(chainLength - 1)), BlockTreeLookupOptions.None);
         Block current = Build.A.Block.WithParent(head!).TestObject;
         Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1, Frontier.Instance);
         Assert.That(result, Is.EqualTo(head?.Hash));
@@ -68,10 +68,10 @@ public class BlockhashProviderTests
         BlockTree tree = blockTreeBuilder.TestObject;
 
         BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
-        BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
+        BlockHeader head = tree.FindHeader(checked((ulong)(chainLength - 1)), BlockTreeLookupOptions.None)!;
         Block current = Build.A.Block.WithParent(head).TestObject;
         Hash256? result = provider.GetBlockhash(current.Header, chainLength - 256, Frontier.Instance);
-        Assert.That(result, Is.EqualTo(tree.FindHeader(256, BlockTreeLookupOptions.None)!.Hash));
+        Assert.That(result, Is.EqualTo(tree.FindHeader(256ul, BlockTreeLookupOptions.None)!.Hash));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -85,10 +85,10 @@ public class BlockhashProviderTests
 
         BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
 
-        BlockHeader notCanonParent = tree.FindHeader(chainLength - 4, BlockTreeLookupOptions.None)!;
-        BlockHeader expectedHeader = tree.FindHeader(chainLength - 3, BlockTreeLookupOptions.None)!;
-        Block headParent = tree.FindBlock(chainLength - 2, BlockTreeLookupOptions.None)!;
-        Block head = tree.FindBlock(chainLength - 1, BlockTreeLookupOptions.None)!;
+        BlockHeader notCanonParent = tree.FindHeader(checked((ulong)(chainLength - 4)), BlockTreeLookupOptions.None)!;
+        BlockHeader expectedHeader = tree.FindHeader(checked((ulong)(chainLength - 3)), BlockTreeLookupOptions.None)!;
+        Block headParent = tree.FindBlock(checked((ulong)(chainLength - 2)), BlockTreeLookupOptions.None)!;
+        Block head = tree.FindBlock(checked((ulong)(chainLength - 1)), BlockTreeLookupOptions.None)!;
 
         Block branch = Build.A.Block.WithParent(notCanonParent).WithTransactions(Build.A.Transaction.TestObject).TestObject;
         tree.Insert(branch, BlockTreeInsertBlockOptions.SaveHeader).Should().Be(AddBlockResult.Added);
@@ -161,7 +161,7 @@ public class BlockhashProviderTests
             current = Build.A.Block.WithParent(current).TestObject;
         }
 
-        long lookupNumber = current.Number - 256;
+        long lookupNumber = checked((long)current.Number) - 256;
         Hash256? result = provider.GetBlockhash(current.Header, lookupNumber, Frontier.Instance);
         Assert.That(result, Is.Not.Null);
     }
@@ -201,7 +201,7 @@ public class BlockhashProviderTests
         BlockTree tree = blockTreeBuilder.TestObject;
 
         BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
-        BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
+        BlockHeader head = tree.FindHeader(checked((ulong)(chainLength - 1)), BlockTreeLookupOptions.None)!;
         Block current = Build.A.Block.WithParent(head).TestObject;
         Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1, Frontier.Instance);
         Assert.That(result, Is.EqualTo(head.Hash));
@@ -217,7 +217,7 @@ public class BlockhashProviderTests
         BlockTree tree = blockTreeBuilder.TestObject;
 
         BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
-        BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
+        BlockHeader head = tree.FindHeader(checked((ulong)(chainLength - 1)), BlockTreeLookupOptions.None)!;
         Block current = Build.A.Block.WithParent(head).TestObject;
         Hash256? result = provider.GetBlockhash(current.Header, chainLength, Frontier.Instance);
         Assert.That(result, Is.Null);
@@ -233,7 +233,7 @@ public class BlockhashProviderTests
         BlockTree tree = blockTreeBuilder.TestObject;
 
         BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
-        BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
+        BlockHeader head = tree.FindHeader(checked((ulong)(chainLength - 1)), BlockTreeLookupOptions.None)!;
         Block current = Build.A.Block.WithParent(head).TestObject;
         Hash256? result = provider.GetBlockhash(current.Header, chainLength + 1, Frontier.Instance);
         Assert.That(result, Is.Null);
@@ -249,10 +249,10 @@ public class BlockhashProviderTests
         BlockTree tree = blockTreeBuilder.TestObject;
 
         BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
-        BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
+        BlockHeader head = tree.FindHeader(checked((ulong)(chainLength - 1)), BlockTreeLookupOptions.None)!;
         Block current = Build.A.Block.WithParent(head).TestObject;
         Hash256? result = provider.GetBlockhash(current.Header, chainLength - 256, Frontier.Instance);
-        Assert.That(result, Is.EqualTo(tree.FindHeader(256, BlockTreeLookupOptions.None)!.Hash));
+        Assert.That(result, Is.EqualTo(tree.FindHeader(256ul, BlockTreeLookupOptions.None)!.Hash));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -265,7 +265,7 @@ public class BlockhashProviderTests
         BlockTree tree = blockTreeBuilder.TestObject;
 
         BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
-        BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
+        BlockHeader head = tree.FindHeader(checked((ulong)(chainLength - 1)), BlockTreeLookupOptions.None)!;
         Block current = Build.A.Block.WithParent(head).TestObject;
         Hash256? result = provider.GetBlockhash(current.Header, chainLength - 257, Frontier.Instance);
         Assert.That(result, Is.Null);
@@ -281,7 +281,7 @@ public class BlockhashProviderTests
         BlockTree tree = blockTreeBuilder.TestObject;
 
         BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
-        BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
+        BlockHeader head = tree.FindHeader(checked((ulong)(chainLength - 1)), BlockTreeLookupOptions.None)!;
         Block current = Build.A.Block.WithParent(head).TestObject;
         Hash256? result = provider.GetBlockhash(current.Header, 127, Frontier.Instance);
         Assert.That(result, Is.EqualTo(head.Hash));
@@ -298,7 +298,7 @@ public class BlockhashProviderTests
         BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength);
         BlockTree tree = blockTreeBuilder.TestObject;
 
-        BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+        BlockHeader? head = tree.FindHeader(checked((ulong)(chainLength - 1)), BlockTreeLookupOptions.None);
         // number = chainLength
 
         (IWorldState worldState, Hash256 stateRoot) = CreateWorldState();
@@ -333,7 +333,7 @@ public class BlockhashProviderTests
     private static void AssertGenesisHash(IReleaseSpec spec, BlockhashProvider provider, BlockHeader currentHeader, Hash256? genesisHash)
     {
         Hash256? result = provider.GetBlockhash(currentHeader, 0, spec);
-        Assert.That(result, (spec.IsEip7709Enabled && currentHeader.Number > Eip2935Constants.RingBufferSize) || currentHeader.Number > 256
+        Assert.That(result, (spec.IsEip7709Enabled && currentHeader.Number > checked((ulong)Eip2935Constants.RingBufferSize)) || currentHeader.Number > (ulong)BlockhashProvider.MaxDepth
                 ? Is.Null
                 : Is.EqualTo(genesisHash));
     }
@@ -345,7 +345,7 @@ public class BlockhashProviderTests
         Block genesis = Build.A.Block.Genesis.TestObject;
         BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
 
-        BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+        BlockHeader? head = tree.FindHeader(checked((ulong)(chainLength - 1)), BlockTreeLookupOptions.None);
         // number = chainLength
 
         (IWorldState worldState, Hash256 stateRoot) = CreateWorldState();
@@ -367,7 +367,7 @@ public class BlockhashProviderTests
         // 2. Store parent hash with leading zeros
         store.ApplyBlockhashStateChanges(current.Header, specProvider.GetSpec(current.Header));
         // 3. Try to retrieve the parent hash from the state
-        var result = store.GetBlockHashFromState(current.Header, current.Header.Number - 1, specProvider.GetSpec(current.Header));
+        var result = store.GetBlockHashFromState(current.Header, checked((long)current.Header.Number) - 1, specProvider.GetSpec(current.Header));
         Assert.That(result, Is.EqualTo(current.Header.ParentHash));
     }
 
@@ -379,7 +379,7 @@ public class BlockhashProviderTests
 
         Block genesis = Build.A.Block.Genesis.TestObject;
         BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
-        BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+        BlockHeader? head = tree.FindHeader(checked((ulong)(chainLength - 1)), BlockTreeLookupOptions.None);
 
         (IWorldState worldState, Hash256 stateRoot) = CreateWorldState();
         Block current = Build.A.Block.WithParent(head!).WithStateRoot(stateRoot).TestObject;
@@ -411,7 +411,7 @@ public class BlockhashProviderTests
         // Now process blocks 51-149 from the tree to store blocks 50-148
         for (long blockNum = chainLength - customRingBufferSize + 1; blockNum < chainLength; blockNum++)
         {
-            BlockHeader? header = tree.FindHeader(blockNum, BlockTreeLookupOptions.None);
+            BlockHeader? header = tree.FindHeader(checked((ulong)blockNum), BlockTreeLookupOptions.None);
             Assert.That(header, Is.Not.Null, $"Block {blockNum} should exist in tree");
 
             store.ApplyBlockhashStateChanges(header!, specProvider.GetSpec(header));
@@ -429,7 +429,7 @@ public class BlockhashProviderTests
 
         for (long blockNum = chainLength - customRingBufferSize; blockNum < chainLength; blockNum++)
         {
-            BlockHeader? expectedHeader = tree.FindHeader(blockNum, BlockTreeLookupOptions.None);
+            BlockHeader? expectedHeader = tree.FindHeader(checked((ulong)blockNum), BlockTreeLookupOptions.None);
             Hash256? result = store.GetBlockHashFromState(current.Header, blockNum, customSpec);
 
             Assert.That(result, Is.EqualTo(expectedHeader!.Hash),
@@ -448,10 +448,10 @@ public class BlockhashProviderTests
             .OfChainLength(chainLength);
         SlowHeaderStore slowHeaderStore = new(blockTreeBuilder.HeaderStore) { SlowBlockNumber = 2 };
         BlockTree tree = blockTreeBuilder.TestObject;
-        BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
-        long expectedBlockNumber = head.Number - 2;
-        BlockHeader expected = tree.FindHeader(expectedBlockNumber, BlockTreeLookupOptions.None)!;
-        BlockHeader previousHead = tree.FindHeader(chainLength - 4, BlockTreeLookupOptions.None)!;
+        BlockHeader head = tree.FindHeader(checked((ulong)(chainLength - 1)), BlockTreeLookupOptions.None)!;
+        long expectedBlockNumber = checked((long)head.Number) - 2;
+        BlockHeader expected = tree.FindHeader(checked((ulong)expectedBlockNumber), BlockTreeLookupOptions.None)!;
+        BlockHeader previousHead = tree.FindHeader(checked((ulong)(chainLength - 4)), BlockTreeLookupOptions.None)!;
         BlockhashProvider provider = CreateBlockHashProvider(slowHeaderStore, Frontier.Instance);
         CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(5));
         Task previousHeadTask = provider.Prefetch(previousHead, cts.Token);

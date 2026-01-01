@@ -122,7 +122,20 @@ namespace Nethermind.Core
             db.PutSpan(blockNumberPrefixedKey, value, writeFlags);
         }
 
+        public static void Set(this IWriteOnlyKeyValueStore db, ulong blockNumber, Hash256 key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
+        {
+            Span<byte> blockNumberPrefixedKey = stackalloc byte[40];
+            GetBlockNumPrefixedKey(blockNumber, key, blockNumberPrefixedKey);
+            db.PutSpan(blockNumberPrefixedKey, value, writeFlags);
+        }
+
         public static void GetBlockNumPrefixedKey(long blockNumber, ValueHash256 blockHash, Span<byte> output)
+        {
+            blockNumber.WriteBigEndian(output);
+            blockHash!.Bytes.CopyTo(output[8..]);
+        }
+
+        public static void GetBlockNumPrefixedKey(ulong blockNumber, ValueHash256 blockHash, Span<byte> output)
         {
             blockNumber.WriteBigEndian(output);
             blockHash!.Bytes.CopyTo(output[8..]);
@@ -143,6 +156,11 @@ namespace Nethermind.Core
             db.Remove(key.ToBigEndianSpanWithoutLeadingZeros(out _));
         }
 
+        public static void Delete(this IWriteOnlyKeyValueStore db, ulong key)
+        {
+            db.Remove(key.ToBigEndianSpanWithoutLeadingZeros(out _));
+        }
+
         [SkipLocalsInit]
         public static void Delete(this IWriteOnlyKeyValueStore db, long blockNumber, Hash256 hash)
         {
@@ -151,7 +169,20 @@ namespace Nethermind.Core
             db.Remove(key);
         }
 
+        [SkipLocalsInit]
+        public static void Delete(this IWriteOnlyKeyValueStore db, ulong blockNumber, Hash256 hash)
+        {
+            Span<byte> key = stackalloc byte[40];
+            GetBlockNumPrefixedKey(blockNumber, hash, key);
+            db.Remove(key);
+        }
+
         public static void Set(this IWriteOnlyKeyValueStore db, long key, byte[] value)
+        {
+            db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
+        }
+
+        public static void Set(this IWriteOnlyKeyValueStore db, ulong key, byte[] value)
         {
             db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
         }

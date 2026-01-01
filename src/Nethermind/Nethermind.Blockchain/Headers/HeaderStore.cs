@@ -50,7 +50,7 @@ public class HeaderStore(
         }
     }
 
-    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, ulong? blockNumber = null)
     {
         blockNumber ??= GetBlockNumberFromBlockNumberDb(blockHash);
 
@@ -69,30 +69,30 @@ public class HeaderStore(
 
     public void Delete(Hash256 blockHash)
     {
-        long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
+        ulong? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
         if (blockNumber is not null) headerDb.Delete(blockNumber.Value, blockHash);
         blockNumberDb.Delete(blockHash);
         headerDb.Delete(blockHash);
         _headerCache.Delete(blockHash);
     }
 
-    public void InsertBlockNumber(Hash256 blockHash, long blockNumber)
+    public void InsertBlockNumber(Hash256 blockHash, ulong blockNumber)
     {
         Span<byte> blockNumberSpan = stackalloc byte[8];
         blockNumber.WriteBigEndian(blockNumberSpan);
         blockNumberDb.Set(blockHash, blockNumberSpan);
     }
 
-    public long? GetBlockNumber(Hash256 blockHash)
+    public ulong? GetBlockNumber(Hash256 blockHash)
     {
-        long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
+        ulong? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
         if (blockNumber is not null) return blockNumber.Value;
 
         // Probably still hash based
         return Get(blockHash)?.Number;
     }
 
-    private long? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
+    private ulong? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
     {
         Span<byte> numberSpan = blockNumberDb.GetSpan(blockHash);
         if (numberSpan.IsNullOrEmpty()) return null;
@@ -103,7 +103,7 @@ public class HeaderStore(
                 throw new InvalidDataException($"Unexpected number span length: {numberSpan.Length}");
             }
 
-            return BinaryPrimitives.ReadInt64BigEndian(numberSpan);
+            return BinaryPrimitives.ReadUInt64BigEndian(numberSpan);
         }
         finally
         {
@@ -111,5 +111,5 @@ public class HeaderStore(
         }
     }
 
-    BlockHeader? IHeaderFinder.Get(Hash256 blockHash, long? blockNumber) => Get(blockHash, true, blockNumber);
+    BlockHeader? IHeaderFinder.Get(Hash256 blockHash, ulong? blockNumber) => Get(blockHash, true, blockNumber);
 }

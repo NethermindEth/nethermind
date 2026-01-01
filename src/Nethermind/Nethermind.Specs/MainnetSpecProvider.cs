@@ -9,19 +9,19 @@ namespace Nethermind.Specs;
 
 public class MainnetSpecProvider : ISpecProvider
 {
-    public const long HomesteadBlockNumber = 1_150_000;
-    public const long DaoBlockNumberConst = 1_920_000;
-    public const long TangerineWhistleBlockNumber = 2_463_000;
-    public const long SpuriousDragonBlockNumber = 2_675_000;
-    public const long ByzantiumBlockNumber = 4_370_000;
-    public const long ConstantinopleFixBlockNumber = 7_280_000;
-    public const long IstanbulBlockNumber = 9_069_000;
-    public const long MuirGlacierBlockNumber = 9_200_000;
-    public const long BerlinBlockNumber = 12_244_000;
-    public const long LondonBlockNumber = 12_965_000;
-    public const long ArrowGlacierBlockNumber = 13_773_000;
-    public const long GrayGlacierBlockNumber = 15_050_000;
-    public const long ParisBlockNumber = 15_537_393;
+    public const ulong HomesteadBlockNumber = 1_150_000;
+    public const ulong DaoBlockNumberConst = 1_920_000;
+    public const ulong TangerineWhistleBlockNumber = 2_463_000;
+    public const ulong SpuriousDragonBlockNumber = 2_675_000;
+    public const ulong ByzantiumBlockNumber = 4_370_000;
+    public const ulong ConstantinopleFixBlockNumber = 7_280_000;
+    public const ulong IstanbulBlockNumber = 9_069_000;
+    public const ulong MuirGlacierBlockNumber = 9_200_000;
+    public const ulong BerlinBlockNumber = 12_244_000;
+    public const ulong LondonBlockNumber = 12_965_000;
+    public const ulong ArrowGlacierBlockNumber = 13_773_000;
+    public const ulong GrayGlacierBlockNumber = 15_050_000;
+    public const ulong ParisBlockNumber = 15_537_393;
     public const ulong GenesisBlockTimestamp = 0x55ba4215;
     public const ulong BeaconChainGenesisTimestampConst = 0x5fc63057;
     public const ulong ShanghaiBlockTimestamp = 0x64373057;
@@ -56,10 +56,10 @@ public class MainnetSpecProvider : ISpecProvider
             _ => BPO2.Instance
         };
 
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+    public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
         if (blockNumber is not null)
-            MergeBlockNumber = (ForkActivation)blockNumber;
+            MergeBlockNumber = (ForkActivation)blockNumber.Value;
 
         if (terminalTotalDifficulty is not null)
             TerminalTotalDifficulty = terminalTotalDifficulty;
@@ -67,7 +67,7 @@ public class MainnetSpecProvider : ISpecProvider
 
     public ulong NetworkId => Core.BlockchainIds.Mainnet;
     public ulong ChainId => NetworkId;
-    public long? DaoBlockNumber => DaoBlockNumberConst;
+    public ulong? DaoBlockNumber => DaoBlockNumberConst;
     public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public ForkActivation? MergeBlockNumber { get; private set; } = null;
     public ulong TimestampFork => ShanghaiBlockTimestamp;

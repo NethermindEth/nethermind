@@ -100,7 +100,7 @@ public class StartingSyncPivotUpdater
 
     private async Task<bool> TrySetFreshPivot(CancellationToken cancellationToken)
     {
-        (Hash256 Hash, long Number)? potentialPivotData = await TryGetPivotData(cancellationToken);
+        (Hash256 Hash, ulong Number)? potentialPivotData = await TryGetPivotData(cancellationToken);
 
         if (potentialPivotData is null)
         {
@@ -111,7 +111,7 @@ public class StartingSyncPivotUpdater
         return TryOverwritePivot(potentialPivotData.Value.Hash, potentialPivotData.Value.Number);
     }
 
-    protected virtual async Task<(Hash256 Hash, long Number)?> TryGetPivotData(CancellationToken cancellationToken)
+    protected virtual async Task<(Hash256 Hash, ulong Number)?> TryGetPivotData(CancellationToken cancellationToken)
     {
         // getting finalized block hash as it is safe, because can't be reorganized
         Hash256? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
@@ -120,17 +120,17 @@ public class StartingSyncPivotUpdater
         {
             UpdateAndPrintPotentialNewPivot(finalizedBlockHash);
 
-            long? finalizedBlockNumber = TryGetBlockNumberFromBlockCache(finalizedBlockHash)
-                                         ?? TryGetFinalizedBlockNumberFromBlockTree(finalizedBlockHash)
-                                         ?? await TryGetFromPeers(finalizedBlockHash, cancellationToken);
+            ulong? finalizedBlockNumber = TryGetBlockNumberFromBlockCache(finalizedBlockHash)
+                                          ?? TryGetFinalizedBlockNumberFromBlockTree(finalizedBlockHash)
+                                          ?? await TryGetFromPeers(finalizedBlockHash, cancellationToken);
 
-            return finalizedBlockNumber is null ? null : (finalizedBlockHash, (long)finalizedBlockNumber);
+            return finalizedBlockNumber is null ? null : (finalizedBlockHash, finalizedBlockNumber.Value);
         }
 
         return null;
     }
 
-    protected long? TryGetBlockNumberFromBlockCache(Hash256 finalizedBlockHash, string type = Pivot)
+    protected ulong? TryGetBlockNumberFromBlockCache(Hash256 finalizedBlockHash, string type = Pivot)
     {
         if (_logger.IsDebug) _logger.Debug($"Looking for {type} block in block cache");
         if (_blockCacheService.BlockCache.TryGetValue(finalizedBlockHash, out Block? finalizedBlock))
@@ -146,7 +146,7 @@ public class StartingSyncPivotUpdater
         return null;
     }
 
-    private long? TryGetFinalizedBlockNumberFromBlockTree(Hash256 finalizedBlockHash)
+    private ulong? TryGetFinalizedBlockNumberFromBlockTree(Hash256 finalizedBlockHash)
     {
         if (_logger.IsDebug) _logger.Debug("Looking for header of pivot block in blockTree");
         BlockHeader? finalizedHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
@@ -163,7 +163,7 @@ public class StartingSyncPivotUpdater
         return null;
     }
 
-    protected async Task<long?> TryGetFromPeers(Hash256? hash, CancellationToken cancellationToken, string type = Pivot) =>
+    protected async Task<ulong?> TryGetFromPeers(Hash256? hash, CancellationToken cancellationToken, string type = Pivot) =>
         (await TryGetFromPeers(hash, cancellationToken, static (peer, hash256, token) => peer.GetHeadBlockHeader(hash256, token), type))?.Number;
 
     protected async Task<BlockHeader?> TryGetFromPeers<T>(T id, CancellationToken cancellationToken,
@@ -204,10 +204,12 @@ public class StartingSyncPivotUpdater
         return null;
     }
 
-    private bool TryOverwritePivot(Hash256 potentialPivotBlockHash, long potentialPivotBlockNumber)
+    private bool TryOverwritePivot(Hash256 potentialPivotBlockHash, ulong potentialPivotBlockNumber)
     {
-        long targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() ?? 0;
-        bool isCloseToHead = targetBlock <= potentialPivotBlockNumber || (targetBlock - potentialPivotBlockNumber) < Constants.MaxDistanceFromHead;
+        long targetBlockFromBeacon = _beaconSyncStrategy.GetTargetBlockHeight() ?? 0;
+        ulong targetBlock = targetBlockFromBeacon > 0 ? (ulong)targetBlockFromBeacon : 0;
+        bool isCloseToHead = targetBlock <= potentialPivotBlockNumber
+                             || (targetBlock > potentialPivotBlockNumber && (targetBlock - potentialPivotBlockNumber) < (ulong)Constants.MaxDistanceFromHead);
         bool newPivotHigherThanOld = potentialPivotBlockNumber > _blockTree.SyncPivot.BlockNumber;
 
         if (isCloseToHead && newPivotHigherThanOld)
@@ -218,12 +220,12 @@ public class StartingSyncPivotUpdater
             return true;
         }
 
-        if (!isCloseToHead && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer too far from head. PivotBlockNumber: {potentialPivotBlockNumber}, TargetBlockNumber: {targetBlock}, difference: {targetBlock - potentialPivotBlockNumber} blocks. Max difference allowed: {Constants.MaxDistanceFromHead}");
+        if (!isCloseToHead && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer too far from head. PivotBlockNumber: {potentialPivotBlockNumber}, TargetBlockNumber: {targetBlock}, difference: {(targetBlock > potentialPivotBlockNumber ? targetBlock - potentialPivotBlockNumber : 0)} blocks. Max difference allowed: {Constants.MaxDistanceFromHead}");
         if (!newPivotHigherThanOld && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer isn't higher than pivot from initial config. New PivotBlockNumber: {potentialPivotBlockNumber}, old: {_syncConfig.PivotNumber}");
         return false;
     }
 
-    private void UpdateConfigValues(Hash256 finalizedBlockHash, long finalizedBlockNumber)
+    private void UpdateConfigValues(Hash256 finalizedBlockHash, ulong finalizedBlockNumber)
     {
         _blockTree.SyncPivot = (finalizedBlockNumber, finalizedBlockHash);
         _syncConfig.MaxAttemptsToUpdatePivot = 0;

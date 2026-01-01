@@ -30,7 +30,7 @@ namespace Ethereum.Test.Base
             const char kSuffix = 'k';
             if (!transitionInfo.StartsWith(timestampPrefix))
             {
-                return new ForkActivation(int.Parse(transitionInfo));
+                return new ForkActivation(ulong.Parse(transitionInfo));
             }
 
             transitionInfo = transitionInfo.Remove(0, timestampPrefix.Length);
@@ -55,8 +55,8 @@ namespace Ethereum.Test.Base
                 new Hash256(headerJson.UncleHash),
                 new Address(headerJson.Coinbase),
                 Bytes.FromHexString(headerJson.Difficulty).ToUInt256(),
-                (long)Bytes.FromHexString(headerJson.Number).ToUInt256(),
-                (long)Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
+                checked(Bytes.FromHexString(headerJson.Number).ToUInt256().ToUInt64(null)),
+                checked(Bytes.FromHexString(headerJson.GasLimit).ToUInt256().ToUInt64(null)),
                 (ulong)Bytes.FromHexString(headerJson.Timestamp).ToUnsignedBigInteger(),
                 Bytes.FromHexString(headerJson.ExtraData),
                 headerJson.BlobGasUsed is null ? null : (ulong)Bytes.FromHexString(headerJson.BlobGasUsed).ToUnsignedBigInteger(),
@@ -66,7 +66,7 @@ namespace Ethereum.Test.Base
             )
             {
                 Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom)),
-                GasUsed = (long)Bytes.FromHexString(headerJson.GasUsed).ToUnsignedBigInteger(),
+                GasUsed = checked(Bytes.FromHexString(headerJson.GasUsed).ToUInt256().ToUInt64(null)),
                 Hash = new Hash256(headerJson.Hash),
                 MixHash = new Hash256(headerJson.MixHash),
                 Nonce = (ulong)Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger(),
@@ -79,7 +79,7 @@ namespace Ethereum.Test.Base
 
             if (headerJson.BaseFeePerGas is not null)
             {
-                header.BaseFeePerGas = (ulong)Bytes.FromHexString(headerJson.BaseFeePerGas).ToUnsignedBigInteger();
+                header.BaseFeePerGas = Bytes.FromHexString(headerJson.BaseFeePerGas).ToUInt256();
             }
 
             return header;
@@ -100,13 +100,13 @@ namespace Ethereum.Test.Base
                 string[]? validationError = engineNewPayload.Params.Length > 3 ? engineNewPayload.Params[3].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) : null;
                 yield return (new ExecutionPayloadV3()
                 {
-                    BaseFeePerGas = (ulong)Bytes.FromHexString(executionPayload.BaseFeePerGas).ToUnsignedBigInteger(),
+                    BaseFeePerGas = Bytes.FromHexString(executionPayload.BaseFeePerGas).ToUInt256(),
                     BlockHash = new(executionPayload.BlockHash),
-                    BlockNumber = (long)Bytes.FromHexString(executionPayload.BlockNumber).ToUnsignedBigInteger(),
+                    BlockNumber = checked(Bytes.FromHexString(executionPayload.BlockNumber).ToUInt256().ToUInt64(null)),
                     ExtraData = Bytes.FromHexString(executionPayload.ExtraData),
                     FeeRecipient = new(executionPayload.FeeRecipient),
-                    GasLimit = (long)Bytes.FromHexString(executionPayload.GasLimit).ToUnsignedBigInteger(),
-                    GasUsed = (long)Bytes.FromHexString(executionPayload.GasUsed).ToUnsignedBigInteger(),
+                    GasLimit = checked(Bytes.FromHexString(executionPayload.GasLimit).ToUInt256().ToUInt64(null)),
+                    GasUsed = checked(Bytes.FromHexString(executionPayload.GasUsed).ToUInt256().ToUInt64(null)),
                     LogsBloom = new(Bytes.FromHexString(executionPayload.LogsBloom)),
                     ParentHash = new(executionPayload.ParentHash),
                     PrevRandao = new(executionPayload.PrevRandao),
@@ -130,10 +130,10 @@ namespace Ethereum.Test.Base
             {
                 Type = transactionJson.Type,
                 Value = transactionJson.Value[postStateJson.Indexes.Value],
-                GasLimit = transactionJson.GasLimit[postStateJson.Indexes.Gas],
-                GasPrice = transactionJson.GasPrice ?? transactionJson.MaxPriorityFeePerGas ?? 0,
-                DecodedMaxFeePerGas = transactionJson.MaxFeePerGas ?? 0,
-                Nonce = transactionJson.Nonce,
+                GasLimit = checked((ulong)transactionJson.GasLimit[postStateJson.Indexes.Gas]),
+                GasPrice = transactionJson.GasPrice ?? transactionJson.MaxPriorityFeePerGas ?? UInt256.Zero,
+                DecodedMaxFeePerGas = transactionJson.MaxFeePerGas ?? UInt256.Zero,
+                Nonce = checked(transactionJson.Nonce.ToUInt64(null)),
                 To = transactionJson.To,
                 Data = transactionJson.Data[postStateJson.Indexes.Data],
                 SenderAddress = new PrivateKey(transactionJson.SecretKey).Address,
@@ -232,7 +232,7 @@ namespace Ethereum.Test.Base
                 Value = transactionJson.Value,
                 GasLimit = transactionJson.GasLimit,
                 GasPrice = transactionJson.GasPrice,
-                Nonce = transactionJson.Nonce,
+                Nonce = checked(transactionJson.Nonce.ToUInt64(null)),
                 To = transactionJson.To,
                 Data = transactionJson.Data,
                 Signature = new Signature(transactionJson.R, transactionJson.S, transactionJson.V)

@@ -9,10 +9,10 @@ namespace Nethermind.State.Repositories
 {
     public interface IChainLevelInfoRepository
     {
-        void Delete(long number, BatchWrite? batch = null);
-        void PersistLevel(long number, ChainLevelInfo level, BatchWrite? batch = null);
+        void Delete(ulong number, BatchWrite? batch = null);
+        void PersistLevel(ulong number, ChainLevelInfo level, BatchWrite? batch = null);
         BatchWrite StartBatch();
-        ChainLevelInfo? LoadLevel(long number);
-        IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<long> blockNumbers);
+        ChainLevelInfo? LoadLevel(ulong number);
+        IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers);
     }
 }

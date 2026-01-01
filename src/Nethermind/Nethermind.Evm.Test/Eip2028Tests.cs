@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Test
     {
         private class AfterIstanbul : Eip2028Tests
         {
-            protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
+            protected override ulong BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
             protected override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
 
             [Test]
@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Test
 
         private class BeforeIstanbul : Eip2028Tests
         {
-            protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber - 1;
+            protected override ulong BlockNumber => MainnetSpecProvider.IstanbulBlockNumber - 1UL;
             protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
             [Test]

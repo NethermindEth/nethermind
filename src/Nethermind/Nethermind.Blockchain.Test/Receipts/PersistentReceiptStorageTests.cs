@@ -83,7 +83,7 @@ public class PersistentReceiptStorageTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Returns_null_for_missing_tx()
     {
-        Hash256 blockHash = _storage.FindBlockHash(Keccak.Zero);
+        Hash256? blockHash = _storage.FindBlockHash(Keccak.Zero);
         blockHash.Should().BeNull();
     }
 
@@ -293,7 +293,7 @@ public class PersistentReceiptStorageTests
         _storage.Insert(anotherBlock, new[] { Build.A.Receipt.TestObject }, ensureCanonical);
         _blockTree.FindBlockHash(anotherBlock.Number).Returns(anotherBlock.Hash);
 
-        Hash256 findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
+        Hash256? findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
         if (ensureCanonical)
         {
             findBlockHash.Should().Be(anotherBlock.Hash!);

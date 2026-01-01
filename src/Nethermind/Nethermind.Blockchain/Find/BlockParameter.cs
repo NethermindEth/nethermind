@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Find
         public static BlockParameter Safe = new(BlockParameterType.Safe);
 
         public BlockParameterType Type { get; }
-        public long? BlockNumber { get; }
+        public ulong? BlockNumber { get; }
 
         public Hash256? BlockHash { get; }
 
@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Find
             Type = type;
         }
 
-        public BlockParameter(long number)
+        public BlockParameter(ulong number)
         {
             Type = BlockParameterType.BlockNumber;
             BlockNumber = number;
@@ -143,7 +143,7 @@ namespace Nethermind.JsonRpc.Data
                                             ReadStringFormatValueSequence(ref reader, options),
                 JsonTokenType.StartObject => ReadObjectFormat(ref reader, typeToConvert, options),
                 JsonTokenType.Null => BlockParameter.Latest,
-                JsonTokenType.Number when !EthereumJsonSerializer.StrictHexFormat => new BlockParameter(reader.GetInt64()),
+                JsonTokenType.Number when !EthereumJsonSerializer.StrictHexFormat => new BlockParameter(reader.GetUInt64()),
                 _ => throw new FormatException("unknown block parameter type")
             };
         }
@@ -253,12 +253,12 @@ namespace Nethermind.JsonRpc.Data
                 }
 
                 // Parse as block number
-                long value = ParseHexNumber(span);
+                ulong value = ParseHexNumber(span);
                 return new BlockParameter(value);
             }
 
             // Try decimal format (if not strict)
-            if (!EthereumJsonSerializer.StrictHexFormat && Utf8Parser.TryParse(span, out long decimalValue, out _))
+            if (!EthereumJsonSerializer.StrictHexFormat && Utf8Parser.TryParse(span, out ulong decimalValue, out _))
             {
                 return new BlockParameter(decimalValue);
             }
@@ -268,14 +268,14 @@ namespace Nethermind.JsonRpc.Data
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static long ParseHexNumber(ReadOnlySpan<byte> span)
+        private static ulong ParseHexNumber(ReadOnlySpan<byte> span)
         {
             int oddMod = span.Length % 2;
             int length = (span.Length >> 1) + oddMod;
-            long value = 0;
+            ulong value = 0;
 
             Span<byte> output = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref value, 1));
-            Bytes.FromUtf8HexString(span, output[(sizeof(long) - length)..]);
+            Bytes.FromUtf8HexString(span, output[(sizeof(ulong) - length)..]);
 
             return BitConverter.IsLittleEndian switch
             {
@@ -300,7 +300,7 @@ namespace Nethermind.JsonRpc.Data
                 not null when value.Equals("finalized", StringComparison.OrdinalIgnoreCase) => BlockParameter.Finalized,
                 not null when value.Equals("safe", StringComparison.OrdinalIgnoreCase) => BlockParameter.Safe,
                 { Length: 66 } when value.StartsWith("0x") => new BlockParameter(new Hash256(value)),
-                _ => new BlockParameter(LongConverter.FromString(value))
+                _ => new BlockParameter(checked((ulong)LongConverter.FromString(value)))
             };
         }
     }

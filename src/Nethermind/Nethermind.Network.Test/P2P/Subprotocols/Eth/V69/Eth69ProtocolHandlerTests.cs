@@ -199,8 +199,11 @@ public class Eth69ProtocolHandlerTests
         var (earliest, latest) = (Build.A.BlockHeader.WithNumber(0).TestObject, Build.A.BlockHeader.WithNumber(42).TestObject);
         _handler.NotifyOfNewRange(earliest, latest);
 
-        _session.Received(1).DeliverMessage(Arg.Is<BlockRangeUpdateMessage>(m =>
-            m.EarliestBlock == earliest.Number && m.LatestBlock == latest.Number && m.LatestBlockHash == latest.Hash)
+        long earliestNumber = checked((long)earliest.Number);
+        long latestNumber = checked((long)latest.Number);
+
+        _session.Received(1).DeliverMessage<BlockRangeUpdateMessage>(Arg.Is<BlockRangeUpdateMessage>(m =>
+            m.EarliestBlock == earliestNumber && m.LatestBlock == latestNumber && m.LatestBlockHash == latest.Hash)
         );
     }
 

@@ -104,7 +104,8 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
 
                 // Note: Header.Hash is calculated by HeaderDecoder.
-                blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
+                long headerNumber = checked((long)err.Block.Header.Number);
+                blockHashes[(int)(headerNumber - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
             }
         }, cancellation)).ToPooledList(verifyConcurrency);
         await Task.WhenAll(workers.AsSpan());

@@ -11,7 +11,7 @@ namespace Nethermind.Evm.Test;
 
 public class Eip7939Tests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
 
     public static IEnumerable<TestCaseData<UInt256>> Tests

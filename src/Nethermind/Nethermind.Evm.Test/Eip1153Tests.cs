@@ -7,6 +7,7 @@ using Nethermind.Evm.State;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using System.Diagnostics;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Test;
 
@@ -15,7 +16,7 @@ namespace Nethermind.Evm.Test;
 /// </summary>
 internal class Eip1153Tests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
     /// <summary>
@@ -80,8 +81,9 @@ internal class Eip1153Tests : VirtualMachineTestsBase
     [Test]
     public void transient_storage_performance_test()
     {
-        long blockGasLimit = 30000000;
-        long numOfOps = (long)(blockGasLimit * .95) / (GasCostOf.TLoad + GasCostOf.TStore + GasCostOf.VeryLow * 4);
+        ulong blockGasLimit = 30000000UL;
+        ulong perIterationGas = checked((ulong)(GasCostOf.TLoad + GasCostOf.TStore + GasCostOf.VeryLow * 4));
+        long numOfOps = checked((long)((blockGasLimit * 95 / 100) / perIterationGas));
         Prepare prepare = Prepare.EvmCode;
         for (long i = 0; i < numOfOps; i++)
         {
@@ -93,7 +95,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
         byte[] code = prepare.Done;
 
         long startTime = Stopwatch.GetTimestamp();
-        TestAllTracerWithOutput result = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, Timestamp), checked((ulong)blockGasLimit), code, blockGasLimit);
+        TestAllTracerWithOutput result = Execute(new ForkActivation(MainnetSpecProvider.GrayGlacierBlockNumber, Timestamp), blockGasLimit, code, blockGasLimit);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(Stopwatch.GetElapsedTime(startTime).TotalMilliseconds < 5000, Is.True);
     }

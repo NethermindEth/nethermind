@@ -347,9 +347,9 @@ public class LogFinderTests
     {
         if (withBloomDb)
         {
-            for (int i = 0; i <= _blockTree.Head!.Number; i++)
+            for (ulong i = 0; i <= _blockTree.Head!.Number; i++)
             {
-                _bloomStorage.Store(i, _blockTree.FindHeader(i)!.Bloom!);
+                _bloomStorage.Store(checked((long)i), _blockTree.FindHeader(i, BlockTreeLookupOptions.None)!.Bloom!);
             }
         }
     }

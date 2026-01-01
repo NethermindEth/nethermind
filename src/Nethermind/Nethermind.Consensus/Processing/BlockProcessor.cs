@@ -256,7 +256,7 @@ public partial class BlockProcessor(
 
     private void ApplyDaoTransition(Block block)
     {
-        long? daoBlockNumber = specProvider.DaoBlockNumber;
+        ulong? daoBlockNumber = specProvider.DaoBlockNumber;
         if (daoBlockNumber.HasValue && daoBlockNumber.Value == block.Header.Number)
         {
             ApplyTransition();

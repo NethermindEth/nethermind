@@ -10,6 +10,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -19,7 +20,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class GasPriceExtractorTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
 
         [Test]
         public void Block_header_rlp_size_assumption_is_correct()
@@ -62,7 +63,7 @@ namespace Nethermind.Evm.Test
                     .Done;
 
             (Block block, Transaction transaction) = PrepareTx(
-                BlockNumber, 1000000, bytecode, rlp.Bytes, 0);
+                Activation, 1000000, bytecode, rlp.Bytes, UInt256.Zero);
 
             CallOutputTracer callOutputTracer = new();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), callOutputTracer);
@@ -94,7 +95,7 @@ namespace Nethermind.Evm.Test
                     .Done;
 
             (Block block, Transaction transaction) = PrepareTx(
-                BlockNumber, 1000000, bytecode, rlp.Bytes, 0);
+                Activation, 1000000, bytecode, rlp.Bytes, UInt256.Zero);
 
             CallOutputTracer callOutputTracer = new();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), callOutputTracer);
@@ -119,7 +120,7 @@ namespace Nethermind.Evm.Test
             byte[] bytecode = bytecodeBuilder.Done;
 
             (Block block, Transaction transaction) = PrepareTx(
-                BlockNumber, 1000000, bytecode, rlp.Bytes, 0);
+                Activation, 1000000, bytecode, rlp.Bytes, UInt256.Zero);
 
             CallOutputTracer callOutputTracer = new();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), callOutputTracer);

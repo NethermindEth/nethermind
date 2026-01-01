@@ -25,9 +25,8 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
             ulong gasDelta;
             UInt256 feeDelta;
             bool isForkBlockNumber = specFor1559.Eip1559TransitionBlock == parent.Number + 1;
-            // parent.GasLimit/GasUsed are stored as signed long in header; cast to ulong for EIP-1559 math
-            ulong parentGasLimit = (ulong)parent.GasLimit;
-            ulong parentGasUsed = (ulong)parent.GasUsed;
+            ulong parentGasLimit = parent.GasLimit;
+            ulong parentGasUsed = parent.GasUsed;
             ulong parentGasTarget = parentGasLimit / (ulong)specFor1559.ElasticityMultiplier;
             if (isForkBlockNumber)
                 parentGasTarget = parentGasLimit;

@@ -46,7 +46,7 @@ public partial class BlockDownloaderTests
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
             .WithBlockTrees(notSyncedTreeStartingBlockNumber + 1, (int)headNumber + 1, receiptStorage: receiptStorage)
-            .InsertBeaconPivot(beaconPivot)
+            .InsertBeaconPivot(checked((ulong)beaconPivot))
             .InsertBeaconHeaders(notSyncedTreeStartingBlockNumber + 1, beaconPivot - 1)
             .InsertBeaconBlocks(beaconPivot + 1, insertedBeaconBlocks, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
         BlockTree syncedTree = blockTrees.SyncedTree;
@@ -63,8 +63,8 @@ public partial class BlockDownloaderTests
             });
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
-        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(beaconPivot, BlockTreeLookupOptions.None));
-        ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(beaconPivot, BlockTreeLookupOptions.None);
+        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(checked((ulong)beaconPivot), BlockTreeLookupOptions.None));
+        ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(checked((ulong)beaconPivot), BlockTreeLookupOptions.None);
 
         Response responseOptions = Response.AllCorrect;
         if (withReceipts)
@@ -81,8 +81,9 @@ public partial class BlockDownloaderTests
             long expectedDownloadStart = notSyncedTreeStartingBlockNumber;
             long expectedDownloadEnd = Math.Min(headNumber, insertedBeaconBlocks - fastSyncLag);
 
-            ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd));
-            ctx.BlockTree.BestKnownNumber.Should().Be(Math.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd));
+            ulong expectedBestSuggestedHeaderNumber = (ulong)Math.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd);
+            ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(expectedBestSuggestedHeaderNumber);
+            ctx.BlockTree.BestKnownNumber.Should().Be(expectedBestSuggestedHeaderNumber);
 
             int receiptCount = 0;
             for (long i = expectedDownloadStart; i < expectedDownloadEnd; i++)
@@ -94,11 +95,11 @@ public partial class BlockDownloaderTests
             }
 
             ctx.ReceiptStorage.Count.Should().Be(withReceipts ? receiptCount : 0);
-            ctx.BeaconPivot.ProcessDestination?.Number.Should().Be(Math.Max(insertedBeaconBlocks - fastSyncLag, beaconPivot));
+            ctx.BeaconPivot.ProcessDestination?.Number.Should().Be((ulong)Math.Max(insertedBeaconBlocks - fastSyncLag, beaconPivot));
         }
 
         await ctx.FullSyncUntilNoRequest(peerInfo);
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(insertedBeaconBlocks);
+        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be((ulong)insertedBeaconBlocks);
     }
 
     [TestCase(32L, DownloaderOptions.Insert, 32, false)]
@@ -121,7 +122,7 @@ public partial class BlockDownloaderTests
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
         if (withBeaconPivot)
-            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
+            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16ul, BlockTreeLookupOptions.None));
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
@@ -156,13 +157,13 @@ public partial class BlockDownloaderTests
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
         if (withBeaconPivot)
-            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
+            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16ul, BlockTreeLookupOptions.None));
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
         await ctx.FullSyncUntilNoRequest(peerInfo);
-        notSyncedTree.BestKnownNumber.Should().Be(expectedBestKnownNumber);
+        notSyncedTree.BestKnownNumber.Should().Be(checked((ulong)expectedBestKnownNumber));
     }
 
     [TestCase(32L, 32L, 0, 32)]
@@ -172,7 +173,7 @@ public partial class BlockDownloaderTests
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
             .WithBlockTrees(4, (int)headNumber + 1)
-            .InsertBeaconPivot(pivot)
+            .InsertBeaconPivot(checked((ulong)pivot))
             .InsertBeaconHeaders(4, pivot - 1);
 
         BlockTree syncedTree = blockTrees.SyncedTree;
@@ -183,8 +184,8 @@ public partial class BlockDownloaderTests
         });
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
-        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
-        ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None);
+        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(checked((ulong)pivot), BlockTreeLookupOptions.None));
+        ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(checked((ulong)pivot), BlockTreeLookupOptions.None);
 
         Response responseOptions = Response.AllCorrect;
 
@@ -192,7 +193,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
         await ctx.FastSyncUntilNoRequest(peerInfo);
-        ctx.BlockTree.BestKnownNumber.Should().Be(Math.Max(0, expectedBestKnownNumber));
+        ctx.BlockTree.BestKnownNumber.Should().Be(checked((ulong)Math.Max(0, expectedBestKnownNumber)));
     }
 
     [Test]
@@ -215,7 +216,7 @@ public partial class BlockDownloaderTests
         {
             BlockHeader header = (BlockHeader)info[0];
             // Simulate something calls find header on the header, causing the TD to get recalculated
-            notSyncedTree.FindHeader(header.Hash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+            notSyncedTree.FindHeader(header.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             return true;
         }));
 
@@ -231,7 +232,7 @@ public partial class BlockDownloaderTests
         });
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
-        BlockHeader lastHeader = syncedTree.FindHeader(3, BlockTreeLookupOptions.None)!;
+        BlockHeader lastHeader = syncedTree.FindHeader(3ul, BlockTreeLookupOptions.None)!;
         // Because the FindHeader recalculated the TD.
         lastHeader.TotalDifficulty = 0;
 
@@ -276,8 +277,8 @@ public partial class BlockDownloaderTests
         long chainLength = headNumber + 1;
         SyncPeerMock syncPeerInternal = new(chainLength, true, responseOptions, true);
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => syncPeerInternal.GetBlockHeaders(ci.ArgAt<long>(0), ci.ArgAt<int>(1), ci.ArgAt<int>(2), ci.ArgAt<CancellationToken>(3)));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => syncPeerInternal.GetBlockHeaders(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), ci.ArgAt<int>(2), ci.ArgAt<CancellationToken>(3)));
 
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => syncPeerInternal.GetBlockBodies(ci.ArgAt<IReadOnlyList<Hash256>>(0), ci.ArgAt<CancellationToken>(1)));
@@ -293,7 +294,8 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
         await ctx.FastSyncUntilNoRequest(peerInfo);
-        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - fastSyncLag)));
+        int expectedBestSuggestedHeaderNumber = Math.Max(0, Math.Min(headNumber, headNumber - fastSyncLag));
+        ctx.BlockTree.BestSuggestedHeader!.Number.Should().Be((ulong)expectedBestSuggestedHeaderNumber);
 
         syncPeerInternal.ExtendTree(chainLength * 2);
         await ctx.FullSyncUntilNoRequest(peerInfo);
@@ -309,9 +311,9 @@ public partial class BlockDownloaderTests
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
              .GoesLikeThis()
              .WithBlockTrees(1, (int)(pivot + 1), false, 0)
-             .InsertBeaconPivot(pivot)
-             .InsertBeaconHeaders(1, pivot)
-             .InsertBeaconBlocks(pivot, pivot, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
+                             .InsertBeaconPivot((ulong)pivot)
+               .InsertBeaconHeaders(1, pivot)
+               .InsertBeaconBlocks(pivot, pivot, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
 
         using IContainer container = CreateMergeNode(blockTrees, new MergeConfig()
         {
@@ -319,8 +321,8 @@ public partial class BlockDownloaderTests
         });
 
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
-        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
-        ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None);
+        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(checked((ulong)pivot), BlockTreeLookupOptions.None));
+        ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(checked((ulong)pivot), BlockTreeLookupOptions.None);
 
         SyncPeerMock syncPeer = new(blockTrees.SyncedTree, true, Response.AllCorrect | Response.WithTransactions, 0);
         ctx.FullSyncUntilNoRequest(new PeerInfo(syncPeer));
@@ -373,14 +375,14 @@ public partial class BlockDownloaderTests
             BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderInsert;
             for (long i = high; i >= low; --i)
             {
-                BlockHeader? beaconHeader = syncPeer.BlockTree.FindHeader(i, BlockTreeLookupOptions.None)!;
+                BlockHeader? beaconHeader = syncPeer.BlockTree.FindHeader(checked((ulong)i), BlockTreeLookupOptions.None)!;
 
                 AddBlockResult insertResult = BlockTree!.Insert(beaconHeader!, headerOptions);
                 Assert.That(insertResult, Is.EqualTo(AddBlockResult.Added));
             }
         }
 
-        public override void ShouldFastSyncedUntil(long blockNumber)
+        public override void ShouldFastSyncedUntil(ulong blockNumber)
         {
             // With post merge, best suggested header always follow beacon pivot but not necessarily synced.
             // But BestSuggestedBody is updated, unlike PreMerge.

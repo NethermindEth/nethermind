@@ -33,7 +33,7 @@ public class DbBlocksLoaderTests
             MemDb headersDb = new();
 
             BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
-            for (int i = 0; i < testTree.Head!.Number + 1; i++)
+            for (ulong i = 0; i <= testTree.Head!.Number; i++)
             {
                 Block ithBlock = testTree.FindBlock(i, BlockTreeLookupOptions.None)!;
                 blockStore.Insert(ithBlock);
@@ -79,7 +79,7 @@ public class DbBlocksLoaderTests
             MemDb headersDb = new();
 
             BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
-            for (int i = 0; i < testTree.Head!.Number + 1; i++)
+            for (ulong i = 0; i <= testTree.Head!.Number; i++)
             {
                 Block ithBlock = testTree.FindBlock(i, BlockTreeLookupOptions.None)!;
                 blockStore.Insert(ithBlock);

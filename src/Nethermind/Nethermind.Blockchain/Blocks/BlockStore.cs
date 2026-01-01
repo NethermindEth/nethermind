@@ -31,7 +31,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
         return blockDb.Get(key);
     }
 
-    public bool HasBlock(long blockNumber, Hash256 blockHash)
+    public bool HasBlock(ulong blockNumber, Hash256 blockHash)
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
@@ -52,27 +52,27 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
         blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
     }
 
-    private static void GetBlockNumPrefixedKey(long blockNumber, Hash256 blockHash, Span<byte> output)
+    private static void GetBlockNumPrefixedKey(ulong blockNumber, Hash256 blockHash, Span<byte> output)
     {
         blockNumber.WriteBigEndian(output);
         blockHash!.Bytes.CopyTo(output[8..]);
     }
 
-    public void Delete(long blockNumber, Hash256 blockHash)
+    public void Delete(ulong blockNumber, Hash256 blockHash)
     {
         _blockCache.Delete(blockHash);
         blockDb.Delete(blockNumber, blockHash);
         blockDb.Remove(blockHash.Bytes);
     }
 
-    public Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
+    public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
         Block? b = blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
         if (b is not null) return b;
         return blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
     }
 
-    public byte[]? GetRlp(long blockNumber, Hash256 blockHash)
+    public byte[]? GetRlp(ulong blockNumber, Hash256 blockHash)
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
@@ -81,7 +81,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
         return blockDb.Get(blockHash);
     }
 
-    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash)
+    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)
     {
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);

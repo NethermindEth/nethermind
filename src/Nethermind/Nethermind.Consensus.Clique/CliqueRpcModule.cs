@@ -57,50 +57,50 @@ namespace Nethermind.Consensus.Clique
         public Snapshot GetSnapshot(long? number = null)
         {
             Block head = _blockTree.Head;
-            if (number is not null && head.Number != number)
+            if (number is not null && head.Number != checked((ulong)number.Value))
             {
-                head = _blockTree.FindBlock(number.Value);
+                head = _blockTree.FindBlock(checked((ulong)number.Value));
             }
-            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
+            return _snapshotManager.GetOrCreateSnapshot(checked((long)head.Number), head.Hash);
         }
 
         public Snapshot GetSnapshot(Hash256 hash)
         {
             BlockHeader head = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
+            return _snapshotManager.GetOrCreateSnapshot(checked((long)head.Number), head.Hash);
         }
 
         public Address[] GetSigners()
         {
             Block head = _blockTree.Head;
-            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(static s => s.Key).ToArray();
+            return _snapshotManager.GetOrCreateSnapshot(checked((long)head.Number), head.Hash).Signers.Select(static s => s.Key).ToArray();
         }
 
         public Address[] GetSigners(long number)
         {
-            BlockHeader header = _blockTree.FindHeader(number, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
+            BlockHeader header = _blockTree.FindHeader(checked((ulong)number), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            return _snapshotManager.GetOrCreateSnapshot(checked((long)header.Number), header.Hash).Signers
                 .Select(static s => s.Key).ToArray();
         }
 
         public string[] GetSignersAnnotated()
         {
             Block header = _blockTree.Head;
-            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
+            return _snapshotManager.GetOrCreateSnapshot(checked((long)header.Number), header.Hash).Signers
                 .Select(static s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
 
         public Address[] GetSigners(Hash256 hash)
         {
             BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
+            return _snapshotManager.GetOrCreateSnapshot(checked((long)header.Number), header.Hash).Signers
                 .Select(static s => s.Key).ToArray();
         }
 
         public string[] GetSignersAnnotated(Hash256 hash)
         {
             BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
+            return _snapshotManager.GetOrCreateSnapshot(checked((long)header.Number), header.Hash).Signers
                 .Select(static s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
 

@@ -48,8 +48,8 @@ public class SyncStatusListTests
     public void Will_not_go_below_ancient_barrier()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(new BlockInfo(TestItem.KeccakA, 0));
-        SyncStatusList syncStatusList = new(blockTree, 1000, null, 900);
+        blockTree.FindCanonicalBlockInfo(Arg.Any<ulong>()).Returns(new BlockInfo(TestItem.KeccakA, 0));
+        SyncStatusList syncStatusList = new(blockTree, 1000ul, null, 900ul);
 
         syncStatusList.TryGetInfosForBatch(500, new AlwaysDownloadStrategy(), out BlockInfo?[] infos);
 
@@ -60,31 +60,31 @@ public class SyncStatusListTests
     public void Will_skip_existing_keys()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindCanonicalBlockInfo(Arg.Any<long>())
+        blockTree.FindCanonicalBlockInfo(Arg.Any<ulong>())
             .Returns(ci =>
             {
-                long blockNumber = (long)ci[0];
+                ulong blockNumber = (ulong)ci[0];
                 return new BlockInfo(TestItem.KeccakA, 0)
                 {
                     BlockNumber = blockNumber
                 };
             });
 
-        SyncStatusList syncStatusList = new(blockTree, 100000, null, 1000);
+        SyncStatusList syncStatusList = new(blockTree, 100000ul, null, 1000ul);
 
-        ConstantDownloadStrategy downloadStrategy = new([99999, 99995, 99950, 99000, 99001, 99003, 85000]);
+        ConstantDownloadStrategy downloadStrategy = new([99999ul, 99995ul, 99950ul, 99000ul, 99001ul, 99003ul, 85000ul]);
 
-        List<long> TryGetInfos()
+        List<ulong> TryGetInfos()
         {
             syncStatusList.TryGetInfosForBatch(50, downloadStrategy, out BlockInfo?[] infos);
             return [.. infos.Where(bi => bi != null).Select((bi) => bi!.BlockNumber)];
         }
 
-        TryGetInfos().Should().BeEquivalentTo([99999, 99995]); // first two as it will try the first 50 only
-        TryGetInfos().Should().BeEquivalentTo([99950]); // Then the next 50
-        TryGetInfos().Should().BeEquivalentTo([99000, 99001, 99003]); // If the next 50 failed, it will try looking far back.
+        TryGetInfos().Should().BeEquivalentTo([99999ul, 99995ul]); // first two as it will try the first 50 only
+        TryGetInfos().Should().BeEquivalentTo([99950ul]); // Then the next 50
+        TryGetInfos().Should().BeEquivalentTo([99000ul, 99001ul, 99003ul]); // If the next 50 failed, it will try looking far back.
         TryGetInfos().Should().BeEmpty(); // If it look far back enough and still does not find anything it will just return so that progress can update.
-        TryGetInfos().Should().BeEquivalentTo([85000]); // But as the existing blocks was already marked as inserted, it should be able to make progress on later call.
+        TryGetInfos().Should().BeEquivalentTo([85000ul]); // But as the existing blocks was already marked as inserted, it should be able to make progress on later call.
     }
 
     [Test]
@@ -186,7 +186,7 @@ public class SyncStatusListTests
         public bool ShouldDownloadBlock(BlockInfo info) => true;
     }
 
-    private class ConstantDownloadStrategy(HashSet<long> needToFetchBlocks) : IBlockDownloadStrategy
+    private class ConstantDownloadStrategy(HashSet<ulong> needToFetchBlocks) : IBlockDownloadStrategy
     {
         public bool ShouldDownloadBlock(BlockInfo info)
             => needToFetchBlocks.Contains(info.BlockNumber);

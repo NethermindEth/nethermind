@@ -38,10 +38,10 @@ public class SepoliaSpecProvider : ISpecProvider
             _ => BPO2.Instance
         };
 
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+    public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
         if (blockNumber is not null)
-            MergeBlockNumber = (ForkActivation)blockNumber;
+            MergeBlockNumber = (ForkActivation)blockNumber.Value;
         if (terminalTotalDifficulty is not null)
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
@@ -49,7 +49,7 @@ public class SepoliaSpecProvider : ISpecProvider
     public ulong NetworkId => BlockchainIds.Sepolia;
     public ulong ChainId => NetworkId;
     public string SealEngine => SealEngineType.Clique;
-    public long? DaoBlockNumber => null;
+    public ulong? DaoBlockNumber => null;
     public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public ForkActivation? MergeBlockNumber { get; private set; } = null;
     public ulong TimestampFork => ISpecProvider.TimestampForkNever;
@@ -57,13 +57,13 @@ public class SepoliaSpecProvider : ISpecProvider
     public IReleaseSpec GenesisSpec => London.Instance;
     public ForkActivation[] TransitionActivations { get; } =
     [
-        (ForkActivation)1735371,
-        (1735371, ShanghaiTimestamp),
-        (1735371, CancunTimestamp),
-        (1735371, PragueTimestamp),
-        (1735371, OsakaTimestamp),
-        (1735371, BPO1Timestamp),
-        (1735371, BPO2Timestamp),
+        (ForkActivation)1_735_371UL,
+        (1_735_371UL, ShanghaiTimestamp),
+        (1_735_371UL, CancunTimestamp),
+        (1_735_371UL, PragueTimestamp),
+        (1_735_371UL, OsakaTimestamp),
+        (1_735_371UL, BPO1Timestamp),
+        (1_735_371UL, BPO2Timestamp),
     ];
 
     public static SepoliaSpecProvider Instance { get; } = new();

@@ -11,7 +11,7 @@ namespace Nethermind.Evm.Test
     [Parallelizable(ParallelScope.Self)]
     public class SimdTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
         [Test]
         public void And()

@@ -24,7 +24,7 @@ public class TestFinalizedStateProvider(long depth) : IFinalizedStateProvider
         {
             if (_manualFinalizedPoint is not null)
             {
-                return _manualFinalizedPoint.Number;
+                return checked((long)_manualFinalizedPoint.Number);
             }
             return TrieStore.LatestCommittedBlockNumber - depth;
         }
@@ -32,7 +32,7 @@ public class TestFinalizedStateProvider(long depth) : IFinalizedStateProvider
 
     public Hash256? GetFinalizedStateRootAt(long blockNumber)
     {
-        if (_manualFinalizedPoint is not null && _manualFinalizedPoint.Number == blockNumber)
+        if (_manualFinalizedPoint is not null && checked((long)_manualFinalizedPoint.Number) == blockNumber)
         {
             return _manualFinalizedPoint.StateRoot;
         }

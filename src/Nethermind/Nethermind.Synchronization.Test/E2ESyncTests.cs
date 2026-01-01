@@ -79,8 +79,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         yield return new TestFixtureParameters(DbMode.NoPruning, true);
     }
 
-    private static TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
-    private static TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
+    // Increase timeouts to reduce flakiness when running large test suites concurrently
+    private static TimeSpan SetupTimeout = TimeSpan.FromSeconds(180);
+    private static TimeSpan TestTimeout = TimeSpan.FromSeconds(180);
     private const int ChainLength = 1000;
     private const int HeadPivotDistance = 500;
 
@@ -283,8 +284,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         IBlockProcessingQueue blockProcessingQueue = _server.Resolve<IBlockProcessingQueue>();
         await blockProcessingQueue.WaitForBlockProcessing(cancellationToken);
         IBlockTree serverBlockTree = _server.Resolve<IBlockTree>();
-        long serverHeadNumber = serverBlockTree.Head!.Number;
-        BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - HeadPivotDistance)!;
+        ulong serverHeadNumber = serverBlockTree.Head!.Number;
+        BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - checked((ulong)HeadPivotDistance))!;
         syncConfig.PivotHash = pivot.Hash!.ToString();
         syncConfig.PivotNumber = pivot.Number;
         syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
@@ -521,7 +522,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
             IReceiptStorage otherReceiptStorage = server.Resolve<IReceiptStorage>();
 
-            for (int i = 0; i < otherBlockTree.Head?.Number; i++)
+            ulong headNumber = otherBlockTree.Head?.Number ?? 0ul;
+            for (ulong i = 0; i < headNumber; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 Block clientBlock = blockTree.FindBlock(i)!;

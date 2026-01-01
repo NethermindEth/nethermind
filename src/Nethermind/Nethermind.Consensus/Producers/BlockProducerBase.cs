@@ -115,7 +115,7 @@ namespace Nethermind.Consensus.Producers
             else
             {
                 bool dontSeal = (flags & IBlockProducer.Flags.DontSeal) != 0;
-                if (dontSeal || Sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
+                if (dontSeal || Sealer.CanSeal(checked((long)(parentHeader.Number + 1)), parentHeader.Hash))
                 {
                     Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
                     return ProduceNewBlock(parentHeader, token, blockTracer, payloadAttributes, flags);
@@ -243,7 +243,7 @@ namespace Nethermind.Consensus.Producers
 
             IEnumerable<Transaction> transactions = (flags & IBlockProducer.Flags.EmptyBlock) != 0 ?
                 Array.Empty<Transaction>() :
-                TxSource.GetTransactions(parent, checked((long)header.GasLimit), payloadAttributes, filterSource: true);
+                TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: true);
 
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }

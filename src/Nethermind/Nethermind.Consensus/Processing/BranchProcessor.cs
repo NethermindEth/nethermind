@@ -44,7 +44,7 @@ public class BranchProcessor(
     private void PreCommitBlock(BlockHeader block)
     {
         if (_logger.IsTrace) _logger.Trace($"Committing the branch - {block.ToString(BlockHeader.Format.Short)} state root {block.StateRoot}");
-        _stateProvider.CommitTree(block.Number);
+        _stateProvider.CommitTree(checked((long)block.Number));
     }
 
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)

@@ -42,10 +42,10 @@ public class PosForwardHeaderProvider(
             return base.GetBlockHeaders(skipLastN, maxHeader, cancellation);
         }
 
-        _syncReport.FullSyncBlocksDownloaded.TargetValue = Math.Max(beaconPivot.PivotNumber, beaconPivot.PivotDestinationNumber);
+        _syncReport.FullSyncBlocksDownloaded.TargetValue = checked((long)Math.Max(beaconPivot.PivotNumber, beaconPivot.PivotDestinationNumber));
 
         // TODO: Previously it does not get block more than best peer's head number. Why?
-        BlockHeader?[]? headers = chainLevelHelper.GetNextHeaders(maxHeader, long.MaxValue, skipLastN);
+        BlockHeader?[]? headers = chainLevelHelper.GetNextHeaders(maxHeader, ulong.MaxValue, skipLastN);
         if (headers is null || headers.Length <= 1)
         {
             if (_logger.IsTrace) _logger.Trace("Chain level helper got no headers suggestion");
@@ -106,7 +106,7 @@ public class PosForwardHeaderProvider(
 
         if (addResult == AddBlockResult.Added)
         {
-            if ((beaconPivot.ProcessDestination?.Number ?? long.MaxValue) < currentBlock.Number)
+            if ((beaconPivot.ProcessDestination?.Number ?? ulong.MaxValue) < currentBlock.Number)
             {
                 // Move the process destination in front, otherwise `ChainLevelHelper` would continue returning
                 // already processed header starting from `ProcessDestination`.

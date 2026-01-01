@@ -26,10 +26,16 @@ public sealed class OptimismSynchronizerModule(ChainSpec chainSpec) : Module
                 .GetChainSpecParameters<OptimismChainSpecEngineParameters>();
             ArgumentNullException.ThrowIfNull(parameters.BedrockBlockNumber);
 
+            ulong bedrockBlockNumber = checked((ulong)parameters.BedrockBlockNumber.Value);
+            if (bedrockBlockNumber == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(parameters.BedrockBlockNumber));
+            }
+
             builder.AddSingleton<ITotalDifficultyStrategy>(
                 new FixedTotalDifficultyStrategy(
                     new CumulativeTotalDifficultyStrategy(),
-                    fixesBlockNumber: parameters.BedrockBlockNumber.Value - 1,
+                    fixesBlockNumber: bedrockBlockNumber - 1,
                     toTotalDifficulty: chainSpec.TerminalTotalDifficulty ?? throw new ArgumentNullException(nameof(chainSpec.TerminalTotalDifficulty))
                 )
             );

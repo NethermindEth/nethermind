@@ -828,7 +828,7 @@ internal static partial class EvmInstructions
 
         // Retrieve the block hash for the given block number.
         BlockHeader header = vm.BlockExecutionContext.Header;
-        Hash256? blockHash = number >= header.Number ?
+        Hash256? blockHash = header.Number <= (ulong)number ?
             null : // Current block or higher is null, don't bother looking up
             vm.BlockHashProvider.GetBlockhash(header, number, vm.Spec);
 

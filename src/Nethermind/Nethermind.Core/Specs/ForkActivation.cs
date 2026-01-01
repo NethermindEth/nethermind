@@ -5,12 +5,12 @@ using System;
 
 namespace Nethermind.Core.Specs;
 
-public readonly struct ForkActivation(long blockNumber, ulong? timestamp = null)
+public readonly struct ForkActivation(ulong blockNumber, ulong? timestamp = null)
     : IEquatable<ForkActivation>, IComparable<ForkActivation>
 {
-    public long BlockNumber { get; } = blockNumber;
+    public ulong BlockNumber { get; } = blockNumber;
     public ulong? Timestamp { get; } = timestamp;
-    public ulong Activation => Timestamp ?? (ulong)BlockNumber;
+    public ulong Activation => Timestamp ?? BlockNumber;
 
     /// <summary>
     /// Fork activation for forks past The Merge/Paris
@@ -20,20 +20,20 @@ public readonly struct ForkActivation(long blockNumber, ulong? timestamp = null)
     /// <remarks>
     /// Post Merge are based only on timestamp and we can ignore block number.
     /// </remarks>
-    public static ForkActivation TimestampOnly(ulong timestamp) => new(long.MaxValue, timestamp);
+    public static ForkActivation TimestampOnly(ulong timestamp) => new(ulong.MaxValue, timestamp);
 
-    public void Deconstruct(out long blockNumber, out ulong? timestamp)
+    public void Deconstruct(out ulong blockNumber, out ulong? timestamp)
     {
         blockNumber = BlockNumber;
         timestamp = Timestamp;
     }
 
-    public static explicit operator ForkActivation(long blockNumber) => new(blockNumber);
+    public static explicit operator ForkActivation(ulong blockNumber) => new(blockNumber);
 
-    public static implicit operator ForkActivation((long blocknumber, ulong? timestamp) forkActivation)
+    public static implicit operator ForkActivation((ulong blocknumber, ulong? timestamp) forkActivation)
         => new(forkActivation.blocknumber, forkActivation.timestamp);
 
-    public static implicit operator (long blocknumber, ulong? timestamp)(ForkActivation forkActivation)
+    public static implicit operator (ulong blocknumber, ulong? timestamp)(ForkActivation forkActivation)
         => (forkActivation.BlockNumber, forkActivation.Timestamp);
 
     public bool Equals(ForkActivation other) => BlockNumber == other.BlockNumber && Timestamp == other.Timestamp;

@@ -398,7 +398,7 @@ namespace Nethermind.Trie.Test
             public PruningContext Commit(bool waitForPruning = false)
             {
                 _stateProvider.Commit(MuirGlacier.Instance);
-                _stateProvider.CommitTree((_baseBlock?.Number ?? 0) + 1);
+                _stateProvider.CommitTree(checked((long)((_baseBlock?.Number ?? 0UL) + 1UL)));
                 _baseBlock = Build.A.BlockHeader.WithParent(_baseBlock).WithStateRoot(_stateProvider.StateRoot).TestObject;
 
                 // This causes the root node to be reloaded instead of keeping old one

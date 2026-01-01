@@ -14,12 +14,12 @@ namespace Nethermind.Synchronization.Blocks
 {
     public class ByTotalDifficultyPeerAllocationStrategy : IPeerAllocationStrategy
     {
-        private readonly long? _minBlocksAhead;
+        private readonly ulong? _minBlocksAhead;
 
         private const decimal MinDiffPercentageForSpeedSwitch = 0.10m;
         private const int MinDiffForSpeedSwitch = 10;
 
-        public ByTotalDifficultyPeerAllocationStrategy(long? minBlocksAhead)
+        public ByTotalDifficultyPeerAllocationStrategy(ulong? minBlocksAhead)
         {
             _minBlocksAhead = minBlocksAhead;
         }
@@ -59,7 +59,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (_minBlocksAhead is not null)
                 {
-                    if (info.HeadNumber < (blockTree.BestSuggestedHeader?.Number ?? 0) + _minBlocksAhead)
+                    if (info.HeadNumber < (blockTree.BestSuggestedHeader?.Number ?? 0UL) + _minBlocksAhead.Value)
                     {
                         // we need to be able to download some blocks ahead
                         continue;

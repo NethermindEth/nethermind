@@ -38,18 +38,29 @@ namespace Nethermind.Blockchain
                 return _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
             }
 
-            long depth = currentBlock.Number - number;
-            Hash256[]? hashes = _hashes;
-
-            return depth switch
+            ulong currentNumber = currentBlock.Number;
+            ulong requestedNumber = (ulong)number;
+            if (currentNumber <= requestedNumber)
             {
-                <= 0 or > MaxDepth => ReturnOutOfBounds(currentBlock, number),
-                1 => currentBlock.ParentHash,
-                _ => hashes is not null
-                    ? hashes[depth - 1]
-                    : blockhashCache.GetHash(currentBlock, (int)depth)
-                      ?? throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation")
-            };
+                return ReturnOutOfBounds(currentBlock, number);
+            }
+
+            ulong depth = currentNumber - requestedNumber;
+            if (depth > MaxDepth)
+            {
+                return ReturnOutOfBounds(currentBlock, number);
+            }
+
+            if (depth == 1)
+            {
+                return currentBlock.ParentHash;
+            }
+
+            Hash256[]? hashes = _hashes;
+            return hashes is not null
+                ? hashes[(int)depth - 1]
+                : blockhashCache.GetHash(currentBlock, (int)depth)
+                  ?? throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation");
         }
 
         private Hash256? ReturnOutOfBounds(BlockHeader currentBlock, long number)

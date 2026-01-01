@@ -35,14 +35,14 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public bool SupportsBlobs => false;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             foreach (var transaction in _contractValidator.GetTransactions(parent, gasLimit, payloadAttributes, filterSource))
             {
                 yield return transaction;
             }
 
-            long currentBlockNumber = parent.Number + 1;
+            long currentBlockNumber = checked((long)(parent.Number + 1));
 
             if (_contractValidator.ForSealing && IsPosdao(currentBlockNumber))
             {
@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void ResendPersistedReports(BlockHeader blockHeader)
         {
-            var blockNumber = blockHeader.Number;
+            long blockNumber = checked((long)blockHeader.Number);
             if (!IsPosdao(blockNumber))
             {
                 if (_logger.IsTrace) _logger.Trace("Skipping resending of queued malicious behavior reports.");

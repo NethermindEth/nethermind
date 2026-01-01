@@ -125,7 +125,7 @@ public class CliqueSealEngineTests
         Hash256 unclesHash = Keccak.OfAnEmptySequenceRlp;
         Address beneficiary = Address.Zero;
         UInt256 difficulty = new(1);
-        long number = 0L;
+        ulong number = 0ul;
         ulong gasLimit = 4_700_000;
         ulong timestamp = 1492009146UL;
         byte[] extraData = Bytes.FromHexString(GetGenesisExtraData());
@@ -162,7 +162,7 @@ public class CliqueSealEngineTests
         Hash256 unclesHash = Keccak.OfAnEmptySequenceRlp;
         Address beneficiary = Address.Zero;
         UInt256 difficulty = (UInt256)blockDifficulty;
-        long number = blockNumber;
+        ulong number = (ulong)blockNumber;
         ulong gasLimit = 4_700_000;
         ulong timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         byte[] extraData = Bytes.FromHexString("d883010812846765746888676f312e31312e31856c696e75780000000000000028eb026ab5355b45499053382886754f1db544618d45edc979de1864d83a626b77513bd34d7f21059e79e303c3ab210e1424e71bcb8347835cbd378a785a06f800");

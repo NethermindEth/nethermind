@@ -25,8 +25,8 @@ namespace Ethereum.Test.Base
         public UInt256 CurrentDifficulty { get; set; }
 
         public UInt256? CurrentBaseFee { get; set; }
-        public long CurrentGasLimit { get; set; }
-        public long CurrentNumber { get; set; }
+        public ulong CurrentGasLimit { get; set; }
+        public ulong CurrentNumber { get; set; }
         public ulong CurrentTimestamp { get; set; }
         public Hash256? PreviousHash { get; set; }
         public Dictionary<Address, AccountState> Pre { get; set; }

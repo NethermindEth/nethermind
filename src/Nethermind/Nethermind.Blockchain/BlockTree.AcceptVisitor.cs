@@ -29,12 +29,12 @@ namespace Nethermind.Blockchain
                         break;
                     }
 
-                    ChainLevelInfo level = LoadLevel(levelNumber);
+                    ChainLevelInfo level = LoadLevel(checked((ulong)levelNumber));
 
                     LevelVisitOutcome visitOutcome = await visitor.VisitLevelStart(level, levelNumber, cancellationToken);
                     if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
                     {
-                        _chainLevelInfoRepository.Delete(levelNumber);
+                        _chainLevelInfoRepository.Delete(checked((ulong)levelNumber));
                         level = null;
                     }
 
@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain
                     visitOutcome = await visitor.VisitLevelEnd(level, levelNumber, cancellationToken);
                     if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
                     {
-                        _chainLevelInfoRepository.Delete(levelNumber);
+                        _chainLevelInfoRepository.Delete(checked((ulong)levelNumber));
                     }
 
                     levelNumber++;

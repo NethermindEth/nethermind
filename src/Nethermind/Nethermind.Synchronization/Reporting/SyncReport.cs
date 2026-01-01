@@ -48,7 +48,7 @@ namespace Nethermind.Synchronization.Reporting
 
             BeaconHeaders.SetFormat((progress) =>
             {
-                long numHeadersToDownload = _pivot.PivotNumber - _pivot.PivotDestinationNumber + 1;
+                long numHeadersToDownload = checked((long)(_pivot.PivotNumber - _pivot.PivotDestinationNumber + 1));
                 string skipSectionStr = progress.SkippedPerSecond != -1
                     ? $"skipped {progress.SkippedPerSecond,ProgressLogger.SpeedPaddingLength:N0} Blk/s | "
                     : "";

@@ -18,11 +18,14 @@ namespace Nethermind.Synchronization.FastSync
         private BlockHeader? _bestHeader;
         private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-        public long Diff => (blockTree.BestSuggestedHeader?.Number ?? 0) - (_bestHeader?.Number ?? 0);
+        public long Diff => checked((long)(blockTree.BestSuggestedHeader?.Number ?? 0UL)) - checked((long)(_bestHeader?.Number ?? 0UL));
 
         public BlockHeader? GetPivotHeader()
         {
-            if (_bestHeader is null || (blockTree.BestSuggestedHeader?.Number + syncConfig.StateMinDistanceFromHead) - _bestHeader.Number >= syncConfig.StateMaxDistanceFromHead)
+            ulong bestSuggestedNumber = blockTree.BestSuggestedHeader?.Number ?? 0UL;
+            if (
+                _bestHeader is null ||
+                (bestSuggestedNumber + (ulong)syncConfig.StateMinDistanceFromHead) - _bestHeader.Number >= (ulong)syncConfig.StateMaxDistanceFromHead)
             {
                 TrySetNewBestHeader($"distance from HEAD:{Diff}");
             }
@@ -32,7 +35,8 @@ namespace Nethermind.Synchronization.FastSync
 
         public void UpdateHeaderForcefully()
         {
-            if (_bestHeader is null || (blockTree.BestSuggestedHeader?.Number + syncConfig.StateMinDistanceFromHead) > _bestHeader.Number)
+            ulong bestSuggestedNumber = blockTree.BestSuggestedHeader?.Number ?? 0UL;
+            if (_bestHeader is null || (bestSuggestedNumber + (ulong)syncConfig.StateMinDistanceFromHead) > _bestHeader.Number)
             {
                 TrySetNewBestHeader("too many empty responses");
             }
@@ -40,15 +44,15 @@ namespace Nethermind.Synchronization.FastSync
 
         private void TrySetNewBestHeader(string msg)
         {
-            BlockHeader bestSuggestedHeader = blockTree.BestSuggestedHeader; // Note: Best suggested header is always `syncConfig.StateMinDistanceFromHead`. behind from actual head.
-            long targetBlockNumber = (bestSuggestedHeader?.Number ?? 0);
-            targetBlockNumber = Math.Max(targetBlockNumber, 0);
+            BlockHeader? bestSuggestedHeader = blockTree.BestSuggestedHeader; // Note: Best suggested header is always `syncConfig.StateMinDistanceFromHead`. behind from actual head.
+            ulong targetBlockNumber = bestSuggestedHeader?.Number ?? 0UL;
+            targetBlockNumber = Math.Max(targetBlockNumber, 0UL);
             // The new pivot must be at least one block after the sync pivot as the forward downloader does not
             // download the block at the sync pivot which may cause state not found error if state was downloaded
             // at exactly sync pivot.
             targetBlockNumber = Math.Max(targetBlockNumber, blockTree.SyncPivot.BlockNumber + 1);
 
-            BlockHeader bestHeader = blockTree.FindHeader(targetBlockNumber);
+            BlockHeader? bestHeader = blockTree.FindHeader(targetBlockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (bestHeader is not null)
             {
                 if (_logger.IsInfo) _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {bestHeader.Number}");

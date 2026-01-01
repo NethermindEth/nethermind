@@ -195,7 +195,7 @@ public class CliqueBlockProducerTests
             Hash256 unclesHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
             UInt256 difficulty = new(1);
-            long number = 0L;
+            ulong number = 0ul;
             ulong gasLimit = 4_700_000;
             ulong timestamp = _timestamper.UnixTime.Seconds - _cliqueConfig.BlockPeriod;
             string extraDataHex = "0x2249276d20646f6e652077616974696e672e2e2e20666f7220626c6f636b2066";
@@ -330,7 +330,7 @@ public class CliqueBlockProducerTests
         {
             WaitForNumber(nodeKey, number);
             if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD BLOCK IS BLOCK {number} ON {nodeKey.Address}");
-            Assert.That(_blockTrees[nodeKey].Head.Number, Is.EqualTo(number), nodeKey.Address + " head number");
+            Assert.That(_blockTrees[nodeKey].Head.Number, Is.EqualTo(checked((ulong)number)), nodeKey.Address + " head number");
             return this;
         }
 
@@ -338,7 +338,7 @@ public class CliqueBlockProducerTests
         {
             WaitForNumber(nodeKey, number);
             if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD BLOCK IS BLOCK {number} ON {nodeKey.Address}");
-            Assert.That(_blockTrees[nodeKey].Head.Transactions.Length, Is.EqualTo(transactionCount), nodeKey.Address + $" transaction count should be equal {transactionCount} for block number {number}");
+            Assert.That(_blockTrees[nodeKey].Head.Transactions.Length, Is.EqualTo(transactionCount), nodeKey.Address + $" transaction count should be equal {transactionCount} for block number {checked((ulong)number)}");
             return this;
         }
 
@@ -355,8 +355,8 @@ public class CliqueBlockProducerTests
         {
             WaitForNumber(nodeKey, number);
             if (_logger.IsInfo) _logger.Info($"ASSERTING {vote} VOTE ON {address} AT BLOCK {number}");
-            Assert.That(() => _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None)?.Header.Nonce, Is.EqualTo(vote ? Consensus.Clique.Clique.NonceAuthVote : Consensus.Clique.Clique.NonceDropVote).After(_timeout, 100), nodeKey + " vote nonce");
-            Assert.That(() => _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None)?.Beneficiary, Is.EqualTo(address).After(_timeout, 100), nodeKey.Address + " vote nonce");
+            Assert.That(() => _blockTrees[nodeKey].FindBlock(checked((ulong)number), BlockTreeLookupOptions.None)?.Header.Nonce, Is.EqualTo(vote ? Consensus.Clique.Clique.NonceAuthVote : Consensus.Clique.Clique.NonceDropVote).After(_timeout, 100), nodeKey + " vote nonce");
+            Assert.That(() => _blockTrees[nodeKey].FindBlock(checked((ulong)number), BlockTreeLookupOptions.None)?.Beneficiary, Is.EqualTo(address).After(_timeout, 100), nodeKey.Address + " vote nonce");
             return this;
         }
 
@@ -364,8 +364,8 @@ public class CliqueBlockProducerTests
         {
             WaitForNumber(nodeKey, number);
             if (_logger.IsInfo) _logger.Info($"ASSERTING {count} SIGNERS AT BLOCK {number}");
-            BlockHeader header = _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header;
-            Assert.That(_snapshotManager[nodeKey].GetOrCreateSnapshot(header.Number, header.Hash).Signers.Count, Is.EqualTo(count), nodeKey + " signers count");
+            BlockHeader header = _blockTrees[nodeKey].FindBlock(checked((ulong)number), BlockTreeLookupOptions.None).Header;
+            Assert.That(_snapshotManager[nodeKey].GetOrCreateSnapshot(checked((long)header.Number), header.Hash).Signers.Count, Is.EqualTo(count), nodeKey + " signers count");
             return this;
         }
 
@@ -374,8 +374,8 @@ public class CliqueBlockProducerTests
         {
             WaitForNumber(nodeKey, number);
             if (_logger.IsInfo) _logger.Info($"ASSERTING EMPTY TALLY FOR {privateKeyB.Address} EMPTY AT {number}");
-            BlockHeader header = _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header;
-            Assert.That(_snapshotManager[nodeKey].GetOrCreateSnapshot(header.Number, header.Hash).Tally.ContainsKey(privateKeyB.Address), Is.EqualTo(false), nodeKey + " tally empty");
+            BlockHeader header = _blockTrees[nodeKey].FindBlock(checked((ulong)number), BlockTreeLookupOptions.None).Header;
+            Assert.That(_snapshotManager[nodeKey].GetOrCreateSnapshot(checked((long)header.Number), header.Hash).Tally.ContainsKey(privateKeyB.Address), Is.EqualTo(false), nodeKey + " tally empty");
             return this;
         }
 
@@ -403,7 +403,7 @@ public class CliqueBlockProducerTests
             while (Stopwatch.GetElapsedTime(startTime).TotalMilliseconds < _timeout)
             {
                 spinWait.SpinOnce();
-                if (_blockTrees[nodeKey].Head.Number >= number)
+                if (_blockTrees[nodeKey].Head.Number >= checked((ulong)number))
                 {
                     break;
                 }
@@ -412,7 +412,7 @@ public class CliqueBlockProducerTests
 
         public Block GetBlock(PrivateKey privateKey, long number)
         {
-            Block block = _blockTrees[privateKey].FindBlock(number, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException($"Cannot find block {number}");
+            Block block = _blockTrees[privateKey].FindBlock(checked((ulong)number), BlockTreeLookupOptions.None) ?? throw new InvalidOperationException($"Cannot find block {number}");
             return block;
         }
 

@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Clique
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
-            long number = header.Number;
+            long number = checked((long)header.Number);
             // Retrieve the snapshot needed to validate this header and cache it
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash!);
             // Resolve the authorization key and check against signers
@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Ensure that the difficulty corresponds to the turn-ness of the signer
-            bool inTurn = _snapshotManager.IsInTurn(snapshot, header.Number, signer);
+            bool inTurn = _snapshotManager.IsInTurn(snapshot, number, signer);
             if (inTurn && header.Difficulty != Clique.DifficultyInTurn)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be in-turn {Clique.DifficultyInTurn}");
@@ -128,14 +128,14 @@ namespace Nethermind.Consensus.Clique
             return header.Author is not null;
         }
 
-        private bool IsEpochTransition(long number)
+        private bool IsEpochTransition(ulong number)
         {
-            return (ulong)number % _cliqueConfig.Epoch == 0;
+            return number % _cliqueConfig.Epoch == 0;
         }
 
         private bool ValidateCascadingFields(BlockHeader parent, BlockHeader header)
         {
-            long number = header.Number;
+            long number = checked((long)header.Number);
             if (parent.Timestamp + _cliqueConfig.BlockPeriod > header.Timestamp)
             {
                 if (_logger.IsWarn) _logger.Warn($"Incorrect block timestamp ({header.Timestamp}) - should have big enough difference with parent");
@@ -146,7 +146,7 @@ namespace Nethermind.Consensus.Clique
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash);
 
             // If the block is a checkpoint block, validate the signer list
-            if (IsEpochTransition(number))
+            if (IsEpochTransition(header.Number))
             {
                 byte[] signersBytes = new byte[snapshot.Signers.Count * Address.Size];
                 int signerIndex = 0;

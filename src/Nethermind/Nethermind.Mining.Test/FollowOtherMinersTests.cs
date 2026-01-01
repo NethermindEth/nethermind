@@ -33,7 +33,7 @@ namespace Nethermind.Mining.Test
         [TestCase(3000000, 6000000)]
         public void FollowOtherMines_on_1559_fork_block(long current, long expected)
         {
-            int forkNumber = 5;
+            ulong forkNumber = 5;
             OverridableReleaseSpec spec = new(London.Instance)
             {
                 Eip1559TransitionBlock = forkNumber

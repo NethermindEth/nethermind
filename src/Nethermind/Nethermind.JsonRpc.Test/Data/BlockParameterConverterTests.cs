@@ -16,15 +16,15 @@ namespace Nethermind.JsonRpc.Test.Data
     [TestFixture]
     public class BlockParameterConverterTests : SerializationTestBase
     {
-        [TestCase("0", 0)]
-        [TestCase("100", 100)]
-        [TestCase("\"0x0\"", 0)]
-        [TestCase("\"0xA\"", 10)]
-        [TestCase("\"0xa\"", 10)]
-        [TestCase("\"0\"", 0)]
-        [TestCase("\"100\"", 100)]
-        [TestCase("{ \"blockNumber\": \"0xa\" }", 10)]
-        public void Can_read_block_number(string input, long output)
+        [TestCase("0", 0ul)]
+        [TestCase("100", 100ul)]
+        [TestCase("\"0x0\"", 0ul)]
+        [TestCase("\"0xA\"", 10ul)]
+        [TestCase("\"0xa\"", 10ul)]
+        [TestCase("\"0\"", 0ul)]
+        [TestCase("\"100\"", 100ul)]
+        [TestCase("{ \"blockNumber\": \"0xa\" }", 10ul)]
+        public void Can_read_block_number(string input, ulong output)
         {
             IJsonSerializer serializer = new EthereumJsonSerializer();
 
@@ -117,9 +117,9 @@ namespace Nethermind.JsonRpc.Test.Data
             Assert.That(result, Is.EqualTo(output));
         }
 
-        [TestCase("\"0x0\"", 0)]
-        [TestCase("\"0xa\"", 10)]
-        public void Can_write_number(string output, long input)
+        [TestCase("\"0x0\"", 0ul)]
+        [TestCase("\"0xa\"", 10ul)]
+        public void Can_write_number(string output, ulong input)
         {
             BlockParameter blockParameter = new(input);
 
@@ -138,8 +138,8 @@ namespace Nethermind.JsonRpc.Test.Data
             TestRoundtrip(BlockParameter.Earliest, "earliest");
             TestRoundtrip(BlockParameter.Finalized, "finalized");
             TestRoundtrip(BlockParameter.Safe, "safe");
-            TestRoundtrip(new BlockParameter(0L), "zero");
-            TestRoundtrip(new BlockParameter(long.MaxValue), "max");
+            TestRoundtrip(new BlockParameter(0ul), "zero");
+            TestRoundtrip(new BlockParameter(checked((ulong)long.MaxValue)), "max");
             TestRoundtrip(new BlockParameter(TestItem.KeccakA), "hash");
             TestRoundtrip(new BlockParameter(TestItem.KeccakA, true), "hash with canonical");
         }

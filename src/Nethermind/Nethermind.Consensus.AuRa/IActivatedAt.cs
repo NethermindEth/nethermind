@@ -11,13 +11,13 @@ namespace Nethermind.Consensus.AuRa
         T Activation { get; }
     }
 
-    public interface IActivatedAt : IActivatedAt<long>
+    public interface IActivatedAt : IActivatedAt<ulong>
     {
     }
 
     public interface IActivatedAtBlock : IActivatedAt
     {
-        public long ActivationBlock => Activation;
+        public ulong ActivationBlock => Activation;
     }
 
     internal static class ActivatedAtBlockExtensions

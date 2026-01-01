@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
+
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,15 +28,15 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 {
     public class ReceiptMigrationTests
     {
-        [TestCase(null, 0, false, false, false, false)] // No change to migrate
-        [TestCase(5, 5, false, false, false, true)] // Explicit command and partially migrated
-        [TestCase(null, 5, true, false, false, true)] // Partially migrated
-        [TestCase(5, 0, false, false, false, true)] // Explicit command
-        [TestCase(null, 0, true, false, false, true)] // Force reset
-        [TestCase(null, 0, false, false, true, true)] // Encoding mismatch
-        [TestCase(null, 0, false, true, false, true)] // Encoding mismatch
-        [TestCase(null, 0, false, true, true, false)] // Encoding match
-        public async Task RunMigration(int? commandStartBlockNumber, long currentMigratedBlockNumber, bool forceReset, bool receiptIsCompact, bool useCompactEncoding, bool wasMigrated)
+        [TestCase(null, 0ul, false, false, false, false)] // No change to migrate
+        [TestCase(5, 5ul, false, false, false, true)] // Explicit command and partially migrated
+        [TestCase(null, 5ul, true, false, false, true)] // Partially migrated
+        [TestCase(5, 0ul, false, false, false, true)] // Explicit command
+        [TestCase(null, 0ul, true, false, false, true)] // Force reset
+        [TestCase(null, 0ul, false, false, true, true)] // Encoding mismatch
+        [TestCase(null, 0ul, false, true, false, true)] // Encoding mismatch
+        [TestCase(null, 0ul, false, true, true, false)] // Encoding match
+        public async Task RunMigration(int? commandStartBlockNumber, ulong currentMigratedBlockNumber, bool forceReset, bool receiptIsCompact, bool useCompactEncoding, bool wasMigrated)
         {
             int chainLength = 10;
             IReceiptConfig receiptConfig = new ReceiptConfig()
@@ -59,9 +61,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             // Insert the blocks
             int txIndex = 0;
-            for (int i = 1; i < chainLength; i++)
+            for (ulong i = 1; i < (ulong)chainLength; i++)
             {
-                Block block = blockTree.FindBlock(i);
+                Block block = blockTree.FindBlock(i)!;
                 inMemoryReceiptStorage.Insert(block, new[] {
                     Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject,
                     Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject
@@ -74,11 +76,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             TestMemDb defaultDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Default);
 
             // Put the last block receipt encoding
-            Block lastBlock = blockTree.FindBlock(chainLength - 1);
+            Block lastBlock = blockTree.FindBlock(checked((ulong)(chainLength - 1)))!;
             TxReceipt[] receipts = inMemoryReceiptStorage.Get(lastBlock);
             using (NettyRlpStream nettyStream = receiptArrayStorageDecoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage))
             {
-                ((IKeyValueStoreWithBatching)blocksDb).PutSpan(Bytes.Concat(lastBlock.Number.ToBigEndianByteArray(), lastBlock.Hash.BytesToArray()).AsSpan(), nettyStream.AsSpan());
+                ((IKeyValueStoreWithBatching)blocksDb).PutSpan(Bytes.Concat(lastBlock.Number.ToBigEndianByteArray(), lastBlock.Hash!.BytesToArray()).AsSpan(), nettyStream.AsSpan());
             }
 
             ReceiptMigration migration = new(
@@ -100,7 +102,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             else
             {
                 await migration.Run(CancellationToken.None);
-                Assert.That(() => outMemoryReceiptStorage.MigratedBlockNumber, Is.InRange(0, 1).After(1000, 10));
+                Assert.That(() => outMemoryReceiptStorage.MigratedBlockNumber, Is.InRange(0ul, 1ul).After(1000, 10));
             }
 
             if (wasMigrated)
@@ -128,25 +130,25 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 _outStorage = outStorage;
             }
 
-            public Hash256 FindBlockHash(Hash256 txHash) => _inStorage.FindBlockHash(txHash);
+            public Hash256? FindBlockHash(Hash256 txHash) => _inStorage.FindBlockHash(txHash);
 
             public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => _inStorage.Get(block, recover, recoverSender);
 
             public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => _inStorage.Get(blockHash, recover);
 
-            public bool CanGetReceiptsByHash(long blockNumber) => _inStorage.CanGetReceiptsByHash(blockNumber);
-            public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => _inStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+            public bool CanGetReceiptsByHash(ulong blockNumber) => _inStorage.CanGetReceiptsByHash(blockNumber);
+            public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => _inStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
 
-            public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber) => _outStorage.Insert(block, txReceipts, spec, ensureCanonical, writeFlags, lastBlockNumber);
-            public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags, long? lastBlockNumber) => _outStorage.Insert(block, txReceipts, ensureCanonical, writeFlags, lastBlockNumber);
+            public void Insert(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber) => _outStorage.Insert(block, txReceipts, spec, ensureCanonical, writeFlags, lastBlockNumber);
+            public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber) => _outStorage.Insert(block, txReceipts, ensureCanonical, writeFlags, lastBlockNumber);
 
-            public long MigratedBlockNumber
+            public ulong MigratedBlockNumber
             {
                 get => _outStorage.MigratedBlockNumber;
                 set => _outStorage.MigratedBlockNumber = value;
             }
 
-            public bool HasBlock(long blockNumber, Hash256 hash)
+            public bool HasBlock(ulong blockNumber, Hash256 hash)
             {
                 return _outStorage.HasBlock(blockNumber, hash);
             }
@@ -160,8 +162,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
 
 #pragma warning disable CS0067
-            public event EventHandler<BlockReplacementEventArgs> NewCanonicalReceipts;
-            public event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
+            public event EventHandler<BlockReplacementEventArgs>? NewCanonicalReceipts;
+            public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted;
 #pragma warning restore CS0067
         }
     }

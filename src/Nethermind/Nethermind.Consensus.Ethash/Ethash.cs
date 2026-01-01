@@ -47,9 +47,14 @@ namespace Nethermind.Consensus.Ethash
         public const int CacheRounds = 3; // blockNumber of rounds in cache production
         public const int Accesses = 64; // blockNumber of accesses in hashimoto loop
 
+        public static uint GetEpoch(ulong blockNumber)
+        {
+            return (uint)(blockNumber / (ulong)EpochLength);
+        }
+
         public static uint GetEpoch(long blockNumber)
         {
-            return (uint)(blockNumber / EpochLength);
+            return GetEpoch(checked((ulong)blockNumber));
         }
 
         /// Improvement from @AndreaLanfranchi
@@ -216,7 +221,8 @@ namespace Nethermind.Consensus.Ethash
             if (dataSet is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
-                _hintBasedCache.Hint(_hintBasedCacheUser, header.Number, header.Number);
+                long blockNumber = checked((long)header.Number);
+                _hintBasedCache.Hint(_hintBasedCacheUser, blockNumber, blockNumber);
                 dataSet = _hintBasedCache.Get(epoch);
                 if (dataSet is null)
                 {

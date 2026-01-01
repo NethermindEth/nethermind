@@ -36,19 +36,19 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.DataDir, Is.EqualTo("ethereum"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
-        chainSpec.HomesteadBlockNumber.Should().Be(MainnetSpecProvider.HomesteadBlockNumber);
+        chainSpec.HomesteadBlockNumber.Should().Be(checked((long)MainnetSpecProvider.HomesteadBlockNumber));
         chainSpec.DaoForkBlockNumber.Should().Be(1920000);
-        chainSpec.TangerineWhistleBlockNumber.Should().Be(MainnetSpecProvider.TangerineWhistleBlockNumber);
-        chainSpec.SpuriousDragonBlockNumber.Should().Be(MainnetSpecProvider.SpuriousDragonBlockNumber);
-        chainSpec.ByzantiumBlockNumber.Should().Be(MainnetSpecProvider.ByzantiumBlockNumber);
+        chainSpec.TangerineWhistleBlockNumber.Should().Be(checked((long)MainnetSpecProvider.TangerineWhistleBlockNumber));
+        chainSpec.SpuriousDragonBlockNumber.Should().Be(checked((long)MainnetSpecProvider.SpuriousDragonBlockNumber));
+        chainSpec.ByzantiumBlockNumber.Should().Be(checked((long)MainnetSpecProvider.ByzantiumBlockNumber));
         chainSpec.ConstantinopleBlockNumber.Should().Be(null);
-        chainSpec.ConstantinopleFixBlockNumber.Should().Be(MainnetSpecProvider.ConstantinopleFixBlockNumber);
-        chainSpec.IstanbulBlockNumber.Should().Be(MainnetSpecProvider.IstanbulBlockNumber);
-        chainSpec.MuirGlacierNumber.Should().Be(MainnetSpecProvider.MuirGlacierBlockNumber);
-        chainSpec.BerlinBlockNumber.Should().Be(MainnetSpecProvider.BerlinBlockNumber);
-        chainSpec.LondonBlockNumber.Should().Be(MainnetSpecProvider.LondonBlockNumber);
-        chainSpec.ArrowGlacierBlockNumber.Should().Be(MainnetSpecProvider.ArrowGlacierBlockNumber);
-        chainSpec.GrayGlacierBlockNumber.Should().Be(MainnetSpecProvider.GrayGlacierBlockNumber);
+        chainSpec.ConstantinopleFixBlockNumber.Should().Be(checked((long)MainnetSpecProvider.ConstantinopleFixBlockNumber));
+        chainSpec.IstanbulBlockNumber.Should().Be(checked((long)MainnetSpecProvider.IstanbulBlockNumber));
+        chainSpec.MuirGlacierNumber.Should().Be(checked((long)MainnetSpecProvider.MuirGlacierBlockNumber));
+        chainSpec.BerlinBlockNumber.Should().Be(checked((long)MainnetSpecProvider.BerlinBlockNumber));
+        chainSpec.LondonBlockNumber.Should().Be(checked((long)MainnetSpecProvider.LondonBlockNumber));
+        chainSpec.ArrowGlacierBlockNumber.Should().Be(checked((long)MainnetSpecProvider.ArrowGlacierBlockNumber));
+        chainSpec.GrayGlacierBlockNumber.Should().Be(checked((long)MainnetSpecProvider.GrayGlacierBlockNumber));
         chainSpec.ShanghaiTimestamp.Should().Be(MainnetSpecProvider.ShanghaiBlockTimestamp);
         chainSpec.ShanghaiTimestamp.Should().Be(MainnetSpecProvider.Instance.TimestampFork);
     }

@@ -504,7 +504,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task ForkChoiceUpdated_should_return_valid_for_previous_blocks_without_state_synced()
     {
-        static void MarkAsUnprocessed(MergeTestBlockchain chain, int blockNumber)
+        static void MarkAsUnprocessed(MergeTestBlockchain chain, ulong blockNumber)
         {
             ChainLevelInfo lvl = chain.ChainLevelInfoRepository.LoadLevel(blockNumber)!;
             foreach (BlockInfo info in lvl.BlockInfos)

@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.Transactions
             _transactionSources.Insert(0, txSource);
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             for (int i = 0; i < _transactionSources.Count; i++)
             {

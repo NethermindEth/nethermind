@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Data
             TransactionHash = receipt.TxHash;
             BlockHash = receipt.BlockHash;
             BlockTimestamp = blockTimestamp;
-            BlockNumber = receipt.BlockNumber;
+            BlockNumber = checked((long)receipt.BlockNumber);
             Address = logEntry.Address;
             Data = logEntry.Data;
             Topics = logEntry.Topics;

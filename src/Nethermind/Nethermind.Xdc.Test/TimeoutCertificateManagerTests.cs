@@ -143,7 +143,7 @@ public class TimeoutCertificateManagerTests
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         blockTree.Head.Returns(new Block(header, new BlockBody()));
-        blockTree.FindHeader(Arg.Any<long>()).Returns(header);
+        blockTree.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
 
         var context = new XdcConsensusContext();
         ISyncInfoManager syncInfoManager = Substitute.For<ISyncInfoManager>();

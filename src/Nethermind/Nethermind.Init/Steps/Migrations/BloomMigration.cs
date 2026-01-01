@@ -86,7 +86,7 @@ namespace Nethermind.Init.Steps.Migrations
                 if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
                 return _api.BloomStorage.MinBlockNumber == long.MaxValue
-                    ? _api.BlockTree.BestKnownNumber
+                    ? checked((long)_api.BlockTree.BestKnownNumber)
                     : _api.BloomStorage.MinBlockNumber - 1;
             }
         }
@@ -138,7 +138,7 @@ namespace Nethermind.Init.Steps.Migrations
                     bool TryGetMainChainBlockHashFromLevel(long number, out Hash256? blockHash)
                     {
                         using BatchWrite batch = chainLevelInfoRepository.StartBatch();
-                        ChainLevelInfo? level = chainLevelInfoRepository.LoadLevel(number);
+                        ChainLevelInfo? level = chainLevelInfoRepository.LoadLevel(checked((ulong)number));
                         if (level is not null)
                         {
                             if (!level.HasBlockOnMainChain)
@@ -146,7 +146,7 @@ namespace Nethermind.Init.Steps.Migrations
                                 if (level.BlockInfos.Length > 0)
                                 {
                                     level.HasBlockOnMainChain = true;
-                                    chainLevelInfoRepository.PersistLevel(number, level, batch);
+                                    chainLevelInfoRepository.PersistLevel(checked((ulong)number), level, batch);
                                 }
                             }
 

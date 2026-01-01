@@ -63,7 +63,7 @@ public struct ReceiptRecoveryBlock
     }
 
     public readonly Hash256? Hash => Header.Hash; // do not add setter here
-    public readonly long Number => Header.Number; // do not add setter here
+    public readonly ulong Number => Header.Number; // do not add setter here
 
     public readonly void Dispose()
     {

@@ -123,7 +123,7 @@ namespace Nethermind.Consensus.AuRa
             return result;
         }
 
-        private class StepDurationInfo : IActivatedAt
+        private class StepDurationInfo : IActivatedAt<long>
         {
             public StepDurationInfo(long transitionStep, long transitionTimestamp, long stepDuration)
             {

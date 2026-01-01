@@ -85,11 +85,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
             : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             _signer = signer;
-            Activation = transitionBlock;
+            ArgumentOutOfRangeException.ThrowIfNegative(transitionBlock);
+            Activation = checked((ulong)transitionBlock);
             Constant = GetConstant(readOnlyTxProcessorSource);
         }
 
-        public long Activation { get; }
+        public ulong Activation { get; }
 
         public (IRandomContract.Phase Phase, UInt256 Round) GetPhase(BlockHeader parentHeader)
         {

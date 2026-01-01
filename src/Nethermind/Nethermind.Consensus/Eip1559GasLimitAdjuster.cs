@@ -8,7 +8,7 @@ namespace Nethermind.Consensus
     /// <summary>In the 1559 fork block the new gas limit is gasLimit * Eip1559Constants.ElasticityMultiplier.</summary>
     public static class Eip1559GasLimitAdjuster
     {
-        public static long AdjustGasLimit(IReleaseSpec releaseSpec, long gasLimit, long blockNumber)
+        public static long AdjustGasLimit(IReleaseSpec releaseSpec, long gasLimit, ulong blockNumber)
         {
             long adjustedGasLimit = gasLimit;
             if (releaseSpec.Eip1559TransitionBlock == blockNumber)

@@ -127,7 +127,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     .Select((c) => c.HadGasLimitInRequest)
                     .ToArray();
 
-                PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
+                PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, checked((long)callHeader.Number), spec);
 
                 BlockBody body = AssembleBody(calls, stateProvider, nonceCache, spec);
                 Block callBlock = new Block(callHeader, body);
@@ -146,7 +146,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     spec,
                     cancellationToken);
 
-                stateProvider.CommitTree(processedBlock.Number);
+                stateProvider.CommitTree(checked((long)processedBlock.Number));
                 blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
                 blockTree.UpdateHeadBlock(processedBlock.Hash!);
 
@@ -189,7 +189,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private static BlockHeader GetParent(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTree blockTree)
     {
         Block? latestBlock = blockTree.FindLatestBlock();
-        long latestBlockNumber = latestBlock?.Number ?? 0;
+        ulong latestBlockNumber = latestBlock?.Number ?? 0;
 
         if (latestBlockNumber < parent.Number)
         {
@@ -198,10 +198,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
 
-        ulong lastKnown = (ulong)latestBlockNumber;
-        if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
+        ulong lastKnown = latestBlockNumber;
+        ulong? overrideNumber = firstBlock?.BlockOverrides?.Number;
+        if (overrideNumber is > 0UL && overrideNumber.Value < lastKnown)
         {
-            Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number - 1);
+            Block? searchResult = blockTree.FindBlock(overrideNumber.Value - 1);
             if (searchResult is not null)
             {
                 parent = searchResult.Header;

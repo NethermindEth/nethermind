@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Test
         [Test]
         public void Is_bump_on_1559_eip_block()
         {
-            int londonBlock = 5;
+            ulong londonBlock = 5;
             ulong gasLimit = 1000000000000000000;
             OverridableReleaseSpec spec = new(London.Instance)
             {
@@ -52,13 +52,13 @@ namespace Nethermind.Consensus.Test
         [Test]
         public void DoesNot_go_below_minimum()
         {
-            int londonBlock = 5;
+            ulong londonBlock = 5;
             ulong gasLimit = 5000;
             TestSpecProvider specProvider = new(London.Instance);
             TargetAdjustedGasLimitCalculator targetedAdjustedGasLimitCalculator = new(specProvider, new BlocksConfig() { TargetBlockGasLimit = 1 });
             BlockHeader header = Build.A.BlockHeader.WithNumber(londonBlock - 1).WithGasLimit(gasLimit).TestObject;
             long actualValue = targetedAdjustedGasLimitCalculator.GetGasLimit(header);
-            Assert.That(actualValue, Is.EqualTo(specProvider.GetSpec(new ForkActivation(5)).MinGasLimit));
+            Assert.That(actualValue, Is.EqualTo(specProvider.GetSpec(new ForkActivation(londonBlock)).MinGasLimit));
         }
     }
 }

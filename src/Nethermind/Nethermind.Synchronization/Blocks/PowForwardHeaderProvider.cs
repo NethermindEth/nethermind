@@ -33,7 +33,7 @@ public class PowForwardHeaderProvider(
     private ILogger _logger = logManager.GetClassLogger<PowForwardHeaderProvider>();
     private readonly int[] _ancestorJumps = { 1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024 };
     private int _ancestorLookupLevel;
-    private long _currentNumber;
+    private ulong _currentNumber;
     private readonly Random _rnd = new();
     private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
 
@@ -64,7 +64,7 @@ public class PowForwardHeaderProvider(
                 OnNewBestPeer(peerInfo);
             }
 
-            syncReport.FullSyncBlocksDownloaded.TargetValue = peerInfo.HeadNumber;
+            syncReport.FullSyncBlocksDownloaded.TargetValue = checked((long)peerInfo.HeadNumber);
 
             if (_logger.IsTrace) _logger.Trace($"Allocated {peerInfo} for PoW header info. currentNumber: {_currentNumber} skipLastN: {skipLastN}, maxHeaders: {maxHeaders}");
 
@@ -96,7 +96,7 @@ public class PowForwardHeaderProvider(
     {
         if (LastResponseBatch is null) return null;
 
-        long currentNumber = _currentNumber;
+        ulong currentNumber = _currentNumber;
         bool sameFound = false;
         ArrayPoolList<BlockHeader>? newResponse = null;
         for (int i = 0; i < LastResponseBatch.Count; i++)
@@ -129,7 +129,8 @@ public class PowForwardHeaderProvider(
 
         // TODO: Is there a (fast) way to know if the new peer's head has the parent of last peer?
         _ancestorLookupLevel = 0;
-        _currentNumber = Math.Max(0, Math.Min(blockTree.BestKnownNumber, newBestPeer.HeadNumber - 1)); // Remember, _currentNumber is -1 than what we want.
+        ulong headMinusOne = newBestPeer.HeadNumber > 0 ? (newBestPeer.HeadNumber - 1) : 0UL;
+        _currentNumber = Math.Max(0UL, Math.Min(blockTree.BestKnownNumber, headMinusOne)); // Remember, _currentNumber is -1 than what we want.
         _currentBestPeer = newBestPeer;
     }
 
@@ -142,9 +143,13 @@ public class PowForwardHeaderProvider(
 
             if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {blockTree.BestKnownNumber})");
 
-            long upperDownloadBoundary = bestPeer.HeadNumber - skipLastN;
-            long blocksLeft = upperDownloadBoundary - _currentNumber;
-            int headersToRequest = (int)Math.Min(blocksLeft + 1, maxHeaders);
+            ulong upperDownloadBoundary = bestPeer.HeadNumber > (ulong)skipLastN
+                ? bestPeer.HeadNumber - (ulong)skipLastN
+                : 0UL;
+            ulong blocksLeft = upperDownloadBoundary > _currentNumber
+                ? (upperDownloadBoundary - _currentNumber)
+                : 0UL;
+            int headersToRequest = (int)Math.Min(blocksLeft + 1, (ulong)maxHeaders);
             if (headersToRequest <= 1)
             {
                 return null;
@@ -190,7 +195,7 @@ public class PowForwardHeaderProvider(
         _currentNumber += 1;
     }
 
-    private bool CheckAncestorJump(PeerInfo bestPeer, BlockHeader blockBeforeZero, ref long currentNumber)
+    private bool CheckAncestorJump(PeerInfo bestPeer, BlockHeader blockBeforeZero, ref ulong currentNumber)
     {
         bool parentIsKnown = blockTree.IsKnownBlock(blockBeforeZero.Number, blockBeforeZero.Hash!);
         if (!parentIsKnown)
@@ -203,17 +208,25 @@ public class PowForwardHeaderProvider(
             }
 
             int ancestorJump = _ancestorJumps[_ancestorLookupLevel] - _ancestorJumps[_ancestorLookupLevel - 1];
-            currentNumber = currentNumber >= ancestorJump ? (currentNumber - ancestorJump) : 0L;
-            currentNumber = Math.Max((blockTree.BestSuggestedHeader?.Number ?? 0) - MaxReorganizationLength, currentNumber);
+            currentNumber = currentNumber >= (ulong)ancestorJump ? (currentNumber - (ulong)ancestorJump) : 0UL;
+            ulong bestSuggestedMinusReorg = (blockTree.BestSuggestedHeader?.Number ?? 0UL) > (ulong)MaxReorganizationLength
+                ? (blockTree.BestSuggestedHeader!.Number - (ulong)MaxReorganizationLength)
+                : 0UL;
+            currentNumber = Math.Max(bestSuggestedMinusReorg, currentNumber);
             return false;
         }
         _ancestorLookupLevel = 0;
         return true;
     }
 
-    private async Task<IOwnedReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
+    private async Task<IOwnedReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, ulong currentNumber, int headersToRequest)
     {
-        sealValidator.HintValidationRange(_sealValidatorUserGuid, currentNumber - 1028, currentNumber + 30000);
+        ulong hintStartUlong = currentNumber > 1028UL ? (currentNumber - 1028UL) : 0UL;
+        ulong hintEndUlong = currentNumber + 30000UL;
+        sealValidator.HintValidationRange(
+            _sealValidatorUserGuid,
+            checked((long)hintStartUlong),
+            checked((long)Math.Min(hintEndUlong, (ulong)long.MaxValue)));
 
         IOwnedReadOnlyList<BlockHeader> headers = await peer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation);
         cancellation.ThrowIfCancellationRequested();

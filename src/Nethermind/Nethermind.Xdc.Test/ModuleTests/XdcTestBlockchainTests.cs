@@ -40,7 +40,7 @@ internal class XdcTestBlockchainTests
         await _blockchain.AddBlocks(count);
         IHeaderValidator headerValidator = _blockchain.Container.Resolve<IHeaderValidator>();
         BlockHeader parent = _blockchain.BlockTree.Genesis!;
-        for (int i = 1; i < _blockchain.BlockTree.Head!.Number; i++)
+        for (ulong i = 1; i < _blockchain.BlockTree.Head!.Number; i++)
         {
             var block = _blockchain.BlockTree.FindBlock(i);
             Assert.That(block, Is.Not.Null);

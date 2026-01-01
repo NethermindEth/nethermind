@@ -32,7 +32,7 @@ internal class XdcBlockTree : BlockTree
         IBloomStorage? bloomStorage,
         ISyncConfig? syncConfig,
         ILogManager? logManager,
-        long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
+        ulong genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
     {
         _xdcConsensus = xdcConsensus;
     }
@@ -59,7 +59,7 @@ internal class XdcBlockTree : BlockTree
             return AddBlockResult.InvalidBlock;
         }
         BlockHeader current = header;
-        for (long i = header.Number; i >= finalizedBlockInfo.BlockNumber; i--)
+        for (ulong i = header.Number; i > finalizedBlockInfo.BlockNumber; i--)
         {
             if (finalizedBlockInfo.BlockNumber >= current.Number)
                 return AddBlockResult.InvalidBlock;

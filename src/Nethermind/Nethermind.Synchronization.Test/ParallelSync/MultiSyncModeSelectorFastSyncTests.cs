@@ -573,8 +573,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.FindBestHeader().Returns(Scenario.ChainHead.Number);
             syncProgressResolver.FindBestFullBlock().Returns(Scenario.ChainHead.Number);
-            syncProgressResolver.FindBestFullState().Returns(Scenario.ChainHead.Number - 32);
-            syncProgressResolver.FindBestProcessedBlock().Returns(0);
+            syncProgressResolver.FindBestFullState().Returns(Scenario.ChainHead.Number - 32ul);
+            syncProgressResolver.FindBestProcessedBlock().Returns(0ul);
             syncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
             syncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
 
@@ -604,11 +604,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             selector.Update();
             selector.Current.Should().Be(SyncMode.Full);
 
-            for (uint i = 0; i < syncConfig.FastSyncCatchUpHeightDelta + 1; i++)
+            ulong catchUpHeightDelta = checked((ulong)(syncConfig.FastSyncCatchUpHeightDelta ?? 0));
+            for (ulong i = 0; i < catchUpHeightDelta + 1; i++)
             {
-                long number = header.Number + i;
+                ulong number = header.Number + i;
                 syncPeer.HeadNumber.Returns(number);
-                syncPeer.TotalDifficulty.Returns(header.TotalDifficulty!.Value + i);
+                syncPeer.TotalDifficulty.Returns(header.TotalDifficulty!.Value + (UInt256)i);
                 syncProgressResolver.FindBestHeader().Returns(number);
                 syncProgressResolver.FindBestFullBlock().Returns(number);
                 selector.Update();

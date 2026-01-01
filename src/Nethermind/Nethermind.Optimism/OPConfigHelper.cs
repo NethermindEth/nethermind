@@ -7,7 +7,7 @@ namespace Nethermind.Optimism;
 
 public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : IOptimismSpecHelper
 {
-    private readonly long? _bedrockBlockNumber = parameters.BedrockBlockNumber;
+    private readonly ulong? _bedrockBlockNumber = parameters.BedrockBlockNumber is null ? null : checked((ulong)parameters.BedrockBlockNumber.Value);
     private readonly ulong? _regolithTimestamp = parameters.RegolithTimestamp;
     private readonly ulong? _canyonTimestamp = parameters.CanyonTimestamp;
     private readonly ulong? _deltaTimestamp = parameters.DeltaTimestamp;
@@ -27,7 +27,7 @@ public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : 
 
     public bool IsBedrock(BlockHeader header)
     {
-        return header.Number >= _bedrockBlockNumber;
+        return _bedrockBlockNumber is not null && header.Number >= _bedrockBlockNumber.Value;
     }
 
     public bool IsCanyon(BlockHeader header)

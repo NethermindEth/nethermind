@@ -179,7 +179,12 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         var currentHeader = currentBlock.Header as XdcBlockHeader;
         var currentBlockNumber = currentBlock.Number;
         var epochLength = _specProvider.GetXdcSpec(currentHeader, timeout.Round).EpochLength;
-        if (Math.Abs((long)timeout.GapNumber - currentBlockNumber) > 3 * epochLength)
+
+        ulong distance = timeout.GapNumber > currentBlockNumber
+            ? timeout.GapNumber - currentBlockNumber
+            : currentBlockNumber - timeout.GapNumber;
+
+        if (distance > 3UL * (ulong)epochLength)
         {
             // Discarded propagated timeout, too far away
             return Task.CompletedTask;
@@ -209,14 +214,17 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     private void SendTimeout()
     {
-        long gapNumber = 0;
+        ulong gapNumber = 0;
         var currentHeader = (XdcBlockHeader)_blockTree.Head?.Header;
         if (currentHeader is null) throw new InvalidOperationException("Failed to retrieve current header");
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(currentHeader, _consensusContext.CurrentRound);
+        ulong epochLength = (ulong)spec.EpochLength;
+        ulong gap = (ulong)spec.Gap;
         if (_epochSwitchManager.IsEpochSwitchAtRound(_consensusContext.CurrentRound, currentHeader))
         {
-            var currentNumber = currentHeader.Number + 1;
-            gapNumber = Math.Max(0, currentNumber - currentNumber % spec.EpochLength - spec.Gap);
+            var currentNumber = currentHeader.Number + 1UL;
+            ulong epochStart = currentNumber - (currentNumber % epochLength);
+            gapNumber = epochStart > gap ? epochStart - gap : 0UL;
         }
         else
         {
@@ -225,12 +233,13 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
                 throw new DataExtractionException(nameof(EpochSwitchInfo));
 
             var currentNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-            gapNumber = Math.Max(0, currentNumber - currentNumber % spec.EpochLength - spec.Gap);
+            ulong epochStart = currentNumber - (currentNumber % epochLength);
+            gapNumber = epochStart > gap ? epochStart - gap : 0UL;
         }
 
-        ValueHash256 msgHash = ComputeTimeoutMsgHash(_consensusContext.CurrentRound, (ulong)gapNumber);
+        ValueHash256 msgHash = ComputeTimeoutMsgHash(_consensusContext.CurrentRound, gapNumber);
         Signature signedHash = _signer.Sign(msgHash);
-        var timeoutMsg = new Timeout(_consensusContext.CurrentRound, signedHash, (ulong)gapNumber);
+        var timeoutMsg = new Timeout(_consensusContext.CurrentRound, signedHash, gapNumber);
         timeoutMsg.Signer = _signer.Address;
 
         HandleTimeoutVote(timeoutMsg);

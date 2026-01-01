@@ -34,7 +34,7 @@ public class BeaconPivotTests
             PivotTotalDifficulty = "1000"
         };
         _blockTree = Substitute.For<IBlockTree>();
-        _blockTree.SyncPivot.Returns((1000, Keccak.Zero));
+        _blockTree.SyncPivot.Returns(_ => (1000ul, Keccak.Zero));
     }
 
     [Test]
@@ -46,9 +46,9 @@ public class BeaconPivotTests
         pivot.PivotDestinationNumber.Should().Be(0);
     }
 
-    [TestCase(0, 1001)]
-    [TestCase(500, 436)]
-    public void Beacon_pivot_set_to_pivot_when_set(int processedBlocks, int expectedPivotDestinationNumber)
+    [TestCase(0, 1001ul)]
+    [TestCase(500, 436ul)]
+    public void Beacon_pivot_set_to_pivot_when_set(int processedBlocks, ulong expectedPivotDestinationNumber)
     {
         IBlockTree blockTree = Build.A.BlockTree()
             .WithSyncConfig(_syncConfig)
@@ -56,7 +56,7 @@ public class BeaconPivotTests
             .TestObject;
         IBeaconPivot pivot = new BeaconPivot(_syncConfig, new MemDb(), blockTree, AlwaysPoS.Instance, LimboLogs.Instance);
 
-        BlockHeader pivotHeader = blockTree.FindHeader(10, BlockTreeLookupOptions.AllowInvalid)!;
+        BlockHeader pivotHeader = blockTree.FindHeader(10ul, BlockTreeLookupOptions.AllowInvalid)!;
         pivot.EnsurePivot(pivotHeader);
         pivot.PivotHash.Should().Be(pivotHeader.GetOrCalculateHash());
         pivot.PivotNumber.Should().Be(pivotHeader.Number);

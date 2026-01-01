@@ -40,7 +40,8 @@ public class TraceStorePruner : IDisposable
     {
         Task.Run((() =>
         {
-            long levelToDelete = e.Block.Number - _blockToKeep;
+            ulong blockNumber = e.Block.Number;
+            ulong levelToDelete = blockNumber > (ulong)_blockToKeep ? blockNumber - (ulong)_blockToKeep : 0UL;
             if (levelToDelete > 0)
             {
                 ChainLevelInfo? level = _blockTree.FindLevel(levelToDelete);

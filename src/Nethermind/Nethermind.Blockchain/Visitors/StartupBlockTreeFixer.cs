@@ -45,13 +45,18 @@ namespace Nethermind.Blockchain.Visitors
             long batchSize = DefaultBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _blockTreeSuggestPacer = new BlockTreeSuggestPacer(_blockTree, batchSize, batchSize / 2);
+            _blockTreeSuggestPacer = new BlockTreeSuggestPacer(_blockTree, checked((ulong)batchSize), checked((ulong)(batchSize / 2)));
             _stateReader = stateReader;
             _logger = logger;
 
-            long assumedHead = _blockTree.Head?.Number ?? 0;
-            _startNumber = Math.Max(_blockTree.SyncPivot.BlockNumber, assumedHead + 1);
-            _blocksToLoad = (assumedHead + 1) >= _startNumber ? (_blockTree.BestKnownNumber - _startNumber + 1) : 0;
+            long assumedHead = checked((long)(_blockTree.Head?.Number ?? 0UL));
+            long syncPivot = checked((long)_blockTree.SyncPivot.BlockNumber);
+            _startNumber = Math.Max(syncPivot, assumedHead + 1);
+
+            long bestKnownNumber = checked((long)_blockTree.BestKnownNumber);
+            _blocksToLoad = (assumedHead + 1) >= _startNumber
+                ? Math.Max(0, bestKnownNumber - _startNumber + 1)
+                : 0;
 
             _currentLevelNumber = _startNumber - 1; // because we always increment on entering
             LogPlannedOperation();
@@ -150,7 +155,7 @@ namespace Nethermind.Blockchain.Visitors
 
             Task waitSuggestQueue = _blockTreeSuggestPacer.WaitForQueue(block.Number, cancellationToken);
 
-            long i = block.Number - StartLevelInclusive;
+            long i = checked((long)block.Number) - StartLevelInclusive;
             if (!waitSuggestQueue.IsCompleted)
             {
                 if (_logger.IsInfo)

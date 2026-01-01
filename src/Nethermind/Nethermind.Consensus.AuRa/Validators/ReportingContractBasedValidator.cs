@@ -192,7 +192,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                                 break;
                             }
 
-                            ReportBenign(skippedValidator, header.Number, IReportingValidator.BenignCause.SkippedStep);
+                            ReportBenign(skippedValidator, checked((long)header.Number), IReportingValidator.BenignCause.SkippedStep);
                             reported.Add(skippedValidator);
                             if (_logger.IsDebug) _logger.Debug($"Found skipped step {step} by author {skippedValidator}, actual author {header.Beneficiary} at block {header.Number}.");
                         }

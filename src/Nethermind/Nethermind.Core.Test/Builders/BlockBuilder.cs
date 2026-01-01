@@ -31,6 +31,11 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithNumber(long number)
         {
+            return WithNumber(checked((ulong)number));
+        }
+
+        public BlockBuilder WithNumber(ulong number)
+        {
             TestObjectInternal.Header.Number = number;
             return this;
         }

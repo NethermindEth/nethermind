@@ -132,20 +132,20 @@ internal class SnapshotManagerTests
         result.Should().BeEquivalentTo(snapshot2);
     }
 
-    [TestCase(1, 0)]
-    [TestCase(451, 0)]
-    [TestCase(899, 0)]
-    [TestCase(900, 450)]
-    [TestCase(1349, 450)]
-    [TestCase(1350, 450)]
-    [TestCase(1800, 1350)]
-    public void GetSnapshot_DifferentBlockNumbers_ReturnsSnapshotFromCorrectGapNumber(int blockNumber, int expectedGapNumber)
+    [TestCase(1ul, 0ul)]
+    [TestCase(451ul, 0ul)]
+    [TestCase(899ul, 0ul)]
+    [TestCase(900ul, 450ul)]
+    [TestCase(1349ul, 450ul)]
+    [TestCase(1350ul, 450ul)]
+    [TestCase(1800ul, 1350ul)]
+    public void GetSnapshot_DifferentBlockNumbers_ReturnsSnapshotFromCorrectGapNumber(ulong blockNumber, ulong expectedGapNumber)
     {
         // setup a snapshot and store it
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         var snapshot = new Snapshot(expectedGapNumber, header.Hash!, [Address.FromNumber(1)]);
         _snapshotManager.StoreSnapshot(snapshot);
-        _blockTree.FindHeader(expectedGapNumber).Returns(header);
+        _blockTree.FindHeader(expectedGapNumber, BlockTreeLookupOptions.RequireCanonical).Returns(header);
         var result = _snapshotManager.GetSnapshotByBlockNumber(blockNumber, _xdcReleaseSpec);
 
         // assert that it was retrieved from db

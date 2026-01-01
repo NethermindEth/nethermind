@@ -98,7 +98,7 @@ namespace Nethermind.Facade.Test.Eth
                 PivotNumber = 1000
             };
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.SyncPivot.Returns((1000, Keccak.Zero));
+            blockTree.SyncPivot.Returns((1000UL, Keccak.Zero));
             ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(resolverDownloadingBodies);

@@ -26,19 +26,27 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
         if (!worldState.IsContract(eip2935Account)) return;
 
         Hash256 parentBlockHash = blockHeader.ParentHash;
-        UInt256 parentBlockIndex = new UInt256((ulong)((blockHeader.Number - 1) % spec.Eip2935RingBufferSize));
+        ulong ringBufferSize = checked((ulong)spec.Eip2935RingBufferSize);
+        UInt256 parentBlockIndex = new UInt256((blockHeader.Number - 1) % ringBufferSize);
         StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
         worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
     }
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber, IReleaseSpec spec)
     {
-        if (requiredBlockNumber >= currentHeader.Number ||
-            requiredBlockNumber + spec.Eip2935RingBufferSize < currentHeader.Number)
+        if (requiredBlockNumber < 0)
         {
             return null;
         }
-        UInt256 blockIndex = new UInt256((ulong)(requiredBlockNumber % spec.Eip2935RingBufferSize));
+
+        ulong required = (ulong)requiredBlockNumber;
+        ulong ringBufferSize = checked((ulong)spec.Eip2935RingBufferSize);
+        if (required >= currentHeader.Number || required + ringBufferSize < currentHeader.Number)
+        {
+            return null;
+        }
+
+        UInt256 blockIndex = new UInt256(required % ringBufferSize);
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);

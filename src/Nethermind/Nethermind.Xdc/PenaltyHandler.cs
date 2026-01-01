@@ -8,7 +8,7 @@ namespace Nethermind.Xdc;
 
 internal class PenaltyHandler : IPenaltyHandler
 {
-    public Address[] HandlePenalties(long number, Hash256 currentHash, Address[] candidates)
+    public Address[] HandlePenalties(ulong number, Hash256 currentHash, Address[] candidates)
     {
         //Mock implementation for now
         return [];

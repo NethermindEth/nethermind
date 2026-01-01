@@ -155,7 +155,7 @@ public partial class EthRpcModule(
 
     public Task<ResultWrapper<long?>> eth_blockNumber()
     {
-        long number = _blockchainBridge.HeadBlock?.Number ?? 0;
+        long number = _blockchainBridge.HeadBlock is null ? 0 : checked((long)_blockchainBridge.HeadBlock.Number);
         return Task.FromResult(ResultWrapper<long?>.Success(number));
     }
 
@@ -395,7 +395,8 @@ public partial class EthRpcModule(
         }
 
         RecoverTxSenderIfNeeded(transaction);
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, baseFee, _specProvider.ChainId);
+        long? blockNumber = receipt is null ? null : checked((long)receipt.BlockNumber);
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, receipt?.BlockHash, blockNumber, receipt?.Index, baseFee, _specProvider.ChainId);
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
@@ -461,7 +462,7 @@ public partial class EthRpcModule(
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, block.Hash, block.Number, (int)positionIndex, block.BaseFeePerGas, _specProvider.ChainId);
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, block.Hash, checked((long)block.Number), (int)positionIndex, block.BaseFeePerGas, _specProvider.ChainId);
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
 
@@ -592,12 +593,15 @@ public partial class EthRpcModule(
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
-        long? headNumber = _blockFinder.Head?.Number;
-        if (headNumber < fromBlock.BlockNumber || headNumber < toBlock.BlockNumber)
+        ulong headNumber = _blockFinder.Head?.Number ?? 0;
+        ulong? fromNumber = fromBlock.BlockNumber;
+        ulong? toNumber = toBlock.BlockNumber;
+
+        if ((fromNumber.HasValue && headNumber < fromNumber.Value) || (toNumber.HasValue && headNumber < toNumber.Value))
         {
             return ResultWrapper<IEnumerable<FilterLog>>.Fail("requested block range is in the future", ErrorCodes.InvalidParams);
         }
-        if (fromBlock.BlockNumber > toBlock.BlockNumber)
+        if (fromNumber.HasValue && toNumber.HasValue && fromNumber.Value > toNumber.Value)
         {
             return ResultWrapper<IEnumerable<FilterLog>>.Fail("invalid block range params", ErrorCodes.InvalidParams);
         }

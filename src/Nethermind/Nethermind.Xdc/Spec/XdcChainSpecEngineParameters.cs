@@ -19,7 +19,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public Address FoundationWalletAddr { get; set; }
     public int Reward { get; set; }
     public int SwitchEpoch { get; set; }
-    public long SwitchBlock { get; set; }
+    public ulong SwitchBlock { get; set; }
 
     public Address MasternodeVotingContract { get; set; }
     public Address BlockSignerContract { get; set; }

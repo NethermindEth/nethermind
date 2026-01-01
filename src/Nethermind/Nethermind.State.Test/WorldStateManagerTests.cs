@@ -123,6 +123,6 @@ public class WorldStateManagerTests
             }
         }
 
-        blockTree.Received().BestPersistedState = lastBlock - reorgDepth;
+        blockTree.Received().BestPersistedState = checked((ulong)(lastBlock - reorgDepth));
     }
 }

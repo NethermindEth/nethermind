@@ -11,11 +11,11 @@ namespace Nethermind.Specs;
 
 public class GnosisSpecProvider : ISpecProvider
 {
-    public const long ConstantinopleBlockNumber = 1_604_400;
-    public const long ConstantinopleFixBlockNumber = 2_508_800;
-    public const long IstanbulBlockNumber = 7_298_030;
-    public const long BerlinBlockNumber = 16_101_500;
-    public const long LondonBlockNumber = 19_040_000;
+    public const ulong ConstantinopleBlockNumber = 1_604_400;
+    public const ulong ConstantinopleFixBlockNumber = 2_508_800;
+    public const ulong IstanbulBlockNumber = 7_298_030;
+    public const ulong BerlinBlockNumber = 16_101_500;
+    public const ulong LondonBlockNumber = 19_040_000;
     public const ulong BeaconChainGenesisTimestampConst = 0x61b10dbc;
     public const ulong ShanghaiTimestamp = 0x64c8edbc;
     public const ulong CancunTimestamp = 0x65ef4dbc;
@@ -44,10 +44,10 @@ public class GnosisSpecProvider : ISpecProvider
         };
     }
 
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+    public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
         if (blockNumber is not null)
-            MergeBlockNumber = (ForkActivation)blockNumber;
+            MergeBlockNumber = (ForkActivation)blockNumber.Value;
 
         if (terminalTotalDifficulty is not null)
             TerminalTotalDifficulty = terminalTotalDifficulty;
@@ -58,7 +58,7 @@ public class GnosisSpecProvider : ISpecProvider
     // 8626000000000000000000058750000000000000000000
     public UInt256? TerminalTotalDifficulty { get; private set; } = new UInt256(15847367919172845568ul, 12460455203863319017ul, 25349535ul);
     public IReleaseSpec GenesisSpec => Byzantium.Instance;
-    public long? DaoBlockNumber => null;
+    public ulong? DaoBlockNumber => null;
     public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public ulong NetworkId => BlockchainIds.Gnosis;
     public ulong ChainId => BlockchainIds.Gnosis;

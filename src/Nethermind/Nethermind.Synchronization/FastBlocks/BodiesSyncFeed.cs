@@ -24,14 +24,14 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class BodiesSyncFeed : BarrierSyncFeed<BodiesSyncBatch?>
     {
-        protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedBodyNumber;
+        protected override ulong? LowestInsertedNumber => _syncPointers.LowestInsertedBodyNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BodiesBarrierWhenStarted;
         protected override long SyncConfigBarrierCalc
         {
             get
             {
                 long? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
-                return cutoffBlockNumber is null ? _syncConfig.AncientBodiesBarrierCalc : long.Max(_syncConfig.AncientBodiesBarrierCalc, cutoffBlockNumber.Value);
+                return cutoffBlockNumber is null ? _syncConfig.AncientBodiesBarrierCalc : Math.Max(_syncConfig.AncientBodiesBarrierCalc, cutoffBlockNumber.Value);
             }
         }
         protected override Func<bool> HasPivot =>
@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private SyncStatusList _syncStatusList;
 
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || AllDownloaded;
-        private bool AllDownloaded => (_syncPointers.LowestInsertedBodyNumber ?? long.MaxValue) <= _barrier;
+        private bool AllDownloaded => (_syncPointers.LowestInsertedBodyNumber ?? ulong.MaxValue) <= _barrier;
 
         public override bool IsFinished => AllDownloaded;
         public override string FeedName => nameof(BodiesSyncFeed);
@@ -91,21 +91,22 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new InvalidOperationException("Entered fast bodies mode without fast sync enabled in configuration.");
             }
 
-            _pivotNumber = -1; // First reset in `InitializeFeed`.
+            _pivotNumber = ulong.MaxValue; // First reset in `InitializeFeed`.
         }
 
         public override void InitializeFeed()
         {
-            if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _syncConfig.AncientBodiesBarrierCalc)
+            ulong barrierCalc = checked((ulong)_syncConfig.AncientBodiesBarrierCalc);
+            if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != barrierCalc)
             {
                 _pivotNumber = _blockTree.SyncPivot.BlockNumber;
-                _barrier = _syncConfig.AncientBodiesBarrierCalc;
+                _barrier = barrierCalc;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in bodies sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
-            _syncReport.FastBlocksBodies.Reset(0, _pivotNumber - _syncConfig.AncientBodiesBarrierCalc);
+            _syncReport.FastBlocksBodies.Reset(0, checked((long)(_pivotNumber - barrierCalc)));
         }
 
         private void ResetSyncStatusList()
@@ -114,7 +115,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 _blockTree,
                 _pivotNumber,
                 _syncPointers.LowestInsertedBodyNumber,
-                _syncConfig.AncientBodiesBarrier);
+                checked((ulong)_syncConfig.AncientBodiesBarrier));
         }
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
@@ -138,7 +139,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void PostFinishCleanUp()
         {
-            _syncReport.FastBlocksBodies.Update(_pivotNumber);
+            _syncReport.FastBlocksBodies.Update(checked((long)_pivotNumber));
             _syncReport.FastBlocksBodies.MarkEnd();
             Flush();
         }
@@ -173,7 +174,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             if (
-                (_syncPointers.LowestInsertedBodyNumber ?? long.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > _flushDbInterval ||
+                (_syncPointers.LowestInsertedBodyNumber ?? ulong.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > checked((ulong)_flushDbInterval) ||
                 _syncStatusList.LowestInsertWithoutGaps <= _barrier // Other state depends on LowestInsertedBodyNumber, so this need to flush or it wont finish
             )
             {
@@ -185,7 +186,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void Flush()
         {
-            long lowestInsertedAtPoint = _syncStatusList.LowestInsertWithoutGaps;
+            ulong lowestInsertedAtPoint = _syncStatusList.LowestInsertWithoutGaps;
             _blocksDb.Flush();
             _syncPointers.LowestInsertedBodyNumber = lowestInsertedAtPoint;
         }
@@ -306,7 +307,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void UpdateSyncReport()
         {
-            _syncReport.FastBlocksBodies.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
+            _syncReport.FastBlocksBodies.Update(checked((long)(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps)));
             _syncReport.FastBlocksBodies.CurrentQueued = _syncStatusList.QueueSize;
         }
 
@@ -315,8 +316,8 @@ namespace Nethermind.Synchronization.FastBlocks
             public bool ShouldDownloadBlock(BlockInfo info)
             {
                 bool hasBlock = blockTree.HasBlock(info.BlockNumber, info.BlockHash);
-                long? cutoff = historyPruner?.CutoffBlockNumber;
-                cutoff = cutoff is null ? null : long.Min(cutoff!.Value, blockTree.SyncPivot.BlockNumber);
+                long? cutoffLong = historyPruner?.CutoffBlockNumber;
+                ulong? cutoff = cutoffLong is null ? null : Math.Min(checked((ulong)cutoffLong.Value), blockTree.SyncPivot.BlockNumber);
                 bool shouldDownload = !hasBlock && (cutoff is null || info.BlockNumber >= cutoff);
                 if (!shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
                 return shouldDownload;

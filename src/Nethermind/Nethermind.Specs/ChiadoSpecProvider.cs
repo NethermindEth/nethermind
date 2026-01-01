@@ -33,10 +33,10 @@ public class ChiadoSpecProvider : ISpecProvider
         }
     };
 
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+    public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
         if (blockNumber is not null)
-            MergeBlockNumber = (ForkActivation)blockNumber;
+            MergeBlockNumber = (ForkActivation)blockNumber.Value;
 
         if (terminalTotalDifficulty is not null)
             TerminalTotalDifficulty = terminalTotalDifficulty;
@@ -48,7 +48,7 @@ public class ChiadoSpecProvider : ISpecProvider
     // 231707791542740786049188744689299064356246512
     public UInt256? TerminalTotalDifficulty { get; private set; } = new UInt256(18446744073375486960ul, 18446744073709551615ul, 680927ul);
     public IReleaseSpec GenesisSpec => London.Instance;
-    public long? DaoBlockNumber => null;
+    public ulong? DaoBlockNumber => null;
     public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public ulong NetworkId => BlockchainIds.Chiado;
     public ulong ChainId => BlockchainIds.Chiado;

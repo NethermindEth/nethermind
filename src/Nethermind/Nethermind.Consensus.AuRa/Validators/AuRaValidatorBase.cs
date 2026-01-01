@@ -53,7 +53,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 {
                     string reason = $"Incorrect proposer at step {auRaStep}, expected {expectedAddress}, but found {block.Beneficiary}";
                     if (_logger.IsError) _logger.Error($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {reason}.");
-                    this.GetReportingValidator().ReportBenign(block.Beneficiary, block.Number, IReportingValidator.BenignCause.IncorrectProposer);
+                    this.GetReportingValidator().ReportBenign(block.Beneficiary, checked((long)block.Number), IReportingValidator.BenignCause.IncorrectProposer);
                     throw new InvalidBlockException(block, reason);
                 }
             }

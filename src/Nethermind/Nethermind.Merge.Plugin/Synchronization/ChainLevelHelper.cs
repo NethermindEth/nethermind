@@ -14,7 +14,7 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public interface IChainLevelHelper
 {
-    BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0);
+    BlockHeader[]? GetNextHeaders(int maxCount, ulong maxHeaderNumber, int skipLastBlockCount = 0);
 }
 
 public class ChainLevelHelper : IChainLevelHelper
@@ -36,7 +36,7 @@ public class ChainLevelHelper : IChainLevelHelper
         _logger = logManager.GetClassLogger();
     }
 
-    private void OnMissingBeaconHeader(long blockNumber)
+    private void OnMissingBeaconHeader(ulong blockNumber)
     {
         if (_beaconPivot.ProcessDestination?.Number > blockNumber)
         {
@@ -49,9 +49,9 @@ public class ChainLevelHelper : IChainLevelHelper
         }
     }
 
-    public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0)
+    public BlockHeader[]? GetNextHeaders(int maxCount, ulong maxHeaderNumber, int skipLastBlockCount = 0)
     {
-        (long? startingPoint, Hash256? startingPointBlockHash) = GetStartingPoint();
+        (ulong? startingPoint, Hash256? startingPointBlockHash) = GetStartingPoint();
         if (startingPoint is null)
         {
             if (_logger.IsTrace)
@@ -157,9 +157,9 @@ public class ChainLevelHelper : IChainLevelHelper
     /// block that was processed where we should continue processing.
     /// </summary>
     /// <returns></returns>
-    private (long?, Hash256?) GetStartingPoint()
+    private (ulong?, Hash256?) GetStartingPoint()
     {
-        long startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, _beaconPivot.ProcessDestination?.Number ?? long.MaxValue);
+        ulong startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, _beaconPivot.ProcessDestination?.Number ?? ulong.MaxValue);
         bool shouldContinue;
 
         if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point's starting point is {startingPoint}. Best known number: {_blockTree.BestKnownNumber}, Process destination: {_beaconPivot.ProcessDestination?.Number}");
@@ -187,7 +187,8 @@ public class ChainLevelHelper : IChainLevelHelper
                 return default;
             }
 
-            parentBlockInfo = (_blockTree.GetInfo(header.Number - 1, header.ParentHash!)).Info;
+            ulong parentNumber = header.Number > 0 ? header.Number - 1 : 0;
+            parentBlockInfo = (_blockTree.GetInfo(parentNumber, header.ParentHash!)).Info;
             if (parentBlockInfo is null)
             {
                 OnMissingBeaconHeader(header.Number);
@@ -201,6 +202,11 @@ public class ChainLevelHelper : IChainLevelHelper
 
             // Note: the starting point, points to the non-beacon info block.
             // MergeBlockDownloader does not download the first header so this is deliberate
+            if (startingPoint == 0)
+            {
+                break;
+            }
+
             --startingPoint;
             currentHash = header.ParentHash!;
             if (_syncConfig.FastSync && startingPoint < _beaconPivot.PivotDestinationNumber)
@@ -213,7 +219,7 @@ public class ChainLevelHelper : IChainLevelHelper
         return (startingPoint, parentBlockInfo.BlockHash);
     }
 
-    private BlockInfo? GetBeaconMainChainBlockInfo(long startingPoint)
+    private BlockInfo? GetBeaconMainChainBlockInfo(ulong startingPoint)
     {
         ChainLevelInfo? startingLevel = _blockTree.FindLevel(startingPoint);
         BlockInfo? beaconMainChainBlock = startingLevel?.BeaconMainChainBlock;

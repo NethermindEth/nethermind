@@ -50,37 +50,37 @@ namespace Nethermind.Ethash.Test
         }
 
         // previous difficulty bomb +  InitialDifficultyBombBlock + offset
-        [TestCase(9000000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
-        [TestCase(9000000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
-        [TestCase(9000000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000)]
-        public void London_calculation_should_not_be_equal_to_Berlin(long blocksAbove)
+        [TestCase(9000000UL + (ulong)EthashDifficultyCalculator.InitialDifficultyBombBlock + 1UL)]
+        [TestCase(9000000UL + (ulong)EthashDifficultyCalculator.InitialDifficultyBombBlock + 3UL)]
+        [TestCase(9000000UL + (ulong)EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000UL)]
+        public void London_calculation_should_not_be_equal_to_Berlin(ulong blocksAbove)
         {
             Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
                 Berlin.Instance, London.Instance);
         }
 
         // previous difficulty bomb +  InitialDifficultyBombBlock + offset
-        [TestCase(9700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
-        [TestCase(9700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
-        [TestCase(9700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000)]
-        public void ArrowGlacier_calculation_should_not_be_equal_to_London0(long blocksAbove)
+        [TestCase(9700000UL + (ulong)EthashDifficultyCalculator.InitialDifficultyBombBlock + 1UL)]
+        [TestCase(9700000UL + (ulong)EthashDifficultyCalculator.InitialDifficultyBombBlock + 3UL)]
+        [TestCase(9700000UL + (ulong)EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000UL)]
+        public void ArrowGlacier_calculation_should_not_be_equal_to_London0(ulong blocksAbove)
         {
             Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
                 London.Instance, ArrowGlacier.Instance);
         }
 
         // previous difficulty bomb +  InitialDifficultyBombBlock + offset
-        [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
-        [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
-        [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000)]
-        public void GrayGlacier_calculation_should_not_be_equal_to_ArrowGlacier(long blocksAbove)
+        [TestCase(10700000UL + (ulong)EthashDifficultyCalculator.InitialDifficultyBombBlock + 1UL)]
+        [TestCase(10700000UL + (ulong)EthashDifficultyCalculator.InitialDifficultyBombBlock + 3UL)]
+        [TestCase(10700000UL + (ulong)EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000UL)]
+        public void GrayGlacier_calculation_should_not_be_equal_to_ArrowGlacier(ulong blocksAbove)
         {
             Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
                 ArrowGlacier.Instance, GrayGlacier.Instance);
         }
 
         private void Calculation_should_not_be_equal_on_different_difficulty_hard_forks(
-            long blocksAbove, IReleaseSpec firstHardfork, IReleaseSpec secondHardfork)
+            ulong blocksAbove, IReleaseSpec firstHardfork, IReleaseSpec secondHardfork)
         {
             UInt256 parentDifficulty = 0x55f78f7;
             ulong parentTimestamp = 1613570258;

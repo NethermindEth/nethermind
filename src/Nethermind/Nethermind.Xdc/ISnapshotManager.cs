@@ -10,14 +10,17 @@ namespace Nethermind.Xdc;
 
 public interface ISnapshotManager
 {
-    static bool IsTimeforSnapshot(long blockNumber, IXdcReleaseSpec spec)
+    static bool IsTimeforSnapshot(ulong blockNumber, IXdcReleaseSpec spec)
     {
         if (blockNumber == spec.SwitchBlock)
             return true;
-        return blockNumber % spec.EpochLength == spec.EpochLength - spec.Gap;
+
+        ulong epochLength = (ulong)spec.EpochLength;
+        ulong gap = (ulong)spec.Gap;
+        return blockNumber % epochLength == epochLength - gap;
     }
     Snapshot? GetSnapshotByGapNumber(ulong gapNumber);
-    Snapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec);
+    Snapshot? GetSnapshotByBlockNumber(ulong blockNumber, IXdcReleaseSpec spec);
     void StoreSnapshot(Snapshot snapshot);
-    (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec);
+    (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(ulong blockNumber, Hash256 parentHash, IXdcReleaseSpec spec);
 }

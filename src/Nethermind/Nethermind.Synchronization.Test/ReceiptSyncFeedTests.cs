@@ -54,12 +54,12 @@ public class ReceiptSyncFeedTests
 
         for (int i = 1; i < 100; i++)
         {
-            Block block = _syncingFromBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!;
+            Block block = _syncingFromBlockTree.FindBlock(checked((ulong)i), BlockTreeLookupOptions.None)!;
             _syncingToBlockTree.Insert(block.Header);
             _syncingToBlockTree.Insert(block);
         }
 
-        _pivotBlock = _syncingFromBlockTree.FindBlock(99, BlockTreeLookupOptions.None)!;
+        _pivotBlock = _syncingFromBlockTree.FindBlock(99ul, BlockTreeLookupOptions.None)!;
 
         _syncConfig = new TestSyncConfig()
         {
@@ -69,7 +69,7 @@ public class ReceiptSyncFeedTests
             AncientBodiesBarrier = 0,
             DownloadBodiesInFastSync = true,
         };
-        _syncingToBlockTree.SyncPivot = (_pivotBlock.Number, _pivotBlock.Hash);
+        _syncingToBlockTree.SyncPivot = (_pivotBlock.Number, _pivotBlock.Hash!);
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _historyPruner = Substitute.For<IHistoryPruner>();

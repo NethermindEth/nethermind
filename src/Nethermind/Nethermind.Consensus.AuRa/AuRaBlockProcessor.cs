@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.AuRa
 
         private void RewriteContracts(Block block, IReleaseSpec spec)
         {
-            bool wereChanges = _contractRewriter?.RewriteContracts(block.Number, _stateProvider, spec) ?? false;
+            bool wereChanges = _contractRewriter?.RewriteContracts(checked((long)block.Number), _stateProvider, spec) ?? false;
             BlockHeader? parent = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
             if (parent is not null)
             {

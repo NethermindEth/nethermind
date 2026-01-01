@@ -88,11 +88,11 @@ namespace Nethermind.Blockchain
 
         private BlockHeader? _lowestInsertedBeaconHeader;
 
-        private long? _highestPersistedState;
+        private ulong? _highestPersistedState;
 
-        public long BestKnownNumber { get; private set; }
+        public ulong BestKnownNumber { get; private set; }
 
-        public long BestKnownBeaconNumber { get; private set; }
+        public ulong BestKnownBeaconNumber { get; private set; }
 
         public ulong NetworkId => _specProvider.NetworkId;
 
@@ -101,11 +101,11 @@ namespace Nethermind.Blockchain
         private int _canAcceptNewBlocksCounter;
         public bool CanAcceptNewBlocks => _canAcceptNewBlocksCounter == 0;
 
-        private long _oldestBlock;
+        private ulong _oldestBlock;
 
         private TaskCompletionSource? _taskCompletionSource;
 
-        private readonly long _genesisBlockNumber;
+        private readonly ulong _genesisBlockNumber;
 
         public BlockTree(
             IBlockStore? blockStore,
@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain
             IBloomStorage? bloomStorage,
             ISyncConfig? syncConfig,
             ILogManager? logManager,
-            long genesisBlockNumber = 0)
+            ulong genesisBlockNumber = 0)
         {
             Logger = logManager?.GetClassLogger<BlockTree>() ?? throw new ArgumentNullException(nameof(logManager));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
@@ -131,7 +131,7 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
-            _oldestBlock = syncConfig.AncientBodiesBarrierCalc;
+            _oldestBlock = checked((ulong)syncConfig.AncientBodiesBarrierCalc);
 
             _genesisBlockNumber = genesisBlockNumber;
 
@@ -219,7 +219,7 @@ namespace Nethermind.Blockchain
                 SetTotalDifficulty(header);
             }
 
-            _bloomStorage.Store(header.Number, header.Bloom);
+            _bloomStorage.Store(checked((long)header.Number), header.Bloom);
             _headerStore.Insert(header);
 
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
@@ -233,10 +233,7 @@ namespace Nethermind.Blockchain
                     BestKnownNumber = header.Number;
                 }
 
-                if (header.Number > (BestSuggestedHeader?.Number ?? 0))
-                {
-                    BestSuggestedHeader = header;
-                }
+                TryUpdateBestSuggestedHeader(header);
             }
 
             if (beaconInsert)
@@ -251,7 +248,7 @@ namespace Nethermind.Blockchain
                     BestSuggestedBeaconHeader = header;
                 }
 
-                if (header.Number < (LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
+                if (header.Number < (LowestInsertedBeaconHeader?.Number ?? ulong.MaxValue))
                 {
                     if (Logger.IsTrace)
                         Logger.Trace(
@@ -292,6 +289,8 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Cannot accept new blocks at the moment.");
             }
 
+            bool totalDifficultyNeeded = (headerOptions & BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded) == 0;
+
             using ArrayPoolList<(long, Bloom)> bloomToStore = new(headers.Count);
             foreach (BlockHeader? header in headers)
             {
@@ -310,14 +309,12 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("Genesis block should not be inserted.");
                 }
 
-                bool totalDifficultyNeeded = (headerOptions & BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded) == 0;
-
                 if (header.TotalDifficulty is null && totalDifficultyNeeded)
                 {
                     SetTotalDifficulty(header);
                 }
 
-                bloomToStore.Add((header.Number, header.Bloom));
+                bloomToStore.Add((checked((long)header.Number), header.Bloom));
             }
 
             Task bloomStoreTask = Task.Run(() =>
@@ -329,7 +326,7 @@ namespace Nethermind.Blockchain
 
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
             bool beaconInsert = (headerOptions & BlockTreeInsertHeaderOptions.BeaconHeaderMetadata) != 0;
-            using ArrayPoolListRef<(long, BlockInfo)> blockInfos = new(headers.Count);
+            using ArrayPoolListRef<(ulong, BlockInfo)> blockInfos = new(headers.Count);
 
             foreach (BlockHeader? header in headers)
             {
@@ -341,10 +338,7 @@ namespace Nethermind.Blockchain
                         BestKnownNumber = header.Number;
                     }
 
-                    if (header.Number > (BestSuggestedHeader?.Number ?? 0))
-                    {
-                        BestSuggestedHeader = header;
-                    }
+                    TryUpdateBestSuggestedHeader(header);
                 }
 
                 if (beaconInsert)
@@ -359,7 +353,7 @@ namespace Nethermind.Blockchain
                         BestSuggestedBeaconHeader = header;
                     }
 
-                    if (header.Number < (LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
+                    if (header.Number < (LowestInsertedBeaconHeader?.Number ?? ulong.MaxValue))
                     {
                         if (Logger.IsTrace)
                             Logger.Trace(
@@ -475,6 +469,13 @@ namespace Nethermind.Blockchain
 
             SetTotalDifficulty(header);
 
+            // When only headers are suggested (no body), still allow the "best suggested" pointer
+            // to move according to total difficulty.
+            if (block is null)
+            {
+                TryUpdateBestSuggestedHeader(header);
+            }
+
             if (block is not null)
             {
                 if (block.Hash is null)
@@ -552,17 +553,20 @@ namespace Nethermind.Blockchain
             return Suggest(block, block.Header, options);
         }
 
-        public BlockHeader? FindHeader(long number, BlockTreeLookupOptions options)
+        public BlockHeader? FindHeader(ulong number, BlockTreeLookupOptions options)
         {
             Hash256 blockHash = GetBlockHashOnMainOrBestDifficultyHash(number);
             return blockHash is null ? null : FindHeader(blockHash, options, blockNumber: number);
         }
 
-        public Hash256? FindBlockHash(long blockNumber) => GetBlockHashOnMainOrBestDifficultyHash(blockNumber);
+        public Hash256? FindBlockHash(ulong blockNumber) => GetBlockHashOnMainOrBestDifficultyHash(blockNumber);
 
-        public bool HasBlock(long blockNumber, Hash256 blockHash) => _blockStore.HasBlock(blockNumber, blockHash);
+        public bool HasBlock(ulong blockNumber, Hash256 blockHash) => _blockStore.HasBlock(blockNumber, blockHash);
 
-        public BlockHeader? FindHeader(Hash256? blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
+        public BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
+            => FindHeaderCore(blockHash, options, blockNumber);
+
+        private BlockHeader? FindHeaderCore(Hash256? blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
         {
             if (blockHash is null || blockHash == Keccak.Zero)
             {
@@ -631,7 +635,7 @@ namespace Nethermind.Blockchain
         /// <returns>
         /// If level has a block on the main chain then returns the block info,otherwise <value>null</value>
         /// </returns>
-        public BlockInfo? FindCanonicalBlockInfo(long blockNumber)
+        public BlockInfo? FindCanonicalBlockInfo(ulong blockNumber)
         {
             ChainLevelInfo level = LoadLevel(blockNumber);
             if (level is null)
@@ -649,7 +653,7 @@ namespace Nethermind.Blockchain
             return null;
         }
 
-        public Hash256? FindHash(long number)
+        public Hash256? FindHash(ulong number)
         {
             return GetBlockHashOnMainOrBestDifficultyHash(number);
         }
@@ -716,7 +720,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    BlockHeader endHeader = FindHeader(startHeader.Number + numberOfBlocks - 1, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    BlockHeader endHeader = FindHeader(startHeader.Number + (ulong)numberOfBlocks - 1UL, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (endHeader is not null)
                     {
                         return FindHeadersReversedFast(this, endHeader, numberOfBlocks);
@@ -726,16 +730,25 @@ namespace Nethermind.Blockchain
 
             ArrayPoolList<BlockHeader> result = new(numberOfBlocks, numberOfBlocks);
             BlockHeader current = startHeader;
-            int directionMultiplier = reverse ? -1 : 1;
             int responseIndex = 0;
             do
             {
                 result[responseIndex] = current;
                 responseIndex++;
-                long nextNumber = startHeader.Number + directionMultiplier * (responseIndex * skip + responseIndex);
-                if (nextNumber < 0)
+                ulong offset = (ulong)(responseIndex * skip + responseIndex);
+                ulong nextNumber;
+                if (reverse)
                 {
-                    break;
+                    if (startHeader.Number < offset)
+                    {
+                        break;
+                    }
+
+                    nextNumber = startHeader.Number - offset;
+                }
+                else
+                {
+                    nextNumber = startHeader.Number + offset;
                 }
 
                 current = FindHeader(nextNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -744,13 +757,8 @@ namespace Nethermind.Blockchain
             return result;
         }
 
-        private Hash256? GetBlockHashOnMainOrBestDifficultyHash(long blockNumber)
+        private Hash256? GetBlockHashOnMainOrBestDifficultyHash(ulong blockNumber)
         {
-            if (blockNumber < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Value must be greater or equal to zero but is {blockNumber}");
-            }
-
             ChainLevelInfo level = LoadLevel(blockNumber);
             if (level is null)
             {
@@ -777,7 +785,7 @@ namespace Nethermind.Blockchain
             return bestHash;
         }
 
-        public Block? FindBlock(long blockNumber, BlockTreeLookupOptions options)
+        public Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options)
         {
             Hash256 hash = GetBlockHashOnMainOrBestDifficultyHash(blockNumber);
             return FindBlock(hash, options, blockNumber: blockNumber);
@@ -811,7 +819,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public void DeleteOldBlock(long blockNumber, Hash256 blockHash)
+        public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash)
             => _blockStore.Delete(blockNumber, blockHash);
 
         private void DeleteBlocks(Hash256 deletePointer)
@@ -829,7 +837,7 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            long currentNumber = deleteHeader.Number;
+            ulong currentNumber = deleteHeader.Number;
             Hash256 currentHash = deleteHeader.Hash;
             Hash256? nextHash = null;
             ChainLevelInfo? nextLevel = null;
@@ -863,7 +871,8 @@ namespace Nethermind.Blockchain
 
                 if (shouldRemoveLevel)
                 {
-                    BestKnownNumber = Math.Min(BestKnownNumber, currentNumber - 1);
+                    ulong bestKnownCandidate = currentNumber - 1;
+                    BestKnownNumber = BestKnownNumber <= bestKnownCandidate ? BestKnownNumber : bestKnownCandidate;
                     _chainLevelInfoRepository.Delete(currentNumber, batch);
                 }
                 else if (currentLevel is not null)
@@ -924,7 +933,7 @@ namespace Nethermind.Blockchain
 
         public BlockHeader? FindBestSuggestedHeader() => BestSuggestedHeader;
 
-        public bool WasProcessed(long number, Hash256 blockHash)
+        public bool WasProcessed(ulong number, Hash256 blockHash)
         {
             ChainLevelInfo? levelInfo = LoadLevel(number) ?? throw new InvalidOperationException($"Not able to find block {blockHash} from an unknown level {number}");
             int? index = levelInfo.FindIndex(blockHash) ?? throw new InvalidOperationException($"Not able to find block {blockHash} index on the chain level");
@@ -991,14 +1000,14 @@ namespace Nethermind.Blockchain
             }
 #endif
 
-            long lastNumber = ascendingOrder ? blocks[^1].Number : blocks[0].Number;
-            long previousHeadNumber = Head?.Number ?? 0L;
+            ulong lastNumber = ascendingOrder ? blocks[^1].Number : blocks[0].Number;
+            ulong previousHeadNumber = Head?.Number ?? 0UL;
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
             if (previousHeadNumber > lastNumber)
             {
-                for (long i = 0; i < previousHeadNumber - lastNumber; i++)
+                for (ulong i = 0; i < previousHeadNumber - lastNumber; i++)
                 {
-                    long levelNumber = previousHeadNumber - i;
+                    ulong levelNumber = previousHeadNumber - i;
 
                     ChainLevelInfo? level = LoadLevel(levelNumber);
                     if (level is not null)
@@ -1039,7 +1048,10 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                newPivotHeader = FindHeader(Math.Max(0, (Head?.Number ?? 0) - Reorganization.MaxDepth), BlockTreeLookupOptions.RequireCanonical);
+                ulong headNumber = Head?.Number ?? 0UL;
+                ulong maxDepth = (ulong)Reorganization.MaxDepth;
+                ulong pivotNumber = headNumber > maxDepth ? headNumber - maxDepth : 0UL;
+                newPivotHeader = FindHeader(pivotNumber, BlockTreeLookupOptions.RequireCanonical);
             }
 
             if (newPivotHeader is null)
@@ -1048,7 +1060,7 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            long? bestPersisted = BestPersistedState;
+            ulong? bestPersisted = BestPersistedState;
             if (bestPersisted is null)
             {
                 if (Logger.IsTrace) Logger.Trace("Did not update sync pivot because no best persisted state");
@@ -1064,18 +1076,18 @@ namespace Nethermind.Blockchain
 
             if (SyncPivot.BlockNumber >= newPivotHeader.Number) return;
 
-            (long BlockNumber, Hash256 BlockHash) newSyncPivot = (newPivotHeader.Number, newPivotHeader.Hash);
+            (ulong BlockNumber, Hash256 BlockHash) newSyncPivot = (newPivotHeader.Number, newPivotHeader.Hash);
             SyncPivot = newSyncPivot;
         }
 
-        public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint)
+        public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, ulong clearBeaconMainChainStartPoint)
         {
             if (blockInfos is null || blockInfos.Length == 0)
                 return;
 
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
 
-            for (long j = clearBeaconMainChainStartPoint; j > blockInfos[^1].BlockNumber; --j)
+            for (ulong j = clearBeaconMainChainStartPoint; j > blockInfos[^1].BlockNumber; --j)
             {
                 ChainLevelInfo? level = LoadLevel(j);
                 if (level is not null)
@@ -1091,7 +1103,7 @@ namespace Nethermind.Blockchain
 
             foreach (BlockInfo blockInfo in blockInfos)
             {
-                long levelNumber = blockInfo.BlockNumber;
+                ulong levelNumber = blockInfo.BlockNumber;
                 ChainLevelInfo? level = LoadLevel(levelNumber);
                 if (level is not null)
                 {
@@ -1112,8 +1124,8 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private (long BlockNumber, Hash256 BlockHash) _syncPivot;
-        public (long BlockNumber, Hash256 BlockHash) SyncPivot
+        private (ulong BlockNumber, Hash256 BlockHash) _syncPivot;
+        public (ulong BlockNumber, Hash256 BlockHash) SyncPivot
         {
             get => _syncPivot;
             set
@@ -1135,7 +1147,7 @@ namespace Nethermind.Blockchain
                 || header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty // is post-merge block, we follow engine API
                 || header.TotalDifficulty > (Head?.TotalDifficulty ?? 0) // pre-merge rules
                 || (header.TotalDifficulty == Head?.TotalDifficulty // when in doubt on difficulty
-                    && ((Head?.Number ?? 0L).CompareTo(header.Number) > 0 // pick longer chain
+                    && ((Head?.Number ?? 0UL).CompareTo(header.Number) > 0 // pick longer chain
                         || (Head?.Hash ?? Keccak.Zero).CompareTo(header.Hash) > 0))); // or have a deterministic order on hash
 
 
@@ -1172,7 +1184,7 @@ namespace Nethermind.Blockchain
                 level.SwapToMain(index.Value);
             }
 
-            _bloomStorage.Store(block.Number, block.Bloom);
+            _bloomStorage.Store(checked((long)block.Number), block.Bloom);
             level.HasBlockOnMainChain = true;
             _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
 
@@ -1236,7 +1248,37 @@ namespace Nethermind.Blockchain
             return preMergeImprovementRequirementSatisfied || terminalBlockRequirementSatisfied || postMergeImprovementRequirementSatisfied;
         }
 
-        public bool IsKnownBlock(long number, Hash256 blockHash)
+        private void TryUpdateBestSuggestedHeader(BlockHeader header)
+        {
+            BlockHeader? current = BestSuggestedHeader;
+            if (current is null)
+            {
+                BestSuggestedHeader = header;
+                return;
+            }
+
+            if (header.TotalDifficulty is null || current.TotalDifficulty is null)
+            {
+                if (header.Number > current.Number)
+                {
+                    BestSuggestedHeader = header;
+                }
+
+                return;
+            }
+
+            var headerTotalDifficulty = header.TotalDifficulty.Value;
+            var currentTotalDifficulty = current.TotalDifficulty.Value;
+
+            if (headerTotalDifficulty > currentTotalDifficulty
+                || (headerTotalDifficulty == currentTotalDifficulty && header.Number > current.Number)
+                || (headerTotalDifficulty == currentTotalDifficulty && header.Number == current.Number && current.Hash!.CompareTo(header.Hash) > 0))
+            {
+                BestSuggestedHeader = header;
+            }
+        }
+
+        public bool IsKnownBlock(ulong number, Hash256 blockHash)
         {
             if (number > BestKnownNumber)
             {
@@ -1255,7 +1297,7 @@ namespace Nethermind.Blockchain
             return !blockInfo.IsBeaconInfo;
         }
 
-        public bool IsKnownBeaconBlock(long number, Hash256 blockHash)
+        public bool IsKnownBeaconBlock(ulong number, Hash256 blockHash)
         {
             if (number > BestKnownBeaconNumber)
             {
@@ -1314,7 +1356,7 @@ namespace Nethermind.Blockchain
             NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
         }
 
-        private ChainLevelInfo UpdateOrCreateLevel(long number, BlockInfo blockInfo, bool setAsMain = false)
+        private ChainLevelInfo UpdateOrCreateLevel(ulong number, BlockInfo blockInfo, bool setAsMain = false)
         {
             using BatchWrite? batch = _chainLevelInfoRepository.StartBatch();
 
@@ -1344,18 +1386,18 @@ namespace Nethermind.Blockchain
             return level;
         }
 
-        private void UpdateOrCreateLevel(in ArrayPoolListRef<(long number, BlockInfo blockInfo)> blockInfos, bool setAsMain = false)
+        private void UpdateOrCreateLevel(in ArrayPoolListRef<(ulong number, BlockInfo blockInfo)> blockInfos, bool setAsMain = false)
         {
             using BatchWrite? batch = _chainLevelInfoRepository.StartBatch();
 
-            using ArrayPoolListRef<long> blockNumbers = blockInfos.Select(b => b.number);
+            using ArrayPoolListRef<ulong> blockNumbers = blockInfos.Select(b => b.number);
 
             // Yes, this is measurably faster
             using IOwnedReadOnlyList<ChainLevelInfo?> levels = _chainLevelInfoRepository.MultiLoadLevel(blockNumbers);
 
             for (var i = 0; i < blockInfos.Count; i++)
             {
-                (long number, BlockInfo blockInfo) = blockInfos[i];
+                (ulong number, BlockInfo blockInfo) = blockInfos[i];
 
                 if (!blockInfo.IsBeaconInfo && number > BestKnownNumber)
                 {
@@ -1382,41 +1424,54 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Hash256 blockHash) => LoadInfo(number, blockHash, true);
+        public (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(ulong number, Hash256 blockHash) => LoadInfo(number, blockHash, true);
 
-        private (BlockInfo? Info, ChainLevelInfo? Level) LoadInfo(long number, Hash256 blockHash, bool forceLoad)
+        private (BlockInfo? Info, ChainLevelInfo? Level) LoadInfo(ulong number, Hash256 blockHash, bool forceLoad)
         {
             ChainLevelInfo chainLevelInfo = LoadLevel(number, forceLoad);
             return chainLevelInfo is null ? (null, null) : (chainLevelInfo.FindBlockInfo(blockHash), chainLevelInfo);
         }
 
-        private ChainLevelInfo? LoadLevel(long number, bool forceLoad = true) =>
-            number > Math.Max(BestKnownNumber, BestKnownBeaconNumber) && !forceLoad
+        private ChainLevelInfo? LoadLevel(ulong number, bool forceLoad = true)
+        {
+            ulong bestKnown = BestKnownNumber > BestKnownBeaconNumber ? BestKnownNumber : BestKnownBeaconNumber;
+            return number > bestKnown && !forceLoad
                 ? null
                 : _chainLevelInfoRepository.LoadLevel(number);
+        }
 
         /// <summary>
         /// To make cache useful even when we handle sync requests
         /// </summary>
         /// <param name="number"></param>
         /// <returns></returns>
-        private bool ShouldCache(long number)
+        private bool ShouldCache(ulong number)
         {
-            return number == _genesisBlockNumber || Head is null || number >= Head.Number - BlockStore.CacheSize;
+            ulong cacheLowerBound = 0UL;
+            if (Head is not null)
+            {
+                ulong cacheSize = (ulong)BlockStore.CacheSize;
+                cacheLowerBound = Head.Number >= cacheSize ? Head.Number - cacheSize : 0UL;
+            }
+
+            return number == _genesisBlockNumber || Head is null || number >= cacheLowerBound;
         }
 
-        public ChainLevelInfo? FindLevel(long number)
+        public ChainLevelInfo? FindLevel(ulong number)
         {
             return _chainLevelInfoRepository.LoadLevel(number);
         }
 
-        public Hash256? HeadHash => Head?.Hash;
-        public Hash256? GenesisHash => Genesis?.Hash;
+        public Hash256 HeadHash => Head?.Hash ?? Keccak.Zero;
+        public Hash256 GenesisHash => Genesis?.Hash ?? Keccak.Zero;
         public Hash256? PendingHash => Head?.Hash;
         public Hash256? FinalizedHash { get; private set; }
         public Hash256? SafeHash { get; private set; }
 
-        public Block? FindBlock(Hash256? blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
+        public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
+            => FindBlockCore(blockHash, options, blockNumber);
+
+        private Block? FindBlockCore(Hash256? blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
         {
             if (blockHash is null || blockHash == Keccak.Zero)
             {
@@ -1624,17 +1679,17 @@ namespace Nethermind.Blockchain
         /// <param name="endNumber">End level of the slice to delete</param>
         /// <param name="force">Should it force of deletion of valid blocks</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="startNumber"/> ot <paramref name="endNumber"/> do not satisfy the slice position rules</exception>
-        public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
+        public int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false)
         {
             int deleted = 0;
             endNumber ??= BestKnownNumber;
 
-            if (endNumber - startNumber < 0)
+            if (endNumber < startNumber)
             {
                 throw new ArgumentException("Start number must be equal or greater end number.", nameof(startNumber));
             }
 
-            if (endNumber - startNumber > 50000)
+            if (endNumber.Value - startNumber > 50000)
             {
                 throw new ArgumentException(
                     $"Cannot delete that many blocks at once (start: {startNumber}, end {endNumber}).",
@@ -1652,19 +1707,20 @@ namespace Nethermind.Blockchain
             if (Head?.Number >= startNumber)
             {
                 // greater than zero so will not fail
-                ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(startNumber - 1) ?? throw new InvalidDataException(
-                        $"Chain level {startNumber - 1} does not exist when {startNumber} level exists.");
+                ulong newHeadNumber = startNumber - 1;
+                ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(newHeadNumber) ?? throw new InvalidDataException(
+                    $"Chain level {newHeadNumber} does not exist when {startNumber} level exists.");
 
                 // there may be no canonical block marked on this level - then we just hack to genesis
                 Hash256? newHeadHash = chainLevelInfo.HasBlockOnMainChain
                     ? chainLevelInfo.BlockInfos[0].BlockHash
                     : Genesis?.Hash;
-                newHeadBlock = newHeadHash is null ? null : FindBlock(newHeadHash, BlockTreeLookupOptions.None, blockNumber: startNumber - 1);
+                newHeadBlock = newHeadHash is null ? null : FindBlock(newHeadHash!, BlockTreeLookupOptions.None, blockNumber: newHeadNumber);
             }
 
             using (_chainLevelInfoRepository.StartBatch())
             {
-                for (long i = endNumber.Value; i >= startNumber; i--)
+                for (ulong i = endNumber.Value + 1; i-- > startNumber;)
                 {
                     ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
                     if (chainLevelInfo is null)
@@ -1716,7 +1772,7 @@ namespace Nethermind.Blockchain
         private Task WaitForReadinessToAcceptNewBlock => _taskCompletionSource?.Task ?? Task.CompletedTask;
 
         /// <inheritdoc />
-        public long? BestPersistedState
+        public ulong? BestPersistedState
         {
             get => _highestPersistedState;
             set
@@ -1748,13 +1804,13 @@ namespace Nethermind.Blockchain
                 this,
                 new(
                     Head,
-                    _headerStore.GetBlockNumber(safeBlockHash) ?? 0,
-                    _headerStore.GetBlockNumber(FinalizedHash) ?? 0)
+                    safeBlockHash is null ? 0UL : _headerStore.GetBlockNumber(safeBlockHash) ?? 0UL,
+                    FinalizedHash is null ? 0UL : _headerStore.GetBlockNumber(FinalizedHash) ?? 0UL)
                 );
         }
 
-        public long GetLowestBlock() => _oldestBlock;
+        public ulong GetLowestBlock() => _oldestBlock;
 
-        public void NewOldestBlock(long oldestBlock) => _oldestBlock = oldestBlock;
+        public void NewOldestBlock(ulong oldestBlock) => _oldestBlock = oldestBlock;
     }
 }

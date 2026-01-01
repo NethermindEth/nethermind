@@ -73,7 +73,7 @@ public class StateSyncDispatcherTests
         peer.ProtocolVersion.Returns((byte)66);
         peer.IsInitialized.Returns(true);
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
-        peer.HeadNumber.Returns(ChainLength - 1);
+        peer.HeadNumber.Returns(((ulong)ChainLength) - 1);
         _pool.AddPeer(peer);
 
         using StateSyncBatch batch = new(
@@ -94,7 +94,7 @@ public class StateSyncDispatcherTests
         peer.ProtocolVersion.Returns((byte)67);
         peer.IsInitialized.Returns(true);
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
-        peer.HeadNumber.Returns(ChainLength - 1);
+        peer.HeadNumber.Returns(((ulong)ChainLength) - 1);
         ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
         peer.TryGetSatelliteProtocol("snap", out Arg.Any<ISnapSyncPeer>()).Returns(
             x =>

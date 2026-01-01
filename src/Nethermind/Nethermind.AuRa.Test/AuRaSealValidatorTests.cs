@@ -156,7 +156,7 @@ namespace Nethermind.AuRa.Test
 
             if (header?.AuRaStep > parent?.AuRaStep + 1)
             {
-                _reportingValidator.ReportBenign(header.Beneficiary, header.Number, IReportingValidator.BenignCause.SkippedStep);
+                _reportingValidator.ReportBenign(header.Beneficiary, checked((long)header.Number), IReportingValidator.BenignCause.SkippedStep);
             }
 
             if (repeat != Repeat.No)

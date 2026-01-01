@@ -32,7 +32,7 @@ public class L2Api(
 
     public async Task<L2Block> GetBlockByNumber(ulong number)
     {
-        var block = await RetryGetBlock(new((long)number));
+        var block = await RetryGetBlock(new BlockParameter(number));
         ArgumentNullException.ThrowIfNull(block); // We cannot get null here
         var payloadAttributes = PayloadAttributesFromBlockForRpc(block);
         return new L2Block
@@ -80,7 +80,7 @@ public class L2Api(
         {
             PayloadAttributes = payloadAttributes,
             L1BlockInfo = l1BlockInfo,
-            Number = (ulong)block.Number!,
+            Number = checked((ulong)block.Number!.Value),
             SystemConfig = systemConfig
         };
         return result;
@@ -134,7 +134,7 @@ public class L2Api(
         };
     }
 
-    public Task<AccountProof?> GetProof(Address accountAddress, HashSet<UInt256> storageKeys, long blockNumber)
+    public Task<AccountProof?> GetProof(Address accountAddress, HashSet<UInt256> storageKeys, ulong blockNumber)
     {
         // TODO: Retry logic
         var result = l2EthRpc.eth_getProof(accountAddress, storageKeys, new BlockParameter(blockNumber));

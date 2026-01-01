@@ -103,34 +103,6 @@ public class HeaderDecoderTests
         Convert.ToHexString(rlp.Bytes).ToLower().Should().Be("f901f7a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008080833d090080830f424083010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e288000000000000000001");
     }
 
-    [TestCase(-1)]
-    [TestCase(long.MinValue)]
-    public void Can_encode_decode_with_negative_long_fields(long negativeLong)
-    {
-        BlockHeader header = Build.A.BlockHeader
-            .WithNumber(negativeLong)
-            .TestObject;
-
-        Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
-
-        blockHeader.Number.Should().Be(negativeLong);
-    }
-
-    [TestCase(-1)]
-    [TestCase(long.MinValue)]
-    public void Can_encode_decode_with_negative_long_when_using_span(long negativeLong)
-    {
-        BlockHeader header = Build.A.BlockHeader
-            .WithNumber(negativeLong)
-            .TestObject;
-
-        Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
-
-        blockHeader.Number.Should().Be(negativeLong);
-    }
-
     [TestCaseSource(nameof(CancunFieldsSource))]
     public void Can_encode_decode_with_cancun_fields(ulong? blobGasUsed, ulong? excessBlobGas, Hash256? parentBeaconBlockRoot)
     {

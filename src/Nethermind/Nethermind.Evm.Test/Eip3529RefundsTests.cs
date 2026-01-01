@@ -76,8 +76,8 @@ namespace Nethermind.Evm.Test
             TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
             TestState.Commit(eip3529Enabled ? London.Instance : Berlin.Instance);
             _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
-            long blockNumber = eip3529Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
-            (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, Bytes.FromHexString(codeHex));
+            ulong blockNumber = eip3529Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1UL;
+            (Block block, Transaction transaction) = PrepareTx(new ForkActivation(blockNumber), 100000, Bytes.FromHexString(codeHex));
 
             transaction.GasPrice = 20.GWei();
             TestAllTracerWithOutput tracer = CreateTracer();
@@ -159,7 +159,7 @@ namespace Nethermind.Evm.Test
             Transaction tx3 = Build.A.Transaction.WithCode(byteCode2).WithGasLimit(gasLimit).WithNonce(3).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             int gasUsedByTx3 = 37767;
 
-            long blockNumber = eip3529Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
+            ulong blockNumber = eip3529Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1UL;
             Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx0, tx1, tx2, tx3).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);

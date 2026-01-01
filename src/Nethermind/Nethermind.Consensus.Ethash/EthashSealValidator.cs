@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.Ethash
             // genesis block is configured and assumed valid
             if (header.IsGenesis) return true;
 
-            if (!force && header.Number % _sealValidationInterval != 0)
+            if (!force && header.Number % (ulong)_sealValidationInterval != 0)
             {
                 return true;
             }

@@ -36,7 +36,7 @@ public class CompositeTxSourceTests
         ITxSource CreateImmediateTransactionSource(BlockHeader header, Address address, List<Transaction> txs, bool createsTransaction)
         {
             var immediateTransactionSource = Substitute.For<ITxSource>();
-            immediateTransactionSource.GetTransactions(header, Arg.Any<long>()).Returns(x =>
+            immediateTransactionSource.GetTransactions(header, Arg.Any<ulong>()).Returns(x =>
             {
                 if (createsTransaction)
                 {
@@ -63,12 +63,12 @@ public class CompositeTxSourceTests
         var immediateTransactionSource3 = CreateImmediateTransactionSource(parentHeader, TestItem.AddressD, expected, true);
 
         var originalTxs = Build.A.Transaction.TestObjectNTimes(5);
-        innerPendingTxSelector.GetTransactions(parentHeader, Arg.Any<long>()).Returns(originalTxs);
+        innerPendingTxSelector.GetTransactions(parentHeader, Arg.Any<ulong>()).Returns(originalTxs);
 
         var compositeTxSource = new CompositeTxSource(
             immediateTransactionSource1, immediateTransactionSource2, immediateTransactionSource3, innerPendingTxSelector);
 
-        var transactions = compositeTxSource.GetTransactions(parentHeader, gasLimit).ToArray();
+        var transactions = compositeTxSource.GetTransactions(parentHeader, (ulong)gasLimit).ToArray();
         expected.AddRange(originalTxs);
 
         transactions.Should().BeEquivalentTo(expected);

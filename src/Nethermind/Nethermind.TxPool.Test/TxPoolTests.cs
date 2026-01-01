@@ -1123,7 +1123,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool();
             _ = AddTransactionToPool();
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
-            txPoolPeer.HeadNumber.Returns(headNumber);
+            txPoolPeer.HeadNumber.Returns(checked((ulong)headNumber));
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
             txPoolPeer.Received(headNumber).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
