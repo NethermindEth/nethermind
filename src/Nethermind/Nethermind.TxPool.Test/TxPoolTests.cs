@@ -960,7 +960,7 @@ namespace Nethermind.TxPool.Test
         public void should_add_transactions_concurrently()
         {
             int size = 3;
-            TxPoolConfig config = new() { GasLimit = _txGasLimit, Size = size };
+            TxPoolConfig config = new() { GasLimit = (ulong)_txGasLimit, Size = size };
             _txPool = CreatePool(config);
 
             foreach (PrivateKey privateKey in TestItem.PrivateKeys)
@@ -2245,7 +2245,7 @@ namespace Nethermind.TxPool.Test
                 _ethereumEcdsa,
                 txStorage,
                 _headInfo,
-                config ?? new TxPoolConfig() { GasLimit = _txGasLimit },
+                config ?? new TxPoolConfig() { GasLimit = (ulong)_txGasLimit },
                 new TxValidator(_specProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),

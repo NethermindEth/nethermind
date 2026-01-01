@@ -277,7 +277,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public void EnsureStopBroadcastUpToNonce(Address address, UInt256 nonce)
+        public void EnsureStopBroadcastUpToNonce(Address address, ulong nonce)
         {
             if (_persistentTxs.Count != 0)
             {

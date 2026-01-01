@@ -101,7 +101,7 @@ public class FastHeadersSyncTests
             syncConfig: new TestSyncConfig
             {
                 FastSync = true,
-                PivotNumber = pivotBlock.Number,
+                PivotNumber = checked((long)pivotBlock.Number),
                 PivotHash = pivotBlock.Hash!.ToString(),
                 PivotTotalDifficulty = pivotBlock.TotalDifficulty.ToString()!,
             },
@@ -246,7 +246,7 @@ public class FastHeadersSyncTests
             syncConfig: new TestSyncConfig
             {
                 FastSync = true,
-                PivotNumber = pivot.Number,
+                PivotNumber = checked((long)pivot.Number),
                 PivotHash = pivot.Hash!.ToString(),
                 PivotTotalDifficulty = pivot.TotalDifficulty.ToString()!,
             },
@@ -478,13 +478,8 @@ public class FastHeadersSyncTests
     public async Task Can_insert_all_good_headers_from_dependent_batch_with_missing_or_null_headers(int nullIndex, int count, int increment, bool shouldReport, bool useNulls)
     {
         var peerChain = CachedBlockTreeBuilder.OfLength(1000);
-<<<<<<< HEAD
         var pivotHeader = peerChain.FindHeader(998ul)!;
-        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = pivotHeader.Number.ToString(), PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
-=======
-        var pivotHeader = peerChain.FindHeader(998ul)!;
-        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = pivotHeader.Number.ToString(), PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
->>>>>>> 3cfedd547 (Migrate semantically-unsigned fields to ulong; stabilize tests)
+        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = checked((long)pivotHeader.Number), PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
 
         IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0ul, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
         localBlockTree.SyncPivot = (pivotHeader.Number, pivotHeader.Hash);
@@ -539,13 +534,8 @@ public class FastHeadersSyncTests
     public async Task Does_not_download_persisted_header()
     {
         var peerChain = CachedBlockTreeBuilder.OfLength(1000);
-<<<<<<< HEAD
         var pivotHeader = peerChain.FindHeader(999ul)!;
-        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = pivotHeader.Number.ToString(), PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
-=======
-        var pivotHeader = peerChain.FindHeader(999ul)!;
-        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = pivotHeader.Number.ToString(), PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
->>>>>>> 3cfedd547 (Migrate semantically-unsigned fields to ulong; stabilize tests)
+        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = checked((long)pivotHeader.Number), PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
 
         IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0ul, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
         localBlockTree.SyncPivot = (pivotHeader.Number, pivotHeader.Hash);
@@ -602,7 +592,7 @@ public class FastHeadersSyncTests
         var syncConfig = new TestSyncConfig
         {
             FastSync = true,
-            PivotNumber = pivotHeader.Number,
+            PivotNumber = checked((long)pivotHeader.Number),
             PivotHash = pivotHeader.Hash!.ToString(),
             PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()!,
             FastHeadersMemoryBudget = (ulong)100.KB(),
@@ -634,7 +624,7 @@ public class FastHeadersSyncTests
         var syncConfig = new TestSyncConfig
         {
             FastSync = true,
-            PivotNumber = pivotHeader.Number,
+            PivotNumber = checked((long)pivotHeader.Number),
             PivotHash = pivotHeader.Hash!.ToString(),
             PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()!
         };

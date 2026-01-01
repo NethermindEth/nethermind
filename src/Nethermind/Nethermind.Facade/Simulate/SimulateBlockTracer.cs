@@ -41,7 +41,7 @@ public class SimulateBlockTracer(bool isTracingLogs) : BlockTracerBase<SimulateC
     public override void StartNewBlockTrace(Block block)
     {
         _txIndex = 0;
-        _blockNumber = (ulong)block.Number;
+        _blockNumber = block.Number;
         _blockTimestamp = block.Timestamp;
         base.StartNewBlockTrace(block);
     }

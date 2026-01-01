@@ -199,7 +199,7 @@ namespace Nethermind.TxPool
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default) =>
             _transactions.GetBucketSnapshot(filterToReadyTx ?
-                (data => data.first.CanPayBaseFee(baseFee) && data.first.Nonce == _accounts.GetNonce(data.key)) :
+                (data => data.first.CanPayBaseFee(baseFee) && data.first.Nonce == _accounts.GetNonce(data.key).ToUInt64(null)) :
                 null);
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
@@ -332,6 +332,7 @@ namespace Nethermind.TxPool
         {
             if (previousBlock is not null)
             {
+                long previousBlockNumber = checked((long)previousBlock.Number);
                 Metrics.TransactionsReorged += previousBlock.Transactions.Length;
                 bool isEip155Enabled = _specProvider.GetSpec(previousBlock.Header).IsEip155Enabled;
                 Transaction[] txs = previousBlock.Transactions;
@@ -347,7 +348,7 @@ namespace Nethermind.TxPool
                 }
 
                 if (_blobReorgsSupportEnabled
-                    && _blobTxStorage.TryGetBlobTransactionsFromBlock(checked((long)previousBlock.Number), out Transaction[]? blobTxs)
+                    && _blobTxStorage.TryGetBlobTransactionsFromBlock(previousBlockNumber, out Transaction[]? blobTxs)
                     && blobTxs is not null)
                 {
                     foreach (Transaction blobTx in blobTxs)
@@ -359,7 +360,7 @@ namespace Nethermind.TxPool
                     }
                     if (_logger.IsTrace) _logger.Trace($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
-                    _blobTxStorage.DeleteBlobTransactionsFromBlock(checked((long)previousBlock.Number));
+                    _blobTxStorage.DeleteBlobTransactionsFromBlock(previousBlockNumber);
                 }
             }
         }
@@ -427,7 +428,8 @@ namespace Nethermind.TxPool
 
             if (blobTxsToSave.Count > 0)
             {
-                _blobTxStorage.AddBlobTransactionsFromBlock(checked((long)block.Number), blobTxsToSave);
+                long blockNumber = checked((long)block.Number);
+                _blobTxStorage.AddBlobTransactionsFromBlock(blockNumber, blobTxsToSave);
             }
 
             long transactionsInBlock = blockTransactions.Length;
@@ -701,7 +703,7 @@ namespace Nethermind.TxPool
             if (transactions.Count != 0)
             {
                 UInt256 balance = account.Balance;
-                ulong currentNonce = (ulong)account.Nonce;
+                ulong currentNonce = account.Nonce.ToUInt64(null);
 
                 UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx);
             }
@@ -803,7 +805,7 @@ namespace Nethermind.TxPool
             if (transactions.Count != 0)
             {
                 UInt256 balance = account.Balance;
-                ulong currentNonce = (ulong)account.Nonce;
+                ulong currentNonce = account.Nonce.ToUInt64(null);
                 Transaction? tx = null;
                 foreach (Transaction txn in transactions)
                 {

@@ -56,7 +56,7 @@ public class VotesManagerTests
         var context = new XdcConsensusContext();
         context.SetNewRound(currentRound);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(header);
 
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         var epochSwitchInfo = new EpochSwitchInfo(masternodes, [], [], info);
@@ -122,7 +122,7 @@ public class VotesManagerTests
         quorumCertificateManager.DidNotReceive().CommitCertificate(Arg.Any<QuorumCertificate>());
 
         // Now insert header and send one more
-        blockTree.FindHeader(header.Hash!, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+        blockTree.FindHeader(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(header);
         await voteManager.HandleVote(XdcTestHelper.BuildSignedVote(info, 450, keys.Last()));
 
         quorumCertificateManager.Received(1).CommitCertificate(Arg.Any<QuorumCertificate>());
@@ -292,6 +292,8 @@ public class VotesManagerTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new XdcReleaseSpec()
         {
+            EpochLength = 900,
+            Gap = 450,
             V2Configs = [new V2ConfigParams()]
         });
         ISigner signer = Substitute.For<ISigner>();

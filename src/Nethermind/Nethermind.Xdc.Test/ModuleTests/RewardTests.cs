@@ -234,14 +234,14 @@ public class RewardTests
 
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>())
-            .Returns(ci => ((XdcBlockHeader)ci.Args()[0]!).Number % epoch == 0);
+            .Returns(ci => ((XdcBlockHeader)ci.Args()[0]!).Number % (ulong)epoch == 0);
 
         IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
         xdcSpec.EpochLength.Returns((int)epoch);
         xdcSpec.FoundationWallet.Returns(foundationWalletAddr);
         xdcSpec.BlockSignerContract.Returns(blockSignerContract);
         xdcSpec.Reward.Returns(reward);
-        xdcSpec.SwitchBlock.Returns(0);
+        xdcSpec.SwitchBlock.Returns(0ul);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
 
@@ -268,10 +268,10 @@ public class RewardTests
         txsBlock31.Add(BuildSigningTx(xdcSpec, 30, blockHeaders[30].Hash!, signerA, 3));
         blocks[16] = new Block(blockHeaders[16], new BlockBody(txsBlock16.ToArray(), null, null));
         blocks[31] = new Block(blockHeaders[31], new BlockBody(txsBlock31.ToArray(), null, null));
-        tree.FindHeader(Arg.Any<Hash256>(), Arg.Any<long>())
-            .Returns(ci => blockHeaders[(long)ci.Args()[1]]);
-        tree.FindBlock(Arg.Any<long>())
-            .Returns(ci => blocks[(long)ci.Args()[0]]);
+        tree.FindHeader(Arg.Any<Hash256>(), Arg.Any<ulong>())
+            .Returns(ci => blockHeaders[(long)(ulong)ci.Args()[1]]);
+        tree.FindBlock(Arg.Any<ulong>())
+            .Returns(ci => blocks[(long)(ulong)ci.Args()[0]]);
 
         IMasternodeVotingContract votingContract = Substitute.For<IMasternodeVotingContract>();
         votingContract.GetCandidateOwner(Arg.Any<BlockHeader>(), Arg.Any<Address>())
@@ -302,7 +302,7 @@ public class RewardTests
     }
 
 
-    private static Transaction BuildSigningTx(IXdcReleaseSpec spec, long blockNumber, Hash256 blockHash, PrivateKey signer, long nonce = 0)
+    private static Transaction BuildSigningTx(IXdcReleaseSpec spec, ulong blockNumber, Hash256 blockHash, PrivateKey signer, ulong nonce = 0)
     {
         return Build.A.Transaction
             .WithChainId(0)

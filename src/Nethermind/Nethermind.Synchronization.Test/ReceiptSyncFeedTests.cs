@@ -65,7 +65,7 @@ public class ReceiptSyncFeedTests
         {
             FastSync = true,
             PivotHash = _pivotBlock.Hash!.ToString(),
-            PivotNumber = _pivotBlock.Number,
+            PivotNumber = checked((long)_pivotBlock.Number),
             AncientBodiesBarrier = 0,
             DownloadBodiesInFastSync = true,
         };

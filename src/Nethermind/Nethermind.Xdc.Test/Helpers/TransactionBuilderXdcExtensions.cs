@@ -25,10 +25,10 @@ public static class TransactionBuilderXdcExtensions
     /// Calldata = 4-byte selector + 32-byte big-endian uint + 32-byte bytes32 (68 bytes total).
     /// </summary>
     public static TransactionBuilder<Transaction> WithXdcSigningData(
-        this TransactionBuilder<Transaction> b, long blockNumber, Hash256 blockHash)
+        this TransactionBuilder<Transaction> b, ulong blockNumber, Hash256 blockHash)
         => b.WithData(CreateSigningCalldata(blockNumber, blockHash));
 
-    private static byte[] CreateSigningCalldata(long blockNumber, Hash256 blockHash)
+    private static byte[] CreateSigningCalldata(ulong blockNumber, Hash256 blockHash)
     {
         Span<byte> data = stackalloc byte[68]; // 4 + 32 + 32
 
@@ -36,7 +36,7 @@ public static class TransactionBuilderXdcExtensions
         SignSelector.CopyTo(data);
 
         // 4..35: uint256 blockNumber (big-endian, right-aligned in 32 bytes)
-        var be = BitConverter.GetBytes((ulong)blockNumber);
+        var be = BitConverter.GetBytes(blockNumber);
         if (BitConverter.IsLittleEndian) Array.Reverse(be);
         // last 8 bytes of that 32 are the ulong
         for (int i = 0; i < 8; i++) data[4 + 24 + i] = be[i];

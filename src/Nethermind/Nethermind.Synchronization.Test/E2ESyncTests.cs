@@ -287,7 +287,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         ulong serverHeadNumber = serverBlockTree.Head!.Number;
         BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - checked((ulong)HeadPivotDistance))!;
         syncConfig.PivotHash = pivot.Hash!.ToString();
-        syncConfig.PivotNumber = pivot.Number;
+        syncConfig.PivotNumber = checked((long)pivot.Number);
         syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
     }
 

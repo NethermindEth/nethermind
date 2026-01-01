@@ -845,7 +845,7 @@ public partial class EngineModuleTests
             syncConfig = new SyncConfig
             {
                 FastSync = true,
-                PivotNumber = syncedBlockTree.Head?.Number ?? 0,
+                PivotNumber = checked((long)(syncedBlockTree.Head?.Number ?? 0)),
                 PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
                 PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
             };
@@ -873,7 +873,7 @@ public partial class EngineModuleTests
             syncConfig = new SyncConfig
             {
                 FastSync = true,
-                PivotNumber = syncedBlockTree.Head?.Number ?? 0,
+                PivotNumber = checked((long)(syncedBlockTree.Head?.Number ?? 0)),
                 PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
                 PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
             };
@@ -903,7 +903,7 @@ public partial class EngineModuleTests
             syncConfig = new SyncConfig
             {
                 FastSync = true,
-                PivotNumber = syncedBlockTree.Head?.Number ?? 0,
+                PivotNumber = checked((long)(syncedBlockTree.Head?.Number ?? 0)),
                 PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
                 PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
             };
