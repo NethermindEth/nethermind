@@ -359,11 +359,7 @@ public partial class BlockTree
         byte[]? pivotFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotData);
         if (pivotFromDb is null)
         {
-<<<<<<< HEAD
-            _syncPivot = (_syncConfig.PivotNumber, _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
-=======
-            _syncPivot = (ULongConverter.FromString(_syncConfig.PivotNumber), _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
->>>>>>> 3cfedd547 (Migrate semantically-unsigned fields to ulong; stabilize tests)
+            _syncPivot = (checked((ulong)_syncConfig.PivotNumber), _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
             return;
         }
 
@@ -373,11 +369,7 @@ public partial class BlockTree
 
         if (updatedPivotBlockHash.IsZero)
         {
-<<<<<<< HEAD
-            _syncPivot = (_syncConfig.PivotNumber, _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
-=======
-            _syncPivot = (ULongConverter.FromString(_syncConfig.PivotNumber), _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
->>>>>>> 3cfedd547 (Migrate semantically-unsigned fields to ulong; stabilize tests)
+            _syncPivot = (checked((ulong)_syncConfig.PivotNumber), _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
             return;
         }
 

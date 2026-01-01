@@ -2063,7 +2063,7 @@ public class BlockTreeTests
         SyncConfig syncConfig = new()
         {
             FastSync = true,
-            PivotNumber = pivotNumber,
+            PivotNumber = checked((long)pivotNumber),
             PivotHash = TestItem.KeccakA.ToString(),
         };
 
@@ -2106,7 +2106,7 @@ public class BlockTreeTests
         SyncConfig syncConfig = new()
         {
             FastSync = true,
-            PivotNumber = pivotNumber,
+            PivotNumber = checked((long)pivotNumber),
             PivotHash = TestItem.KeccakA.ToString(),
         };
 
@@ -2154,7 +2154,7 @@ public class BlockTreeTests
         SyncConfig syncConfig = new()
         {
             FastSync = true,
-            PivotNumber = pivotNumber,
+            PivotNumber = checked((long)pivotNumber),
             PivotHash = TestItem.KeccakA.ToString(),
         };
 

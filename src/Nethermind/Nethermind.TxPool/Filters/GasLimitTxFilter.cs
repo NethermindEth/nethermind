@@ -16,7 +16,7 @@ namespace Nethermind.TxPool.Filters
         private readonly ILogger _logger = logManager.GetClassLogger();
         private readonly ulong _configuredGasLimit = txPoolConfig.GasLimit is null
             ? ulong.MaxValue
-            : checked((ulong)txPoolConfig.GasLimit.Value);
+            : txPoolConfig.GasLimit.Value;
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {

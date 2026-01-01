@@ -118,7 +118,7 @@ namespace Nethermind.Network
                                   && (forkIsLast || IsTimestamp(found.Id.Next)) &&
                                   (peerForkIsLast || IsTimestamp(peerId.Next));
 
-            ulong headActivation = usingTimestamp ? head.Timestamp : (ulong)head.Number;
+            ulong headActivation = usingTimestamp ? head.Timestamp : head.Number;
 
             if (found.Id.Next != peerId.Next) // if the next fork is different
             {

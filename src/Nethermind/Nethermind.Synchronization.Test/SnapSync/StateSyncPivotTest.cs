@@ -34,7 +34,7 @@ public class StateSyncPivotTest
         Synchronization.FastSync.StateSyncPivot stateSyncPivot = new Synchronization.FastSync.StateSyncPivot(blockTree,
             new TestSyncConfig()
             {
-                PivotNumber = syncPivot,
+                PivotNumber = checked((long)syncPivot),
                 FastSync = true,
                 StateMinDistanceFromHead = minDistance,
                 StateMaxDistanceFromHead = maxDistance,

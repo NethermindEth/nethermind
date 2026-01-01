@@ -20,7 +20,7 @@ public class TxPoolConfig : ITxPoolConfig
     public int MaxPendingTxsPerSender { get; set; } = 0;
     public int MaxPendingBlobTxsPerSender { get; set; } = 16;
     public int HashCacheSize { get; set; } = 512 * 1024;
-    public long? GasLimit { get; set; } = null;
+    public ulong? GasLimit { get; set; } = null;
     public long? MaxTxSize { get; set; } = 128.KiB();
     public long? MaxBlobTxSize { get; set; } = 1.MiB();
     public bool ProofsTranslationEnabled { get; set; } = false;

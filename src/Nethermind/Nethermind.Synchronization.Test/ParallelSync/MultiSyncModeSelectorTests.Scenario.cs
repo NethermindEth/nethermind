@@ -171,7 +171,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncProgressResolver.SyncPivot.Returns((Pivot.Number, Keccak.Zero));
 
                     SyncConfig.FastSync = false;
-                    SyncConfig.PivotNumber = Pivot.Number;
+                    SyncConfig.PivotNumber = checked((long)Pivot.Number);
                     SyncConfig.PivotHash = Keccak.Zero.ToString();
                     SyncConfig.SynchronizationEnabled = true;
                     SyncConfig.NetworkingEnabled = true;

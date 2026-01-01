@@ -34,7 +34,7 @@ public class ShutterEon(
         try
         {
             KeyperSetManagerContract keyperSetManagerContract = new(processor, abiEncoder, _keyperSetManagerContractAddress);
-            ulong eon = keyperSetManagerContract.GetKeyperSetIndexByBlock(header, (ulong)header.Number + 1);
+            ulong eon = keyperSetManagerContract.GetKeyperSetIndexByBlock(header, header.Number + 1UL);
 
             if (_currentInfo is null || _currentInfo.Value.Eon != eon)
             {

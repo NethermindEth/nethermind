@@ -115,11 +115,16 @@ namespace Nethermind.Synchronization.Blocks
                 return;
             }
 
+            long newHeadNumber = checked((long)e.Block.Number);
+            long bestSuggestedNumber = GetBestSuggestedBlockNumber();
+
             _syncReport.FullSyncBlocksDownloaded.TargetValue = Math.Max(
                 _syncReport.FullSyncBlocksDownloaded.TargetValue,
-                checked((long)e.Block.Number));
-            _syncReport.FullSyncBlocksDownloaded.Update(checked((long)(_blockTree.BestSuggestedHeader?.Number ?? 0UL)));
+                newHeadNumber);
+            _syncReport.FullSyncBlocksDownloaded.Update(bestSuggestedNumber);
         }
+
+        private long GetBestSuggestedBlockNumber() => checked((long)(_blockTree.BestSuggestedHeader?.Number ?? 0UL));
 
         public async Task<BlocksRequest?> PrepareRequest(DownloaderOptions options, int fastSyncLag, CancellationToken cancellation)
         {
@@ -131,11 +136,7 @@ namespace Nethermind.Synchronization.Blocks
             catch (Exception ex)
             {
                 if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Unhandled exception in {nameof(BlockDownloader)}: {ex}");
-#if DEBUG
-                throw;
-#else
                 return null;
-#endif
             }
             finally
             {
@@ -255,7 +256,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (blocksSynced > 0)
                 {
-                    _syncReport.FullSyncBlocksDownloaded.Update(checked((long)(_blockTree.BestSuggestedHeader?.Number ?? 0UL)));
+                    _syncReport.FullSyncBlocksDownloaded.Update(GetBestSuggestedBlockNumber());
                 }
 
                 _syncReport.FullSyncBlocksDownloaded.CurrentQueued = _downloadRequests.Count;

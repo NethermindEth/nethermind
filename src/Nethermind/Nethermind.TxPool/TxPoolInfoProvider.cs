@@ -25,19 +25,18 @@ namespace Nethermind.TxPool
             foreach (KeyValuePair<AddressAsKey, Transaction[]> group in groupedTransactions)
             {
                 Address address = group.Key;
-                var accountNonce = accountStateProvider.GetNonce(address);
-                var expectedNonce = accountNonce;
+                ulong expectedNonce = accountStateProvider.GetNonce(address).ToUInt64(null);
                 var pending = new Dictionary<ulong, Transaction>();
                 var queued = new Dictionary<ulong, Transaction>();
                 var transactionsOrderedByNonce = group.Value.OrderBy(static t => t.Nonce);
 
                 foreach (var transaction in transactionsOrderedByNonce)
                 {
-                    ulong transactionNonce = (ulong)transaction.Nonce;
-                    if (transaction.Nonce == expectedNonce)
+                    ulong transactionNonce = transaction.Nonce;
+                    if (transactionNonce == expectedNonce)
                     {
                         pending.Add(transactionNonce, transaction);
-                        expectedNonce = transaction.Nonce + 1;
+                        expectedNonce = transactionNonce + 1;
                     }
                     else
                     {

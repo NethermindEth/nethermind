@@ -35,7 +35,7 @@ namespace Nethermind.Xdc
         private const long BlocksPerYear = 15768000;
         // XDC rule: signing transactions are sampled/merged every N blocks (N=15 on XDC).
         // Only block numbers that are multiples of MergeSignRange are considered when tallying signers.
-        private const long MergeSignRange = 15;
+        private const ulong MergeSignRange = 15;
         private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
 
         /// <summary>
@@ -57,9 +57,10 @@ namespace Nethermind.Xdc
             // Rewards in XDC are calculated only if it's an epoch switch block
             if (!epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader)) return Array.Empty<BlockReward>();
 
-            var number = xdcHeader.Number;
+            ulong number = xdcHeader.Number;
             IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
-            if (number == spec.SwitchBlock + 1) return Array.Empty<BlockReward>();
+            ulong switchBlockPlusOne = spec.SwitchBlock + 1UL;
+            if (number == switchBlockPlusOne) return Array.Empty<BlockReward>();
 
             Address foundationWalletAddr = spec.FoundationWallet;
             if (foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
@@ -81,23 +82,29 @@ namespace Nethermind.Xdc
             return rewards.ToArray();
         }
 
-        private (Dictionary<Address, long> Signers, long Count) GetSigningTxCount(long number, XdcBlockHeader header, IXdcReleaseSpec spec)
+        private (Dictionary<Address, ulong> Signers, ulong Count) GetSigningTxCount(ulong number, XdcBlockHeader header, IXdcReleaseSpec spec)
         {
-            var signers = new Dictionary<Address, long>();
+            var signers = new Dictionary<Address, ulong>();
             if (number == 0) return (signers, 0);
 
-            long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = 0, startBlockNumber = 0, signingCount = 0;
-            var blockNumberToHash = new Dictionary<long, Hash256>();
+            const int signEpochCount = 1;
+            const int rewardEpochCount = 2;
+            int epochCount = 0;
+            ulong endBlockNumber = 0;
+            ulong startBlockNumber = 0;
+            ulong signingCount = 0;
+            var blockNumberToHash = new Dictionary<ulong, Hash256>();
             var hashToSigningAddress = new Dictionary<Hash256, HashSet<Address>>();
             var masternodes = new HashSet<Address>();
+            ulong switchBlockPlusOne = spec.SwitchBlock + 1UL;
 
             XdcBlockHeader h = header;
-            for (long i = number - 1; i >= 0; i--)
+            for (ulong i = number - 1; ; i--)
             {
                 Hash256 parentHash = h.ParentHash;
                 h = blockTree.FindHeader(parentHash!, i) as XdcBlockHeader;
                 if (h == null) throw new InvalidOperationException($"Header with hash {parentHash} not found");
-                if (epochSwitchManager.IsEpochSwitchAtBlock(h) && i != spec.SwitchBlock + 1)
+                if (epochSwitchManager.IsEpochSwitchAtBlock(h) && i != switchBlockPlusOne)
                 {
                     epochCount++;
                     if (epochCount == signEpochCount) endBlockNumber = i;
@@ -130,12 +137,17 @@ namespace Nethermind.Xdc
                         hashToSigningAddress[blockHash] = new HashSet<Address>();
                     hashToSigningAddress[blockHash].Add(tx.SenderAddress);
                 }
+
+                if (i == 0)
+                {
+                    break;
+                }
             }
 
             // Only blocks at heights that are multiples of MergeSignRange are considered.
             // Calculate start >= startBlockNumber so that start % MergeSignRange == 0
-            long start = ((startBlockNumber + MergeSignRange - 1) / MergeSignRange) * MergeSignRange;
-            for (long i = start; i < endBlockNumber; i += MergeSignRange)
+            ulong start = ((startBlockNumber + MergeSignRange - 1) / MergeSignRange) * MergeSignRange;
+            for (ulong i = start; i < endBlockNumber; i += MergeSignRange)
             {
                 if (!blockNumberToHash.TryGetValue(i, out var blockHash)) continue;
                 if (!hashToSigningAddress.TryGetValue(blockHash, out var addrs)) continue;
@@ -191,7 +203,7 @@ namespace Nethermind.Xdc
         }
 
         private Dictionary<Address, UInt256> CalculateRewardForSigners(UInt256 totalReward,
-            Dictionary<Address, long> signers, long totalSigningCount)
+            Dictionary<Address, ulong> signers, ulong totalSigningCount)
         {
             var rewardSigners = new Dictionary<Address, UInt256>();
             foreach (var (signer, count) in signers)
@@ -209,11 +221,11 @@ namespace Nethermind.Xdc
         /// Formula: (signatureCount / totalSignatures) * totalReward
         /// </summary>
         private UInt256 CalculateProportionalReward(
-            long signatureCount,
-            long totalSignatures,
+            ulong signatureCount,
+            ulong totalSignatures,
             UInt256 totalReward)
         {
-            if (signatureCount <= 0 || totalSignatures <= 0)
+            if (signatureCount == 0 || totalSignatures == 0)
             {
                 return UInt256.Zero;
             }

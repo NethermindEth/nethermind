@@ -145,7 +145,7 @@ internal class SnapshotManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         var snapshot = new Snapshot(expectedGapNumber, header.Hash!, [Address.FromNumber(1)]);
         _snapshotManager.StoreSnapshot(snapshot);
-        _blockTree.FindHeader(expectedGapNumber, BlockTreeLookupOptions.RequireCanonical).Returns(header);
+        _blockTree.FindHeader(expectedGapNumber).Returns(header);
         var result = _snapshotManager.GetSnapshotByBlockNumber(blockNumber, _xdcReleaseSpec);
 
         // assert that it was retrieved from db
