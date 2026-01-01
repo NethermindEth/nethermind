@@ -105,7 +105,6 @@ public record SnapshotContent(
     // Use of a separate dictionary just for state have a small but measurable impact
     ConcurrentDictionary<TreePath, TrieNode> StateNodes,
 
-    // TODO: change back to concurrent dictionary. It does not seems to make a difference.
     ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> StorageNodes
 ) {
     public void Reset()
