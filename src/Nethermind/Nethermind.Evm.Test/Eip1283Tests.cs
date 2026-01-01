@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1283Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => 1;
+        protected override ulong BlockNumber => 1UL;
 
         protected override ISpecProvider SpecProvider => new CustomSpecProvider(
             ((ForkActivation)0, Byzantium.Instance), ((ForkActivation)1, Constantinople.Instance));

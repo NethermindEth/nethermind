@@ -64,8 +64,9 @@ namespace Nethermind.Network
                 activation is null ? default : activation < T.MaxValue - delta ? activation : T.Zero;
 
             static ulong GetActivation(ForkActivation forkActivation) =>
-                GetActivationPrimitive(forkActivation.Timestamp, 4UL)
-                ?? (ulong)GetActivationPrimitive(forkActivation.BlockNumber, 4L);
+                GetActivationPrimitive<ulong>(forkActivation.Timestamp, 4UL)
+                ?? GetActivationPrimitive<ulong>(forkActivation.BlockNumber, 4UL)
+                ?? 0UL;
 
             index += 1;
             return index < transitionActivations.Length
@@ -73,7 +74,7 @@ namespace Nethermind.Network
                 : 0;
         }
 
-        public ForkId GetForkId(long headNumber, ulong headTimestamp)
+        public ForkId GetForkId(ulong headNumber, ulong headTimestamp)
         {
             EnsureInitialized();
 

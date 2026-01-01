@@ -83,12 +83,13 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            if (relationshipLevel > header.Number)
+            if ((ulong)relationshipLevel > header.Number)
             {
-                return IsKin(header, uncle, (int)header.Number);
+                return IsKin(header, uncle, checked((int)header.Number));
             }
 
-            if (uncle.Number < header.Number - relationshipLevel)
+            ulong relationshipLevelUlong = (ulong)relationshipLevel;
+            if (uncle.Number < header.Number - relationshipLevelUlong)
             {
                 return false;
             }

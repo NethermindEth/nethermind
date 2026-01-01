@@ -18,7 +18,7 @@ public class FullStateFinder : IFullStateFinder
     private const int MaxLookupBack = 128;
     private readonly IStateReader _stateReader;
     private readonly IBlockTree _blockTree;
-    private long _lastKnownState = 0;
+    private ulong _lastKnownState = 0;
 
     public FullStateFinder(
         IBlockTree blockTree,
@@ -38,7 +38,7 @@ public class FullStateFinder : IFullStateFinder
         return _stateReader.HasStateForBlock(block);
     }
 
-    public long FindBestFullState()
+    public ulong FindBestFullState()
     {
         // so the full state can be in a few places but there are some best guesses
         // if we are state syncing then the full state may be one of the recent blocks (maybe one of the last 128 blocks)
@@ -52,7 +52,7 @@ public class FullStateFinder : IFullStateFinder
         BlockHeader initialBestSuggested = _blockTree.BestSuggestedHeader; // just storing here for debugging sake
         BlockHeader bestSuggested = initialBestSuggested;
 
-        long bestFullState = 0;
+        ulong bestFullState = 0;
         if (head is not null)
         {
             // head search should be very inexpensive as we generally expect the state to be there
@@ -75,13 +75,16 @@ public class FullStateFinder : IFullStateFinder
         return bestFullState;
     }
 
-    private long SearchForFullState(BlockHeader startHeader)
+    private ulong SearchForFullState(BlockHeader startHeader)
     {
-        long bestFullState = 0;
+        ulong bestFullState = 0;
         long maxLookupBack = MaxLookupBack;
         if (_lastKnownState != 0)
         {
-            maxLookupBack = long.Max(maxLookupBack, startHeader.Number - _lastKnownState + 1);
+            ulong blocksSinceLastKnown = startHeader.Number >= _lastKnownState
+                ? (startHeader.Number - _lastKnownState + 1)
+                : 0;
+            maxLookupBack = (long)Math.Max((ulong)maxLookupBack, blocksSinceLastKnown);
         }
 
         for (int i = 0; i < maxLookupBack; i++)

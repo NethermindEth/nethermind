@@ -110,7 +110,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         return payloadId;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void LogMultiStartRequest(string payloadId, long number)
+        void LogMultiStartRequest(string payloadId, ulong number)
         {
             _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
         }

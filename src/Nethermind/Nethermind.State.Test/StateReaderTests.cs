@@ -220,7 +220,7 @@ namespace Nethermind.Store.Test
             {
                 processorStateProvider.Set(storageCell, newValue);
                 processorStateProvider.Commit(MuirGlacier.Instance);
-                processorStateProvider.CommitTree(baseBlock.Number + 1);
+                processorStateProvider.CommitTree(checked((long)(baseBlock.Number + 1)));
                 baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(state.StateRoot).TestObject;
             }
 

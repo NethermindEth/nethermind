@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<GeneratedTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             _nonces.Clear();
 

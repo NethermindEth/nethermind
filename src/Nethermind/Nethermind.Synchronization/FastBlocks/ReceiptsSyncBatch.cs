@@ -10,13 +10,11 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         public BlockInfo?[] Infos { get; } = infos;
         public IOwnedReadOnlyList<TxReceipt[]?>? Response { get; set; }
-
+        public override ulong? MinNumber => Infos[0].BlockNumber;
         public override void Dispose()
         {
             base.Dispose();
             Response?.Dispose();
         }
-
-        public override long? MinNumber => Infos[0].BlockNumber;
     }
 }

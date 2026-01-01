@@ -141,7 +141,7 @@ namespace Nethermind.Evm.Test
                 {MainnetSpecProvider.CancunActivation, CancunInstructions},
                 {MainnetSpecProvider.PragueActivation, CancunInstructions},
                 {MainnetSpecProvider.OsakaActivation, OsakaInstructions},
-                {(long.MaxValue, ulong.MaxValue), OsakaInstructions}
+                {new ForkActivation(ulong.MaxValue, ulong.MaxValue), OsakaInstructions}
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
@@ -154,7 +154,7 @@ namespace Nethermind.Evm.Test
             return _logManager;
         }
 
-        [TestCase(0)]
+        [TestCase(0UL)]
         [TestCase(MainnetSpecProvider.HomesteadBlockNumber)]
         [TestCase(MainnetSpecProvider.SpuriousDragonBlockNumber)]
         [TestCase(MainnetSpecProvider.TangerineWhistleBlockNumber)]
@@ -167,10 +167,10 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 2, MainnetSpecProvider.CancunBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 3, MainnetSpecProvider.PragueBlockTimestamp)]
-        public void Test(long blockNumber, ulong? timestamp = null)
+        public void Test(ulong blockNumber, ulong? timestamp = null)
         {
             ILogger logger = _logManager.GetClassLogger();
-            Instruction[] validOpcodes = _validOpcodes[(blockNumber, timestamp)];
+            Instruction[] validOpcodes = _validOpcodes[new ForkActivation(blockNumber, timestamp)];
             for (int i = 0; i <= byte.MaxValue; i++)
             {
                 logger.Info($"============ Testing opcode {i}==================");
@@ -179,7 +179,7 @@ namespace Nethermind.Evm.Test
                     .Done;
 
                 bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains((Instruction)i);
-                TestAllTracerWithOutput result = Execute((blockNumber, timestamp ?? 0), 1_000_000, code);
+                TestAllTracerWithOutput result = Execute(new ForkActivation(blockNumber, timestamp), 1_000_000, code);
 
                 if (isValidOpcode)
                 {

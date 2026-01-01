@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Receipts
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         }
 
-        public Hash256 FindBlockHash(Hash256 txHash) => _receiptStorage.FindBlockHash(txHash);
+        public Hash256? FindBlockHash(Hash256 txHash) => _receiptStorage.FindBlockHash(txHash);
 
         public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true)
         {
@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Receipts
             return receipts;
         }
 
-        public bool CanGetReceiptsByHash(long blockNumber) => _receiptStorage.CanGetReceiptsByHash(blockNumber);
-        public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => _receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+        public bool CanGetReceiptsByHash(ulong blockNumber) => _receiptStorage.CanGetReceiptsByHash(blockNumber);
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => _receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
     }
 }

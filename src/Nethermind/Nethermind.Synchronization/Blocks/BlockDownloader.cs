@@ -115,8 +115,10 @@ namespace Nethermind.Synchronization.Blocks
                 return;
             }
 
-            _syncReport.FullSyncBlocksDownloaded.TargetValue = Math.Max(_syncReport.FullSyncBlocksDownloaded.TargetValue, e.Block.Number);
-            _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
+            _syncReport.FullSyncBlocksDownloaded.TargetValue = Math.Max(
+                _syncReport.FullSyncBlocksDownloaded.TargetValue,
+                checked((long)e.Block.Number));
+            _syncReport.FullSyncBlocksDownloaded.Update(checked((long)(_blockTree.BestSuggestedHeader?.Number ?? 0UL)));
         }
 
         public async Task<BlocksRequest?> PrepareRequest(DownloaderOptions options, int fastSyncLag, CancellationToken cancellation)
@@ -147,8 +149,8 @@ namespace Nethermind.Synchronization.Blocks
             bool originalShouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
 
             int blocksSynced = 0;
-            long bestProcessedBlock = 0;
-            long previousStartingHeaderNumber = -1;
+            ulong bestProcessedBlock = 0;
+            ulong? previousStartingHeaderNumber = null;
 
             while (true)
             {
@@ -174,7 +176,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 for (int i = 1; i < headers.Count; i++)
                 {
-                    if (headers[i].Number - 1 != headers[i - 1].Number)
+                    if (headers[i].Number != headers[i - 1].Number + 1)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Non consecutive header sequence from forward header provider. {headers[i].Number} vs {headers[i - 1].Number + 1}");
                         return null;
@@ -199,7 +201,12 @@ namespace Nethermind.Synchronization.Blocks
                 }
                 else
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Processing {satisfiedEntry.Count} entries from {satisfiedEntry[0]?.Header.Number ?? -1} to {satisfiedEntry[^1]?.Header.Number ?? -1}");
+                    if (_logger.IsDebug)
+                    {
+                        string from = satisfiedEntry[0]?.Header is null ? "n/a" : satisfiedEntry[0].Header.Number.ToString();
+                        string to = satisfiedEntry[^1]?.Header is null ? "n/a" : satisfiedEntry[^1].Header.Number.ToString();
+                        _logger.Debug($"Processing {satisfiedEntry.Count} entries from {from} to {to}");
+                    }
                 }
 
                 for (int blockIndex = 0; blockIndex < satisfiedEntry.Count; blockIndex++)
@@ -248,7 +255,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (blocksSynced > 0)
                 {
-                    _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
+                    _syncReport.FullSyncBlocksDownloaded.Update(checked((long)(_blockTree.BestSuggestedHeader?.Number ?? 0UL)));
                 }
 
                 _syncReport.FullSyncBlocksDownloaded.CurrentQueued = _downloadRequests.Count;
@@ -564,14 +571,14 @@ namespace Nethermind.Synchronization.Blocks
         }
 
         private (bool shouldProcess, bool shouldDownloadReceipt) ReceiptEdgeCase(
-            long bestProcessedBlock,
-            long firstBlockNumber,
+            ulong bestProcessedBlock,
+            ulong firstBlockNumber,
             bool shouldProcess,
             bool shouldDownloadReceipt)
         {
             if (shouldProcess && !shouldDownloadReceipt)
             {
-                long firstBlock = firstBlockNumber;
+                ulong firstBlock = firstBlockNumber;
                 // TODO: Double check this condition
                 // An edge case where we already have the state but are still downloading preceding blocks.
                 // We cannot process such blocks, but we are still requested to process them via blocksRequest.Options.
@@ -581,7 +588,7 @@ namespace Nethermind.Synchronization.Blocks
                 bool isFastSyncTransition = headIsGenesis && toBeProcessedHasNoProcessedParent;
                 if (isFastSyncTransition)
                 {
-                    long bestFullState = _fullStateFinder.FindBestFullState();
+                    ulong bestFullState = _fullStateFinder.FindBestFullState();
                     shouldProcess = firstBlock > bestFullState && bestFullState != 0;
                     if (!shouldProcess)
                     {

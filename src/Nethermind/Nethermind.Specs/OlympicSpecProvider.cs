@@ -11,10 +11,10 @@ namespace Nethermind.Specs
     {
         private ForkActivation? _theMergeBlock = null;
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                _theMergeBlock = (ForkActivation)blockNumber;
+                _theMergeBlock = (ForkActivation)blockNumber.Value;
             if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
@@ -26,12 +26,12 @@ namespace Nethermind.Specs
 
         IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => Olympic.Instance;
 
-        public long? DaoBlockNumber => 0L;
+        public ulong? DaoBlockNumber => 0UL;
         public ulong? BeaconChainGenesisTimestamp => null;
 
         public ulong NetworkId => Core.BlockchainIds.Olympic;
         public ulong ChainId => NetworkId;
-        public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)0 };
+        public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)0UL };
 
         private OlympicSpecProvider() { }
 

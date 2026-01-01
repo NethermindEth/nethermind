@@ -56,9 +56,9 @@ public class RewardCalculatorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Byzantium_reward_two_uncles()
     {
-        long blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
-        Block uncle = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
-        Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
+        ulong blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
+        Block uncle = Build.A.Block.WithNumber(blockNumber - 2ul).TestObject;
+        Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2ul).TestObject;
         Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).TestObject;
 
         RewardCalculator calculator = new(MainnetSpecProvider.Instance);
@@ -73,9 +73,9 @@ public class RewardCalculatorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Constantinople_reward_two_uncles()
     {
-        long blockNumber = MainnetSpecProvider.ConstantinopleFixBlockNumber;
-        Block uncle = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
-        Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
+        ulong blockNumber = MainnetSpecProvider.ConstantinopleFixBlockNumber;
+        Block uncle = Build.A.Block.WithNumber(blockNumber - 2ul).TestObject;
+        Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2ul).TestObject;
         Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).TestObject;
 
         RewardCalculator calculator = new(MainnetSpecProvider.Instance);

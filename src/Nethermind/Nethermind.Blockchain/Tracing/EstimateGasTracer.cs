@@ -30,7 +30,7 @@ public class EstimateGasTracer : TxTracer
 
     internal long GasSpent { get; set; }
 
-    internal long IntrinsicGasAt { get; set; }
+    internal ulong IntrinsicGasAt { get; set; }
 
     internal long TotalRefund { get; private set; }
 
@@ -93,7 +93,7 @@ public class EstimateGasTracer : TxTracer
     internal long CalculateAdditionalGasRequired(Transaction tx, IReleaseSpec releaseSpec)
     {
         long txGasLimit = checked((long)tx.GasLimit);
-        long intrinsicGas = txGasLimit - IntrinsicGasAt;
+        long intrinsicGas = txGasLimit - checked((long)IntrinsicGasAt);
         return _currentGasAndNesting.Peek().AdditionalGasRequired +
                RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund,
                    releaseSpec);
@@ -112,7 +112,7 @@ public class EstimateGasTracer : TxTracer
         {
             OutOfGas = false;
             TopLevelRevert = false;
-            IntrinsicGasAt = checked((long)gas);
+            IntrinsicGasAt = gas;
         }
 
         if (!isPrecompileCall)
@@ -178,7 +178,7 @@ public class EstimateGasTracer : TxTracer
 
             if (_currentNestingLevel == -1)
             {
-                NonIntrinsicGasSpentBeforeRefund = IntrinsicGasAt - current.GasLeft;
+                NonIntrinsicGasSpentBeforeRefund = checked((long)IntrinsicGasAt) - current.GasLeft;
             }
         }
     }

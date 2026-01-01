@@ -181,7 +181,7 @@ public class TraceRpcModuleTests
         await context.Blockchain.AddBlock(transaction);
 
         TraceFilterForRpc traceFilterRequest = new();
-        long lastBLockNumber = blockchain.BlockTree.Head!.Number;
+        ulong lastBLockNumber = blockchain.BlockTree.Head!.Number;
         traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber);
         traceFilterRequest.ToBlock = new BlockParameter(lastBLockNumber);
         traceFilterRequest.ToAddress = new[] { TestItem.AddressA };
@@ -200,9 +200,9 @@ public class TraceRpcModuleTests
             .SignedAndResolved(blockchain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
         await context.Blockchain.AddBlock(transaction);
         await context.Blockchain.AddBlock();
-        long lastBLockNumber = blockchain.BlockTree.Head!.Number;
+        ulong lastBLockNumber = blockchain.BlockTree.Head!.Number;
         TraceFilterForRpc traceFilterRequest = new();
-        traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber - 1);
+        traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber - 1ul);
         traceFilterRequest.ToBlock = BlockParameter.Latest;
         traceFilterRequest.FromAddress = new[] { TestItem.PrivateKeyA.Address };
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
@@ -246,10 +246,10 @@ public class TraceRpcModuleTests
             .WithGasLimit(93548).TestObject;
         await blockchain.AddBlock(transaction2);
         await blockchain.AddBlock();
-        long lastBLockNumber = blockchain.BlockTree.Head!.Number;
+        ulong lastBLockNumber = blockchain.BlockTree.Head!.Number;
 
         TraceFilterForRpc traceFilterRequest = new();
-        traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber - 1);
+        traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber - 1ul);
         traceFilterRequest.ToBlock = BlockParameter.Latest;
         traceFilterRequest.ToAddress = new[] { contractAddress };
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
@@ -276,8 +276,8 @@ public class TraceRpcModuleTests
         );
         await context.Blockchain.AddBlock();
         TraceFilterForRpc traceFilterRequest = new();
-        long lastBLockNumber = blockchain.BlockTree.Head!.Number;
-        traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber - 1);
+        ulong lastBLockNumber = blockchain.BlockTree.Head!.Number;
+        traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber - 1ul);
         traceFilterRequest.ToBlock = BlockParameter.Latest;
         traceFilterRequest.FromAddress = new[] { TestItem.PrivateKeyA.Address };
         traceFilterRequest.ToAddress = new[] { TestItem.AddressC };
@@ -291,10 +291,10 @@ public class TraceRpcModuleTests
         await context.Build();
         TraceFilterForRpc traceFilterRequest = new();
         TestRpcBlockchain blockchain = context.Blockchain;
-        long lastBLockNumber = blockchain.BlockTree.Head!.Number;
+        ulong lastBLockNumber = blockchain.BlockTree.Head!.Number;
         traceFilterRequest.After = 3;
         traceFilterRequest.Count = 4;
-        traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber + 1);
+        traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber + 1ul);
         traceFilterRequest.ToBlock = BlockParameter.Latest;
         traceFilterRequest.FromAddress = new[] { TestItem.PrivateKeyA.Address, TestItem.PrivateKeyD.Address };
         traceFilterRequest.ToAddress = new[] { TestItem.AddressC, TestItem.AddressA, TestItem.AddressB };
@@ -373,10 +373,10 @@ public class TraceRpcModuleTests
         await context.Build();
         TraceFilterForRpc traceFilterRequest = new();
         TestRpcBlockchain blockchain = context.Blockchain;
-        long lastBLockNumber = blockchain.BlockTree.Head!.Number;
+        ulong lastBLockNumber = blockchain.BlockTree.Head!.Number;
         // traceFilterRequest.After = 3;
         // traceFilterRequest.Count = 4;
-        traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber + 1);
+        traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber + 1ul);
         traceFilterRequest.ToBlock = BlockParameter.Latest;
         // traceFilterRequest.FromAddress = new[] {TestItem.PrivateKeyA.Address, TestItem.PrivateKeyD.Address};
         // traceFilterRequest.ToAddress = new[] {TestItem.AddressC, TestItem.AddressA, TestItem.AddressB};

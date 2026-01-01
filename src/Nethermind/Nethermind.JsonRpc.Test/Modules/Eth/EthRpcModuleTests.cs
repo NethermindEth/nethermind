@@ -1011,7 +1011,7 @@ public partial class EthRpcModuleTests
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
 
-        int blockNumber = 1;
+        ulong blockNumber = 1;
         ulong timestamp = 10;
         Block genesis = Build.A.Block.Genesis
             .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))

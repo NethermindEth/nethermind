@@ -79,7 +79,7 @@ namespace Nethermind.TxPool
         private readonly ITimer? _timer;
         private Transaction[]? _transactionSnapshot;
         private Transaction[]? _blobTransactionSnapshot;
-        private long _lastBlockNumber = -1;
+        private ulong? _lastBlockNumber;
         private Hash256? _lastBlockHash;
 
         private bool _isDisposed;
@@ -321,7 +321,10 @@ namespace Nethermind.TxPool
 
             bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges)
             {
-                return accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
+                return accountChanges is not null
+                    && block.ParentHash == _lastBlockHash
+                    && _lastBlockNumber is not null
+                    && _lastBlockNumber.Value + 1 == block.Number;
             }
         }
 
@@ -344,7 +347,7 @@ namespace Nethermind.TxPool
                 }
 
                 if (_blobReorgsSupportEnabled
-                    && _blobTxStorage.TryGetBlobTransactionsFromBlock(previousBlock.Number, out Transaction[]? blobTxs)
+                    && _blobTxStorage.TryGetBlobTransactionsFromBlock(checked((long)previousBlock.Number), out Transaction[]? blobTxs)
                     && blobTxs is not null)
                 {
                     foreach (Transaction blobTx in blobTxs)
@@ -356,7 +359,7 @@ namespace Nethermind.TxPool
                     }
                     if (_logger.IsTrace) _logger.Trace($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
-                    _blobTxStorage.DeleteBlobTransactionsFromBlock(previousBlock.Number);
+                    _blobTxStorage.DeleteBlobTransactionsFromBlock(checked((long)previousBlock.Number));
                 }
             }
         }
@@ -424,7 +427,7 @@ namespace Nethermind.TxPool
 
             if (blobTxsToSave.Count > 0)
             {
-                _blobTxStorage.AddBlobTransactionsFromBlock(block.Number, blobTxsToSave);
+                _blobTxStorage.AddBlobTransactionsFromBlock(checked((long)block.Number), blobTxsToSave);
             }
 
             long transactionsInBlock = blockTransactions.Length;
@@ -457,7 +460,7 @@ namespace Nethermind.TxPool
                 // Announce txs to newly connected peer only if we are synced. If chain head of the peer is higher by
                 // more than 16 blocks than our head, skip announcing txs as some of them are probably already processed
                 // Also skip announcing if peer's head number is shown as 0 as then we don't know peer's head block yet
-                if (peer.HeadNumber != 0 && peer.HeadNumber < _headInfo.HeadNumber + 16)
+                if (peer.HeadNumber != 0 && peer.HeadNumber < _headInfo.HeadNumber + 16UL)
                 {
                     _broadcaster.AnnounceOnce(peer, _transactionSnapshot ??= _transactions.GetSnapshot());
                     _broadcaster.AnnounceOnce(peer, _blobTransactionSnapshot ??= _blobTransactions.GetSnapshot());

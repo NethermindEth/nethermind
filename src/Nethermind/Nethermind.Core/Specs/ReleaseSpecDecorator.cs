@@ -10,7 +10,7 @@ namespace Nethermind.Core.Specs;
 public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
 {
     public virtual bool IsEip1559Enabled => spec.IsEip1559Enabled;
-    public virtual long Eip1559TransitionBlock => spec.Eip1559TransitionBlock;
+    public virtual ulong Eip1559TransitionBlock => spec.Eip1559TransitionBlock;
     public virtual UInt256 ForkBaseFee => spec.ForkBaseFee;
     public virtual UInt256 BaseFeeMaxChangeDenominator => spec.BaseFeeMaxChangeDenominator;
     public virtual long ElasticityMultiplier => spec.ElasticityMultiplier;

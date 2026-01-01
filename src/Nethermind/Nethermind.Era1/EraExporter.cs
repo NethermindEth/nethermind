@@ -43,8 +43,9 @@ public class EraExporter(
         CancellationToken cancellation = default)
     {
         if (fileSystem.File.Exists(destinationPath)) throw new ArgumentException($"Destination already exist as a file.", nameof(destinationPath));
-        if (to == 0) to = blockTree.Head?.Number ?? 0;
-        if (to > (blockTree.Head?.Number ?? 0)) throw new ArgumentException($"Cannot export to a block after head block {blockTree.Head?.Number ?? 0}.");
+        ulong headNumber = blockTree.Head?.Number ?? 0;
+        if (to == 0) to = checked((long)headNumber);
+        if (to > checked((long)headNumber)) throw new ArgumentException($"Cannot export to a block after head block {headNumber}.");
         if (from > to) throw new ArgumentException($"Start block ({from}) must be before end ({to}) block");
 
         return DoExport(destinationPath, from, to, cancellation: cancellation);
@@ -116,7 +117,7 @@ public class EraExporter(
 
             for (var y = startingIndex; y < startingIndex + _era1Size && y <= to; y++)
             {
-                Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+                Block? block = blockTree.FindBlock(checked((ulong)y), BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
                 if (block is null)
                 {
                     throw new EraException($"Could not find a block with number {y}.");

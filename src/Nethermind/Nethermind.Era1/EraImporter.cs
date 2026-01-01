@@ -74,7 +74,7 @@ public class EraImporter(
         if (from > to && to != 0)
             throw new ArgumentException($"Start block ({from}) must not be after end block ({to})");
 
-        long headp1 = (blockTree.Head?.Number ?? 0) + 1;
+        long headp1 = checked((long)(blockTree.Head?.Number ?? 0)) + 1;
         if (from > headp1)
         {
             throw new ArgumentException($"Start block ({from}) must not be after block after head ({headp1})");
@@ -108,10 +108,13 @@ public class EraImporter(
         progressLogger.Reset(0, to - from + 1);
         long blocksProcessed = 0;
 
-        using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(blockTree, eraConfig.ImportBlocksBufferSize, eraConfig.ImportBlocksBufferSize - 1024);
+        using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(
+            blockTree,
+            checked((ulong)eraConfig.ImportBlocksBufferSize),
+            checked((ulong)(eraConfig.ImportBlocksBufferSize - 1024)));
         long blockNumber = from;
 
-        long suggestFromBlock = (blockTree.Head?.Number ?? 0) + 1;
+        long suggestFromBlock = checked((long)(blockTree.Head?.Number ?? 0)) + 1;
         if (syncConfig.FastSync && suggestFromBlock == 1)
         {
             // Its syncing right now. So no state.
@@ -179,7 +182,7 @@ public class EraImporter(
             {
                 throw new EraImportException($"Unable to find receipt for block {blockNumber}");
             }
-            if (block.Number != blockNumber)
+            if (block.Number != checked((ulong)blockNumber))
             {
                 throw new EraImportException($"Unexpected block number. Expected {blockNumber}. Got {block.Number}");
             }
@@ -194,13 +197,13 @@ public class EraImporter(
                 throw new EraImportException($"Unexpected block without a body found for block number {blockNumber}. Archive might be corrupted.");
             }
 
-            if (suggestFromBlock <= block.Number)
+            if (suggestFromBlock <= checked((long)block.Number))
             {
                 await pacer.WaitForQueue(block.Number, cancellation);
                 await SuggestAndProcessBlock(block);
             }
             else
-                InsertBlockAndReceipts(block, receipt, to);
+                InsertBlockAndReceipts(block, receipt, to == long.MaxValue ? null : checked((ulong)to));
 
             long processed = Interlocked.Increment(ref blocksProcessed);
             if (processed % 10000 == 0)
@@ -211,7 +214,7 @@ public class EraImporter(
         }
     }
 
-    private void InsertBlockAndReceipts(Block b, TxReceipt[] r, long lastBlockNumber)
+    private void InsertBlockAndReceipts(Block b, TxReceipt[] r, ulong? lastBlockNumber)
     {
         if (blockTree.FindBlock(b.Number) is null)
             blockTree.Insert(b, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);

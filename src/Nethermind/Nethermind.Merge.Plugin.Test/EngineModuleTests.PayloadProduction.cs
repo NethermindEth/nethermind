@@ -164,7 +164,7 @@ public partial class EngineModuleTests
     {
         public bool SupportsBlobs { get; }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
         {
             Hash256 startingHead = blockTree.HeadHash;
             uint count = 50;

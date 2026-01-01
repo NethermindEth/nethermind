@@ -127,13 +127,18 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
 
     public BlockHeaderBuilder WithNumber(long blockNumber)
     {
+        return WithNumber(checked((ulong)blockNumber));
+    }
+
+    public BlockHeaderBuilder WithNumber(ulong blockNumber)
+    {
         TestObjectInternal.Number = blockNumber;
         return this;
     }
 
     public BlockHeaderBuilder WithTotalDifficulty(long totalDifficulty)
     {
-        TestObjectInternal.TotalDifficulty = (ulong)totalDifficulty;
+        TestObjectInternal.TotalDifficulty = checked((ulong)totalDifficulty);
         return this;
     }
 

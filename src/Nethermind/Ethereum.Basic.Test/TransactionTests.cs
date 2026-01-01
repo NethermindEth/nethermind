@@ -76,7 +76,7 @@ namespace Ethereum.Basic.Test
             test.Data = Bytes.FromHexString(testJson.Data);
             test.GasPrice = (UInt256)testJson.GasPrice;
             test.PrivateKey = new PrivateKey(testJson.Key);
-            test.Nonce = (UInt256)testJson.Nonce;
+            test.Nonce = testJson.Nonce;
             test.Signed = new Rlp(Bytes.FromHexString(testJson.Signed));
             byte[] unsigned = Bytes.FromHexString(testJson.Unsigned);
             if (unsigned[0] == 0xf8)
@@ -97,9 +97,9 @@ namespace Ethereum.Basic.Test
         private class TransactionTestJson
         {
             public string Key { get; set; }
-            public long Nonce { get; set; }
+            public ulong Nonce { get; set; }
             public ulong GasPrice { get; set; }
-            public long StartGas { get; set; }
+            public ulong StartGas { get; set; }
             public string To { get; set; }
             public long Value { get; set; }
             public string Data { get; set; }
@@ -111,9 +111,9 @@ namespace Ethereum.Basic.Test
         public class TransactionTest
         {
             public PrivateKey PrivateKey { get; set; }
-            public UInt256 Nonce { get; set; }
+            public ulong Nonce { get; set; }
             public UInt256 GasPrice { get; set; }
-            public long StartGas { get; set; }
+            public ulong StartGas { get; set; }
             public Address To { get; set; }
             public UInt256 Value { get; set; }
             public byte[] Data { get; set; }

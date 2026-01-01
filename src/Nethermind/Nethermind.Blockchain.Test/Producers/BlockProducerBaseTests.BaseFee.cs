@@ -38,12 +38,12 @@ public partial class BlockProducerBaseTests
             private Address _contractAddress = null!;
             private TestRpcBlockchain _testRpcBlockchain = null!;
 
-            private long _eip1559TransitionBlock;
+            private ulong _eip1559TransitionBlock;
             private bool _eip1559Enabled;
             private Task<ScenarioBuilder>? _antecedent;
             private ulong _currentNonce = 1;
 
-            public ScenarioBuilder WithEip1559TransitionBlock(long transitionBlock)
+            public ScenarioBuilder WithEip1559TransitionBlock(ulong transitionBlock)
             {
                 _eip1559Enabled = true;
                 _eip1559TransitionBlock = transitionBlock;
@@ -168,7 +168,8 @@ public partial class BlockProducerBaseTests
                 IBlockTree blockTree = _testRpcBlockchain.BlockTree;
                 Block startingBlock = blockTree.Head!;
                 Assert.That(startingBlock.Header.BaseFeePerGas, Is.EqualTo(UInt256.Zero));
-                for (long i = startingBlock.Number; i < _eip1559TransitionBlock - 1; ++i)
+                ulong transitionBlockNumber = _eip1559TransitionBlock;
+                for (ulong i = startingBlock.Number; i + 1 < transitionBlockNumber; ++i)
                 {
                     await _testRpcBlockchain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx);
                     Block currentBlock = blockTree.Head!;

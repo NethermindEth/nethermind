@@ -64,7 +64,7 @@ namespace Nethermind.Core.Test
         public string ProtocolCode { get; } = null!;
         public string ClientId => Node.ClientId;
         public Hash256 HeadHash { get; set; }
-        public long HeadNumber { get; set; }
+        public ulong HeadNumber { get; set; }
         public UInt256? TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
@@ -88,7 +88,7 @@ namespace Nethermind.Core.Test
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
         {
             ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(maxBlocks, maxBlocks);
-            long? firstNumber = _remoteTree.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical)?.Number;
+            ulong? firstNumber = _remoteTree.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical)?.Number;
             if (!firstNumber.HasValue)
             {
                 return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(result);
@@ -96,16 +96,16 @@ namespace Nethermind.Core.Test
 
             for (int i = 0; i < maxBlocks; i++)
             {
-                result[i] = _remoteTree.FindHeader(firstNumber.Value + i + skip, BlockTreeLookupOptions.RequireCanonical)!;
+                result[i] = _remoteTree.FindHeader(firstNumber.Value + (ulong)i + (ulong)skip, BlockTreeLookupOptions.RequireCanonical)!;
             }
 
             return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(result);
         }
 
-        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token)
         {
             ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(maxBlocks, maxBlocks);
-            long? firstNumber = _remoteTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical)?.Number;
+            ulong? firstNumber = _remoteTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical)?.Number;
             if (!firstNumber.HasValue)
             {
                 return Task.FromResult<IOwnedReadOnlyList<BlockHeader>>(result)!;
@@ -113,7 +113,7 @@ namespace Nethermind.Core.Test
 
             for (int i = 0; i < maxBlocks; i++)
             {
-                long blockNumber = firstNumber.Value + i + skip;
+                ulong blockNumber = firstNumber.Value + (ulong)i + (ulong)skip;
                 if (blockNumber > (_remoteTree.Head?.Number ?? 0))
                 {
                     result[i] = null!;
@@ -142,7 +142,7 @@ namespace Nethermind.Core.Test
             }
             else
             {
-                HintNewBlock(block.Hash!, block.Number);
+                HintNewBlock(block.Hash!, checked((long)block.Number));
             }
         }
 

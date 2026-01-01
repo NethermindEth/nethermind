@@ -550,7 +550,7 @@ namespace Nethermind.Blockchain.Test
 
             IEnumerable<Transaction> selectedTransactions =
                 poolTxSource.GetTransactions(parentHeader.TestObject,
-                    testCase.GasLimit);
+                    (ulong)testCase.GasLimit);
             selectedTransactions.Should()
                 .BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());
         }

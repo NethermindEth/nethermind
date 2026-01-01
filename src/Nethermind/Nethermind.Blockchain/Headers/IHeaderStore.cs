@@ -12,9 +12,9 @@ public interface IHeaderStore : IHeaderFinder
 {
     void Insert(BlockHeader header);
     void BulkInsert(IReadOnlyList<BlockHeader> headers);
-    BlockHeader? Get(Hash256 blockHash, bool shouldCache, long? blockNumber = null);
+    BlockHeader? Get(Hash256 blockHash, bool shouldCache, ulong? blockNumber = null);
     void Cache(BlockHeader header);
     void Delete(Hash256 blockHash);
-    void InsertBlockNumber(Hash256 blockHash, long blockNumber);
-    long? GetBlockNumber(Hash256 blockHash);
+    void InsertBlockNumber(Hash256 blockHash, ulong blockNumber);
+    ulong? GetBlockNumber(Hash256 blockHash);
 }

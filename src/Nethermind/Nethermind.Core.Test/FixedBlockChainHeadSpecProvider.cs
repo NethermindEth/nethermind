@@ -8,11 +8,11 @@ namespace Nethermind.Core.Test
 {
     public class FixedForkActivationChainHeadSpecProvider(
         ISpecProvider specProvider,
-        long fixedBlock = 10_000_000,
+        ulong fixedBlock = 10_000_000,
         ulong? timestamp = null)
         : IChainHeadSpecProvider
     {
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
         }
@@ -25,7 +25,7 @@ namespace Nethermind.Core.Test
 
         IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => specProvider.GetSpec(forkActivation);
 
-        public long? DaoBlockNumber => specProvider.DaoBlockNumber;
+        public ulong? DaoBlockNumber => specProvider.DaoBlockNumber;
 
         public ulong? BeaconChainGenesisTimestamp => specProvider.BeaconChainGenesisTimestamp;
 
@@ -34,6 +34,6 @@ namespace Nethermind.Core.Test
 
         public ForkActivation[] TransitionActivations => specProvider.TransitionActivations;
 
-        public IReleaseSpec GetCurrentHeadSpec() => specProvider.GetSpec((fixedBlock, timestamp));
+        public IReleaseSpec GetCurrentHeadSpec() => specProvider.GetSpec(new ForkActivation(fixedBlock, timestamp));
     }
 }

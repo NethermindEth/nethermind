@@ -56,7 +56,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private readonly ConcurrentDictionary<Hash256, ValidationCompletion> _blockValidationTasks = new();
 
-    private long _lastBlockNumber;
+    private ulong _lastBlockNumber;
     private ulong _lastBlockGasLimit;
     private readonly bool _simulateBlockProduction;
 

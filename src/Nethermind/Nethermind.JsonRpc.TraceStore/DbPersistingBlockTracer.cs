@@ -23,7 +23,7 @@ public class DbPersistingBlockTracer<TTrace, TTracer> : BlockTracer where TTrace
     private readonly IBlockTracer _blockTracer;
     private readonly BlockTracerBase<TTrace, TTracer> _tracerWithResults;
     private Hash256 _currentBlockHash = null!;
-    private long _currentBlockNumber;
+    private ulong _currentBlockNumber;
     private readonly ILogger _logger;
 
     /// <summary>
@@ -65,7 +65,7 @@ public class DbPersistingBlockTracer<TTrace, TTracer> : BlockTracer where TTrace
         _blockTracer.EndBlockTrace();
         IReadOnlyCollection<TTrace> result = _tracerWithResults.BuildResult();
         Hash256 currentBlockHash = _currentBlockHash;
-        long currentBlockNumber = _currentBlockNumber;
+        ulong currentBlockNumber = _currentBlockNumber;
         try
         {
             byte[] tracesSerialized = _traceSerializer.Serialize(result);

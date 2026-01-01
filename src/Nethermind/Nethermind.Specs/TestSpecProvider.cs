@@ -15,10 +15,10 @@ namespace Nethermind.Specs
             NextForkSpec = initialSpecToReturn;
         }
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                MergeBlockNumber = (ForkActivation)blockNumber;
+                MergeBlockNumber = (ForkActivation)blockNumber.Value;
             if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
@@ -30,12 +30,15 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GenesisSpec { get; set; }
 
-        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => forkActivation.BlockNumber == 0 || forkActivation.BlockNumber < ForkOnBlockNumber ? GenesisSpec : NextForkSpec;
+        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) =>
+            forkActivation.BlockNumber == 0 || (ForkOnBlockNumber is not null && forkActivation.BlockNumber < ForkOnBlockNumber.Value)
+                ? GenesisSpec
+                : NextForkSpec;
 
         public IReleaseSpec NextForkSpec { get; set; }
-        public long? ForkOnBlockNumber { get; set; }
+        public ulong? ForkOnBlockNumber { get; set; }
 
-        public long? DaoBlockNumber { get; set; }
+        public ulong? DaoBlockNumber { get; set; }
         public ulong? BeaconChainGenesisTimestamp { get; set; }
         public ulong? _networkId;
         public ulong NetworkId { get { return _networkId ?? TestBlockchainIds.NetworkId; } set { _networkId = value; } }
@@ -43,7 +46,7 @@ namespace Nethermind.Specs
         private ulong? _chainId;
         public ulong ChainId { get { return _chainId ?? TestBlockchainIds.ChainId; } set { _chainId = value; } }
 
-        public ForkActivation[] TransitionActivations { get; set; } = [(ForkActivation)0];
+        public ForkActivation[] TransitionActivations { get; set; } = [(ForkActivation)0UL];
         public bool AllowTestChainOverride { get; set; } = true;
 
         private TestSpecProvider() { }

@@ -24,7 +24,7 @@ public partial class BlockTree
         LoadForkChoiceInfo();
     }
 
-    public static long? BinarySearchBlockNumber(long left, long right, Func<long, bool, bool> isBlockFound,
+    public static ulong? BinarySearchBlockNumber(ulong left, ulong right, Func<ulong, bool, bool> isBlockFound,
         BinarySearchDirection direction = BinarySearchDirection.Up, bool findBeacon = false)
     {
         if (left > right)
@@ -32,10 +32,10 @@ public partial class BlockTree
             return null;
         }
 
-        long? result = null;
+        ulong? result = null;
         while (left != right)
         {
-            long index = direction == BinarySearchDirection.Up
+            ulong index = direction == BinarySearchDirection.Up
                 ? left + (right - left) / 2
                 : right - (right - left) / 2;
             if (isBlockFound(index, findBeacon))
@@ -47,7 +47,7 @@ public partial class BlockTree
                 }
                 else
                 {
-                    right = index - 1;
+                    right = index == 0 ? 0 : index - 1;
                 }
             }
             else
@@ -75,7 +75,7 @@ public partial class BlockTree
     {
         if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader is not null)
         {
-            long blockNumber = BestPersistedState ?? BestSuggestedHeader.Number;
+            ulong blockNumber = BestPersistedState ?? BestSuggestedHeader.Number;
             ChainLevelInfo chainLevelInfo = LoadLevel(blockNumber);
             BlockInfo? canonicalBlock = chainLevelInfo?.MainChainBlock;
             if (canonicalBlock is not null && canonicalBlock.WasProcessed)
@@ -89,7 +89,7 @@ public partial class BlockTree
         }
     }
 
-    private bool LevelExists(long blockNumber, bool findBeacon = false)
+    private bool LevelExists(ulong blockNumber, bool findBeacon = false)
     {
         ChainLevelInfo? level = LoadLevel(blockNumber);
         if (findBeacon)
@@ -100,7 +100,7 @@ public partial class BlockTree
         return level is not null && level.HasNonBeaconBlocks;
     }
 
-    private bool HeaderExists(long blockNumber, bool findBeacon = false)
+    private bool HeaderExists(ulong blockNumber, bool findBeacon = false)
     {
         ChainLevelInfo level = LoadLevel(blockNumber);
         if (level is null)
@@ -128,7 +128,7 @@ public partial class BlockTree
         return false;
     }
 
-    private bool BodyExists(long blockNumber, bool findBeacon = false)
+    private bool BodyExists(ulong blockNumber, bool findBeacon = false)
     {
         ChainLevelInfo level = LoadLevel(blockNumber);
         if (level is null)
@@ -183,8 +183,8 @@ public partial class BlockTree
         else
         {
             // Old style binary search.
-            long left = 1L;
-            long right = SyncPivot.BlockNumber;
+            ulong left = 1UL;
+            ulong right = SyncPivot.BlockNumber;
 
             LowestInsertedHeader = BinarySearchBlockHeader(left, right, LevelExists, BinarySearchDirection.Down);
         }
@@ -194,15 +194,19 @@ public partial class BlockTree
 
     private void LoadBestKnown()
     {
-        long left = (Head?.Number ?? 0) == 0
-            ? Math.Max(SyncPivot.BlockNumber, LowestInsertedHeader?.Number ?? 0) - 1
+        ulong left = (Head?.Number ?? 0) == 0
+            ? Math.Max(SyncPivot.BlockNumber, LowestInsertedHeader?.Number ?? 0)
             : Head.Number;
+        if (left > 0)
+        {
+            left--;
+        }
 
-        long right = Math.Max(0, left) + BestKnownSearchLimit;
+        ulong right = left + (ulong)BestKnownSearchLimit;
 
-        long bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists) ?? 0;
-        long bestSuggestedHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists) ?? 0;
-        long bestSuggestedBodyNumber = BinarySearchBlockNumber(left, right, BodyExists) ?? 0;
+        ulong bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists) ?? 0;
+        ulong bestSuggestedHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists) ?? 0;
+        ulong bestSuggestedBodyNumber = BinarySearchBlockNumber(left, right, BodyExists) ?? 0;
 
         if (Logger.IsInfo)
             Logger.Info("Numbers resolved, " +
@@ -210,26 +214,13 @@ public partial class BlockTree
                          $"header = {bestSuggestedHeaderNumber}, " +
                          $"body = {bestSuggestedBodyNumber}");
 
-        if (bestKnownNumberFound < 0 ||
-            bestSuggestedHeaderNumber < 0 ||
-            bestSuggestedBodyNumber < 0 ||
-            bestSuggestedHeaderNumber < bestSuggestedBodyNumber)
+        if (bestSuggestedHeaderNumber < bestSuggestedBodyNumber)
         {
             if (Logger.IsWarn)
                 Logger.Warn(
                     $"Detected corrupted block tree data ({bestSuggestedHeaderNumber} < {bestSuggestedBodyNumber}) (possibly due to an unexpected shutdown). Attempting to fix by moving head backwards. This may fail and you may need to resync the node.");
-            if (bestSuggestedHeaderNumber < bestSuggestedBodyNumber)
-            {
-                bestSuggestedBodyNumber = bestSuggestedHeaderNumber;
-                _tryToRecoverFromHeaderBelowBodyCorruption = true;
-            }
-            else
-            {
-                throw new InvalidDataException("Invalid initial block tree state loaded - " +
-                                               $"best known: {bestKnownNumberFound}|" +
-                                               $"best header: {bestSuggestedHeaderNumber}|" +
-                                               $"best body: {bestSuggestedBodyNumber}|");
-            }
+            bestSuggestedBodyNumber = bestSuggestedHeaderNumber;
+            _tryToRecoverFromHeaderBelowBodyCorruption = true;
         }
 
         BestKnownNumber = bestKnownNumberFound;
@@ -243,24 +234,33 @@ public partial class BlockTree
 
     private void LoadBeaconBestKnown()
     {
-        long left = Math.Max(Head?.Number ?? 0, LowestInsertedBeaconHeader?.Number ?? 0) - 1;
-        long right = Math.Max(0, left) + BestKnownSearchLimit;
-        long bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists, findBeacon: true) ?? 0;
+        ulong left = Math.Max(Head?.Number ?? 0, LowestInsertedBeaconHeader?.Number ?? 0);
+        if (left > 0)
+        {
+            left--;
+        }
 
-        left = Math.Max(
-            Math.Max(
-                Head?.Number ?? 0,
-                LowestInsertedBeaconHeader?.Number ?? 0),
-            BestSuggestedHeader?.Number ?? 0
-        ) - 1;
+        ulong right = left + (ulong)BestKnownSearchLimit;
+        ulong bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists, findBeacon: true) ?? 0;
 
-        right = Math.Max(0, left) + BestKnownSearchLimit;
-        long bestBeaconHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists, findBeacon: true) ?? 0;
+        left = Math.Max(Math.Max(Head?.Number ?? 0, LowestInsertedBeaconHeader?.Number ?? 0), BestSuggestedHeader?.Number ?? 0);
+        if (left > 0)
+        {
+            left--;
+        }
 
-        long? beaconPivotNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotNumber)?.AsRlpValueContext().DecodeLong();
-        left = Math.Max(Head?.Number ?? 0, beaconPivotNumber ?? 0) - 1;
-        right = Math.Max(0, left) + BestKnownSearchLimit;
-        long bestBeaconBodyNumber = BinarySearchBlockNumber(left, right, BodyExists, findBeacon: true) ?? 0;
+        right = left + (ulong)BestKnownSearchLimit;
+        ulong bestBeaconHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists, findBeacon: true) ?? 0;
+
+        ulong? beaconPivotNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotNumber)?.AsRlpValueContext().DecodeULong();
+        left = Math.Max(Head?.Number ?? 0, beaconPivotNumber ?? 0);
+        if (left > 0)
+        {
+            left--;
+        }
+
+        right = left + (ulong)BestKnownSearchLimit;
+        ulong bestBeaconBodyNumber = BinarySearchBlockNumber(left, right, BodyExists, findBeacon: true) ?? 0;
 
         if (Logger.IsInfo)
             Logger.Info("Beacon Numbers resolved, " +
@@ -268,26 +268,13 @@ public partial class BlockTree
                          $"header = {bestBeaconHeaderNumber}, " +
                          $"body = {bestBeaconBodyNumber}");
 
-        if (bestKnownNumberFound < 0 ||
-            bestBeaconHeaderNumber < 0 ||
-            bestBeaconBodyNumber < 0 ||
-            bestBeaconHeaderNumber < bestBeaconBodyNumber)
+        if (bestBeaconHeaderNumber < bestBeaconBodyNumber)
         {
             if (Logger.IsWarn)
                 Logger.Warn(
                     $"Detected corrupted block tree data ({bestBeaconHeaderNumber} < {bestBeaconBodyNumber}) (possibly due to an unexpected shutdown). Attempting to fix by moving head backwards. This may fail and you may need to resync the node.");
-            if (bestBeaconHeaderNumber < bestBeaconBodyNumber)
-            {
-                bestBeaconBodyNumber = bestBeaconHeaderNumber;
-                _tryToRecoverFromHeaderBelowBodyCorruption = true;
-            }
-            else
-            {
-                throw new InvalidDataException("Invalid initial block tree state loaded - " +
-                                               $"best known: {bestKnownNumberFound}|" +
-                                               $"best header: {bestBeaconHeaderNumber}|" +
-                                               $"best body: {bestBeaconBodyNumber}|");
-            }
+            bestBeaconBodyNumber = bestBeaconHeaderNumber;
+            _tryToRecoverFromHeaderBelowBodyCorruption = true;
         }
 
         BestKnownBeaconNumber = bestKnownNumberFound;
@@ -304,10 +291,10 @@ public partial class BlockTree
         Down
     }
 
-    private BlockHeader? BinarySearchBlockHeader(long left, long right, Func<long, bool, bool> isBlockFound,
+    private BlockHeader? BinarySearchBlockHeader(ulong left, ulong right, Func<ulong, bool, bool> isBlockFound,
         BinarySearchDirection direction = BinarySearchDirection.Up)
     {
-        long? blockNumber = BinarySearchBlockNumber(left, right, isBlockFound, direction);
+        ulong? blockNumber = BinarySearchBlockNumber(left, right, isBlockFound, direction);
         if (blockNumber.HasValue)
         {
             ChainLevelInfo? level = LoadLevel(blockNumber.Value) ?? throw new InvalidDataException(
@@ -323,8 +310,8 @@ public partial class BlockTree
     {
         Block? startBlock = null;
         byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
-        BestPersistedState = persistedNumberData is null ? null : new RlpStream(persistedNumberData).DecodeLong();
-        long? persistedNumber = BestPersistedState;
+        BestPersistedState = persistedNumberData is null ? null : new RlpStream(persistedNumberData).DecodeULong();
+        ulong? persistedNumber = BestPersistedState;
         if (persistedNumber is not null)
         {
             startBlock = FindBlock(persistedNumber.Value, BlockTreeLookupOptions.None);
@@ -372,17 +359,25 @@ public partial class BlockTree
         byte[]? pivotFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotData);
         if (pivotFromDb is null)
         {
+<<<<<<< HEAD
             _syncPivot = (_syncConfig.PivotNumber, _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
+=======
+            _syncPivot = (ULongConverter.FromString(_syncConfig.PivotNumber), _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
+>>>>>>> 3cfedd547 (Migrate semantically-unsigned fields to ulong; stabilize tests)
             return;
         }
 
         RlpStream pivotStream = new(pivotFromDb!);
-        long updatedPivotBlockNumber = pivotStream.DecodeLong();
+        ulong updatedPivotBlockNumber = pivotStream.DecodeULong();
         Hash256 updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
 
         if (updatedPivotBlockHash.IsZero)
         {
+<<<<<<< HEAD
             _syncPivot = (_syncConfig.PivotNumber, _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
+=======
+            _syncPivot = (ULongConverter.FromString(_syncConfig.PivotNumber), _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
+>>>>>>> 3cfedd547 (Migrate semantically-unsigned fields to ulong; stabilize tests)
             return;
         }
 

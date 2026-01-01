@@ -17,7 +17,7 @@ internal sealed class SnapshotDecoder : RlpValueDecoder<Snapshot>
 
         decoderContext.ReadSequenceLength();
 
-        long number = decoderContext.DecodeLong();
+        ulong number = decoderContext.DecodeULong();
         Hash256 hash256 = decoderContext.DecodeKeccak();
         Address[] candidates = DecodeAddressArray(ref decoderContext);
 
@@ -62,7 +62,7 @@ internal sealed class SnapshotDecoder : RlpValueDecoder<Snapshot>
 
         rlpStream.ReadSequenceLength();
 
-        long number = rlpStream.DecodeLong();
+        ulong number = rlpStream.DecodeULong();
         Hash256 hash256 = rlpStream.DecodeKeccak();
         Address[] candidate = rlpStream.DecodeArray<Address>(s => s.DecodeAddress()) ?? [];
 

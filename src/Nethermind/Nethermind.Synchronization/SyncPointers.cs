@@ -19,8 +19,8 @@ public class SyncPointers : ISyncPointers
     private static readonly byte[] LowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
 
 
-    private long? _lowestInsertedBodyNumber;
-    public long? LowestInsertedBodyNumber
+    private ulong? _lowestInsertedBodyNumber;
+    public ulong? LowestInsertedBodyNumber
     {
         get => _lowestInsertedBodyNumber;
         set
@@ -30,9 +30,9 @@ public class SyncPointers : ISyncPointers
         }
     }
 
-    private long? _lowestInsertedReceiptBlock;
+    private ulong? _lowestInsertedReceiptBlock;
 
-    public long? LowestInsertedReceiptBlockNumber
+    public ulong? LowestInsertedReceiptBlockNumber
     {
         get => _lowestInsertedReceiptBlock;
         set
@@ -51,10 +51,10 @@ public class SyncPointers : ISyncPointers
         _blocksDb = blocksDb;
         _defaultReceiptDbColumn = receiptsDb.GetColumnDb(ReceiptsColumns.Default);
 
-        LowestInsertedBodyNumber = _blocksDb[LowestInsertedBodyNumberDbEntryAddress]?.AsRlpValueContext().DecodeLong();
+        LowestInsertedBodyNumber = _blocksDb[LowestInsertedBodyNumberDbEntryAddress]?.AsRlpValueContext().DecodeULong();
 
         byte[] lowestBytes = _defaultReceiptDbColumn.Get(Keccak.Zero);
-        _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
+        _lowestInsertedReceiptBlock = lowestBytes is null ? (ulong?)null : new RlpStream(lowestBytes).DecodeULong();
 
         // When not storing receipt, set the lowest inserted receipt to 0 so that old receipt will finish immediately
         if (!receiptConfig.StoreReceipts)

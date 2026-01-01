@@ -19,7 +19,7 @@ namespace Nethermind.Consensus
             long gasLimit = parentGasLimit;
 
             long? targetGasLimit = _blocksConfig.TargetBlockGasLimit;
-            long newBlockNumber = parentHeader.Number + 1;
+            ulong newBlockNumber = parentHeader.Number + 1;
             IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber, parentHeader.Timestamp); // taking the parent timestamp is a temporary solution
             if (targetGasLimit is not null)
             {

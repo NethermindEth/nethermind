@@ -113,7 +113,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Transaction transaction = txs[receipt.Index];
 
             TransactionForRpcWithProof txWithProof = new();
-            txWithProof.Transaction = TransactionForRpc.FromTransaction(transaction, block.Hash, block.Number, receipt.Index, block.BaseFeePerGas, specProvider.ChainId);
+            txWithProof.Transaction = TransactionForRpc.FromTransaction(transaction, block.Hash, checked((long)block.Number), receipt.Index, block.BaseFeePerGas, specProvider.ChainId);
             txWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), receipt.Index);
             if (includeHeader)
             {

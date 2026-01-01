@@ -85,7 +85,7 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Byzantium_reward_two_uncles()
         {
-            long blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
+            ulong blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
             Block uncle = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).WithTotalDifficulty(1L).WithDifficulty(300).TestObject;
@@ -110,7 +110,7 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Constantinople_reward_two_uncles()
         {
-            long blockNumber = MainnetSpecProvider.ConstantinopleFixBlockNumber;
+            ulong blockNumber = MainnetSpecProvider.ConstantinopleFixBlockNumber;
             Block uncle = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).WithTotalDifficulty(1L).WithDifficulty(300).TestObject;

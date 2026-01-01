@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     public sealed class BlockGasLimitContract : Contract, IBlockGasLimitContract
     {
         private IConstantContract Constant { get; }
-        public long Activation { get; }
+        public ulong Activation { get; }
 
         public BlockGasLimitContract(
             IAbiEncoder abiEncoder,
@@ -29,7 +29,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
             : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
-            Activation = transitionBlock;
+            ArgumentOutOfRangeException.ThrowIfNegative(transitionBlock);
+            Activation = checked((ulong)transitionBlock);
             Constant = GetConstant(readOnlyTxProcessorSource);
         }
 

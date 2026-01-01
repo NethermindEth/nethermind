@@ -42,11 +42,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public Destination[] GetMinGasPrices(BlockHeader parentHeader) =>
             Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetMinGasPrices), Address.SystemUser) { MissingContractResult = MissingPrioritiesResult })
-                .Select(x => Destination.FromAbiTuple(x, parentHeader.Number)).ToArray();
+                .Select(x => Destination.FromAbiTuple(x, checked((long)parentHeader.Number))).ToArray();
 
         public Destination[] GetPriorities(BlockHeader parentHeader) =>
             Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetPriorities), Address.SystemUser) { MissingContractResult = MissingPrioritiesResult })
-                .Select(x => Destination.FromAbiTuple(x, parentHeader.Number)).ToArray();
+                .Select(x => Destination.FromAbiTuple(x, checked((long)parentHeader.Number))).ToArray();
 
         public IEnumerable<Destination> PrioritySet(BlockHeader blockHeader, TxReceipt[] receipts)
         {
@@ -94,7 +94,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 log.Topics[2].Bytes[..4].ToArray(),
                 AbiType.UInt256.DecodeUInt(log.Data, 0, false).Item1,
                 DestinationSource.Contract,
-                blockHeader.Number);
+                checked((long)blockHeader.Number));
 
         public IDataContract<Address> SendersWhitelist { get; }
         public IDataContract<Destination> MinGasPrices { get; }

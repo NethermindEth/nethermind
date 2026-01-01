@@ -169,7 +169,7 @@ namespace Nethermind.Consensus.Processing
             Block? block = data.Block;
             if (block is null) return;
 
-            long blockNumber = data.Block.Number;
+            long blockNumber = checked((long)data.Block.Number);
             double chunkMGas = (_chunkMGas += block.GasUsed / 1_000_000.0);
 
             // We want the rate here
@@ -299,8 +299,8 @@ namespace Nethermind.Consensus.Processing
             NewProcessingStatistics?.Invoke(this, new BlockStatistics()
             {
                 BlockCount = chunkBlocks,
-                BlockFrom = block.Number - chunkBlocks + 1,
-                BlockTo = block.Number,
+                BlockFrom = blockNumber - chunkBlocks + 1,
+                BlockTo = blockNumber,
 
                 ProcessingMs = chunkMs,
                 SlotMs = runMs,
@@ -318,7 +318,7 @@ namespace Nethermind.Consensus.Processing
             {
                 if (chunkBlocks > 1)
                 {
-                    _logger.Info($"Processed    {block.Number - chunkBlocks + 1,10}...{block.Number,9}   | {chunkMs,10:N1} ms  | slot    {runMs,11:N0} ms |{blockGas}");
+                    _logger.Info($"Processed    {blockNumber - chunkBlocks + 1,10}...{blockNumber,9}   | {chunkMs,10:N1} ms  | slot    {runMs,11:N0} ms |{blockGas}");
                 }
                 else
                 {

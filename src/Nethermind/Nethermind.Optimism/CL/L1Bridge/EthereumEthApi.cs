@@ -28,7 +28,7 @@ public class EthereumEthApi(string l1EthApiEndpoint, IJsonSerializer jsonSeriali
 
     public Task<L1Block?> GetBlockByNumber(ulong blockNumber, bool fullTxs)
     {
-        return _ethRpcClient.Post<L1Block?>("eth_getBlockByNumber", new BlockParameter((long)blockNumber), fullTxs);
+        return _ethRpcClient.Post<L1Block?>("eth_getBlockByNumber", new BlockParameter(blockNumber), fullTxs);
     }
 
     public Task<L1Block?> GetHead(bool fullTxs)

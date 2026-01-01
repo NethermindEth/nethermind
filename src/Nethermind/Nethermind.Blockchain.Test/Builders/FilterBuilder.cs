@@ -40,7 +40,9 @@ namespace Nethermind.Blockchain.Test.Builders
             return this;
         }
 
-        public FilterBuilder FromBlock(long number)
+        public FilterBuilder FromBlock(long number) => FromBlock(checked((ulong)number));
+
+        public FilterBuilder FromBlock(ulong number)
         {
             _fromBlock = new BlockParameter(number);
             return this;
@@ -81,7 +83,9 @@ namespace Nethermind.Blockchain.Test.Builders
             return this;
         }
 
-        public FilterBuilder ToBlock(long number)
+        public FilterBuilder ToBlock(long number) => ToBlock(checked((ulong)number));
+
+        public FilterBuilder ToBlock(ulong number)
         {
             _toBlock = new BlockParameter(number);
 

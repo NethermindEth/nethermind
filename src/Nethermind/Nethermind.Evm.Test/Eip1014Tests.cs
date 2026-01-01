@@ -17,7 +17,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1014Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
         private void AssertEip1014(Address address, byte[] code)
         {

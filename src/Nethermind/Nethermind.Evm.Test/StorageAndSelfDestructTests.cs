@@ -19,7 +19,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class StorageAndSelfDestructTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.MuirGlacierBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.MuirGlacierBlockNumber;
 
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 

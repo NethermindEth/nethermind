@@ -44,7 +44,7 @@ namespace Nethermind.Core
         ///     EIP-658
         /// </summary>
         public byte StatusCode { get; set; }
-        public long BlockNumber { get; set; }
+        public ulong BlockNumber { get; set; }
         public Hash256? BlockHash { get; set; }
         public Hash256? TxHash { get; set; }
         public int Index { get; set; }
@@ -87,7 +87,7 @@ namespace Nethermind.Core
         ///     EIP-658
         /// </summary>
         public byte StatusCode { get; set; }
-        public long BlockNumber { get; set; }
+        public ulong BlockNumber { get; set; }
         public Hash256StructRef BlockHash;
         public Hash256StructRef TxHash;
         public int Index { get; set; }

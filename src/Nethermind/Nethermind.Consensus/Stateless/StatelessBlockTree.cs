@@ -23,25 +23,25 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     private readonly Dictionary<Hash256AsKey, BlockHeader> _hashToHeader =
         headers.ToDictionary(header => (Hash256AsKey)(header.Hash ?? throw new ArgumentNullException(nameof(header.Hash))), header => header);
 
-    private readonly Dictionary<long, BlockHeader> _numberToHeader =
+    private readonly Dictionary<ulong, BlockHeader> _numberToHeader =
         headers.ToDictionary(header => header.Number, header => header);
 
-    public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
+    public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
         throw new NotSupportedException();
 
-    public Block? FindBlock(long blockNumber, BlockTreeLookupOptions options) =>
+    public Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options) =>
         throw new NotSupportedException();
 
-    public bool HasBlock(long blockNumber, Hash256 blockHash) =>
+    public bool HasBlock(ulong blockNumber, Hash256 blockHash) =>
         throw new NotSupportedException();
 
-    public BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
+    public BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
          => _hashToHeader.GetValueOrDefault(blockHash);
 
-    public BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options)
+    public BlockHeader? FindHeader(ulong blockNumber, BlockTreeLookupOptions options)
         => _numberToHeader.GetValueOrDefault(blockNumber);
 
-    public Hash256? FindBlockHash(long blockNumber)
+    public Hash256? FindBlockHash(ulong blockNumber)
         => _numberToHeader.GetValueOrDefault(blockNumber)?.Hash;
 
     public bool IsMainChain(BlockHeader blockHeader)
@@ -53,7 +53,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public BlockHeader FindBestSuggestedHeader()
         => throw new NotSupportedException();
 
-    public long GetLowestBlock()
+    public ulong GetLowestBlock()
         => throw new NotSupportedException();
 
     public Hash256 HeadHash => throw new NotSupportedException();
@@ -63,7 +63,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public Hash256? SafeHash => throw new NotSupportedException();
     public Block? Head => throw new NotSupportedException();
 
-    public long? BestPersistedState
+    public ulong? BestPersistedState
     {
         get => throw new NotSupportedException();
         set => throw new NotSupportedException();
@@ -88,8 +88,8 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
         set => throw new NotSupportedException();
     }
 
-    public long BestKnownNumber => throw new NotSupportedException();
-    public long BestKnownBeaconNumber => throw new NotSupportedException();
+    public ulong BestKnownNumber => throw new NotSupportedException();
+    public ulong BestKnownBeaconNumber => throw new NotSupportedException();
 
     public AddBlockResult Insert(BlockHeader header,
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None)
@@ -116,13 +116,13 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public AddBlockResult SuggestHeader(BlockHeader header)
         => throw new NotSupportedException();
 
-    public bool IsKnownBlock(long number, Hash256 blockHash)
+    public bool IsKnownBlock(ulong number, Hash256 blockHash)
         => throw new NotSupportedException();
 
-    public bool IsKnownBeaconBlock(long number, Hash256 blockHash)
+    public bool IsKnownBeaconBlock(ulong number, Hash256 blockHash)
         => throw new NotSupportedException();
 
-    public bool WasProcessed(long number, Hash256 blockHash)
+    public bool WasProcessed(ulong number, Hash256 blockHash)
         => throw new NotSupportedException();
 
     public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false)
@@ -134,16 +134,16 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public bool CanAcceptNewBlocks => throw new NotSupportedException();
     public Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
         => throw new NotSupportedException();
-    public (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Hash256 blockHash)
+    public (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(ulong number, Hash256 blockHash)
         => throw new NotSupportedException();
 
-    public ChainLevelInfo? FindLevel(long number)
+    public ChainLevelInfo? FindLevel(ulong number)
         => throw new NotSupportedException();
 
-    public BlockInfo FindCanonicalBlockInfo(long blockNumber)
+    public BlockInfo? FindCanonicalBlockInfo(ulong blockNumber)
         => throw new NotSupportedException();
 
-    public Hash256 FindHash(long blockNumber)
+    public Hash256? FindHash(ulong blockNumber)
         => throw new NotSupportedException();
 
     public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
@@ -180,19 +180,19 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
         add => throw new NotSupportedException();
         remove => throw new NotSupportedException();
     }
-    public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
+    public int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false)
         => throw new NotSupportedException();
 
     public bool IsBetterThanHead(BlockHeader? header)
         => throw new NotSupportedException();
 
-    public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint)
+    public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, ulong clearBeaconMainChainStartPoint)
         => throw new NotSupportedException();
 
     public void RecalculateTreeLevels()
         => throw new NotSupportedException();
 
-    public (long BlockNumber, Hash256 BlockHash) SyncPivot
+    public (ulong BlockNumber, Hash256 BlockHash) SyncPivot
     {
         get => throw new NotSupportedException();
         set => throw new NotSupportedException();
@@ -204,9 +204,9 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
         set => throw new NotSupportedException();
     }
 
-    public void NewOldestBlock(long oldestBlock) => throw new NotImplementedException();
+    public void NewOldestBlock(ulong oldestBlock) => throw new NotImplementedException();
 
-    public void DeleteOldBlock(long blockNumber, Hash256 blockHash) => throw new NotImplementedException();
+    public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) => throw new NotImplementedException();
 
     public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs>? OnForkChoiceUpdated
     {
@@ -217,7 +217,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public Hash256? GetHash(BlockHeader headBlock, int depth) =>
         depth == 0
             ? headBlock.Hash
-            : _numberToHeader.TryGetValue(headBlock.Number - depth, out BlockHeader? header)
+            : _numberToHeader.TryGetValue(headBlock.Number - (ulong)depth, out BlockHeader? header)
                 ? header?.Hash
                 : null;
 
@@ -228,7 +228,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
         result[0] = blockHeader.Hash;
         for (int i = 1; i < length; i++)
         {
-            if (_numberToHeader.TryGetValue(blockHeader.Number - i, out BlockHeader header))
+            if (_numberToHeader.TryGetValue(blockHeader.Number - (ulong)i, out BlockHeader header))
             {
                 result[i] = header.Hash;
             }

@@ -62,7 +62,7 @@ public class EraWriter : IDisposable
 
         if (_firstBlock)
         {
-            _startNumber = block.Number;
+            _startNumber = checked((long)block.Number);
             _totalWritten += await WriteVersion();
             _firstBlock = false;
         }

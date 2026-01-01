@@ -39,30 +39,30 @@ public class HoodiSpecProvider : ISpecProvider
         };
     }
 
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+    public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
         if (blockNumber is not null)
-            MergeBlockNumber = (ForkActivation)blockNumber;
+            MergeBlockNumber = (ForkActivation)blockNumber.Value;
         if (terminalTotalDifficulty is not null)
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
 
     public ulong NetworkId => BlockchainIds.Hoodi;
     public ulong ChainId => NetworkId;
-    public long? DaoBlockNumber => null;
+    public ulong? DaoBlockNumber => null;
     public ulong? BeaconChainGenesisTimestamp => GenesisTimestamp;
-    public ForkActivation? MergeBlockNumber { get; private set; } = (0, GenesisTimestamp);
+    public ForkActivation? MergeBlockNumber { get; private set; } = (0UL, GenesisTimestamp);
     public ulong TimestampFork => ShanghaiTimestamp;
     public UInt256? TerminalTotalDifficulty { get; private set; } = 0;
     public IReleaseSpec GenesisSpec { get; } = London.Instance;
     public ForkActivation[] TransitionActivations { get; } =
     [
-        (1, ShanghaiTimestamp),
-        (2, CancunTimestamp),
-        (3, PragueTimestamp),
-        (4, OsakaTimestamp),
-        (5, BPO1Timestamp),
-        (6, BPO2Timestamp),
+        (1UL, ShanghaiTimestamp),
+        (2UL, CancunTimestamp),
+        (3UL, PragueTimestamp),
+        (4UL, OsakaTimestamp),
+        (5UL, BPO1Timestamp),
+        (6UL, BPO2Timestamp),
     ];
 
     public static readonly HoodiSpecProvider Instance = new();

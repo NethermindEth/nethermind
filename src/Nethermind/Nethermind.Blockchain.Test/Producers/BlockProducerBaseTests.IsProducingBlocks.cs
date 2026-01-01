@@ -162,7 +162,7 @@ public partial class BlockProducerBaseTests
 
         BuildBlocksWhenRequested trigger = new();
         StandardBlockProducerRunner runner = new(trigger, testRpc.BlockTree, blockProducer);
-        long currentHead = testRpc.BlockTree.Head?.Number ?? 0;
+        ulong currentHead = testRpc.BlockTree.Head?.Number ?? 0;
 
         _ = new NonProcessingProducedBlockSuggester(testRpc.BlockTree, runner);
 

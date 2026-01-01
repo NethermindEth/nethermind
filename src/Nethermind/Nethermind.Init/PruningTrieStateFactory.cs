@@ -293,7 +293,7 @@ public class MainPruningTrieStoreFactory
                 long baseFinalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
 
                 // Need to limit by head, otherwise it does not work for forward sync.
-                long headNumber = blockTree.Head?.Number ?? 0;
+                long headNumber = checked((long)(blockTree.Head?.Number ?? 0));
                 baseFinalizedBlockNumber = Math.Min(baseFinalizedBlockNumber, headNumber + pruningConfigSimulateLongFinalizationDepth / 2);
 
                 if (_lastFinalizedBlockNumber is null || baseFinalizedBlockNumber - _lastFinalizedBlockNumber > pruningConfigSimulateLongFinalizationDepth)

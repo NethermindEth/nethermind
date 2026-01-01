@@ -50,8 +50,8 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             fakePeer.GetHeadBlockHeader(default, default).ReturnsForAnyArgs(x => _externalPeerBlockTree!.Head!.Header);
 
             // for unsafe pivot updater
-            Hash256 pivotHash = _externalPeerBlockTree!.FindLevel(35)!.BlockInfos[0].BlockHash;
-            fakePeer.GetBlockHeaders(35, 1, 0, default).ReturnsForAnyArgs(x => _externalPeerBlockTree!.FindHeaders(pivotHash, 1, 0, default));
+            Hash256 pivotHash = _externalPeerBlockTree!.FindLevel(35ul)!.BlockInfos[0].BlockHash;
+            fakePeer.GetBlockHeaders(35ul, 1, 0, default).ReturnsForAnyArgs(x => _externalPeerBlockTree!.FindHeaders(pivotHash, 1, 0, default));
 
             NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, 100L);
             fakePeer.Node.Returns(new Node(node));
@@ -87,14 +87,14 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
             Hash256 expectedFinalizedHash = _externalPeerBlockTree!.HeadHash;
-            long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
+            ulong expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
             _beaconSyncStrategy!.GetFinalizedHash().Returns(expectedFinalizedHash);
 
             _syncModeSelector!.Changed += Raise.EventWith(args);
 
             byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
             RlpStream pivotStream = new(storedData!);
-            long storedPivotBlockNumber = pivotStream.DecodeLong();
+            ulong storedPivotBlockNumber = pivotStream.DecodeULong();
             Hash256 storedFinalizedHash = pivotStream.DecodeKeccak()!;
 
             storedFinalizedHash.Should().Be(expectedFinalizedHash);
@@ -116,7 +116,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
             Hash256 expectedHeadBlockHash = _externalPeerBlockTree!.HeadHash;
-            long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number - 64;
+            ulong expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number - 64ul;
             Hash256 expectedPivotBlockHash = _externalPeerBlockTree!.FindLevel(expectedPivotBlockNumber)!.BlockInfos[0].BlockHash;
             _beaconSyncStrategy!.GetHeadBlockHash().Returns(expectedHeadBlockHash);
 
@@ -124,7 +124,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
             RlpStream pivotStream = new(storedData!);
-            long storedPivotBlockNumber = pivotStream.DecodeLong();
+            ulong storedPivotBlockNumber = pivotStream.DecodeULong();
             Hash256 storedPivotBlockHash = pivotStream.DecodeKeccak()!;
 
             storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);

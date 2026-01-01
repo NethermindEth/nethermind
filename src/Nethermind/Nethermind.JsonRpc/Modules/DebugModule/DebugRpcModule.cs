@@ -141,13 +141,13 @@ public class DebugRpcModule(
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
-        long? blockNo = blockParameter.BlockNumber;
+        ulong? blockNo = blockParameter.BlockNumber;
         if (!blockNo.HasValue)
         {
             throw new InvalidDataException("Block number value incorrect");
         }
 
-        var transactionTrace = debugBridge.GetTransactionTrace(blockNo.Value, index, cancellationToken, options);
+        var transactionTrace = debugBridge.GetTransactionTrace(checked((long)blockNo.Value), index, cancellationToken, options);
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockNo}", ErrorCodes.ResourceNotFound);
@@ -308,7 +308,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<byte[]> debug_getBlockRlp(long blockNumber)
     {
-        byte[] rlp = debugBridge.GetBlockRlp(new BlockParameter(blockNumber));
+        byte[] rlp = debugBridge.GetBlockRlp(new BlockParameter(checked((ulong)blockNumber)));
         if (rlp is null)
         {
             return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);

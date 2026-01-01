@@ -15,7 +15,7 @@ namespace Nethermind.Core.Extensions
         /// <param name="specProvider"></param>
         /// <param name="blockNumber"></param>
         /// <returns>IReceiptSpec</returns>
-        public static IReceiptSpec GetReceiptSpec(this ISpecProvider specProvider, long blockNumber)
+        public static IReceiptSpec GetReceiptSpec(this ISpecProvider specProvider, ulong blockNumber)
         {
             return specProvider.GetSpec(blockNumber, null);
         }
@@ -27,7 +27,7 @@ namespace Nethermind.Core.Extensions
         /// <param name="specProvider"></param>
         /// <param name="blockNumber"></param>
         /// <returns>IEip1559Spec</returns>
-        public static IEip1559Spec GetSpecFor1559(this ISpecProvider specProvider, long blockNumber)
+        public static IEip1559Spec GetSpecFor1559(this ISpecProvider specProvider, ulong blockNumber)
         {
             return specProvider.GetSpec(blockNumber, null);
         }

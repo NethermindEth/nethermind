@@ -127,7 +127,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
-                MergeBlockNumber = (ForkActivation)(_chainSpec.Parameters.TerminalPoWBlockNumber + 1);
+                MergeBlockNumber = (ForkActivation)((ulong)_chainSpec.Parameters.TerminalPoWBlockNumber.Value + 1);
             }
 
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
@@ -145,13 +145,13 @@ namespace Nethermind.Specs.ChainSpecStyle
             foreach (long releaseStartBlock in transitionBlockNumbers)
             {
                 IReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, releaseStartBlock, chainSpec.Genesis?.Timestamp ?? 0);
-                transitions[index++] = ((ForkActivation)releaseStartBlock, releaseSpec);
+                transitions[index++] = ((ForkActivation)(ulong)releaseStartBlock, releaseSpec);
             }
 
             foreach (ulong releaseStartTimestamp in transitionTimestamps)
             {
                 long activationBlockNumber = biggestBlockTransition;
-                ForkActivation forkActivation = (activationBlockNumber, releaseStartTimestamp);
+                ForkActivation forkActivation = ((ulong)activationBlockNumber, releaseStartTimestamp);
                 IReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, activationBlockNumber, releaseStartTimestamp);
                 transitions[index++] = (forkActivation, releaseSpec);
             }
@@ -168,12 +168,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             int index = 0;
             foreach (long blockNumber in transitionBlockNumbers.Skip(1))
             {
-                transitionActivations[index++] = new ForkActivation(blockNumber);
+                transitionActivations[index++] = new ForkActivation((ulong)blockNumber);
             }
 
             foreach (ulong timestamp in transitionTimestamps)
             {
-                transitionActivations[index++] = new ForkActivation(biggestBlockTransition, timestamp);
+                transitionActivations[index++] = new ForkActivation((ulong)biggestBlockTransition, timestamp);
             }
 
             return transitionActivations;
@@ -219,7 +219,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip2028Enabled = (chainSpec.Parameters.Eip2028Transition ?? long.MaxValue) <= releaseStartBlock;
             releaseSpec.IsEip2200Enabled = (chainSpec.Parameters.Eip2200Transition ?? long.MaxValue) <= releaseStartBlock || (chainSpec.Parameters.Eip1706Transition ?? long.MaxValue) <= releaseStartBlock && releaseSpec.IsEip1283Enabled;
             releaseSpec.IsEip1559Enabled = (chainSpec.Parameters.Eip1559Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.Eip1559TransitionBlock = chainSpec.Parameters.Eip1559Transition ?? long.MaxValue;
+            releaseSpec.Eip1559TransitionBlock = chainSpec.Parameters.Eip1559Transition is null ? ulong.MaxValue : (ulong)chainSpec.Parameters.Eip1559Transition.Value;
             releaseSpec.IsEip2537Enabled = (chainSpec.Parameters.Eip2537Transition ?? long.MaxValue) <= releaseStartBlock ||
                                            (chainSpec.Parameters.Eip2537TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip2565Enabled = (chainSpec.Parameters.Eip2565Transition ?? long.MaxValue) <= releaseStartBlock;
@@ -328,11 +328,11 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
         }
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
             {
-                MergeBlockNumber = (ForkActivation)blockNumber;
+                MergeBlockNumber = (ForkActivation)blockNumber.Value;
             }
 
             if (terminalTotalDifficulty is not null)
@@ -346,7 +346,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public UInt256? TerminalTotalDifficulty { get; private set; }
 
-        public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
+        public ulong? DaoBlockNumber => _chainSpec.DaoForkBlockNumber is null ? null : (ulong)_chainSpec.DaoForkBlockNumber.Value;
         public ulong? BeaconChainGenesisTimestamp => _chainSpec.Parameters.BeaconChainGenesisTimestamp;
 
         public ulong NetworkId => _chainSpec.NetworkId;

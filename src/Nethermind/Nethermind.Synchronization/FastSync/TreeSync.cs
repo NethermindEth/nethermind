@@ -423,7 +423,7 @@ namespace Nethermind.Synchronization.FastSync
             }
             if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {headerForState.ToString(BlockHeader.Format.Short)} {headerForState.StateRoot} root");
 
-            ResetStateRoot(headerForState.Number, headerForState.StateRoot!, currentState);
+            ResetStateRoot(checked((long)headerForState.Number), headerForState.StateRoot!, currentState);
         }
 
         private void ResetStateRoot(long blockNumber, Hash256 stateRoot, SyncFeedState currentState)

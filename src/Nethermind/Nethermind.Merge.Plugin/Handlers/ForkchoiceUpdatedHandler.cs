@@ -155,7 +155,10 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         BlockHeader? safeBlockHeader = ValidateBlockHash(ref safeBlockHash, out string? safeBlockErrorMsg);
         BlockHeader? finalizedHeader = ValidateBlockHash(ref finalizedBlockHash, out string? finalizationErrorMsg);
 
-        string requestStr = forkchoiceState.ToString(newHeadBlock.Number, safeBlockHeader?.Number, finalizedHeader?.Number);
+        long headNumber = checked((long)newHeadBlock.Number);
+        long? safeNumber = safeBlockHeader is null ? null : checked((long)safeBlockHeader.Number);
+        long? finalizedNumber = finalizedHeader is null ? null : checked((long)finalizedHeader.Number);
+        string requestStr = forkchoiceState.ToString(headNumber, safeNumber, finalizedNumber);
 
         if (_logger.IsInfo) _logger.Info($"Received {requestStr}");
 

@@ -28,12 +28,12 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
         _logger = logManager.GetClassLogger();
     }
 
-    public int Compare(in (UInt256? TotalDifficulty, long Number) valueX, in (UInt256? TotalDifficulty, long Number) valueY) =>
+    public int Compare(in (UInt256? TotalDifficulty, ulong Number) valueX, in (UInt256? TotalDifficulty, ulong Number) valueY) =>
         ShouldApplyPreMergeLogic(valueX.TotalDifficulty, valueY.TotalDifficulty)
             ? _preMergeBetterPeerStrategy.Compare(valueX, valueY)
             : valueX.Number.CompareTo(valueY.Number);
 
-    public bool IsBetterThanLocalChain(in (UInt256? TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestBlock)
+    public bool IsBetterThanLocalChain(in (UInt256? TotalDifficulty, ulong Number) bestPeerInfo, in (UInt256 TotalDifficulty, ulong Number) bestBlock)
     {
         if (_logger.IsTrace) _logger.Trace($"IsBetterThanLocalChain BestPeerInfo.TD: {bestPeerInfo.TotalDifficulty}, BestPeerInfo.Number: {bestPeerInfo.Number}, LocalChainDifficulty {bestBlock.TotalDifficulty} LocalChainBestFullBlock: {bestBlock.Number} TerminalTotalDifficulty {_poSSwitcher.TerminalTotalDifficulty}");
         return ShouldApplyPreMergeLogic(bestPeerInfo.TotalDifficulty, bestBlock.TotalDifficulty)
@@ -41,7 +41,7 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
             : bestPeerInfo.Number > bestBlock.Number;
     }
 
-    public bool IsDesiredPeer(in (UInt256? TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestHeader)
+    public bool IsDesiredPeer(in (UInt256? TotalDifficulty, ulong Number) bestPeerInfo, in (UInt256 TotalDifficulty, ulong Number) bestHeader)
     {
         if (_logger.IsTrace) _logger.Trace(
             $"IsDesiredPeer: " +
@@ -56,7 +56,8 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
         // the pivot's parent. So we need to allow peer with the parent of the beacon pivot.
         if (_beaconPivot.BeaconPivotExists())
         {
-            return bestPeerInfo.Number >= _beaconPivot.PivotNumber - 1;
+            ulong desiredMin = _beaconPivot.PivotNumber > 0 ? _beaconPivot.PivotNumber - 1 : 0;
+            return bestPeerInfo.Number >= desiredMin;
         }
 
         if (ShouldApplyPreMergeLogic(bestPeerInfo.TotalDifficulty, bestHeader.TotalDifficulty))

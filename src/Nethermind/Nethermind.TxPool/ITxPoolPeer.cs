@@ -11,7 +11,7 @@ namespace Nethermind.TxPool
     {
         public PublicKey Id { get; }
         public string Enode => string.Empty;
-        long HeadNumber { get; set; }
+        ulong HeadNumber { get; set; }
         void SendNewTransaction(Transaction tx) => SendNewTransactions(new[] { tx }, true);
         void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx);
     }

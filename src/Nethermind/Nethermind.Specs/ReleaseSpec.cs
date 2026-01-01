@@ -72,7 +72,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip3541Enabled { get; set; }
     public bool ValidateChainId { get; set; }
     public bool ValidateReceipts { get; set; }
-    public long Eip1559TransitionBlock { get; set; }
+    public ulong Eip1559TransitionBlock { get; set; }
     public ulong WithdrawalTimestamp { get; set; }
     public ulong Eip4844TransitionTimestamp { get; set; }
     public Address FeeCollector { get; set; }

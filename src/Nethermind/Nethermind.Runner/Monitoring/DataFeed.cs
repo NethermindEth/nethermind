@@ -259,7 +259,7 @@ public class DataFeed
                 Contexts = peer.AllocatedContexts,
                 ClientType = peer.PeerClientType,
                 Version = peer.SyncPeer.ProtocolVersion,
-                Head = peer.HeadNumber
+                Head = checked((long)peer.HeadNumber)
             })];
 
         return JsonSerializer.SerializeToUtf8Bytes(peers, JsonSerializerOptions.Web);
@@ -350,7 +350,7 @@ public class DataFeed
                         GasUsed = head.GasUsed,
                         Hash = head.Hash ?? Hash256.Zero,
                         Beneficiary = head.Beneficiary ?? Address.Zero,
-                        Number = head.Number,
+                        Number = checked((long)head.Number),
                         Size = _blockDecoder.GetLength(head, RlpBehaviors.None),
                         Timestamp = head.Timestamp,
                         BaseFeePerGas = head.BaseFeePerGas,
@@ -388,8 +388,8 @@ public class DataFeed
                             BlobGasUsed = r.BlobGasUsed ?? 0,
                         }).ToArray()
                     },
-                    Safe = choice.Safe,
-                    Finalized = choice.Finalized
+                    Safe = checked((long)choice.Safe),
+                    Finalized = checked((long)choice.Finalized)
                 },
                 EthereumJsonSerializer.JsonOptions
              )

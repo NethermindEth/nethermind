@@ -15,14 +15,14 @@ namespace Nethermind.Core.Test.Builders
         public static void AddBranch(this IBlockTree blockTree, int branchLength, int splitBlockNumber)
         {
             int splitVariant = 0;
-            BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)!).OfChainLength(branchLength, splitVariant).TestObject;
+            BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0UL, BlockTreeLookupOptions.RequireCanonical)!).OfChainLength(branchLength, splitVariant).TestObject;
             Block? parent = null;
             for (int i = splitBlockNumber + 1; i < branchLength; i++)
             {
-                Block block = alternative.FindBlock(i, BlockTreeLookupOptions.RequireCanonical)!;
+                Block block = alternative.FindBlock((ulong)i, BlockTreeLookupOptions.RequireCanonical)!;
                 if (i == splitBlockNumber + 1)
                 {
-                    Block? mainBlock = blockTree.FindBlock(i - 1, BlockTreeLookupOptions.RequireCanonical);
+                    Block? mainBlock = blockTree.FindBlock((ulong)(i - 1), BlockTreeLookupOptions.RequireCanonical);
                     if (mainBlock is not null)
                         parent = mainBlock;
                 }
@@ -40,16 +40,16 @@ namespace Nethermind.Core.Test.Builders
 
         public static void AddBranch(this IBlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
         {
-            BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)!).OfChainLength(branchLength, splitVariant).TestObject;
+            BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0UL, BlockTreeLookupOptions.RequireCanonical)!).OfChainLength(branchLength, splitVariant).TestObject;
             List<Block> blocks = new();
             for (int i = splitBlockNumber + 1; i < branchLength; i++)
             {
-                Block block = alternative.FindBlock(i, BlockTreeLookupOptions.RequireCanonical)!;
+                Block block = alternative.FindBlock((ulong)i, BlockTreeLookupOptions.RequireCanonical)!;
                 blockTree.SuggestBlock(block);
                 blocks.Add(block);
             }
 
-            if (branchLength > blockTree.Head!.Number)
+            if ((ulong)branchLength > blockTree.Head!.Number)
             {
                 blockTree.UpdateMainChain(blocks, true);
             }

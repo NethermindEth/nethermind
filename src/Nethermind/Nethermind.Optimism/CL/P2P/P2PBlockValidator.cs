@@ -18,7 +18,7 @@ public class P2PBlockValidator : IP2PBlockValidator
     private readonly Address _sequencerP2PAddress;
     private readonly ITimestamper _timestamper;
     private readonly ILogger _logger;
-    private readonly Dictionary<long, long> _numberOfBlocksSeen = [];
+    private readonly Dictionary<ulong, long> _numberOfBlocksSeen = [];
 
     public P2PBlockValidator(
         UInt256 chainId,

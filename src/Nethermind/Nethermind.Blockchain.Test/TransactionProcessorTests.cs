@@ -97,9 +97,9 @@ public class TransactionProcessorTests
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
 
-        long blockNumber = _isEip155Enabled
+        ulong blockNumber = _isEip155Enabled
             ? MainnetSpecProvider.ByzantiumBlockNumber
-            : MainnetSpecProvider.ByzantiumBlockNumber - 1;
+            : MainnetSpecProvider.ByzantiumBlockNumber - 1ul;
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
 
         BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
@@ -366,7 +366,7 @@ public class TransactionProcessorTests
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
             .TestObject;
 
-        long blockNumber = MainnetSpecProvider.LondonBlockNumber;
+        ulong blockNumber = MainnetSpecProvider.LondonBlockNumber;
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
         Assert.That(result.TransactionExecuted, Is.False);
@@ -421,8 +421,8 @@ public class TransactionProcessorTests
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
-        long actualIntrinsic = checked((long)tx.GasLimit) - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsicGas.Standard);
+        ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
+        actualIntrinsic.Should().Be((ulong)intrinsicGas.Standard);
         IReleaseSpec releaseSpec = Berlin.Instance;
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1);
         tracer.GasSpent.Should().Be(54764L);
@@ -464,8 +464,8 @@ public class TransactionProcessorTests
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
-        long actualIntrinsic = checked((long)tx.GasLimit) - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsicGas.Standard);
+        ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
+        actualIntrinsic.Should().Be((ulong)intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(24080);
         tracer.GasSpent.Should().Be(35228L);
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
@@ -478,7 +478,12 @@ public class TransactionProcessorTests
     private void ConfirmEnoughEstimate(Transaction tx, Block block, long estimate)
     {
         CallOutputTracer outputTracer = new();
-        tx.GasLimit = checked((ulong)estimate);
+        Assert.That(estimate, Is.GreaterThan(0), "Gas estimate must be positive to be used as a gas limit.");
+
+        // Gas estimator reports in signed space; transaction gas limit is unsigned.
+        // We only care about the positive case in this test.
+        ulong estimateGasLimit = (ulong)estimate;
+        tx.GasLimit = estimateGasLimit;
         TestContext.Out.WriteLine(tx.GasLimit);
 
         GethLikeTxMemoryTracer gethTracer = new(tx, GethTraceOptions.Default);
@@ -490,8 +495,9 @@ public class TransactionProcessorTests
         traceEnoughGas.Should().NotContain("OutOfGas");
 
         outputTracer = new CallOutputTracer();
-        long belowEstimate = Math.Min(estimate - 1, estimate * 63 / 64);
-        tx.GasLimit = checked((ulong)belowEstimate);
+        static ulong Min(ulong a, ulong b) => a < b ? a : b;
+        ulong belowEstimate = Min(estimateGasLimit - 1, estimateGasLimit * 63 / 64);
+        tx.GasLimit = belowEstimate;
         TestContext.Out.WriteLine(tx.GasLimit);
 
         gethTracer = new GethLikeTxMemoryTracer(tx, GethTraceOptions.Default);
@@ -533,8 +539,8 @@ public class TransactionProcessorTests
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
-        long actualIntrinsic = checked((long)tx.GasLimit) - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsicGas.Standard);
+        ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
+        actualIntrinsic.Should().Be((ulong)intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(2300);
         tracer.GasSpent.Should().Be(85669L);
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
@@ -577,8 +583,8 @@ public class TransactionProcessorTests
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
-        long actualIntrinsic = checked((long)tx.GasLimit) - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsicGas.Standard);
+        ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
+        actualIntrinsic.Should().Be((ulong)intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend);
         tracer.GasSpent.Should().Be(87429L);
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
@@ -617,8 +623,8 @@ public class TransactionProcessorTests
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
-        long actualIntrinsic = checked((long)tx.GasLimit) - tracer.IntrinsicGasAt;
-        actualIntrinsic.Should().Be(intrinsicGas.Standard);
+        ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
+        actualIntrinsic.Should().Be((ulong)intrinsicGas.Standard);
         tracer.CalculateAdditionalGasRequired(tx, releaseSpec).Should().Be(1);
         tracer.GasSpent.Should().Be(54224L);
         long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
@@ -631,7 +637,7 @@ public class TransactionProcessorTests
     [TestCase]
     public void Disables_Eip158_for_system_transactions()
     {
-        long blockNumber = MainnetSpecProvider.SpuriousDragonBlockNumber + 1;
+        ulong blockNumber = MainnetSpecProvider.SpuriousDragonBlockNumber + 1ul;
 
         _stateProvider.CreateAccount(TestItem.PrivateKeyA.Address, 0.Ether());
         IReleaseSpec spec = _specProvider.GetSpec((ForkActivation)blockNumber);

@@ -78,7 +78,7 @@ public class ReceiptsSyncFeedTests
     private IDb _metadataDb;
     private IHistoryPruner _historyPruner;
 
-    private static long _pivotNumber = 1024;
+    private static int _pivotNumber = 1024;
 
     private static readonly Scenario _1024BodiesWithOneTxEach;
     private static readonly Scenario _256BodiesWithOneTxEach;
@@ -111,7 +111,7 @@ public class ReceiptsSyncFeedTests
             PivotNumber = _pivotNumber,
             PivotHash = Keccak.Zero.ToString()
         };
-        _blockTree.SyncPivot.Returns((_pivotNumber, Keccak.Zero));
+        _blockTree.SyncPivot.Returns(_ => (checked((ulong)_pivotNumber), Keccak.Zero));
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _syncReport = Substitute.For<ISyncReport>();
@@ -167,7 +167,7 @@ public class ReceiptsSyncFeedTests
     [Test]
     public async Task Should_finish_on_start_when_receipts_not_stored()
     {
-        _syncPointers.LowestInsertedReceiptBlockNumber = 0;
+        _syncPointers.LowestInsertedReceiptBlockNumber = 0ul;
         _feed = new ReceiptsSyncFeed(
             _specProvider,
             _blockTree,
@@ -252,12 +252,12 @@ public class ReceiptsSyncFeedTests
         _progressLogger.HasEnded.Should().BeTrue();
     }
 
-    [TestCase(1, 1024, false, null, false)]
-    [TestCase(1, 1024, true, null, false)]
-    [TestCase(1, 1024, false, 0, false)]
+    [TestCase(1, 1024ul, false, null, false)]
+    [TestCase(1, 1024ul, true, null, false)]
+    [TestCase(1, 1024ul, false, 0L, false)]
     public void When_finished_sync_with_old_default_barrier_then_finishes_immediately(
         long AncientBarrierInConfig,
-        long? lowestInsertedReceiptBlockNumber,
+        ulong? lowestInsertedReceiptBlockNumber,
         bool JustStarted,
         long? previousBarrierInDb,
         bool shouldFinish)
@@ -265,8 +265,8 @@ public class ReceiptsSyncFeedTests
         _syncPointers = Substitute.For<ISyncPointers>();
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
-        _pivotNumber = AncientBarrierInConfig + 1_000_000;
-        _receiptStorage.HasBlock(Arg.Is(_pivotNumber), Arg.Any<Hash256>()).Returns(!JustStarted);
+        _pivotNumber = checked((int)(AncientBarrierInConfig + 1_000_000));
+        _receiptStorage.HasBlock(checked((ulong)_pivotNumber), Arg.Any<Hash256>()).Returns(!JustStarted);
         if (previousBarrierInDb is not null)
             _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         LoadScenario(_256BodiesWithOneTxEach);
@@ -284,7 +284,7 @@ public class ReceiptsSyncFeedTests
         _syncConfig = syncConfig;
         _syncConfig.PivotNumber = _pivotNumber;
         _syncConfig.PivotHash = scenario.Blocks.Last()?.Hash?.ToString();
-        _blockTree.SyncPivot.Returns((_pivotNumber, scenario.Blocks.Last()?.Hash!));
+        _blockTree.SyncPivot.Returns((checked((ulong)_pivotNumber), scenario.Blocks.Last()?.Hash!));
         _syncPointers = Substitute.For<ISyncPointers>();
 
         _feed = new ReceiptsSyncFeed(
@@ -301,16 +301,17 @@ public class ReceiptsSyncFeedTests
         _feed.InitializeFeed();
 
         _blockTree.Genesis.Returns(scenario.Blocks[0]!.Header);
-        _blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(
+        _blockTree.FindCanonicalBlockInfo(Arg.Any<ulong>()).Returns(
             ci =>
             {
-                Block? block = scenario.Blocks[ci.Arg<long>()];
+                ulong blockNumber = ci.Arg<ulong>();
+                Block? block = scenario.Blocks[checked((int)blockNumber)];
                 if (block is null)
                     return null;
 
                 BlockInfo blockInfo = new(block.Hash!, block.TotalDifficulty ?? 0)
                 {
-                    BlockNumber = ci.Arg<long>(),
+                    BlockNumber = blockNumber,
                 };
                 return blockInfo;
             });
@@ -324,7 +325,7 @@ public class ReceiptsSyncFeedTests
                 scenario.BlocksByHash.TryGetValue(ci.Arg<Hash256>(), out Block? value) ? value.Header
                     : null);
 
-        _syncPointers.LowestInsertedReceiptBlockNumber.Returns((long?)null);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns((ulong?)null);
     }
 
     [Test]
@@ -397,7 +398,7 @@ public class ReceiptsSyncFeedTests
 
         FillBatchResponses(batch!);
         _feed.HandleResponse(batch);
-        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1ul);
         _feed.PrepareRequest().Result.Should().Be(null);
 
         _feed.CurrentState.Should().Be(SyncFeedState.Finished);
@@ -418,7 +419,7 @@ public class ReceiptsSyncFeedTests
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
 
         _syncPointers = Substitute.For<ISyncPointers>();
-        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(2);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(2ul);
 
         ReceiptsSyncFeed feed = CreateFeed();
         Assert.That(feed.IsFinished, Is.False);
@@ -438,7 +439,7 @@ public class ReceiptsSyncFeedTests
 
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
         _syncPointers = Substitute.For<ISyncPointers>();
-        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1ul);
 
         ReceiptsSyncFeed feed = CreateFeed();
         feed.InitializeFeed();

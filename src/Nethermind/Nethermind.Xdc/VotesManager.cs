@@ -56,10 +56,14 @@ internal class VotesManager(
             throw new ArgumentException($"Cannot find block header for block {blockInfo.Hash}");
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(header, blockInfo.Round);
-        long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-        long gapNumber = epochSwitchNumber == 0 ? 0 : Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
 
-        var vote = new Vote(blockInfo, (ulong)gapNumber);
+        ulong epochLength = (ulong)spec.EpochLength;
+        ulong gap = (ulong)spec.Gap;
+        ulong epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+        ulong epochStart = epochSwitchNumber - (epochSwitchNumber % epochLength);
+        ulong gapNumber = epochStart > gap ? epochStart - gap : 0UL;
+
+        var vote = new Vote(blockInfo, gapNumber);
         // Sets signature and signer for the vote
         Sign(vote);
 
@@ -84,7 +88,7 @@ internal class VotesManager(
         _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotes);
         _ = _forensicsProcessor.ProcessVoteEquivocation(vote);
 
-        XdcBlockHeader proposedHeader = _blockTree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) as XdcBlockHeader;
+        XdcBlockHeader proposedHeader = _blockTree.FindHeader(vote.ProposedBlockInfo.Hash, BlockTreeLookupOptions.None, vote.ProposedBlockInfo.BlockNumber) as XdcBlockHeader;
         if (proposedHeader is null)
         {
             //This is a vote for a block we have not seen yet, just return for now
@@ -135,7 +139,7 @@ internal class VotesManager(
 
     public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc) => VerifyVotingRules(roundInfo.Hash, roundInfo.BlockNumber, roundInfo.Round, qc);
     public bool VerifyVotingRules(XdcBlockHeader header) => VerifyVotingRules(header.Hash, header.Number, header.ExtraConsensusData.BlockRound, header.ExtraConsensusData.QuorumCert);
-    public bool VerifyVotingRules(Hash256 blockHash, long blockNumber, ulong roundNumber, QuorumCertificate qc)
+    public bool VerifyVotingRules(Hash256 blockHash, ulong blockNumber, ulong roundNumber, QuorumCertificate qc)
     {
         if ((long)_ctx.CurrentRound <= _highestVotedRound)
         {
@@ -169,7 +173,12 @@ internal class VotesManager(
     {
         var voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
         var currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
-        if (Math.Abs(voteBlockNumber - currentBlockNumber) > _maxBlockDistance)
+
+        ulong distance = voteBlockNumber > currentBlockNumber
+            ? voteBlockNumber - currentBlockNumber
+            : currentBlockNumber - voteBlockNumber;
+
+        if (distance > (ulong)_maxBlockDistance)
         {
             // Discarded propagated vote, too far away
             return Task.CompletedTask;
@@ -201,12 +210,17 @@ internal class VotesManager(
         EndRound(currVote.ProposedBlockInfo.Round);
     }
 
-    private bool IsExtendingFromAncestor(Hash256 blockHash, long blockNumber, BlockRoundInfo ancestorBlockInfo)
+    private bool IsExtendingFromAncestor(Hash256 blockHash, ulong blockNumber, BlockRoundInfo ancestorBlockInfo)
     {
-        long blockNumDiff = blockNumber - ancestorBlockInfo.BlockNumber;
+        if (blockNumber < ancestorBlockInfo.BlockNumber)
+        {
+            return false;
+        }
+
+        ulong blockNumDiff = blockNumber - ancestorBlockInfo.BlockNumber;
         Hash256 nextBlockHash = blockHash;
 
-        for (int i = 0; i < blockNumDiff; i++)
+        for (ulong i = 0; i < blockNumDiff; i++)
         {
             XdcBlockHeader parentHeader = _blockTree.FindHeader(nextBlockHash) as XdcBlockHeader;
             if (parentHeader is null)

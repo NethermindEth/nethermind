@@ -56,11 +56,11 @@ public class BodiesSyncFeedTests
 
         for (int i = 1; i < 100; i++)
         {
-            Block block = _syncingFromBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!;
+            Block block = _syncingFromBlockTree.FindBlock(checked((ulong)i), BlockTreeLookupOptions.None)!;
             _syncingToBlockTree.Insert(block.Header);
         }
 
-        _pivotBlock = _syncingFromBlockTree.FindBlock(99, BlockTreeLookupOptions.None)!;
+        _pivotBlock = _syncingFromBlockTree.FindBlock(99ul, BlockTreeLookupOptions.None)!;
 
         _syncConfig = new TestSyncConfig()
         {
@@ -70,7 +70,7 @@ public class BodiesSyncFeedTests
             AncientBodiesBarrier = 0,
             DownloadBodiesInFastSync = true,
         };
-        _syncingToBlockTree.SyncPivot = (_pivotBlock.Number, _pivotBlock.Hash);
+        _syncingToBlockTree.SyncPivot = (_pivotBlock.Number, _pivotBlock.Hash!);
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _historyPruner = Substitute.For<IHistoryPruner>();
@@ -179,9 +179,9 @@ public class BodiesSyncFeedTests
         req2.Infos[0]!.BlockNumber.Should().Be(95);
     }
 
-    [TestCase(1, 99, false, null, false)]
-    [TestCase(1, 99, true, null, false)]
-    [TestCase(1, 99, false, 0, false)]
+    [TestCase(1L, 99L, false, null, false)]
+    [TestCase(1L, 99L, true, null, false)]
+    [TestCase(1L, 99L, false, 0L, false)]
     public void When_finished_sync_with_old_default_barrier_then_finishes_immediately(
             long AncientBarrierInConfig,
             long lowestInsertedBlockNumber,
@@ -196,7 +196,7 @@ public class BodiesSyncFeedTests
         if (previousBarrierInDb is not null)
             _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         _feed.InitializeFeed();
-        _syncPointers.LowestInsertedBodyNumber = lowestInsertedBlockNumber;
+        _syncPointers.LowestInsertedBodyNumber = checked((ulong)lowestInsertedBlockNumber);
 
         _feed.IsFinished.Should().Be(shouldFinish);
     }

@@ -157,7 +157,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             BlockHeader? pivotHeader = _pivot.GetPivotHeader();
             Hash256 rootHash = pivotHeader!.StateRoot!;
-            long blockNumber = pivotHeader.Number;
+            long blockNumber = checked((long)pivotHeader.Number);
 
             if (!AccountsToRefresh.IsEmpty)
             {

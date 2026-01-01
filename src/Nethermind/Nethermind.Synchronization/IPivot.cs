@@ -8,12 +8,12 @@ namespace Nethermind.Synchronization
 {
     public interface IPivot
     {
-        long PivotNumber { get; }
+        ulong PivotNumber { get; }
 
         Hash256? PivotHash { get; }
 
         Hash256? PivotParentHash { get; }
 
-        long PivotDestinationNumber { get; }
+        ulong PivotDestinationNumber { get; }
     }
 }

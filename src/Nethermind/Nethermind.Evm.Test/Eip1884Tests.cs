@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Test
 {
     public class Eip1884Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         [Test]
@@ -103,7 +103,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.EXTCODEHASH)
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(BlockNumber - 1, 100000, code);
+            TestAllTracerWithOutput result = Execute(new ForkActivation(BlockNumber - 1, Timestamp), 100000, code);
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.ExtCodeHash);
         }
 
@@ -117,7 +117,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.BALANCE)
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(BlockNumber - 1, 100000, code);
+            TestAllTracerWithOutput result = Execute(new ForkActivation(BlockNumber - 1, Timestamp), 100000, code);
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.BalanceEip150);
         }
 
@@ -132,7 +132,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SLOAD)
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(BlockNumber - 1, 100000, code);
+            TestAllTracerWithOutput result = Execute(new ForkActivation(BlockNumber - 1, Timestamp), 100000, code);
             AssertGas(result, 21000 + 2 * GasCostOf.VeryLow + GasCostOf.SLoadEip150);
         }
     }

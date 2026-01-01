@@ -12,7 +12,7 @@ namespace Nethermind.Blockchain.Find
     {
         public static BlockHeader? FindParentHeader(this IBlockFinder finder, BlockHeader header, BlockTreeLookupOptions options)
         {
-            return finder.FindHeader(header.ParentHash, options, blockNumber: header.Number - 1);
+            return finder.FindHeader(header.ParentHash, options, blockNumber: header.Number - 1UL);
         }
 
         public static Block? FindParent(this IBlockFinder finder, Block block, BlockTreeLookupOptions options)
@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Find
                     $"Cannot find parent when parent hash is null on block with hash {block.Hash}.");
             }
 
-            return finder.FindBlock(block.Header.ParentHash, options, blockNumber: block.Header.Number - 1);
+            return finder.FindBlock(block.Header.ParentHash, options, blockNumber: block.Header.Number - 1UL);
         }
 
         public static Block? FindParent(this IBlockFinder finder, BlockHeader blockHeader, BlockTreeLookupOptions options)
@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Find
                     $"Cannot find parent when parent hash is null on block with hash {blockHeader.Hash}.");
             }
 
-            return finder.FindBlock(blockHeader.ParentHash, options, blockNumber: blockHeader.Number - 1);
+            return finder.FindBlock(blockHeader.ParentHash, options, blockNumber: blockHeader.Number - 1UL);
         }
 
         public static Block? RetrieveHeadBlock(this IBlockFinder finder)

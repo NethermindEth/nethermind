@@ -23,7 +23,7 @@ namespace Nethermind.Specs.Forks
             DifficultyBoundDivisor = 0x0800;
             IsEip3607Enabled = true;
             MaximumUncleCount = 2;
-            Eip1559TransitionBlock = long.MaxValue;
+            Eip1559TransitionBlock = ulong.MaxValue;
             ValidateChainId = true;
             ValidateReceipts = true;
             MinHistoryRetentionEpochs = 82125;

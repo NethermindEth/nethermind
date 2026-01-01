@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Validators
 
         protected readonly ISealValidator _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
         protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        private readonly long? _daoBlockNumber = specProvider.DaoBlockNumber;
+        private readonly ulong? _daoBlockNumber = specProvider.DaoBlockNumber;
         protected readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
@@ -209,7 +209,6 @@ namespace Nethermind.Consensus.Validators
         {
             error = blockHeader switch
             {
-                { Number: < 0 } => BlockErrorMessages.NegativeBlockNumber,
                 { GasLimit: > long.MaxValue } => BlockErrorMessages.InvalidGasLimit,
                 { GasUsed: > long.MaxValue } => BlockErrorMessages.ExceededGasLimit,
                 _ => null
@@ -220,7 +219,6 @@ namespace Nethermind.Consensus.Validators
             if (_logger.IsWarn)
                 _logger.Warn($"Invalid block header ({blockHeader.Hash}) - {blockHeader switch
                 {
-                    { Number: < 0 } => $"Block number is negative {blockHeader.Number}",
                     { GasLimit: > long.MaxValue } => $"Block GasLimit is too large {blockHeader.GasLimit}",
                     { GasUsed: > long.MaxValue } => $"Block GasUsed is too large {blockHeader.GasUsed}",
                     _ => error

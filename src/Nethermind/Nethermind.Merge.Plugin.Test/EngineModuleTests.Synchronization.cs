@@ -1073,7 +1073,7 @@ public partial class EngineModuleTests
         blockTree.BestSuggestedHeader.Should().Be(pointers.BestSuggestedHeader);
         blockTree.BestSuggestedBody.Should().Be(pointers.BestSuggestedBody);
         // TODO: post merge sync change to best beacon block
-        (blockTree.BestSuggestedBeaconHeader?.Number ?? 0).Should().Be(pointers.BestKnownBeaconBlock);
+        (blockTree.BestSuggestedBeaconHeader?.Number ?? 0ul).Should().Be(pointers.BestKnownBeaconBlock);
         blockTree.LowestInsertedBeaconHeader.Should().BeEquivalentTo(pointers.LowestInsertedBeaconHeader);
     }
 
@@ -1086,10 +1086,10 @@ public partial class EngineModuleTests
 
     private class BlockTreePointers
     {
-        public long BestKnownNumber;
+        public ulong BestKnownNumber;
         public BlockHeader? BestSuggestedHeader;
         public Block? BestSuggestedBody;
-        public long BestKnownBeaconBlock;
+        public ulong BestKnownBeaconBlock;
         public BlockHeader? LowestInsertedBeaconHeader;
     }
 }

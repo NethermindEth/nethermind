@@ -14,7 +14,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public int Gap { get; set; }
     public long Reward { get; set; }
     public int SwitchEpoch { get; set; }
-    public long SwitchBlock { get; set; }
+    public ulong SwitchBlock { get; set; }
     public int MaxMasternodes { get; set; }              // v2 max masternodes
     public int MaxProtectorNodes { get; set; }           // v2 max ProtectorNodes
     public int MaxObserverNodes { get; set; }            // v2 max ObserverNodes
@@ -85,7 +85,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int Gap { get; }
     public long Reward { get; }
     public int SwitchEpoch { get; set; }
-    public long SwitchBlock { get; set; }
+    public ulong SwitchBlock { get; set; }
     public int MaxMasternodes { get; set; }          // v2 max masternodes
     public int MaxProtectorNodes { get; set; }       // v2 max ProtectorNodes
     public int MaxObserverNodes { get; set; }        // v2 max ObserverNodes

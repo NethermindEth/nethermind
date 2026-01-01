@@ -38,7 +38,7 @@ public class OptimismOptimismRpcModule(
 
         var block = await l2Api.GetBlockByNumber(blockNumber);
 
-        var proof = await l2Api.GetProof(PreDeploys.L2ToL1MessagePasser, [], (long)block.Number);
+        var proof = await l2Api.GetProof(PreDeploys.L2ToL1MessagePasser, [], block.Number);
         if (proof == null)
         {
             return ResultWrapper<OptimismOutputAtBlock>.Fail("Failed to get proof");

@@ -29,7 +29,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public Hash256 BlockHash { get; set; } = Keccak.Zero;
 
-    public long BlockNumber { get; set; }
+    public ulong BlockNumber { get; set; }
 
     public byte[] ExtraData { get; set; } = [];
 

@@ -24,7 +24,7 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
     public override void StartNewBlockTrace(Block block)
     {
         _engines = new List<IDisposable>(block.Transactions.Length + 1);
-        _ctx.block = block.Number;
+        _ctx.block = checked((long)block.Number);
         _ctx.BlockHash = block.Hash;
         _baseFee = block.BaseFeePerGas;
         base.StartNewBlockTrace(block);

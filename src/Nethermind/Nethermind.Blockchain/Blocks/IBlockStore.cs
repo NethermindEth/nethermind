@@ -14,10 +14,10 @@ namespace Nethermind.Blockchain.Blocks;
 public interface IBlockStore
 {
     void Insert(Block block, WriteFlags writeFlags = WriteFlags.None);
-    void Delete(long blockNumber, Hash256 blockHash);
-    Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true);
-    byte[]? GetRlp(long blockNumber, Hash256 blockHash);
-    ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash);
+    void Delete(ulong blockNumber, Hash256 blockHash);
+    Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true);
+    byte[]? GetRlp(ulong blockNumber, Hash256 blockHash);
+    ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash);
     void Cache(Block block);
-    bool HasBlock(long blockNumber, Hash256 blockHash);
+    bool HasBlock(ulong blockNumber, Hash256 blockHash);
 }

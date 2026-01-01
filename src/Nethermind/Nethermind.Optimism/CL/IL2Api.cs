@@ -18,7 +18,7 @@ public interface IL2Api
     Task<L2Block> GetHeadBlock();
     Task<L2Block?> GetFinalizedBlock();
     Task<L2Block?> GetSafeBlock();
-    Task<AccountProof?> GetProof(Address accountAddress, HashSet<UInt256> storageKeys, long blockNumber);
+    Task<AccountProof?> GetProof(Address accountAddress, HashSet<UInt256> storageKeys, ulong blockNumber);
 
     Task<ForkchoiceUpdatedV1Result> ForkChoiceUpdatedV3(
         Hash256 headHash, Hash256 finalizedHash, Hash256 safeHash, OptimismPayloadAttributes? payloadAttributes = null);

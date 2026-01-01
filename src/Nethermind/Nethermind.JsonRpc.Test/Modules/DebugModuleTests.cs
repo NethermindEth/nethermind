@@ -122,7 +122,7 @@ public class DebugModuleTests
         HeaderDecoder decoder = new();
         Block blk = Build.A.Block.WithNumber(0).TestObject;
         Rlp rlp = decoder.Encode(blk.Header);
-        debugBridge.GetBlock(new BlockParameter((long)0)).Returns(blk);
+        debugBridge.GetBlock(new BlockParameter(0ul)).Returns(blk);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", "0x") as JsonRpcSuccessResponse;
@@ -135,7 +135,7 @@ public class DebugModuleTests
         BlockDecoder decoder = new();
         IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-        localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
+        localDebugBridge.GetBlockRlp(new BlockParameter(1ul)).Returns(rlp.Bytes);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(localDebugBridge);
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", 1) as JsonRpcSuccessResponse;

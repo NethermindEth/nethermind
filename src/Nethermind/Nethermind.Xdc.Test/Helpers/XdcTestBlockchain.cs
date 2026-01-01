@@ -445,8 +445,15 @@ public class XdcTestBlockchain : TestBlockchain
         var leader = ConsensusModule.GetLeaderAddress(head, XdcContext.CurrentRound, spec);
 
         EpochSwitchInfo epochSwitchInfo = EpochSwitchManager.GetEpochSwitchInfo(head)!;
-        long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-        long gapNumber = epochSwitchNumber == 0 ? 0 : Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
+        ulong epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+        ulong gapNumber = 0ul;
+        if (epochSwitchNumber != 0)
+        {
+            ulong epochLength = checked((ulong)spec.EpochLength);
+            ulong gap = checked((ulong)spec.Gap);
+            ulong epochStart = epochSwitchNumber - (epochSwitchNumber % epochLength);
+            gapNumber = epochStart > gap ? epochStart - gap : 0ul;
+        }
 
         VoteDecoder voteDecoder = new VoteDecoder();
 
@@ -530,7 +537,14 @@ public class XdcTestBlockchain : TestBlockchain
         var headSpec = SpecProvider.GetXdcSpec(header, XdcContext.CurrentRound);
         EpochSwitchInfo switchInfo = EpochSwitchManager.GetEpochSwitchInfo(header.Hash!)!;
 
-        var gap = (ulong)Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % headSpec.EpochLength - headSpec.Gap);
+        ulong gap = 0ul;
+        if (switchInfo.EpochSwitchBlockInfo.BlockNumber != 0)
+        {
+            ulong epochLength = checked((ulong)headSpec.EpochLength);
+            ulong gapFromSpec = checked((ulong)headSpec.Gap);
+            ulong epochStart = switchInfo.EpochSwitchBlockInfo.BlockNumber - (switchInfo.EpochSwitchBlockInfo.BlockNumber % epochLength);
+            gap = epochStart > gapFromSpec ? epochStart - gapFromSpec : 0ul;
+        }
         PrivateKey[] masterNodes = TakeRandomMasterNodes(headSpec, switchInfo);
         var headQc = XdcTestHelper.CreateQc(new BlockRoundInfo(header.Hash!, header.ExtraConsensusData?.BlockRound ?? XdcContext.CurrentRound, header.Number), gap,
             masterNodes);

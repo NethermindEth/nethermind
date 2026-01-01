@@ -29,12 +29,15 @@ namespace Nethermind.Blockchain.Visitors
             long maxBlocksToLoad = long.MaxValue)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _blockTreeSuggestPacer = new BlockTreeSuggestPacer(_blockTree, batchSize, batchSize / 2);
+            _blockTreeSuggestPacer = new BlockTreeSuggestPacer(_blockTree, checked((ulong)batchSize), checked((ulong)(batchSize / 2)));
             _logger = logger;
 
             _batchSize = batchSize;
-            StartLevelInclusive = Math.Max(0L, startBlockNumber ?? (_blockTree.Head?.Number + 1) ?? 0L);
-            _blocksToLoad = Math.Min(maxBlocksToLoad, _blockTree.BestKnownNumber - StartLevelInclusive);
+            long headNumberLong = checked((long)(_blockTree.Head?.Number ?? 0UL));
+            StartLevelInclusive = Math.Max(0L, startBlockNumber ?? (headNumberLong + 1));
+
+            long bestKnownNumber = checked((long)_blockTree.BestKnownNumber);
+            _blocksToLoad = Math.Min(maxBlocksToLoad, Math.Max(0L, bestKnownNumber - StartLevelInclusive));
             EndLevelExclusive = StartLevelInclusive + _blocksToLoad + 1;
 
             LogPlannedOperation();
@@ -69,8 +72,12 @@ namespace Nethermind.Blockchain.Visitors
 
         Task<HeaderVisitOutcome> IBlockTreeVisitor.VisitHeader(BlockHeader header, CancellationToken cancellationToken)
         {
-            long i = header.Number - StartLevelInclusive;
-            if (i % _batchSize == _batchSize - 1 && i != _blocksToLoad - 1 && _blockTree.Head.Number + _batchSize < header.Number)
+            long i = checked((long)header.Number) - StartLevelInclusive;
+
+            ulong batchSizeUlong = _batchSize <= 0 ? 0UL : (ulong)_batchSize;
+            ulong headNumber = _blockTree.Head?.Number ?? 0UL;
+
+            if (i % _batchSize == _batchSize - 1 && i != _blocksToLoad - 1 && headNumber + batchSizeUlong < header.Number)
             {
                 if (_logger.IsInfo) _logger.Info($"Loaded {i + 1} out of {_blocksToLoad} headers from DB.");
             }
@@ -83,7 +90,7 @@ namespace Nethermind.Blockchain.Visitors
             // this will hang
             Task waitTask = _blockTreeSuggestPacer.WaitForQueue(block.Number, cancellationToken);
 
-            long i = block.Number - StartLevelInclusive;
+            long i = checked((long)block.Number) - StartLevelInclusive;
             if (!waitTask.IsCompleted)
             {
                 if (_logger.IsInfo)

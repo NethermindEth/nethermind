@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Clique
         private Block? Seal(Block block)
         {
             // Bail out if we're unauthorized to sign a block
-            if (!CanSeal(block.Number, block.ParentHash))
+            if (!CanSeal(checked((long)block.Number), block.ParentHash))
             {
                 if (_logger.IsInfo) _logger.Info($"Not authorized to seal the block {block.ToString(Block.Format.Short)}");
                 return null;
@@ -51,8 +51,7 @@ namespace Nethermind.Consensus.Clique
             BlockHeader header = block.Header;
 
             // Sealing the genesis block is not supported
-            long number = header.Number;
-            if (number == 0) throw new InvalidOperationException("Can't sign genesis block");
+            if (header.Number == 0) throw new InvalidOperationException("Can't sign genesis block");
 
             // For 0-period chains, refuse to seal empty blocks (no reward but would spin sealing)
             if (_config.BlockPeriod == 0 && block.Transactions.Length == 0)

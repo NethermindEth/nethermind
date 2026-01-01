@@ -267,7 +267,8 @@ namespace Nethermind.Consensus.Clique
             // Sanity check that the headers can be applied
             for (int i = 0; i < headers.Count - 1; i++)
             {
-                if (headers[i].Number != original.Number + i + 1)
+                long headerNumber = checked((long)headers[i].Number);
+                if (headerNumber != original.Number + i + 1)
                 {
                     throw new InvalidOperationException("Invalid voting chain");
                 }
@@ -278,8 +279,8 @@ namespace Nethermind.Consensus.Clique
             foreach (BlockHeader header in headers)
             {
                 // Remove any votes on checkpoint blocks
-                long number = header.Number;
-                if ((ulong)number % epoch == 0)
+                long number = checked((long)header.Number);
+                if (header.Number % epoch == 0)
                 {
                     snapshot.Votes.Clear();
                     snapshot.Tally.Clear();

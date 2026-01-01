@@ -9,10 +9,20 @@ namespace Nethermind.Blockchain;
 
 public class ReorgDepthFinalizedStateProvider(IBlockTree blockTree) : IFinalizedStateProvider
 {
-    public long FinalizedBlockNumber => blockTree.BestKnownNumber - Reorganization.MaxDepth;
+    public long FinalizedBlockNumber
+    {
+        get
+        {
+            ulong maxDepth = (ulong)Reorganization.MaxDepth;
+            ulong finalized = blockTree.BestKnownNumber > maxDepth ? blockTree.BestKnownNumber - maxDepth : 0UL;
+            return checked((long)finalized);
+        }
+    }
+
     public Hash256? GetFinalizedStateRootAt(long blockNumber)
     {
+        if (blockNumber < 0) return null;
         if (FinalizedBlockNumber < blockNumber) return null;
-        return blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical)?.StateRoot;
+        return blockTree.FindHeader(checked((ulong)blockNumber), BlockTreeLookupOptions.RequireCanonical)?.StateRoot;
     }
 }

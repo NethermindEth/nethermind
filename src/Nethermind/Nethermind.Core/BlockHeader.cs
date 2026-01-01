@@ -21,7 +21,7 @@ public class BlockHeader
         Hash256 unclesHash,
         Address beneficiary,
         in UInt256 difficulty,
-        long number,
+        ulong number,
         ulong gasLimit,
         ulong timestamp,
         byte[] extraData,
@@ -44,7 +44,7 @@ public class BlockHeader
         ExcessBlobGas = excessBlobGas;
     }
 
-    public virtual long GenesisBlockNumber => 0;
+    public virtual ulong GenesisBlockNumber => 0;
     public bool IsGenesis => Number == GenesisBlockNumber;
     public Hash256? ParentHash { get; set; }
     public Hash256? UnclesHash { get; set; }
@@ -56,7 +56,7 @@ public class BlockHeader
     public Hash256? ReceiptsRoot { get; set; }
     public Bloom? Bloom { get; set; }
     public UInt256 Difficulty;
-    public long Number { get; set; }
+    public ulong Number { get; set; }
     public ulong GasUsed { get; set; }
     public ulong GasLimit { get; set; }
     public ulong Timestamp { get; set; }
