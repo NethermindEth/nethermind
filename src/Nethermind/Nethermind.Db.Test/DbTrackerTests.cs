@@ -12,6 +12,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
@@ -63,7 +64,7 @@ public class DbTrackerTests
         {
             container.Resolve<IBlockProcessingQueue>(); // Only setup is something requested the block processing queue.
             queue.IsEmpty.Returns(false);
-            queue.BlockAdded += Raise.EventWith<BlockAddedEventArgs>(new BlockAddedEventArgs(Keccak.Zero));
+            queue.BlockAdded += Raise.EventWith<BlockEventArgs>(new BlockEventArgs(Build.A.Block.TestObject));
         }
 
         updateAction!();
@@ -103,6 +104,7 @@ public class DbTrackerTests
         IMonitoringService monitoringService = Substitute.For<IMonitoringService>();
         ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new DbModule(new InitConfig(), new ReceiptConfig(), new SyncConfig()))
+            .AddModule(new DbMonitoringModule())
             .AddSingleton<IMetricsConfig>(new MetricsConfig())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IMonitoringService>(monitoringService)
