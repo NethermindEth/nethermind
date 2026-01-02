@@ -5,6 +5,7 @@ using Nethermind.Consensus;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using System.CommandLine;
+using System.Globalization;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.JsonRpc.Client;
@@ -60,7 +61,7 @@ internal static class SetupCli
             Description = "A multiplier to use for gas fees",
             HelpName = "value"
         };
-        Option<ulong> maxPriorityFeeGasOption = new("--maxpriorityfee")
+        Option<ulong?> maxPriorityFeeGasOption = new("--maxpriorityfee")
         {
             Description = "The maximum priority fee for each transaction",
             HelpName = "fee"
@@ -87,7 +88,25 @@ internal static class SetupCli
             string? privateKeyValue = parseResult.GetValue(privateKeyOption);
 
             if (privateKeyFileValue is not null)
-                privateKeys = File.ReadAllLines(privateKeyFileValue).Select(k => new PrivateKey(k)).ToArray();
+            {
+                if (!File.Exists(privateKeyFileValue))
+                {
+                    Console.WriteLine($"Key file '{privateKeyFileValue}' was not found.");
+                    return Task.CompletedTask;
+                }
+
+                privateKeys = File.ReadAllLines(privateKeyFileValue)
+                    .Select(static k => k.Trim())
+                    .Where(static k => !string.IsNullOrWhiteSpace(k))
+                    .Select(static k => new PrivateKey(k))
+                    .ToArray();
+
+                if (privateKeys.Length == 0)
+                {
+                    Console.WriteLine($"Key file '{privateKeyFileValue}' does not contain any private keys.");
+                    return Task.CompletedTask;
+                }
+            }
             else if (privateKeyValue is not null)
                 privateKeys = [new PrivateKey(privateKeyValue)];
             else
@@ -99,9 +118,20 @@ internal static class SetupCli
             string? fork = parseResult.GetValue(forkOption);
             IReleaseSpec spec = fork is null ? Prague.Instance : SpecNameParser.Parse(fork);
 
+            (int count, int blobCount, string @break)[] txOptions;
+            try
+            {
+                txOptions = ParseTxOptions(parseResult.GetValue(blobTxOption));
+            }
+            catch (ArgumentException ex)
+            {
+                Console.WriteLine(ex.Message);
+                return Task.CompletedTask;
+            }
+
             BlobSender sender = new(parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance);
             return sender.SendRandomBlobs(
-                ParseTxOptions(parseResult.GetValue(blobTxOption)),
+                txOptions,
                 privateKeys,
                 parseResult.GetValue(receiverOption)!,
                 parseResult.GetValue(maxFeePerBlobGasOption) ?? parseResult.GetValue(maxFeePerDataGasOptionObsolete),
@@ -117,37 +147,40 @@ internal static class SetupCli
         if (string.IsNullOrWhiteSpace(options))
             return Array.Empty<(int count, int blobCount, string @break)>();
 
-        ReadOnlySpan<char> chars = options.AsSpan();
-        var result = new List<(int, int, string)>();
+        List<(int count, int blobCount, string @break)> result = new();
 
-        ReadOnlySpan<char> nextComma;
-        int offSet = 0;
-        while (true)
+        string[] parts = options.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (string rawPart in parts)
         {
-            nextComma = SplitToNext(chars[offSet..], ',');
+            string part = rawPart;
+            string breakValue = string.Empty;
 
-            ReadOnlySpan<char> @break = SplitToNext(nextComma, '-', true);
-            ReadOnlySpan<char> rest = nextComma[..(nextComma.Length - (@break.Length == 0 ? 0 : @break.Length + 1))];
-            ReadOnlySpan<char> count = SplitToNext(rest, 'x');
-            ReadOnlySpan<char> txCount = SplitToNext(rest, 'x', true);
-
-            result.Add(new(int.Parse(count), txCount.Length == 0 ? 1 : int.Parse(txCount), new string(@break)));
-
-            offSet += nextComma.Length + 1;
-            if (offSet > chars.Length)
+            int breakIndex = part.IndexOf('-');
+            if (breakIndex >= 0)
             {
-                break;
+                breakValue = part[(breakIndex + 1)..].Trim();
+                part = part[..breakIndex];
             }
-        }
-        return result.ToArray();
-    }
 
-    private static ReadOnlySpan<char> SplitToNext(ReadOnlySpan<char> line, char separator, bool returnRemainder = false)
-    {
-        int i = line.IndexOf(separator);
-        if (i == -1)
-            return returnRemainder ? ReadOnlySpan<char>.Empty : line;
-        return returnRemainder ? line[(i + 1)..] : line[..i];
+            int blobIndex = part.IndexOf('x');
+            if (blobIndex < 0)
+            {
+                blobIndex = part.IndexOf('X');
+            }
+            string txCountValue = blobIndex >= 0 ? part[..blobIndex] : part;
+            string blobCountValue = blobIndex >= 0 ? part[(blobIndex + 1)..] : string.Empty;
+
+            if (!int.TryParse(txCountValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int txCount) || txCount <= 0)
+                throw new ArgumentException($"Invalid transaction count in option '{rawPart}'.", nameof(options));
+
+            int blobCount = 1;
+            if (blobCountValue.Length > 0 && (!int.TryParse(blobCountValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out blobCount) || blobCount <= 0))
+                throw new ArgumentException($"Invalid blob count in option '{rawPart}'.", nameof(options));
+
+            result.Add((txCount, blobCount, breakValue));
+        }
+
+        return result.ToArray();
     }
 
     public static void SetupDistributeCommand(Command root)
@@ -171,7 +204,8 @@ internal static class SetupCli
         Option<uint> keyNumberOption = new("--number")
         {
             Description = "The number of new addresses/keys to make",
-            HelpName = "value"
+            HelpName = "value",
+            Required = true
         };
         Option<string> keyFileOption = new("--keyfile")
         {
@@ -197,6 +231,13 @@ internal static class SetupCli
         command.Add(maxFeeOption);
         command.SetAction(async (parseResult, cancellationToken) =>
         {
+            uint keyNumber = parseResult.GetValue(keyNumberOption);
+            if (keyNumber == 0)
+            {
+                Console.WriteLine("--number must be greater than zero.");
+                return;
+            }
+
             IJsonRpcClient rpcClient = InitRpcClient(
                 parseResult.GetValue(rpcUrlOption)!,
                 SimpleConsoleLogManager.Instance.GetClassLogger());
@@ -209,9 +250,9 @@ internal static class SetupCli
 
             FundsDistributor distributor = new(
                 rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
-            await distributor.DitributeFunds(
+            await distributor.DistributeFunds(
                 signer,
-                parseResult.GetValue(keyNumberOption),
+                keyNumber,
                 parseResult.GetValue(maxFeeOption),
                 parseResult.GetValue(maxPriorityFeeGasOption));
         });
@@ -240,7 +281,8 @@ internal static class SetupCli
         Option<string> keyFileOption = new("--keyfile")
         {
             Description = "File of the private keys to reclaim from",
-            HelpName = "path"
+            HelpName = "path",
+            Required = true
         };
         Option<ulong> maxPriorityFeeGasOption = new("--maxpriorityfee")
         {
@@ -254,6 +296,7 @@ internal static class SetupCli
         };
 
         command.Add(rpcUrlOption);
+        command.Add(receiverOption);
         command.Add(keyFileOption);
         command.Add(maxPriorityFeeGasOption);
         command.Add(maxFeeOption);

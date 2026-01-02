@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
@@ -30,13 +30,7 @@ internal class FundsDistributor
     /// <summary>
     /// Distribute the available funds from an address to a number of newly generated private keys.
     /// </summary>
-    /// <param name="distributeFrom"></param>
-    /// <param name="keysToMake"></param>
-    /// <param name="maxFee"></param>
-    /// <param name="maxPriorityFee"></param>
-    /// <returns><see cref="IEnumerable{string}"/> containing all the executed tx hashes.</returns>
-    /// <exception cref="AccountException"></exception>
-    public async Task<IEnumerable<string>> DitributeFunds(Signer distributeFrom, uint keysToMake, UInt256 maxFee, UInt256 maxPriorityFee)
+    public async Task<IEnumerable<string>> DistributeFunds(Signer distributeFrom, uint keysToMake, UInt256 maxFee, UInt256 maxPriorityFee)
     {
         if (keysToMake == 0)
             throw new ArgumentException("keysToMake must be greater than zero.", nameof(keysToMake));
@@ -48,17 +42,6 @@ internal class FundsDistributor
         if (nonceString is null)
             throw new AccountException($"Unable to get nonce for {distributeFrom.Address}");
 
-        string? gasPriceRes = await _rpcClient.Post<string>("eth_gasPrice") ?? "1";
-        UInt256 gasPrice = HexConvert.ToUInt256(gasPriceRes);
-
-        string? maxPriorityFeePerGasRes;
-        UInt256 maxPriorityFeePerGas = maxPriorityFee;
-        if (maxPriorityFee == 0)
-        {
-            maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
-            maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
-        }
-
         UInt256 balance = new UInt256(Bytes.FromHexString(balanceString));
 
         if (balance == 0)
@@ -66,7 +49,9 @@ internal class FundsDistributor
 
         ulong nonce = HexConvert.ToUInt64(nonceString);
 
-        UInt256 approxGasFee = (gasPrice + maxPriorityFeePerGas) * GasCostOf.Transaction;
+        (UInt256 feePerGasEstimate, UInt256 priorityFeeEstimate) = await ResolveFeeSettingsAsync(maxFee, maxPriorityFee);
+
+        UInt256 approxGasFee = feePerGasEstimate * GasCostOf.Transaction;
 
         //Leave 10% of the balance as buffer in case of gas spikes
         UInt256 balanceMinusBuffer = (balance * 900) / 1000;
@@ -80,9 +65,7 @@ internal class FundsDistributor
         UInt256 perKeyToSend = balanceToDistribute / keysToMake;
 
         using PrivateKeyGenerator generator = new();
-        IEnumerable<PrivateKey> privateKeys = Enumerable.Range(1, (int)keysToMake).Select(i => generator.Generate());
-
-        List<string> txHash = new List<string>();
+        List<string> txHashes = new();
 
         TxDecoder txDecoder = TxDecoder.Instance;
         StreamWriter? keyWriter = null;
@@ -94,25 +77,25 @@ internal class FundsDistributor
             keyWriter = File.AppendText(_keyFilePath);
         }
 
+        bool refreshFeesPerTransaction = maxFee == 0 || maxPriorityFee == 0;
+
         using (keyWriter)
         {
-            foreach (PrivateKey key in privateKeys)
+            for (uint i = 0; i < keysToMake; i++)
             {
-                if (maxFee == 0)
-                {
-                    gasPriceRes = await _rpcClient.Post<string>("eth_gasPrice") ?? "1";
-                    gasPrice = HexConvert.ToUInt256(gasPriceRes);
+                PrivateKey key = generator.Generate();
 
-                    maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
-                    maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
-                }
+                (UInt256 txMaxFeePerGas, UInt256 txPriorityFeePerGas) = refreshFeesPerTransaction
+                    ? await ResolveFeeSettingsAsync(maxFee, maxPriorityFee)
+                    : (feePerGasEstimate, priorityFeeEstimate);
 
-                Transaction tx = CreateTx(_chainId,
-                                          key.Address,
-                                          maxFee != 0 ? maxFee : gasPrice + maxPriorityFeePerGas,
-                                          nonce,
-                                          maxPriorityFeePerGas,
-                                          perKeyToSend);
+                Transaction tx = CreateTx(
+                    _chainId,
+                    key.Address,
+                    txMaxFeePerGas,
+                    nonce,
+                    txPriorityFeePerGas,
+                    perKeyToSend);
 
                 await distributeFrom.Sign(tx);
 
@@ -121,7 +104,7 @@ internal class FundsDistributor
 
                 string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", $"0x{txRlp}");
                 if (result is not null)
-                    txHash.Add(result);
+                    txHashes.Add(result);
 
                 if (keyWriter is not null)
                     keyWriter.WriteLine(key.ToString());
@@ -130,7 +113,7 @@ internal class FundsDistributor
             }
         }
 
-        return txHash;
+        return txHashes;
     }
 
     /// <summary>
@@ -144,7 +127,10 @@ internal class FundsDistributor
     {
         IEnumerable<Signer> privateSigners = _keyFilePath is null
             ? []
-            : File.ReadAllLines(_keyFilePath).Select(k => new Signer(_chainId, new PrivateKey(k), _logManager));
+            : File.ReadAllLines(_keyFilePath)
+                .Select(static k => k.Trim())
+                .Where(static k => !string.IsNullOrWhiteSpace(k))
+                .Select(k => new Signer(_chainId, new PrivateKey(k), _logManager));
 
         ILogger log = _logManager.GetClassLogger();
         List<string> txHashes = new List<string>();
@@ -163,17 +149,9 @@ internal class FundsDistributor
 
             ulong nonce = HexConvert.ToUInt64(nonceString);
 
-            string? gasPriceRes = await _rpcClient.Post<string>("eth_gasPrice") ?? "1";
-            UInt256 gasPrice = HexConvert.ToUInt256(gasPriceRes);
+            (UInt256 resolvedMaxFeePerGas, UInt256 resolvedPriorityFeePerGas) = await ResolveFeeSettingsAsync(maxFee, maxPriorityFee);
 
-            UInt256 maxPriorityFeePerGas = maxPriorityFee;
-            if (maxPriorityFee == 0)
-            {
-                string? maxPriorityFeePerGasRes = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
-                maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
-            }
-
-            UInt256 approxGasFee = (gasPrice + maxPriorityFeePerGas) * GasCostOf.Transaction;
+            UInt256 approxGasFee = resolvedMaxFeePerGas * GasCostOf.Transaction;
 
             if (balance < approxGasFee)
             {
@@ -183,12 +161,13 @@ internal class FundsDistributor
 
             UInt256 toSend = balance - approxGasFee;
 
-            Transaction tx = CreateTx(_chainId,
-                                      beneficiary,
-                                      maxFee != 0 ? maxFee : gasPrice + maxPriorityFeePerGas,
-                                      nonce,
-                                      maxPriorityFeePerGas,
-                                      toSend);
+            Transaction tx = CreateTx(
+                _chainId,
+                beneficiary,
+                resolvedMaxFeePerGas,
+                nonce,
+                resolvedPriorityFeePerGas,
+                toSend);
             await signer.Sign(tx);
 
             string txRlp = Convert.ToHexStringLower(txDecoder
@@ -214,5 +193,24 @@ internal class FundsDistributor
             Value = toSend,
             To = beneficiary,
         };
+    }
+
+    private async Task<(UInt256 maxFeePerGas, UInt256 maxPriorityFeePerGas)> ResolveFeeSettingsAsync(UInt256 maxFeeOverride, UInt256 maxPriorityFeeOverride)
+    {
+        UInt256 resolvedPriority = maxPriorityFeeOverride;
+        if (resolvedPriority == 0)
+        {
+            string? rpcResult = await _rpcClient.Post<string>("eth_maxPriorityFeePerGas") ?? "0x1";
+            resolvedPriority = HexConvert.ToUInt256(rpcResult);
+        }
+
+        UInt256 resolvedMaxFee = maxFeeOverride;
+        if (resolvedMaxFee == 0)
+        {
+            string? rpcResult = await _rpcClient.Post<string>("eth_gasPrice") ?? "0x1";
+            resolvedMaxFee = HexConvert.ToUInt256(rpcResult);
+        }
+
+        return (resolvedMaxFee, resolvedPriority);
     }
 }
