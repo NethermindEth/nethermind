@@ -15,7 +15,7 @@ internal class RocksdbSortedView : ISortedView
     private readonly IntPtr _upperBound;
     private bool _started = false;
 
-    public RocksdbSortedView(Iterator iterator, ReadOptions? readOptions = null, IntPtr lowerBound = default, IntPtr upperBound = default)
+    public RocksdbSortedView(Iterator iterator, ReadOptions? _ = null, IntPtr lowerBound = default, IntPtr upperBound = default)
     {
         _iterator = iterator;
         _lowerBound = lowerBound;
