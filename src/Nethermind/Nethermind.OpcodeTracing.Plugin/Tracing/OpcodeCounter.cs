@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.OpcodeTracing.Plugin.Output;
-
 namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 
 /// <summary>
@@ -12,7 +10,7 @@ public sealed class OpcodeCounter
 {
     private const int OpcodeSpace = 256;
     private readonly long[] _counters = new long[OpcodeSpace];
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
 
     /// <summary>
     /// Gets the total count of all opcodes.
@@ -64,24 +62,22 @@ public sealed class OpcodeCounter
     }
 
     /// <summary>
-    /// Converts the opcode counts to a dictionary with human-readable labels.
+    /// Converts the opcode counts to a dictionary keyed by opcode byte.
     /// </summary>
-    /// <returns>A dictionary mapping opcode names to counts.</returns>
-    public Dictionary<string, long> ToOpcodeCountsDictionary()
+    /// <returns>A dictionary mapping opcode bytes to counts.</returns>
+    public Dictionary<byte, long> ToOpcodeCountsDictionary()
     {
-        var snapshot = GetSnapshot();
-        var result = new Dictionary<string, long>();
+        long[] snapshot = GetSnapshot();
+        Dictionary<byte, long> result = [];
 
         for (int i = 0; i < OpcodeSpace; i++)
         {
             if (snapshot[i] > 0)
             {
-                string label = OpcodeLabelCache.GetLabel((byte)i);
-                result[label] = snapshot[i];
+                result[(byte)i] = snapshot[i];
             }
         }
 
         return result;
     }
-
 }

@@ -1032,13 +1032,13 @@
       "nethermind.opcodetracing.plugin": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.36.0-unstable, )",
-          "Nethermind.Blockchain": "[1.36.0-unstable, )",
-          "Nethermind.Config": "[1.36.0-unstable, )",
-          "Nethermind.Core": "[1.36.0-unstable, )",
-          "Nethermind.Evm": "[1.36.0-unstable, )",
-          "Nethermind.Logging": "[1.36.0-unstable, )",
-          "Nethermind.Synchronization": "[1.36.0-unstable, )"
+          "Nethermind.Api": "[1.37.0-unstable, )",
+          "Nethermind.Blockchain": "[1.37.0-unstable, )",
+          "Nethermind.Config": "[1.37.0-unstable, )",
+          "Nethermind.Core": "[1.37.0-unstable, )",
+          "Nethermind.Evm": "[1.37.0-unstable, )",
+          "Nethermind.Logging": "[1.37.0-unstable, )",
+          "Nethermind.Synchronization": "[1.37.0-unstable, )"
         }
       },
       "nethermind.optimism": {

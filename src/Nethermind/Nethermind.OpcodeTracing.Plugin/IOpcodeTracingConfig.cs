@@ -14,13 +14,13 @@ public interface IOpcodeTracingConfig : IConfig
     /// <summary>
     /// Gets or sets a value indicating whether the OpcodeTracing plugin is enabled.
     /// </summary>
-    [ConfigItem(Description = "Enable the OpcodeTracing plugin.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether to enable opcode tracing.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
     /// <summary>
     /// Gets or sets the directory where opcode trace JSON files are written.
     /// </summary>
-    [ConfigItem(Description = "Directory where opcode trace JSON files are written.", DefaultValue = "traces/opcodes")]
+    [ConfigItem(Description = "Directory of opcode trace JSON files to be written.", DefaultValue = "traces/opcodes")]
     string OutputDirectory { get; set; }
 
     /// <summary>

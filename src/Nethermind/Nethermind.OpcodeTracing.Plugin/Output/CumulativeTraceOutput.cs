@@ -18,10 +18,12 @@ public sealed class CumulativeTraceOutput
     public required CumulativeMetadata Metadata { get; init; }
 
     /// <summary>
-    /// Gets or sets the aggregated opcode counts dictionary mapping opcode names to total occurrence counts.
+    /// Gets or sets the aggregated opcode counts dictionary mapping opcode bytes to total occurrence counts.
+    /// Serializes with human-readable opcode names as keys.
     /// </summary>
     [JsonPropertyName("opcodeCounts")]
-    public required Dictionary<string, long> OpcodeCounts { get; init; }
+    [JsonConverter(typeof(OpcodeCountsJsonConverter))]
+    public required Dictionary<byte, long> OpcodeCounts { get; init; }
 }
 
 /// <summary>

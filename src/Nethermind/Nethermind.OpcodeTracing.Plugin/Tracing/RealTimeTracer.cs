@@ -18,7 +18,6 @@ public sealed class RealTimeTracer : IAsyncDisposable
     private readonly BlockRange _range;
     private readonly ILogger _logger;
     private readonly Action<long> _onBlockCompleted;
-    private readonly string _outputDirectory;
     private readonly string _sessionId;
 
     // Dual output writers
@@ -66,9 +65,9 @@ public sealed class RealTimeTracer : IAsyncDisposable
         Action<long> onBlockCompleted,
         ILogManager logManager)
     {
+        ArgumentNullException.ThrowIfNull(outputDirectory);
         _counter = counter ?? throw new ArgumentNullException(nameof(counter));
         _range = range;
-        _outputDirectory = outputDirectory ?? throw new ArgumentNullException(nameof(outputDirectory));
         _sessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
         _onBlockCompleted = onBlockCompleted ?? throw new ArgumentNullException(nameof(onBlockCompleted));
         _logger = logManager?.GetClassLogger<RealTimeTracer>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -109,9 +108,8 @@ public sealed class RealTimeTracer : IAsyncDisposable
 
         // Accumulate opcodes into global counter
         long[] blockCounts = new long[256];
-        foreach (var (opcodeName, count) in trace.Opcodes)
+        foreach ((byte opcodeValue, long count) in trace.Opcodes)
         {
-            byte opcodeValue = GetOpcodeByteFromName(opcodeName);
             blockCounts[opcodeValue] = count;
         }
 
@@ -158,20 +156,20 @@ public sealed class RealTimeTracer : IAsyncDisposable
     /// <summary>
     /// Creates a per-block trace output from block trace data.
     /// </summary>
-    private PerBlockTraceOutput CreatePerBlockOutput(OpcodeBlockTrace trace)
+    private static PerBlockTraceOutput CreatePerBlockOutput(OpcodeBlockTrace trace)
     {
         return new PerBlockTraceOutput
         {
             Metadata = new PerBlockMetadata
             {
                 BlockNumber = trace.BlockNumber,
-                ParentHash = trace.ParentHash,
+                ParentHash = trace.ParentHash.ToString(),
                 Timestamp = (long)trace.Timestamp,
                 TransactionCount = trace.TransactionCount,
                 GasUsed = null, // Not available in current OpcodeBlockTrace
                 TracedAt = DateTime.UtcNow
             },
-            OpcodeCounts = new Dictionary<string, long>(trace.Opcodes)
+            OpcodeCounts = new Dictionary<byte, long>(trace.Opcodes)
         };
     }
 
@@ -238,26 +236,6 @@ public sealed class RealTimeTracer : IAsyncDisposable
 
         // Write final cumulative with partial status
         await _cumulativeWriter.FinalizeAsync(CreateCumulativeOutput("partial"), "partial").ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Converts an opcode name back to its byte value.
-    /// </summary>
-    private static byte GetOpcodeByteFromName(string opcodeName)
-    {
-        // Handle hex format like "0xfe"
-        if (opcodeName.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-        {
-            return Convert.ToByte(opcodeName, 16);
-        }
-
-        // Try to parse as Instruction enum
-        if (Enum.TryParse<Nethermind.Evm.Instruction>(opcodeName, out var instruction))
-        {
-            return (byte)instruction;
-        }
-
-        return 0; // Unknown opcode
     }
 
     /// <summary>

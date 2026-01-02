@@ -56,19 +56,22 @@ public sealed class PerBlockTraceWriter
 
         try
         {
+            // Resolve path using PathUtils for proper relative/absolute path handling
+            string resolvedDirectory = outputDirectory.GetApplicationResourcePath();
+
             // Ensure directory exists
-            if (!Directory.Exists(outputDirectory))
+            if (!Directory.Exists(resolvedDirectory))
             {
-                Directory.CreateDirectory(outputDirectory);
+                Directory.CreateDirectory(resolvedDirectory);
             }
 
             // Generate filename: opcode-trace-block-{blockNumber}.json
             string fileName = $"opcode-trace-block-{traceOutput.Metadata.BlockNumber}.json";
-            string filePath = Path.Combine(outputDirectory, fileName);
+            string filePath = Path.Combine(resolvedDirectory, fileName);
 
-            // Serialize and write
-            string json = JsonSerializer.Serialize(traceOutput, _serializerOptions);
-            await File.WriteAllTextAsync(filePath, json).ConfigureAwait(false);
+            // Serialize directly to file stream
+            await using FileStream stream = new(filePath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096, useAsync: true);
+            await JsonSerializer.SerializeAsync(stream, traceOutput, _serializerOptions).ConfigureAwait(false);
 
             if (_logger.IsDebug)
             {
@@ -87,5 +90,4 @@ public sealed class PerBlockTraceWriter
             return null;
         }
     }
-
 }

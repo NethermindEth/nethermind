@@ -13,19 +13,19 @@ namespace Nethermind.OpcodeTracing.Plugin.Output;
 public sealed class CumulativeTraceWriter
 {
     private readonly ILogger _logger;
-    private readonly string _outputDirectory;
+    private readonly string _resolvedDirectory;
     private readonly string _sessionId;
     private readonly JsonSerializerOptions _serializerOptions = new()
     {
         WriteIndented = true
     };
 
-    private string? _filePath;
+    private readonly string _filePath;
 
     /// <summary>
     /// Gets the full path to the cumulative file.
     /// </summary>
-    public string? FilePath => _filePath;
+    public string FilePath => _filePath;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CumulativeTraceWriter"/> class.
@@ -35,12 +35,15 @@ public sealed class CumulativeTraceWriter
     /// <param name="logManager">The log manager.</param>
     public CumulativeTraceWriter(string outputDirectory, string sessionId, ILogManager logManager)
     {
-        _outputDirectory = outputDirectory ?? throw new ArgumentNullException(nameof(outputDirectory));
+        ArgumentNullException.ThrowIfNull(outputDirectory);
         _sessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
         _logger = logManager?.GetClassLogger<CumulativeTraceWriter>() ?? throw new ArgumentNullException(nameof(logManager));
 
+        // Resolve path using PathUtils for proper relative/absolute path handling
+        _resolvedDirectory = outputDirectory.GetApplicationResourcePath();
+
         // Pre-compute the file path - "all" sorts before "block" alphabetically
-        _filePath = Path.Combine(_outputDirectory, $"opcode-trace-all-{_sessionId}.json");
+        _filePath = Path.Combine(_resolvedDirectory, $"opcode-trace-all-{_sessionId}.json");
     }
 
     /// <summary>
@@ -63,14 +66,14 @@ public sealed class CumulativeTraceWriter
         try
         {
             // Ensure directory exists
-            if (!Directory.Exists(_outputDirectory))
+            if (!Directory.Exists(_resolvedDirectory))
             {
-                Directory.CreateDirectory(_outputDirectory);
+                Directory.CreateDirectory(_resolvedDirectory);
             }
 
-            // Serialize and write (overwrite existing file)
-            string json = JsonSerializer.Serialize(traceOutput, _serializerOptions);
-            await File.WriteAllTextAsync(_filePath!, json).ConfigureAwait(false);
+            // Serialize directly to file stream (overwrite existing file)
+            await using FileStream stream = new(_filePath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096, useAsync: true);
+            await JsonSerializer.SerializeAsync(stream, traceOutput, _serializerOptions).ConfigureAwait(false);
 
             if (_logger.IsDebug)
             {

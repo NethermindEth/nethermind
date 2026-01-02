@@ -18,10 +18,12 @@ public sealed class PerBlockTraceOutput
     public required PerBlockMetadata Metadata { get; init; }
 
     /// <summary>
-    /// Gets or sets the opcode counts dictionary mapping opcode names to occurrence counts for this block.
+    /// Gets or sets the opcode counts dictionary mapping opcode bytes to occurrence counts for this block.
+    /// Serializes with human-readable opcode names as keys.
     /// </summary>
     [JsonPropertyName("opcodeCounts")]
-    public required Dictionary<string, long> OpcodeCounts { get; init; }
+    [JsonConverter(typeof(OpcodeCountsJsonConverter))]
+    public required Dictionary<byte, long> OpcodeCounts { get; init; }
 }
 
 /// <summary>
