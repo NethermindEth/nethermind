@@ -297,6 +297,37 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Smoke_test_with_span()
+        {
+            _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
+
+            Span<byte> span = _db.GetSpan(new byte[] { 1, 2, 3 });
+
+            Assert.That(span.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
+
+            _db.DangerousReleaseMemory(span);
+        }
+
+        [Test]
+        public void Snapshot_test()
+        {
+            IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;
+
+            byte[] key = new byte[] { 1, 2, 3 };
+
+            _db[key] = new byte[] { 4, 5, 6 };
+            Assert.That(_db[key], Is.EqualTo(new byte[] { 4, 5, 6 }));
+
+            using IKeyValueStoreSnapshot snapshot = withSnapshot.CreateSnapshot();
+            Assert.That(snapshot[key], Is.EqualTo(new byte[] { 4, 5, 6 }));
+
+            _db.Set(key, new byte[] { 5, 6, 7 });
+            Assert.That(_db[key], Is.EqualTo(new byte[] { 5, 6, 7 }));
+
+            Assert.That(snapshot[key], Is.EqualTo(new byte[] { 4, 5, 6 }));
+        }
+
+        [Test]
         public void Smoke_test_large_writes_with_nowal()
         {
             IWriteBatch writeBatch = _db.StartWriteBatch();

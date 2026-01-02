@@ -10,7 +10,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore
+public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot
 {
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
@@ -197,5 +197,14 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
     {
         return _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily);
+    }
+
+    public IKeyValueStoreSnapshot CreateSnapshot()
+    {
+        Snapshot snapshot = _rocksDb.CreateSnapshot();
+        ReadOptions readOptions = new ReadOptions();
+        readOptions.SetSnapshot(snapshot);
+
+        return new DbOnTheRocks.RocksDbSnapshot(_mainDb, readOptions, _columnFamily, snapshot);
     }
 }
