@@ -17,6 +17,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     internal readonly ColumnFamilyHandle _columnFamily;
 
     private readonly DbOnTheRocks.IteratorManager _iteratorManager;
+    private readonly RocksDbReader _reader;
 
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
     {
@@ -27,6 +28,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         Name = name;
 
         _iteratorManager = new DbOnTheRocks.IteratorManager(_rocksDb, _columnFamily, _mainDb._readAheadReadOptions);
+        _reader = new RocksDbReader(mainDb, () => new ReadOptions(), _iteratorManager, _columnFamily);
     }
 
     public void Dispose()
@@ -36,14 +38,24 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public string Name { get; }
 
-    public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+    byte[]? IReadOnlyKeyValueStore.Get(ReadOnlySpan<byte> key, ReadFlags flags)
     {
-        return _mainDb.GetWithColumnFamily(key, _columnFamily, _iteratorManager, flags);
+        return _reader.Get(key, flags);
     }
 
-    public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+    Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags)
     {
-        return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, flags);
+        return _reader.GetSpan(key, flags);
+    }
+
+    bool IReadOnlyKeyValueStore.KeyExists(ReadOnlySpan<byte> key)
+    {
+        return _reader.KeyExists(key);
+    }
+
+    void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> key)
+    {
+        _reader.DangerousReleaseMemory(key);
     }
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -143,11 +155,6 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         Set(key, null);
     }
 
-    public bool KeyExists(ReadOnlySpan<byte> key)
-    {
-        return _mainDb.KeyExistsWithColumn(key, _columnFamily);
-    }
-
     public void Flush(bool onlyWal)
     {
         _mainDb.FlushWithColumnFamily(_columnFamily);
@@ -166,11 +173,6 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     // Maybe it should be column specific metric?
     public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false) => _mainDb.GatherMetric(includeSharedCache);
-
-    public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
-    {
-        _mainDb.DangerousReleaseMemory(span);
-    }
 
     public byte[]? FirstKey
     {
@@ -205,6 +207,6 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         ReadOptions readOptions = new ReadOptions();
         readOptions.SetSnapshot(snapshot);
 
-        return new DbOnTheRocks.RocksDbSnapshot(_mainDb, readOptions, _columnFamily, snapshot);
+        return new DbOnTheRocks.RocksDbSnapshot(_mainDb, () => readOptions, _columnFamily, snapshot);
     }
 }

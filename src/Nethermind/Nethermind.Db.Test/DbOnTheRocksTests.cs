@@ -124,9 +124,10 @@ namespace Nethermind.Db.Test
             config.EnableFileWarmer = true;
             {
                 using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+                IKeyValueStore asKv = db;
                 for (int i = 0; i < 1000; i++)
                 {
-                    db[i.ToBigEndianByteArray()] = i.ToBigEndianByteArray();
+                    asKv[i.ToBigEndianByteArray()] = i.ToBigEndianByteArray();
                 }
             }
 
@@ -289,23 +290,11 @@ namespace Nethermind.Db.Test
         [Test]
         public void Smoke_test()
         {
-            _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
-            Assert.That(_db[new byte[] { 1, 2, 3 }], Is.EqualTo(new byte[] { 4, 5, 6 }));
+            _db[[1, 2, 3]] = [4, 5, 6];
+            AssertCanGetViaAllMethod(_db, [1, 2, 3], [4, 5, 6]);
 
-            _db.Set(new byte[] { 2, 3, 4 }, new byte[] { 5, 6, 7 }, WriteFlags.LowPriority);
-            Assert.That(_db[new byte[] { 2, 3, 4 }], Is.EqualTo(new byte[] { 5, 6, 7 }));
-        }
-
-        [Test]
-        public void Smoke_test_with_span()
-        {
-            _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
-
-            Span<byte> span = _db.GetSpan(new byte[] { 1, 2, 3 });
-
-            Assert.That(span.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
-
-            _db.DangerousReleaseMemory(span);
+            _db.Set([2, 3, 4], [5, 6, 7], WriteFlags.LowPriority);
+            AssertCanGetViaAllMethod(_db, [2, 3, 4], [5, 6, 7]);
         }
 
         [Test]
@@ -316,15 +305,15 @@ namespace Nethermind.Db.Test
             byte[] key = new byte[] { 1, 2, 3 };
 
             _db[key] = new byte[] { 4, 5, 6 };
-            Assert.That(_db[key], Is.EqualTo(new byte[] { 4, 5, 6 }));
+            AssertCanGetViaAllMethod(_db, key, new byte[] { 4, 5, 6 });
 
             using IKeyValueStoreSnapshot snapshot = withSnapshot.CreateSnapshot();
-            Assert.That(snapshot[key], Is.EqualTo(new byte[] { 4, 5, 6 }));
+            AssertCanGetViaAllMethod(snapshot, key, new byte[] { 4, 5, 6 });
 
             _db.Set(key, new byte[] { 5, 6, 7 });
-            Assert.That(_db[key], Is.EqualTo(new byte[] { 5, 6, 7 }));
+            AssertCanGetViaAllMethod(_db, key, new byte[] { 5, 6, 7 });
 
-            Assert.That(snapshot[key], Is.EqualTo(new byte[] { 4, 5, 6 }));
+            AssertCanGetViaAllMethod(snapshot, key, new byte[] { 4, 5, 6 });
         }
 
         [Test]
@@ -341,7 +330,7 @@ namespace Nethermind.Db.Test
 
             for (int i = 0; i < 1000; i++)
             {
-                _db[i.ToBigEndianByteArray()].Should().BeEquivalentTo(i.ToBigEndianByteArray());
+                AssertCanGetViaAllMethod(_db, i.ToBigEndianByteArray(), i.ToBigEndianByteArray());
             }
         }
 
@@ -435,17 +424,31 @@ namespace Nethermind.Db.Test
             sortedKeyValue.FirstKey.Should().BeEquivalentTo(new byte[] { 0, 0, 0 });
             sortedKeyValue.LastKey.Should().BeEquivalentTo(new byte[] { i, i, i });
 
-            using var view = sortedKeyValue.GetViewBetween([0], [9]);
-
-            i = 0;
-            while (view.MoveNext())
+            void CheckView(ISortedView view)
             {
-                view.CurrentKey.ToArray().Should().BeEquivalentTo([i, i, i]);
-                view.CurrentValue.ToArray().Should().BeEquivalentTo([i, i, i]);
-                i++;
+                i = 0;
+                while (view.MoveNext())
+                {
+                    view.CurrentKey.ToArray().Should().BeEquivalentTo([i, i, i]);
+                    view.CurrentValue.ToArray().Should().BeEquivalentTo([i, i, i]);
+                    i++;
+                }
+
+                i.Should().Be((byte)entryCount);
             }
 
-            i.Should().Be((byte)entryCount);
+            using var plainSortedView = sortedKeyValue.GetViewBetween([0], [9]);
+            CheckView(plainSortedView);
+
+            using var snapshot = ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot();
+
+            for (i = 0; i < entryCount; i++)
+            {
+                _db[[i, i, i]] = [(byte)(i + 1), (byte)(i + 1), (byte)(i + 1)];
+            }
+
+            using var snapshotIterator = ((ISortedKeyValueStore)snapshot).GetViewBetween([0], [9]);
+            CheckView(snapshotIterator);
         }
 
         [Test]
@@ -464,6 +467,62 @@ namespace Nethermind.Db.Test
         {
             _db.Dispose();
             _db.GatherMetric().Size.Should().Be(0);
+        }
+
+        private void AssertCanGetViaAllMethod(IReadOnlyKeyValueStore kv, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        {
+            Assert.That(kv[key], Is.EqualTo(value.ToArray()));
+
+            ReadFlags[] flags = [ReadFlags.None, ReadFlags.HintReadAhead, ReadFlags.HintCacheMiss];
+            foreach (ReadFlags flag in flags)
+            {
+                Assert.That(kv.Get(key, flags: flag), Is.EqualTo(value.ToArray()));
+
+                Span<byte> buffer = kv.GetSpan(key, flag);
+                Assert.That(buffer.ToArray(), Is.EqualTo(value.ToArray()));
+                kv.DangerousReleaseMemory(buffer);
+            }
+
+            using ISortedView iterator = ((ISortedKeyValueStore)kv).GetViewBetween(key, CreateNextKey(key));
+            if (iterator.MoveNext())
+            {
+                Assert.That(iterator.CurrentKey.ToArray(), Is.EqualTo(key.ToArray()));
+                Assert.That(iterator.CurrentValue.ToArray(), Is.EqualTo(value.ToArray()));
+            }
+
+            Assert.That(iterator.MoveNext(), Is.False);
+
+            // Ai generated
+            byte[] CreateNextKey(ReadOnlySpan<byte> key)
+            {
+                // 1. Create a copy of the key to modify
+                byte[] nextKey = key.ToArray();
+
+                // 2. Iterate backwards (from the last byte to the first)
+                for (int i = nextKey.Length - 1; i >= 0; i--)
+                {
+                    // If the byte is NOT 0xFF (255), we can just increment it and we are done.
+                    if (nextKey[i] < 0xFF)
+                    {
+                        nextKey[i]++;
+                        return nextKey;
+                    }
+
+                    // If the byte IS 0xFF, it rolls over to 0x00, and we "carry" the 1 to the next byte loop.
+                    nextKey[i] = 0x00;
+                }
+
+                // 3. Handle Overflow (Edge Case: All bytes were 0xFF)
+                // If we are here, the key was something like [FF, FF, FF].
+                // The loop turned it into [00, 00, 00].
+                // The "Next" lexicographical key is mathematically [01, 00, 00, 00].
+
+                // Resize array to fit the new leading '1'
+                var overflowKey = new byte[nextKey.Length + 1];
+                overflowKey[0] = 1;
+                // The rest are already 0 from default initialization, so we return.
+                return overflowKey;
+            }
         }
     }
 

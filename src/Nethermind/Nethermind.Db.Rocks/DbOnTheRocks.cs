@@ -92,6 +92,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private readonly IteratorManager _iteratorManager;
     private ulong _writeBufferSize;
     private int _maxWriteBufferNumber;
+    private readonly RocksDbReader _reader;
 
     public DbOnTheRocks(
         string basePath,
@@ -113,6 +114,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _perTableDbConfig = rocksDbConfigFactory.GetForDatabase(Name, null);
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
         _iteratorManager = new IteratorManager(_db, null, _readAheadReadOptions);
+
+        _reader = new RocksDbReader(this, () =>
+        {
+            ReadOptions readOptions = new ReadOptions();
+            readOptions.SetVerifyChecksums(_perTableDbConfig.VerifyChecksum ?? true);
+            return readOptions;
+        }, _iteratorManager, null);
     }
 
     protected virtual RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
@@ -635,44 +643,27 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return options;
     }
 
-    public byte[]? this[ReadOnlySpan<byte> key]
+    byte[]? IReadOnlyKeyValueStore.Get(ReadOnlySpan<byte> key, ReadFlags flags)
     {
-        get => Get(key, ReadFlags.None);
-        set => Set(key, value, WriteFlags.None);
+        return _reader.Get(key, flags);
     }
 
-    public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+    Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags)
     {
-        return GetWithColumnFamily(key, null, _iteratorManager, flags);
+        return _reader.GetSpan(key, flags);
     }
 
-    internal byte[]? GetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, IteratorManager iteratorManager, ReadFlags flags = ReadFlags.None)
+    bool IReadOnlyKeyValueStore.KeyExists(ReadOnlySpan<byte> key)
     {
-        ObjectDisposedException.ThrowIf(_isDisposing, this);
-
-        UpdateReadMetrics();
-
-        try
-        {
-            if (_readAheadReadOptions is not null && (flags & ReadFlags.HintReadAhead) != 0)
-            {
-                byte[]? result = GetWithIterator(key, cf, iteratorManager, flags, out bool success);
-                if (success)
-                {
-                    return result;
-                }
-            }
-
-            return Get(key, cf, flags);
-        }
-        catch (RocksDbSharpException e)
-        {
-            CreateMarkerIfCorrupt(e);
-            throw;
-        }
+        return _reader.KeyExists(key);
     }
 
-    private unsafe byte[]? GetWithIterator(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, IteratorManager iteratorManager, ReadFlags flags, out bool success)
+    void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> span)
+    {
+        _reader.DangerousReleaseMemory(span);
+    }
+
+    internal unsafe byte[]? GetWithIterator(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, IteratorManager iteratorManager, ReadFlags flags, out bool success)
     {
         success = true;
 
@@ -694,13 +685,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return null;
     }
 
-    private unsafe byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadFlags flags)
+    internal unsafe byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOptions readOptions)
     {
         // TODO: update when merged upstream: https://github.com/curiosity-ai/rocksdb-sharp/pull/61
         // return _db.Get(key, cf, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions);
 
         nint db = _db.Handle;
-        nint read_options = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions).Handle;
+        nint read_options = readOptions.Handle;
         UIntPtr skLength = (UIntPtr)key.Length;
         IntPtr handle;
         IntPtr errPtr;
@@ -869,17 +860,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 throw;
             }
         }
-    }
-
-    public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags)
-    {
-        return GetSpanWithColumnFamily(key, null, flags);
-    }
-
-    internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadFlags flags)
-    {
-        ReadOptions options = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions;
-        return GetSpanWithColumnFamily(key, cf, options);
     }
 
     internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOptions readOptions)
@@ -1197,11 +1177,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 throw;
             }
         }
-    }
-
-    public bool KeyExists(ReadOnlySpan<byte> key)
-    {
-        return KeyExistsWithColumn(key, null);
     }
 
     protected internal bool KeyExistsWithColumn(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf)
@@ -1758,7 +1733,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     ///
     /// This class handles a periodic timer which periodically dispose all iterator.
     /// </summary>
-    internal class IteratorManager : IDisposable
+    public class IteratorManager : IDisposable
     {
         private readonly ManagedIterators _readaheadIterators = new();
         private readonly ManagedIterators _readaheadIterators2 = new();
@@ -1951,86 +1926,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     public IKeyValueStoreSnapshot CreateSnapshot()
     {
         Snapshot snapshot = _db.CreateSnapshot();
-        ReadOptions readOptions = new ReadOptions();
-        readOptions.SetSnapshot(snapshot);
-
-        return new RocksDbSnapshot(this, readOptions, null, snapshot);
+        return new RocksDbSnapshot(this, () =>
+        {
+            ReadOptions readOptions = new ReadOptions();
+            readOptions.SetSnapshot(snapshot);
+            return readOptions;
+        }, null, snapshot);
     }
 
     public class RocksDbSnapshot(
         DbOnTheRocks mainDb,
-        ReadOptions options,
+        Func<ReadOptions> readOptionsFactory,
         ColumnFamilyHandle? columnFamily,
         Snapshot snapshot
-    ) : IKeyValueStoreSnapshot, ISortedKeyValueStore
+    ) : RocksDbReader(mainDb, readOptionsFactory, null, columnFamily), IKeyValueStoreSnapshot
     {
-
-        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            ReadOnlySpan<byte> value = default;
-            try
-            {
-                value = GetSpan(key, flags);
-
-                if (value.IsNull()) return null;
-                return value.ToArray();
-            }
-            finally
-            {
-                DangerousReleaseMemory(value);
-            }
-        }
-
-        public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            return mainDb.GetSpanWithColumnFamily(key, columnFamily, options);
-        }
-
-        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
-        {
-            mainDb.DangerousReleaseMemory(span);
-        }
-
-        public byte[]? FirstKey
-        {
-            get
-            {
-                using Iterator iterator = mainDb.CreateIterator(options);
-                iterator.SeekToFirst();
-                return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
-            }
-        }
-
-        public byte[]? LastKey
-        {
-            get
-            {
-                using Iterator iterator = mainDb.CreateIterator(options);
-                iterator.SeekToLast();
-                return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
-            }
-        }
-
-        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
-        {
-            ReadOptions readOptions = new ReadOptions();
-            readOptions.SetSnapshot(snapshot);
-
-            unsafe
-            {
-                IntPtr iterateLowerBound = Marshal.AllocHGlobal(firstKey.Length);
-                firstKey.CopyTo(new Span<byte>(iterateLowerBound.ToPointer(), firstKey.Length));
-                Native.Instance.rocksdb_readoptions_set_iterate_lower_bound(readOptions.Handle, iterateLowerBound, (UIntPtr)firstKey.Length);
-
-                IntPtr iterateUpperBound = Marshal.AllocHGlobal(lastKey.Length);
-                lastKey.CopyTo(new Span<byte>(iterateUpperBound.ToPointer(), lastKey.Length));
-                Native.Instance.rocksdb_readoptions_set_iterate_upper_bound(readOptions.Handle, iterateUpperBound, (UIntPtr)lastKey.Length);
-            }
-
-            Iterator iterator = mainDb.CreateIterator(readOptions, columnFamily);
-            return new RocksdbSortedView(iterator);
-        }
-
         public void Dispose()
         {
             snapshot.Dispose();
