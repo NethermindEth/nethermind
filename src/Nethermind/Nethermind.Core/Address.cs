@@ -109,7 +109,7 @@ namespace Nethermind.Core
                 {
                     if (allowOverflow)
                     {
-                        span = span[(value.Length - size)..];
+                        span = span[(span.Length - size)..];
                     }
                     else
                     {
