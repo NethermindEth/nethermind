@@ -11,7 +11,6 @@ namespace Nethermind.Db.Rocks;
 internal class RocksdbSortedView : ISortedView
 {
     private readonly Iterator _iterator;
-    private readonly ReadOptions? _readOptions;
     private readonly IntPtr _lowerBound;
     private readonly IntPtr _upperBound;
     private bool _started = false;
@@ -19,7 +18,6 @@ internal class RocksdbSortedView : ISortedView
     public RocksdbSortedView(Iterator iterator, ReadOptions? readOptions = null, IntPtr lowerBound = default, IntPtr upperBound = default)
     {
         _iterator = iterator;
-        _readOptions = readOptions;
         _lowerBound = lowerBound;
         _upperBound = upperBound;
     }
