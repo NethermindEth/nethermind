@@ -14,12 +14,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
-using Org.BouncyCastle.Asn1.X509;
-using RocksDbSharp;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Text;
 
 namespace Nethermind.Xdc;
 
