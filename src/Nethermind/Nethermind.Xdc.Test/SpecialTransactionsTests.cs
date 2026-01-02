@@ -385,6 +385,7 @@ internal class SpecialTransactionsTests
         }
     }
 
+    [Test]
     public async Task Malformed_SenderNonceLesserThanTxNonce_SignTx_Fails_Validation()
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
@@ -431,6 +432,7 @@ internal class SpecialTransactionsTests
         result.Value.Error.Should().Be(XdcTransactionResult.NonceTooLowError);
     }
 
+    [Test]
     public async Task Malformed_SenderBiggerLesserThanTxNonce_SignTx_Fails_Validation()
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
@@ -478,6 +480,7 @@ internal class SpecialTransactionsTests
     }
 
 
+    [Test]
     public async Task Malformed_SenderEqualLesserThanTxNonce_SignTx_Fails_Validation()
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
@@ -525,6 +528,7 @@ internal class SpecialTransactionsTests
         result.Value.Error.Should().NotBe(XdcTransactionResult.NonceTooLowError);
     }
 
+    [Test]
     public async Task Malformed_WrongBlockNumber_BlockLessThanCurrent_SignTx_Fails_Validation()
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
@@ -557,6 +561,7 @@ internal class SpecialTransactionsTests
         result.Value.Error.Should().NotBe(TransactionResult.ErrorType.MalformedTransaction);
     }
 
+    [Test]
     public async Task Malformed_WrongBlockNumber_BlockEqualToCurrent_SignTx_Fails_Validation()
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
@@ -588,6 +593,7 @@ internal class SpecialTransactionsTests
         result.Value.Error.Should().Be(TransactionResult.ErrorType.MalformedTransaction);
     }
 
+    [Test]
     public async Task Malformed_WrongBlockNumber_BlockBiggerThanCurrent_SignTx_Fails_Validation()
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
