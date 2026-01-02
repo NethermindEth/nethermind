@@ -1,0 +1,23 @@
+<Project>
+
+	<PropertyGroup>
+		<ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<Authors>Pier Two</Authors>
+		<Copyright>Pier Two Services Pty Ltd</Copyright>
+		<EmbedUntrackedSources>true</EmbedUntrackedSources>
+		<IncludeSymbols>true</IncludeSymbols>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://piertwo.com</PackageProjectUrl>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageTags>network p2p discv5</PackageTags>
+		<RepositoryType>git</RepositoryType>
+		<RepositoryUrl>https://github.com/Pier-Two/Lantern.Discv5</RepositoryUrl>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<VersionPrefix>1.0.0</VersionPrefix>
+		<VersionSuffix>preview.4</VersionSuffix>
+	</PropertyGroup>
+
+</Project>
