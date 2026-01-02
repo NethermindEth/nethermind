@@ -56,7 +56,7 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
 
         ProductInfo.Instance = metricsConfig.NodeName;
 
-        ProductInfo.SyncType = syncConfig.FastSync 
+        ProductInfo.SyncType = syncConfig.FastSync
            ? syncConfig.SnapSync ? "Snap" : "Fast"
            : "Full";
 
