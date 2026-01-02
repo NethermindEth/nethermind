@@ -49,7 +49,7 @@ public class DbTracker
 
             if (Environment.TickCount64 - _lastDbMetricsUpdate < _intervalSec * 1000)
             {
-                // Update max every minute
+                // Update based on configured interval
                 return;
             }
 
