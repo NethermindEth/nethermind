@@ -17,8 +17,10 @@ public sealed class TraceOutput
     public required TraceMetadata Metadata { get; init; }
 
     /// <summary>
-    /// Gets or sets the opcode counts dictionary mapping opcode names to occurrence counts.
+    /// Gets or sets the opcode counts dictionary mapping opcode bytes to occurrence counts.
+    /// Serializes with human-readable opcode names as keys.
     /// </summary>
     [JsonPropertyName("opcodeCounts")]
-    public required Dictionary<string, long> OpcodeCounts { get; init; }
+    [JsonConverter(typeof(OpcodeCountsJsonConverter))]
+    public required Dictionary<byte, long> OpcodeCounts { get; init; }
 }
