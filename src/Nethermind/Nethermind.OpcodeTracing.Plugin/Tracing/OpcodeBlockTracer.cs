@@ -5,7 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
-using Nethermind.OpcodeTracing.Plugin.Output;
 
 namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 
@@ -72,12 +71,12 @@ internal sealed class OpcodeBlockTracer : IBlockTracer
 
 internal sealed record OpcodeBlockTrace
 {
-    public required string BlockHash { get; init; }
-    public required string ParentHash { get; init; }
+    public required Hash256 BlockHash { get; init; }
+    public required Hash256 ParentHash { get; init; }
     public required long BlockNumber { get; init; }
     public required ulong Timestamp { get; init; }
     public required int TransactionCount { get; init; }
-    public required IReadOnlyDictionary<string, long> Opcodes { get; init; }
+    public required IReadOnlyDictionary<byte, long> Opcodes { get; init; }
 }
 
 internal sealed class OpcodeTraceBuilder
@@ -99,7 +98,7 @@ internal sealed class OpcodeTraceBuilder
 
     public OpcodeBlockTrace Build()
     {
-        Dictionary<string, long> opcodeMap = new();
+        Dictionary<byte, long> opcodeMap = [];
         for (int opcode = 0; opcode < _opcodeCounters.Length; opcode++)
         {
             long count = _opcodeCounters[opcode];
@@ -108,16 +107,13 @@ internal sealed class OpcodeTraceBuilder
                 continue;
             }
 
-            opcodeMap[OpcodeLabelCache.GetLabel((byte)opcode)] = count;
+            opcodeMap[(byte)opcode] = count;
         }
-
-        Hash256 blockHash = _block.Hash ?? _block.Header.Hash ?? Keccak.Zero;
-        Hash256 parentHash = _block.ParentHash ?? Keccak.Zero;
 
         return new OpcodeBlockTrace
         {
-            BlockHash = blockHash.ToString(),
-            ParentHash = parentHash.ToString(),
+            BlockHash = _block.Hash ?? _block.Header.Hash ?? Keccak.Zero,
+            ParentHash = _block.ParentHash ?? Keccak.Zero,
             BlockNumber = _block.Number,
             Timestamp = _block.Timestamp,
             TransactionCount = _transactions,

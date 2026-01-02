@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using FastEnumUtility;
 using Nethermind.Evm;
 
 namespace Nethermind.OpcodeTracing.Plugin.Output;
@@ -24,10 +25,10 @@ internal static class OpcodeLabelCache
         string[] labels = new string[256];
         for (int i = 0; i < labels.Length; i++)
         {
-            byte opcode = (byte)i;
-            labels[i] = Enum.IsDefined(typeof(Instruction), opcode)
-                ? ((Instruction)opcode).ToString()
-                : $"0x{opcode:x2}";
+            Instruction opcode = (Instruction)i;
+            labels[i] = FastEnum.IsDefined(opcode)
+                ? FastEnum.GetName(opcode)!
+                : $"0x{i:x2}";
         }
 
         return labels;
