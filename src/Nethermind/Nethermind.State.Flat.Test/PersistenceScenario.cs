@@ -62,16 +62,6 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             Enabled = true,
             Layout = FlatLayout.PreimageFlat
         }, "PreimageFlat");
-        yield return new TestConfiguration(new FlatDbConfig()
-        {
-            Enabled = true,
-            Layout = FlatLayout.LMDBFlat
-        }, "LMDBFlat");
-        yield return new TestConfiguration(new FlatDbConfig()
-        {
-            Enabled = true,
-            Layout = FlatLayout.SmallKeyLMDBFlat
-        }, "SmallKeyLMDBFlat");
     }
 
 

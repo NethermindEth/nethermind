@@ -97,16 +97,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                     return ctx.Resolve<NoLeafValueRocksdbPersistence>();
                 }
 
-                if (flatDbConfig.Layout == FlatLayout.LMDBFlat)
-                {
-                    return ctx.Resolve<LMDBPersistence>();
-                }
-
-                if (flatDbConfig.Layout == FlatLayout.SmallKeyLMDBFlat)
-                {
-                    return ctx.Resolve<SmallKeyLMDBPersistence>();
-                }
-
                 if (flatDbConfig.Layout == FlatLayout.PreimageFlat)
                 {
                     return ctx.Resolve<PreimageRocksdbPersistence>();
@@ -138,9 +128,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
 
             .AddDecorator<IRocksDbConfigFactory, FlatBlockCacheAdjuster>()
 
-            .AddSingleton<LMDBPersistence>()
-            .AddSingleton<SmallKeyLMDBPersistence>()
-            .AddSingleton<LightningEnvironment>(ConfigureLightningEnv)
             .OnActivate<IWorldStateManager>((worldStateManager, ctx) =>
             {
                 new TrieStoreBoundaryWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
@@ -186,38 +173,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig): Module
                     ctx.Resolve<ImportStateOnStateSyncFinished>();
                 });
         }
-    }
-
-    private LightningEnvironment ConfigureLightningEnv(IComponentContext arg)
-    {
-        IInitConfig initConfig = arg.Resolve<IInitConfig>();
-        LightningEnvironment env = new LightningEnvironment(initConfig.BaseDbPath + "/lmdbFlat/", new EnvironmentConfiguration()
-        {
-            MapSize = 400.GiB(),
-            MaxReaders = 1024,
-            MaxDatabases = 3,
-        });
-        env.Open(EnvironmentOpenFlags.NoThreadLocalStorage | EnvironmentOpenFlags.NoReadAhead);
-
-        // Create the db
-        using (LightningTransaction? tx = env.BeginTransaction())
-        {
-            using var state = tx.OpenDatabase(FlatDbColumns.Account.ToString(), new DatabaseConfiguration()
-            {
-                Flags   = DatabaseOpenFlags.Create
-            });
-            using var accountAddr = tx.OpenDatabase(SmallKeyLMDBPersistence.AddressLookupTableName, new DatabaseConfiguration()
-            {
-                Flags   = DatabaseOpenFlags.Create
-            });
-            using var storage = tx.OpenDatabase(FlatDbColumns.Storage.ToString(), new DatabaseConfiguration()
-            {
-                Flags   = DatabaseOpenFlags.Create
-            });
-            tx.Commit();
-        }
-
-        return env;
     }
 
     private class FlatBlockCacheAdjuster : IRocksDbConfigFactory, IDisposable
