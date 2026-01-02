@@ -1,0 +1,58 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{68BD432B-04EB-4484-8340-BEA3232C1050}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{FE709003-AD2F-4616-ABA1-19758E80AE17}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.Enr", "src\Lantern.Discv5.Enr\Lantern.Discv5.Enr.csproj", "{696856EC-4774-4FCE-B954-3B8E42CF7693}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.Rlp", "src\Lantern.Discv5.Rlp\Lantern.Discv5.Rlp.csproj", "{34DD09C3-D33F-435E-BF66-BBD3F5D70BDC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.WireProtocol", "src\Lantern.Discv5.WireProtocol\Lantern.Discv5.WireProtocol.csproj", "{7CB91F29-D595-477A-9D76-E48C56D2BB05}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.Enr.Tests", "tests\Lantern.Discv5.Enr.Tests\Lantern.Discv5.Enr.Tests.csproj", "{9D4C6622-D067-4C3C-A1E1-7EA9F2D36CCC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.Rlp.Tests", "tests\Lantern.Discv5.Rlp.Tests\Lantern.Discv5.Rlp.Tests.csproj", "{BAF9C06B-4300-4680-AAE5-7E1CC29A3BAF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lantern.Discv5.WireProtocol.Tests", "tests\Lantern.Discv5.WireProtocol.Tests\Lantern.Discv5.WireProtocol.Tests.csproj", "{B1DEBE9F-7B1B-436C-8A1D-82DFE045E0A4}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{696856EC-4774-4FCE-B954-3B8E42CF7693}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{696856EC-4774-4FCE-B954-3B8E42CF7693}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{696856EC-4774-4FCE-B954-3B8E42CF7693}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{696856EC-4774-4FCE-B954-3B8E42CF7693}.Release|Any CPU.Build.0 = Release|Any CPU
+		{34DD09C3-D33F-435E-BF66-BBD3F5D70BDC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{34DD09C3-D33F-435E-BF66-BBD3F5D70BDC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{34DD09C3-D33F-435E-BF66-BBD3F5D70BDC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{34DD09C3-D33F-435E-BF66-BBD3F5D70BDC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7CB91F29-D595-477A-9D76-E48C56D2BB05}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7CB91F29-D595-477A-9D76-E48C56D2BB05}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7CB91F29-D595-477A-9D76-E48C56D2BB05}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7CB91F29-D595-477A-9D76-E48C56D2BB05}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9D4C6622-D067-4C3C-A1E1-7EA9F2D36CCC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9D4C6622-D067-4C3C-A1E1-7EA9F2D36CCC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9D4C6622-D067-4C3C-A1E1-7EA9F2D36CCC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9D4C6622-D067-4C3C-A1E1-7EA9F2D36CCC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BAF9C06B-4300-4680-AAE5-7E1CC29A3BAF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BAF9C06B-4300-4680-AAE5-7E1CC29A3BAF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BAF9C06B-4300-4680-AAE5-7E1CC29A3BAF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BAF9C06B-4300-4680-AAE5-7E1CC29A3BAF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B1DEBE9F-7B1B-436C-8A1D-82DFE045E0A4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B1DEBE9F-7B1B-436C-8A1D-82DFE045E0A4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B1DEBE9F-7B1B-436C-8A1D-82DFE045E0A4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B1DEBE9F-7B1B-436C-8A1D-82DFE045E0A4}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{696856EC-4774-4FCE-B954-3B8E42CF7693} = {68BD432B-04EB-4484-8340-BEA3232C1050}
+		{34DD09C3-D33F-435E-BF66-BBD3F5D70BDC} = {68BD432B-04EB-4484-8340-BEA3232C1050}
+		{7CB91F29-D595-477A-9D76-E48C56D2BB05} = {68BD432B-04EB-4484-8340-BEA3232C1050}
+		{9D4C6622-D067-4C3C-A1E1-7EA9F2D36CCC} = {FE709003-AD2F-4616-ABA1-19758E80AE17}
+		{BAF9C06B-4300-4680-AAE5-7E1CC29A3BAF} = {FE709003-AD2F-4616-ABA1-19758E80AE17}
+		{B1DEBE9F-7B1B-436C-8A1D-82DFE045E0A4} = {FE709003-AD2F-4616-ABA1-19758E80AE17}
+	EndGlobalSection
+EndGlobal

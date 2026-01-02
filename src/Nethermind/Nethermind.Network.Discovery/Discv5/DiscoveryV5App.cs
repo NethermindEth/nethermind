@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
@@ -205,7 +205,7 @@ public class DiscoveryV5App : IDiscoveryApp
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
-        Channel<Node> ch = Channel.CreateBounded<Node>(1);
+        Channel<Node> discoveredNodesChannel = Channel.CreateBounded<Node>(1);
 
         async Task DiscoverAsync(IEnumerable<IEnr> startingNode, byte[] nodeId)
         {
@@ -243,8 +243,10 @@ public class DiscoveryV5App : IDiscoveryApp
 
                 if (TryGetNodeFromEnr(newEntry, out Node? node2))
                 {
-                    await ch.Writer.WriteAsync(node2!, token);
+                    discoveredNodesChannel.Writer.TryWrite(node2!);
+
                     if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newEntry} = {node2}.");
+
                     _discoveryReport?.NodeFound();
                 }
 
@@ -253,13 +255,11 @@ public class DiscoveryV5App : IDiscoveryApp
                     continue;
                 }
 
-                IEnumerable<IEnr>? newNodesFound = (await _discv5Protocol.SendFindNodeAsync(newEntry, GetDistances(newEntry.NodeId, nodeId)))?.Where(x => !checkedNodes.Contains(x));
-
-                if (newNodesFound is not null)
+                foreach (IEnr newEnr in await _discv5Protocol.SendFindNodeAsync(newEntry, GetDistances(newEntry.NodeId, nodeId)) ?? [])
                 {
-                    foreach (IEnr? node in newNodesFound)
+                    if (!checkedNodes.Contains(newEnr))
                     {
-                        nodesToCheck.Enqueue(node);
+                        nodesToCheck.Enqueue(newEnr);
                     }
                 }
             }
@@ -272,16 +272,16 @@ public class DiscoveryV5App : IDiscoveryApp
 
         Task discoverTask = Task.Run(async () =>
         {
-            byte[] randomNodeId = new byte[32];
             while (!token.IsCancellationRequested)
             {
                 try
                 {
-                    List<Task> discoverTasks = new List<Task>();
+                    List<Task> discoverTasks = [];
                     discoverTasks.Add(DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId));
 
                     for (int i = 0; i < RandomNodesToLookupCount; i++)
                     {
+                        byte[] randomNodeId = new byte[32];
                         random.NextBytes(randomNodeId);
                         discoverTasks.Add(DiscoverAsync(GetStartingNodes(), randomNodeId));
                     }
@@ -293,11 +293,11 @@ public class DiscoveryV5App : IDiscoveryApp
                     if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
                 }
             }
-        });
+        }, token);
 
         try
         {
-            await foreach (Node node in ch.Reader.ReadAllAsync(token))
+            await foreach (Node node in discoveredNodesChannel.Reader.ReadAllAsync(token))
             {
                 yield return node;
             }
