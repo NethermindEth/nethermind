@@ -32,8 +32,7 @@ namespace Nethermind.Init.Modules;
 public class DbModule(
     IInitConfig initConfig,
     IReceiptConfig receiptConfig,
-    ISyncConfig syncConfig,
-    bool dontConfigureMetric = false
+    ISyncConfig syncConfig
 ) : Module
 {
     protected override void Load(ContainerBuilder builder)
@@ -74,30 +73,6 @@ public class DbModule(
             .AddColumnDatabase<ReceiptsColumns>(DbNames.Receipts)
             .AddColumnDatabase<BlobTxsColumns>(DbNames.BlobTransactions)
             ;
-
-        if (!dontConfigureMetric)
-        {
-            // Intercept created db to publish metric.
-            // Dont use constructor injection to get all db because that would resolve all db
-            // making them not lazy.
-            builder
-                .AddSingleton<DbTracker>()
-                .AddDecorator<IDbFactory, DbTracker.DbFactoryInterceptor>()
-
-                // Intercept block processing by checking the queue and pausing the metrics when that happen.
-                // Dont use constructor injection because this would prevent the metric from being updated before
-                // the block processing chain is constructed, eg: verifytrie or import jobs.
-                .Intercept<IBlockProcessingQueue>((processingQueue, ctx) =>
-                {
-                    if (!ctx.Resolve<IMetricsConfig>().PauseDbMetricDuringBlockProcessing) return;
-
-                    // Do not update db metrics while processing a block
-                    DbTracker updater = ctx.Resolve<DbTracker>();
-                    processingQueue.BlockAdded += (sender, args) => updater.Paused = !processingQueue.IsEmpty;
-                    processingQueue.BlockRemoved += (sender, args) => updater.Paused = !processingQueue.IsEmpty;
-                })
-                ;
-        }
 
         switch (initConfig.DiagnosticMode)
         {
@@ -150,5 +125,34 @@ public class DbModule(
         {
             return baseDbFactory.CreateColumnsDb<T>(dbSettings).CreateReadOnly(true);
         }
+    }
+}
+
+public class DbMonitoringModule : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        base.Load(builder);
+
+        // Intercept created db to publish metric.
+        // Dont use constructor injection to get all db because that would resolve all db
+        // making them not lazy.
+        builder
+            .AddSingleton<DbTracker>()
+            .AddDecorator<IDbFactory, DbTracker.DbFactoryInterceptor>()
+
+            // Intercept block processing by checking the queue and pausing the metrics when that happen.
+            // Dont use constructor injection because this would prevent the metric from being updated before
+            // the block processing chain is constructed, eg: verifytrie or import jobs.
+            .Intercept<IBlockProcessingQueue>((processingQueue, ctx) =>
+            {
+                if (!ctx.Resolve<IMetricsConfig>().PauseDbMetricDuringBlockProcessing) return;
+
+                // Do not update db metrics while processing a block
+                DbTracker updater = ctx.Resolve<DbTracker>();
+                processingQueue.BlockAdded += (sender, args) => updater.Paused = !processingQueue.IsEmpty;
+                processingQueue.BlockRemoved += (sender, args) => updater.Paused = !processingQueue.IsEmpty;
+            })
+            ;
     }
 }

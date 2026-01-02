@@ -27,8 +27,7 @@ namespace Nethermind.Core.Test.Db
                 .AddModule(new DbModule(
                     new InitConfig() { DiagnosticMode = DiagnosticMode.MemDb },
                     new ReceiptConfig(),
-                    new SyncConfig(),
-                    dontConfigureMetric: true
+                    new SyncConfig()
                 ))
                 .AddSingleton<IDbProvider, ContainerOwningDbProvider>()
                 .Build()
