@@ -28,7 +28,11 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         Name = name;
 
         _iteratorManager = new DbOnTheRocks.IteratorManager(_rocksDb, _columnFamily, _mainDb._readAheadReadOptions);
-        _reader = new RocksDbReader(mainDb, () => new ReadOptions(), _iteratorManager, _columnFamily);
+        _reader = new RocksDbReader(mainDb, () =>
+        {
+            // TODO: Verify checksum not set here.
+            return new ReadOptions();
+        }, _iteratorManager, _columnFamily);
     }
 
     public void Dispose()
