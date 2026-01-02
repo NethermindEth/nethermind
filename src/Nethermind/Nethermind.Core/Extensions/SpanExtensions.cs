@@ -336,7 +336,7 @@ namespace Nethermind.Core.Extensions
             if (remaining != 0)
             {
                 // remaining is a multiple of 8 here.
-                if (remaining >= 8)  h0 = BitOperations.Crc32C(h0, Unsafe.ReadUnaligned<ulong>(ref q));
+                if (remaining >= 8) h0 = BitOperations.Crc32C(h0, Unsafe.ReadUnaligned<ulong>(ref q));
                 if (remaining >= 16) h1 = BitOperations.Crc32C(h1, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref q, 8)));
                 if (remaining == 24) h2 = BitOperations.Crc32C(h2, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref q, 16)));
             }
