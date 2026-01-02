@@ -11,11 +11,6 @@ public class NoopMonitoringService : IMonitoringService
 {
     public static IMonitoringService Instance = new NoopMonitoringService();
 
-    public Task StopAsync()
-    {
-        return Task.CompletedTask;
-    }
-
     public Task StartAsync()
     {
         return Task.CompletedTask;
