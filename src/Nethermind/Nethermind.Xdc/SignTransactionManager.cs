@@ -1,30 +1,23 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Common.Utilities;
-using Microsoft.AspNetCore.Components.Forms;
-using Microsoft.AspNetCore.DataProtection.KeyManagement;
+
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.TxPool;
-using Nethermind.Wallet;
 using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
-using static Microsoft.FSharp.Core.ByRefKinds;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace Nethermind.Xdc;
 
@@ -41,7 +34,7 @@ internal class SignTransactionManager(IDb stateDb, ISigner signer, ITxPool txPoo
         bool added = txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
         if (!added)
         {
-            throw new Exception("Failed to add signed transaction to the pool.");
+            throw new InvalidOperationException("Failed to add signed transaction to the pool.");
         }
 
         long blockNumber = header.Number;

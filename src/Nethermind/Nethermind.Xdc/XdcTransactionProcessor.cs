@@ -153,7 +153,7 @@ internal class XdcTransactionProcessor(
         // the code here will only be reached by a tx if tx.RequiresSpecialHandling returns true
         if (tx.IsSignTransaction(spec))
         {
-            return ProcessSignTranscation(tx, tracer, spec, opts);
+            return ProcessSignTransaction(tx, tracer, spec, opts);
         }
 
 
@@ -181,7 +181,7 @@ internal class XdcTransactionProcessor(
         return TransactionResult.Ok;
     }
 
-    private TransactionResult ProcessSignTranscation(Transaction tx, ITxTracer tracer, IReleaseSpec spec, ExecutionOptions opts)
+    private TransactionResult ProcessSignTransaction(Transaction tx, ITxTracer tracer, IReleaseSpec spec, ExecutionOptions opts)
     {
         WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);
 

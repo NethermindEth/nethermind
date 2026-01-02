@@ -329,7 +329,7 @@ internal class SpecialTransactionsTests
 
     [TestCase(true)]
     [TestCase(false)]
-    public async Task Malformed_WrongLenght_SpecialTx_Fails_Validation(bool isSpecialTx)
+    public async Task Malformed_WrongLength_SpecialTx_Fails_Validation(bool isSpecialTx)
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -433,7 +433,7 @@ internal class SpecialTransactionsTests
     }
 
     [Test]
-    public async Task Malformed_SenderBiggerLesserThanTxNonce_SignTx_Fails_Validation()
+    public async Task Malformed_SenderNonceBiggerLesserThanTxNonce_SignTx_Fails_Validation()
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -481,7 +481,7 @@ internal class SpecialTransactionsTests
 
 
     [Test]
-    public async Task Malformed_SenderEqualLesserThanTxNonce_SignTx_Fails_Validation()
+    public async Task Malformed_SenderNonceEqualLesserThanTxNonce_SignTx_Fails_Validation()
     {
         var blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
