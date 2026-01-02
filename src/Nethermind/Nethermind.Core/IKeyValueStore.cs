@@ -109,7 +109,7 @@ namespace Nethermind.Core
         IKeyValueStoreSnapshot CreateSnapshot();
     }
 
-    public interface IKeyValueStoreSnapshot: IReadOnlyKeyValueStore, IDisposable
+    public interface IKeyValueStoreSnapshot : IReadOnlyKeyValueStore, IDisposable
     {
     }
 

@@ -315,7 +315,7 @@ namespace Nethermind.Db.Test
 
             AssertCanGetViaAllMethod(snapshot, key, new byte[] { 4, 5, 6 });
 
-            Assert.That(_db.KeyExists(new byte[] { 99, 99, 99}), Is.False);
+            Assert.That(_db.KeyExists(new byte[] { 99, 99, 99 }), Is.False);
         }
 
         [Test]
@@ -427,7 +427,7 @@ namespace Nethermind.Db.Test
             void CheckView(ISortedKeyValueStore sortedKeyValueStore)
             {
                 sortedKeyValue.FirstKey.Should().BeEquivalentTo(new byte[] { 0, 0, 0 });
-                sortedKeyValue.LastKey.Should().BeEquivalentTo(new byte[] { (byte)(entryCount-1), (byte)(entryCount-1), (byte)(entryCount-1) });
+                sortedKeyValue.LastKey.Should().BeEquivalentTo(new byte[] { (byte)(entryCount - 1), (byte)(entryCount - 1), (byte)(entryCount - 1) });
                 using var view = sortedKeyValueStore.GetViewBetween([0], [9]);
 
                 i = 0;
