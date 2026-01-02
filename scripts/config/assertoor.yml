@@ -1,0 +1,16 @@
+participants_matrix:
+  el:
+   - el_type: nethermind
+     el_image: <DOCKER_IMAGE_PLACEHOLDER>
+   - el_type: geth
+  cl:
+   - cl_type: prysm
+   - cl_type: lighthouse
+   - cl_type: teku
+   - cl_type: lodestar
+   - cl_type: nimbus
+network_params:
+  preset: "minimal"
+additional_services:
+  - assertoor
+<ASSERTOOR_PARAMS_PLACEHOLDER>

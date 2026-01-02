@@ -1,0 +1,9 @@
+{
+  "Blocks": {
+    "SecondsPerSlot": 5
+  },
+  "Merge": {
+    "Enabled": true,
+    "SecondsPerSlot": 8
+  }
+}

@@ -1,0 +1,249 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Collections.Generic;
+using System.IO.Abstractions;
+using Autofac.Features.AttributeFilters;
+using Nethermind.Api;
+using Nethermind.Blockchain.Services;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
+using Nethermind.Core.Specs;
+using Nethermind.Facade.Eth;
+using Nethermind.Int256;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
+
+namespace Nethermind.HealthChecks
+{
+    public class CheckHealthResult
+    {
+        public bool Healthy { get; set; }
+        public IEnumerable<(string Message, string LongMessage)> Messages { get; set; }
+        public bool IsSyncing { get; set; }
+        public IEnumerable<string> Errors { get; set; }
+    }
+
+    public class NodeHealthService(
+        ISyncServer syncServer,
+        IBlockchainProcessor blockchainProcessor,
+        IBlockProducerRunner blockProducerRunner,
+        IHealthChecksConfig healthChecksConfig,
+        IHealthHintService healthHintService,
+        IEthSyncingInfo ethSyncingInfo,
+        IClHealthTracker clHealthTracker,
+        UInt256? terminalTotalDifficulty,
+        IDriveInfo[] drives,
+        bool isMining)
+        : INodeHealthService
+    {
+        public NodeHealthService(
+            ISyncServer syncServer,
+            IMainProcessingContext mainProcessingContext,
+            IBlockProducerRunner blockProducerRunner,
+            IHealthChecksConfig healthChecksConfig,
+            IHealthHintService healthHintService,
+            IEthSyncingInfo ethSyncingInfo,
+            IClHealthTracker clHealthTracker,
+            ISpecProvider specProvider,
+            [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives,
+            IMiningConfig miningConfig) : this(
+            syncServer,
+            mainProcessingContext.BlockchainProcessor,
+            blockProducerRunner,
+            healthChecksConfig,
+            healthHintService,
+            ethSyncingInfo,
+            clHealthTracker,
+            specProvider.TerminalTotalDifficulty,
+            drives,
+            miningConfig.Enabled)
+        {
+        }
+
+        public CheckHealthResult CheckHealth()
+        {
+            List<(string Message, string LongMessage)> messages = new();
+            List<string> errors = new();
+            bool healthy = false;
+            long netPeerCount = syncServer.GetPeerCount();
+            SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
+
+            if (terminalTotalDifficulty is not null)
+            {
+                bool syncHealthy = CheckSyncPostMerge(messages, errors, syncingResult);
+
+                bool hasPeers = CheckPeers(messages, errors, netPeerCount);
+
+                bool clAlive = CheckClAlive();
+
+                if (!clAlive)
+                {
+                    AddClUnavailableMessage(messages, errors);
+                }
+
+                healthy = syncHealthy & clAlive & hasPeers;
+            }
+            else
+            {
+                if (!isMining && syncingResult.IsSyncing)
+                {
+                    AddStillSyncingMessage(messages, syncingResult);
+                    CheckPeers(messages, errors, netPeerCount);
+                }
+                else if (!isMining && !syncingResult.IsSyncing)
+                {
+                    AddFullySyncMessage(messages);
+                    bool peers = CheckPeers(messages, errors, netPeerCount);
+                    bool processing = IsProcessingBlocks(messages, errors);
+                    healthy = peers && processing;
+                }
+                else if (isMining && syncingResult.IsSyncing)
+                {
+                    AddStillSyncingMessage(messages, syncingResult);
+                    healthy = CheckPeers(messages, errors, netPeerCount);
+                }
+                else if (isMining && !syncingResult.IsSyncing)
+                {
+                    AddFullySyncMessage(messages);
+                    bool peers = CheckPeers(messages, errors, netPeerCount);
+                    bool processing = IsProcessingBlocks(messages, errors);
+                    bool producing = IsProducingBlocks(messages, errors);
+                    healthy = peers && processing && producing;
+                }
+            }
+
+            bool isLowDiskSpaceErrorAdded = false;
+            for (int index = 0; index < drives.Length; index++)
+            {
+                IDriveInfo drive = drives[index];
+                double freeSpacePercentage = drive.GetFreeSpacePercentage();
+                if (freeSpacePercentage < healthChecksConfig.LowStorageSpaceWarningThreshold)
+                {
+                    AddLowDiskSpaceMessage(messages, drive, freeSpacePercentage);
+                    if (!isLowDiskSpaceErrorAdded)
+                    {
+                        errors.Add(ErrorStrings.LowDiskSpace);
+                        isLowDiskSpaceErrorAdded = true;
+                    }
+                    healthy = false;
+                }
+            }
+
+            return new CheckHealthResult() { Healthy = healthy, Errors = errors, Messages = messages, IsSyncing = syncingResult.IsSyncing };
+        }
+
+        public bool CheckClAlive() => clHealthTracker?.CheckClAlive() ?? true;
+
+        private ulong? GetBlockProcessorIntervalHint()
+        {
+            return healthChecksConfig.MaxIntervalWithoutProcessedBlock ??
+                   healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
+        }
+
+        private ulong? GetBlockProducerIntervalHint()
+        {
+            return healthChecksConfig.MaxIntervalWithoutProducedBlock ??
+                   healthHintService.MaxSecondsIntervalForProducingBlocksHint();
+        }
+
+        private static bool CheckSyncPostMerge(ICollection<(string Description, string LongDescription)> messages,
+            ICollection<string> errors, SyncingResult syncingResult)
+        {
+            if (syncingResult.IsSyncing)
+            {
+                if (syncingResult.SyncMode == SyncMode.Disconnected)
+                {
+                    messages.Add(("Sync degraded",
+                        $"Sync degraded(no useful peers), CurrentBlock: {syncingResult.CurrentBlock}, HighestBlock: {syncingResult.HighestBlock}"));
+                    errors.Add(ErrorStrings.SyncDegraded);
+                    return false;
+                }
+                messages.Add(("Still syncing",
+                    $"The node is still syncing, CurrentBlock: {syncingResult.CurrentBlock}, HighestBlock: {syncingResult.HighestBlock}"));
+            }
+            else
+            {
+                AddFullySyncMessage(messages);
+            }
+
+            return true;
+        }
+
+        private static class ErrorStrings
+        {
+            public const string NoPeers = nameof(NoPeers);
+            public const string NotProducingBlocks = nameof(NotProducingBlocks);
+            public const string NotProcessingBlocks = nameof(NotProcessingBlocks);
+            public const string ClUnavailable = nameof(ClUnavailable);
+            public const string LowDiskSpace = nameof(LowDiskSpace);
+            public const string SyncDegraded = nameof(SyncDegraded);
+        }
+
+        private static bool CheckPeers(ICollection<(string Description, string LongDescription)> messages,
+            ICollection<string> errors, long netPeerCount)
+        {
+            bool hasPeers = netPeerCount > 0;
+            if (hasPeers == false)
+            {
+                errors.Add(ErrorStrings.NoPeers);
+                messages.Add(("Node is not connected to any peers", "Node is not connected to any peers"));
+            }
+            else
+            {
+                messages.Add(($"Peers: {netPeerCount}", $"Peers: {netPeerCount}"));
+            }
+
+            return hasPeers;
+        }
+
+        private bool IsProducingBlocks(ICollection<(string Description, string LongDescription)> messages, ICollection<string> errors)
+        {
+            ulong? maxIntervalHint = GetBlockProducerIntervalHint();
+            bool producingBlocks = blockProducerRunner.IsProducingBlocks(maxIntervalHint);
+            if (producingBlocks == false)
+            {
+                errors.Add(ErrorStrings.NotProducingBlocks);
+                messages.Add(("Stopped producing blocks", "The node stopped producing blocks"));
+            }
+
+            return producingBlocks;
+        }
+
+        private bool IsProcessingBlocks(ICollection<(string Description, string LongDescription)> messages, ICollection<string> errors)
+        {
+            ulong? maxIntervalHint = GetBlockProcessorIntervalHint();
+            bool processingBlocks = blockchainProcessor.IsProcessingBlocks(maxIntervalHint);
+            if (processingBlocks == false)
+            {
+                errors.Add(ErrorStrings.NotProcessingBlocks);
+                messages.Add(("Stopped processing blocks", "The node stopped processing blocks"));
+            }
+
+            return processingBlocks;
+        }
+
+        private static void AddClUnavailableMessage(ICollection<(string Description, string LongDescription)> messages, ICollection<string> errors)
+        {
+            errors.Add(ErrorStrings.ClUnavailable);
+            messages.Add(("No messages from CL", "No new messages from CL after last check"));
+        }
+
+        private static void AddStillSyncingMessage(ICollection<(string Description, string LongDescription)> messages,
+            SyncingResult ethSyncing)
+        {
+            messages.Add(("Still syncing",
+                $"The node is still syncing, CurrentBlock: {ethSyncing.CurrentBlock}, HighestBlock: {ethSyncing.HighestBlock}. The status will change to healthy once synced"));
+        }
+
+        private static void AddFullySyncMessage(ICollection<(string Description, string LongDescription)> messages)
+        {
+            messages.Add(("Fully synced", $"The node is now fully synced with a network"));
+        }
+
+        private static void AddLowDiskSpaceMessage(ICollection<(string Description, string LongDescription)> messages, IDriveInfo drive, double freeSpacePercent)
+        {
+            messages.Add(("Low free disk space", $"The node is running out of free disk space in '{drive.RootDirectory.FullName}' - only {drive.GetFreeSpaceInGiB():F2} GB ({freeSpacePercent:F2}%) left"));
+        }
+    }
+}

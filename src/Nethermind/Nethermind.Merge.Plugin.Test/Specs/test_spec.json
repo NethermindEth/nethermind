@@ -1,0 +1,174 @@
+{
+  "engine": {
+    "Ethash": {
+      "params": {
+        "minimumDifficulty": "0x020000",
+        "difficultyBoundDivisor": "0x0800",
+        "durationLimit": "0x0d",
+        "blockReward": {
+          "0": "0x4563918244F40000",
+          "4370000": "0x29A2241AF62C0000",
+          "7080000": "0x1BC16D674EC80000"
+        },
+        "homesteadTransition": 0,
+        "daoHardforkTransition": "0x1d4c00",
+        "daoHardforkBeneficiary": "0xbf4ed7b27f1d666546e30d74d50d173d20bca754",
+        "daoHardforkAccounts": [],
+        "eip100bTransition": "0x0",
+        "difficultyBombDelays": {
+          "4370000": 3000000,
+          "7080000": 2000000
+        }
+      }
+    }
+  },
+  "config": {
+    "chainId": 22082,
+    "homesteadBlock": 1,
+    "eip150Block": 2,
+    "eip150Hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "eip155Block": 3,
+    "eip158Block": 3,
+    "byzantiumBlock": 4,
+    "constantinopleBlock": 5,
+    "clique": {
+      "period": 15,
+      "epoch": 30000
+    }
+  },
+  "params": {
+    "gasLimitBoundDivisor": "0x0400",
+    "registrar": "0xe3389675d0338462dC76C6f9A3e432550c36A142",
+    "accountStartNonce": "0x00",
+    "maximumExtraDataSize": "0x20",
+    "minGasLimit": "0x1388",
+    "networkID": "0x1",
+    "forkBlock": "0x1d4c00",
+    "forkCanonHash": "0x4985f5ca3d2afbec36529aa96f74de3cc10a2a4a6c44f2157a57d2c6059a11bb",
+    "eip150Transition": "0x0",
+    "eip160Transition": "0x0",
+    "eip161abcTransition": "0x0",
+    "eip161dTransition": "0x0",
+    "eip155Transition": "0x0",
+    "maxCodeSize": 24576,
+    "maxCodeSizeTransition": "0x0",
+    "eip140Transition": "0x0",
+    "eip211Transition": "0x0",
+    "eip214Transition": "0x0",
+    "eip658Transition": "0x0",
+    "eip145Transition": 7080000,
+    "eip1014Transition": 7080000,
+    "eip1052Transition": 7080000,
+    "eip1283Transition": 7080000,
+    "terminalPoWBlockNumber": "0x64",
+    "terminalTotalDifficulty": "0xA",
+    "mergeForkIdTransition": "0x48"
+  },
+  "nonce": "0x0",
+  "timestamp": "0x5c28d2a1",
+  "extraData": "0x000000000000000000000000000000000000000000000000000000000000000020b2e4bb8688a44729780d15dc64adb42f9f5a0a746526c3a59db995b914a319306cd7ae35dc50c5aa42104423e00a862b616f2f712a1b17d308bbc90000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "gasLimit": "0x47b760",
+  "difficulty": "0x1",
+  "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "coinbase": "0x0000000000000000000000000000000000000000",
+  "accounts": {
+    "0000000000000000000000000000000000000001": {
+      "builtin": {
+        "name": "ecrecover",
+        "pricing": {
+          "linear": {
+            "base": 3000,
+            "word": 0
+          }
+        }
+      }
+    },
+    "0000000000000000000000000000000000000002": {
+      "builtin": {
+        "name": "sha256",
+        "pricing": {
+          "linear": {
+            "base": 60,
+            "word": 12
+          }
+        }
+      }
+    },
+    "0000000000000000000000000000000000000003": {
+      "builtin": {
+        "name": "ripemd160",
+        "pricing": {
+          "linear": {
+            "base": 600,
+            "word": 120
+          }
+        }
+      }
+    },
+    "0000000000000000000000000000000000000004": {
+      "builtin": {
+        "name": "identity",
+        "pricing": {
+          "linear": {
+            "base": 15,
+            "word": 3
+          }
+        }
+      }
+    },
+    "0000000000000000000000000000000000000005": {
+      "builtin": {
+        "name": "modexp",
+        "activate_at": 4370000,
+        "pricing": {
+          "modexp": {
+            "divisor": 20
+          }
+        }
+      }
+    },
+    "0000000000000000000000000000000000000006": {
+      "builtin": {
+        "name": "alt_bn128_add",
+        "activate_at": 4370000,
+        "pricing": {
+          "linear": {
+            "base": 500,
+            "word": 0
+          }
+        }
+      }
+    },
+    "0000000000000000000000000000000000000007": {
+      "builtin": {
+        "name": "alt_bn128_mul",
+        "activate_at": 4370000,
+        "pricing": {
+          "linear": {
+            "base": 40000,
+            "word": 0
+          }
+        }
+      }
+    },
+    "0000000000000000000000000000000000000008": {
+      "builtin": {
+        "name": "alt_bn128_pairing",
+        "activate_at": 4370000,
+        "pricing": {
+          "alt_bn128_pairing": {
+            "base": 100000,
+            "pair": 80000
+          }
+        }
+      }
+    },
+    "0x71562b71999873db5b286df957af199ec94617f7": {
+      "balance": "0xf4240",
+      "code": "0xabcd"
+    }
+  },
+  "number": "0x0",
+  "gasUsed": "0x0",
+  "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+}

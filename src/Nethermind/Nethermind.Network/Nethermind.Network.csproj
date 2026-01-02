@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Nullable>annotations</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+    <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
+    <ProjectReference Include="..\Nethermind.Network.Contract\Nethermind.Network.Contract.csproj" />
+    <ProjectReference Include="..\Nethermind.Network.Stats\Nethermind.Network.Stats.csproj" />
+    <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Crc32.NET" />
+    <PackageReference Include="Nethermind.DotNetty.Handlers" />
+    <PackageReference Include="Snappier" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="Swarm\**" />
+    <EmbeddedResource Remove="Swarm\**" />
+    <None Remove="Swarm\**" />
+    <Compile Remove="Whisper\**" />
+    <EmbeddedResource Remove="Whisper\**" />
+    <None Remove="Whisper\**" />
+    <EmbeddedResource Include="StaticNodes\static-nodes.json">
+      <LogicalName>static-nodes.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="TrustedNodes\trusted-nodes.json">
+      <LogicalName>trusted-nodes.json</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

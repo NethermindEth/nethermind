@@ -1,0 +1,337 @@
+﻿[
+  {
+    "constant": true,
+    "inputs": [],
+    "name": "weightsCount",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [],
+    "name": "owner",
+    "outputs": [
+      {
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "destinationByWeight",
+    "outputs": [
+      {
+        "name": "target",
+        "type": "address"
+      },
+      {
+        "name": "fnSignature",
+        "type": "bytes4"
+      },
+      {
+        "name": "value",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {
+        "name": "",
+        "type": "address"
+      },
+      {
+        "name": "",
+        "type": "bytes4"
+      }
+    ],
+    "name": "weightByDestination",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "target",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "name": "fnSignature",
+        "type": "bytes4"
+      },
+      {
+        "indexed": false,
+        "name": "weight",
+        "type": "uint256"
+      }
+    ],
+    "name": "PrioritySet",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "whitelist",
+        "type": "address[]"
+      }
+    ],
+    "name": "SendersWhitelistSet",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "target",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "name": "fnSignature",
+        "type": "bytes4"
+      },
+      {
+        "indexed": false,
+        "name": "minGasPrice",
+        "type": "uint256"
+      }
+    ],
+    "name": "MinGasPriceSet",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "previousOwner",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnershipTransferred",
+    "type": "event"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "transferOwnership",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_target",
+        "type": "address"
+      },
+      {
+        "name": "_fnSignature",
+        "type": "bytes4"
+      },
+      {
+        "name": "_weight",
+        "type": "uint256"
+      }
+    ],
+    "name": "setPriority",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_target",
+        "type": "address"
+      },
+      {
+        "name": "_fnSignature",
+        "type": "bytes4"
+      }
+    ],
+    "name": "removePriority",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_whitelist",
+        "type": "address[]"
+      }
+    ],
+    "name": "setSendersWhitelist",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_target",
+        "type": "address"
+      },
+      {
+        "name": "_fnSignature",
+        "type": "bytes4"
+      },
+      {
+        "name": "_minGasPrice",
+        "type": "uint256"
+      }
+    ],
+    "name": "setMinGasPrice",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_target",
+        "type": "address"
+      },
+      {
+        "name": "_fnSignature",
+        "type": "bytes4"
+      }
+    ],
+    "name": "removeMinGasPrice",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [],
+    "name": "getPriorities",
+    "outputs": [
+      {
+        "components": [
+          {
+            "name": "target",
+            "type": "address"
+          },
+          {
+            "name": "fnSignature",
+            "type": "bytes4"
+          },
+          {
+            "name": "value",
+            "type": "uint256"
+          }
+        ],
+        "name": "weights",
+        "type": "tuple[]"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [],
+    "name": "getSendersWhitelist",
+    "outputs": [
+      {
+        "name": "whitelist",
+        "type": "address[]"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [],
+    "name": "getMinGasPrices",
+    "outputs": [
+      {
+        "components": [
+          {
+            "name": "target",
+            "type": "address"
+          },
+          {
+            "name": "fnSignature",
+            "type": "bytes4"
+          },
+          {
+            "name": "value",
+            "type": "uint256"
+          }
+        ],
+        "name": "prices",
+        "type": "tuple[]"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

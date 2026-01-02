@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../tests.props" />
+
+  <ItemGroup>
+    <PackageReference Include="NSubstitute" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.EthStats\Nethermind.EthStats.csproj" />
+    <ProjectReference Include="..\Nethermind.Runner.Test\Nethermind.Runner.Test.csproj" />
+  </ItemGroup>
+
+</Project>

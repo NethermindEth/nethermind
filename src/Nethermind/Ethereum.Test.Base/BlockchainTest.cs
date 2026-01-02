@@ -1,0 +1,34 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Collections.Generic;
+using Ethereum.Test.Base.Interfaces;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Serialization.Rlp;
+
+namespace Ethereum.Test.Base
+{
+    public class BlockchainTest : EthereumTest
+    {
+        public IReleaseSpec? Network { get; set; }
+        public IReleaseSpec? NetworkAfterTransition { get; set; }
+        public ForkActivation? TransitionForkActivation { get; set; }
+        public Hash256? LastBlockHash { get; set; }
+        public Rlp? GenesisRlp { get; set; }
+
+        public TestBlockJson[]? Blocks { get; set; }
+        public TestBlockHeaderJson? GenesisBlockHeader { get; set; }
+        public TestEngineNewPayloadsJson[]? EngineNewPayloads { get; set; }
+
+        public Dictionary<Address, AccountState>? Pre { get; set; }
+        public Dictionary<Address, AccountState>? PostState { get; set; }
+        public Hash256? PostStateRoot { get; set; }
+
+        public override string? ToString()
+        {
+            return Name;
+        }
+    }
+}

@@ -1,0 +1,17 @@
+{
+  "KeyStore": {
+    "KdFpArAmSDklen": "100",
+    "Cipher": "test"
+  },
+  "JsonRpc": {
+    "EnabledModules": "Eth,Debug"
+  },
+  "DiscoveRy": {
+    "Concurrenc": "4",
+    "Bootnodes": "enode://04fb7acb86f47b64298374b5ccb3c2959f1e5e9362158e50e0793c261518ffe83759d8295ca4a88091d4726d5f85e6276d53ae9ef4f35b8c4c0cc6b99c8c0537@40.70.214.166:40303, enode://17de5580bbc1620081a21f82954731c7854305463630a0d677ed991487609829a6bf1ffcb8fb8ef269eff4829690625db176b498c629b9b13cb39b73b6e7b08b@213.186.16.82:1345"
+  },
+  "Blom":
+  {
+    "IndexLevelBucketSizes" : [16, 16, 16]
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "profiles": {
+    "Base Mainnet": {
+      "commandName": "Project",
+      "commandLineArgs": "-c base-mainnet --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Base Sepolia": {
+      "commandName": "Project",
+      "commandLineArgs": "-c base-sepolia --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Chiado": {
+      "commandName": "Project",
+      "commandLineArgs": "-c chiado --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Energy Web": {
+      "commandName": "Project",
+      "commandLineArgs": "-c energyweb --data-dir .data --jsonrpc-enabled",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Gnosis": {
+      "commandName": "Project",
+      "commandLineArgs": "-c gnosis --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Hoodi": {
+      "commandName": "Project",
+      "commandLineArgs": "-c hoodi --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "JOC Mainnet": {
+      "commandName": "Project",
+      "commandLineArgs": "-c joc-mainnet --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "JOC Testnet": {
+      "commandName": "Project",
+      "commandLineArgs": "-c joc-testnet --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Mainnet": {
+      "commandName": "Project",
+      "commandLineArgs": "-c mainnet --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "OP Mainnet": {
+      "commandName": "Project",
+      "commandLineArgs": "-c op-mainnet --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "OP Sepolia": {
+      "commandName": "Project",
+      "commandLineArgs": "-c op-sepolia --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Sepolia": {
+      "commandName": "Project",
+      "commandLineArgs": "-c sepolia --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Spaceneth": {
+      "commandName": "Project",
+      "commandLineArgs": "-c spaceneth --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Taiko Alethia": {
+      "commandName": "Project",
+      "commandLineArgs": "-c taiko-alethia --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Taiko Hoodi": {
+      "commandName": "Project",
+      "commandLineArgs": "-c taiko-hoodi --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Volta": {
+      "commandName": "Project",
+      "commandLineArgs": "-c volta --data-dir .data --jsonrpc-enabled",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Docker": {
+      "commandName": "Docker",
+      "commandLineArgs": "-c hoodi --data-dir /data --jsonrpc-enginehost 0.0.0.0 --jsonrpc-engineport 8551 --jsonrpc-host 0.0.0.0"
+    },
+    "WSL": {
+      "commandName": "WSL2",
+      "commandLineArgs": "\"{OutDir}/nethermind.dll\" -c hoodi --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "distributionName": ""
+    }
+  }
+}

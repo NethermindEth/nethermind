@@ -1,0 +1,34 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/energyweb.json",
+    "GenesisHash": "0x0b6d3e680af2fc525392c720666cce58e3d8e6fe75ba4b48cb36bcc69039229b",
+    "BaseDbPath": "nethermind_db/energyweb",
+    "LogFileName": "energyweb.log",
+    "MemoryHint": 768000000
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "PivotNumber": 37360000,
+    "PivotHash": "0x4fc22fa52dee1520d18188925eb93a1c653e7d3fc993180b8c48025084e4afd0",
+    "PivotTotalDifficulty": "12712949228166260994991675333650860379607509175",
+    "UseGethLimitsInFastBlocks": false,
+    "FastSyncCatchUpHeightDelta": 10000000000
+  },
+  "EthStats": {
+    "Name": "Nethermind Energy Web"
+  },
+  "Metrics": {
+    "NodeName": "Energy_Web"
+  },
+  "Blocks": {
+    "GasToken": "EWT"
+  },
+  "Merge": {
+    "Enabled": false
+  }
+}

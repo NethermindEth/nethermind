@@ -1,0 +1,48 @@
+For any cases where you need to test various trie layouts these are potential cases that you should test:
+
+Note 1) Nodes that are less than 32 bytes are not referenced by hash but included in the referring node.
+(so if branch would have a child with index 2 which is a leaf and the leaf RLP would be shorter than 32 bytes then the branch would not include an RLP hash as a reference but just include the RLP directly).
+We will call nodes that are included as hashes of their RLP as included 'by ref' and the ones that are included directly as 'by value'
+
+Note 2) I will use 'unstable' to describe a situation where such a layout is immediately restructured into a different layout (before a node operation is finished).
+
+CATEGORY 1
+Cases for state trie where branches never have value field populated and leafs are always longer than 32bytes
+
+Smallest possible leaf size is 69 (RLP of a sequence of 33 (code hash) + 33 (storage root) + 1 (nonce of 0) + 1 (balance of 0))
+So the leaves are never included by value so the smallest stable branch size is:
+81 (RLP of a sequence of 14 nulls and 2 * 33 (node ref))
+So the smallest potential extension > 32 so we never have a short extensions case.
+Generally no node can be included by value.
+
+CASE 1: leaf at root
+L
+
+CASE 2: branch at root with two leaves (branch with less than 2 leaves is unstable)
+BBBBBBBBBBBBBBBB
+-L----------L---
+
+CASE 3: extension into branch at root (extensions into leaf or into extension are unstable)
+E
+BBBBBBBBBBBBBBBB
+-L----------L---
+
+CASE 4: branch at root into extension into branch
+BBBBBBBBBBBBBBBB
+-E----------L---
+ |
+ BBBBBBBBBBBBBBBB
+ -L----------L---
+ 
+ CATEGORY 2
+ Cases for receipt trie or tx trie where branches can have value fields (due to various lengths of keys).
+ Still no node can be included by value because leaves are always longer than 32 bytes (they include tx signature > 64 bytes or receipt RLP that includes bloom / 256 bytes)
+
+All cases as above and also
+
+CASE 5: branch with a value and leaf
+BBBBBBBBBBBBBBBBB
+-L--------------V
+
+
+

@@ -1,0 +1,10 @@
+{
+  "version": "1",
+  "environments": [
+    {
+      "name": "Ubuntu (default)",
+      "type": "wsl",
+      "wslDistribution": "Ubuntu"
+    }
+  ]
+}

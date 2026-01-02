@@ -1,0 +1,24 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+
+namespace Nethermind.Synchronization.ParallelSync
+{
+    public class SyncModeChangedEventArgs : EventArgs
+    {
+        public SyncModeChangedEventArgs(SyncMode previous, SyncMode current)
+        {
+            Previous = previous;
+            Current = current;
+        }
+
+        public SyncMode Previous { get; }
+        public SyncMode Current { get; }
+
+        public bool WasModeFinished(SyncMode mode)
+        {
+            return (Previous & mode) != 0 && (Current & mode) == 0;
+        }
+    }
+}
