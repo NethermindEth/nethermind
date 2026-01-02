@@ -118,6 +118,6 @@ public class RocksDbReader : ISortedKeyValueStore
         }
 
         Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
-        return new RocksdbSortedView(iterator, readOptions, iterateLowerBound, iterateUpperBound);
+        return new RocksdbSortedView(iterator, iterateLowerBound, iterateUpperBound);
     }
 }
