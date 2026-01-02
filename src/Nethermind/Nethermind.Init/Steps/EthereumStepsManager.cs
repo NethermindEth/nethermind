@@ -261,7 +261,7 @@ namespace Nethermind.Init.Steps
                 else
                 {
                     sb.AppendLine();
-                }
+                sb.AppendLine(deps.Count != 0 ? $" (depends on {string.Join(", ", deps)})" : "");
             }
 
             return sb.ToString();
