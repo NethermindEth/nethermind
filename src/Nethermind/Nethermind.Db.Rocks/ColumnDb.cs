@@ -48,6 +48,11 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         return _reader.GetSpan(key, flags);
     }
 
+    int IReadOnlyKeyValueStore.Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags)
+    {
+        return _reader.Get(key, output, flags);
+    }
+
     bool IReadOnlyKeyValueStore.KeyExists(ReadOnlySpan<byte> key)
     {
         return _reader.KeyExists(key);

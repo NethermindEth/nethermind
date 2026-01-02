@@ -28,6 +28,28 @@ namespace Nethermind.Core
         /// <returns>Can return null or empty Span on missing key</returns>
         Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
 
+        /// <summary>
+        /// Get, C-style. Write the output to output span and return the length of written data. Cannot
+        /// differentiate if the data is missing or not exist. Throws if output is not large enough.
+        /// </summary>
+        /// <param name="keya"></param>
+        /// <param name="output"></param>
+        /// <param name="flags"></param>
+        /// <returns></returns>
+        int Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags = ReadFlags.None)
+        {
+            Span<byte> span = GetSpan(key, flags);
+            try
+            {
+                span.CopyTo(output);
+                return span.Length;
+            }
+            finally
+            {
+                DangerousReleaseMemory(span);
+            }
+        }
+
         bool KeyExists(ReadOnlySpan<byte> key)
         {
             Span<byte> span = GetSpan(key);

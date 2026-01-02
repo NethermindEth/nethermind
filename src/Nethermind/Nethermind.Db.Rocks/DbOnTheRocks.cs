@@ -653,6 +653,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return _reader.GetSpan(key, flags);
     }
 
+    int IReadOnlyKeyValueStore.Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags)
+    {
+        return _reader.Get(key, output, flags);
+    }
+
     bool IReadOnlyKeyValueStore.KeyExists(ReadOnlySpan<byte> key)
     {
         return _reader.KeyExists(key);
@@ -883,6 +888,54 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         {
             CreateMarkerIfCorrupt(e);
             throw;
+        }
+    }
+
+    internal unsafe int GetCStyleWithColumnFamily(scoped ReadOnlySpan<byte> key, Span<byte> output, ColumnFamilyHandle? cf, ReadOptions readOptions)
+    {
+        nint db = _db.Handle;
+        nint read_options = readOptions.Handle;
+        UIntPtr skLength = (UIntPtr)key.Length;
+        IntPtr errPtr;
+        IntPtr slice;
+        fixed (byte* ptr = &MemoryMarshal.GetReference(key))
+        {
+            slice = cf is null
+                ? Native.Instance.rocksdb_get_pinned(db, read_options, ptr, skLength, out errPtr)
+                : Native.Instance.rocksdb_get_pinned_cf(db, read_options, cf.Handle, ptr, skLength, out errPtr);
+        }
+
+        if (errPtr != IntPtr.Zero) ThrowRocksDbException(errPtr);
+        if (slice == IntPtr.Zero) return 0;
+
+        IntPtr valuePtr = Native.Instance.rocksdb_pinnableslice_value(slice, out UIntPtr valueLength);
+        if (valuePtr == IntPtr.Zero)
+        {
+            Native.Instance.rocksdb_pinnableslice_destroy(slice);
+            return 0;
+        }
+
+        int length = (int)valueLength;
+        if (output.Length < length)
+        {
+            Native.Instance.rocksdb_pinnableslice_destroy(slice);
+            ThrowNotEnoughMemory(length, output.Length);
+        }
+
+        new ReadOnlySpan<byte>((void*)valuePtr, length).CopyTo(output);
+        Native.Instance.rocksdb_pinnableslice_destroy(slice);
+        return length;
+
+        [DoesNotReturn, StackTraceHidden]
+        static unsafe void ThrowRocksDbException(nint errPtr)
+        {
+            throw new RocksDbException(errPtr);
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        static unsafe void ThrowNotEnoughMemory(int length, int bufferLength)
+        {
+            throw new ArgumentException($"Output buffer not large enough. Output size: {length}, Buffer size: {bufferLength}");
         }
     }
 

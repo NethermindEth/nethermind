@@ -56,9 +56,16 @@ public class RocksDbReader : ISortedKeyValueStore
         return _mainDb.Get(key, _columnFamily, readOptions);
     }
 
+    public int Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags = ReadFlags.None)
+    {
+        ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
+        return _mainDb.GetCStyleWithColumnFamily(key, output, _columnFamily, readOptions);
+    }
+
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, _options);
+        ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
+        return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, readOptions);
     }
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
@@ -76,7 +83,7 @@ public class RocksDbReader : ISortedKeyValueStore
     {
         get
         {
-            using Iterator iterator = _mainDb.CreateIterator(_options);
+            using Iterator iterator = _mainDb.CreateIterator(_options, _columnFamily);
             iterator.SeekToFirst();
             return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
         }
@@ -86,7 +93,7 @@ public class RocksDbReader : ISortedKeyValueStore
     {
         get
         {
-            using Iterator iterator = _mainDb.CreateIterator(_options);
+            using Iterator iterator = _mainDb.CreateIterator(_options, _columnFamily);
             iterator.SeekToLast();
             return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
         }

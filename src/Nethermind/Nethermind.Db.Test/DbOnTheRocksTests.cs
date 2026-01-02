@@ -314,6 +314,8 @@ namespace Nethermind.Db.Test
             AssertCanGetViaAllMethod(_db, key, new byte[] { 5, 6, 7 });
 
             AssertCanGetViaAllMethod(snapshot, key, new byte[] { 4, 5, 6 });
+
+            Assert.That(_db.KeyExists(new byte[] { 99, 99, 99}), Is.False);
         }
 
         [Test]
@@ -421,11 +423,13 @@ namespace Nethermind.Db.Test
             }
 
             i--;
-            sortedKeyValue.FirstKey.Should().BeEquivalentTo(new byte[] { 0, 0, 0 });
-            sortedKeyValue.LastKey.Should().BeEquivalentTo(new byte[] { i, i, i });
 
-            void CheckView(ISortedView view)
+            void CheckView(ISortedKeyValueStore sortedKeyValueStore)
             {
+                sortedKeyValue.FirstKey.Should().BeEquivalentTo(new byte[] { 0, 0, 0 });
+                sortedKeyValue.LastKey.Should().BeEquivalentTo(new byte[] { (byte)(entryCount-1), (byte)(entryCount-1), (byte)(entryCount-1) });
+                using var view = sortedKeyValueStore.GetViewBetween([0], [9]);
+
                 i = 0;
                 while (view.MoveNext())
                 {
@@ -437,18 +441,15 @@ namespace Nethermind.Db.Test
                 i.Should().Be((byte)entryCount);
             }
 
-            using var plainSortedView = sortedKeyValue.GetViewBetween([0], [9]);
-            CheckView(plainSortedView);
+            CheckView(sortedKeyValue);
 
             using var snapshot = ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot();
-
             for (i = 0; i < entryCount; i++)
             {
                 _db[[i, i, i]] = [(byte)(i + 1), (byte)(i + 1), (byte)(i + 1)];
             }
 
-            using var snapshotIterator = ((ISortedKeyValueStore)snapshot).GetViewBetween([0], [9]);
-            CheckView(snapshotIterator);
+            CheckView((ISortedKeyValueStore)snapshot);
         }
 
         [Test]
@@ -472,8 +473,10 @@ namespace Nethermind.Db.Test
         private void AssertCanGetViaAllMethod(IReadOnlyKeyValueStore kv, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
         {
             Assert.That(kv[key], Is.EqualTo(value.ToArray()));
+            Assert.That(kv.KeyExists(key), Is.True);
 
             ReadFlags[] flags = [ReadFlags.None, ReadFlags.HintReadAhead, ReadFlags.HintCacheMiss];
+            Span<byte> outBuffer = stackalloc byte[value.Length];
             foreach (ReadFlags flag in flags)
             {
                 Assert.That(kv.Get(key, flags: flag), Is.EqualTo(value.ToArray()));
@@ -481,6 +484,9 @@ namespace Nethermind.Db.Test
                 Span<byte> buffer = kv.GetSpan(key, flag);
                 Assert.That(buffer.ToArray(), Is.EqualTo(value.ToArray()));
                 kv.DangerousReleaseMemory(buffer);
+
+                int length = kv.Get(key, outBuffer);
+                Assert.That(outBuffer[..length].ToArray(), Is.EqualTo(value.ToArray()));
             }
 
             using ISortedView iterator = ((ISortedKeyValueStore)kv).GetViewBetween(key, CreateNextKey(key));
