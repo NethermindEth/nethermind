@@ -74,11 +74,12 @@ public static class BasePersistence
     }
 
     public readonly struct ToHashedWriteBatch<TWriteBatch>(
-        TWriteBatch flatWriteBatch
+        TWriteBatch flatWriteBatch,
+        bool useFlatAccount = true
     ) : IFlatWriteBatch
         where TWriteBatch : struct, IHashedFlatWriteBatch
     {
-        private readonly AccountDecoder _accountDecoder = AccountDecoder.Slim;
+        private readonly AccountDecoder _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
 
         public int SelfDestruct(Address addr)
         {
@@ -119,11 +120,12 @@ public static class BasePersistence
     }
 
     public readonly struct ToHashedFlatReader<TFlatReader>(
-        TFlatReader flatReader
+        TFlatReader flatReader,
+        bool useFlatAccount = true
     ) : IFlatReader
-    where TFlatReader : struct, IHashedFlatReader
+        where TFlatReader : struct, IHashedFlatReader
     {
-        private readonly AccountDecoder _accountDecoder = AccountDecoder.Slim;
+        private readonly AccountDecoder _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
         private readonly int _accountSpanBufferSize = 256;
 
         public Account? GetAccount(Address address)

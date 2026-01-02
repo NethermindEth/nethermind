@@ -57,7 +57,7 @@ public class NoLeafValueRocksdbPersistence : IPersistence
             state,
             storage
         );
-        var flatReader = new BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>(hashedFlatReader);
+        var flatReader = new BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>(hashedFlatReader, useFlatAccount: false);
 
         var trieReader = new TrieReader(
             snapshot.GetColumn(FlatDbColumns.StateTopNodes),
@@ -98,7 +98,8 @@ public class NoLeafValueRocksdbPersistence : IPersistence
                 state,
                 storage,
                 flags
-            )
+            ),
+            useFlatAccount: false
         );
 
         var trieWriteBatch = new TrieWriter(

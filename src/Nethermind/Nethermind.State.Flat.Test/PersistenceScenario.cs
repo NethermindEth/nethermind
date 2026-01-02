@@ -55,6 +55,12 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         yield return new TestConfiguration(new FlatDbConfig()
         {
             Enabled = true,
+            Layout = FlatLayout.Flat,
+            EnableFlatBloom = true
+        }, "FlatWithBloom");
+        yield return new TestConfiguration(new FlatDbConfig()
+        {
+            Enabled = true,
             Layout = FlatLayout.FlatInTrie
         }, "FlatInTrie");
         yield return new TestConfiguration(new FlatDbConfig()
@@ -62,6 +68,11 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             Enabled = true,
             Layout = FlatLayout.PreimageFlat
         }, "PreimageFlat");
+        yield return new TestConfiguration(new FlatDbConfig()
+        {
+            Enabled = true,
+            Layout = FlatLayout.FlatTruncatedLeaf
+        }, "TruncatedLeaf");
     }
 
 
@@ -99,8 +110,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using (var reader = _persistence.CreateReader())
         {
-            Account? account = reader.GetAccount(address);
-            Assert.That(account, Is.Null);
+            Assert.That(reader.GetAccount(address), Is.Null);
         }
 
         using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
@@ -110,8 +120,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using (var reader = _persistence.CreateReader())
         {
-            Account? account = reader.GetAccount(address);
-            Assert.That(account, Is.EqualTo(acc));
+            Assert.That(reader.GetAccount(address), Is.EqualTo(acc));
         }
     }
 
@@ -141,14 +150,9 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using var reader3 = _persistence.CreateReader();
 
-        Account? acc1 = reader1.GetAccount(address);
-        Assert.That(acc1, Is.EqualTo(TestItem.GenerateIndexedAccount(0)));
-
-        Account? acc2 = reader2.GetAccount(address);
-        Assert.That(acc2, Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
-
-        Account? acc3 = reader3.GetAccount(address);
-        Assert.That(acc3, Is.EqualTo(TestItem.GenerateIndexedAccount(2)));
+        Assert.That(reader1.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(0)));
+        Assert.That(reader2.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
+        Assert.That(reader3.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(2)));
     }
 
     [Test]
@@ -156,7 +160,9 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     {
         // TODO: Check other contract are not deleted
         Account acc = TestItem.GenerateIndexedAccount(0);
+        Account acc2 = TestItem.GenerateIndexedAccount(1);
         Address address = TestItem.AddressA;
+        Address address2 = TestItem.AddressB;
 
         using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
@@ -164,16 +170,18 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             writer.SetStorage(address, UInt256.MinValue, SlotValue.FromSpanWithoutLeadingZero([1]));
             writer.SetStorage(address, 123, SlotValue.FromSpanWithoutLeadingZero([2]));
             writer.SetStorage(address, UInt256.MaxValue, SlotValue.FromSpanWithoutLeadingZero([3]));
+
+            writer.SetAccount(address2, acc2);
+            writer.SetStorage(address2, UInt256.MinValue, SlotValue.FromSpanWithoutLeadingZero([1]));
+            writer.SetStorage(address2, 123, SlotValue.FromSpanWithoutLeadingZero([2]));
+            writer.SetStorage(address2, UInt256.MaxValue, SlotValue.FromSpanWithoutLeadingZero([3]));
         }
 
         using (var reader = _persistence.CreateReader())
         {
-            byte[]? value = GetSlot(reader, address, UInt256.MinValue);
-            Assert.That(value, Is.EqualTo([1]));
-            value = GetSlot(reader, address, 123);
-            Assert.That(value, Is.EqualTo([2]));
-            value = GetSlot(reader, address, UInt256.MaxValue);
-            Assert.That(value, Is.EqualTo([3]));
+            Assert.That(GetSlot(reader, address, UInt256.MinValue), Is.EqualTo([1]));
+            Assert.That(GetSlot(reader, address, 123), Is.EqualTo([2]));
+            Assert.That(GetSlot(reader, address, UInt256.MaxValue), Is.EqualTo([3]));
         }
 
         using (var writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
@@ -183,12 +191,13 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using (var reader = _persistence.CreateReader())
         {
-            byte[]? value = GetSlot(reader, address, UInt256.MinValue);
-            Assert.That(value, Is.Null);
-            value = GetSlot(reader, address, 123);
-            Assert.That(value, Is.Null);
-            value = GetSlot(reader, address, UInt256.MaxValue);
-            Assert.That(value, Is.Null);
+            Assert.That(GetSlot(reader, address, UInt256.MinValue), Is.Null);
+            Assert.That(GetSlot(reader, address, 123), Is.Null);
+            Assert.That(GetSlot(reader, address, UInt256.MaxValue), Is.Null);
+
+            Assert.That(GetSlot(reader, address2, UInt256.MinValue), Is.EqualTo([1]));
+            Assert.That(GetSlot(reader, address2, 123), Is.EqualTo([2]));
+            Assert.That(GetSlot(reader, address2, UInt256.MaxValue), Is.EqualTo([3]));
         }
     }
 
@@ -206,10 +215,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Initially, slots should be null
         using (var reader = _persistence.CreateReader())
         {
-            byte[]? value = GetSlot(reader, address, UInt256.MinValue);
-            Assert.That(value, Is.Null);
-            value = GetSlot(reader, address, UInt256.MaxValue);
-            Assert.That(value, Is.Null);
+            Assert.That(GetSlot(reader, address, UInt256.MinValue), Is.Null);
+            Assert.That(GetSlot(reader, address, UInt256.MaxValue), Is.Null);
         }
 
         // Write various storage slots
@@ -224,17 +231,10 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Verify all slots can be read back
         using (var reader = _persistence.CreateReader())
         {
-            byte[]? value = GetSlot(reader, address, UInt256.MinValue);
-            Assert.That(value, Is.EqualTo([1, 2, 3]));
-
-            value = GetSlot(reader, address, 42);
-            Assert.That(value, Is.EqualTo([0x42]));
-
-            value = GetSlot(reader, address, 12345);
-            Assert.That(value, Is.EqualTo([0x10, 0x20, 0x30, 0x40]));
-
-            value = GetSlot(reader, address, UInt256.MaxValue);
-            Assert.That(value, Is.EqualTo([0xff, 0xfe, 0xfd]));
+            Assert.That(GetSlot(reader, address, UInt256.MinValue), Is.EqualTo([1, 2, 3]));
+            Assert.That(GetSlot(reader, address, 42), Is.EqualTo([0x42]));
+            Assert.That(GetSlot(reader, address, 12345), Is.EqualTo([0x10, 0x20, 0x30, 0x40]));
+            Assert.That(GetSlot(reader, address, UInt256.MaxValue), Is.EqualTo([0xff, 0xfe, 0xfd]));
         }
     }
 
@@ -267,14 +267,9 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using var reader3 = _persistence.CreateReader();
 
-        byte[]? value1 = GetSlot(reader1, address, slot);
-        Assert.That(value1, Is.EqualTo([1]));
-
-        byte[]? value2 = GetSlot(reader2, address, slot);
-        Assert.That(value2, Is.EqualTo([2]));
-
-        byte[]? value3 = GetSlot(reader3, address, slot);
-        Assert.That(value3, Is.EqualTo([3]));
+        Assert.That(GetSlot(reader1, address, slot), Is.EqualTo([1]));
+        Assert.That(GetSlot(reader2, address, slot), Is.EqualTo([2]));
+        Assert.That(GetSlot(reader3, address, slot), Is.EqualTo([3]));
     }
 
     [Test]
@@ -293,10 +288,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Verify account and storage exist
         using (var reader = _persistence.CreateReader())
         {
-            Account? account = reader.GetAccount(address);
-            Assert.That(account, Is.EqualTo(acc));
-            byte[]? value = GetSlot(reader, address, 1);
-            Assert.That(value, Is.EqualTo([0x01]));
+            Assert.That(reader.GetAccount(address), Is.EqualTo(acc));
+            Assert.That(GetSlot(reader, address, 1), Is.EqualTo([0x01]));
         }
 
         // Remove account
@@ -308,8 +301,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Verify account is removed (storage should remain unless explicitly removed)
         using (var reader = _persistence.CreateReader())
         {
-            Account? account = reader.GetAccount(address);
-            Assert.That(account, Is.Null);
+            Assert.That(reader.GetAccount(address), Is.Null);
         }
     }
 
@@ -335,8 +327,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
             // Decode and verify
             var ctx = new Rlp.ValueDecoderContext(rawAccount);
-            Account? decodedAcc = AccountDecoder.Instance.Decode(ref ctx);
-            Assert.That(decodedAcc, Is.EqualTo(acc));
+            Assert.That(AccountDecoder.Instance.Decode(ref ctx), Is.EqualTo(acc));
         }
 
         // Test raw storage operations
@@ -349,9 +340,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using (var reader = _persistence.CreateReader())
         {
-            byte[]? rawStorage = reader.GetStorageRaw(addrHash, slotHash);
-            Assert.That(rawStorage, Is.Not.Null);
-            Assert.That(rawStorage, Is.EqualTo(storageValue?.WithoutLeadingZeros().ToArray()));
+            Assert.That(reader.GetStorageRaw(addrHash, slotHash), Is.EqualTo(storageValue?.WithoutLeadingZeros().ToArray()));
         }
     }
 
@@ -391,28 +380,19 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using var reader3 = _persistence.CreateReader();
 
         // Verify reader1 sees initial state
-        Account? acc1 = reader1.GetAccount(address);
-        Assert.That(acc1, Is.EqualTo(acc));
-        byte[]? val1 = GetSlot(reader1, address, slot1);
-        Assert.That(val1, Is.EqualTo([1]));
-        val1 = GetSlot(reader1, address, slot2);
-        Assert.That(val1, Is.EqualTo([10]));
+        Assert.That(reader1.GetAccount(address), Is.EqualTo(acc));
+        Assert.That(GetSlot(reader1, address, slot1), Is.EqualTo([1]));
+        Assert.That(GetSlot(reader1, address, slot2), Is.EqualTo([10]));
 
         // Verify reader2 sees second state
-        Account? acc2 = reader2.GetAccount(address);
-        Assert.That(acc2, Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
-        byte[]? val2 = GetSlot(reader2, address, slot1);
-        Assert.That(val2, Is.EqualTo([2]));
-        val2 = GetSlot(reader2, address, slot2);
-        Assert.That(val2, Is.EqualTo([10]));
+        Assert.That(reader2.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
+        Assert.That(GetSlot(reader2, address, slot1), Is.EqualTo([2]));
+        Assert.That(GetSlot(reader2, address, slot2), Is.EqualTo([10]));
 
         // Verify reader3 sees final state
-        Account? acc3 = reader3.GetAccount(address);
-        Assert.That(acc3, Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
-        byte[]? val3 = GetSlot(reader3, address, slot1);
-        Assert.That(val3, Is.EqualTo([2]));
-        val3 = GetSlot(reader3, address, slot2);
-        Assert.That(val3, Is.EqualTo([20]));
+        Assert.That(reader3.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
+        Assert.That(GetSlot(reader3, address, slot1), Is.EqualTo([2]));
+        Assert.That(GetSlot(reader3, address, slot2), Is.EqualTo([20]));
     }
 
     [Test]
@@ -438,14 +418,9 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Verify each account has its own isolated storage
         using (var reader = _persistence.CreateReader())
         {
-            byte[]? val1 = GetSlot(reader, addr1, slot);
-            Assert.That(val1, Is.EqualTo([0x11]));
-
-            byte[]? val2 = GetSlot(reader, addr2, slot);
-            Assert.That(val2, Is.EqualTo([0x22]));
-
-            byte[]? val3 = GetSlot(reader, addr3, slot);
-            Assert.That(val3, Is.EqualTo([0x33]));
+            Assert.That(GetSlot(reader, addr1, slot), Is.EqualTo([0x11]));
+            Assert.That(GetSlot(reader, addr2, slot), Is.EqualTo([0x22]));
+            Assert.That(GetSlot(reader, addr3, slot), Is.EqualTo([0x33]));
         }
 
         // Modify storage for addr2 only
@@ -457,14 +432,9 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Verify only addr2's storage changed
         using (var reader = _persistence.CreateReader())
         {
-            byte[]? val1 = GetSlot(reader, addr1, slot);
-            Assert.That(val1, Is.EqualTo([0x11]));
-
-            byte[]? val2 = GetSlot(reader, addr2, slot);
-            Assert.That(val2, Is.EqualTo([0xff]));
-
-            byte[]? val3 = GetSlot(reader, addr3, slot);
-            Assert.That(val3, Is.EqualTo([0x33]));
+            Assert.That(GetSlot(reader, addr1, slot), Is.EqualTo([0x11]));
+            Assert.That(GetSlot(reader, addr2, slot), Is.EqualTo([0xff]));
+            Assert.That(GetSlot(reader, addr3, slot), Is.EqualTo([0x33]));
         }
     }
 }
