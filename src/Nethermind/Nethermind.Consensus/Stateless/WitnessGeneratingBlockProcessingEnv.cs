@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -15,6 +14,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -36,19 +36,19 @@ public class WitnessGeneratingBlockProcessingEnv(
     IHeaderStore headerStore,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnv
 {
-    private TransactionProcessor CreateTransactionProcessor(IWorldState state, IHeaderFinder witnessGeneratingHeaderFinder)
+    private TransactionProcessor<EthereumGasPolicy> CreateTransactionProcessor(IWorldState state, IHeaderFinder witnessGeneratingHeaderFinder)
     {
         BlockhashProvider blockhashProvider = new(new BlockhashCache(witnessGeneratingHeaderFinder, logManager), state, logManager);
         VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
         ICodeInfoRepository codeInfoRepository = new CodeInfoRepository(state, new EthereumPrecompileProvider());
-        return new TransactionProcessor(new BlobBaseFeeCalculator(), specProvider, state, vm, codeInfoRepository, logManager);
+        return new TransactionProcessor<EthereumGasPolicy>(new BlobBaseFeeCalculator(), specProvider, state, vm, codeInfoRepository, logManager);
     }
 
     public WitnessCollector CreateWitnessCollector()
     {
         WitnessGeneratingWorldState state = new(baseWorldState);
         WitnessGeneratingHeaderFinder witnessGenHeaderFinder = new(headerStore);
-        TransactionProcessor txProcessor = CreateTransactionProcessor(state, witnessGenHeaderFinder);
+        TransactionProcessor<EthereumGasPolicy> txProcessor = CreateTransactionProcessor(state, witnessGenHeaderFinder);
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =
             new BlockProcessor.BlockValidationTransactionsExecutor(
                 new ExecuteTransactionProcessorAdapter(txProcessor), state);

@@ -62,6 +62,8 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
 
     public bool IsInScope => inner.IsInScope;
 
+    public IWorldStateScopeProvider ScopeProvider => inner.ScopeProvider;
+
     public byte[]? GetCode(Address address)
     {
         _storageSlots.TryAdd(address, []);
@@ -245,12 +247,6 @@ public class WitnessGeneratingWorldState(WorldState inner) : IWorldState
     {
         _storageSlots.TryAdd(address, []);
         inner.SubtractFromBalance(address, in balanceChange, spec);
-    }
-
-    public void UpdateStorageRoot(Address address, Hash256 storageRoot)
-    {
-        _storageSlots.TryAdd(address, []);
-        inner.UpdateStorageRoot(address, storageRoot);
     }
 
     public void IncrementNonce(Address address, UInt256 delta)

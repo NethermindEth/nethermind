@@ -44,7 +44,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         WitnessCapturingTrieStore trieStore = new(readOnlyDbProvider.StateDb, readOnlyTrieStore);
         IStateReader stateReader = new StateReader(trieStore, readOnlyDbProvider.CodeDb, logManager);
-        IWorldState worldState = new WorldState(trieStore, readOnlyDbProvider.CodeDb, logManager, null, true);
+        IWorldState worldState = new WorldState(new TrieStoreScopeProvider(trieStore, readOnlyDbProvider.CodeDb, logManager), logManager);
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddScoped<IStateReader>(stateReader)
