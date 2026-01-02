@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
@@ -36,9 +36,12 @@ public class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler, IUdpConnection
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket msg)
     {
-        var udpPacket = new UdpReceiveResult(msg.Content.ReadAllBytesAsArray(), (IPEndPoint)msg.Sender);
-        if (!_inboundQueue.Writer.TryWrite(udpPacket) && _logger.IsWarn)
+        UdpReceiveResult udpPacket = new(msg.Content.ReadAllBytesAsArray(), (IPEndPoint)msg.Sender);
+
+        if (!_inboundQueue.Writer.TryWrite(udpPacket) && _logger.IsDebug)
+        {
             _logger.Warn("Skipping discovery v5 message as inbound buffer is full");
+        }
     }
 
     public async Task SendAsync(byte[] data, IPEndPoint destination)

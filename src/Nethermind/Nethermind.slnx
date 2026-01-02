@@ -77,6 +77,9 @@
     <Project Path="Nethermind.Wallet.Test/Nethermind.Wallet.Test.csproj" />
     <Project Path="Nethermind.Xdc.Test/Nethermind.Xdc.Test.csproj" />
   </Folder>
+  <Project Path="../Lantern.Discv5/src/Lantern.Discv5.Enr/Lantern.Discv5.Enr.csproj" />
+  <Project Path="../Lantern.Discv5/src/Lantern.Discv5.Rlp/Lantern.Discv5.Rlp.csproj" />
+  <Project Path="../Lantern.Discv5/src/Lantern.Discv5.WireProtocol/Lantern.Discv5.WireProtocol.csproj" />
   <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
   <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />

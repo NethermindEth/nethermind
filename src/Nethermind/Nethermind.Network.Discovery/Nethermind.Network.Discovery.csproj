@@ -6,6 +6,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\Lantern.Discv5\src\Lantern.Discv5.Enr\Lantern.Discv5.Enr.csproj" />
+    <ProjectReference Include="..\..\Lantern.Discv5\src\Lantern.Discv5.WireProtocol\Lantern.Discv5.WireProtocol.csproj" />
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
     <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />
@@ -14,7 +16,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="PierTwo.Lantern.Discv5.WireProtocol" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
   </ItemGroup>
 

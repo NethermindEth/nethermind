@@ -1,0 +1,23 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+	<PackageVersion Include="coverlet.collector" Version="3.2.0" />
+	<PackageVersion Include="Keccak256" Version="1.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="8.0.2" />
+    <PackageVersion Include="Multiformats.Base" Version="2.0.2" />
+    <PackageVersion Include="Multiformats.Hash" Version="1.5.0" />
+    <PackageVersion Include="NBitcoin.Secp256k1" Version="3.1.5" />
+    <PackageVersion Include="BouncyCastle.Cryptography" Version="2.4.0" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+	<PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.5.0" />
+	<PackageVersion Include="Moq" Version="4.18.4" />
+	<PackageVersion Include="NUnit" Version="3.13.3" />
+	<PackageVersion Include="NUnit3TestAdapter" Version="4.4.2" />
+    <PackageVersion Include="System.Threading.Tasks.Dataflow" Version="8.0.0" />
+  </ItemGroup>
+</Project>

@@ -508,23 +508,6 @@
           "libsodium": "1.0.16"
         }
       },
-      "PierTwo.Lantern.Discv5.Enr": {
-        "type": "Transitive",
-        "resolved": "1.0.0-preview.6",
-        "contentHash": "rHuVBANEsOdf+5p1uU35mrdJfb+2z9EtDU5LeHKWDWx5nfGMRK4LtcrbfvDnrdsTLQbxmV88PoBuS23FMLrpYQ==",
-        "dependencies": {
-          "Keccak256": "1.0.0",
-          "Multiformats.Base": "2.0.2",
-          "Multiformats.Hash": "1.5.0",
-          "NBitcoin.Secp256k1": "3.1.5",
-          "PierTwo.Lantern.Discv5.Rlp": "1.0.0-preview.6"
-        }
-      },
-      "PierTwo.Lantern.Discv5.Rlp": {
-        "type": "Transitive",
-        "resolved": "1.0.0-preview.6",
-        "contentHash": "X1mOhKZytX60uZwh9aCex0BVidN0hVlf5jKZsufacWpfsN/yMstc/fh3aRM9JWm8x7PQVeY300JXVFhDk4roqA=="
-      },
       "Polly.Core": {
         "type": "Transitive",
         "resolved": "8.6.5",
@@ -1002,7 +985,8 @@
           "Nethermind.Facade": "[1.37.0-unstable, )",
           "Nethermind.Network": "[1.37.0-unstable, )",
           "Nethermind.Network.Enr": "[1.37.0-unstable, )",
-          "PierTwo.Lantern.Discv5.WireProtocol": "[1.0.0-preview.6, )"
+          "PierTwo.Lantern.Discv5.Enr": "[1.0.0-preview.4, )",
+          "PierTwo.Lantern.Discv5.WireProtocol": "[1.0.0-preview.4, )"
         }
       },
       "nethermind.network.dns": {
@@ -1190,6 +1174,28 @@
           "Nethermind.Consensus": "[1.37.0-unstable, )",
           "Nethermind.Core": "[1.37.0-unstable, )",
           "Nethermind.Init": "[1.37.0-unstable, )"
+        }
+      },
+      "PierTwo.Lantern.Discv5.Enr": {
+        "type": "Project",
+        "dependencies": {
+          "Keccak256": "[1.0.0, )",
+          "Multiformats.Base": "[2.0.2, )",
+          "Multiformats.Hash": "[1.5.0, )",
+          "NBitcoin.Secp256k1": "[3.1.5, )",
+          "PierTwo.Lantern.Discv5.Rlp": "[1.0.0-preview.4, )"
+        }
+      },
+      "PierTwo.Lantern.Discv5.Rlp": {
+        "type": "Project"
+      },
+      "PierTwo.Lantern.Discv5.WireProtocol": {
+        "type": "Project",
+        "dependencies": {
+          "BouncyCastle.Cryptography": "[2.4.0, )",
+          "NBitcoin.Secp256k1": "[3.1.5, )",
+          "PierTwo.Lantern.Discv5.Enr": "[1.0.0-preview.4, )",
+          "PierTwo.Lantern.Discv5.Rlp": "[1.0.0-preview.4, )"
         }
       },
       "AspNetCore.HealthChecks.UI": {
@@ -1516,18 +1522,6 @@
         "requested": "[2.1.0.5, )",
         "resolved": "2.1.0.5",
         "contentHash": "F/4WoNK1rYCMGZM6B1LVlgxf2wLogJc2ohMZxwmJw7Aky2Hc1IgFZvEj/cxcv5QQSFTvPN5AWYKomFXHukOUIg=="
-      },
-      "PierTwo.Lantern.Discv5.WireProtocol": {
-        "type": "CentralTransitive",
-        "requested": "[1.0.0-preview.6, )",
-        "resolved": "1.0.0-preview.6",
-        "contentHash": "WjVYiDxyZ3z00kuJJXuWJwRqkWfTrZF1v7qWz4mMASRP6AEhDCF4jMdCuAWkH1uPj00kkluONOc426Z//FcjDw==",
-        "dependencies": {
-          "BouncyCastle.Cryptography": "2.4.0",
-          "NBitcoin.Secp256k1": "3.1.5",
-          "PierTwo.Lantern.Discv5.Enr": "1.0.0-preview.6",
-          "PierTwo.Lantern.Discv5.Rlp": "1.0.0-preview.6"
-        }
       },
       "Polly": {
         "type": "CentralTransitive",
