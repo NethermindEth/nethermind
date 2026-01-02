@@ -137,7 +137,7 @@ internal class XdcTransactionProcessor(
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
         IXdcReleaseSpec spec = GetSpec(header) as IXdcReleaseSpec;
 
-        // maybe a better appraoch would be adding an XdcGasPolicy 
+        // maybe a better approach would be adding an XdcGasPolicy 
         TransactionResult result;
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);
         UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
