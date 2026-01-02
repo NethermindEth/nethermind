@@ -39,7 +39,7 @@ internal class XdcTransactionProcessor(
         Address sender = tx.SenderAddress;
 
         if (xdcSpec.BlackListHFNumber <= header.Number)
-        { 
+        {
             if (IsBlackListed(xdcSpec, sender) || IsBlackListed(xdcSpec, target))
             {
                 // Skip processing special transactions if either sender or recipient is blacklisted
@@ -98,7 +98,7 @@ internal class XdcTransactionProcessor(
         var xdcSpec = (IXdcReleaseSpec)spec;
         if (tx.RequiresSpecialHandling(xdcSpec))
         {
-            if(tx.IsSignTransaction(xdcSpec))
+            if (tx.IsSignTransaction(xdcSpec))
             {
                 var nonce = WorldState.GetNonce(tx.SenderAddress);
 
@@ -125,7 +125,7 @@ internal class XdcTransactionProcessor(
     protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired)
     {
         var spec = SpecProvider.GetXdcSpec((XdcBlockHeader)header);
-        if(tx.RequiresSpecialHandling(spec))
+        if (tx.RequiresSpecialHandling(spec))
         {
             return TransactionResult.Ok;
         }

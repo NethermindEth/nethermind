@@ -27,6 +27,6 @@ internal class XdcTxPoolTxSourceFactory(
     public virtual ITxSource Create()
     {
         ITxFilterPipeline txSourceFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(logManager, blocksConfig);
-        return new TxPoolTxSource(txPool, specProvider, new XdcTransactionComparerProvider(specProvider, blockFinder, signer) , logManager, txSourceFilterPipeline, blocksConfig);
+        return new TxPoolTxSource(txPool, specProvider, new XdcTransactionComparerProvider(specProvider, blockFinder, signer), logManager, txSourceFilterPipeline, blocksConfig);
     }
 }

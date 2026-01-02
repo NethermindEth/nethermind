@@ -34,8 +34,8 @@ internal class CompareTxBySender(ISigner signer, IXdcReleaseSpec spec) : ICompar
         if (isNewTxSpecial && !isOldTxSpecial) return TxComparisonResult.TakeNew;
         if (!isNewTxSpecial && isOldTxSpecial) return TxComparisonResult.KeepOld;
 
-        if(oldTx.SenderAddress == signer.Address) return TxComparisonResult.KeepOld;
-        if(newTx.SenderAddress == signer.Address) return TxComparisonResult.TakeNew;
+        if (oldTx.SenderAddress == signer.Address) return TxComparisonResult.KeepOld;
+        if (newTx.SenderAddress == signer.Address) return TxComparisonResult.TakeNew;
 
         return TxComparisonResult.NotDecided;
     }
@@ -50,7 +50,7 @@ internal class XdcTransactionComparerProvider(ISpecProvider specProvider, IBlock
     {
         var defaultComparer = defaultComparerProvider.GetDefaultComparer();
 
-        var signerFilter = new CompareTxBySender(signer, specProvider); 
+        var signerFilter = new CompareTxBySender(signer, specProvider);
 
         return signerFilter.ThenBy(defaultComparer);
     }
