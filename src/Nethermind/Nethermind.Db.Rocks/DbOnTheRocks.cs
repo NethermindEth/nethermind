@@ -893,6 +893,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     internal unsafe int GetCStyleWithColumnFamily(scoped ReadOnlySpan<byte> key, Span<byte> output, ColumnFamilyHandle? cf, ReadOptions readOptions)
     {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        UpdateReadMetrics();
+
         nint db = _db.Handle;
         nint read_options = readOptions.Handle;
         UIntPtr skLength = (UIntPtr)key.Length;
@@ -1961,19 +1965,22 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         ReadOptions readOptions = new ReadOptions();
 
+        IntPtr iterateLowerBound = IntPtr.Zero;
+        IntPtr iterateUpperBound = IntPtr.Zero;
+
         unsafe
         {
-            IntPtr iterateLowerBound = Marshal.AllocHGlobal(firstKey.Length);
+            iterateLowerBound = Marshal.AllocHGlobal(firstKey.Length);
             firstKey.CopyTo(new Span<byte>(iterateLowerBound.ToPointer(), firstKey.Length));
             Native.Instance.rocksdb_readoptions_set_iterate_lower_bound(readOptions.Handle, iterateLowerBound, (UIntPtr)firstKey.Length);
 
-            IntPtr iterateUpperBound = Marshal.AllocHGlobal(lastKey.Length);
+            iterateUpperBound = Marshal.AllocHGlobal(lastKey.Length);
             lastKey.CopyTo(new Span<byte>(iterateUpperBound.ToPointer(), lastKey.Length));
             Native.Instance.rocksdb_readoptions_set_iterate_upper_bound(readOptions.Handle, iterateUpperBound, (UIntPtr)lastKey.Length);
         }
 
         Iterator iterator = CreateIterator(readOptions, cf);
-        return new RocksdbSortedView(iterator);
+        return new RocksdbSortedView(iterator, iterateLowerBound, iterateUpperBound);
     }
 
     public IKeyValueStoreSnapshot CreateSnapshot()

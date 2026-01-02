@@ -29,18 +29,22 @@ namespace Nethermind.Core
         Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
 
         /// <summary>
-        /// Get, C-style. Write the output to output span and return the length of written data. Cannot
-        /// differentiate if the data is missing or not exist. Throws if output is not large enough.
+        /// Get, C-style. Write the output to <paramref name="output" /> span and return the length of written data.
+        /// Cannot differentiate if the data is missing or does not exist. Throws if <paramref name="output" /> is not large enough.
         /// </summary>
-        /// <param name="keya"></param>
-        /// <param name="output"></param>
-        /// <param name="flags"></param>
-        /// <returns></returns>
+        /// <param name="key">Key whose associated value should be read.</param>
+        /// <param name="output">Destination buffer to receive the value bytes; must be large enough to hold the data.</param>
+        /// <param name="flags">Read behavior flags that control how the value is retrieved.</param>
+        /// <returns>The number of bytes written into <paramref name="output" />.</returns>
         int Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags = ReadFlags.None)
         {
             Span<byte> span = GetSpan(key, flags);
             try
             {
+                if (span.IsNull())
+                {
+                    return 0;
+                }
                 span.CopyTo(output);
                 return span.Length;
             }
@@ -104,11 +108,44 @@ namespace Nethermind.Core
         ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
     }
 
+    /// <summary>
+    /// Provides the capability to create read-only snapshots of a key-value store.
+    /// </summary>
+    /// <remarks>
+    /// Implementations expose a <see cref="IKeyValueStoreSnapshot" /> that represents a consistent,
+    /// point-in-time view of the underlying store. The snapshot is not affected by subsequent writes
+    /// to the parent store, but it reflects the state as it existed when <see cref="CreateSnapshot" />
+    /// was called.
+    /// </remarks>
     public interface IKeyValueStoreWithSnapshot
     {
+        /// <summary>
+        /// Creates a new read-only snapshot of the current state of the key-value store.
+        /// </summary>
+        /// <returns>
+        /// An <see cref="IKeyValueStoreSnapshot" /> that can be used to perform read operations
+        /// against a stable view of the data.
+        /// </returns>
+        /// <remarks>
+        /// The returned snapshot must be disposed when no longer needed in order to release any
+        /// resources that may be held by the underlying storage engine (for example, pinned
+        /// iterators or file handles). The snapshot is guaranteed to be consistent with the
+        /// state of the store at the time of creation, regardless of concurrent modifications
+        /// performed afterwards.
+        /// </remarks>
         IKeyValueStoreSnapshot CreateSnapshot();
     }
 
+    /// <summary>
+    /// Represents a read-only, point-in-time view of the data in an <see cref="IKeyValueStore" />.
+    /// </summary>
+    /// <remarks>
+    /// A snapshot exposes the <see cref="IReadOnlyKeyValueStore" /> API and is isolated from
+    /// subsequent mutations to the parent store. Implementations are expected to provide a
+    /// consistent view of the data as it existed when the snapshot was created. Callers must
+    /// dispose the snapshot via <see cref="IDisposable.Dispose" /> when finished with it to
+    /// free any underlying resources.
+    /// </remarks>
     public interface IKeyValueStoreSnapshot : IReadOnlyKeyValueStore, IDisposable
     {
     }
