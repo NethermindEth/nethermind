@@ -56,18 +56,10 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
 
         ProductInfo.Instance = metricsConfig.NodeName;
 
-        if (syncConfig.SnapSync)
-        {
-            ProductInfo.SyncType = "Snap";
-        }
-        else if (syncConfig.FastSync)
-        {
-            ProductInfo.SyncType = "Fast";
-        }
-        else
-        {
-            ProductInfo.SyncType = "Full";
-        }
+        ProductInfo.SyncType = syncConfig.FastSync 
+           ? syncConfig.SnapSync ? "Snap" : "Fast"
+           : "Full";
+
 
         ProductInfo.PruningMode = pruningConfig.Mode.ToString();
         Metrics.Version = VersionToMetrics.ConvertToNumber(ProductInfo.Version);
