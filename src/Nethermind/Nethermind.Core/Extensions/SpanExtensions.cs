@@ -226,7 +226,7 @@ namespace Nethermind.Core.Extensions
         {
             // Fast hardware-accelerated, non-cryptographic hash.
             // Core idea: CRC32C is extremely cheap on CPUs with SSE4.2/ARM CRC,
-            // and gives good diffusion for hashing We then optionally add extra
+            // and gives good diffusion for hashing. We then optionally add extra
             // mixing to reduce "CRC linearity" artefacts.
 
             int len = input.Length;
