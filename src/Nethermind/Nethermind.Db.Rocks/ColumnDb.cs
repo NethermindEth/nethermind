@@ -213,9 +213,16 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     public IKeyValueStoreSnapshot CreateSnapshot()
     {
         Snapshot snapshot = _rocksDb.CreateSnapshot();
-        ReadOptions readOptions = new ReadOptions();
-        readOptions.SetSnapshot(snapshot);
 
-        return new DbOnTheRocks.RocksDbSnapshot(_mainDb, () => readOptions, _columnFamily, snapshot);
+        return new DbOnTheRocks.RocksDbSnapshot(
+            _mainDb,
+            () =>
+            {
+                ReadOptions readOptions = new();
+                readOptions.SetSnapshot(snapshot);
+                return readOptions;
+            },
+            _columnFamily,
+            snapshot);
     }
 }

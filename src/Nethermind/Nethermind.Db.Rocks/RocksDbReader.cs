@@ -10,11 +10,11 @@ using RocksDbSharp;
 namespace Nethermind.Db.Rocks;
 
 /// <summary>
-/// Used by `DbOnTheRocks`, `ColumnDb` and `RocksDbSnapshot` to ensure all the method of
-/// `ISortedKeyValueStore` is implemented for the three class. The three class is expected
-/// to create their relevent read options and create this class then call this class instead of
+/// Used by `DbOnTheRocks`, `ColumnDb` and `RocksDbSnapshot` to ensure all the methods of
+/// `ISortedKeyValueStore` are implemented for the three classes. The three classes are expected
+/// to create their relevant read options and create this class then call this class instead of
 /// implementing `ISortedKeyValueStore` implementation themselves.
-/// This tend to call `DbOnTheRocks` back though.
+/// This tends to call `DbOnTheRocks` back though.
 /// </summary>
 public class RocksDbReader : ISortedKeyValueStore
 {
@@ -103,18 +103,21 @@ public class RocksDbReader : ISortedKeyValueStore
     {
         ReadOptions readOptions = _readOptionsFactory();
 
+        IntPtr iterateLowerBound = IntPtr.Zero;
+        IntPtr iterateUpperBound = IntPtr.Zero;
+
         unsafe
         {
-            IntPtr iterateLowerBound = Marshal.AllocHGlobal(firstKey.Length);
+            iterateLowerBound = Marshal.AllocHGlobal(firstKey.Length);
             firstKey.CopyTo(new Span<byte>(iterateLowerBound.ToPointer(), firstKey.Length));
             Native.Instance.rocksdb_readoptions_set_iterate_lower_bound(readOptions.Handle, iterateLowerBound, (UIntPtr)firstKey.Length);
 
-            IntPtr iterateUpperBound = Marshal.AllocHGlobal(lastKey.Length);
+            iterateUpperBound = Marshal.AllocHGlobal(lastKey.Length);
             lastKey.CopyTo(new Span<byte>(iterateUpperBound.ToPointer(), lastKey.Length));
             Native.Instance.rocksdb_readoptions_set_iterate_upper_bound(readOptions.Handle, iterateUpperBound, (UIntPtr)lastKey.Length);
         }
 
         Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
-        return new RocksdbSortedView(iterator);
+        return new RocksdbSortedView(iterator, readOptions, iterateLowerBound, iterateUpperBound);
     }
 }
